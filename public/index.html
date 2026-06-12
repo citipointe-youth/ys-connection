@@ -1698,15 +1698,15 @@ async function renderAtRisk() {
   if (!list.length) {
     body += '<div class="empty"><span class="empty-icon">✅</span><div class="empty-title">No at-risk students</div><div class="empty-sub">Great news — attendance looks healthy</div></div>';
   } else {
-    const groups = { stopped:[], atrisk:[], declining:[], watch:[] };
+    const groups = { declining:[], atrisk:[], stopped:[], watch:[] };
     for (const s of list) if (groups[s.status]) groups[s.status].push(s);
-    const labels = { stopped:'Stopped Attending', atrisk:'At Risk', declining:'Declining', watch:'Watch List' };
+    const labels = { declining:'Declining', atrisk:'At Risk', stopped:'Stopped Attending', watch:'Watch List' };
     for (const [status, items] of Object.entries(groups)) {
       if (!items.length) continue;
-      body += `<div class="sh">${labels[status]} (${items.length})</div>`;
+      let cards = '';
       for (const s of items) {
         const pct = s.svcTotal > 0 ? Math.round(s.svcAttended / s.svcTotal * 100) : 0;
-        body += `
+        cards += `
           <div class="li" style="cursor:default;align-items:flex-start">
             <div class="li-body">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -1735,9 +1735,30 @@ async function renderAtRisk() {
             </div>
           </div>`;
       }
+      body += `<div class="card" style="margin-bottom:12px">
+        <div onclick="toggleArSection('${status}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:12px 16px;user-select:none">
+          <span id="ar-chev-${status}" style="font-size:12px">▶</span>
+          <strong>${labels[status]}</strong>
+          <span class="badge" style="margin-left:auto">${items.length}</span>
+        </div>
+        <div id="ar-body-${status}" style="display:none;padding:0 12px 12px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+            ${cards}
+          </div>
+        </div>
+      </div>`;
     }
   }
   setApp(shell(body));
+}
+
+function toggleArSection(status) {
+  const body = document.getElementById('ar-body-' + status);
+  const chev = document.getElementById('ar-chev-' + status);
+  if (!body || !chev) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  chev.textContent = open ? '▶' : '▼';
 }
 
 function setArFilter(key, val) {
