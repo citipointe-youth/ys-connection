@@ -5,7 +5,7 @@ import {
   InMemoryUserRepository,
   InMemoryStudentRepository,
   InMemoryLeaderRepository,
-  InMemoryAllocationRepository,
+  InMemoryConnectionRepository,
   InMemoryServiceSessionRepository,
   InMemoryServiceAttendanceRepository,
   InMemoryLifegroupRepository,
@@ -22,7 +22,7 @@ import type {
   IUserRepository,
   IStudentRepository,
   ILeaderRepository,
-  IAllocationRepository,
+  IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
   ILifegroupRepository,
@@ -37,7 +37,7 @@ import type {
 import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
 import { makeLeaderService, type LeaderService } from './services/leader.service';
-import { makeAllocationService, type AllocationService } from './services/allocation.service';
+import { makeConnectionService, type ConnectionService } from './services/connection.service';
 import { makeOverviewService, type OverviewService } from './services/overview.service';
 import { makeAtRiskService, type AtRiskService } from './services/atrisk.service';
 import { makeImportService, type ImportService } from './services/import.service';
@@ -50,7 +50,7 @@ export interface Repositories {
   users: IUserRepository;
   students: IStudentRepository;
   leaders: ILeaderRepository;
-  allocations: IAllocationRepository;
+  connections: IConnectionRepository;
   serviceSessions: IServiceSessionRepository;
   serviceAttendance: IServiceAttendanceRepository;
   lifegroups: ILifegroupRepository;
@@ -66,7 +66,7 @@ export interface Services {
   auth: AuthService;
   student: StudentService;
   leader: LeaderService;
-  allocation: AllocationService;
+  connection: ConnectionService;
   overview: OverviewService;
   atRisk: AtRiskService;
   trends: TrendsService;
@@ -93,7 +93,7 @@ export async function buildContainer(): Promise<Container> {
   const users: IUserRepository = new InMemoryUserRepository(useJson ? makeJson('users.json') : undefined);
   const students: IStudentRepository = new InMemoryStudentRepository(useJson ? makeJson('students.json') : undefined);
   const leaders: ILeaderRepository = new InMemoryLeaderRepository(useJson ? makeJson('leaders.json') : undefined);
-  const allocations: IAllocationRepository = new InMemoryAllocationRepository(useJson ? makeJson('allocations.json') : undefined);
+  const connections: IConnectionRepository = new InMemoryConnectionRepository(useJson ? makeJson('connections.json') : undefined);
   const serviceSessions: IServiceSessionRepository = new InMemoryServiceSessionRepository(useJson ? makeJson('service-sessions.json') : undefined);
   const serviceAttendance: IServiceAttendanceRepository = new InMemoryServiceAttendanceRepository(useJson ? makeJson('service-attendance.json') : undefined);
   const lifegroups: ILifegroupRepository = new InMemoryLifegroupRepository(useJson ? makeJson('lifegroups.json') : undefined);
@@ -105,7 +105,7 @@ export async function buildContainer(): Promise<Container> {
   const audit: IAuditRepository = new InMemoryAuditRepository(useJson ? makeJson('audit.json') : undefined);
 
   const repos: Repositories = {
-    users, students, leaders, allocations,
+    users, students, leaders, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
     imports, settings, snapshots, audit,
@@ -113,7 +113,7 @@ export async function buildContainer(): Promise<Container> {
 
   // Init all repos
   await Promise.all([
-    users.init(), students.init(), leaders.init(), allocations.init(),
+    users.init(), students.init(), leaders.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
     imports.init(), settings.init(), snapshots.init(), audit.init(),
@@ -123,17 +123,17 @@ export async function buildContainer(): Promise<Container> {
   const auth = makeAuthService(users);
   const student = makeStudentService(students);
   const leader = makeLeaderService(leaders);
-  const allocation = makeAllocationService(allocations, students, leaders, settings);
-  const overview = makeOverviewService(students, leaders, allocations);
+  const connection = makeConnectionService(connections, students, leaders, settings);
+  const overview = makeOverviewService(students, leaders, connections);
   const atRisk = makeAtRiskService(students, settings);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings);
   const settingsSvc = makeSettingsService(settings, audit);
   const account = makeAccountService(users);
-  const admin = makeAdminService(users, students, leaders, allocations, imports, snapshots, audit);
+  const admin = makeAdminService(users, students, leaders, connections, imports, snapshots, audit);
 
   const services: Services = {
-    auth, student, leader, allocation, overview, atRisk, trends,
+    auth, student, leader, connection, overview, atRisk, trends,
     importService, settings: settingsSvc, account, admin,
     users,
   };

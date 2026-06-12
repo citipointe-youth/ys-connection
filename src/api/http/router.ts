@@ -3,7 +3,7 @@ import type { Services } from '../../container';
 import { makeAuthController } from '../controllers/auth.controller';
 import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
-import { makeAllocationController } from '../controllers/allocation.controller';
+import { makeConnectionController } from '../controllers/connection.controller';
 import { makeOverviewController } from '../controllers/overview.controller';
 import { makeAtRiskController } from '../controllers/atrisk.controller';
 import { makeImportController } from '../controllers/import.controller';
@@ -16,7 +16,7 @@ export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
   const student = makeStudentController({ student: services.student });
   const leader = makeLeaderController({ leader: services.leader });
-  const allocation = makeAllocationController({ allocation: services.allocation });
+  const connection = makeConnectionController({ connection: services.connection });
   const overview = makeOverviewController({ overview: services.overview });
   const atRisk = makeAtRiskController({
     atRisk: services.atRisk,
@@ -58,14 +58,14 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'PATCH',  path: '/leaders/:id', auth: true, handler: (r) => leader.update(r) },
     { method: 'DELETE', path: '/leaders/:id', auth: true, handler: (r) => leader.remove(r) },
 
-    // ----- Allocations -----
-    { method: 'GET',    path: '/allocations',                          auth: true, handler: (r) => allocation.listAll(r) },
-    { method: 'POST',   path: '/allocations',                          auth: true, handler: (r) => allocation.assign(r) },
-    { method: 'GET',    path: '/allocations/export',                   auth: true, handler: (r) => allocation.exportCsv(r) },
-    { method: 'GET',    path: '/allocations/student/:studentId',       auth: true, handler: (r) => allocation.listByStudent(r) },
-    { method: 'GET',    path: '/allocations/leader/:leaderId',         auth: true, handler: (r) => allocation.listByLeader(r) },
-    { method: 'GET',    path: '/allocations/leader/:leaderId/summary', auth: true, handler: (r) => allocation.leaderSummary(r) },
-    { method: 'DELETE', path: '/allocations/:studentId/:leaderId',     auth: true, handler: (r) => allocation.unassign(r) },
+    // ----- Connections -----
+    { method: 'GET',    path: '/connections',                          auth: true, handler: (r) => connection.listAll(r) },
+    { method: 'POST',   path: '/connections',                          auth: true, handler: (r) => connection.assign(r) },
+    { method: 'GET',    path: '/connections/export',                   auth: true, handler: (r) => connection.exportCsv(r) },
+    { method: 'GET',    path: '/connections/student/:studentId',       auth: true, handler: (r) => connection.listByStudent(r) },
+    { method: 'GET',    path: '/connections/leader/:leaderId',         auth: true, handler: (r) => connection.listByLeader(r) },
+    { method: 'GET',    path: '/connections/leader/:leaderId/summary', auth: true, handler: (r) => connection.leaderSummary(r) },
+    { method: 'DELETE', path: '/connections/:studentId/:leaderId',     auth: true, handler: (r) => connection.unassign(r) },
 
     // ----- At-Risk -----
     { method: 'GET',  path: '/at-risk',           auth: true, handler: (r) => atRisk.list(r) },

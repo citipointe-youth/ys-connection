@@ -36,7 +36,7 @@ describe('RBAC — can()', () => {
 
   // TC06 — quad login can allocate
   it('TC06: quad can allocate', () => {
-    expect(can(actor('quad', { quad: 'g79' }), 'allocation:write')).toBe(true);
+    expect(can(actor('quad', { quad: 'g79' }), 'connection:write')).toBe(true);
   });
 
   // TC07 — director can import

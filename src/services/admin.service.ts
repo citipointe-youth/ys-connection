@@ -3,7 +3,7 @@ import type {
   IUserRepository,
   IStudentRepository,
   ILeaderRepository,
-  IAllocationRepository,
+  IConnectionRepository,
   IImportRepository,
   ISnapshotRepository,
   IAuditRepository,
@@ -46,7 +46,7 @@ export function makeAdminService(
   users: IUserRepository,
   students: IStudentRepository,
   leaders: ILeaderRepository,
-  allocations: IAllocationRepository,
+  connections: IConnectionRepository,
   imports: IImportRepository,
   snapshots: ISnapshotRepository,
   audit: IAuditRepository,
@@ -58,11 +58,11 @@ export function makeAdminService(
       for (const s of all) await students.delete(s.id);
       const allLeaders = await leaders.findAll();
       for (const l of allLeaders) await leaders.delete(l.id);
-      const allAllocs = await allocations.findAll();
-      for (const a of allAllocs) await allocations.delete(a.id);
+      const allConns = await connections.findAll();
+      for (const a of allConns) await connections.delete(a.id);
       const allImports = await imports.findAll();
       for (const i of allImports) await imports.delete(i.id);
-      await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, allocations and imports cleared');
+      await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, connections and imports cleared');
     },
 
     async saveDefaults(actor) {
@@ -107,13 +107,13 @@ export function makeAdminService(
         });
       }
 
-      // Clear allocations and import history — leaders and accounts are kept.
-      const allAllocs = await allocations.findAll();
-      for (const a of allAllocs) await allocations.delete(a.id);
+      // Clear connections and import history — leaders and accounts are kept.
+      const allConns = await connections.findAll();
+      for (const a of allConns) await connections.delete(a.id);
       const allImports = await imports.findAll();
       for (const i of allImports) await imports.delete(i.id);
 
-      await writeAudit(audit, actor, 'new-year', `New year started — ${studentCount} students retained with previous-term snapshot, all allocations cleared`);
+      await writeAudit(audit, actor, 'new-year', `New year started — ${studentCount} students retained with previous-term snapshot, all connections cleared`);
     },
 
     async getAuditLog(actor, limit = 20) {

@@ -2,7 +2,7 @@ import { assertCan, canAccessGrade, canAccessGender } from './access-control';
 import type {
   IStudentRepository,
   ILeaderRepository,
-  IAllocationRepository,
+  IConnectionRepository,
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
@@ -45,7 +45,7 @@ export interface OverviewService {
 export function makeOverviewService(
   studentRepo: IStudentRepository,
   leaderRepo: ILeaderRepository,
-  allocRepo: IAllocationRepository,
+  connRepo: IConnectionRepository,
 ): OverviewService {
   return {
     async getStats(actor) {
@@ -53,7 +53,7 @@ export function makeOverviewService(
 
       const allStudents = await studentRepo.findAll();
       const allLeaders = await leaderRepo.findActive();
-      const allAllocs = await allocRepo.findAll();
+      const allConns = await connRepo.findAll();
 
       const scoped = allStudents.filter((s) => {
         if (actor.role === 'grade') return s.grade === actor.grade;
@@ -63,7 +63,7 @@ export function makeOverviewService(
         return true;
       });
 
-      const allocatedIds = new Set(allAllocs.map((a) => a.studentId));
+      const allocatedIds = new Set(allConns.map((a) => a.studentId));
 
       // Leader-to-quad mapping: a leader belongs to a quad if their grade + gender aligns.
       // We use student quad membership (derived from grade+gender) so gender is unambiguous.

@@ -15,7 +15,7 @@ const SettingsPatchSchema = z.object({
   validThresholdPct: z.number().min(0).max(100).optional(),
   serviceName: z.string().min(1).optional(),
   lifegroupName: z.string().min(1).optional(),
-  allocationLockDate: z.string().nullable().optional(),
+  connectionLockDate: z.string().nullable().optional(),
 });
 
 export interface SettingsService {
@@ -38,10 +38,10 @@ export function makeSettingsService(
       const current = await repo.getSettings();
 
       // Log lock date changes specifically
-      if (patch.allocationLockDate !== undefined && patch.allocationLockDate !== current.allocationLockDate) {
-        const detail = patch.allocationLockDate
-          ? `Allocation lock date set to ${patch.allocationLockDate}`
-          : 'Allocation lock date cleared';
+      if (patch.connectionLockDate !== undefined && patch.connectionLockDate !== current.connectionLockDate) {
+        const detail = patch.connectionLockDate
+          ? `Connection lock date set to ${patch.connectionLockDate}`
+          : 'Connection lock date cleared';
         await audit.save({
           id: generateId(),
           action: 'lock-date-set',
