@@ -7,7 +7,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "vercel-build": "node build-vercel.mjs"
+    "vercel-build": "echo 'no custom build needed — @vercel/node handles bundling'"
   },
   "dependencies": {
     "express": "^4.19.2",

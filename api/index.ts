@@ -1,9 +1,5 @@
 import { createAppInstance } from '../src/app';
 
-// Vercel Nodejs launcher expects a (req, res) => void export.
-// appPromise is initialised once at cold-start (module load time).
-// All subsequent requests reuse the same Express instance.
-
 process.on('unhandledRejection', (reason: unknown) => {
   console.error('[CMS] unhandledRejection:', reason);
 });
