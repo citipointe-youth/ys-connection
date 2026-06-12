@@ -1,0 +1,83 @@
+import type { IRepository } from './base.repository';
+import type { User } from '../../core/entities/user';
+import type { Student } from '../../core/entities/student';
+import type { Leader } from '../../core/entities/leader';
+import type { Allocation } from '../../core/entities/allocation';
+import type {
+  ServiceSession,
+  ServiceAttendance,
+  Lifegroup,
+  LifegroupWeek,
+  LifegroupAttendance,
+  ImportRecord,
+} from '../../core/entities/attendance';
+import type { AppSettings, AppDefaults, AdminAuditEntry } from '../../core/entities/settings';
+import type { UserRole } from '../../core/types/enums';
+
+export interface IUserRepository extends IRepository<User> {
+  findByEmail(email: string): Promise<User | null>;
+  findByRole(role: UserRole): Promise<User[]>;
+}
+
+export interface IStudentRepository extends IRepository<Student> {
+  findByGrade(grade: number): Promise<Student[]>;
+  findByGender(gender: string): Promise<Student[]>;
+  search(query: string): Promise<Student[]>;
+}
+
+export interface ILeaderRepository extends IRepository<Leader> {
+  findByGrade(grade: number): Promise<Leader[]>;
+  findActive(): Promise<Leader[]>;
+}
+
+export interface IAllocationRepository extends IRepository<Allocation> {
+  findByStudent(studentId: string): Promise<Allocation[]>;
+  findByLeader(leaderId: string): Promise<Allocation[]>;
+  findByStudentAndLeader(studentId: string, leaderId: string): Promise<Allocation | null>;
+  deleteByStudentAndLeader(studentId: string, leaderId: string): Promise<boolean>;
+}
+
+export interface IServiceSessionRepository extends IRepository<ServiceSession> {
+  findByImport(importId: string): Promise<ServiceSession[]>;
+  findValid(): Promise<ServiceSession[]>;
+}
+
+export interface IServiceAttendanceRepository {
+  init(): Promise<void>;
+  findByStudent(studentId: string): Promise<ServiceAttendance[]>;
+  findBySession(sessionId: string): Promise<ServiceAttendance[]>;
+  save(record: ServiceAttendance): Promise<ServiceAttendance>;
+  saveMany(records: ServiceAttendance[]): Promise<void>;
+  deleteByImport(importId: string): Promise<void>;
+  findAll(): Promise<ServiceAttendance[]>;
+}
+
+export interface ILifegroupRepository extends IRepository<Lifegroup> {}
+
+export interface ILifegroupWeekRepository extends IRepository<LifegroupWeek> {
+  findByImport(importId: string): Promise<LifegroupWeek[]>;
+}
+
+export interface ILifegroupAttendanceRepository {
+  init(): Promise<void>;
+  findByStudent(studentId: string): Promise<LifegroupAttendance[]>;
+  findByWeek(weekId: string): Promise<LifegroupAttendance[]>;
+  saveMany(records: LifegroupAttendance[]): Promise<void>;
+  deleteByImport(importId: string): Promise<void>;
+  findAll(): Promise<LifegroupAttendance[]>;
+}
+
+export interface IImportRepository extends IRepository<ImportRecord> {
+  findByType(type: 'service' | 'lifegroup'): Promise<ImportRecord[]>;
+}
+
+export interface ISettingsRepository extends IRepository<AppSettings> {
+  getSettings(): Promise<AppSettings>;
+  updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
+}
+
+export interface ISnapshotRepository extends IRepository<AppDefaults> {}
+
+export interface IAuditRepository extends IRepository<AdminAuditEntry> {
+  findRecent(limit: number): Promise<AdminAuditEntry[]>;
+}

@@ -1,0 +1,126 @@
+import { assertCan, canAccessGrade, canAccessGender } from './access-control';
+import type {
+  IStudentRepository,
+  ILeaderRepository,
+  IAllocationRepository,
+} from '../repositories/interfaces/entity-repositories';
+import type { Actor } from '../core/entities/user';
+import type { Quad } from '../core/types/enums';
+import { QUADS, QUAD_LABELS } from '../core/types/enums';
+
+export interface QuadStat {
+  quad: Quad;
+  label: string;
+  totalStudents: number;
+  allocatedStudents: number;
+  unallocatedStudents: number;
+  leaderCount: number;
+  atRiskCount: number;
+}
+
+export interface GradeStat {
+  grade: number;
+  totalStudents: number;
+  allocatedStudents: number;
+  unallocatedStudents: number;
+  atRiskCount: number;
+}
+
+export interface OverviewStats {
+  ministryTotal: number;
+  allocatedTotal: number;
+  unallocatedTotal: number;
+  leaderCount: number;
+  atRiskTotal: number;
+  byQuad: QuadStat[];
+  byGrade: GradeStat[];
+}
+
+const AT_RISK = new Set(['atrisk', 'stopped', 'declining', 'watch']);
+
+export interface OverviewService {
+  getStats(actor: Actor): Promise<OverviewStats>;
+}
+
+export function makeOverviewService(
+  studentRepo: IStudentRepository,
+  leaderRepo: ILeaderRepository,
+  allocRepo: IAllocationRepository,
+): OverviewService {
+  return {
+    async getStats(actor) {
+      assertCan(actor, 'overview:read');
+
+      const allStudents = await studentRepo.findAll();
+      const allLeaders = await leaderRepo.findActive();
+      const allAllocs = await allocRepo.findAll();
+
+      const scoped = allStudents.filter((s) => {
+        if (actor.role === 'grade') return s.grade === actor.grade;
+        if (actor.role === 'quad') {
+          return canAccessGrade(actor, s.grade) && canAccessGender(actor, s.gender);
+        }
+        return true;
+      });
+
+      const allocatedIds = new Set(allAllocs.map((a) => a.studentId));
+
+      // Leader-to-quad mapping: a leader belongs to a quad if their grade + gender aligns.
+      // We use student quad membership (derived from grade+gender) so gender is unambiguous.
+      const leaderQuadCounts: Record<Quad, number> = { g79: 0, b79: 0, g1012: 0, b1012: 0 };
+      for (const l of allLeaders) {
+        const seenQuads = new Set<Quad>();
+        for (const g of l.grades) {
+          // A leader can appear in up to 2 quads (male and female for a grade)
+          // but in practice is gender-scoped. Use leader gender if set.
+          if (l.gender === 'female' || l.gender == null) {
+            const q = g >= 7 && g <= 9 ? 'g79' : g >= 10 && g <= 12 ? 'g1012' : null;
+            if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
+          }
+          if (l.gender === 'male' || l.gender == null) {
+            const q = g >= 7 && g <= 9 ? 'b79' : g >= 10 && g <= 12 ? 'b1012' : null;
+            if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
+          }
+        }
+        // Leaders with no grade focus are counted in all quads
+        if (l.grades.length === 0) {
+          (Object.keys(leaderQuadCounts) as Quad[]).forEach((q) => leaderQuadCounts[q]++);
+        }
+      }
+
+      const byQuad: QuadStat[] = QUADS.map((quad) => {
+        const qStudents = scoped.filter((s) => s.quad === quad);
+        return {
+          quad,
+          label: QUAD_LABELS[quad],
+          totalStudents: qStudents.length,
+          allocatedStudents: qStudents.filter((s) => allocatedIds.has(s.id)).length,
+          unallocatedStudents: qStudents.filter((s) => !allocatedIds.has(s.id)).length,
+          leaderCount: leaderQuadCounts[quad] ?? 0,
+          atRiskCount: qStudents.filter((s) => AT_RISK.has(s.atRiskStatus ?? '')).length,
+        };
+      });
+
+      const byGrade: GradeStat[] = [7, 8, 9, 10, 11, 12].map((grade) => {
+        const gStudents = scoped.filter((s) => s.grade === grade);
+        return {
+          grade,
+          totalStudents: gStudents.length,
+          allocatedStudents: gStudents.filter((s) => allocatedIds.has(s.id)).length,
+          unallocatedStudents: gStudents.filter((s) => !allocatedIds.has(s.id)).length,
+          atRiskCount: gStudents.filter((s) => AT_RISK.has(s.atRiskStatus ?? '')).length,
+        };
+      });
+
+      return {
+        ministryTotal: scoped.length,
+        allocatedTotal: scoped.filter((s) => allocatedIds.has(s.id)).length,
+        unallocatedTotal: scoped.filter((s) => !allocatedIds.has(s.id)).length,
+        leaderCount: allLeaders.length,
+        atRiskTotal: scoped.filter((s) => AT_RISK.has(s.atRiskStatus ?? '')).length,
+        byQuad,
+        byGrade,
+      };
+    },
+  };
+}
