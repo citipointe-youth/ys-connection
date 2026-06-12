@@ -13,7 +13,7 @@ export function getSqlClient(): SqlClient {
       prepare: false,
       idle_timeout: 10,    // close idle connections after 10s (prevents stale TCP in serverless)
       max_lifetime: 60,    // never keep a connection longer than 60s
-      connect_timeout: 10, // fail fast if the DB doesn't respond within 10s
+      connect_timeout: 5,  // fail fast if the DB doesn't respond within 5s (Lambda timeout is 10s)
     });
   }
   return _client;

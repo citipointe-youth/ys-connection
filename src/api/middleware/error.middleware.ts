@@ -15,6 +15,7 @@ export function sendError(res: Response, err: unknown): void {
     });
     return;
   }
-  console.error('Unhandled error:', err);
-  res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Internal server error' });
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error('Unhandled error:', msg);
+  res.status(500).json({ code: 'INTERNAL_ERROR', message: msg });
 }
