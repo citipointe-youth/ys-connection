@@ -7,7 +7,8 @@ function getEnv(key: string, fallback?: string): string {
 export const env = {
   PORT: parseInt(getEnv('PORT', '4300'), 10),
   NODE_ENV: getEnv('NODE_ENV', 'development'),
-  PERSISTENCE: getEnv('PERSISTENCE', 'memory') as 'memory' | 'json',
+  PERSISTENCE: getEnv('PERSISTENCE', 'memory') as 'memory' | 'json' | 'supabase',
   DATA_DIR: getEnv('DATA_DIR', './data'),
   CORS_ORIGINS: getEnv('CORS_ORIGINS', '*').split(','),
+  DATABASE_URL: process.env['DATABASE_URL'],
 };

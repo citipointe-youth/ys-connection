@@ -1,7 +1,7 @@
 {
-  "name": "youth-allocation-platform",
+  "name": "connection-made-simple",
   "version": "1.0.0",
-  "description": "Youth ministry allocation platform — backend-agnostic, phone-first",
+  "description": "Youth ministry connection platform — phone-first SPA backed by Express + Supabase",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "postgres": "^3.4.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
+    "@vercel/node": "^3.2.5",
     "tsx": "^4.19.0",
     "typescript": "^5.6.2",
     "vitest": "^2.0.5"
