@@ -11,9 +11,11 @@ const STATIC_DIR = '.vercel/output/static';
 mkdirSync(FUNC_DIR, { recursive: true });
 mkdirSync(STATIC_DIR, { recursive: true });
 
-// Bundle api/index.ts + all src/ imports into one self-contained CJS file.
+// Bundle api/_entry.ts + all src/ imports into one self-contained CJS file.
+// Entry is in api/_entry.ts (underscore prefix) so Vercel does NOT auto-detect
+// it as a serverless function and overwrite our esbuild bundle.
 await esbuild.build({
-  entryPoints: ['api/index.ts'],
+  entryPoints: ['api/_entry.ts'],
   bundle: true,
   platform: 'node',
   target: 'node22',
