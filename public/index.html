@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#6366f1">
-<title>Youth Allocation</title>
+<title>Youth Connection</title>
 <style>
 :root{
   --accent:#6366f1;--accent-dark:#4f46e5;--accent-light:#e0e7ff;
@@ -220,25 +220,25 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* Lock banner */
 .lock-banner{background:var(--warn-light);border:1.5px solid var(--warn);color:#92400e;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 
-/* ── SCALE-READY ALLOCATION CARDS ── */
-.alloc-grid{display:grid;grid-template-columns:1fr;gap:12px}
-@media(min-width:540px){.alloc-grid{grid-template-columns:repeat(2,1fr)}}
-@media(min-width:900px){.alloc-grid{grid-template-columns:repeat(3,1fr)}}
-.alloc-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
-.alloc-leader:hover{box-shadow:var(--shadow-md)}
-.alloc-leader-name{font-size:16px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.alloc-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.alloc-count-bar{height:8px;background:var(--paper-dark);border-radius:4px;overflow:hidden;margin-bottom:6px}
-.alloc-count-fill{height:100%;border-radius:4px;transition:width .3s}
-.alloc-count-label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid);margin-bottom:12px}
-.alloc-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
-.alloc-add-btn:hover{background:#c7d2fe}
-.alloc-add-btn:disabled{opacity:.45;cursor:not-allowed}
-.alloc-students{margin-top:12px;border-top:1px solid var(--paper-dark);padding-top:10px;max-height:200px;overflow-y:auto}
-.alloc-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
-.alloc-stud-row:last-child{border-bottom:none}
-.alloc-stud-name{flex:1;font-size:14px;font-weight:600}
-.alloc-stud-meta{font-size:11px;color:var(--ink-mid)}
+/* ── SCALE-READY CONNECTION CARDS ── */
+.connect-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:540px){.connect-grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:900px){.connect-grid{grid-template-columns:repeat(3,1fr)}}
+.connect-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
+.connect-leader:hover{box-shadow:var(--shadow-md)}
+.connect-leader-name{font-size:16px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.connect-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.connect-count-bar{height:8px;background:var(--paper-dark);border-radius:4px;overflow:hidden;margin-bottom:6px}
+.connect-count-fill{height:100%;border-radius:4px;transition:width .3s}
+.connect-count-label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid);margin-bottom:12px}
+.connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
+.connect-add-btn:hover{background:#c7d2fe}
+.connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
+.connect-students{margin-top:12px;border-top:1px solid var(--paper-dark);padding-top:10px;max-height:200px;overflow-y:auto}
+.connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
+.connect-stud-row:last-child{border-bottom:none}
+.connect-stud-name{flex:1;font-size:14px;font-weight:600}
+.connect-stud-meta{font-size:11px;color:var(--ink-mid)}
 
 /* ── STUDENT PICKER MODAL ── */
 .mo-box.picker{max-width:640px;max-height:96vh}
@@ -417,7 +417,7 @@ function setApp(h) { document.getElementById('app').innerHTML = h; }
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 function quadLabel(q) { return QUAD_LABELS[q] || q; }
 const ROLE_TIPS = {
-  grade: (u) => `Grade ${u.grade} login — manages leaders and allocations for Year ${u.grade}`,
+  grade: (u) => `Grade ${u.grade} login — manages leaders and connections for Year ${u.grade}`,
   quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — read-only overview of your quad`,
   director: () => 'Director — full ministry access, can import data',
   admin: () => 'Admin — full access including settings and accounts',
@@ -499,30 +499,30 @@ function quadGender(q) { return (q === 'g79' || q === 'g1012') ? 'female' : (q =
 
 function navItems() {
   const u = S.user; if (!u) return [];
-  // Grade: Home | My Students | Trends | At Risk  (Leaders & Alloc + Student Search in quick actions)
+  // Grade: Home | My Students | Trends | At Risk  (Leaders & Connect + Student Search in quick actions)
   if (u.role === 'grade') return [
     { id:'home', icon:'🏠', label:'Home', mbl:'Home' },
     { id:'my-students', icon:'👥', label:'My Students', mbl:'My Students' },
     { id:'trends', icon:'📈', label:'Trends', mbl:'Trends' },
     { id:'at-risk', icon:'⚠️', label:'At Risk', mbl:'At Risk' },
     // quick actions:
-    { id:'leaders', icon:'👥', label:'Leaders & Alloc', mbl:'Leaders & Alloc' },
+    { id:'leaders', icon:'👥', label:'Leaders & Connect', mbl:'Leaders & Connect' },
     { id:'students', icon:'🎓', label:'Student Search', mbl:'Student Search' },
   ];
-  // Quad: Home | Leaders & Alloc | Trends | At Risk
+  // Quad: Home | Leaders & Connect | Trends | At Risk
   if (u.role === 'quad') return [
     { id:'home', icon:'🏠', label:'Home', mbl:'Home' },
-    { id:'leaders', icon:'👥', label:'Leaders & Alloc', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Alloc</span></span>' },
+    { id:'leaders', icon:'👥', label:'Leaders & Connect', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Connect</span></span>' },
     { id:'trends', icon:'📈', label:'Trends', mbl:'Trends' },
     { id:'at-risk', icon:'⚠️', label:'At Risk', mbl:'At Risk' },
     // quick actions:
     { id:'students', icon:'🎓', label:'Student Search', mbl:'Student Search' },
     { id:'my-students', icon:'👥', label:'My Students', mbl:'My Students' },
   ];
-  // Admin: Home | Leaders & Alloc | Trends | At Risk + Student Search, My Students, Import, Admin as quick actions
+  // Admin: Home | Leaders & Connect | Trends | At Risk + Student Search, My Students, Import, Admin as quick actions
   if (u.role === 'admin') return [
     { id:'home', icon:'🏠', label:'Home', mbl:'Home' },
-    { id:'leaders', icon:'👥', label:'Leaders & Alloc', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Alloc</span></span>' },
+    { id:'leaders', icon:'👥', label:'Leaders & Connect', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Connect</span></span>' },
     { id:'trends', icon:'📈', label:'Trends', mbl:'Trends' },
     { id:'at-risk', icon:'⚠️', label:'At Risk', mbl:'At Risk' },
     { id:'students', icon:'🎓', label:'Student Search', mbl:'Student Search' },
@@ -534,7 +534,7 @@ function navItems() {
   // Director: same as admin minus admin tile
   return [
     { id:'home', icon:'🏠', label:'Home', mbl:'Home' },
-    { id:'leaders', icon:'👥', label:'Leaders & Alloc', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Alloc</span></span>' },
+    { id:'leaders', icon:'👥', label:'Leaders & Connect', mbl:'<span class="ni-lbl"><span>Leaders</span><span style="opacity:.75;font-size:8px">&amp; Connect</span></span>' },
     { id:'trends', icon:'📈', label:'Trends', mbl:'Trends' },
     { id:'at-risk', icon:'⚠️', label:'At Risk', mbl:'At Risk' },
     { id:'students', icon:'🎓', label:'Student Search', mbl:'Student Search' },
@@ -556,7 +556,7 @@ function shell(body) {
   const mlinks = bn.map(it => `<a class="${cur===it.id?'on':''}" onclick="go('${it.id}')"><span class="ni">${it.icon}</span>${it.mbl||it.label}</a>`).join('');
   return `
     <div class="hdr">
-      <h1>Youth Allocation</h1>
+      <h1>Youth Connection</h1>
       <div class="hdr-meta">
         <nav class="desk-nav">${dlinks}</nav>
         ${badge}
@@ -570,26 +570,26 @@ function shell(body) {
 // ============================================================
 // FILTER STATE PERSISTENCE (Change 1)
 // ============================================================
-function saveAllocFilters() {
+function saveConnectFilters() {
   try {
-    sessionStorage.setItem('yap_alloc_filters', JSON.stringify({
+    sessionStorage.setItem('yap_connect_filters', JSON.stringify({
       gf: [..._aS.gf],
       df: [..._aS.df],
       search: _aS.search,
-      unallocOnly: _aS.unallocOnly
+      unconnectOnly: _aS.unconnectOnly
     }));
   } catch {}
 }
 
-function restoreAllocFilters() {
+function restoreConnectFilters() {
   try {
-    const raw = sessionStorage.getItem('yap_alloc_filters');
+    const raw = sessionStorage.getItem('yap_connect_filters');
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (Array.isArray(saved.gf)) _aS.gf = new Set(saved.gf);
     if (Array.isArray(saved.df)) _aS.df = new Set(saved.df);
     if (typeof saved.search === 'string') _aS.search = saved.search;
-    if (typeof saved.unallocOnly === 'boolean') _aS.unallocOnly = saved.unallocOnly;
+    if (typeof saved.unconnectOnly === 'boolean') _aS.unconnectOnly = saved.unconnectOnly;
   } catch {}
 }
 
@@ -602,7 +602,7 @@ async function render() {
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='leaders') await renderLeaders();
-  else if (p==='allocate') go('leaders'); // merged into leaders
+  else if (p==='allocate') go('leaders'); // legacy route — merged into leaders
   else if (p==='my-students') await renderMyStudents();
   else if (p==='quad-view') go('leaders'); // merged into leaders
   else if (p==='my-quad') go('leaders');   // merged into leaders
@@ -618,7 +618,7 @@ function renderLogin() {
   setApp(`
     <div class="login-pg">
       <div class="login-card">
-        <div class="login-logo"><div class="icon">🎯</div><h1>Youth Allocation</h1><p>Sign in to continue</p></div>
+        <div class="login-logo"><div class="icon">🎯</div><h1>Youth Connection</h1><p>Sign in to continue</p></div>
         <div id="lerr"></div>
         <div class="fg"><label class="fl">Email</label><input class="fi" id="lemail" type="email" placeholder="grade7@youth.ministry" autocomplete="username"></div>
         <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
@@ -648,7 +648,7 @@ async function doLogout() {
 }
 
 // ============================================================
-// HOME (aligned to allocation-platform demo: attendance hero + tiles)
+// HOME (aligned to connection-platform demo: attendance hero + tiles)
 // ============================================================
 let _homeQuadOpen = null;
 function toggleHomeQuad(q) { _homeQuadOpen = (_homeQuadOpen === q) ? null : q; renderHome(); }
@@ -771,14 +771,14 @@ async function renderHome() {
 
   if (stats) {
     if (stats.unallocatedTotal === 0 && stats.ministryTotal > 0) {
-      body += '<div class="alert al-ok">✅ All students are allocated!</div>';
+      body += '<div class="alert al-ok">✅ All students are connected!</div>';
     }
     if (u.role === 'admin' && stats.ministryTotal === 0) {
       body += `<div class="first-run">
         <h3>👋 Welcome — let's get started</h3>
         <div class="first-run-step"><div class="first-run-num">1</div><div><strong>Import attendance data</strong><br><span style="font-size:13px;color:var(--ink-mid)">Upload a CSV via <a onclick="go('import')" style="color:var(--accent-dark);cursor:pointer;text-decoration:underline">Import</a></span></div></div>
         <div class="first-run-step"><div class="first-run-num">2</div><div><strong>Add grade leaders</strong><br><span style="font-size:13px;color:var(--ink-mid)">Add them via <a onclick="go('leaders')" style="color:var(--accent-dark);cursor:pointer;text-decoration:underline">Leaders</a></span></div></div>
-        <div class="first-run-step"><div class="first-run-num">3</div><div><strong>Allocate students</strong><br><span style="font-size:13px;color:var(--ink-mid)">Assign students to leaders using the search picker</span></div></div>
+        <div class="first-run-step"><div class="first-run-num">3</div><div><strong>Connect students</strong><br><span style="font-size:13px;color:var(--ink-mid)">Assign students to leaders using the search picker</span></div></div>
       </div>`;
     }
     if (importHistory && importHistory.length > 0) {
@@ -804,11 +804,11 @@ async function renderHome() {
     }
 
     if (u.role === 'grade') {
-      // Compact 4-column allocation strip
-      body += '<div class="sh">Allocation Summary</div>';
+      // Compact 4-column connection strip
+      body += '<div class="sh">Connection Summary</div>';
       body += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px">';
       body += `<div class="stat"><div class="stat-v">${stats.ministryTotal}</div><div class="stat-l">Total</div></div>`;
-      body += `<div class="stat"><div class="stat-v" style="color:var(--success)">${stats.allocatedTotal}</div><div class="stat-l">Alloc</div></div>`;
+      body += `<div class="stat"><div class="stat-v" style="color:var(--success)">${stats.allocatedTotal}</div><div class="stat-l">Connected</div></div>`;
       body += `<div class="stat"><div class="stat-v" style="color:var(--warn)">${stats.unallocatedTotal}</div><div class="stat-l">Pending</div></div>`;
       body += `<div class="stat"><div class="stat-v" style="color:var(--danger)">${stats.atRiskTotal}</div><div class="stat-l">At Risk</div></div>`;
       body += '</div>';
@@ -838,11 +838,11 @@ async function renderHome() {
         for (const gr of _hQuadGrades(u.quad)) body += _hAttTile('Yr ' + gr, sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr));
         body += '</div>';
       }
-      // Allocation by Grade bars
+      // Connection by Grade bars
       if (['admin', 'director', 'quad'].includes(u.role) && stats.byGrade) {
         const vg = stats.byGrade.filter(g => g.totalStudents > 0);
         if (vg.length) {
-          body += '<div class="sh">Allocation by Grade</div><div class="card" style="padding:12px">';
+          body += '<div class="sh">Connection by Grade</div><div class="card" style="padding:12px">';
           for (const g of vg) {
             const pct = g.totalStudents > 0 ? Math.round(g.allocatedStudents / g.totalStudents * 100) : 0;
             body += `<div style="display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--paper-dark)">
@@ -865,12 +865,12 @@ async function renderHome() {
 // ============================================================
 async function renderLeaders() {
   setApp(shell('<div class="loading"><div class="spin"></div></div>'));
-  const [leaders, allocsRaw] = await Promise.all([
+  const [leaders, connectsRaw] = await Promise.all([
     API.get('/leaders').catch(() => []),
-    API.get('/allocations').catch(() => []),
+    API.get('/connections').catch(() => []),
   ]);
   const countByLeader = {};
-  for (const a of allocsRaw) countByLeader[a.leaderId] = (countByLeader[a.leaderId] || 0) + 1;
+  for (const a of connectsRaw) countByLeader[a.leaderId] = (countByLeader[a.leaderId] || 0) + 1;
   const u = S.user;
   const canEdit = ['grade','quad','director','admin'].includes(u.role);
 
@@ -880,15 +880,15 @@ async function renderLeaders() {
   </div></div>`;
 
   if (u.role === 'quad') {
-    body += `<div class="alert al-info">✏️ You can add, edit and allocate leaders within your quad (${u.quad ? quadGender(u.quad) : ''} · Yr ${quadGrades(u.quad).join('–') || '—'}).</div>`;
+    body += `<div class="alert al-info">✏️ You can add, edit and connect leaders within your quad (${u.quad ? quadGender(u.quad) : ''} · Yr ${quadGrades(u.quad).join('–') || '—'}).</div>`;
   }
 
   if (canEdit) {
-    body += `<button class="btn btn-primary btn-full" style="margin-bottom:12px" onclick="go('allocate')">🔗 Allocate Students</button>`;
+    body += `<button class="btn btn-primary btn-full" style="margin-bottom:12px" onclick="go('leaders')">🔗 Connect Students</button>`;
   }
 
   if (!leaders.length) {
-    body += '<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders to start allocating students</div></div>';
+    body += '<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders to start connecting students</div></div>';
   } else {
     // Mobile cards
     body += '<div class="mob">';
@@ -937,7 +937,7 @@ async function showLeaderDetail(id) {
   try {
     [leader, summary] = await Promise.all([
       API.get(`/leaders/${id}`),
-      API.get(`/allocations/leader/${id}/summary`),
+      API.get(`/connections/leader/${id}/summary`),
     ]);
   } catch { toast('Failed to load leader'); return; }
   const u = S.user;
@@ -969,7 +969,7 @@ async function showLeaderDetail(id) {
     <div class="sh">Assigned Students (${students.length})</div>
     ${students.length ? studRows : '<p style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students assigned yet</p>'}
     <div style="display:flex;gap:8px;margin-top:16px">
-      ${canEdit?`<button class="btn btn-primary btn-sm" onclick="closeModal();go('allocate')">🔗 Allocate</button>`:''}
+      ${canEdit?`<button class="btn btn-primary btn-sm" onclick="closeModal();go('leaders')">🔗 Connect</button>`:''}
       ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="closeModal();showEditLeader('${id}')">✏️ Edit</button>`:''}
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
@@ -1052,7 +1052,7 @@ async function submitEditLeader(id) {
 
 function confirmDelLeader(id, name) {
   modal(`<div class="mo-title">Delete Leader?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">Delete <strong>${name}</strong> and all their allocations?</p>
+    <p style="color:var(--ink-mid);margin-bottom:20px">Delete <strong>${name}</strong> and all their connections?</p>
     <div style="display:flex;gap:8px">
       <button class="btn btn-danger" style="flex:1" onclick="API.del('/leaders/${id}').then(()=>{closeModal();toast('Deleted');renderLeaders()}).catch(e=>toast(e.message))">Delete</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -1060,35 +1060,35 @@ function confirmDelLeader(id, name) {
 }
 
 // ============================================================
-// ALLOCATE  (leader-centric card view — scales to 60+ students)
+// CONNECT  (leader-centric card view — scales to 60+ students)
 // ============================================================
-let _aS = { students:[], leaders:[], allocs:{}, gf:new Set(), df:new Set(), unallocOnly:false };
+let _aS = { students:[], leaders:[], allocs:{}, gf:new Set(), df:new Set(), unconnectOnly:false };
 // _pickerCtx = { leaderId, leaderGender, leaderName }
 let _pickerCtx = null;
 
-async function renderAllocate() {
+async function renderConnect() {
   setApp(shell('<div class="loading"><div class="spin"></div></div>'));
-  await loadAllocData();
-  renderAllocView();
+  await loadConnectData();
+  renderConnectView();
 }
 
-async function loadAllocData() {
-  const [students, leaders, allocsRaw] = await Promise.all([
+async function loadConnectData() {
+  const [students, leaders, connectsRaw] = await Promise.all([
     API.get('/students').catch(() => []),
     API.get('/leaders').catch(() => []),
-    API.get('/allocations').catch(() => []),
+    API.get('/connections').catch(() => []),
   ]);
   const allocs = {};
-  for (const a of allocsRaw) { if (!allocs[a.studentId]) allocs[a.studentId]=[]; allocs[a.studentId].push(a.leaderId); }
+  for (const a of connectsRaw) { if (!allocs[a.studentId]) allocs[a.studentId]=[]; allocs[a.studentId].push(a.leaderId); }
   _aS.students = students; _aS.leaders = leaders; _aS.allocs = allocs;
 }
 
-function renderAllocView() {
-  const { students, leaders, allocs, gf, df, unallocOnly } = _aS;
+function renderConnectView() {
+  const { students, leaders, allocs, gf, df, unconnectOnly } = _aS;
   const u = S.user;
 
-  // Allocation lock check
-  const lockDate = S.settings?.allocationLockDate;
+  // Connection lock check
+  const lockDate = S.settings?.connectionLockDate;
   const isLocked = !!(lockDate && new Date() >= new Date(lockDate));
   const canEdit = (!isLocked || u?.role === 'admin');
 
@@ -1096,8 +1096,8 @@ function renderAllocView() {
   let visLeaders = leaders;
   if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
   if (df.size) visLeaders = visLeaders.filter(l => !l.gender || df.has(l.gender));
-  if (unallocOnly) {
-    // Show only leaders that have at least one unallocated student in their scope
+  if (unconnectOnly) {
+    // Show only leaders that have at least one unconnected student in their scope
     visLeaders = visLeaders.filter(l => {
       const pool = students.filter(s => !l.gender || s.gender === l.gender);
       return pool.some(s => !(allocs[s.id]?.includes(l.id)));
@@ -1105,9 +1105,9 @@ function renderAllocView() {
   }
 
   // Counts
-  const allocatedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
+  const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
   const totalStudents = students.length;
-  const allocatedCount = allocatedStudentIds.size;
+  const connectedCount = connectedStudentIds.size;
 
   const gChips = [7,8,9,10,11,12].map(g =>
     `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleAF('g',${g})" aria-pressed="${gf.has(g)}">${g}</button>`
@@ -1119,7 +1119,7 @@ function renderAllocView() {
   let lockBanner = '';
   if (isLocked) {
     const lockFmt = new Date(lockDate).toLocaleDateString();
-    lockBanner = `<div class="lock-banner">🔒 Allocations locked as of ${lockFmt}.${u?.role==='admin'?' (Admin can still make changes.)':' Contact admin to make changes.'}</div>`;
+    lockBanner = `<div class="lock-banner">🔒 Connections locked as of ${lockFmt}.${u?.role==='admin'?' (Admin can still make changes.)':' Contact admin to make changes.'}</div>`;
   }
   const gradeHint = (u?.role === 'grade')
     ? `<div class="alert al-info" style="margin-bottom:10px">💡 Tap "Add Students" on any leader to search. You can add students from other grades if they match the leader's gender.</div>`
@@ -1129,10 +1129,10 @@ function renderAllocView() {
     <div class="ph">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="ph-title">Allocate</div>
-          <div class="ph-sub">${allocatedCount}/${totalStudents} students allocated · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
+          <div class="ph-title">Connect</div>
+          <div class="ph-sub">${connectedCount}/${totalStudents} students connected · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="exportAllocCSV()" aria-label="Export allocations to CSV">⬇ Export</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportConnectCSV()" aria-label="Export connections to CSV">⬇ Export</button>
       </div>
     </div>
     ${lockBanner}${gradeHint}
@@ -1141,13 +1141,13 @@ function renderAllocView() {
     </div>
     <div class="filter-row" role="group" aria-label="Filter by gender">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}
-      <button class="fc ${unallocOnly?'on':''}" onclick="toggleUnallocOnly()" aria-pressed="${unallocOnly}">Unalloc focus</button>
+      <button class="fc ${unconnectOnly?'on':''}" onclick="toggleUnconnectOnly()" aria-pressed="${unconnectOnly}">Unconnected focus</button>
     </div>`;
 
   if (!visLeaders.length) {
     body += `<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">No leaders match filters</div><div class="empty-sub">Clear filters or add leaders first</div></div>`;
   } else {
-    body += '<div class="alloc-grid">';
+    body += '<div class="connect-grid">';
     for (const l of visLeaders) {
       const assignedIds = students.filter(s => allocs[s.id]?.includes(l.id)).map(s => s.id);
       const assignedStudents = assignedIds.map(id => students.find(s => s.id === id)).filter(Boolean);
@@ -1162,13 +1162,13 @@ function renderAllocView() {
       let studentRows = '';
       for (const s of assignedStudents.slice(0, 8)) {
         const p = svcPct(s);
-        studentRows += `<div class="alloc-stud-row">
+        studentRows += `<div class="connect-stud-row">
           <div style="flex:1;min-width:0">
-            <div class="alloc-stud-name">${s.firstName} ${s.lastName}</div>
-            <div class="alloc-stud-meta">Gr ${s.grade||'—'} · ${s.gender}${p!==null?' · '+p+'%':''}</div>
+            <div class="connect-stud-name">${s.firstName} ${s.lastName}</div>
+            <div class="connect-stud-meta">Gr ${s.grade||'—'} · ${s.gender}${p!==null?' · '+p+'%':''}</div>
           </div>
           ${riskChip(s.atRiskStatus)}
-          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="removeAllocWithUndo('${s.id}','${l.id}','${s.firstName} ${s.lastName}','${l.fullName}')" aria-label="Remove ${s.firstName} ${s.lastName} from ${l.fullName}">×</button>`:''}
+          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="removeConnectWithUndo('${s.id}','${l.id}','${s.firstName} ${s.lastName}','${l.fullName}')" aria-label="Disconnect ${s.firstName} ${s.lastName} from ${l.fullName}">×</button>`:''}
         </div>`;
       }
       if (assignedStudents.length > 8) {
@@ -1176,16 +1176,16 @@ function renderAllocView() {
       }
 
       const gi = l.gender==='female'?'♀ ':l.gender==='male'?'♂ ':'';
-      body += `<div class="alloc-leader">
-        <div class="alloc-leader-name">${gi}${l.fullName}</div>
-        <div class="alloc-leader-meta">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</div>
-        <div class="alloc-count-bar"><div class="alloc-count-fill ${fillCls}" style="width:${pct}%"></div></div>
-        <div class="alloc-count-label">
+      body += `<div class="connect-leader">
+        <div class="connect-leader-name">${gi}${l.fullName}</div>
+        <div class="connect-leader-meta">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</div>
+        <div class="connect-count-bar"><div class="connect-count-fill ${fillCls}" style="width:${pct}%"></div></div>
+        <div class="connect-count-label">
           <span>${n} student${n!==1?'s':''}</span>
           <span style="color:var(--ink-faint)">~${target} target</span>
         </div>
-        ${canEdit?`<button class="alloc-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}','${l.fullName.replace(/'/g,"\\'")}')">+ Add Students</button>`:''}
-        ${assignedStudents.length?`<div class="alloc-students">${studentRows}</div>`:''}
+        ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}','${l.fullName.replace(/'/g,"\\'")}')">+ Add Students</button>`:''}
+        ${assignedStudents.length?`<div class="connect-students">${studentRows}</div>`:''}
       </div>`;
     }
     body += '</div>';
@@ -1197,9 +1197,9 @@ function renderAllocView() {
 function toggleAF(type, val) {
   if (type==='g') { if (_aS.gf.has(val)) _aS.gf.delete(val); else _aS.gf.add(val); }
   else { if (_aS.df.has(val)) _aS.df.delete(val); else _aS.df.add(val); }
-  saveAllocFilters(); renderAllocView();
+  saveConnectFilters(); renderConnectView();
 }
-function toggleUnallocOnly() { _aS.unallocOnly = !_aS.unallocOnly; saveAllocFilters(); renderAllocView(); }
+function toggleUnconnectOnly() { _aS.unconnectOnly = !_aS.unconnectOnly; saveConnectFilters(); renderConnectView(); }
 
 // ── STUDENT PICKER MODAL (replaces tiny <select> — works at 60+ students) ──
 function openStudentPicker(leaderId, leaderGender, leaderName) {
@@ -1207,7 +1207,7 @@ function openStudentPicker(leaderId, leaderGender, leaderName) {
   const assignedForLeader = new Set(
     _aS.students.filter(s => _aS.allocs[s.id]?.includes(leaderId)).map(s => s.id)
   );
-  // Pool: same gender (or ungendered leader) — includes all grades for cross-grade allocation
+  // Pool: same gender (or ungendered leader) — includes all grades for cross-grade connection
   const pool = _aS.students.filter(s => !leaderGender || s.gender === leaderGender);
 
   modal(`
@@ -1287,7 +1287,7 @@ function pickerRow(s, isAssigned) {
       <div class="picker-item-right">${risk}<button onclick="remPick('${s.id}')" title="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
     </div>`;
   }
-  return `<button class="picker-item" onclick="addAllocFromPicker('${s.id}')" aria-label="Assign ${s.firstName} ${s.lastName}">
+  return `<button class="picker-item" onclick="addConnFromPicker('${s.id}')" aria-label="Assign ${s.firstName} ${s.lastName}">
     <div>
       <div class="picker-item-name">${s.firstName} ${s.lastName}</div>
       <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
@@ -1296,11 +1296,11 @@ function pickerRow(s, isAssigned) {
   </button>`;
 }
 
-async function addAllocFromPicker(studentId) {
+async function addConnFromPicker(studentId) {
   if (!_pickerCtx) return;
   const { leaderId } = _pickerCtx;
   try {
-    await API.post('/allocations', { studentId, leaderId });
+    await API.post('/connections', { studentId, leaderId });
     const cur = _aS.allocs[studentId] || [];
     _aS.allocs[studentId] = [...cur, leaderId];
     // Update the assigned set and re-filter
@@ -1313,12 +1313,12 @@ async function addAllocFromPicker(studentId) {
   } catch (e) { toast(e.message); }
 }
 
-// Remove an allocation from inside the picker (demo: remPick) + keep the page behind in sync.
+// Remove a connection from inside the picker (demo: remPick) + keep the page behind in sync.
 async function remPick(studentId) {
   if (!_pickerCtx) return;
   const { leaderId } = _pickerCtx;
   try {
-    await API.del(`/allocations/${studentId}/${leaderId}`);
+    await API.del(`/connections/${studentId}/${leaderId}`);
     _aS.allocs[studentId] = (_aS.allocs[studentId] || []).filter(id => id !== leaderId);
     window._pickerAssigned.delete(studentId);
     filterPicker();
@@ -1330,24 +1330,24 @@ async function remPick(studentId) {
 // Repaint the page behind the open picker so leader counts stay current (demo: pickerSyncBg → render()).
 function pickerSyncBg() { render(); }
 
-async function removeAllocWithUndo(studentId, leaderId, studentName, leaderName) {
+async function removeConnectWithUndo(studentId, leaderId, studentName, leaderName) {
   try {
-    await API.del(`/allocations/${studentId}/${leaderId}`);
+    await API.del(`/connections/${studentId}/${leaderId}`);
     _aS.allocs[studentId] = (_aS.allocs[studentId]||[]).filter(id => id !== leaderId);
-    renderAllocView();
-    showUndoToast(`Removed ${studentName} from ${leaderName}`, async () => {
+    renderConnectView();
+    showUndoToast(`Disconnected ${studentName} from ${leaderName}`, async () => {
       try {
-        await API.post('/allocations', { studentId, leaderId });
+        await API.post('/connections', { studentId, leaderId });
         const cur = _aS.allocs[studentId] || [];
         _aS.allocs[studentId] = [...cur, leaderId];
-        renderAllocView();
+        renderConnectView();
       } catch (e) { toast('Undo failed: ' + e.message); }
     });
   } catch (e) { toast(e.message); }
 }
 
 // ============================================================
-// MY STUDENTS (leader self-view — replaces Allocate in bottom nav)
+// MY STUDENTS (leader self-view — replaces Connect in bottom nav)
 // ============================================================
 let _msLeader = null;
 let _lvF = { year: new Set(), gender: new Set() }; // My Students filters (narrow the leader dropdown)
@@ -1398,7 +1398,7 @@ async function renderMyStudents() {
   if (_msLeader) {
     const leader = leaders.find(l => l.id === _msLeader);
     let summary;
-    try { summary = await API.get(`/allocations/leader/${_msLeader}/summary`); } catch {}
+    try { summary = await API.get(`/connections/leader/${_msLeader}/summary`); } catch {}
     const students = summary?.students || [];
 
     if (leader) {
@@ -1411,7 +1411,7 @@ async function renderMyStudents() {
 
     body += `<div class="sh">My Students (${students.length})</div>`;
     if (!students.length) {
-      body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students allocated yet.</div>';
+      body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students connected yet.</div>';
     } else {
       for (const s of students) {
         const pct = s.svcTotal > 0 ? Math.round(s.svcAttended / s.svcTotal * 100) : null;
@@ -1438,13 +1438,13 @@ async function renderMyStudents() {
   setApp(shell(body));
 }
 
-async function exportAllocCSV() {
+async function exportConnectCSV() {
   try {
-    const { csv, rowCount } = await API.get('/allocations/export');
+    const { csv, rowCount } = await API.get('/connections/export');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'allocations.csv'; a.click();
+    a.href = url; a.download = 'connections.csv'; a.click();
     URL.revokeObjectURL(url);
     toast(`Exported ${rowCount} rows`);
   } catch (e) { toast('Export failed: ' + e.message); }
@@ -1455,21 +1455,21 @@ async function exportAllocCSV() {
 // ============================================================
 async function renderQuadView() {
   setApp(shell('<div class="loading"><div class="spin"></div></div>'));
-  let leaders=[], allocsRaw=[], students=[];
-  try { [leaders, allocsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/allocations'), API.get('/students')]); } catch {}
+  let leaders=[], connectsRaw=[], students=[];
+  try { [leaders, connectsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
   const sById = {}; for (const s of students) sById[s.id]=s;
-  const aByL = {}; for (const a of allocsRaw) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
+  const aByL = {}; for (const a of connectsRaw) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
 
-  // Change 10: Last allocation timestamp
-  let lastAllocStr = '';
-  if (allocsRaw.length) {
-    const latest = allocsRaw.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
+  // Change 10: Last connection timestamp
+  let lastConnectStr = '';
+  if (connectsRaw.length) {
+    const latest = connectsRaw.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
     if (latest?.createdAt) {
-      lastAllocStr = `Last allocation made: ${fmtDate(latest.createdAt)}`;
+      lastConnectStr = `Last connection made: ${fmtDate(latest.createdAt)}`;
     }
   }
 
-  let body = `<div class="ph"><div class="ph-title">Quad View</div><div class="ph-sub">${lastAllocStr || 'Leader assignments in your scope'}</div></div>`;
+  let body = `<div class="ph"><div class="ph-title">Quad View</div><div class="ph-sub">${lastConnectStr || 'Leader assignments in your scope'}</div></div>`;
 
   if (!leaders.length) {
     body += '<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">No leaders in scope</div></div>';
@@ -1514,14 +1514,14 @@ let _mqTab = 'leaders';
 
 async function renderMyQuad() {
   setApp(shell('<div class="loading"><div class="spin"></div></div>'));
-  let leaders=[], allocsRaw=[], students=[];
-  try { [leaders, allocsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/allocations'), API.get('/students')]); } catch {}
+  let leaders=[], connectsRaw2=[], students=[];
+  try { [leaders, connectsRaw2, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
 
-  // Change 10: Last allocation timestamp for My Quad too
-  let lastAllocStr = '';
-  if (allocsRaw.length) {
-    const latest = allocsRaw.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
-    if (latest?.createdAt) lastAllocStr = `Last allocation made: ${fmtDate(latest.createdAt)}`;
+  // Change 10: Last connection timestamp for My Quad too
+  let lastConnectStr2 = '';
+  if (connectsRaw2.length) {
+    const latest = connectsRaw2.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
+    if (latest?.createdAt) lastConnectStr2 = `Last connection made: ${fmtDate(latest.createdAt)}`;
   }
 
   const tabHtml = ['leaders','students','at-risk'].map(t => {
@@ -1532,12 +1532,12 @@ async function renderMyQuad() {
   let body = `
     <div class="ph">
       <div class="ph-title">My Quad</div>
-      <div class="ph-sub">${lastAllocStr || 'Your quad overview'}</div>
+      <div class="ph-sub">${lastConnectStr2 || 'Your quad overview'}</div>
     </div>
     <div class="tbbar">${tabHtml}</div>`;
 
   const sById = {}; for (const s of students) sById[s.id] = s;
-  const aByL = {}; for (const a of allocsRaw) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
+  const aByL = {}; for (const a of connectsRaw2) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
 
   if (_mqTab === 'leaders') {
     if (!leaders.length) {
@@ -1876,14 +1876,14 @@ function sdLeaderSearch(sid) {
     <span style="color:var(--accent);font-size:20px;font-weight:700">+</span></button>`).join('');
 }
 async function assignSD(sid, lid) {
-  try { await API.post('/allocations', { studentId: sid, leaderId: lid }); }
+  try { await API.post('/connections', { studentId: sid, leaderId: lid }); }
   catch (e) { toast(e.message || 'Could not assign'); return; }
-  toast('Assigned'); render(); showStudentDetail(sid);
+  toast('Connected'); render(); showStudentDetail(sid);
 }
 async function unassignSD(sid, lid) {
-  try { await API.del(`/allocations/${sid}/${lid}`); }
+  try { await API.del(`/connections/${sid}/${lid}`); }
   catch (e) { toast(e.message || 'Could not remove'); return; }
-  toast('Removed'); render(); showStudentDetail(sid);
+  toast('Disconnected'); render(); showStudentDetail(sid);
 }
 
 async function showStudentDetail(id) {
@@ -1891,7 +1891,7 @@ async function showStudentDetail(id) {
   try {
     [s, myAllocs, allLeaders] = await Promise.all([
       API.get(`/students/${id}`),
-      API.get(`/allocations/student/${id}`),
+      API.get(`/connections/student/${id}`),
       API.get('/leaders').catch(() => []),
     ]);
   } catch { toast('Failed to load'); return; }
@@ -1905,7 +1905,7 @@ async function showStudentDetail(id) {
         <span style="font-size:13px;font-weight:600">${a.leaderName}</span>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;color:var(--danger)" onclick="unassignSD('${s.id}','${a.leaderId}')">Remove</button>` : '<span class="chip c-accent">assigned</span>'}
       </div>`).join('')
-    : '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0">Not allocated yet</p>';
+    : '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0">Not connected yet</p>';
 
   modal(`
     <div class="mo-title">${s.firstName} ${s.lastName}</div>
@@ -1944,7 +1944,7 @@ async function showStudentDetail(id) {
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal();go('leaders')">Allocate →</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal();go('leaders')">Connect →</button>
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
   if (canEdit) sdLeaderSearch(id);
@@ -2399,8 +2399,8 @@ async function renderAdminView(settings, users) {
     <div class="tbbar">${tabHtml}</div>`;
 
   if (_adminTab === 'settings') {
-    // Change 11: Allocation lock date field
-    const lockVal = settings.allocationLockDate ? new Date(settings.allocationLockDate).toISOString().split('T')[0] : '';
+    // Change 11: Connection lock date field
+    const lockVal = settings.connectionLockDate ? new Date(settings.connectionLockDate).toISOString().split('T')[0] : '';
     body += `<div class="card">
       <div class="sh" style="margin-top:0">General</div>
       <div class="fg"><label class="fl">Ministry Name</label><input class="fi" id="s-min" value="${settings.ministryName||''}"></div>
@@ -2409,11 +2409,11 @@ async function renderAdminView(settings, users) {
         <div class="fg"><label class="fl">Group Name</label><input class="fi" id="s-grp" value="${settings.lifegroupName||'Lifegroup'}"></div>
       </div>
 
-      <div class="sh">Allocation Lock</div>
+      <div class="sh">Connection Lock</div>
       <div class="fg">
-        <label class="fl">Allocation Lock Date</label>
+        <label class="fl">Connection Lock Date</label>
         <input class="fi" id="s-lock" type="date" value="${lockVal}">
-        <div class="help-text">Once this date passes, only admins can change allocations.</div>
+        <div class="help-text">Once this date passes, only admins can change connections.</div>
       </div>
 
       <div class="sh">At-Risk Thresholds</div>
@@ -2500,8 +2500,8 @@ async function renderAdminView(settings, users) {
         <div class="destructive-header">⚠️ Destructive Actions</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div>
-            <button class="btn btn-secondary btn-full" onclick="if(confirm('This will delete all students and allocations. Continue?'))adminAction('/admin/new-year','✓ New year started')">🔄 New Year</button>
-            <div class="help-text" style="margin-top:4px">Clears students + allocations, keeps accounts and leaders</div>
+            <button class="btn btn-secondary btn-full" onclick="if(confirm('This will delete all students and connections. Continue?'))adminAction('/admin/new-year','✓ New year started')">🔄 New Year</button>
+            <div class="help-text" style="margin-top:4px">Clears students + connections, keeps accounts and leaders</div>
           </div>
           <div>
             <button class="btn btn-danger btn-full" onclick="if(confirm('⚠️ RESET ALL DATA? This cannot be undone.'))adminAction('/admin/reset','✓ Full reset complete')">⚠️ Full Reset</button>
@@ -2586,8 +2586,8 @@ async function saveSettings() {
       riskRateDenominator: parseInt(document.getElementById('s-ad')?.value||'2',10),
       validThresholdPct: parseInt(document.getElementById('s-vt')?.value||'60',10),
       termGapDays: parseInt(document.getElementById('s-tg')?.value||'14',10),
-      // Change 11: include allocationLockDate
-      allocationLockDate: document.getElementById('s-lock')?.value || null,
+      // Change 11: include connectionLockDate
+      connectionLockDate: document.getElementById('s-lock')?.value || null,
     });
     toast('Settings saved');
   } catch (e) { toast(e.message); }
