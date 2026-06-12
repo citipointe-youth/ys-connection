@@ -3677,7 +3677,7 @@ async function boot() {
   if (token) {
     try { const user = await API.get('/auth/me'); S.user = user; } catch { API.setToken(null); }
   }
-  restoreAllocFilters();
+  restoreConnectFilters();
   restoreArFilter();
   if (S.user) {
     try { S.settings = await API.get('/settings'); } catch { S.settings = {}; }
