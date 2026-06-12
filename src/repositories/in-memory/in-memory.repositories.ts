@@ -4,7 +4,7 @@ import type { IPersistenceAdapter } from '../persistence/persistence';
 import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
-import type { Allocation } from '../../core/entities/allocation';
+import type { Connection } from '../../core/entities/connection';
 import type {
   ServiceSession,
   ServiceAttendance,
@@ -20,7 +20,7 @@ import type {
   IUserRepository,
   IStudentRepository,
   ILeaderRepository,
-  IAllocationRepository,
+  IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
   ILifegroupRepository,
@@ -114,27 +114,27 @@ export class InMemoryLeaderRepository
 }
 
 // ---------------------------------------------------------------------------
-// Allocations
+// Connections
 // ---------------------------------------------------------------------------
-export class InMemoryAllocationRepository
-  extends InMemoryBaseRepository<Allocation>
-  implements IAllocationRepository
+export class InMemoryConnectionRepository
+  extends InMemoryBaseRepository<Connection>
+  implements IConnectionRepository
 {
-  constructor(persistence?: IPersistenceAdapter<Allocation>) { super(persistence); }
+  constructor(persistence?: IPersistenceAdapter<Connection>) { super(persistence); }
 
-  async findByStudent(studentId: string): Promise<Allocation[]> {
+  async findByStudent(studentId: string): Promise<Connection[]> {
     return Array.from(this.store.values())
       .filter((a) => a.studentId === studentId)
       .map((a) => this.clone(a));
   }
 
-  async findByLeader(leaderId: string): Promise<Allocation[]> {
+  async findByLeader(leaderId: string): Promise<Connection[]> {
     return Array.from(this.store.values())
       .filter((a) => a.leaderId === leaderId)
       .map((a) => this.clone(a));
   }
 
-  async findByStudentAndLeader(studentId: string, leaderId: string): Promise<Allocation | null> {
+  async findByStudentAndLeader(studentId: string, leaderId: string): Promise<Connection | null> {
     for (const a of this.store.values()) {
       if (a.studentId === studentId && a.leaderId === leaderId) return this.clone(a);
     }
@@ -359,7 +359,7 @@ export class InMemorySettingsRepository
       validThresholdPct: 50,
       serviceName: 'Sunday Service',
       lifegroupName: 'Lifegroup',
-      allocationLockDate: null,
+      connectionLockDate: null,
       updatedAt: new Date().toISOString(),
     };
   }
