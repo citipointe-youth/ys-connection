@@ -404,13 +404,17 @@ const API = (() => {
       clearTimeout(timer);
     }
   }
+  const _inflight = new Map();
   return {
     setToken(t) { _t = t; t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); },
     get token() { return _t; },
     get: (p) => {
       const cached = Cache.get(p);
       if (cached !== null) return Promise.resolve(cached);
-      return r('GET', p).then(data => { Cache.set(p, data); return data; });
+      if (_inflight.has(p)) return _inflight.get(p);
+      const promise = r('GET', p).then(data => { Cache.set(p, data); _inflight.delete(p); return data; }).catch(err => { _inflight.delete(p); throw err; });
+      _inflight.set(p, promise);
+      return promise;
     },
     post: (p, b) => r('POST', p, b),
     patch: (p, b) => r('PATCH', p, b),
@@ -2154,14 +2158,10 @@ function trendArrow(dir) {
 async function renderTrends() {
   if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const u = S.user;
-  let students = [];
-  try { students = await API.get('/students'); } catch {}
-
-  // Build trends from student attendance data
-  // Students have svcAttended/svcTotal/grpAttended/grpTotal
-  // We derive session-level data from overview if available, or aggregate
-  let overview = null;
-  try { overview = await API.get('/overview'); } catch {}
+  const [students, overview] = await Promise.all([
+    API.get('/students').catch(() => []),
+    API.get('/overview').catch(() => null),
+  ]);
 
   const canExport = ['quad','director','admin'].includes(u.role);
   const QUAD_LABELS_LOCAL = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
