@@ -407,10 +407,31 @@ const API = (() => {
   return {
     setToken(t) { _t = t; t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); },
     get token() { return _t; },
-    get: (p) => r('GET', p),
+    get: (p) => {
+      const cached = Cache.get(p);
+      if (cached !== null) return Promise.resolve(cached);
+      return r('GET', p).then(data => { Cache.set(p, data); return data; });
+    },
     post: (p, b) => r('POST', p, b),
     patch: (p, b) => r('PATCH', p, b),
     del: (p) => r('DELETE', p),
+  };
+})();
+
+// ============================================================
+// DATA CACHE (30-second TTL — makes back-navigation instant)
+// ============================================================
+const Cache = (() => {
+  const store = new Map();
+  const TTL = 30_000;
+  return {
+    get(key) {
+      const e = store.get(key);
+      return (e && Date.now() - e.ts < TTL) ? e.data : null;
+    },
+    set(key, data) { store.set(key, { data, ts: Date.now() }); },
+    del(...keys) { for (const k of keys) { for (const sk of store.keys()) { if (sk === k || sk.startsWith(k + '/')) store.delete(sk); } } },
+    clear() { store.clear(); },
   };
 })();
 
@@ -431,7 +452,45 @@ function modal(html, onClose) {
   r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') closeModal(); });
 }
 function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
-function setApp(h) { document.getElementById('app').innerHTML = h; }
+
+// setApp updates only the <main id="page-main"> when the persistent shell is
+// in place, falling back to a full #app replacement (login page, first render).
+let _shellReady = false;
+function setApp(h) {
+  const main = document.getElementById('page-main');
+  if (_shellReady && main) { main.innerHTML = h; _updateNavActive(); }
+  else document.getElementById('app').innerHTML = h;
+}
+
+function _updateNavActive() {
+  const cur = S.page;
+  document.querySelectorAll('[data-nav-page]').forEach(el => {
+    el.classList.toggle('on', el.dataset.navPage === cur);
+  });
+}
+
+// Build the persistent shell (header + empty main + bottom nav) once per login.
+// Subsequent navigations only update <main id="page-main">.
+function _initShell() {
+  const u = S.user;
+  if (!u) return;
+  const items = navItems();
+  const bn = bottomNavItems();
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)} ${it.label}</a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  document.getElementById('app').innerHTML = `
+    <div class="hdr">
+      <h1>Youth Connection</h1>
+      <div class="hdr-meta">
+        <nav class="desk-nav">${dlinks}</nav>
+        ${roleBadge(u)}
+        <div class="btn-icon" onclick="doLogout()" title="Sign out" aria-label="Sign out">${icN('logout')}</div>
+      </div>
+    </div>
+    <main id="page-main" class="pg"></main>
+    <nav class="bot-nav">${mlinks}</nav>`;
+  _shellReady = true;
+}
 
 // ============================================================
 // HELPERS
@@ -599,26 +658,9 @@ function navItems() {
 function bottomNavItems() { return navItems().slice(0, 4); }
 function quickActionItems() { return navItems().slice(4); }
 
-function shell(body) {
-  const u = S.user;
-  const badge = roleBadge(u);
-  const items = navItems();
-  const bn = bottomNavItems();
-  const cur = S.page;
-  const dlinks = items.map(it => `<a class="${cur===it.id?'on':''}" onclick="go('${it.id}')">${icN(it.ic)} ${it.label}</a>`).join('');
-  const mlinks = bn.map(it => `<a class="${cur===it.id?'on':''}" onclick="go('${it.id}')">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
-  return `
-    <div class="hdr">
-      <h1>Youth Connection</h1>
-      <div class="hdr-meta">
-        <nav class="desk-nav">${dlinks}</nav>
-        ${badge}
-        <div class="btn-icon" onclick="doLogout()" title="Sign out" aria-label="Sign out">${icN('logout')}</div>
-      </div>
-    </div>
-    <main class="pg">${body}</main>
-    <nav class="bot-nav">${mlinks}</nav>`;
-}
+// shell() is kept for compatibility — the persistent shell is set up by _initShell().
+// All setApp(shell(x)) calls now just update <main id="page-main"> with x.
+function shell(body) { return body; }
 
 // ============================================================
 // FILTER STATE PERSISTENCE (Change 1)
@@ -646,11 +688,16 @@ function restoreConnectFilters() {
   } catch {}
 }
 
+// Returns true if all listed GET endpoints are in the cache (so we can skip the spinner).
+function _allCached(...paths) { return paths.every(p => Cache.get(p) !== null); }
+
 // ============================================================
 // AUTH
 // ============================================================
 async function render() {
   if (!S.user) { renderLogin(); return; }
+  if (!_shellReady) _initShell();
+  _updateNavActive();
   const p = S.page;
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
@@ -668,7 +715,9 @@ async function render() {
 }
 
 function renderLogin() {
-  setApp(`
+  _shellReady = false;
+  Cache.clear();
+  document.getElementById('app').innerHTML = `
     <div class="login-pg">
       <div class="login-card">
         <div class="login-logo"><div class="icon">${icLg('target')}</div><h1>Youth Connection</h1><p>Sign in to continue</p></div>
@@ -678,7 +727,7 @@ function renderLogin() {
         <button class="btn btn-primary btn-full" onclick="doLogin()">Sign In</button>
         <p style="text-align:center;color:var(--ink-faint);font-size:12px;margin-top:14px">Demo password: demo1234</p>
       </div>
-    </div>`);
+    </div>`;
   document.getElementById('lpw')?.addEventListener('keypress', e => { if (e.key==='Enter') doLogin(); });
 }
 
@@ -754,7 +803,7 @@ function _hAttTile(label, studs, avgWk, opts) {
 }
 
 async function renderHome() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/overview', '/trends', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   try {
     await _renderHomeInner();
   } catch (err) {
@@ -926,7 +975,7 @@ async function _renderHomeInner() {
 // LEADERS
 // ============================================================
 async function renderLeaders() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const [leaders, connectsRaw] = await Promise.all([
     API.get('/leaders').catch(() => []),
     API.get('/connections').catch(() => []),
@@ -1067,6 +1116,7 @@ async function submitAddLeader() {
   if (!name) { errEl.innerHTML='<div class="alert al-err">Name is required</div>'; return; }
   try {
     await API.post('/leaders', { fullName:name, gender, grades });
+    Cache.del('/leaders', '/connections', '/overview');
     closeModal(); toast('Leader added'); await renderLeaders();
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
 }
@@ -1108,6 +1158,7 @@ async function submitEditLeader(id) {
   if (!fullName) { errEl.innerHTML='<div class="alert al-err">Name required</div>'; return; }
   try {
     await API.patch(`/leaders/${id}`, { fullName, gender, grades, active });
+    Cache.del('/leaders', '/overview');
     closeModal(); toast('Leader updated'); await renderLeaders();
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
 }
@@ -1116,7 +1167,7 @@ function confirmDelLeader(id, name) {
   modal(`<div class="mo-title">Delete Leader?</div>
     <p style="color:var(--ink-mid);margin-bottom:20px">Delete <strong>${name}</strong> and all their connections?</p>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="API.del('/leaders/${id}').then(()=>{closeModal();toast('Deleted');renderLeaders()}).catch(e=>toast(e.message))">Delete</button>
+      <button class="btn btn-danger" style="flex:1" onclick="API.del('/leaders/${id}').then(()=>{Cache.del('/leaders','/connections','/overview','/at-risk');closeModal();toast('Deleted');renderLeaders()}).catch(e=>toast(e.message))">Delete</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
@@ -1129,7 +1180,7 @@ let _aS = { students:[], leaders:[], allocs:{}, gf:new Set(), df:new Set(), unco
 let _pickerCtx = null;
 
 async function renderConnect() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/students', '/leaders', '/connections')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   await loadConnectData();
   renderConnectView();
 }
@@ -1362,13 +1413,12 @@ async function addConnFromPicker(studentId) {
   const { leaderId } = _pickerCtx;
   try {
     await API.post('/connections', { studentId, leaderId });
+    Cache.del('/connections', '/overview', '/at-risk');
     const cur = _aS.allocs[studentId] || [];
     _aS.allocs[studentId] = [...cur, leaderId];
-    // Update the assigned set and re-filter
     window._pickerAssigned.add(studentId);
     filterPicker();
     pickerSyncBg();
-    // Update count badge in card below modal
     const s = _aS.students.find(x => x.id === studentId);
     if (s) toast(`${s.firstName} ${s.lastName} added`);
   } catch (e) { toast(e.message); }
@@ -1380,6 +1430,7 @@ async function remPick(studentId) {
   const { leaderId } = _pickerCtx;
   try {
     await API.del(`/connections/${studentId}/${leaderId}`);
+    Cache.del('/connections', '/overview', '/at-risk');
     _aS.allocs[studentId] = (_aS.allocs[studentId] || []).filter(id => id !== leaderId);
     window._pickerAssigned.delete(studentId);
     filterPicker();
@@ -1388,17 +1439,19 @@ async function remPick(studentId) {
     if (s) toast(`${s.firstName} ${s.lastName} removed`);
   } catch (e) { toast(e.message); }
 }
-// Repaint the page behind the open picker so leader counts stay current (demo: pickerSyncBg → render()).
+// Repaint the page behind the open picker so leader counts stay current.
 function pickerSyncBg() { render(); }
 
 async function removeConnectWithUndo(studentId, leaderId, studentName, leaderName) {
   try {
     await API.del(`/connections/${studentId}/${leaderId}`);
+    Cache.del('/connections', '/overview', '/at-risk');
     _aS.allocs[studentId] = (_aS.allocs[studentId]||[]).filter(id => id !== leaderId);
     renderConnectView();
     showUndoToast(`Disconnected ${studentName} from ${leaderName}`, async () => {
       try {
         await API.post('/connections', { studentId, leaderId });
+        Cache.del('/connections', '/overview', '/at-risk');
         const cur = _aS.allocs[studentId] || [];
         _aS.allocs[studentId] = [...cur, leaderId];
         renderConnectView();
@@ -1425,7 +1478,7 @@ function fmtBday(iso) {
 }
 
 async function renderMyStudents() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const [leaders, allStudents] = await Promise.all([
     API.get('/leaders').catch(() => []),
     API.get('/students').catch(() => []),
@@ -1515,7 +1568,7 @@ async function exportConnectCSV() {
 // QUAD VIEW
 // ============================================================
 async function renderQuadView() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   let leaders=[], connectsRaw=[], students=[];
   try { [leaders, connectsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
   const sById = {}; for (const s of students) sById[s.id]=s;
@@ -1574,7 +1627,7 @@ async function renderQuadView() {
 let _mqTab = 'leaders';
 
 async function renderMyQuad() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   let leaders=[], connectsRaw2=[], students=[];
   try { [leaders, connectsRaw2, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
 
@@ -1833,6 +1886,7 @@ async function recomputeAtRisk() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spin" style="width:14px;height:14px;border-width:2px"></div> Recomputing…'; }
   try {
     const res = await API.post('/at-risk/recompute', {});
+    Cache.del('/at-risk');
     toast(`Recomputed: ${res.updated} students updated`);
     await renderAtRisk();
   } catch (e) { toast(e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Recompute'; } }
@@ -1865,7 +1919,7 @@ async function submitAtRiskUpdate(studentId) {
 let _sS = { students:[], search:'', gf:new Set(), df:new Set() };
 
 async function renderStudents() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   try { _sS.students = await API.get('/students'); } catch {}
   renderStudentView();
 }
@@ -1961,11 +2015,13 @@ function sdLeaderSearch(sid) {
 async function assignSD(sid, lid) {
   try { await API.post('/connections', { studentId: sid, leaderId: lid }); }
   catch (e) { toast(e.message || 'Could not assign'); return; }
+  Cache.del('/connections', '/overview', '/at-risk');
   toast('Connected'); render(); showStudentDetail(sid);
 }
 async function unassignSD(sid, lid) {
   try { await API.del(`/connections/${sid}/${lid}`); }
   catch (e) { toast(e.message || 'Could not remove'); return; }
+  Cache.del('/connections', '/overview', '/at-risk');
   toast('Disconnected'); render(); showStudentDetail(sid);
 }
 
@@ -2085,7 +2141,7 @@ function trendArrow(dir) {
 }
 
 async function renderTrends() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const u = S.user;
   let students = [];
   try { students = await API.get('/students'); } catch {}
@@ -2286,7 +2342,7 @@ async function exportTrendsCSV() {
 // IMPORT
 // ============================================================
 async function renderImport() {
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/import/history')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   let history = [];
   try { history = await API.get('/import/history'); } catch {}
 
@@ -2421,6 +2477,7 @@ function processImport(file) {
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Uploading…</div>`;
     try {
       const result = await API.post('/import/csv', { rows, filename: file.name });
+      Cache.clear();
       statusEl.innerHTML = `<div class="alert al-ok">✓ Import complete: ${result.studentsAdded} added, ${result.studentsUpdated} updated, ${result.sessionsAdded} sessions</div>`;
     } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
   };
@@ -2465,7 +2522,7 @@ let _adminTab = 'settings';
 
 async function renderAdmin() {
   if (S.user?.role !== 'admin') { go('home'); return; }
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/settings', '/accounts/users')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const [settings, users] = await Promise.all([
     API.get('/settings').catch(() => ({})),
     API.get('/accounts/users').catch(() => []),
@@ -2672,13 +2729,14 @@ async function saveSettings() {
       // Change 11: include connectionLockDate
       connectionLockDate: document.getElementById('s-lock')?.value || null,
     });
+    Cache.del('/settings');
     toast('Settings saved');
   } catch (e) { toast(e.message); }
 }
 
 async function adminAction(path, msg) {
   try {
-    await API.post(path, {}); toast(msg);
+    await API.post(path, {}); Cache.clear(); toast(msg);
     if (path === '/admin/reset' && window.CA) CA.reset(); /*CA-HOOK*/
     go('home');
   } catch (e) { toast(e.message); }
@@ -2756,6 +2814,7 @@ async function submitAddUser() {
   if (!displayName || !email || !password) { errEl.innerHTML='<div class="alert al-err">All fields required</div>'; return; }
   try {
     await API.post('/accounts/users', { displayName, email, password, role, grade, quad });
+    Cache.del('/accounts/users');
     closeModal(); toast('Account created'); await renderAdmin();
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
 }
@@ -2793,6 +2852,7 @@ async function submitEditUser(id) {
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
   try {
     await API.patch(`/accounts/users/${id}`, { displayName, role, grade, quad });
+    Cache.del('/accounts/users');
     closeModal(); toast('Account updated'); await renderAdmin();
   } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${e.message}</div>`; }
 }
@@ -2821,6 +2881,7 @@ async function submitSetPassword(id) {
 async function toggleUserStatus(id, currentStatus) {
   try {
     await API.patch(`/accounts/users/${id}/status`, {});
+    Cache.del('/accounts/users');
     toast(currentStatus==='active' ? 'Account deactivated' : 'Account activated');
     await renderAdmin();
   } catch (e) { toast(e.message); }
@@ -2830,7 +2891,7 @@ function confirmDelUser(id, name) {
   modal(`<div class="mo-title">Delete Account?</div>
     <p style="color:var(--ink-mid);margin-bottom:20px">Delete account for <strong>${name}</strong>?</p>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="API.del('/accounts/users/${id}').then(()=>{closeModal();toast('Account deleted');renderAdmin()}).catch(e=>toast(e.message))">Delete</button>
+      <button class="btn btn-danger" style="flex:1" onclick="API.del('/accounts/users/${id}').then(()=>{Cache.del('/accounts/users');closeModal();toast('Account deleted');renderAdmin()}).catch(e=>toast(e.message))">Delete</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
@@ -3094,13 +3155,12 @@ function tabs(page){
 }
 function caShell(body,page){
   const back='<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="go(\''+(page==='ca-hub'?'home':'ca-hub')+'\')">‹ '+(page==='ca-hub'?'Home':'Audit hub')+'</button>';
-  let h=shell(back+body);
-  h=h.replace('<h1>Youth Allocation</h1>','<h1>Connection Audit</h1>');
+  let content=back+body;
   if(stale()&&!warnOff&&page!=='ca-data'){
     const seedy=seedOn();
-    h=h.replace('</main>','<div class="ca-warnb"><span class="ca-wi">⚠</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>'+(seedy?'Demo seed in use.':'Data ageing.')+'</b> Student Team, Connect, Decision &amp; People Flow data '+(seedy?'was seeded '+fmtD(st.uploads.team.at):'needs a refresh')+' — update it in the <b>Data</b> tab for currency.</div><span class="ca-wx" onclick="CA.dismissWarn()">✕</span></div></main>');
+    content+='<div class="ca-warnb"><span class="ca-wi">⚠</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>'+(seedy?'Demo seed in use.':'Data ageing.')+'</b> Student Team, Connect, Decision &amp; People Flow data '+(seedy?'was seeded '+fmtD(st.uploads.team.at):'needs a refresh')+' — update it in the <b>Data</b> tab for currency.</div><span class="ca-wx" onclick="CA.dismissWarn()">✕</span></div>';
   }
-  setApp(h);
+  setApp(content);
 }
 function dismissWarn(){warnOff=true;rerender();}
 function rerender(){dispatch(S.page);}
