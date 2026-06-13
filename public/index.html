@@ -2147,9 +2147,10 @@ function trendArrow(dir) {
 async function renderTrends() {
   if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const u = S.user;
-  const [students, overview] = await Promise.all([
+  const [students, overview, trends] = await Promise.all([
     API.get('/students').catch(() => []),
     API.get('/overview').catch(() => null),
+    API.get('/trends').catch(() => null),
   ]);
 
   const canExport = ['quad','director','admin'].includes(u.role);
@@ -2211,6 +2212,19 @@ async function renderTrends() {
     );
     body += '</div>';
 
+    // Weekly attendance chart — one bar per valid service (sub-floor weeks excluded)
+    if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
+      const valid = trends.ministry.sessions.filter(s => !s.isOutlier);
+      if (valid.length) {
+        const peak = Math.max(1, ...valid.map(s => s.totalAttended));
+        const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
+        body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance}</div>`;
+        body += colChart(chartSess, 56);
+        body += '</div>';
+      }
+    }
+
     if (u.role === 'grade') {
       const gr = byGrade.find(x => x.grade === u.grade);
       if (gr && gr.count) {
@@ -2246,22 +2260,17 @@ async function renderTrends() {
           <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.uniq} uniq · ${q.count>0?Math.round(q.att/q.count):0} avg</span>
         </div>`;
         if (isQOpen) {
-          body += statCard([q.uniq, q.count>0?Math.round(q.att/q.count):0, q.count>0?Math.round(q.att/q.count):0],
-            ['Unique','Avg/session','Avg sessions/student'], null);
+          // Compact per-grade rows (no big stat tiles — those are kept for the
+          // Ministry Overview only).
           const grades = q.quad==='g79'||q.quad==='b79' ? [7,8,9] : [10,11,12];
           for (const gr of grades) {
             const g = byGrade.find(x=>x.grade===gr);
             if (!g||!g.count) continue;
-            const isGOpen = _trGradeOpen === gr;
-            body += `<div style="border-top:1px solid var(--paper-dark);padding:6px 0">
-              <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_trGradeOpen=${isGOpen?'null':gr};renderTrends()">
-                <span style="font-size:12px;display:inline-block;transform:${isGOpen?'rotate(90deg)':'rotate(0deg)'}">›</span>
-                <div style="flex:1;font-size:13px;font-weight:700">Year ${gr}</div>
+            body += `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--paper-dark);padding:7px 0 1px">
+                <div style="flex:1;font-size:13px;font-weight:600;padding-left:20px">Year ${gr}</div>
                 <span style="font-size:13px;font-weight:700">${g.uniq}</span><span style="font-size:11px;color:var(--ink-faint);margin:0 8px 0 3px">uniq</span>
                 <span style="font-size:13px;font-weight:700">${g.count>0?Math.round(g.att/g.count):0}</span><span style="font-size:11px;color:var(--ink-faint);margin-left:3px">avg</span>
-              </div>
-              ${isGOpen?`<div style="padding-left:20px;margin-top:6px">${statCard([g.uniq,g.count>0?Math.round(g.att/g.count):0,g.count>0?Math.round(g.att/g.count):0],['Unique','Avg/session','Avg sessions/student'],null)}</div>`:''}
-            </div>`;
+              </div>`;
           }
         }
         body += '</div>';
