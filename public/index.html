@@ -794,7 +794,7 @@ function renderLogin() {
       <div class="login-card">
         <div class="login-logo"><div class="icon">${icLg('target')}</div><h1>Youth Connection</h1><p>Sign in to continue</p></div>
         <div id="lerr"></div>
-        <div class="fg"><label class="fl">Email</label><input class="fi" id="lemail" type="email" placeholder="g79@youth.ministry or grade7f@youth.ministry" autocomplete="username"></div>
+        <div class="fg"><label class="fl">Email</label><input class="fi" id="lemail" type="email" placeholder="g79@youth.ministry or grade7g@youth.ministry" autocomplete="username"></div>
         <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
         <button class="btn btn-primary btn-full" onclick="doLogin()">Sign In</button>
         ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `<p style="text-align:center;font-size:12px;color:var(--ink-faint);margin-top:14px">Install as an app — <a href="/install.html" style="color:var(--accent)">how to add to Home Screen</a></p>` : ''}
@@ -3320,6 +3320,7 @@ async function showEditUser(id) {
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>
     <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${u.displayName}"></div>
+    <div class="fg"><label class="fl">Email (login)</label><input class="fi" id="u-email" type="email" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off"></div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields()">
         ${['grade','quad','director','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r.charAt(0).toUpperCase()+r.slice(1)}</option>`).join('')}
@@ -3341,11 +3342,13 @@ async function showEditUser(id) {
 
 async function submitEditUser(id) {
   const displayName = document.getElementById('u-name')?.value?.trim();
+  const email = document.getElementById('u-email')?.value?.trim();
   const role = document.getElementById('u-role')?.value;
   const grade = role==='grade' ? parseInt(document.getElementById('u-grade')?.value||'7',10) : null;
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
+  if (!displayName || !email) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Name and email are required</div>'; return; }
   try {
-    await API.patch(`/accounts/users/${id}`, { displayName, role, grade, quad });
+    await API.patch(`/accounts/users/${id}`, { displayName, email, role, grade, quad });
     Cache.del('/accounts/users');
     closeModal(); toast('Account updated'); await renderAdmin();
   } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${e.message}</div>`; }

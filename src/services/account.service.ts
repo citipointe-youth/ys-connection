@@ -84,10 +84,17 @@ export function makeAccountService(users: IUserRepository): AccountService {
       const existing = await users.findById(id);
       if (!existing) throw new NotFoundError('User not found');
       if (existing.role === 'admin') await guardAdmin(id, 'modify');
-      const patch = CreateUserSchema.omit({ password: true, email: true }).partial().parse(input);
+      const patch = CreateUserSchema.omit({ password: true }).partial().parse(input);
+      // Email is editable (so grade logins can be renamed, e.g. grade7g / grade7b),
+      // but must stay unique across accounts.
+      if (patch.email && patch.email !== existing.email) {
+        const other = await users.findByEmail(patch.email);
+        if (other && other.id !== id) throw new ConflictError('Email already in use');
+      }
       const updated: User = {
         ...existing,
         ...(patch.displayName ? { displayName: patch.displayName } : {}),
+        ...(patch.email ? { email: patch.email } : {}),
         ...(patch.role ? { role: patch.role as UserRole } : {}),
         ...(patch.grade !== undefined ? { grade: patch.grade as Grade | null } : {}),
         ...(patch.quad !== undefined ? { quad: patch.quad as Quad | null } : {}),

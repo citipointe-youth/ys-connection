@@ -149,11 +149,12 @@ is the default, previous is shown as a comparison.
 | `b79@youth.ministry` | quad | Boys Yr 7–9 |
 | `g1012@youth.ministry` | quad | Girls Yr 10–12 |
 | `b1012@youth.ministry` | quad | Boys Yr 10–12 |
-| `grade7f@youth.ministry` | grade | Grade 7 Girls |
-| `grade7m@youth.ministry` | grade | Grade 7 Boys |
-| `grade8f–grade12m@youth.ministry` | grade | Grade 8–12 Girls/Boys |
+| `grade7@youth.ministry` … `grade12@youth.ministry` | grade | one per grade (the in-code seed has one account per grade) |
 
-Quick login buttons in the demo: admin, director, g79, b79, grade7f, grade7m, grade10f, grade10m
+**Email convention:** grade logins use **`g` (girls) / `b` (boys)** suffixes —
+e.g. `grade7g@youth.ministry`, `grade7b@youth.ministry` (NOT `…f` / `…m`). Account
+emails are **editable** in admin → Accounts → Edit (`account.service.update` accepts
+`email` with a uniqueness check), so the actual logins can be renamed to this scheme.
 
 ## Environment variables
 
