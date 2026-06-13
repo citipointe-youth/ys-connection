@@ -48,8 +48,13 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
         );
       }
       if (actor.role === 'quad') {
-        // Quad login sees all leaders within their quad's grades
-        return all.filter((l) => l.grades.some((g) => canAccessGrade(actor, g)) || l.grades.length === 0);
+        // Quad login sees only leaders within their quad's gender AND year bracket.
+        const qg = quadGenderOf(actor.quad);
+        return all.filter(
+          (l) =>
+            (l.gender == null || l.gender === qg) &&
+            (l.grades.length === 0 || l.grades.some((g) => canAccessGrade(actor, g))),
+        );
       }
       return all;
     },

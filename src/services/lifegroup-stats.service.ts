@@ -43,9 +43,14 @@ export interface QuadLifegroupStat {
   previous: TermAgg;
 }
 
+export interface WeekPoint {
+  weekStart: string;
+  attended: number; // distinct visible individuals attending a lifegroup that week
+}
+
 export interface LifegroupStatsData {
   terms: Terms;
-  overall: { current: TermAgg; previous: TermAgg };
+  overall: { current: TermAgg; previous: TermAgg; weekly: WeekPoint[] };
   byQuad: QuadLifegroupStat[];
   byGrade: GradeLifegroupStat[];
   generatedAt: string;
@@ -228,9 +233,22 @@ export function makeLifegroupStatsService(
       const overallCurrent = termAgg(lifegroupVisible, (row) => studentVisible(row.studentId), 'current');
       const overallPrevious = termAgg(lifegroupVisible, (row) => studentVisible(row.studentId), 'previous');
 
+      // Weekly series for the current term (one bar per week any visible lifegroup
+      // ran; value = distinct visible individuals who attended that week).
+      const weekMap = new Map<string, Set<string>>();
+      for (const row of rows) {
+        if (classifyDate(row.weekStart, terms) !== 'current') continue;
+        let set = weekMap.get(row.weekStart);
+        if (!set) { set = new Set(); weekMap.set(row.weekStart, set); }
+        if (row.attended && studentVisible(row.studentId)) set.add(row.studentId);
+      }
+      const weekly: WeekPoint[] = [...weekMap.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([weekStart, set]) => ({ weekStart, attended: set.size }));
+
       return {
         terms,
-        overall: { current: overallCurrent, previous: overallPrevious },
+        overall: { current: overallCurrent, previous: overallPrevious, weekly },
         byQuad,
         byGrade,
         generatedAt: new Date().toISOString(),

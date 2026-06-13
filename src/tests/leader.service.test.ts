@@ -55,4 +55,14 @@ describe('Leader Service — quad add/edit parity (scoped to gender + bracket)',
     const senior = await s.create(ADMIN, { fullName: 'Senior', gender: 'male', grades: [12] });
     await expect(s.remove(G79, senior.id)).rejects.toBeInstanceOf(ForbiddenError);
   });
+
+  it('list() scopes a quad to its OWN gender + bracket only', async () => {
+    const s = await svc();
+    await s.create(ADMIN, { fullName: 'Girl Jr', gender: 'female', grades: [8] });   // visible to G79
+    await s.create(ADMIN, { fullName: 'Boy Jr', gender: 'male', grades: [8] });       // wrong gender
+    await s.create(ADMIN, { fullName: 'Girl Snr', gender: 'female', grades: [11] });  // wrong bracket
+    await s.create(ADMIN, { fullName: 'Any', gender: null, grades: [] });             // all-grades, any gender → visible
+    const visible = (await s.list(G79)).map((l) => l.fullName).sort();
+    expect(visible).toEqual(['Any', 'Girl Jr']);
+  });
 });

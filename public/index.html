@@ -259,6 +259,14 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* ── STUDENT PICKER MODAL ── */
 .mo-box.picker{max-width:640px;max-height:96vh}
+/* Top-anchored, keyboard-safe picker: a flex column whose middle list scrolls so
+   the search stays at the top and the Done button stays visible at the bottom.
+   The box height is pinned to the visible viewport in JS (_sizePicker). */
+.mo.mo-top{align-items:flex-start}
+.mo-box.pflex{display:flex;flex-direction:column;border-radius:0 0 18px 18px}
+.mo-box.pflex .mo-handle,.mo-box.pflex .mo-title,.mo-box.pflex .picker-search,.mo-box.pflex .picker-done{flex:0 0 auto}
+.mo-box.pflex #picker-list{flex:1 1 auto;min-height:0}
+.picker-done{padding-top:10px;margin-top:4px;border-top:1px solid var(--paper-dark)}
 .picker-search{width:100%;padding:13px 14px 13px 42px;border:2px solid var(--accent);border-radius:var(--radius-sm);font-size:16px;outline:none;background:var(--paper-card);margin-bottom:10px}
 .picker-list{overflow-y:auto;max-height:calc(96vh - 200px)}
 .picker-item{display:flex;align-items:center;gap:12px;padding:13px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .1s;border:none;background:none;width:100%;text-align:left;min-height:60px}
@@ -304,8 +312,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .role-group-header{font-size:10px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:6px 0 8px;border-bottom:1px solid var(--paper-dark);margin-bottom:8px}
 
 /* ── TRENDS ── */
-.cchart{display:flex;align-items:flex-end;gap:3px;height:68px;margin:8px 0}
+.cchart{display:flex;align-items:flex-end;gap:3px;height:92px;margin:8px 0}
 .ccol{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
+.ccol-val{font-size:9px;font-weight:700;color:var(--ink-mid);margin-bottom:2px;white-space:nowrap}
 .ccol-bar{width:100%;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
 .ccol-bar.lo{background:var(--warn)}.ccol-bar.cr{background:var(--danger)}
 .ccol-lbl{font-size:9px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
@@ -450,9 +459,10 @@ function toast(msg, dur = 2500) {
   el.textContent = msg; el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), dur);
 }
-function modal(html, onClose) {
+function modal(html, onClose, opts) {
+  opts = opts || {};
   const r = document.getElementById('modal-root');
-  r.innerHTML = `<div class="mo" id="mo-overlay"><div class="mo-box"><div class="mo-handle"></div>${html}</div></div>`;
+  r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
   r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') closeModal(); });
 }
@@ -688,8 +698,7 @@ function saveConnectFilters() {
     sessionStorage.setItem('yap_connect_filters', JSON.stringify({
       gf: [..._aS.gf],
       df: [..._aS.df],
-      search: _aS.search,
-      unconnectOnly: _aS.unconnectOnly
+      search: _aS.search
     }));
   } catch {}
 }
@@ -702,7 +711,6 @@ function restoreConnectFilters() {
     if (Array.isArray(saved.gf)) _aS.gf = new Set(saved.gf);
     if (Array.isArray(saved.df)) _aS.df = new Set(saved.df);
     if (typeof saved.search === 'string') _aS.search = saved.search;
-    if (typeof saved.unconnectOnly === 'boolean') _aS.unconnectOnly = saved.unconnectOnly;
   } catch {}
 }
 
@@ -1091,7 +1099,7 @@ async function showLeaderDetail(id) {
   } catch { toast('Failed to load leader'); return; }
   const u = S.user;
   const canEdit = ['grade','director','admin'].includes(u.role);
-  const students = summary.students || [];
+  const students = (summary.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
   let studRows = '';
   for (const s of students) {
@@ -1213,7 +1221,7 @@ function confirmDelLeader(id, name) {
 // ============================================================
 // CONNECT  (leader-centric card view — scales to 60+ students)
 // ============================================================
-let _aS = { students:[], leaders:[], allocs:{}, gf:new Set(), df:new Set(), unconnectOnly:false };
+let _aS = { students:[], leaders:[], allocs:{}, gf:new Set(), df:new Set() };
 // _pickerCtx = { leaderId, leaderGender, leaderName }
 let _pickerCtx = null;
 
@@ -1235,7 +1243,7 @@ async function loadConnectData() {
 }
 
 function renderConnectView() {
-  const { students, leaders, allocs, gf, df, unconnectOnly } = _aS;
+  const { students, leaders, allocs, gf, df } = _aS;
   const u = S.user;
 
   // Connection lock check
@@ -1247,25 +1255,24 @@ function renderConnectView() {
   let visLeaders = leaders;
   if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
   if (df.size) visLeaders = visLeaders.filter(l => !l.gender || df.has(l.gender));
-  if (unconnectOnly) {
-    // Show only leaders that have at least one unconnected student in their scope
-    visLeaders = visLeaders.filter(l => {
-      const pool = students.filter(s => !l.gender || s.gender === l.gender);
-      return pool.some(s => !(allocs[s.id]?.includes(l.id)));
-    });
-  }
 
   // Counts
   const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
   const totalStudents = students.length;
   const connectedCount = connectedStudentIds.size;
 
-  const gChips = [7,8,9,10,11,12].map(g =>
+  // Filters are scoped to the login: grade logins get none (they only see their
+  // grade's leaders); quad logins get a grade filter for their bracket but no
+  // gender filter (leaders are already their gender); director/admin get both.
+  const fGrades = u.role === 'quad' ? quadGrades(u.quad)
+    : ['director','admin'].includes(u.role) ? [7,8,9,10,11,12] : [];
+  const showGender = ['director','admin'].includes(u.role);
+  const gChips = fGrades.map(g =>
     `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleAF('g',${g})" aria-pressed="${gf.has(g)}">${g}</button>`
   ).join('');
-  const dChips = ['male','female'].map(g =>
+  const dChips = showGender ? ['male','female'].map(g =>
     `<button class="fc ${df.has(g)?'on':''}" onclick="toggleAF('d','${g}')" aria-pressed="${df.has(g)}">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`
-  ).join('');
+  ).join('') : '';
 
   let lockBanner = '';
   if (isLocked) {
@@ -1290,28 +1297,20 @@ function renderConnectView() {
       </div>
     </div>
     ${lockBanner}${gradeHint}
-    <div class="filter-row" role="group" aria-label="Filter by grade">
+    ${gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}
-    </div>
-    <div class="filter-row" role="group" aria-label="Filter by gender">
+    </div>` : ''}
+    ${dChips ? `<div class="filter-row" role="group" aria-label="Filter by gender">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}
-      <button class="fc ${unconnectOnly?'on':''}" onclick="toggleUnconnectOnly()" aria-pressed="${unconnectOnly}">Unconnected focus</button>
-    </div>`;
+    </div>` : ''}`;
 
   if (!visLeaders.length) {
     body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders match filters</div><div class="empty-sub">Clear filters or add leaders first</div></div>`;
   } else {
     body += '<div class="connect-grid">';
     for (const l of visLeaders) {
-      const assignedIds = students.filter(s => allocs[s.id]?.includes(l.id)).map(s => s.id);
-      const assignedStudents = assignedIds.map(id => students.find(s => s.id === id)).filter(Boolean);
+      const assignedStudents = students.filter(s => allocs[s.id]?.includes(l.id)).sort(_pickByFirst);
       const n = assignedStudents.length;
-      // Capacity hint: rough target = total students in gender / number of same-gender leaders
-      const sameGenderLeaders = leaders.filter(ll => !ll.gender || ll.gender === l.gender).length || 1;
-      const sameGenderStudents = students.filter(s => !l.gender || s.gender === l.gender).length;
-      const target = Math.round(sameGenderStudents / sameGenderLeaders);
-      const pct = target > 0 ? Math.min(100, Math.round(n / target * 100)) : 0;
-      const fillCls = pct >= 90 ? 'fill-r' : pct >= 60 ? 'fill-g' : 'fill-a';
 
       let studentRows = '';
       for (const s of assignedStudents.slice(0, 8)) {
@@ -1338,10 +1337,8 @@ function renderConnectView() {
           <button class="btn btn-ghost btn-sm" style="padding:2px 5px;color:var(--danger)" title="Delete leader" onclick="confirmDelLeader('${l.id}','${nm}')">${icS('trash')}</button>`:''}
         </div>
         <div class="connect-leader-meta">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</div>
-        <div class="connect-count-bar"><div class="connect-count-fill ${fillCls}" style="width:${pct}%"></div></div>
-        <div class="connect-count-label">
-          <span>${n} student${n!==1?'s':''}</span>
-          <span style="color:var(--ink-faint)">~${target} target</span>
+        <div class="connect-count-label" style="margin-top:6px">
+          <span><b>${n}</b> student${n!==1?'s':''} allocated</span>
         </div>
         ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}','${l.fullName.replace(/'/g,"\\'")}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students">${studentRows}</div>`:''}
@@ -1358,7 +1355,6 @@ function toggleAF(type, val) {
   else { if (_aS.df.has(val)) _aS.df.delete(val); else _aS.df.add(val); }
   saveConnectFilters(); renderConnectView();
 }
-function toggleUnconnectOnly() { _aS.unconnectOnly = !_aS.unconnectOnly; saveConnectFilters(); renderConnectView(); }
 
 // ── STUDENT PICKER MODAL (replaces tiny <select> — works at 60+ students) ──
 function openStudentPicker(leaderId, leaderGender, leaderName) {
@@ -1375,10 +1371,11 @@ function openStudentPicker(leaderId, leaderGender, leaderName) {
       <input class="picker-search" id="picker-q" placeholder="Search by name to add anyone…" oninput="filterPicker()" autofocus>
     </div>
     <div id="picker-list" class="picker-list"></div>
-    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+    <div class="picker-done" style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>
     </div>`,
-    () => { _pickerCtx = null; }
+    () => { _pickerCtx = null; _teardownPickerSize(); },
+    { overlayClass: 'mo-top', boxClass: 'picker pflex' }
   );
 
   // Full roster is searchable; the default (no search) view is narrowed to the
@@ -1388,16 +1385,53 @@ function openStudentPicker(leaderId, leaderGender, leaderName) {
   window._pickerGrades = new Set(leaderGrades);
   window._pickerGender = leaderGender || '';
   window._pickerAssigned = assignedForLeader;
+  window._pickerAllocs = _aS.allocs || {};
+  window._pickerLeaders = _aS.leaders || [];
   filterPicker();
 
-  // Focus the search input
-  setTimeout(() => document.getElementById('picker-q')?.focus(), 60);
+  // Pin the modal to the visible viewport so the keyboard never hides the list
+  // or the Done button, and focus the search input.
+  _setupPickerSize();
+  setTimeout(() => { document.getElementById('picker-q')?.focus(); _sizePicker(); }, 60);
+}
+
+// Keep the picker box exactly as tall as the visible viewport (shrinks when the
+// on-screen keyboard opens), so its scrollable list sits at the top and the Done
+// button stays on screen.
+function _sizePicker() {
+  const box = document.querySelector('.mo-box.pflex');
+  if (!box) return;
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  box.style.height = Math.round(vh - 6) + 'px';
+  box.style.maxHeight = Math.round(vh - 6) + 'px';
+}
+function _setupPickerSize() {
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', _sizePicker);
+    window.visualViewport.addEventListener('scroll', _sizePicker);
+  }
+  window.addEventListener('resize', _sizePicker);
+}
+function _teardownPickerSize() {
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', _sizePicker);
+    window.visualViewport.removeEventListener('scroll', _sizePicker);
+  }
+  window.removeEventListener('resize', _sizePicker);
+}
+
+function _pickByFirst(a, b) {
+  return (a.firstName || '').localeCompare(b.firstName || '') || (a.lastName || '').localeCompare(b.lastName || '');
 }
 
 function filterPicker() {
   const q = (document.getElementById('picker-q')?.value || '').toLowerCase().trim();
   const pool = window._pickerPool || [];
   const assigned = window._pickerAssigned || new Set();
+  const allocs = window._pickerAllocs || {};
+  const thisLeader = _pickerCtx ? _pickerCtx.leaderId : null;
+  const leadersById = {};
+  for (const l of (window._pickerLeaders || [])) leadersById[l.id] = l;
 
   let list = pool;
   if (q) {
@@ -1422,40 +1456,43 @@ function filterPicker() {
     });
   }
 
-  // Group: already assigned at top, then by grade
-  const alreadyAssigned = list.filter(s => assigned.has(s.id));
-  const available = list.filter(s => !assigned.has(s.id));
-
-  // Group available by grade
-  const byGrade = {};
-  for (const s of available) {
-    const g = s.grade || 0;
-    if (!byGrade[g]) byGrade[g] = [];
-    byGrade[g].push(s);
-  }
+  // Three buckets (top → bottom): not assigned, assigned to a DIFFERENT leader,
+  // assigned to THIS leader. Someone already with another leader can still be
+  // added here, so they stay addable. Each bucket is sorted by first name.
+  const isThis = s => assigned.has(s.id);
+  const otherLeaders = s => (allocs[s.id] || []).filter(id => id !== thisLeader);
+  const notAssigned = list.filter(s => !isThis(s) && otherLeaders(s).length === 0).sort(_pickByFirst);
+  const assignedElse = list.filter(s => !isThis(s) && otherLeaders(s).length > 0).sort(_pickByFirst);
+  const assignedThis = list.filter(isThis).sort(_pickByFirst);
 
   let html = '';
-  if (alreadyAssigned.length) {
-    html += `<div class="picker-section">Already assigned (${alreadyAssigned.length})</div>`;
-    for (const s of alreadyAssigned) {
-      html += pickerRow(s, true);
-    }
-  }
-  if (available.length === 0 && alreadyAssigned.length === 0) {
+  if (!list.length) {
     html = '<div style="text-align:center;padding:32px;color:var(--ink-faint)">No students found</div>';
   } else {
-    for (const [grade, students] of Object.entries(byGrade).sort((a,b) => Number(a[0])-Number(b[0]))) {
-      html += `<div class="picker-section">Grade ${grade === '0' ? '—' : grade} (${students.length})</div>`;
-      for (const s of students) html += pickerRow(s, false);
+    if (notAssigned.length) {
+      html += `<div class="picker-section">Not assigned (${notAssigned.length})</div>`;
+      for (const s of notAssigned) html += pickerRow(s, false, '');
+    }
+    if (assignedElse.length) {
+      html += `<div class="picker-section">Assigned to another leader (${assignedElse.length})</div>`;
+      for (const s of assignedElse) {
+        const names = otherLeaders(s).map(id => (leadersById[id]?.fullName) || 'another leader');
+        html += pickerRow(s, false, 'with ' + names.join(', '));
+      }
+    }
+    if (assignedThis.length) {
+      html += `<div class="picker-section">Assigned to this leader (${assignedThis.length})</div>`;
+      for (const s of assignedThis) html += pickerRow(s, true, '');
     }
   }
   const listEl = document.getElementById('picker-list');
   if (listEl) listEl.innerHTML = html;
 }
 
-function pickerRow(s, isAssigned) {
+function pickerRow(s, isAssigned, note) {
   const pct = svcPct(s);
   const risk = riskChip(s.atRiskStatus);
+  const noteHtml = note ? `<div class="picker-item-meta" style="color:var(--accent-dark)">${note}</div>` : '';
   if (isAssigned) {
     return `<div class="picker-item assigned">
       <div>
@@ -1469,6 +1506,7 @@ function pickerRow(s, isAssigned) {
     <div>
       <div class="picker-item-name">${s.firstName} ${s.lastName}</div>
       <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
+      ${noteHtml}
     </div>
     <div class="picker-item-right">${risk}<span style="color:var(--accent);font-size:18px;margin-left:8px">+</span></div>
   </button>`;
@@ -1560,12 +1598,18 @@ async function renderMyStudents() {
     return;
   }
 
-  // Year + gender filter chips that narrow the leader dropdown
-  const yearChips = [7, 8, 9, 10, 11, 12].map(g =>
+  // Year + gender filter chips that narrow the leader dropdown — scoped to the
+  // login: grade → none; quad → its year bracket (no gender); director/admin →
+  // all years + gender.
+  const mu = S.user;
+  const myYears = mu.role === 'quad' ? quadGrades(mu.quad)
+    : ['director','admin'].includes(mu.role) ? [7,8,9,10,11,12] : [];
+  const showG = ['director','admin'].includes(mu.role);
+  const yearChips = myYears.map(g =>
     `<button class="chip ${_lvF.year.has(g) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('year','${g}')">Yr ${g}</button>`).join('');
-  const genderChips = [['female', '♀ Girls'], ['male', '♂ Guys']].map(([v, lbl]) =>
-    `<button class="chip ${_lvF.gender.has(v) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('gender','${v}')">${lbl}</button>`).join('');
-  body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${yearChips}${genderChips}</div>`;
+  const genderChips = showG ? [['female', '♀ Girls'], ['male', '♂ Guys']].map(([v, lbl]) =>
+    `<button class="chip ${_lvF.gender.has(v) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('gender','${v}')">${lbl}</button>`).join('') : '';
+  if (myYears.length || showG) body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${yearChips}${genderChips}</div>`;
 
   let visLeaders = leaders;
   if (_lvF.year.size) visLeaders = visLeaders.filter(l => (l.grades || []).length === 0 || l.grades.some(g => _lvF.year.has(g)));
@@ -1579,7 +1623,7 @@ async function renderMyStudents() {
     const leader = leaders.find(l => l.id === _msLeader);
     let summary;
     try { summary = await API.get(`/connections/leader/${_msLeader}/summary`); } catch {}
-    const students = summary?.students || [];
+    const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
     if (leader) {
       body += `<div class="card" style="text-align:center;padding:18px;margin-bottom:16px">
@@ -2198,7 +2242,8 @@ function colChart(sessions, maxH) {
   return '<div class="cchart">' + sessions.map(s => {
     const h = s.pct ? Math.round(s.pct / max * (maxH || 56)) + 4 : 4;
     const cls = s.pct >= 70 ? '' : s.pct < 40 ? 'cr' : 'lo';
-    return `<div class="ccol"><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
+    const val = (s.att != null) ? s.att : '';
+    return `<div class="ccol"><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
 function hbarTr(label, pct, disp) {
@@ -2356,23 +2401,27 @@ async function renderTrends() {
   const _termNote = _curTerm ? `${fmtDM(_curTerm.startDate)} – ${fmtDM(_curTerm.endDate)}` : 'this term';
 
   if (_trTab === 'svc') {
-    // Ministry-wide overview stat card (current term, with previous-term subtext)
-    const minCur = _svcAgg(students, false), minPrev = _svcAgg(students, true);
+    // Ministry-wide overview — ALWAYS the whole ministry (every login sees the
+    // ministry totals here), with previous-term subtext. From trends.ministry.
+    const mn = (trends && trends.ministry) || {};
     body += `<div class="sh">Ministry Overview</div><div class="card">`;
-    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Service attendance · this term (${_termNote})</div>`;
-    body += statCard([minCur.uniq, minCur.avg], ['Unique attenders', 'Avg students/week'], _svcPrevSub(minPrev));
+    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
+    body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Unique attenders', 'Avg students/week'],
+      (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
     body += '</div>';
 
-    // Weekly attendance chart — one bar per valid CURRENT-TERM service
+    // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
     if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
       const valid = trends.ministry.sessions.filter(s => !s.isOutlier);
       if (valid.length) {
         const peak = Math.max(1, ...valid.map(s => s.totalAttended));
         const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
         body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
-        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance}</div>`;
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance} · trend across this term</div>`;
         body += colChart(chartSess, 56);
         body += '</div>';
+      } else {
+        body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No valid services in the current term yet.</div></div>`;
       }
     }
 
@@ -2444,6 +2493,14 @@ async function renderTrends() {
       body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Unique attenders','Avg/week'],
         op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
       body += `<div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${oc.weeksRan} week${oc.weeksRan===1?'':'s'} ran this term${op.weeksRan>0?' · '+op.weeksRan+' previous':''}</div>`;
+      // Weekly lifegroup attendance chart (current term) — bar = individuals that week
+      const wk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
+      if (wk.length) {
+        const peakW = Math.max(1, ...wk.map(w => w.attended));
+        const wkSess = wk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin:12px 0 4px">Weekly attendance</div>`;
+        body += colChart(wkSess, 56);
+      }
       body += '</div>';
 
       if (u.role === 'grade') {

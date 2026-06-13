@@ -34,7 +34,10 @@ export interface GradeTrend {
 
 export interface MinistryTrend {
   sessions: SessionPoint[];
-  averageAttendance: number;
+  averageAttendance: number;       // current term, WHOLE ministry
+  uniqueAttenders: number;         // current term, WHOLE ministry
+  prevAverageAttendance: number;   // previous term, WHOLE ministry
+  prevUniqueAttenders: number;     // previous term, WHOLE ministry
   peakAttendance: number;
   peakDate: string;
   recentTrend: 'up' | 'down' | 'stable';
@@ -163,15 +166,32 @@ export function makeTrendsService(
           };
         });
 
-      // ── Ministry-level trend (scoped to the actor) ──
-      const ministryWithOutliers = buildPoints(scopedIds, scopedStudents.length);
+      // ── Ministry-level trend — ALWAYS the WHOLE ministry, not scoped to the
+      // actor. A grade/quad login still sees the ministry-wide unique + average
+      // here (their own breakdown lives in byQuad/byGrade below). ──
+      const ministryWithOutliers = buildPoints(null, allStudents.length);
       const validMinistry = ministryWithOutliers.filter((p) => !p.isOutlier);
       const avgMinistry = averageOf(ministryWithOutliers);
       const peakPoint = validMinistry.reduce((max, p) => p.totalAttended > (max?.totalAttended ?? 0) ? p : max, validMinistry[0]);
 
+      // Current + previous term unique attenders / previous average (whole ministry).
+      const curUniq = new Set<string>();
+      const prevUniq = new Set<string>();
+      let prevAtt = 0, prevWeeks = 0;
+      for (const sess of sortedSessions) {
+        if (!isValidSession(sess.id)) continue;
+        const term = classifyDate(mondayOf(sess.sessionDate), terms);
+        const attended = attendedBySession.get(sess.id) ?? new Set<string>();
+        if (term === 'current') { for (const id of attended) curUniq.add(id); }
+        else if (term === 'previous') { prevAtt += attended.size; prevWeeks++; for (const id of attended) prevUniq.add(id); }
+      }
+
       const ministry: MinistryTrend = {
         sessions: ministryWithOutliers,
         averageAttendance: avgMinistry,
+        uniqueAttenders: curUniq.size,
+        prevAverageAttendance: prevWeeks > 0 ? Math.round(prevAtt / prevWeeks) : 0,
+        prevUniqueAttenders: prevUniq.size,
         peakAttendance: peakPoint?.totalAttended ?? 0,
         peakDate: peakPoint?.sessionDate ?? '',
         recentTrend: recentTrend(ministryWithOutliers),
