@@ -430,12 +430,16 @@ export function makeImportService(
       for (const l of existingLeaders) leaderByName.set(l.fullName.toLowerCase(), true);
       const newLeaders: Parameters<typeof leaderRepo.save>[0][] = [];
 
-      // Global Monday-week registry, deduped across all groups.
-      const weekIdByStart = new Map<string, string>();
-      const ensureWeek = (weekStart: string): string => {
-        let id = weekIdByStart.get(weekStart);
-        if (!id) { id = generateId(); weekIdByStart.set(weekStart, id); }
-        return id;
+      // Monday-week registry, keyed PER GROUP. lifegroup_attendance's PK is
+      // (student_id, week_id), so a student in two groups must get a DISTINCT
+      // week_id per group — otherwise the same (student_id, week_id) appears
+      // twice in one bulk insert and Postgres rejects the ON CONFLICT.
+      const weekByKey = new Map<string, { id: string; weekStart: string }>();
+      const ensureWeek = (lifegroupId: string, weekStart: string): string => {
+        const k = `${lifegroupId}|${weekStart}`;
+        let e = weekByKey.get(k);
+        if (!e) { e = { id: generateId(), weekStart }; weekByKey.set(k, e); }
+        return e.id;
       };
 
       const newLifegroups: Parameters<typeof lifegroupRepo.save>[0][] = [];
@@ -550,7 +554,7 @@ export function makeImportService(
           for (const w of weeksRanList) {
             attendanceRecords.push({
               studentId,
-              weekId: ensureWeek(w),
+              weekId: ensureWeek(lifegroup.id, w),
               lifegroupId: lifegroup.id,
               groupMet: true,
               attended: attendedWeeks.has(w),
@@ -567,11 +571,11 @@ export function makeImportService(
         }
       }
 
-      // Week rows from the global registry (chronological week numbers).
+      // Week rows from the per-group registry (chronological week numbers).
       let weekNum = 0;
-      const weeksToCreate = [...weekIdByStart.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([weekStart, id]) => ({ id, importId, weekNum: ++weekNum, weekKey: weekStart, weekStart, weekEnd: null }));
+      const weeksToCreate = [...weekByKey.values()]
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+        .map(({ id, weekStart }) => ({ id, importId, weekNum: ++weekNum, weekKey: weekStart, weekStart, weekEnd: null }));
       const weeksAdded = weeksToCreate.length;
 
       // Students to save: members (new grp counts) + everyone else (grp reset to 0,
@@ -606,7 +610,16 @@ export function makeImportService(
       await lifegroupRepo.saveMany(newLifegroups);
       await lifegroupWeekRepo.saveMany(weeksToCreate);
       await studentRepo.saveMany(studentsToSave);
-      if (attendanceRecords.length > 0) await lifegroupAttendanceRepo.saveMany(attendanceRecords);
+      // Final guard: one row per (student, week_id) — protects the PK against a
+      // duplicate name within a single group's roll.
+      const seenAtt = new Set<string>();
+      const dedupedAttendance = attendanceRecords.filter((r) => {
+        const k = `${r.studentId}:${r.weekId}`;
+        if (seenAtt.has(k)) return false;
+        seenAtt.add(k);
+        return true;
+      });
+      if (dedupedAttendance.length > 0) await lifegroupAttendanceRepo.saveMany(dedupedAttendance);
       await importRepo.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount, sessionsAdded: weeksAdded, studentsAdded, studentsUpdated, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
 
       return { importId, type: 'lifegroup', rowCount, groupsAdded, studentsAdded, studentsUpdated, weeksAdded };
