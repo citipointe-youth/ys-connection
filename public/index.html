@@ -501,7 +501,7 @@ function _initShell() {
 }
 
 function _prefetch() {
-  ['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/import/history'].forEach(p => API.get(p).catch(() => {}));
+  ['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'].forEach(p => API.get(p).catch(() => {}));
 }
 
 // ============================================================
@@ -772,7 +772,9 @@ async function doLogout() {
 // HOME (aligned to connection-platform demo: attendance hero + tiles)
 // ============================================================
 let _homeQuadOpen = null;
+let _homeLgQuad = null, _homeLgGrade = null; // Home lifegroup section expand-state
 function toggleHomeQuad(q) { _homeQuadOpen = (_homeQuadOpen === q) ? null : q; renderHome(); }
+function toggleHomeLgQuad(q) { _homeLgQuad = (_homeLgQuad === q) ? null : q; _homeLgGrade = null; renderHome(); }
 function _hQuadGrades(q) { return (q === 'g79' || q === 'b79') ? [7, 8, 9] : [10, 11, 12]; }
 function _hGradeAvg(trends, g) { const x = ((trends && trends.byGrade) || []).find(y => y.grade === g); return x ? Math.round(x.averageAttendance) : 0; }
 function _hQuadAvg(trends, q) { const x = ((trends && trends.byQuad) || []).find(y => y.quad === q); return x ? Math.round(x.averageAttendance) : 0; }
@@ -833,12 +835,13 @@ async function renderHome() {
 }
 async function _renderHomeInner() {
   const u = S.user;
-  let stats, trends, sc = [];
+  let stats, trends, sc = [], lgStats = null;
   try {
-    [stats, trends, sc] = await Promise.all([
+    [stats, trends, sc, lgStats] = await Promise.all([
       API.get('/overview').catch(() => null),
       API.get('/trends').catch(() => null),
       API.get('/students').catch(() => []),
+      API.get('/lifegroups/stats').catch(() => null),
     ]);
   } catch {}
   sc = sc || [];
@@ -953,6 +956,37 @@ async function _renderHomeInner() {
         for (const gr of _hQuadGrades(u.quad)) body += _hAttTile('Yr ' + gr, sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr));
         body += '</div>';
       }
+      // ── Lifegroup Attendance (current term only on Home) ──
+      // average = individuals attending a lifegroup each week the scope ran.
+      if (lgStats && ['admin', 'director'].includes(u.role)) {
+        const quads = (lgStats.byQuad || []).filter(q => q.current.weeksRan > 0 || q.current.uniqueAttenders > 0);
+        if (quads.length) {
+          body += '<div class="sh">Lifegroups by Quad</div><div style="margin-bottom:16px">';
+          for (const q of quads) {
+            const open = _homeLgQuad === q.quad;
+            body += `<div class="card" style="margin-bottom:8px;padding:11px">
+              <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleHomeLgQuad('${q.quad}')">
+                <span style="font-size:12px;transition:.2s;display:inline-block;transform:${open?'rotate(90deg)':'rotate(0deg)'};color:var(--ink-faint);font-weight:800">›</span>
+                <div style="flex:1;font-size:13px;font-weight:700">${q.label}</div>
+                <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} uniq · ${q.current.avgPerWeek} avg/wk</span>
+              </div>`;
+            if (open) for (const gr of _hQuadGrades(q.quad)) {
+              const g = (lgStats.byGrade || []).find(x => x.grade === gr);
+              if (g) body += _lgGradeBlock(g, false, 'home');
+            }
+            body += '</div>';
+          }
+          body += '</div>';
+        }
+      } else if (lgStats && u.role === 'quad') {
+        const grades = (lgStats.byGrade || []).filter(g => g.current.weeksRan > 0 || g.current.uniqueAttenders > 0);
+        if (grades.length) {
+          body += '<div class="sh">Lifegroups by Grade</div><div class="card" style="margin-bottom:16px">';
+          for (const g of grades) body += _lgGradeBlock(g, false, 'home');
+          body += '</div>';
+        }
+      }
+
       // Connection by Grade bars
       if (['admin', 'director', 'quad'].includes(u.role) && stats.byGrade) {
         const vg = stats.byGrade.filter(g => g.totalStudents > 0);
@@ -2172,13 +2206,66 @@ function trendArrow(dir) {
   return '';
 }
 
+// Service attendance aggregate for a student subset. `prev=true` reads the
+// previous-term fields. avg/wk = total attendances ÷ valid weeks in the term
+// (== the server's per-session average), uniq = distinct attenders.
+function _svcAgg(list, prev) {
+  const att = list.reduce((a, s) => a + (prev ? s.prevSvcAttended : s.svcAttended), 0);
+  const tot = list.reduce((m, s) => Math.max(m, (prev ? s.prevSvcTotal : s.svcTotal)), 0);
+  const uniq = list.filter(s => (prev ? s.prevSvcAttended : s.svcAttended) > 0).length;
+  return { uniq, avg: tot > 0 ? Math.round(att / tot) : 0, weeks: tot };
+}
+function _svcPrevSub(p) { return p.weeks > 0 ? ['prev: ' + p.uniq, 'prev: ' + p.avg] : null; }
+
+// ── Lifegroup-stats render helpers (used by Trends Lifegroups tab + Home) ──
+// `showPrev` toggles the muted previous-term line (Trends shows it; Home doesn't).
+function _lgAggBits(a) {
+  if (!a) return '<span style="color:var(--ink-faint)">no data</span>';
+  return `<b style="color:var(--ink)">${a.uniqueAttenders}</b> uniq · <b style="color:var(--ink)">${a.avgPerWeek}</b> avg/wk · <b style="color:var(--ink)">${a.weeksRan}</b> wk${a.weeksRan===1?'':'s'}`;
+}
+function _lgPrevBits(a) {
+  if (!a || a.weeksRan === 0) return '';
+  return `<div style="font-size:11px;color:var(--ink-faint);margin-top:1px">prev term: ${a.uniqueAttenders} uniq · ${a.avgPerWeek} avg/wk · ${a.weeksRan} wk${a.weeksRan===1?'':'s'}</div>`;
+}
+// One lifegroup detail row (per-grade dropdown content).
+function _lgGroupRow(lg, showPrev) {
+  return `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:2px">${lg.name}</div>
+    <div style="font-size:12px;color:var(--ink-mid)">${_lgAggBits(lg.current)}</div>
+    ${showPrev ? _lgPrevBits(lg.previous) : ''}
+  </div>`;
+}
+// A grade block: summary line + (when open) its lifegroups. `mode` selects which
+// page owns the open-state + re-render ('trends' → _trGradeOpen/renderTrends;
+// 'home' → _homeLgGrade/renderHome).
+function _lgGradeBlock(g, showPrev, mode) {
+  mode = mode || 'trends';
+  const isOpen = (mode === 'home' ? _homeLgGrade : _trGradeOpen) === g.grade;
+  const setvar = mode === 'home' ? '_homeLgGrade' : '_trGradeOpen';
+  const rerender = mode === 'home' ? 'renderHome()' : 'renderTrends()';
+  let h = `<div style="border-top:1px solid var(--paper-dark)">
+    <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 0" onclick="${setvar}=${isOpen?'null':g.grade};${rerender}">
+      <span style="font-size:12px;transition:.2s;display:inline-block;transform:${isOpen?'rotate(90deg)':'rotate(0deg)'}">›</span>
+      <div style="flex:1;font-size:13px;font-weight:700">Year ${g.grade}</div>
+      <span style="font-size:12px;color:var(--ink-mid)">${g.current.uniqueAttenders} uniq · ${g.current.avgPerWeek} avg/wk</span>
+    </div>`;
+  if (showPrev && g.previous.weeksRan > 0) h += `<div style="font-size:11px;color:var(--ink-faint);padding:0 0 4px 20px">prev term: ${g.previous.uniqueAttenders} uniq · ${g.previous.avgPerWeek} avg/wk · ${g.previous.weeksRan} wks</div>`;
+  if (isOpen) {
+    if (g.lifegroups && g.lifegroups.length) for (const lg of g.lifegroups) h += _lgGroupRow(lg, showPrev);
+    else h += `<div style="font-size:12px;color:var(--ink-faint);padding:4px 0 6px 20px">No lifegroups ran this term</div>`;
+  }
+  h += '</div>';
+  return h;
+}
+
 async function renderTrends() {
   if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
   const u = S.user;
-  const [students, overview, trends] = await Promise.all([
+  const [students, overview, trends, lgStats] = await Promise.all([
     API.get('/students').catch(() => []),
     API.get('/overview').catch(() => null),
     API.get('/trends').catch(() => null),
+    API.get('/lifegroups/stats').catch(() => null),
   ]);
 
   const canExport = ['quad','director','admin'].includes(u.role);
@@ -2229,18 +2316,19 @@ async function renderTrends() {
 
   const _scrollY = document.querySelector('.pg')?.scrollTop || 0;
 
+  // Term label for the "this term" sub-heading (uses the trends term range).
+  const _curTerm = trends && trends.terms && trends.terms.current;
+  const _termNote = _curTerm ? `${fmtDM(_curTerm.startDate)} – ${fmtDM(_curTerm.endDate)}` : 'this term';
+
   if (_trTab === 'svc') {
-    // Ministry-wide overview stat card
+    // Ministry-wide overview stat card (current term, with previous-term subtext)
+    const minCur = _svcAgg(students, false), minPrev = _svcAgg(students, true);
     body += `<div class="sh">Ministry Overview</div><div class="card">`;
-    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Attendance across all students this term</div>`;
-    body += statCard(
-      [totalUniq, trends && trends.ministry ? Math.round(trends.ministry.averageAttendance) : 0],
-      ['Unique attenders', 'Avg students/week'],
-      null
-    );
+    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Service attendance · this term (${_termNote})</div>`;
+    body += statCard([minCur.uniq, minCur.avg], ['Unique attenders', 'Avg students/week'], _svcPrevSub(minPrev));
     body += '</div>';
 
-    // Weekly attendance chart — one bar per valid service (sub-floor weeks excluded)
+    // Weekly attendance chart — one bar per valid CURRENT-TERM service
     if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
       const valid = trends.ministry.sessions.filter(s => !s.isOutlier);
       if (valid.length) {
@@ -2254,53 +2342,53 @@ async function renderTrends() {
     }
 
     if (u.role === 'grade') {
-      const gr = byGrade.find(x => x.grade === u.grade);
-      if (gr && gr.count) {
-        body += `<div class="sh">Grade ${u.grade}</div><div class="card">`;
-        body += statCard([gr.uniq, _hGradeAvg(trends, u.grade)],
-          ['Unique attenders','Avg students/week'], null);
-        body += '</div>';
-      }
+      const gl = students.filter(s => s.grade === u.grade);
+      const c = _svcAgg(gl, false), p = _svcAgg(gl, true);
+      body += `<div class="sh">Grade ${u.grade}</div><div class="card">`;
+      body += statCard([c.uniq, c.avg], ['Unique attenders','Avg students/week'], _svcPrevSub(p));
+      body += '</div>';
     } else if (u.role === 'quad') {
-      const q = byQuad.find(x => x.quad === u.quad);
-      if (q && q.count) {
-        body += `<div class="sh">${q.label}</div><div class="card">`;
-        body += statCard([q.uniq, _hQuadAvg(trends, u.quad)],
-          ['Unique attenders','Avg students/week'], null);
-        body += '<div class="sh" style="margin-top:10px">By Grade</div><div class="tbar-wrap" style="margin-top:6px">';
-        const grades = u.quad==='g79'||u.quad==='b79' ? [7,8,9] : [10,11,12];
-        for (const gr of grades) {
-          const g = byGrade.find(x=>x.grade===gr);
-          if (g && g.count) body += hbarTr('Yr'+gr, g.svcPct, g.uniq+' uniq');
-        }
-        body += '</div></div>';
+      const ql = students.filter(s => s.quad === u.quad);
+      const c = _svcAgg(ql, false), p = _svcAgg(ql, true);
+      body += `<div class="sh">${QUAD_LABELS_LOCAL[u.quad]||u.quad}</div><div class="card">`;
+      body += statCard([c.uniq, c.avg], ['Unique attenders','Avg students/week'], _svcPrevSub(p));
+      body += '<div class="sh" style="margin-top:10px">By Grade</div>';
+      const grades = u.quad==='g79'||u.quad==='b79' ? [7,8,9] : [10,11,12];
+      for (const gr of grades) {
+        const gl2 = students.filter(s => s.grade === gr);
+        if (!gl2.length) continue;
+        const gc = _svcAgg(gl2, false), gp = _svcAgg(gl2, true);
+        body += `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
+          <div style="font-size:13px;font-weight:600">Year ${gr}</div>
+          <div style="font-size:12px;color:var(--ink-mid)"><b style="color:var(--ink)">${gc.uniq}</b> uniq · <b style="color:var(--ink)">${gc.avg}</b> avg/wk</div>
+          ${gp.weeks>0?`<div style="font-size:11px;color:var(--ink-faint)">prev term: ${gp.uniq} uniq · ${gp.avg} avg/wk</div>`:''}
+        </div>`;
       }
+      body += '</div>';
     } else {
-      // Director / admin: collapsible quad cards
+      // Director / admin: collapsible quad cards (current + previous term)
       body += `<div class="sh">By Quad</div>`;
       for (const q of byQuad) {
         if (!q.count) continue;
+        const ql = students.filter(s => s.quad === q.quad);
+        const c = _svcAgg(ql, false), p = _svcAgg(ql, true);
         const isQOpen = _trQuadOpen === q.quad;
         body += `<div class="card" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
         body += `<div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_trQuadOpen=${isQOpen?'null':`'${q.quad}'`};_trGradeOpen=null;renderTrends()">
           <span style="font-size:12px;transition:.2s;display:inline-block;transform:${isQOpen?'rotate(90deg)':'rotate(0deg)'}">›</span>
           <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
-          <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.uniq} uniq · ${_hQuadAvg(trends, q.quad)} avg/wk</span>
+          <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${c.uniq} uniq · ${c.avg} avg/wk</span>
         </div>`;
+        if (p.weeks>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${p.uniq} uniq · ${p.avg} avg/wk</div>`;
         if (isQOpen) {
-          // Compact per-grade rows (no big stat tiles — those are kept for the
-          // Ministry Overview only).
           const grades = q.quad==='g79'||q.quad==='b79' ? [7,8,9] : [10,11,12];
           for (const gr of grades) {
-            const g = byGrade.find(x=>x.grade===gr);
-            if (!g||!g.count) continue;
-            const grpUniq = students.filter(s=>s.grade===gr && s.grpAttended>0).length;
+            const gl2 = students.filter(s => s.grade === gr);
+            if (!gl2.length) continue;
+            const gc = _svcAgg(gl2, false), gp = _svcAgg(gl2, true);
             body += `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px">
                 <div style="font-size:13px;font-weight:600;padding-left:20px;margin-bottom:2px">Year ${gr}</div>
-                <div style="display:flex;gap:16px;padding-left:20px;font-size:12px;color:var(--ink-mid);flex-wrap:wrap">
-                  <span>Service: <b style="color:var(--ink)">${g.uniq}</b> uniq · <b style="color:var(--ink)">${_hGradeAvg(trends, gr)}</b> avg/wk</span>
-                  <span>Group: <b style="color:var(--ink)">${grpUniq}</b> uniq</span>
-                </div>
+                <div style="padding-left:20px;font-size:12px;color:var(--ink-mid)"><b style="color:var(--ink)">${gc.uniq}</b> uniq · <b style="color:var(--ink)">${gc.avg}</b> avg/wk${gp.weeks>0?` <span style="color:var(--ink-faint)">(prev ${gp.uniq} · ${gp.avg})</span>`:''}</div>
               </div>`;
           }
         }
@@ -2309,36 +2397,57 @@ async function renderTrends() {
     }
 
   } else {
-    // Lifegroups tab. A student is "in" a group only if they attended >=1 week,
-    // so we never show a roster/"enrolled" size — only attendance.
-    const grpAttenders = students.filter(s => s.grpAttended > 0);
-    const totGrpUniq = grpAttenders.length;
-    const totGrpAtt = grpAttenders.reduce((s,x)=>s+x.grpAttended,0);
-    const totGrpTot = grpAttenders.reduce((s,x)=>s+x.grpTotal,0);
-    const totGrpRate = totGrpTot > 0 ? Math.round(totGrpAtt/totGrpTot*100) : 0;
+    // ── Lifegroups tab — quad → grade → lifegroup, current + previous term. ──
+    // All numbers come from /lifegroups/stats: average = individuals attending a
+    // lifegroup each week the scope ran (not a percentage).
+    if (!lgStats) {
+      body += `<div class="card"><div style="color:var(--ink-faint);font-size:13px">Lifegroup stats unavailable.</div></div>`;
+    } else {
+      const oc = lgStats.overall.current, op = lgStats.overall.previous;
+      body += `<div class="sh">Overview</div><div class="card">`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Individuals attending a lifegroup · this term</div>`;
+      body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Unique attenders','Avg/week'],
+        op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
+      body += `<div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${oc.weeksRan} week${oc.weeksRan===1?'':'s'} ran this term${op.weeksRan>0?' · '+op.weeksRan+' previous':''}</div>`;
+      body += '</div>';
 
-    body += `<div class="sh">Overview</div><div class="card">`;
-    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Lifegroup attendance this term</div>`;
-    body += statCard([totGrpUniq, totGrpRate + '%'], ['Unique attenders','Avg attendance'], null);
-    body += '</div>';
-
-    const lgGrades = u.role==='grade' ? [u.grade]
-      : u.role==='quad' ? (u.quad==='g79'||u.quad==='b79'?[7,8,9]:[10,11,12])
-      : [7,8,9,10,11,12];
-
-    if (u.role !== 'grade') body += `<div class="sh">By Grade</div>`;
-    for (const gr of lgGrades) {
-      const grSc = students.filter(s => s.grade === gr && s.grpAttended > 0);
-      if (!grSc.length) continue;
-      const grUniq = grSc.length;
-      const grAtt = grSc.reduce((s,x)=>s+x.grpAttended,0);
-      const grTot = grSc.reduce((s,x)=>s+x.grpTotal,0);
-      const grRate = grTot > 0 ? Math.round(grAtt/grTot*100) : 0;
-      body += `<div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:13px;font-weight:700;flex:1">${u.role==='grade'?'Grade '+gr+' Lifegroups':'Year '+gr}</span>
-        <span style="font-size:13px;font-weight:700">${grUniq}</span><span style="font-size:11px;color:var(--ink-faint);margin:0 8px 0 3px">attenders</span>
-        <span style="font-size:13px;font-weight:700">${grRate}%</span><span style="font-size:11px;color:var(--ink-faint);margin-left:3px">avg</span>
-      </div>`;
+      if (u.role === 'grade') {
+        const g = (lgStats.byGrade || [])[0];
+        body += `<div class="sh">Grade ${u.grade} Lifegroups</div><div class="card">`;
+        if (g && g.lifegroups.length) for (const lg of g.lifegroups) body += _lgGroupRow(lg, true);
+        else body += `<div style="color:var(--ink-faint);font-size:13px">No lifegroups ran this term</div>`;
+        body += '</div>';
+      } else if (u.role === 'quad') {
+        body += `<div class="sh">By Grade</div><div class="card">`;
+        const grades = (lgStats.byGrade || []);
+        if (grades.length) for (const g of grades) body += _lgGradeBlock(g, true);
+        else body += `<div style="color:var(--ink-faint);font-size:13px">No lifegroup data yet</div>`;
+        body += '</div>';
+      } else {
+        body += `<div class="sh">By Quad</div>`;
+        const quads = (lgStats.byQuad || []);
+        for (const q of quads) {
+          const isQOpen = _trQuadOpen === q.quad;
+          body += `<div class="card" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
+          body += `<div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_trQuadOpen=${isQOpen?'null':`'${q.quad}'`};_trGradeOpen=null;renderTrends()">
+            <span style="font-size:12px;transition:.2s;display:inline-block;transform:${isQOpen?'rotate(90deg)':'rotate(0deg)'}">›</span>
+            <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
+            <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} uniq · ${q.current.avgPerWeek} avg/wk</span>
+          </div>`;
+          if (q.previous.weeksRan>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${q.previous.uniqueAttenders} uniq · ${q.previous.avgPerWeek} avg/wk</div>`;
+          if (isQOpen) {
+            const grades = _hQuadGrades(q.quad);
+            let any = false;
+            for (const gr of grades) {
+              const g = (lgStats.byGrade || []).find(x => x.grade === gr);
+              if (g) { body += _lgGradeBlock(g, true); any = true; }
+            }
+            if (!any) body += `<div style="font-size:12px;color:var(--ink-faint);padding:6px 0 4px 20px">No lifegroups ran this term</div>`;
+          }
+          body += '</div>';
+        }
+        if (!quads.length) body += `<div class="card"><div style="color:var(--ink-faint);font-size:13px">No lifegroup data yet</div></div>`;
+      }
     }
   }
 
