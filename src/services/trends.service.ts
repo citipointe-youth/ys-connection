@@ -8,6 +8,7 @@ import type {
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
 import { QUADS, QUAD_LABELS } from '../core/types/enums';
+import { computeTerms, classifyDate, mondayOf, type Terms } from './terms';
 
 export interface SessionPoint {
   sessionId: string;
@@ -40,6 +41,10 @@ export interface MinistryTrend {
 }
 
 export interface TrendsData {
+  // Term boundaries (service-date gaps). Trends default to the CURRENT term; the
+  // chart and every average below are scoped to it. Previous-term comparison
+  // numbers are derived client-side from the student prev* fields.
+  terms: Terms;
   ministry: MinistryTrend;
   byQuad: QuadTrend[];
   byGrade: GradeTrend[];
@@ -125,11 +130,22 @@ export function makeTrendsService(
       // A session is "valid" iff the whole-ministry attendance that week is >=
       // the configured floor (default 100). Anything below — holidays, term
       // breaks, future-dated columns, cancelled services — is disregarded
-      // entirely. This single global mask is applied to ministry, quad AND grade
-      // averages so they share one denominator and stay additive. isOutlier on a
-      // point means "not a valid service" (also hides it from the chart).
+      // entirely.
       const isValidSession = (sessionId: string): boolean =>
         (attendedBySession.get(sessionId)?.size ?? 0) >= minAttendance;
+
+      // Term boundaries come from the valid service dates (Monday-bucketed), the
+      // same rule the import uses. Trends default to the CURRENT term: a point is
+      // shown/averaged only if it is a valid service AND falls in the current
+      // term. isOutlier therefore means "not a current-term valid service" (also
+      // hides it from the chart). This keeps the chart and every average — and the
+      // home page that reads them — scoped to "this term".
+      const validDates = sortedSessions
+        .filter((s) => isValidSession(s.id))
+        .map((s) => mondayOf(s.sessionDate));
+      const terms = computeTerms(validDates, settings.termGapDays);
+      const isCurrentSession = (sess: { id: string; sessionDate: string }): boolean =>
+        isValidSession(sess.id) && classifyDate(mondayOf(sess.sessionDate), terms) === 'current';
 
       const buildPoints = (memberIds: Set<string> | null, totalPresent: number): SessionPoint[] =>
         sortedSessions.map((sess) => {
@@ -143,7 +159,7 @@ export function makeTrendsService(
             sessionName: sess.sessionName,
             totalAttended,
             totalPresent,
-            isOutlier: !isValidSession(sess.id),
+            isOutlier: !isCurrentSession(sess),
           };
         });
 
@@ -199,6 +215,7 @@ export function makeTrendsService(
       }
 
       return {
+        terms,
         ministry,
         byQuad,
         byGrade,

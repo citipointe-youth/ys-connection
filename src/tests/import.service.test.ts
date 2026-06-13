@@ -236,4 +236,72 @@ describe('Import Service', () => {
     // Average should be computed only from non-outlier sessions (all 12 attending = 12)
     expect(data.ministry.averageAttendance).toBe(12);
   });
+
+  // ── TC66 — Service import splits this-term vs previous-term over a holiday gap ──
+  it('TC66: service import populates current + previous term svc counts', async () => {
+    const r = makeRepos();
+    await initRepos(r);
+    const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
+    // Term 1 (Feb) and Term 2 (Apr) separated by a >14-day gap → current = Apr.
+    const rows = [
+      { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9,
+        '2026-02-06': true, '2026-02-13': true, '2026-02-20': true,
+        '2026-04-17': true, '2026-04-24': true },
+      { first_name: 'Bob', last_name: 'Jones', gender: 'male', grade: 9,
+        '2026-02-06': true, '2026-02-13': false, '2026-02-20': false,
+        '2026-04-17': true, '2026-04-24': false },
+    ];
+    await svc.importServiceCsv(ADMIN, rows, 'year.csv');
+    const students = await r.students.findAll();
+    const alice = students.find(s => s.firstName === 'Alice')!;
+    const bob = students.find(s => s.firstName === 'Bob')!;
+
+    expect(alice.svcTotal).toBe(2);       // current term = Apr 17, 24
+    expect(alice.prevSvcTotal).toBe(3);   // previous term = Feb 6, 13, 20
+    expect(alice.svcAttended).toBe(2);
+    expect(alice.prevSvcAttended).toBe(3);
+
+    expect(bob.svcAttended).toBe(1);       // Apr 17 only
+    expect(bob.prevSvcAttended).toBe(1);   // Feb 6 only
+    expect(bob.prevSvcTotal).toBe(3);
+  });
+
+  // ── TC67 — Group import splits group weeks by the SAME service boundaries and ──
+  //          keeps the service split consistent (cross-stream recompute).
+  it('TC67: group import term-splits group weeks and preserves the service split', async () => {
+    const r = makeRepos();
+    await initRepos(r);
+    const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
+    // 1) Service import first — establishes the term boundaries.
+    await svc.importServiceCsv(ADMIN, [
+      { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9,
+        '2026-02-06': true, '2026-02-13': true, '2026-02-20': true,
+        '2026-04-17': true, '2026-04-24': true },
+    ], 'year.csv');
+
+    // 2) Group import — meetings span the previous term, the holiday gap, and the
+    //    current term. Alice attends the prev week + one current week.
+    await svc.importGroupCsv(DIR, {
+      groups: [{
+        name: 'Grade 9 Girls Lifegroup',
+        meetings: ['2026-02-12', '2026-03-19', '2026-04-16', '2026-04-23'],
+        members: [
+          { first_name: 'Alice', last_name: 'Smith', attendance: [true, false, true, false] },
+        ],
+      }],
+    }, 'groups.csv');
+
+    const alice = (await r.students.findAll()).find(s => s.firstName === 'Alice')!;
+    // Current-term group: weeks Apr 16 + Apr 23 ran; attended Apr 16 only.
+    expect(alice.grpTotal).toBe(2);
+    expect(alice.grpAttended).toBe(1);
+    // Previous-term group: week Feb 12 ran + attended. The Mar 19 gap week is excluded.
+    expect(alice.prevGrpTotal).toBe(1);
+    expect(alice.prevGrpAttended).toBe(1);
+    // Service split survived the group import unchanged.
+    expect(alice.svcTotal).toBe(2);
+    expect(alice.prevSvcTotal).toBe(3);
+    expect(alice.svcAttended).toBe(2);
+    expect(alice.prevSvcAttended).toBe(3);
+  });
 });

@@ -13,9 +13,12 @@ import type {
   ISettingsRepository,
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
+import type { Student } from '../core/entities/student';
+import type { AppSettings } from '../core/entities/settings';
 import { computeQuad } from '../core/types/enums';
 import { BadRequestError } from '../core/errors/app-error';
 import { computeStatus } from './atrisk.service';
+import { computeStudentAggregates, emptyStudentAggregate, type AggregateResult } from './aggregates';
 
 // A "week" runs Monday→Sunday — the calendar week that contains that week's
 // Friday service. Map any meeting date to the Monday on/before it so lifegroup
@@ -118,6 +121,37 @@ function parseGroupName(name: string): { grade: number | null; gender: 'male' | 
   if (/\bboys?\b/i.test(name)) gender = 'male';
   else if (/\bgirls?\b/i.test(name)) gender = 'female';
   return { grade, gender };
+}
+
+// Apply a recomputed term split to every student. Both import paths call this
+// after writing their stream's raw rows, so service AND lifegroup current/
+// previous-term counts stay consistent regardless of which stream was imported
+// or in what order. At-risk is computed from the CURRENT term (the default
+// everywhere). svcTotal/prevSvcTotal are global valid-session counts; grp totals
+// are per-student weeks-the-group-ran in each term.
+function applyAggregatesToStudents(
+  base: Student[],
+  agg: AggregateResult,
+  settings: AppSettings,
+  now: string,
+): Student[] {
+  return base.map((s) => {
+    const a = agg.byStudent.get(s.id) ?? emptyStudentAggregate();
+    return {
+      ...s,
+      svcAttended: a.svcAttended,
+      svcTotal: agg.svcTotal,
+      prevSvcAttended: a.prevSvcAttended,
+      prevSvcTotal: agg.prevSvcTotal,
+      grpAttended: a.grpAttended,
+      grpTotal: a.grpTotal,
+      grpMetWeeks: a.grpMetWeeks,
+      prevGrpAttended: a.prevGrpAttended,
+      prevGrpTotal: a.prevGrpTotal,
+      atRiskStatus: computeStatus(a.svcAttended, agg.svcTotal, a.grpAttended, a.grpTotal, settings),
+      updatedAt: now,
+    };
+  });
 }
 
 export function makeImportService(
@@ -321,52 +355,39 @@ export function makeImportService(
       for (const rec of attendanceMap.values()) {
         if (rec.attended) sessionAttendedCount.set(rec.sessionId, (sessionAttendedCount.get(rec.sessionId) ?? 0) + 1);
       }
-      const validSessions = new Set<string>();
       for (const s of sessionsToCreate) {
         const cnt = sessionAttendedCount.get(s.id) ?? 0;
         s.totalAttendance = cnt;
         s.isValid = cnt >= minAttendance;
-        if (s.isValid) validSessions.add(s.id);
-      }
-      const validTotal = validSessions.size;
-
-      // Per-student attendance counted over valid services only.
-      const validAttendedByStudent = new Map<string, number>();
-      for (const rec of attendanceMap.values()) {
-        if (rec.attended && validSessions.has(rec.sessionId)) {
-          validAttendedByStudent.set(rec.studentId, (validAttendedByStudent.get(rec.studentId) ?? 0) + 1);
-        }
-      }
-
-      // Finalise svc counts (attended / valid services) + at-risk (from svc AND
-      // group) for students in this import. Same definition overview, at-risk and
-      // the Connection Audit 'Regular' stage all read from.
-      for (const [sid, stu] of studentsToSaveMap) {
-        const svcAttended = validAttendedByStudent.get(sid) ?? 0;
-        studentsToSaveMap.set(sid, {
-          ...stu,
-          svcAttended,
-          svcTotal: validTotal,
-          atRiskStatus: computeStatus(svcAttended, validTotal, stu.grpAttended, stu.grpTotal, settings),
-        });
-      }
-
-      // Replace semantics: existing students NOT in this import keep their row and
-      // all connections, but their service counts reset to 0 (no attendance in the
-      // new data). At-risk recomputed from their group data.
-      const studentsToSave = [...studentsToSaveMap.values()];
-      const inFile = new Set(studentsToSaveMap.keys());
-      for (const s of allStudents) {
-        if (inFile.has(s.id)) continue;
-        studentsToSave.push({
-          ...s,
-          svcAttended: 0,
-          svcTotal: validTotal,
-          atRiskStatus: computeStatus(0, validTotal, s.grpAttended, s.grpTotal, settings),
-          updatedAt: now,
-        });
       }
       const attendanceRecords = [...attendanceMap.values()];
+
+      // ── Term split (this term vs previous) over BOTH streams. ──
+      // Service-date gaps > termGapDays set the boundaries; the SAME boundaries
+      // are applied to the stored lifegroup weeks so service and group numbers
+      // agree on where the term break falls. Group data is read fresh from the
+      // repos (it isn't part of this service import) and re-split here.
+      const [allWeeks, allLgAtt] = await Promise.all([
+        lifegroupWeekRepo.findAll(),
+        lifegroupAttendanceRepo.findAll(),
+      ]);
+      const weekStartById = new Map(allWeeks.map((w) => [w.id, w.weekStart]));
+      const agg = computeStudentAggregates({
+        termGapDays: settings.termGapDays,
+        serviceSessions: sessionsToCreate.map((s) => ({ id: s.id, date: s.sessionDate, valid: s.isValid })),
+        serviceAttendance: attendanceRecords,
+        weekStartById,
+        lifegroupAttendance: allLgAtt.map((r) => ({ studentId: r.studentId, weekId: r.weekId, attended: r.attended })),
+      });
+
+      // Full student save set: CSV students (identity/contact updates + any new)
+      // overlaid on existing students; everyone gets the recomputed split. This is
+      // the replace semantics — students absent from the CSV keep their row and
+      // connections, their service counts simply fall to 0 for this term.
+      const baseById = new Map<string, Student>();
+      for (const s of allStudents) baseById.set(s.id, s);
+      for (const [id, s] of studentsToSaveMap) baseById.set(id, s);
+      const studentsToSave = applyAggregatesToStudents([...baseById.values()], agg, settings, now);
 
       // Replace prior service data (sessions + attendance cascade). Students and
       // connections are NOT touched.
@@ -582,38 +603,6 @@ export function makeImportService(
         .map(({ id, weekStart }) => ({ id, importId, weekNum: ++weekNum, weekKey: weekStart, weekStart, weekEnd: null }));
       const weeksAdded = weeksToCreate.length;
 
-      // Students to save: members (new grp counts) + everyone else (grp reset to 0,
-      // replace semantics). At-risk recomputed from svc (unchanged) + new grp.
-      const inGroup = new Set(grpByStudent.keys());
-      const studentsToSave: Parameters<typeof studentRepo.save>[0][] = [];
-      for (const { obj, attended, total } of grpByStudent.values()) {
-        studentsToSave.push({
-          ...obj,
-          grpAttended: attended,
-          grpTotal: total,
-          grpMetWeeks: total,
-          atRiskStatus: computeStatus(obj.svcAttended, obj.svcTotal, attended, total, settings),
-          updatedAt: now,
-        });
-      }
-      for (const s of allStudents) {
-        if (inGroup.has(s.id)) continue;
-        studentsToSave.push({
-          ...s,
-          grpAttended: 0,
-          grpTotal: 0,
-          grpMetWeeks: 0,
-          atRiskStatus: computeStatus(s.svcAttended, s.svcTotal, 0, 0, settings),
-          updatedAt: now,
-        });
-      }
-
-      // Writes, FK-safe order.
-      await importRepo.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount: 0, sessionsAdded: 0, studentsAdded: 0, studentsUpdated: 0, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
-      for (const l of leadersToWrite.values()) await leaderRepo.save(l);
-      await lifegroupRepo.saveMany(newLifegroups);
-      await lifegroupWeekRepo.saveMany(weeksToCreate);
-      await studentRepo.saveMany(studentsToSave);
       // Final guard: one row per (student, week_id) — protects the PK against a
       // duplicate name within a single group's roll.
       const seenAtt = new Set<string>();
@@ -623,6 +612,35 @@ export function makeImportService(
         seenAtt.add(k);
         return true;
       });
+
+      // ── Term split over BOTH streams. Lifegroup weeks split by the SAME
+      // boundaries the service dates define; service data is read fresh from the
+      // repos and re-split so its current/previous counts stay consistent with
+      // this group import. Members get their group counts; everyone else falls to
+      // 0 group (replace semantics) — all via one uniform recompute. ──
+      const [allSessions, allSvcAtt] = await Promise.all([
+        sessionRepo.findAll(),
+        attendanceRepo.findAll(),
+      ]);
+      const weekStartById = new Map(weeksToCreate.map((w) => [w.id, w.weekStart]));
+      const agg = computeStudentAggregates({
+        termGapDays: settings.termGapDays,
+        serviceSessions: allSessions.map((s) => ({ id: s.id, date: s.sessionDate, valid: s.isValid })),
+        serviceAttendance: allSvcAtt.map((r) => ({ studentId: r.studentId, sessionId: r.sessionId, attended: r.attended })),
+        weekStartById,
+        lifegroupAttendance: dedupedAttendance.map((r) => ({ studentId: r.studentId, weekId: r.weekId, attended: r.attended })),
+      });
+      const baseById = new Map<string, Student>();
+      for (const s of allStudents) baseById.set(s.id, s);
+      for (const { obj } of grpByStudent.values()) baseById.set(obj.id, obj);
+      const studentsToSave = applyAggregatesToStudents([...baseById.values()], agg, settings, now);
+
+      // Writes, FK-safe order.
+      await importRepo.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount: 0, sessionsAdded: 0, studentsAdded: 0, studentsUpdated: 0, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
+      for (const l of leadersToWrite.values()) await leaderRepo.save(l);
+      await lifegroupRepo.saveMany(newLifegroups);
+      await lifegroupWeekRepo.saveMany(weeksToCreate);
+      await studentRepo.saveMany(studentsToSave);
       if (dedupedAttendance.length > 0) await lifegroupAttendanceRepo.saveMany(dedupedAttendance);
       await importRepo.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount, sessionsAdded: weeksAdded, studentsAdded, studentsUpdated, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
 
