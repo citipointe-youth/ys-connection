@@ -1433,12 +1433,15 @@ function filterPicker() {
   const leadersById = {};
   for (const l of (window._pickerLeaders || [])) leadersById[l.id] = l;
 
+  const leaderGender = window._pickerGender || '';
   let list = pool;
   if (q) {
-    // Searching surfaces ANYONE by name/grade (cross-grade, and otherwise-hidden
-    // no-grade/no-gender students).
+    // Searching surfaces students across grades (and otherwise-hidden no-grade
+    // ones), but stays WITHIN the leader's gender — a definite opposite-gender
+    // student is never offered (unknown-gender youth can still be found).
     const terms = q.split(/\s+/).filter(Boolean);
     list = pool.filter(s => {
+      if (leaderGender && (s.gender === 'male' || s.gender === 'female') && s.gender !== leaderGender) return false;
       const text = `${s.firstName} ${s.lastName} ${s.grade||''}`.toLowerCase();
       return terms.every(t => text.includes(t));
     });
@@ -3484,7 +3487,7 @@ function model(){
   const people=[];
   for(const s of students){
     const k=norm(s.fn+' '+s.ln),x=marks.get(k)||{};
-    const stage=x.team?5:s.gT>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(x.hasConnect||x.hasDecision)?1:0;
+    const stage=x.team?5:s.gA>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(x.hasConnect||x.hasDecision)?1:0;
     const trend=trendOf(s);
     people.push({id:s.id,name:s.fn+' '+s.ln,s,caOnly:false,stage,trend,score:scoreOf(stage,s,trend),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team});
   }
@@ -3497,7 +3500,10 @@ function model(){
     .map(([n,lb])=>({n,lb,v:people.filter(p=>p.stage>=n).length}));
   // KPIs
   const act=students.filter(s=>s.sA>0).length;
-  const inLG=students.filter(s=>s.gT>0).length;
+  // "In a lifegroup" = attending one THIS term (gA>0). With the term split, gT>0
+  // alone means the group merely ran for them this term (they may have attended
+  // only last term), so it would over-count. Matches the gA>0 used elsewhere.
+  const inLG=students.filter(s=>s.gA>0).length;
   const ss=sessSeries();
   const avgFri=ss.length?Math.round(ss.reduce((t,x)=>t+x.v,0)/ss.length):Math.round(students.reduce((t,s)=>t+s.sA,0)/10);
   const tv=students.filter(s=>s.psT>0);
