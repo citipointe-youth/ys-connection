@@ -134,3 +134,35 @@ describe('planAllocationSync', () => {
     expect(plan.report.connectionsRemoved).toBe(1);
   });
 });
+
+import { buildAllocationExportRows } from '../services/connection-allocations';
+
+describe('buildAllocationExportRows', () => {
+  const students = [
+    { id: 's1', firstName: 'Zoe', lastName: 'Ash', grade: 9, gender: 'female' },
+    { id: 's2', firstName: 'Amy', lastName: 'Bell', grade: 9, gender: 'female' },
+    { id: 's3', firstName: 'Tom', lastName: 'Cole', grade: 7, gender: 'male' },
+    { id: 's4', firstName: 'No', lastName: 'Grade', grade: null, gender: 'other' },
+  ];
+  const leaders = [{ id: 'l1', fullName: 'Bob Lee' }, { id: 'l2', fullName: 'Jane Doe' }];
+
+  it('emits one row per pair, a blank-leader row for unconnected students, sorted gender>grade>name>leader', () => {
+    const conns = [
+      { studentId: 's1', leaderId: 'l2' }, // Zoe Ash -> Jane Doe
+      { studentId: 's1', leaderId: 'l1' }, // Zoe Ash -> Bob Lee
+      { studentId: 's3', leaderId: 'l1' }, // Tom Cole -> Bob Lee
+      // s2 Amy Bell unconnected; s4 No Grade unconnected
+    ];
+    const rows = buildAllocationExportRows(students, leaders, conns);
+    expect(rows).toEqual([
+      // female first; grade 9 ascending; by last name Ash before Bell; Zoe's leaders sorted Bob<Jane
+      { firstName: 'Zoe', lastName: 'Ash', grade: 9, gender: 'female', leader: 'Bob Lee' },
+      { firstName: 'Zoe', lastName: 'Ash', grade: 9, gender: 'female', leader: 'Jane Doe' },
+      { firstName: 'Amy', lastName: 'Bell', grade: 9, gender: 'female', leader: '' },
+      // male next; grade 7
+      { firstName: 'Tom', lastName: 'Cole', grade: 7, gender: 'male', leader: 'Bob Lee' },
+      // other gender + null grade sorts last
+      { firstName: 'No', lastName: 'Grade', grade: null, gender: 'other', leader: '' },
+    ]);
+  });
+});

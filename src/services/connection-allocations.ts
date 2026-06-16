@@ -163,3 +163,47 @@ export function planAllocationSync(
 
   return { toAdd, toRemove, report };
 }
+
+type StudentExportLite = { id: string; firstName: string; lastName: string; grade: number | null; gender: string };
+
+function genderRank(g: string): number {
+  const s = (g || '').toLowerCase();
+  if (s === 'female') return 0;
+  if (s === 'male') return 1;
+  return 2; // other/unknown sorts last
+}
+const gradeRank = (g: number | null) => (g == null ? Number.MAX_SAFE_INTEGER : g);
+
+export function buildAllocationExportRows(
+  students: StudentExportLite[],
+  leaders: LeaderLite[],
+  connections: ConnLite[],
+): AllocationExportRow[] {
+  const leaderById = new Map(leaders.map((l) => [l.id, l.fullName]));
+  const leaderNamesByStudent = new Map<string, string[]>();
+  for (const c of connections) {
+    const name = leaderById.get(c.leaderId);
+    if (!name) continue; // orphaned connection — skip
+    (leaderNamesByStudent.get(c.studentId) ?? leaderNamesByStudent.set(c.studentId, []).get(c.studentId)!).push(name);
+  }
+
+  const rows: AllocationExportRow[] = [];
+  for (const s of students) {
+    const base = { firstName: s.firstName, lastName: s.lastName, grade: s.grade, gender: s.gender };
+    const names = leaderNamesByStudent.get(s.id) ?? [];
+    if (names.length === 0) {
+      rows.push({ ...base, leader: '' });
+    } else {
+      for (const leader of names) rows.push({ ...base, leader });
+    }
+  }
+
+  rows.sort((a, b) =>
+    genderRank(a.gender) - genderRank(b.gender) ||
+    gradeRank(a.grade) - gradeRank(b.grade) ||
+    a.lastName.toLowerCase().localeCompare(b.lastName.toLowerCase()) ||
+    a.firstName.toLowerCase().localeCompare(b.firstName.toLowerCase()) ||
+    a.leader.toLowerCase().localeCompare(b.leader.toLowerCase()), // '' sorts first within a student
+  );
+  return rows;
+}
