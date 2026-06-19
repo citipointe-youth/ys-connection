@@ -12,6 +12,7 @@ import { makeAccountController } from '../controllers/account.controller';
 import { makeAdminController } from '../controllers/admin.controller';
 import { makeTrendsController } from '../controllers/trends.controller';
 import { makeLifegroupStatsController } from '../controllers/lifegroup-stats.controller';
+import { makePushController } from '../controllers/push.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -30,6 +31,7 @@ export function buildRoutes(services: Services): Route[] {
   const admin = makeAdminController({ admin: services.admin });
   const trends = makeTrendsController({ trends: services.trends });
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });
+  const push = makePushController({ push: services.push });
 
   return [
     // ----- Auth -----
@@ -91,6 +93,15 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST', path: '/admin/save-defaults', auth: true, handler: (r) => admin.saveDefaults(r) },
     { method: 'POST', path: '/admin/clear-service-group', auth: true, handler: (r) => admin.clearServiceGroupData(r) },
     { method: 'GET',  path: '/admin/audit',         auth: true, handler: (r) => admin.auditLog(r) },
+
+    // ----- Push notifications -----
+    { method: 'GET',    path: '/push/vapid-key',              auth: false, handler: (r) => push.getVapidKey(r) },
+    { method: 'POST',   path: '/push/subscribe',              auth: true,  handler: (r) => push.subscribe(r) },
+    { method: 'POST',   path: '/push/unsubscribe',            auth: true,  handler: (r) => push.unsubscribe(r) },
+    { method: 'POST',   path: '/push/send',                   auth: true,  handler: (r) => push.send(r) },
+    { method: 'GET',    path: '/push/notifications',          auth: true,  handler: (r) => push.getNotifications(r) },
+    { method: 'DELETE', path: '/push/notifications/:id',      auth: true,  handler: (r) => push.deleteNotification(r) },
+    { method: 'POST',   path: '/push/notifications/:id/dismiss', auth: true, handler: (r) => push.dismissNotification(r) },
 
     // ----- Account management -----
     { method: 'GET',    path: '/accounts/users',               auth: true, handler: (r) => account.list(r) },
