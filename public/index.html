@@ -518,6 +518,7 @@ function _initShell() {
         <h1>Youth Connection</h1>
         <div class="hdr-meta">
           ${roleBadge(u)}
+          ${['admin','director','quad'].includes(u.role)?`<div class="btn-icon" onclick="showSendNotification()" title="Send notification" aria-label="Send notification">${icN('bell')}</div>`:''}
           <div class="btn-icon" onclick="doLogout()" title="Sign out" aria-label="Sign out">${icN('logout')}</div>
         </div>
       </div>
@@ -757,6 +758,7 @@ const IC = {
   arrd:     '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
   arrr:     '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
   xmark:    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  bell:     '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
 };
 function icN(k){ return `<svg class="ic-n" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
 function icS(k){ return `<svg class="ic-s" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
@@ -893,7 +895,7 @@ async function doLogin() {
   const errEl = document.getElementById('lerr');
   try {
     const res = await API.post('/auth/login', { email, password });
-    API.setToken(res.token); S.user = res.user; go('home');
+    API.setToken(res.token); S.user = res.user; go('home'); initPushSubscription();
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
@@ -1179,7 +1181,159 @@ async function _renderHomeInner() {
     }
   }
 
+  body += '<div id="notif-history"></div>';
   setApp(shell(body));
+  _renderNotifHistory();
+}
+
+// ============================================================
+// PUSH NOTIFICATIONS
+// ============================================================
+
+function _urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+async function initPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const { publicKey } = await API.get('/push/vapid-key');
+    if (!publicKey) return;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlBase64ToUint8Array(publicKey) });
+    const j = sub.toJSON();
+    await API.post('/push/subscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+  } catch (e) { console.error('[push] subscribe error', e); }
+}
+
+function showSendNotification() {
+  const u = S.user;
+  if (!u || !['admin','director','quad'].includes(u.role)) return;
+  let opts = '';
+  if (u.role === 'admin' || u.role === 'director') {
+    opts += '<option value="all">Everyone</option>';
+    ['g79','b79','g1012','b1012'].forEach(q => { opts += `<option value="quad:${q}">${QUAD_LABELS[q]||q}</option>`; });
+    [7,8,9,10,11,12].forEach(gr => {
+      opts += `<option value="grade:${gr}:female">Grade ${gr} Girls</option>`;
+      opts += `<option value="grade:${gr}:male">Grade ${gr} Boys</option>`;
+    });
+  } else {
+    opts += `<option value="quad:${u.quad}">${QUAD_LABELS[u.quad]||u.quad} (whole quad)</option>`;
+    quadGrades(u.quad).forEach(gr => { const g = quadGender(u.quad); opts += `<option value="grade:${gr}:${g}">Grade ${gr}${_gsfx(g)}</option>`; });
+  }
+  modal(`
+    <div class="mo-title">${icN('bell')} Send Notification</div>
+    <div id="push-err"></div>
+    <div class="fg"><label class="fl">To</label><select class="fs" id="push-target">${opts}</select></div>
+    <div class="fg"><label class="fl">Title</label><input class="fi" id="push-title" maxlength="100" placeholder="e.g. Service reminder"></div>
+    <div class="fg"><label class="fl">Message</label><textarea class="fi" id="push-msg" maxlength="500" rows="3" placeholder="e.g. See you tonight at 6:30pm" style="resize:vertical"></textarea></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" style="flex:1" onclick="submitSendNotification()">Send</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function submitSendNotification() {
+  const raw = document.getElementById('push-target')?.value || '';
+  const title = document.getElementById('push-title')?.value?.trim() || '';
+  const message = document.getElementById('push-msg')?.value?.trim() || '';
+  const errEl = document.getElementById('push-err');
+  if (!title || !message) { errEl.innerHTML = '<div class="alert al-err" style="margin-bottom:8px">Title and message are required</div>'; return; }
+  let target;
+  if (raw === 'all') { target = { type: 'all' }; }
+  else if (raw.startsWith('quad:')) { target = { type: 'quad', quad: raw.slice(5) }; }
+  else if (raw.startsWith('grade:')) { const [,gr,gender] = raw.split(':'); target = { type: 'grade', grade: parseInt(gr,10), gender }; }
+  else { errEl.innerHTML = '<div class="alert al-err" style="margin-bottom:8px">Invalid target</div>'; return; }
+  try {
+    const res = await API.post('/push/send', { target, title, message });
+    closeModal();
+    Cache.del('/push/notifications');
+    _renderNotifHistory();
+    const t = document.createElement('div');
+    t.className = 'alert al-ok';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.15)';
+    t.textContent = `Sent ${res.sent} · Failed ${res.failed}`;
+    document.body.appendChild(t); setTimeout(() => t.remove(), 3500);
+  } catch (e) { errEl.innerHTML = `<div class="alert al-err" style="margin-bottom:8px">${e.message}</div>`; }
+}
+
+function _pushTargetLabel(target) {
+  if (!target) return '—';
+  if (target.type === 'all') return 'Everyone';
+  if (target.type === 'quad') return QUAD_LABELS[target.quad] || target.quad;
+  if (target.type === 'grade') return `Grade ${target.grade}${_gsfx(target.gender)}`;
+  return '—';
+}
+
+function _timeAgo(isoStr) {
+  if (!isoStr) return '';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+async function _renderNotifHistory() {
+  const el = document.getElementById('notif-history');
+  if (!el || !S.user) return;
+  let data;
+  try { data = await API.get('/push/notifications'); } catch { return; }
+  const { received = [], sent = [] } = data;
+  if (!received.length && !sent.length) return;
+  let h = '<div class="sh" style="margin-top:8px">Notifications</div>';
+  if (received.length) {
+    h += '<div class="card" style="padding:10px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Received</div>';
+    for (const n of received) {
+      h += `<div style="padding:8px 0;border-bottom:1px solid var(--paper-dark)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">${n.title}</div>
+            <div style="font-size:12px;color:var(--ink-mid);margin:2px 0">${n.message}</div>
+            <div style="font-size:11px;color:var(--ink-faint)">${n.senderName} · ${_timeAgo(n.createdAt)}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px;flex-shrink:0" onclick="dismissNotification('${n.id}')">Dismiss</button>
+        </div></div>`;
+    }
+    h += '</div>';
+  }
+  if (sent.length) {
+    h += '<div class="card" style="padding:10px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Sent</div>';
+    for (const n of sent) {
+      h += `<div style="padding:8px 0;border-bottom:1px solid var(--paper-dark)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">${n.title}</div>
+            <div style="font-size:12px;color:var(--ink-mid);margin:2px 0">${n.message}</div>
+            <div style="font-size:11px;color:var(--ink-faint)">To: ${_pushTargetLabel(n.target)} · ${_timeAgo(n.createdAt)} · ${n.sent} sent</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="padding:4px 8px;font-size:11px;flex-shrink:0;color:var(--danger);border-color:var(--danger)" onclick="deleteNotification('${n.id}')">Delete</button>
+        </div></div>`;
+    }
+    h += '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function dismissNotification(id) {
+  try { await API.post(`/push/notifications/${id}/dismiss`, {}); Cache.del('/push/notifications'); _renderNotifHistory(); }
+  catch (e) { console.error('[push] dismiss error', e); }
+}
+
+async function deleteNotification(id) {
+  try { await API.del(`/push/notifications/${id}`); Cache.del('/push/notifications'); _renderNotifHistory(); }
+  catch (e) { console.error('[push] delete error', e); }
 }
 
 // ============================================================
