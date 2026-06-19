@@ -1,10 +1,10 @@
-const CACHE = 'cms-v3';
+const CACHE = 'cms-v4';
 const APP_SHELL = ['/'];
 
 // API paths that should never be served from cache. NOTE: every API resource must
 // be listed here — a missing one (e.g. lifegroups) falls through to the cache-first
 // asset path and can get the SPA HTML cached under its URL, breaking JSON parsing.
-const API_RE = /^\/(auth|students|leaders|connections|overview|trends|lifegroups|at-risk|import|settings|admin|accounts|health)(\/|$|\?)/;
+const API_RE = /^\/(auth|students|leaders|connections|overview|trends|lifegroups|at-risk|import|settings|admin|accounts|push|health)(\/|$|\?)/;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -53,6 +53,29 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       });
+    })
+  );
+});
+
+self.addEventListener('push', (e) => {
+  let data = { title: 'Connection Made Simple', body: '', icon: '/icons/icon.svg', badge: '/icons/icon.svg' };
+  try { data = { ...data, ...e.data.json() }; } catch (_) {}
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon,
+      badge: data.badge,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => c.url.includes(self.location.origin));
+      if (existing) return existing.focus();
+      return self.clients.openWindow('/');
     })
   );
 });
