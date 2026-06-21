@@ -806,6 +806,7 @@ const IC = {
   xmark:    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   bell:     '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
   cake:     '<path d="M20 21v-8a2 2 0 00-2-2H6a2 2 0 00-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><line x1="2" y1="21" x2="22" y2="21"/><line x1="7" y1="8" x2="7" y2="11"/><line x1="12" y1="8" x2="12" y2="11"/><line x1="17" y1="8" x2="17" y2="11"/>',
+  cross:    '<line x1="12" y1="4" x2="12" y2="20"/><line x1="6.5" y1="9.5" x2="17.5" y2="9.5"/>',
 };
 function icN(k){ return `<svg class="ic-n" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
 function icS(k){ return `<svg class="ic-s" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
@@ -931,7 +932,7 @@ function renderLogin() {
   document.getElementById('app').innerHTML = `
     <div class="login-pg">
       <div class="login-card">
-        <div class="login-logo"><div class="icon">${icLg('target')}</div><h1>Youth Connection</h1><p>Sign in to continue</p></div>
+        <div class="login-logo"><div class="icon">${icLg('cross')}</div><h1>Youth Connection</h1><p>Sign in to continue</p></div>
         <div id="lerr"></div>
         <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" type="text" placeholder="" autocomplete="username"></div>
         <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
