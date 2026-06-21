@@ -3115,40 +3115,22 @@ async function renderImport() {
   let body = `
     <div class="ph"><div class="ph-title">Import Data</div><div class="ph-sub">Upload CSV files to update students and attendance</div></div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:6px">Service Attendance CSV</div>
+      <div class="card-title" style="margin-bottom:6px">Import Attendance</div>
       <p style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">
-        Upload a "Service Individual Attendance" export from Elvanto/UCare.<br>
-        Columns like <code>First Name</code>, <code>School Grade</code>, and session date columns are detected automatically.
+        Drop a <strong>Service</strong> or <strong>Group</strong> attendance export from Elvanto/UCare — we'll detect which it is.<br>
+        Columns and dates are detected automatically. CSV or .xlsx, up to 10MB.
       </p>
       <div id="drop-zone" style="border:2px dashed var(--paper-dark);border-radius:var(--radius-sm);padding:32px;text-align:center;cursor:pointer;transition:border-color .2s"
         onclick="document.getElementById('csv-file').click()"
         ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
         ondragleave="this.style.borderColor=''"
-        ondrop="event.preventDefault();this.style.borderColor='';handleImportDrop(event)">
+        ondrop="event.preventDefault();this.style.borderColor='';handleUnifiedDrop(event)">
         <div style="margin-bottom:8px">${icLg('upload')}</div>
-        <div style="font-weight:600">Drop CSV here or tap to browse</div>
-        <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">Supports .csv files up to 10MB</div>
+        <div style="font-weight:600">Drop CSV / Excel here or tap to browse</div>
+        <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">Service or Group — auto-detected</div>
       </div>
-      <input type="file" id="csv-file" accept=".csv,.xlsx" style="display:none" onchange="handleImportFile(this)">
+      <input type="file" id="csv-file" accept=".csv,.xlsx" style="display:none" onchange="handleUnifiedFile(this)">
       <div id="import-status" style="margin-top:12px"></div>
-    </div>
-    <div class="card">
-      <div class="card-title" style="margin-bottom:6px">Group Attendance CSV</div>
-      <p style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">
-        Upload a "Group Individual Attendance" export from Elvanto/UCare.<br>
-        Group blocks, <code>Last, First</code> names, and <code>DD/MM/YYYY</code> date columns are detected automatically.
-      </p>
-      <div id="grp-drop-zone" style="border:2px dashed var(--paper-dark);border-radius:var(--radius-sm);padding:32px;text-align:center;cursor:pointer;transition:border-color .2s"
-        onclick="document.getElementById('grp-csv-file').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
-        ondragleave="this.style.borderColor=''"
-        ondrop="event.preventDefault();this.style.borderColor='';handleGroupImportDrop(event)">
-        <div style="margin-bottom:8px">${icLg('upload')}</div>
-        <div style="font-weight:600">Drop CSV here or tap to browse</div>
-        <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">Supports .csv files up to 10MB</div>
-      </div>
-      <input type="file" id="grp-csv-file" accept=".csv" style="display:none" onchange="handleGroupImportFile(this)">
-      <div id="import-status-grp" style="margin-top:12px"></div>
     </div>`;
 
   if (history.length) {
@@ -3351,31 +3333,95 @@ function showAllocationReport(r) {
   modal(h);
 }
 
-function handleImportDrop(e) { const f = e.dataTransfer.files[0]; if (f) processImport(f); }
-function handleImportFile(input) { const f = input.files[0]; if (f) processImport(f); }
-function handleGroupImportDrop(e) { const f = e.dataTransfer.files[0]; if (f) processGroupImport(f); }
-function handleGroupImportFile(input) { const f = input.files[0]; if (f) processGroupImport(f); }
+function handleUnifiedDrop(e) { const f = e.dataTransfer.files[0]; if (f) detectAndPreview(f); }
+function handleUnifiedFile(input) { const f = input.files[0]; if (f) detectAndPreview(f); }
 
-function processImport(file) {
+// Read the file, decide Service vs Group, then show a preview before uploading.
+async function detectAndPreview(file) {
   const statusEl = document.getElementById('import-status');
   const isExcel = /\.xlsx?$/i.test(file.name);
-  statusEl.innerHTML = '<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Parsing ' + (isExcel ? 'Excel' : 'CSV') + '…</div>';
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    let rows;
-    if (isExcel) {
-      try { rows = parseCSV(rowsToCsv(await readXlsx(e.target.result))); }
-      catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this Excel file'}</div>`; return; }
-    } else rows = parseCSV(e.target.result);
-    if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No valid rows found</div>'; return; }
-    statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Uploading…</div>`;
-    try {
-      const result = await API.post('/import/csv', { rows, filename: file.name }, 90000);
-      Cache.clear();
-      statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.studentsAdded} added, ${result.studentsUpdated} updated, ${result.sessionsAdded} sessions</div>`;
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
-  };
-  if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Reading ${isExcel ? 'Excel' : 'CSV'}…</div>`;
+  let text;
+  try {
+    if (isExcel) text = rowsToCsv(await readXlsx(await file.arrayBuffer()));
+    else text = await file.text();
+  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+
+  // Group exports have DD/MM/YYYY date-column headers + group-name header rows;
+  // parseGroupCSV returns null when that structure is absent → treat as Service.
+  const group = parseGroupCSV(text);
+  if (group) { previewGroupImport(file.name, group); return; }
+
+  const rows = parseCSV(text);
+  if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">Couldn\'t recognise this as a Service or Group attendance export. Check the file.</div>'; return; }
+  previewServiceImport(file.name, rows);
+}
+
+// Service preview: new vs existing students, plus any unrecognised grades.
+function previewServiceImport(filename, rows) {
+  const existing = new Set((Cache.get('/students') || []).map(s => `${(s.firstName||'').trim().toLowerCase()} ${(s.lastName||'').trim().toLowerCase()}`));
+  let nu = 0; const grades = new Set(); let unknownGrade = 0;
+  for (const r of rows) {
+    const key = `${(r.first_name||'').trim().toLowerCase()} ${(r.last_name||'').trim().toLowerCase()}`;
+    if (key.trim() && !existing.has(key)) nu++;
+    const g = parseInt(r.grade, 10);
+    if (r.grade != null && r.grade !== '') { if (g >= 7 && g <= 12) grades.add(g); else unknownGrade++; }
+  }
+  const warn = unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside Yr 7–12.</div>` : '';
+  modal(`<div class="mo-title">Service import — confirm</div>
+    <div style="font-size:13px;color:var(--ink-mid);line-height:1.7">
+      <div><strong>${rows.length}</strong> attendance rows</div>
+      <div><strong>${nu}</strong> new student${nu!==1?'s':''} · ${rows.length - nu} already known</div>
+      <div>Grades seen: ${[...grades].sort((a,b)=>a-b).join(', ') || '—'}</div>
+    </div>${warn}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+  window._pendingServiceRows = rows;
+}
+
+// Group preview: groups + members.
+function previewGroupImport(filename, parsed) {
+  const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
+  modal(`<div class="mo-title">Group import — confirm</div>
+    <div style="font-size:13px;color:var(--ink-mid);line-height:1.7">
+      <div><strong>${parsed.groups.length}</strong> group${parsed.groups.length!==1?'s':''}</div>
+      <div><strong>${totalMembers}</strong> member row${totalMembers!==1?'s':''}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+  window._pendingGroups = parsed;
+}
+
+async function uploadServiceImport(filename) {
+  const statusEl = document.getElementById('import-status');
+  const rows = window._pendingServiceRows; window._pendingServiceRows = null;
+  if (!rows) return;
+  statusEl.innerHTML = `<div class="alert al-info">Uploading ${rows.length} rows…</div>`;
+  try {
+    const result = await API.post('/import/csv', { rows, filename }, 90000);
+    Cache.clear();
+    statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:flex-start;gap:6px;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.studentsAdded} added, ${result.studentsUpdated} updated, ${result.sessionsAdded} sessions</div>
+      <div style="font-size:12px;color:var(--ink-mid)">Tip: last-term comparisons refresh on the next service import — re-upload if last term's numbers look off.</div>
+    </div>`;
+  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+}
+
+async function uploadGroupImport(filename) {
+  const statusEl = document.getElementById('import-status');
+  const parsed = window._pendingGroups; window._pendingGroups = null;
+  if (!parsed) return;
+  const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
+  statusEl.innerHTML = `<div class="alert al-info">Uploading ${parsed.groups.length} groups, ${totalMembers} members…</div>`;
+  try {
+    const result = await API.post('/import/group-csv', { groups: parsed.groups, filename }, 90000);
+    Cache.clear();
+    statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.groupsAdded} groups created, ${result.studentsAdded} students added, ${result.studentsUpdated} updated, ${result.weeksAdded} weeks</div>`;
+  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
 }
 
 // Parse a "Group Individual Attendance" CSV export (Elvanto/UCare).
@@ -3421,24 +3467,6 @@ function parseGroupCSV(csv) {
     if (attendance.some(a => a !== null)) curGroup.members.push({ first_name, last_name, attendance });
   }
   return groups.length ? { groups } : null;
-}
-
-function processGroupImport(file) {
-  const statusEl = document.getElementById('import-status-grp');
-  statusEl.innerHTML = '<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Parsing CSV…</div>';
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const parsed = parseGroupCSV(e.target.result);
-    if (!parsed) { statusEl.innerHTML = '<div class="alert al-err">Could not parse as a Group Attendance CSV. Check the file format.</div>'; return; }
-    const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
-    statusEl.innerHTML = `<div class="alert al-info">Found ${parsed.groups.length} groups, ${totalMembers} members. Uploading…</div>`;
-    try {
-      const result = await API.post('/import/group-csv', { groups: parsed.groups, filename: file.name }, 90000);
-      Cache.clear();
-      statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.groupsAdded} groups created, ${result.studentsAdded} students added, ${result.studentsUpdated} updated, ${result.weeksAdded} weeks</div>`;
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
-  };
-  reader.readAsText(file);
 }
 
 function splitCSVLine(line) {
