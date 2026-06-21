@@ -4,6 +4,7 @@ import { makeAuthController } from '../controllers/auth.controller';
 import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
 import { makeConnectionController } from '../controllers/connection.controller';
+import { makeFollowupController } from '../controllers/followup.controller';
 import { makeOverviewController } from '../controllers/overview.controller';
 import { makeAtRiskController } from '../controllers/atrisk.controller';
 import { makeImportController } from '../controllers/import.controller';
@@ -19,6 +20,7 @@ export function buildRoutes(services: Services): Route[] {
   const student = makeStudentController({ student: services.student });
   const leader = makeLeaderController({ leader: services.leader });
   const connection = makeConnectionController({ connection: services.connection });
+  const followup = makeFollowupController({ followup: services.followup });
   const overview = makeOverviewController({ overview: services.overview });
   const atRisk = makeAtRiskController({
     atRisk: services.atRisk,
@@ -71,6 +73,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/connections/student/:studentId',       auth: true, handler: (r) => connection.listByStudent(r) },
     { method: 'GET',    path: '/connections/leader/:leaderId',         auth: true, handler: (r) => connection.listByLeader(r) },
     { method: 'GET',    path: '/connections/leader/:leaderId/summary', auth: true, handler: (r) => connection.leaderSummary(r) },
+    { method: 'GET',    path: '/connections/leader/:leaderId/followup', auth: true, handler: (r) => followup.leaderFollowup(r) },
     { method: 'DELETE', path: '/connections/:studentId/:leaderId',     auth: true, handler: (r) => connection.unassign(r) },
 
     // ----- At-Risk -----

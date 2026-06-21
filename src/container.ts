@@ -60,6 +60,7 @@ import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
 import { makeLeaderService, type LeaderService } from './services/leader.service';
 import { makeConnectionService, type ConnectionService } from './services/connection.service';
+import { makeFollowupService, type FollowupService } from './services/followup.service';
 import { makeOverviewService, type OverviewService } from './services/overview.service';
 import { makeAtRiskService, type AtRiskService } from './services/atrisk.service';
 import { makeImportService, type ImportService } from './services/import.service';
@@ -93,6 +94,7 @@ export interface Services {
   student: StudentService;
   leader: LeaderService;
   connection: ConnectionService;
+  followup: FollowupService;
   overview: OverviewService;
   atRisk: AtRiskService;
   trends: TrendsService;
@@ -188,6 +190,11 @@ export async function buildContainer(): Promise<Container> {
   const student = makeStudentService(students);
   const leader = makeLeaderService(leaders);
   const connection = makeConnectionService(connections, students, leaders, settings);
+  const followup = makeFollowupService(
+    connections, students, leaders,
+    serviceSessions, serviceAttendance,
+    lifegroupWeeks, lifegroupAttendance,
+  );
   const overview = makeOverviewService(students, leaders, connections);
   const atRisk = makeAtRiskService(students, settings);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
@@ -211,7 +218,7 @@ export async function buildContainer(): Promise<Container> {
   });
 
   const services: Services = {
-    auth, student, leader, connection, overview, atRisk, trends, lifegroupStats,
+    auth, student, leader, connection, followup, overview, atRisk, trends, lifegroupStats,
     importService, settings: settingsSvc, account, admin, push,
     users,
   };
