@@ -14,6 +14,7 @@ import { makeAdminController } from '../controllers/admin.controller';
 import { makeTrendsController } from '../controllers/trends.controller';
 import { makeLifegroupStatsController } from '../controllers/lifegroup-stats.controller';
 import { makePushController } from '../controllers/push.controller';
+import { makeConnectionAuditController } from '../controllers/connection-audit.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -34,6 +35,7 @@ export function buildRoutes(services: Services): Route[] {
   const trends = makeTrendsController({ trends: services.trends });
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });
   const push = makePushController({ push: services.push });
+  const connectionAudit = makeConnectionAuditController({ connectionAudit: services.connectionAudit });
 
   return [
     // ----- Auth -----
@@ -113,5 +115,11 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/accounts/users/password',      auth: true, handler: (r) => account.setPassword(r) },
     { method: 'PATCH',  path: '/accounts/users/:id/status',    auth: true, handler: (r) => account.toggleStatus(r) },
     { method: 'DELETE', path: '/accounts/users/:id',           auth: true, handler: (r) => account.remove(r) },
+
+    // ----- Connection Audits -----
+    { method: 'POST',   path: '/audits',       auth: true, handler: (r) => connectionAudit.upload(r) },
+    { method: 'GET',    path: '/audits',       auth: true, handler: (r) => connectionAudit.list(r) },
+    { method: 'GET',    path: '/audits/:year', auth: true, handler: (r) => connectionAudit.get(r) },
+    { method: 'DELETE', path: '/audits/:year', auth: true, handler: (r) => connectionAudit.remove(r) },
   ];
 }
