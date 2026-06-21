@@ -4242,13 +4242,36 @@ function tabs(page){
   const T=[['ca-overview','Overview'],['ca-funnel','Funnel'],['ca-groups','Lifegroups'],['ca-people','People'],['ca-data','Data']];
   return '<div class="ca-tabs">'+T.map(([id,lb])=>'<span class="ca-tab'+(page===id?' on':'')+'" onclick="go(\''+id+'\')">'+lb+'</span>').join('')+'</div>';
 }
+// Term switcher: "Year to date" + one chip per detected term. The latest term of
+// a mid-term (YTD) upload is marked "(in progress)".
+function termSwitcher(){
+  if(!AUDIT)return'';
+  const terms=AUDIT.terms||[];if(!terms.length)return'';
+  const chip=(k,lb,active)=>'<span class="ca-tab'+(active?' on':'')+'" style="cursor:pointer" onclick="CA.setTerm(\''+k+'\')">'+esc(lb)+'</span>';
+  let h='<div class="ca-tabs" style="flex-wrap:wrap;margin-bottom:8px">'+chip('ALL','Year to date',TERM==='ALL');
+  for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;h+=chip(t.key,'T'+t.ordinal+(ip?' (in progress)':''),TERM===t.key);}
+  return h+'</div>';
+}
+// Year-to-date strip: a per-term summary shown above the content when no single
+// term is selected, so the YTD view exposes the term breakdown.
+function ytdStrip(){
+  if(!AUDIT||TERM!=='ALL')return'';
+  const terms=AUDIT.terms||[];if(!terms.length)return'';
+  const cells=terms.map(t=>{
+    const pt=AUDIT.perTerm[t.key]||{svcTotal:0,byStudent:{}};
+    const uniq=Object.values(pt.byStudent).filter(a=>a.svcAttended>0).length;
+    return '<div style="flex:1;min-width:70px;text-align:center;padding:6px;border-right:1px solid var(--ca-line)"><div style="font-size:.58rem;color:var(--ca-muted);text-transform:uppercase;font-weight:700">T'+t.ordinal+(pt.inProgress?' ·':'')+'</div><div style="font-size:1rem;font-weight:800">'+uniq+'</div><div style="font-size:.54rem;color:var(--ca-muted)">unique · '+pt.svcTotal+' svc</div></div>';
+  }).join('');
+  return '<div class="card" style="display:flex;padding:4px 0;margin-bottom:8px">'+cells+'</div>';
+}
 function caShell(body,page){
   const back='<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="go(\''+(page==='ca-hub'?'home':'ca-hub')+'\')">‹ '+(page==='ca-hub'?'Home':'Audit hub')+'</button>';
-  let content=back+body;
-  if(stale()&&!warnOff&&page!=='ca-data'){
-    const seedy=seedOn();
-    content+='<div class="ca-warnb"><span class="ca-wi">'+icS('alert')+'</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>'+(seedy?'Demo seed in use.':'Data ageing.')+'</b> Student Team, Connect, Decision &amp; People Flow data '+(seedy?'was seeded '+fmtD(st.uploads.team.at):'needs a refresh')+' — update it in the <b>Data</b> tab for currency.</div><span class="ca-wx" onclick="CA.dismissWarn()">'+icS('xmark')+'</span></div>';
+  let content=back;
+  if(!AUDIT&&page!=='ca-data'){
+    content+='<div class="ca-warnb"><span class="ca-wi">'+icS('alert')+'</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>No audit loaded.</b> Upload year-to-date data in the <b>Data</b> tab to create one.</div></div>';
   }
+  if(AUDIT&&page!=='ca-hub'&&page!=='ca-data') content+=termSwitcher()+ytdStrip();
+  content+=body;
   setApp(content);
 }
 function dismissWarn(){warnOff=true;rerender();}
@@ -4950,6 +4973,9 @@ function dispatch(p){
 }
 async function render(p){
   if(!S.user||!['director','admin'].includes(S.user.role)){go('home');return;}
+  // Ensure the audit list is known and a year is loaded (default: most recent).
+  await auditList();
+  if(!AUDIT&&AUDIT_SUMMARIES&&AUDIT_SUMMARIES.length){ await auditLoad(AUDIT_SUMMARIES[0].year); }
   await load(p==='ca-hub'||!D);
   restore();mdl=null;
   dispatch(p);
