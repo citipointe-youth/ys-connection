@@ -460,6 +460,9 @@ const Cache = (() => {
       const e = store.get(key);
       return (e && Date.now() - e.ts < TTL) ? e.data : null;
     },
+    // Last-known value ignoring the TTL — powers stale-while-revalidate on Home so a
+    // lapsed cache paints instantly instead of blocking on a (possibly cold) re-fetch.
+    getStale(key) { const e = store.get(key); return e ? e.data : null; },
     set(key, data) { store.set(key, { data, ts: Date.now() }); },
     del(...keys) { for (const k of keys) { for (const sk of store.keys()) { if (sk === k || sk.startsWith(k + '/')) store.delete(sk); } } },
     clear() { store.clear(); },
@@ -991,27 +994,59 @@ function _hAttTile(label, studs, avgWk, opts) {
   return `<div class="qcard" style="padding:11px">${inner}</div>`;
 }
 
-async function renderHome() {
-  if (!_allCached('/overview', '/trends', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
-  try {
-    await _renderHomeInner();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${msg}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
-    console.error('[renderHome]', err);
-  }
+const HOME_PATHS = ['/overview', '/trends', '/students', '/lifegroups/stats', '/connections'];
+function _homeError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${msg}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
+  console.error('[renderHome]', err);
 }
-async function _renderHomeInner() {
+// Returns home from cache without ever blocking on a spinner when we have data:
+//  - all caches fresh  → render directly (instant)
+//  - any cache lapsed but last-known data exists → paint stale, revalidate in the
+//    background (stale-while-revalidate). This is what kills the "freeze for a few
+//    seconds" on back-to-Home: a cold serverless start / DB reconnect now happens
+//    behind an already-painted page instead of behind a spinner.
+//  - nothing cached at all (first load) → spinner, then fetch.
+async function renderHome() {
+  const allFresh  = HOME_PATHS.every(p => Cache.get(p) !== null);
+  const haveStale = HOME_PATHS.every(p => Cache.getStale(p) !== null);
+  if (allFresh) {
+    try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
+    return;
+  }
+  if (haveStale) {
+    try { await _renderHomeInner(true); } catch { /* repaint comes from revalidate */ }
+    _revalidateHome();
+    return;
+  }
+  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
+}
+let _homeRevalidating = false;
+function _revalidateHome() {
+  if (_homeRevalidating) return;
+  _homeRevalidating = true;
+  // API.get re-fetches the expired paths (and returns any still-fresh ones as-is),
+  // repopulating the cache; then repaint Home if the user is still on it.
+  Promise.all(HOME_PATHS.map(p => API.get(p).catch(() => null)))
+    .then(() => { if (S.page === 'home') return _renderHomeInner(false); })
+    .catch(() => {})
+    .finally(() => { _homeRevalidating = false; });
+}
+async function _renderHomeInner(stale) {
   const u = S.user;
   const _pg = S.page;
+  // Stale mode reads straight from the last-known cache (Promise.resolve, no network)
+  // so the page paints instantly; renderHome handles the background refresh.
+  const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
   let stats, trends, sc = [], lgStats = null, conns = [];
   try {
     [stats, trends, sc, lgStats, conns] = await Promise.all([
-      API.get('/overview').catch(() => null),
-      API.get('/trends').catch(() => null),
-      API.get('/students').catch(() => []),
-      API.get('/lifegroups/stats').catch(() => null),
-      API.get('/connections').catch(() => []),
+      G('/overview').catch(() => null),
+      G('/trends').catch(() => null),
+      G('/students').catch(() => []),
+      G('/lifegroups/stats').catch(() => null),
+      G('/connections').catch(() => []),
     ]);
   } catch {}
   if (S.page !== _pg) return; // navigated away while awaiting — don't overwrite the new page
