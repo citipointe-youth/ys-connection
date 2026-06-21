@@ -496,6 +496,24 @@ function modal(html, onClose, opts) {
 }
 function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
 
+// Irreversible bulk actions: require typing a word to arm the confirm button
+// (Recommendation 5). Reuses modal(); onConfirm is a zero-arg function.
+function confirmType(opts) {
+  const { title, body, word, danger, onConfirm } = opts;
+  window._confirmTypeFn = onConfirm;
+  modal(`<div class="mo-title">${title}</div>
+    <p style="color:var(--ink-mid);margin-bottom:14px">${body}</p>
+    <p style="font-size:13px;margin-bottom:6px">Type <strong>${word}</strong> to confirm:</p>
+    <input class="fi" id="ct-input" autocomplete="off" autocapitalize="characters"
+      oninput="document.getElementById('ct-go').disabled = this.value.trim().toUpperCase() !== '${word}'">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn ${danger ? 'btn-danger' : 'btn-secondary'}" id="ct-go" style="flex:1" disabled
+        onclick="closeModal(); const f=window._confirmTypeFn; window._confirmTypeFn=null; if(f)f();">Confirm</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+  setTimeout(() => document.getElementById('ct-input')?.focus(), 60);
+}
+
 // setApp updates only the <main id="page-main"> when the persistent shell is
 // in place, falling back to a full #app replacement (login page, first render).
 let _shellReady = false;
@@ -3145,15 +3163,15 @@ async function deleteImportEntry(id) {
   }
 }
 
-async function clearAllImportHistory() {
-  if (!confirm('Delete all import history records? This cannot be undone.')) return;
-  try {
-    await API.del('/import/history');
-    Cache.clear();
-    await renderImport();
-  } catch (e) {
-    alert('Failed to clear history: ' + (e.message || e));
-  }
+function clearAllImportHistory() {
+  confirmType({
+    title: 'Clear Import History?', word: 'CLEAR', danger: false,
+    body: 'Deletes all import history records. This cannot be undone.',
+    onConfirm: async () => {
+      try { await API.del('/import/history'); Cache.clear(); await renderImport(); }
+      catch (e) { alert('Failed to clear history: ' + (e.message || e)); }
+    },
+  });
 }
 
 // ── XLSX READER (no library — uses the browser's native DecompressionStream) ──
@@ -3605,11 +3623,11 @@ async function renderAdminView(settings, users) {
         <div class="destructive-header">Destructive Actions</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div>
-            <button class="btn btn-secondary btn-full" onclick="if(confirm('Clear all service & lifegroup data? Students (grade, age, phone), their connections and leaders are kept. Continue?'))adminAction('/admin/clear-service-group','✓ Service/group data cleared')">Clear Service/Group Data</button>
+            <button class="btn btn-secondary btn-full" onclick="confirmType({title:'Clear Service & Group Data?',word:'CLEAR',danger:false,body:'This deletes all service and lifegroup attendance. Students (grade, age, phone), their connections and leaders are kept.',onConfirm:()=>adminAction('/admin/clear-service-group','✓ Service/group data cleared')})">Clear Service/Group Data</button>
             <div class="help-text" style="margin-top:4px">Clears all service + lifegroup attendance; keeps students, connections, leaders &amp; accounts</div>
           </div>
           <div>
-            <button class="btn btn-danger btn-full" onclick="if(confirm('RESET ALL DATA? This deletes students, leaders, connections and all attendance. This cannot be undone.'))adminAction('/admin/reset','✓ Full reset complete')">Full Reset</button>
+            <button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.',onConfirm:()=>adminAction('/admin/reset','✓ Full reset complete')})">Full Reset</button>
             <div class="help-text" style="margin-top:4px">Clears students, leaders, connections &amp; all data (keeps accounts)</div>
           </div>
         </div>
