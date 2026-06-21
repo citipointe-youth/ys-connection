@@ -1701,7 +1701,8 @@ async function showEditLeader(id) {
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" style="flex:1" onclick="submitEditLeader('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
+    </div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}','${esc(l.fullName).replace(/'/g,"\\'")}')">${icS('trash')} Remove leader</button>`);
 }
 
 async function submitEditLeader(id) {
@@ -1719,12 +1720,37 @@ async function submitEditLeader(id) {
 }
 
 function confirmDelLeader(id, name) {
-  modal(`<div class="mo-title">Delete Leader?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">Delete <strong>${name}</strong> and all their connections?</p>
+  // How many students are currently connected to this leader (blast radius)?
+  const affected = Object.values(_aS.allocs || {}).filter(ids => (ids || []).includes(id));
+  const n = affected.length;
+  modal(`<div class="mo-title">Remove leader?</div>
+    <p style="color:var(--ink-mid);margin-bottom:20px"><strong>${esc(name)}</strong> will be removed${n ? ` and <strong>${n} student${n!==1?'s':''}</strong> disconnected` : ''}.</p>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="API.del('/leaders/${id}').then(()=>{Cache.del('/leaders','/connections','/overview','/at-risk');closeModal();toast('Deleted');renderConnect()}).catch(e=>toast(e.message))">Delete</button>
+      <button class="btn btn-danger" style="flex:1" onclick="doDelLeader('${id}','${name.replace(/'/g,"\\'")}')">Remove</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
+}
+
+// Delete a leader, then offer Undo: re-create the leader and re-connect the same
+// students. Captures the leader record + its connected studentIds before deleting.
+async function doDelLeader(id, name) {
+  let leader, studentIds = [];
+  try { leader = await API.get(`/leaders/${id}`); } catch {}
+  studentIds = Object.entries(_aS.allocs || {}).filter(([, ids]) => (ids || []).includes(id)).map(([sid]) => sid);
+  try {
+    await API.del(`/leaders/${id}`);
+    Cache.del('/leaders', '/connections', '/overview', '/at-risk');
+    closeModal();
+    renderConnect();
+    showUndoToast(`Removed ${name}`, async () => {
+      try {
+        const recreated = await API.post('/leaders', { fullName: leader.fullName, gender: leader.gender || '', grades: leader.grades || [] });
+        for (const sid of studentIds) { try { await API.post('/connections', { studentId: sid, leaderId: recreated.id }); } catch {} }
+        Cache.del('/leaders', '/connections', '/overview', '/at-risk');
+        renderConnect();
+      } catch (e) { toast('Undo failed: ' + e.message); }
+    });
+  } catch (e) { toast(e.message); }
 }
 
 // ============================================================
@@ -1849,8 +1875,7 @@ function renderConnectView() {
       body += `<div class="connect-leader">
         <div style="display:flex;align-items:flex-start;gap:6px">
           <div class="connect-leader-name" style="flex:1">${gi}${esc(l.fullName)}</div>
-          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>
-          <button class="btn btn-ghost btn-sm" style="padding:2px 5px;color:var(--danger)" title="Delete leader" onclick="confirmDelLeader('${l.id}','${nm}')">${icS('trash')}</button>`:''}
+          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
         <div class="connect-leader-meta">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</div>
         <div class="connect-count-label" style="margin-top:6px">
