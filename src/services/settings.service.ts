@@ -6,17 +6,9 @@ import type { Actor } from '../core/entities/user';
 import { generateId } from '../utils/id';
 
 const SettingsPatchSchema = z.object({
-  ministryName: z.string().min(1).optional(),
   termGapDays: z.number().int().min(1).optional(),
-  regRateNumerator: z.number().int().min(1).optional(),
-  regRateDenominator: z.number().int().min(1).optional(),
-  riskRateNumerator: z.number().int().min(1).optional(),
-  riskRateDenominator: z.number().int().min(1).optional(),
   validThresholdPct: z.number().min(0).max(100).optional(),
   serviceMinAttendance: z.number().int().min(0).optional(),
-  serviceName: z.string().min(1).optional(),
-  lifegroupName: z.string().min(1).optional(),
-  connectionLockDate: z.string().nullable().optional(),
 });
 
 export interface SettingsService {
@@ -36,21 +28,8 @@ export function makeSettingsService(
     async update(actor, input) {
       assertCan(actor, 'admin:manage');
       const patch = SettingsPatchSchema.parse(input);
-      const current = await repo.getSettings();
 
-      // Log lock date changes specifically
-      if (patch.connectionLockDate !== undefined && patch.connectionLockDate !== current.connectionLockDate) {
-        const detail = patch.connectionLockDate
-          ? `Connection lock date set to ${patch.connectionLockDate}`
-          : 'Connection lock date cleared';
-        await audit.save({
-          id: generateId(),
-          action: 'lock-date-set',
-          performedBy: actor.displayName,
-          performedAt: new Date().toISOString(),
-          detail,
-        });
-      } else if (Object.keys(patch).length > 0) {
+      if (Object.keys(patch).length > 0) {
         await audit.save({
           id: generateId(),
           action: 'settings-update',

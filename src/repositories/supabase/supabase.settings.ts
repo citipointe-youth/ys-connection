@@ -13,26 +13,11 @@ import type { AppSettings, AppDefaults, AdminAuditEntry } from '../../core/entit
 const SETTINGS_ID = 'global';
 
 function toAppSettings(row: Record<string, unknown>): AppSettings {
-  const lockDate = row['connection_lock_date'];
-  let connectionLockDate: string | null = null;
-  if (lockDate instanceof Date) {
-    connectionLockDate = lockDate.toISOString().split('T')[0]!;
-  } else if (typeof lockDate === 'string' && lockDate) {
-    connectionLockDate = lockDate.split('T')[0]!;
-  }
   return {
     id: (row['id'] as string | undefined) ?? SETTINGS_ID,
-    ministryName: row['ministry_name'] as string,
     termGapDays: row['term_gap_days'] as number,
-    regRateNumerator: row['reg_rate_numerator'] as number,
-    regRateDenominator: row['reg_rate_denominator'] as number,
-    riskRateNumerator: row['risk_rate_numerator'] as number,
-    riskRateDenominator: row['risk_rate_denominator'] as number,
     validThresholdPct: row['valid_threshold_pct'] as number,
     serviceMinAttendance: (row['service_min_attendance'] as number | null) ?? 100,
-    serviceName: row['service_name'] as string,
-    lifegroupName: row['lifegroup_name'] as string,
-    connectionLockDate,
     updatedAt: (row['updated_at'] as Date).toISOString(),
   };
 }
@@ -56,17 +41,9 @@ function toAdminAuditEntry(row: Record<string, unknown>): AdminAuditEntry {
 }
 
 const DEFAULT_SETTINGS: Omit<AppSettings, 'id' | 'updatedAt'> = {
-  ministryName: 'Youth Ministry',
   termGapDays: 14,
-  regRateNumerator: 3,
-  regRateDenominator: 4,
-  riskRateNumerator: 1,
-  riskRateDenominator: 2,
   validThresholdPct: 25,
   serviceMinAttendance: 100,
-  serviceName: 'Sunday Service',
-  lifegroupName: 'Lifegroup',
-  connectionLockDate: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -98,32 +75,16 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
     const rows = await this.sql`
       insert into app_settings (
         id,
-        ministry_name,
         term_gap_days,
-        reg_rate_numerator,
-        reg_rate_denominator,
-        risk_rate_numerator,
-        risk_rate_denominator,
         valid_threshold_pct,
         service_min_attendance,
-        service_name,
-        lifegroup_name,
-        connection_lock_date,
         updated_at
       )
       values (
         ${SETTINGS_ID},
-        ${DEFAULT_SETTINGS.ministryName},
         ${DEFAULT_SETTINGS.termGapDays},
-        ${DEFAULT_SETTINGS.regRateNumerator},
-        ${DEFAULT_SETTINGS.regRateDenominator},
-        ${DEFAULT_SETTINGS.riskRateNumerator},
-        ${DEFAULT_SETTINGS.riskRateDenominator},
         ${DEFAULT_SETTINGS.validThresholdPct},
         ${DEFAULT_SETTINGS.serviceMinAttendance},
-        ${DEFAULT_SETTINGS.serviceName},
-        ${DEFAULT_SETTINGS.lifegroupName},
-        ${null},
         ${now}
       )
       on conflict (id) do update set id = app_settings.id
@@ -142,47 +103,23 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
     const rows = await this.sql`
       insert into app_settings (
         id,
-        ministry_name,
         term_gap_days,
-        reg_rate_numerator,
-        reg_rate_denominator,
-        risk_rate_numerator,
-        risk_rate_denominator,
         valid_threshold_pct,
         service_min_attendance,
-        service_name,
-        lifegroup_name,
-        connection_lock_date,
         updated_at
       )
       values (
         ${SETTINGS_ID},
-        ${settings.ministryName},
         ${settings.termGapDays},
-        ${settings.regRateNumerator},
-        ${settings.regRateDenominator},
-        ${settings.riskRateNumerator},
-        ${settings.riskRateDenominator},
         ${settings.validThresholdPct},
         ${settings.serviceMinAttendance},
-        ${settings.serviceName},
-        ${settings.lifegroupName},
-        ${settings.connectionLockDate ?? null},
         ${settings.updatedAt}
       )
       on conflict (id) do update set
-        ministry_name         = excluded.ministry_name,
-        term_gap_days         = excluded.term_gap_days,
-        reg_rate_numerator    = excluded.reg_rate_numerator,
-        reg_rate_denominator  = excluded.reg_rate_denominator,
-        risk_rate_numerator   = excluded.risk_rate_numerator,
-        risk_rate_denominator = excluded.risk_rate_denominator,
-        valid_threshold_pct   = excluded.valid_threshold_pct,
+        term_gap_days          = excluded.term_gap_days,
+        valid_threshold_pct    = excluded.valid_threshold_pct,
         service_min_attendance = excluded.service_min_attendance,
-        service_name          = excluded.service_name,
-        lifegroup_name        = excluded.lifegroup_name,
-        connection_lock_date  = excluded.connection_lock_date,
-        updated_at            = excluded.updated_at
+        updated_at             = excluded.updated_at
       returning *
     `;
     return toAppSettings(rows[0]!);

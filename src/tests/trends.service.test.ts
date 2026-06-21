@@ -118,19 +118,25 @@ describe('Trends Service', () => {
     expect(bobEntry?.svcTrend).toBe('down');
   });
 
-  // TC53 — trend direction no-data when no prev-term
-  it('TC53: svcTrend is no-data when prev term is empty', async () => {
+  // TC53 — trend direction no-data when there's no previous-term SERVICE data.
+  // Bob is flagged (stopped) via his previous-term GROUP attendance, but with no
+  // previous service data his svcTrend must read 'no-data'.
+  it('TC53: svcTrend is no-data when prev service term is empty', async () => {
     const { atRiskSvc, studentRepo, s2 } = await makeServices();
     const bob = await studentRepo.findById(s2.id);
     if (bob) {
       await studentRepo.save({
         ...bob,
-        svcAttended: 1, svcTotal: 8,
-        prevSvcAttended: 0, prevSvcTotal: 0, // no previous data
+        svcAttended: 0, svcTotal: 8,
+        prevSvcAttended: 0, prevSvcTotal: 0, // no previous service data
+        grpAttended: 0, grpTotal: 6,
+        prevGrpAttended: 4, prevGrpTotal: 6, // attended group last term -> now stopped
       });
     }
     const list = await atRiskSvc.list(ADMIN);
     const bobEntry = list.find(e => e.fullName === 'Bob Jones');
+    expect(bobEntry).toBeDefined();
+    expect(bobEntry?.status).toBe('stopped');
     expect(bobEntry?.svcTrend).toBe('no-data');
   });
 

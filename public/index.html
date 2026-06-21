@@ -1175,7 +1175,9 @@ async function _renderHomeInner(stale) {
     }
 
     // ── Weekly follow-up (Recommendation 3) — filled in asynchronously below ──
-    body += '<div id="home-followup"></div>';
+    // Grade logins get it near the top; admin/director/quad get it at the BOTTOM
+    // of the home page (appended just before setApp).
+    if (u.role === 'grade') body += '<div id="home-followup"></div>';
 
     {
       // Connection Summary for grade logins now lives on Leaders & Connect (Rec 4a).
@@ -1277,6 +1279,9 @@ async function _renderHomeInner(stale) {
       }
     }
   }
+
+  // Admin/director/quad: follow-up sits at the bottom of the home page.
+  if (u.role !== 'grade') body += '<div id="home-followup"></div>';
 
   setApp(shell(body));
   // Fill the follow-up container after the main paint (the div is now in the DOM).
@@ -1810,11 +1815,7 @@ async function loadConnectData() {
 function renderConnectView() {
   const { students, leaders, allocs, gf, df } = _aS;
   const u = S.user;
-
-  // Connection lock check
-  const lockDate = S.settings?.connectionLockDate;
-  const isLocked = !!(lockDate && new Date() >= new Date(lockDate));
-  const canEdit = (!isLocked || u?.role === 'admin');
+  const canEdit = true;
 
   // Filter leaders by grade/gender chips (applied to the leader cards shown)
   let visLeaders = leaders;
@@ -1841,11 +1842,6 @@ function renderConnectView() {
     `<button class="fc ${df.has(g)?'on':''}" onclick="toggleAF('d','${g}')" aria-pressed="${df.has(g)}">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`
   ).join('') : '';
 
-  let lockBanner = '';
-  if (isLocked) {
-    const lockFmt = new Date(lockDate).toLocaleDateString();
-    lockBanner = `<div class="lock-banner">${icS('lock')} Connections locked as of ${lockFmt}.${u?.role==='admin'?' (Admin can still make changes.)':' Contact admin to make changes.'}</div>`;
-  }
   const gradeHint = (u?.role === 'grade')
     ? `<div class="alert al-info" style="margin-bottom:10px">Tap "Add Students" on any leader to search. You can add students from other grades if they match the leader's gender.</div>`
     : '';
@@ -1863,7 +1859,7 @@ function renderConnectView() {
         </div>
       </div>
     </div>
-    ${lockBanner}${gradeHint}
+    ${gradeHint}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
       <div class="stat"><div class="stat-v">${totalStudents}</div><div class="stat-l">Total</div></div>
       <div class="stat"><div class="stat-v" style="color:var(--success)">${connectedCount}</div><div class="stat-l">Connected</div></div>
@@ -1892,7 +1888,6 @@ function renderConnectView() {
             <div class="connect-stud-name">${esc(s.firstName)} ${esc(s.lastName)}</div>
             <div class="connect-stud-meta">Gr ${s.grade||'—'} · ${s.gender}${p!==null?' · '+p+'%':''}</div>
           </div>
-          ${riskChip(s.atRiskStatus)}
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="removeConnectWithUndo('${s.id}','${l.id}','${s.firstName} ${s.lastName}','${l.fullName}')" aria-label="Disconnect ${esc(s.firstName)} ${esc(s.lastName)} from ${esc(l.fullName)}">×</button>`:''}
         </div>`;
       }
@@ -2072,7 +2067,7 @@ function filterPicker() {
 
 function pickerRow(s, isAssigned, note) {
   const pct = svcPct(s);
-  const risk = riskChip(s.atRiskStatus);
+  const rise = isRising(s) ? _qualChip('Rising', 'rising') : '';
   const noteHtml = note ? `<div class="picker-item-meta" style="color:var(--accent-dark)">${note}</div>` : '';
   if (isAssigned) {
     return `<div class="picker-item assigned">
@@ -2080,7 +2075,7 @@ function pickerRow(s, isAssigned, note) {
         <div class="picker-item-name" style="display:flex;align-items:center;gap:4px">${icS('check')} ${esc(s.firstName)} ${esc(s.lastName)}</div>
         <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
       </div>
-      <div class="picker-item-right">${risk}<button onclick="remPick('${s.id}')" title="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
+      <div class="picker-item-right">${rise}<button onclick="remPick('${s.id}')" title="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
     </div>`;
   }
   return `<button class="picker-item" onclick="addConnFromPicker('${s.id}')" aria-label="Assign ${esc(s.firstName)} ${esc(s.lastName)}">
@@ -2089,7 +2084,7 @@ function pickerRow(s, isAssigned, note) {
       <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
       ${noteHtml}
     </div>
-    <div class="picker-item-right">${risk}<span style="color:var(--accent);font-size:18px;margin-left:8px">+</span></div>
+    <div class="picker-item-right">${rise}<span style="color:var(--accent);font-size:18px;margin-left:8px">+</span></div>
   </button>`;
 }
 
@@ -2538,6 +2533,9 @@ async function renderAtRisk() {
   let scoped = (allStu || []).slice();
   if (_arFilter.grade) scoped = scoped.filter(s => s.grade == _arFilter.grade);
   if (_arFilter.gender) scoped = scoped.filter(s => s.gender === _arFilter.gender);
+  // Exclude youth who never attended a service or group in the current OR previous
+  // term — they aren't "at risk", they've simply never engaged.
+  scoped = scoped.filter(_hasAttended);
 
   const sections = { rising:[], mixed:[], declining:[], stopped:[] };
   for (const s of scoped) { const cat = attendQual(s).category; if (sections[cat]) sections[cat].push(s); }
@@ -2670,9 +2668,16 @@ async function renderStudents() {
 }
 
 // The students that pass the leader filter + grade/gender chips + name search.
+// Names carrying a leader-role suffix in the attendance export — mirrors the
+// importer's LEADER_RE so "(Leader)" AND "(Assistant leader)" are both hidden.
+const _ROLE_SUFFIX_RE = /\(\s*(?:assistant\s+)?leaders?\s*\)/i;
 function _visStudents() {
   const { students, leaderNames, search, gf, df } = _sS;
-  let vis = students.filter(s => !leaderNames.has(`${s.firstName} ${s.lastName}`.trim().toLowerCase()));
+  let vis = students.filter(s => {
+    const full = `${s.firstName} ${s.lastName}`.trim();
+    if (_ROLE_SUFFIX_RE.test(full)) return false;
+    return !leaderNames.has(full.toLowerCase());
+  });
   if (gf.size) vis = vis.filter(s => gf.has(s.grade));
   if (df.size) vis = vis.filter(s => df.has(s.gender));
   if (search) { const q = search.toLowerCase(); vis = vis.filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)); }
@@ -3668,41 +3673,9 @@ async function renderAdminView(settings, users) {
     <div class="tbbar">${tabHtml}</div>`;
 
   if (_adminTab === 'settings') {
-    // Change 11: Connection lock date field
-    const lockVal = settings.connectionLockDate ? new Date(settings.connectionLockDate).toISOString().split('T')[0] : '';
     body += `<div class="card">
-      <div class="sh" style="margin-top:0">General</div>
-      <div class="fg"><label class="fl">Ministry Name</label><input class="fi" id="s-min" value="${settings.ministryName||''}"></div>
-      <div class="form-row">
-        <div class="fg"><label class="fl">Service Name</label><input class="fi" id="s-svc" value="${settings.serviceName||'Sunday Service'}"></div>
-        <div class="fg"><label class="fl">Group Name</label><input class="fi" id="s-grp" value="${settings.lifegroupName||'Lifegroup'}"></div>
-      </div>
-
-      <div class="sh">Connection Lock</div>
-      <div class="fg">
-        <label class="fl">Connection Lock Date</label>
-        <input class="fi" id="s-lock" type="date" value="${lockVal}">
-        <div class="help-text">Once this date passes, only admins can change connections.</div>
-      </div>
-
-      <div class="sh">At-Risk Thresholds</div>
-      <p class="help-text" style="margin-bottom:10px">These control how attendance rates are classified. Regular = attended ≥ reg threshold. At-risk = attended &lt; risk threshold.</p>
-      <div class="form-row">
-        <div class="fg"><label class="fl">Regular Rate (e.g. 3/4 = 75%)</label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input class="fi" id="s-rn" type="number" min="1" max="10" value="${settings.regRateNumerator||3}" style="width:60px">
-            <span style="color:var(--ink-mid)">/</span>
-            <input class="fi" id="s-rd" type="number" min="1" max="10" value="${settings.regRateDenominator||4}" style="width:60px">
-          </div>
-        </div>
-        <div class="fg"><label class="fl">At-Risk Rate (e.g. 1/2 = 50%)</label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input class="fi" id="s-an" type="number" min="1" max="10" value="${settings.riskRateNumerator||1}" style="width:60px">
-            <span style="color:var(--ink-mid)">/</span>
-            <input class="fi" id="s-ad" type="number" min="1" max="10" value="${settings.riskRateDenominator||2}" style="width:60px">
-          </div>
-        </div>
-      </div>
+      <div class="sh" style="margin-top:0">Attendance</div>
+      <p class="help-text" style="margin-bottom:10px">Students are flagged as declining or stopped automatically from their attendance trend (a rate drop of ≥20 points vs last term, or no attendance this term). There are no manual thresholds.</p>
       <div class="form-row">
         <div class="fg"><label class="fl">Min attendance for a valid service</label>
           <input class="fi" id="s-minatt" type="number" min="0" max="2000" value="${settings.serviceMinAttendance ?? 100}">
@@ -3855,17 +3828,8 @@ async function switchAdminTab(tab) {
 async function saveSettings() {
   try {
     await API.patch('/settings', {
-      ministryName: document.getElementById('s-min')?.value?.trim(),
-      serviceName: document.getElementById('s-svc')?.value?.trim(),
-      lifegroupName: document.getElementById('s-grp')?.value?.trim(),
-      regRateNumerator: parseInt(document.getElementById('s-rn')?.value||'3',10),
-      regRateDenominator: parseInt(document.getElementById('s-rd')?.value||'4',10),
-      riskRateNumerator: parseInt(document.getElementById('s-an')?.value||'1',10),
-      riskRateDenominator: parseInt(document.getElementById('s-ad')?.value||'2',10),
       serviceMinAttendance: parseInt(document.getElementById('s-minatt')?.value||'100',10),
       termGapDays: parseInt(document.getElementById('s-tg')?.value||'14',10),
-      // Change 11: include connectionLockDate
-      connectionLockDate: document.getElementById('s-lock')?.value || null,
     });
     Cache.del('/settings');
     toast('Settings saved');

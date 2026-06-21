@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { makeAtRiskService, computeStatus } from '../services/atrisk.service';
 import { makeStudentService } from '../services/student.service';
 import { InMemoryStudentRepository, InMemorySettingsRepository } from '../repositories/in-memory';
@@ -10,6 +10,8 @@ function actor(role: string, opts: { grade?: number; quad?: string } = {}): Acto
 
 const ADMIN = actor('admin');
 
+// Dynamic model (no thresholds): a student is flagged when their attendance
+// TREND turns down vs the previous term, or they stop attending entirely.
 async function makeServices() {
   const studentRepo = new InMemoryStudentRepository();
   const settingsRepo = new InMemorySettingsRepository();
@@ -18,38 +20,37 @@ async function makeServices() {
   const studentSvc = makeStudentService(studentRepo);
   const atRiskSvc = makeAtRiskService(studentRepo, settingsRepo);
 
-  // Seed students with known attendance
-  const s1 = await studentSvc.create(ADMIN, { firstName: 'Alice', lastName: 'Smith', gender: 'female', grade: 9 });
-  // Set attendance directly for testing
-  const updated = await studentRepo.findById(s1.id);
-  if (updated) {
-    await studentRepo.save({ ...updated, svcAttended: 0, svcTotal: 8, grpAttended: 0, grpTotal: 6 }); // stopped
-  }
+  const seed = async (
+    first: string, last: string, gender: string, grade: number,
+    cur: [number, number, number, number],   // svcA, svcT, grpA, grpT
+    prev: [number, number, number, number],   // prevSvcA, prevSvcT, prevGrpA, prevGrpT
+  ) => {
+    const s = await studentSvc.create(ADMIN, { firstName: first, lastName: last, gender: gender as any, grade });
+    const full = await studentRepo.findById(s.id);
+    if (full) {
+      await studentRepo.save({
+        ...full,
+        svcAttended: cur[0], svcTotal: cur[1], grpAttended: cur[2], grpTotal: cur[3],
+        prevSvcAttended: prev[0], prevSvcTotal: prev[1], prevGrpAttended: prev[2], prevGrpTotal: prev[3],
+      });
+    }
+    return s;
+  };
 
-  const s2 = await studentSvc.create(ADMIN, { firstName: 'Bob', lastName: 'Jones', gender: 'male', grade: 9 });
-  const s2Full = await studentRepo.findById(s2.id);
-  if (s2Full) {
-    await studentRepo.save({ ...s2Full, svcAttended: 2, svcTotal: 8, grpAttended: 1, grpTotal: 6 }); // atrisk (2/8 = 25% < 50%)
-  }
-
-  const s3 = await studentSvc.create(ADMIN, { firstName: 'Carol', lastName: 'White', gender: 'female', grade: 10 });
-  const s3Full = await studentRepo.findById(s3.id);
-  if (s3Full) {
-    await studentRepo.save({ ...s3Full, svcAttended: 5, svcTotal: 8, grpAttended: 4, grpTotal: 6 }); // declining (5/8=62.5%, below 75% reg)
-  }
-
-  const s4 = await studentSvc.create(ADMIN, { firstName: 'Dave', lastName: 'Black', gender: 'male', grade: 10 });
-  const s4Full = await studentRepo.findById(s4.id);
-  if (s4Full) {
-    await studentRepo.save({ ...s4Full, svcAttended: 7, svcTotal: 8, grpAttended: 5, grpTotal: 6 }); // regular
-  }
+  // Alice: attended last term, ZERO this term -> stopped
+  const s1 = await seed('Alice', 'Smith', 'female', 9, [0, 8, 0, 6], [6, 8, 4, 6]);
+  // Bob: rate collapsed vs last term (87.5% -> 25%) -> declining
+  const s2 = await seed('Bob', 'Jones', 'male', 9, [2, 8, 1, 6], [7, 8, 5, 6]);
+  // Carol: rate dropped >=20pts (100% -> 62.5%) -> declining
+  const s3 = await seed('Carol', 'White', 'female', 10, [5, 8, 4, 6], [8, 8, 6, 6]);
+  // Dave: steady high attendance -> regular
+  const s4 = await seed('Dave', 'Black', 'male', 10, [7, 8, 5, 6], [7, 8, 5, 6]);
 
   return { atRiskSvc, studentSvc, studentRepo, settingsRepo, s1, s2, s3, s4 };
 }
 
 describe('At-Risk Service — dynamic computation', () => {
-  // TC39 — stopped student is flagged
-  it('TC39: student with 0 attendance and 8 sessions = stopped', async () => {
+  it('TC39: student who attended last term but zero this term = stopped', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(ADMIN);
     const found = list.find(e => e.fullName === 'Alice Smith');
@@ -57,17 +58,15 @@ describe('At-Risk Service — dynamic computation', () => {
     expect(found?.status).toBe('stopped');
   });
 
-  // TC40 — at-risk student is flagged
-  it('TC40: student below risk threshold = atrisk', async () => {
+  it('TC40: student whose rate collapsed vs last term = declining', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(ADMIN);
     const found = list.find(e => e.fullName === 'Bob Jones');
     expect(found).toBeDefined();
-    expect(found?.status).toBe('atrisk');
+    expect(found?.status).toBe('declining');
   });
 
-  // TC41 — declining student is flagged
-  it('TC41: student below regular threshold = declining', async () => {
+  it('TC41: student whose rate dropped >=20pts = declining', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(ADMIN);
     const found = list.find(e => e.fullName === 'Carol White');
@@ -75,73 +74,61 @@ describe('At-Risk Service — dynamic computation', () => {
     expect(found?.status).toBe('declining');
   });
 
-  // TC42 — regular student is NOT in at-risk list
-  it('TC42: regular student excluded from at-risk list', async () => {
+  it('TC42: steady student excluded from at-risk list', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(ADMIN);
     const found = list.find(e => e.fullName === 'Dave Black');
     expect(found).toBeUndefined();
   });
 
-  // TC43 — recompute updates stored status
   it('TC43: recompute updates student atRiskStatus in repo', async () => {
     const { atRiskSvc, studentRepo, s4 } = await makeServices();
     const result = await atRiskSvc.recompute(actor('director'));
     expect(result.updated).toBeGreaterThanOrEqual(0);
-    // s4 has 7/8 (87.5%) service — should be regular
+    // s4 has steady high attendance — should be regular
     const s = await studentRepo.findById(s4.id);
     expect(s?.atRiskStatus).toBe('regular');
   });
 
-  // TC44 — grade login sees only own grade in at-risk
   it('TC44: grade login only sees own grade at-risk', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(actor('grade', { grade: 9 }));
     expect(list.every(e => e.grade === 9)).toBe(true);
   });
 
-  // TC45 — g79 quad sees only female Yr 7-9 at-risk
   it('TC45: g79 quad sees only female Yr 7-9 at-risk', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(actor('quad', { quad: 'g79' }));
     expect(list.every(e => e.gender === 'female' && e.grade !== null && e.grade <= 9)).toBe(true);
   });
 
-  // TC46 — stopped is sorted before atrisk
-  it('TC46: stopped sorted before atrisk', async () => {
+  it('TC46: stopped sorted before declining', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(ADMIN);
     const stoppedIdx = list.findIndex(e => e.status === 'stopped');
-    const atriskIdx = list.findIndex(e => e.status === 'atrisk');
-    if (stoppedIdx >= 0 && atriskIdx >= 0) {
-      expect(stoppedIdx).toBeLessThan(atriskIdx);
+    const decliningIdx = list.findIndex(e => e.status === 'declining');
+    if (stoppedIdx >= 0 && decliningIdx >= 0) {
+      expect(stoppedIdx).toBeLessThan(decliningIdx);
     }
   });
 });
 
-describe('At-Risk — settings thresholds', () => {
-  // TC47 — changing risk threshold changes who is flagged
-  it('TC47: changing risk threshold changes at-risk list', async () => {
-    const { atRiskSvc, settingsRepo } = await makeServices();
-    // Lower risk threshold to 10% — 2/8 = 25% > 10%, so Bob goes from atrisk → declining
-    await settingsRepo.updateSettings({ riskRateNumerator: 1, riskRateDenominator: 10 });
-    const list = await atRiskSvc.list(ADMIN);
-    const bob = list.find(e => e.fullName === 'Bob Jones');
-    // 25% > 10% risk threshold but < 75% regular → should now be declining
-    expect(bob?.status).toBe('declining');
+describe('computeStatus — dynamic, threshold-free', () => {
+  it('attended a group this term -> NOT stopped', () => {
+    // svc 0/8, grp 3/6 this term; attended last term too
+    expect(computeStatus(0, 8, 3, 6, 4, 8, 2, 6)).not.toBe('stopped');
   });
-});
-
-describe('computeStatus — stopped requires attending NEITHER stream', () => {
-  const S = { riskRateNumerator: 1, riskRateDenominator: 2, regRateNumerator: 3, regRateDenominator: 4 };
-  it('0 service but attended a lifegroup -> NOT stopped (declining/at-risk)', () => {
-    // svc 0/8, grp 3/6 (50%): attended a group, so not stopped.
-    expect(computeStatus(0, 8, 3, 6, S)).not.toBe('stopped');
+  it('attended neither stream this term (but did before) -> stopped', () => {
+    expect(computeStatus(0, 8, 0, 6, 5, 8, 3, 6)).toBe('stopped');
   });
-  it('attended neither (with data) -> stopped', () => {
-    expect(computeStatus(0, 8, 0, 6, S)).toBe('stopped');
+  it('never engaged (no attendance this OR last term) -> regular, not at risk', () => {
+    expect(computeStatus(0, 8, 0, 0, 0, 0, 0, 0)).toBe('regular');
   });
-  it('0 service, no group data -> stopped (attended nothing)', () => {
-    expect(computeStatus(0, 8, 0, 0, S)).toBe('stopped');
+  it('rate dropped >=20pts vs last term -> declining', () => {
+    // svc 37.5% this vs 100% last
+    expect(computeStatus(3, 8, 4, 6, 8, 8, 5, 6)).toBe('declining');
+  });
+  it('steady attendance -> regular', () => {
+    expect(computeStatus(7, 8, 5, 6, 7, 8, 5, 6)).toBe('regular');
   });
 });

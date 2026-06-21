@@ -150,7 +150,10 @@ function applyAggregatesToStudents(
       grpMetWeeks: a.grpMetWeeks,
       prevGrpAttended: a.prevGrpAttended,
       prevGrpTotal: a.prevGrpTotal,
-      atRiskStatus: computeStatus(a.svcAttended, agg.svcTotal, a.grpAttended, a.grpTotal, settings),
+      atRiskStatus: computeStatus(
+        a.svcAttended, agg.svcTotal, a.grpAttended, a.grpTotal,
+        a.prevSvcAttended, agg.prevSvcTotal, a.prevGrpAttended, a.prevGrpTotal,
+      ),
       updatedAt: now,
     };
   });
@@ -255,11 +258,6 @@ export function makeImportService(
       for (const s of allStudents) {
         studentByName.set(`${s.firstName.toLowerCase()} ${s.lastName.toLowerCase()}`, s);
       }
-
-      const riskN = settings.riskRateNumerator;
-      const riskD = settings.riskRateDenominator;
-      const regN = settings.regRateNumerator;
-      const regD = settings.regRateDenominator;
 
       let studentsAdded = 0;
       let studentsUpdated = 0;

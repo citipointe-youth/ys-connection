@@ -39,35 +39,43 @@ export interface AtRiskService {
 // Severity order for sorting (most severe first)
 const SEVERITY_ORDER: AtRiskStatus[] = ['stopped', 'atrisk', 'declining', 'watch'];
 
+// Per-stream qualifier vs the previous term — mirrors the SPA's `_streamQual`.
+// A stream is "down" if its rate dropped >=20 percentage points OR it stopped
+// (>=3 sessions this term with zero attendance).
+function streamDown(curA: number, curT: number, prevA: number, prevT: number): boolean {
+  if (curT < 1) return false;
+  if (curT >= 3 && curA === 0) return true; // stopped this stream
+  if (prevT >= 1 && curA / curT - prevA / prevT <= -0.20) return true; // declining
+  return false;
+}
+
+// Dynamic at-risk status — no thresholds. Mirrors the SPA's `attendQual` so the
+// persisted `atRiskStatus` stays consistent with the At-Risk page / search:
+//  - never engaged (no attendance this OR previous term) -> 'regular' (not at risk)
+//  - attended before but zero in BOTH streams this term  -> 'stopped'
+//  - a stream declined >=20pts or stopped                -> 'declining'
+//  - otherwise (steady / rising)                         -> 'regular'
 export function computeStatus(
   svcAttended: number,
   svcTotal: number,
   grpAttended: number,
   grpTotal: number,
-  settings: { riskRateNumerator: number; riskRateDenominator: number; regRateNumerator: number; regRateDenominator: number },
+  prevSvcAttended: number,
+  prevSvcTotal: number,
+  prevGrpAttended: number,
+  prevGrpTotal: number,
 ): AtRiskStatus {
-  const svcRate = svcTotal > 0 ? svcAttended / svcTotal : null;
-  const grpRate = grpTotal > 0 ? grpAttended / grpTotal : null;
+  const everAttended =
+    svcAttended > 0 || grpAttended > 0 || prevSvcAttended > 0 || prevGrpAttended > 0;
+  if (!everAttended) return 'regular'; // never engaged — not "at risk"
 
-  const riskThreshold = settings.riskRateNumerator / settings.riskRateDenominator;
-  const regThreshold = settings.regRateNumerator / settings.regRateDenominator;
-
-  if (svcTotal === 0 && grpTotal === 0) return 'new';
-
-  // Stopped: attended NEITHER service NOR lifegroup this term (with enough data
-  // in at least one stream to judge). A student who attended >=1 service OR >=1
-  // lifegroup is not "stopped" — they fall through to declining/at-risk below.
-  const attendedSomething = svcAttended > 0 || grpAttended > 0;
   const enoughData = svcTotal >= 3 || grpTotal >= 3;
-  if (!attendedSomething && enoughData) return 'stopped';
+  if (enoughData && svcAttended === 0 && grpAttended === 0) return 'stopped';
 
-  // At risk: below risk threshold
-  if (svcRate !== null && svcRate < riskThreshold) return 'atrisk';
-  if (grpRate !== null && grpRate < riskThreshold) return 'atrisk';
-
-  // Declining: below regular threshold but above risk threshold
-  if (svcRate !== null && svcRate < regThreshold) return 'declining';
-  if (grpRate !== null && grpRate < regThreshold) return 'declining';
+  const down =
+    streamDown(svcAttended, svcTotal, prevSvcAttended, prevSvcTotal) ||
+    streamDown(grpAttended, grpTotal, prevGrpAttended, prevGrpTotal);
+  if (down) return 'declining';
 
   return 'regular';
 }
@@ -125,7 +133,6 @@ export function makeAtRiskService(
   return {
     async list(actor, filter) {
       assertCan(actor, 'atrisk:read');
-      const settings = await settingsRepo.getSettings();
       let students = await studentRepo.findAll();
 
       // Scope by role (grade -> own grade + own gender; quad -> bracket + gender)
@@ -145,7 +152,8 @@ export function makeAtRiskService(
       const entries: AtRiskEntry[] = [];
       for (const s of students) {
         const computed = computeStatus(
-          s.svcAttended, s.svcTotal, s.grpAttended, s.grpTotal, settings,
+          s.svcAttended, s.svcTotal, s.grpAttended, s.grpTotal,
+          s.prevSvcAttended, s.prevSvcTotal, s.prevGrpAttended, s.prevGrpTotal,
         );
         if (AT_RISK_DISPLAY.has(computed)) {
           entries.push(toEntry(s, computed));
@@ -161,13 +169,13 @@ export function makeAtRiskService(
 
     async recompute(actor) {
       assertCan(actor, 'import:run');
-      const settings = await settingsRepo.getSettings();
       const students = await studentRepo.findAll();
       const now = new Date().toISOString();
       const changed = [];
       for (const s of students) {
         const newStatus = computeStatus(
-          s.svcAttended, s.svcTotal, s.grpAttended, s.grpTotal, settings,
+          s.svcAttended, s.svcTotal, s.grpAttended, s.grpTotal,
+          s.prevSvcAttended, s.prevSvcTotal, s.prevGrpAttended, s.prevGrpTotal,
         );
         if (newStatus !== s.atRiskStatus) {
           changed.push({ ...s, atRiskStatus: newStatus, updatedAt: now });

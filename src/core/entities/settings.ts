@@ -2,22 +2,13 @@ import type { ID, ISODateString } from '../types/common';
 
 export interface AppSettings {
   id: ID;
-  ministryName: string;
-  // Term config for at-risk calculation
+  // Days between consecutive service dates that mark a new term boundary.
   termGapDays: number;
-  regRateNumerator: number;
-  regRateDenominator: number;
-  riskRateNumerator: number;
-  riskRateDenominator: number;
   validThresholdPct: number;
   // Minimum total ministry attendance for a Friday to count as a "valid service".
   // Sessions below this are disregarded entirely (not counted in any average or
   // attendance-rate denominator) — treated like a week the ministry didn't meet.
   serviceMinAttendance: number;
-  serviceName: string;
-  lifegroupName: string;
-  // Allocation lock: if set and today >= lockDate, non-admin writes are blocked
-  connectionLockDate: string | null;
   updatedAt: ISODateString;
 }
 

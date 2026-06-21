@@ -387,17 +387,9 @@ export class InMemorySettingsRepository
   private defaultSettings(): AppSettings {
     return {
       id: InMemorySettingsRepository.SETTINGS_ID,
-      ministryName: 'Youth Ministry',
       termGapDays: 14,
-      regRateNumerator: 3,
-      regRateDenominator: 4,
-      riskRateNumerator: 1,
-      riskRateDenominator: 2,
       validThresholdPct: 25,
       serviceMinAttendance: 100,
-      serviceName: 'Sunday Service',
-      lifegroupName: 'Lifegroup',
-      connectionLockDate: null,
       updatedAt: new Date().toISOString(),
     };
   }

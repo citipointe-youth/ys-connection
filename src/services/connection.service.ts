@@ -16,7 +16,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Connection } from '../core/entities/connection';
 import type { Actor } from '../core/entities/user';
-import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from '../core/errors/app-error';
+import { NotFoundError, BadRequestError, ConflictError } from '../core/errors/app-error';
 
 export interface ConnectionWithNames {
   id: string;
@@ -84,18 +84,6 @@ const AssignSchema = z.object({
   studentId: z.string().min(1),
   leaderId: z.string().min(1),
 });
-
-async function checkLock(settingsRepo: ISettingsRepository, actor: Actor): Promise<void> {
-  if (actor.role === 'admin') return;
-  const settings = await settingsRepo.getSettings();
-  if (!settings.connectionLockDate) return;
-  const lockDate = new Date(settings.connectionLockDate);
-  if (new Date() >= lockDate) {
-    throw new ForbiddenError(
-      `Connections are locked as of ${lockDate.toLocaleDateString()}. Contact your admin to make changes.`,
-    );
-  }
-}
 
 export function makeConnectionService(
   connRepo: IConnectionRepository,
@@ -166,7 +154,6 @@ export function makeConnectionService(
 
     async assign(actor, input) {
       assertCan(actor, 'connection:write');
-      await checkLock(settingsRepo, actor);
 
       const { studentId, leaderId } = AssignSchema.parse(input);
       const student = await studentRepo.findById(studentId);
@@ -197,7 +184,6 @@ export function makeConnectionService(
 
     async unassign(actor, studentId, leaderId) {
       assertCan(actor, 'connection:write');
-      await checkLock(settingsRepo, actor);
       const deleted = await connRepo.deleteByStudentAndLeader(studentId, leaderId);
       if (!deleted) throw new NotFoundError('Connection not found');
     },

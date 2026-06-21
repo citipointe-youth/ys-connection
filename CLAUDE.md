@@ -90,11 +90,14 @@ There is always exactly one `admin` account. It cannot be deleted.
   but only of **their own gender** (`student.get`/`search` are gender-only; `connection.assign`
   enforces the leader-gender match; the picker keeps searches within the leader's gender).
 
-**Status model:** `atRiskStatus` (`computeStatus`) is kept ONLY for the My Students threshold
-highlight; "stopped" now means attended **neither** service nor lifegroup this term. Student
-search + the At-Risk screen use **dynamic per-stream qualifiers** computed client-side
-(`attendQual`/`qualChips` in the SPA): rising/declining (±5pts vs last term), stopped (0 this
-term), combined into rising / mixed / declining / stopped.
+**Status model:** there are **no manual at-risk thresholds**. `atRiskStatus` (`computeStatus`
+in `atrisk.service.ts`) is **threshold-free** and mirrors the SPA's `attendQual`: never-engaged
+(no attendance this OR previous term) → `regular`; attended before but **neither** service nor
+lifegroup this term → `stopped`; a stream's rate dropped **≥20pts** vs last term (or a stream
+stopped) → `declining`; otherwise `regular`. It feeds the My Students chips, the leader-card
+"at risk" counts, and the home At-Risk highlight. Student search + the At-Risk screen compute
+the same model client-side (`attendQual`/`qualChips`, ±20pts), and the At-Risk page additionally
+filters out never-engaged youth (`_hasAttended`). Keep `computeStatus` and `attendQual` in sync.
 
 **Connection counts:** only students who **attended** a service or lifegroup in the current
 OR previous term are "connectable" (`_hasAttended` in the SPA; `attended` in `overview.service`).
@@ -159,7 +162,6 @@ is the default, previous is shown as a comparison.
 - **Repos return deep clones**: base repository clones on every read/write.
 - **Extensionless imports**: ESM, `moduleResolution: "Bundler"`, no `.js` extensions.
 - **Strict TypeScript**: `strict` + `noUncheckedIndexedAccess` + `noImplicitOverride`.
-- **Connection lock**: `AppSettings.connectionLockDate` — if set and today >= lockDate, non-admin writes are blocked.
 
 ## Key service + repository names
 
