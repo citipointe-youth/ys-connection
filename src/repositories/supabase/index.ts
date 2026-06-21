@@ -18,3 +18,4 @@ export {
 export { getSqlClient } from './client';
 export { SupabasePushSubscriptionRepository } from './supabase.push-subscriptions';
 export { SupabaseNotificationRepository } from './supabase.notifications';
+export { SupabaseConnectionAuditRepository } from './supabase.connection-audit';
