@@ -584,6 +584,12 @@ function roleBadgeInner(u) {
   return u.role.charAt(0).toUpperCase() + u.role.slice(1);
 }
 
+// ── LEADER IDENTITY (per-device "I am …" — Recommendation 2) ──
+// Not authentication: a convenience so a leader sharing a grade/quad login can
+// default their views (My Students, Home follow-up) to their own students.
+function getMyLeaderId() { try { return localStorage.getItem('yap_leader_id') || null; } catch { return null; } }
+function setMyLeaderId(id) { try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {} }
+
 // ── UNDO SYSTEM ──
 const _undo = { pending: null, timer: null };
 function showUndoToast(msg, undoFn) {
@@ -2036,10 +2042,13 @@ async function renderMyStudents() {
   let visLeaders = leaders;
   if (_lvF.year.size) visLeaders = visLeaders.filter(l => (l.grades || []).length === 0 || l.grades.some(g => _lvF.year.has(g)));
   if (_lvF.gender.size) visLeaders = visLeaders.filter(l => _lvF.gender.has(l.gender));
+  // Default to the per-device leader identity (Recommendation 2) when nothing is
+  // selected yet, so a returning leader lands straight on their own students.
+  if (!_msLeader) { const mine = getMyLeaderId(); if (mine && leaders.some(l => l.id === mine)) _msLeader = mine; }
   if (_msLeader && !visLeaders.some(l => l.id === _msLeader)) _msLeader = null;
 
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
-  body += `<div class="fg"><label class="fl">I am…</label><select class="fs" onchange="_msLeader=this.value;renderMyStudents()"><option value="">— Choose a leader —</option>${opts}</select></div>`;
+  body += `<div class="fg"><label class="fl">I am…</label><select class="fs" onchange="_msLeader=this.value;setMyLeaderId(this.value||null);renderMyStudents()"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
     const leader = leaders.find(l => l.id === _msLeader);
