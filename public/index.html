@@ -2592,7 +2592,7 @@ function _studentResultsHtml(vis) {
           <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
           ${qualChips(s)}
         </div>
-        <div class="li-sub">Gr ${s.grade||'—'} · ${s.gender} ${quadChip(s.quad)}</div>
+        <div class="li-sub">Gr ${s.grade||'—'} · ${s.gender}${fmtBday(s.dateOfBirth) ? ' · ' + fmtBday(s.dateOfBirth) : ''} ${quadChip(s.quad)}</div>
         ${termRow('Service', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
         ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
       </div>
@@ -2600,7 +2600,7 @@ function _studentResultsHtml(vis) {
     </div>`;
   }
   h += '</div>';
-  h += `<div class="desk"><table class="dt"><thead><tr><th>Name</th><th>Gr</th><th>Gender</th><th>Quad</th><th>Service (this / last)</th><th>Lifegroup (this / last)</th><th>Status</th><th></th></tr></thead><tbody>`;
+  h += `<div class="desk"><table class="dt"><thead><tr><th>Name</th><th>Gr</th><th>Gender</th><th>DOB</th><th>Quad</th><th>Service (this / last)</th><th>Lifegroup (this / last)</th><th>Status</th><th></th></tr></thead><tbody>`;
   for (const s of vis) {
     const pct = svcPct(s);
     const psvc = s.prevSvcTotal > 0 ? Math.round(s.prevSvcAttended / s.prevSvcTotal * 100) + '%' : '—';
@@ -2609,6 +2609,7 @@ function _studentResultsHtml(vis) {
     h += `<tr>
       <td><strong>${esc(s.firstName)} ${esc(s.lastName)}</strong></td>
       <td>${s.grade||'—'}</td><td>${s.gender}</td>
+      <td>${fmtBday(s.dateOfBirth) || '—'}</td>
       <td>${quadChip(s.quad)}</td>
       <td>${pct!==null?pct+'%':'—'} <span style="color:var(--ink-faint)">/ ${psvc}</span></td>
       <td>${gp} <span style="color:var(--ink-faint)">/ ${pgp}</span></td>
