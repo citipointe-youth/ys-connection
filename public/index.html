@@ -2152,6 +2152,27 @@ function tLvF(type, val) {
   set.has(v) ? set.delete(v) : set.add(v);
   renderMyStudents();
 }
+// Next on/after-`today` occurrence of a birthday (month+day; birth year ignored).
+// Returns a Date at local midnight, or null for missing/invalid input. A Feb-29
+// birthday in a non-leap year rolls to Mar 1 (JS Date normalisation) — acceptable.
+function _nextBirthday(dob, today) {
+  if (!dob) return null;
+  const p = String(dob).slice(0, 10).split('-');
+  if (p.length !== 3) return null;
+  const month = Number(p[1]), day = Number(p[2]);
+  if (!month || !day) return null;
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let when = new Date(base.getFullYear(), month - 1, day);
+  if (when < base) when = new Date(base.getFullYear() + 1, month - 1, day);
+  return when;
+}
+// Display parts for an upcoming-birthday Date. Fixed name arrays (no locale dep).
+function _fmtUpcoming(date) {
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return { weekday: WD[date.getDay()], day: date.getDate(), month: MON[date.getMonth()], monthName: FULL[date.getMonth()] };
+}
 function fmtBday(iso) {
   if (!iso) return '';
   const p = String(iso).split('T')[0].split('-');
