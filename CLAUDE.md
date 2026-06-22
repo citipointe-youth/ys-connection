@@ -8,9 +8,9 @@ Guidance for Claude Code when working in this package.
 
 **Connection Made Simple** (`connection-made-simple`) — a youth ministry platform for YS Brisbane. Phone-first SPA backed by a TypeScript/Express API. Students are *connected* to leaders; "connection" is the core relationship entity. Backend-agnostic architecture identical in structure to the Youth Camp Platform.
 
-- **GitHub:** `987tom1/connection-made-simple`
-- **Deployed:** https://connection-made-simple.vercel.app
-- **Supabase:** Sydney region (`ap-southeast-2`) — `PERSISTENCE=supabase` + `DATABASE_URL` env var
+- **GitHub:** `citipointe-youth/connection-made-simple` (migrated from `987tom1` 2026-06-22; org now owns the GitHub repo, Supabase org, and Vercel team)
+- **Deployed:** https://connection-made-simple.vercel.app (Vercel team `citipointe-youth`; auto-deploys from `master`)
+- **Supabase:** Sydney region (`ap-southeast-2`), project ref `ltcblcudlzlzfcyzlhpc` — `PERSISTENCE=supabase` + `DATABASE_URL` env var
 
 ## Commands
 
@@ -196,6 +196,13 @@ DATABASE_URL=<supabase-connection-string>
 DATA_DIR=./data          # only used for PERSISTENCE=json
 CORS_ORIGINS=*
 ```
+
+**GOTCHA — production `DATABASE_URL` must use the connection POOLER, not the direct
+connection.** On Vercel serverless, the direct connection (`db.<ref>.supabase.co:5432`)
+fails because Supabase now serves it over IPv6 only and Vercel functions are IPv4. Use the
+Supavisor pooler (transaction mode), note the `postgres.<ref>` username and port `6543`:
+`postgresql://postgres.<ref>:<password>@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres`.
+Transaction mode means no session-level prepared statements — fine for this app.
 
 ## Frontend
 
