@@ -1,4 +1,5 @@
 import type { SqlClient } from './client';
+import { toIso } from './client';
 import type { ILeaderRepository } from '../interfaces/entity-repositories';
 import type { Leader } from '../../core/entities/leader';
 import type { Gender, Grade } from '../../core/types/enums';
@@ -11,8 +12,8 @@ function toLeader(row: Record<string, unknown>): Leader {
     grades: ((row['grades'] as number[] | null) ?? []) as Grade[],
     active: row['active'] as boolean,
     createdByGrade: (row['created_by_grade'] as number | null) ?? null,
-    createdAt: (row['created_at'] as Date).toISOString(),
-    updatedAt: (row['updated_at'] as Date).toISOString(),
+    createdAt: toIso(row['created_at']),
+    updatedAt: toIso(row['updated_at']),
   };
 }
 

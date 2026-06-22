@@ -1,4 +1,5 @@
 import type { SqlClient } from './client';
+import { toIso } from './client';
 import type { INotificationRepository } from '../interfaces/entity-repositories';
 import type { Notification, NotificationWithRecipient } from '../../core/entities/notification';
 import type { PushTarget } from '../../core/entities/push-subscription';
@@ -15,9 +16,9 @@ function toNotification(row: Record<string, unknown>): Notification {
     message: row['message'] as string,
     sent: row['sent'] as number,
     failed: row['failed'] as number,
-    createdAt: (row['created_at'] as Date).toISOString(),
-    expiresAt: (row['expires_at'] as Date).toISOString(),
-    deletedAt: row['deleted_at'] ? (row['deleted_at'] as Date).toISOString() : null,
+    createdAt: toIso(row['created_at']),
+    expiresAt: toIso(row['expires_at']),
+    deletedAt: row['deleted_at'] ? toIso(row['deleted_at']) : null,
   };
 }
 
@@ -89,7 +90,7 @@ export class SupabaseNotificationRepository implements INotificationRepository {
     return rows.map((row) => ({
       ...toNotification(row),
       dismissedAt: row['recipient_dismissed_at']
-        ? (row['recipient_dismissed_at'] as Date).toISOString()
+        ? toIso(row['recipient_dismissed_at'])
         : null,
     }));
   }

@@ -1,4 +1,5 @@
 import type { SqlClient } from './client';
+import { toIso } from './client';
 import type { IConnectionRepository } from '../interfaces/entity-repositories';
 import type { Connection } from '../../core/entities/connection';
 
@@ -8,7 +9,7 @@ function toConnection(row: Record<string, unknown>): Connection {
     studentId: row['student_id'] as string,
     leaderId: row['leader_id'] as string,
     assignedByRole: row['assigned_by_role'] as string,
-    createdAt: (row['created_at'] as Date).toISOString(),
+    createdAt: toIso(row['created_at']),
   };
 }
 
@@ -21,7 +22,7 @@ export class SupabaseConnectionRepository implements IConnectionRepository {
 
   async findAll(): Promise<Connection[]> {
     const rows = await this.sql`select * from connections order by created_at`;
-    return rows.map(toConnection);
+    return Array.isArray(rows) ? rows.map(toConnection) : [];
   }
 
   async findById(id: string): Promise<Connection | null> {
@@ -63,7 +64,9 @@ export class SupabaseConnectionRepository implements IConnectionRepository {
         created_at       = excluded.created_at
       returning *
     `;
-    return toConnection(rows[0]!);
+    const row = rows[0];
+    if (!row) throw new Error('connection upsert returned no row');
+    return toConnection(row);
   }
 
   async delete(id: string): Promise<boolean> {

@@ -3,6 +3,17 @@ import { env } from '../../config/env';
 
 export type SqlClient = ReturnType<typeof postgres>;
 
+// Coerce a DB timestamp column to an ISO string without ever throwing. The porsager
+// driver normally returns a Date for timestamptz, but a null/string/number (or a
+// row mangled by a transient pooler hiccup) used to blow up `(x as Date).toISOString()`
+// with a TypeError -> 500. For a real Date this is identical to the old cast.
+export function toIso(v: unknown): string {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') return new Date(v).toISOString();
+  return new Date().toISOString();
+}
+
 let _client: SqlClient | undefined;
 
 export function getSqlClient(): SqlClient {

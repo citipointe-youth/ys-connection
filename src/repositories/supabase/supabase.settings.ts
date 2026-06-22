@@ -1,4 +1,5 @@
 import type { SqlClient } from './client';
+import { toIso } from './client';
 import type {
   ISettingsRepository,
   ISnapshotRepository,
@@ -18,7 +19,7 @@ function toAppSettings(row: Record<string, unknown>): AppSettings {
     termGapDays: row['term_gap_days'] as number,
     validThresholdPct: row['valid_threshold_pct'] as number,
     serviceMinAttendance: (row['service_min_attendance'] as number | null) ?? 100,
-    updatedAt: (row['updated_at'] as Date).toISOString(),
+    updatedAt: toIso(row['updated_at']),
   };
 }
 
