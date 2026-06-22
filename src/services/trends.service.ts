@@ -113,12 +113,15 @@ export function makeTrendsService(
       const cached = _cache.get(cacheKey);
       if (cached) return cached;
 
-      const settings = await settingsRepo.getSettings();
+      // Fetch in parallel — serial round-trips to the Supabase pooler dominate
+      // this endpoint's cold latency (it's one of the slow Home/Trends deps).
+      const [settings, allStudents, allSessions, allAttendance] = await Promise.all([
+        settingsRepo.getSettings(),
+        studentRepo.findAll(),
+        sessionRepo.findAll(),
+        attendanceRepo.findAll(),
+      ]);
       const minAttendance = settings.serviceMinAttendance;
-
-      const allStudents = await studentRepo.findAll();
-      const allSessions = await sessionRepo.findAll();
-      const allAttendance = await attendanceRepo.findAll();
 
       // Scope students to actor (grade -> own grade + own gender; quad -> bracket + gender)
       const scopedStudents = allStudents.filter((s) =>

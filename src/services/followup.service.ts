@@ -138,16 +138,22 @@ export function makeFollowupService(
         latestSvcAttendees = new Set(recs.filter((r) => r.attended).map((r) => r.studentId));
       }
 
-      // Most recent lifegroup week (by weekStart).
+      // Most recent lifegroup week. Week records are keyed PER (lifegroup,
+      // weekStart), so one calendar week yields several rows. A student is "seen"
+      // if they attended ANY of their groups that week — so union the attendees
+      // across every week record sharing the latest weekStart, not just one row.
       const weeks = await weekRepo.findAll();
-      const latestWeek = weeks.reduce<(typeof weeks)[number] | null>(
-        (max, w) => (!max || w.weekStart > max.weekStart ? w : max),
+      const latestGrpDate = weeks.reduce<string | null>(
+        (max, w) => (!max || w.weekStart > max ? w.weekStart : max),
         null,
       );
       let latestGrpAttendees = new Set<string>();
-      if (latestWeek) {
-        const recs = await grpAttRepo.findByWeek(latestWeek.id);
-        latestGrpAttendees = new Set(recs.filter((r) => r.attended).map((r) => r.studentId));
+      if (latestGrpDate) {
+        const latestWeekIds = new Set(weeks.filter((w) => w.weekStart === latestGrpDate).map((w) => w.id));
+        const recs = await grpAttRepo.findAll();
+        latestGrpAttendees = new Set(
+          recs.filter((r) => r.attended && latestWeekIds.has(r.weekId)).map((r) => r.studentId),
+        );
       }
 
       const lists = buildFollowup(
@@ -155,13 +161,13 @@ export function makeFollowupService(
         latestSvcAttendees,
         latestGrpAttendees,
         latestSession ? latestSession.sessionDate : null,
-        latestWeek ? latestWeek.weekStart : null,
+        latestGrpDate,
         new Date(),
       );
       return {
         leader: { id: leader.id, fullName: leader.fullName },
         latestSvcDate: latestSession ? latestSession.sessionDate : null,
-        latestGrpDate: latestWeek ? latestWeek.weekStart : null,
+        latestGrpDate,
         ...lists,
       };
     },

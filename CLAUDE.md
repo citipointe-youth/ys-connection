@@ -214,7 +214,15 @@ Transaction mode means no session-level prepared statements — fine for this ap
 - Backend: `connection_audits` table (migration `009`, one row per calendar year, `jsonb` snapshot). Routes `POST/GET /audits`, `GET/DELETE /audits/:year` (director/admin via `import:run`). `ConnectionAuditService` runs the *same* term/aggregate engine the importer uses on the uploaded YTD CSVs — it does **not** touch the live tables. Live importer is untouched.
 - Pure helpers: `src/services/year-terms.ts` (`computeAllTerms` → N labelled terms `<year>-T<ordinal>`), `year-aggregates.ts` (`computeYearAggregates` → per-term student aggregates), `attendance-build.ts` (name-keyed CSV→model builders, audit-only; importer keeps its own merge path).
 - SPA: the Data tab uploads the **full YTD service + group CSVs** plus the 4 CRM overlays (team/connect/decision/flows) as one audit (`CA.saveAudit()` → `POST /audits`); `CA.load()` now derives `D` from the loaded snapshot scoped to the selected term, NOT from live endpoints. A **year picker** + **term/YTD switcher** (`CA.setYear`/`CA.setTerm`) drive the view; the latest term of a mid-term upload is flagged `inProgress`. Re-uploading a year overwrites it (latest-per-year).
-- **v1 limitations:** the per-named-lifegroup Health table and the Friday session sparkline depend on live `/lifegroups/stats` + `/trends` (null in audit mode) → they render empty in the audit; the funnel/overview/people work per-term. Term ordinals derive from each term's calendar-year start, so a ministry year crossing the Dec/Jan boundary may mislabel.
+- **Lifegroup Health in audit mode:** the per-named-lifegroup Health table is built
+  **from the snapshot** — `snapshot.lgStatsByTerm` (`buildLifegroupStats`, server-side) →
+  `_auditLgStats(sel, prev)` assembles the `byQuad→grades→lifegroups` shape `lifegroupRows()`
+  expects. No live `/lifegroups/stats` call. (This needs `audits` in the SW `API_RE` — see
+  the SW gotcha — or a stale snapshot is served and the table reads empty.)
+- **v1 limitations:** the Friday session sparkline depends on live `/trends` (null in audit
+  mode, since `load()` sets `trends:null`) → it renders empty in the audit; the
+  funnel/overview/people/Lifegroup-Health work per-term. Term ordinals derive from each
+  term's calendar-year start, so a ministry year crossing the Dec/Jan boundary may mislabel.
 
 - **Connection allocations** (admin only): Admin → Data tab exports/imports a student↔leader
   allocation CSV (`First Name,Last Name,Grade,Gender,Leader`, one pair per row, grouped by
@@ -276,7 +284,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v3` (bump on breaking changes to force eviction)
+- Cache name: `cms-v6` (bump on breaking changes to force eviction)
 - HTML shell (`/`): **network-first** — always fetches fresh HTML when online, falls back to cache offline
 - API routes: **network-only** (never cached), matched by `API_RE`
 - Other assets: **cache-first**
@@ -285,6 +293,10 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
   us with `lifegroups`) falls through to the cache-first asset path and can get the
   SPA HTML cached under its URL, breaking JSON parsing (symptom: "… unavailable").
   When adding a new top-level API route, add it to `API_RE` and bump the cache name.
+  This bit us with `audits`: its GET routes fell through to cache-first, so a saved
+  audit never re-fetched (symptoms: "audit doesn't persist", "lifegroup data not
+  showing" — a snapshot cached before the lgStats fix was served forever). `audits`
+  is now in `API_RE` as of `cms-v6`.
 
 ## Notifications (web push)
 

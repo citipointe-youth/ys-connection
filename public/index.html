@@ -365,6 +365,15 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .ca-tabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;-webkit-overflow-scrolling:touch}
 .ca-tab{flex:none;background:var(--ca-card);border:1px solid var(--ca-line);border-radius:999px;padding:6px 12px;font-size:.66rem;font-weight:700;color:var(--ca-muted);cursor:pointer}
 .ca-tab.on{background:var(--ca-navy);border-color:var(--ca-navy);color:#fff}
+/* Scope bar (year + period) — a filled "data scope" control, deliberately
+   styled apart from the navy page tabs so it doesn't read as navigation. */
+.ca-scope{background:var(--ca-chip);border:1px solid var(--ca-line);border-radius:var(--ca-rs);padding:8px 10px;margin:0 0 12px;display:flex;flex-direction:column;gap:7px}
+.ca-scope-row{display:flex;align-items:center;gap:8px}
+.ca-scope-lb{flex:none;width:42px;font-size:.52rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ca-muted)}
+.ca-scope-ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ca-chip2{flex:none;background:var(--ca-card);border:1px solid var(--ca-line);border-radius:999px;padding:4px 11px;font-size:.66rem;font-weight:700;color:var(--ca-muted);cursor:pointer;white-space:nowrap}
+.ca-chip2.on{background:var(--ca-blue);border-color:var(--ca-blue);color:#fff}
+.ca-scope-sel{border:1px solid var(--ca-line);border-radius:7px;padding:4px 8px;font-size:.72rem;font-weight:700;color:var(--ca-ink);background:var(--ca-card)}
 .ca-ct{font-size:.78rem;font-weight:800;margin-bottom:9px}
 .ca-dlt{font-size:.6rem;font-weight:800;margin-top:3px}
 .ca-dlt.up{color:var(--ca-green)}.ca-dlt.dn{color:var(--ca-rose)}.ca-dlt.fl{color:var(--ca-muted)}
@@ -4308,15 +4317,41 @@ function tabs(page){
   const T=[['ca-overview','Overview'],['ca-funnel','Funnel'],['ca-groups','Lifegroups'],['ca-people','People'],['ca-data','Data']];
   return '<div class="ca-tabs">'+T.map(([id,lb])=>'<span class="ca-tab'+(page===id?' on':'')+'" onclick="go(\''+id+'\')">'+lb+'</span>').join('')+'</div>';
 }
-// Term switcher: "Year to date" + one chip per detected term. The latest term of
-// a mid-term (YTD) upload is marked "(in progress)".
-function termSwitcher(){
+// A human label for the loaded scope, e.g. "2026 · T2 (in progress)" or
+// "2026 · Year to date". Pairs the term ordinal with its year everywhere it's
+// shown (titles, hub hero) so a slice is never ambiguous across years.
+function scopeLabel(){
   if(!AUDIT)return'';
-  const terms=AUDIT.terms||[];if(!terms.length)return'';
-  const chip=(k,lb,active)=>'<span class="ca-tab'+(active?' on':'')+'" style="cursor:pointer" onclick="CA.setTerm(\''+k+'\')">'+esc(lb)+'</span>';
-  let h='<div class="ca-tabs" style="flex-wrap:wrap;margin-bottom:8px">'+chip('ALL','Year to date',TERM==='ALL');
-  for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;h+=chip(t.key,'T'+t.ordinal+(ip?' (in progress)':''),TERM===t.key);}
-  return h+'</div>';
+  const y=AUDIT_YEAR!=null?String(AUDIT_YEAR):'';
+  if(TERM==='ALL')return (y?y+' · ':'')+'Year to date';
+  const t=(AUDIT.terms||[]).find(x=>x.key===TERM);
+  if(!t)return y;
+  const ip=(AUDIT.perTerm[t.key]||{}).inProgress;
+  return (y?y+' · ':'')+'T'+t.ordinal+(ip?' (in progress)':'');
+}
+// Unified scope bar: year picker + period (term) picker in one place, always
+// visible on the analytical tabs. Year is inline pills when there are few
+// audits, a <select> once there are many. Replaces the old term-only switcher
+// (which never showed the year, so cross-year views looked identical).
+function scopeBar(){
+  if(!AUDIT)return'';
+  const terms=AUDIT.terms||[];
+  const yrs=AUDIT_SUMMARIES||[];
+  let yearCtl;
+  if(yrs.length>4){
+    const opts=yrs.map(y=>'<option value="'+y.year+'"'+(y.year===AUDIT_YEAR?' selected':'')+'>'+esc(String(y.year))+'</option>').join('');
+    yearCtl='<select class="ca-scope-sel" onchange="CA.setYear(this.value)">'+opts+'</select>';
+  }else if(yrs.length){
+    yearCtl=yrs.map(y=>'<span class="ca-chip2'+(y.year===AUDIT_YEAR?' on':'')+'" onclick="CA.setYear('+y.year+')">'+esc(String(y.year))+'</span>').join('');
+  }else{
+    yearCtl='<span class="ca-chip2 on">'+esc(AUDIT_YEAR!=null?String(AUDIT_YEAR):'—')+'</span>';
+  }
+  let termCtl='<span class="ca-chip2'+(TERM==='ALL'?' on':'')+'" onclick="CA.setTerm(\'ALL\')">Year to date</span>';
+  for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;termCtl+='<span class="ca-chip2'+(TERM===t.key?' on':'')+'" onclick="CA.setTerm(\''+t.key+'\')">T'+t.ordinal+(ip?' • live':'')+'</span>';}
+  return '<div class="ca-scope">'
+    +'<div class="ca-scope-row"><span class="ca-scope-lb">Year</span><div class="ca-scope-ctl">'+yearCtl+'</div></div>'
+    +'<div class="ca-scope-row"><span class="ca-scope-lb">Period</span><div class="ca-scope-ctl">'+termCtl+'</div></div>'
+    +'</div>';
 }
 // Year-to-date strip: a per-term summary shown above the content when no single
 // term is selected, so the YTD view exposes the term breakdown.
@@ -4336,7 +4371,7 @@ function caShell(body,page){
   if(!AUDIT&&page!=='ca-data'){
     content+='<div class="ca-warnb"><span class="ca-wi">'+icS('alert')+'</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>No audit loaded.</b> Upload year-to-date data in the <b>Data</b> tab to create one.</div></div>';
   }
-  if(AUDIT&&page!=='ca-hub'&&page!=='ca-data') content+=termSwitcher()+ytdStrip();
+  if(AUDIT&&page!=='ca-data'){ content+=scopeBar(); if(page!=='ca-hub') content+=ytdStrip(); }
   content+=body;
   setApp(content);
 }
@@ -4349,7 +4384,7 @@ function rHub(){
   const partPct=m.kpis.act?Math.round(m.kpis.inLG/m.kpis.act*100):0;
   const decl=m.groups.filter(g=>g.trend==='declining').length;
   let b='<div class="card" style="background:linear-gradient(135deg,#12233b,#1a3a6b);color:#fff;padding:15px">'
-    +'<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;opacity:.7">This term</div>'
+    +'<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;opacity:.7">'+esc(scopeLabel()||'This term')+'</div>'
     +'<div style="display:flex;gap:18px;margin-top:7px">'
     +'<div><div style="font-size:1.3rem;font-weight:800">'+m.kpis.act+'</div><div style="font-size:.56rem;opacity:.75;text-transform:uppercase">Active youth</div></div>'
     +'<div><div style="font-size:1.3rem;font-weight:800">'+partPct+'%</div><div style="font-size:.56rem;opacity:.75;text-transform:uppercase">Attended a lifegroup (at least once this term)</div></div>'

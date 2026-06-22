@@ -325,6 +325,26 @@ PHASE 16: CONNECTION ALLOCATION IMPORT/EXPORT  (2026-06-16)
 - New connection:import RBAC capability (admin-only)
 
 -------------------------------------------------------------------------------
+PHASE: BUGFIXES + HOME/TRENDS PERFORMANCE + AUDIT UX  (2026-06-22)
+-------------------------------------------------------------------------------
+- Performance: parallelised the per-request findAll() fetches in the trends and
+  overview services (were serial round-trips to the Supabase pooler) — the two
+  endpoints that gate Home/Trends first-load latency
+- Fix: "Not seen at Lifegroup" no longer flags a student who attended a DIFFERENT
+  lifegroup in the latest week. Week records are keyed per (lifegroup, weekStart);
+  followup now unions attendees across every record sharing the latest weekStart
+  instead of reading a single arbitrary record (+ regression test)
+- Fix: connection audits now persist / show lifegroup data — added `audits` to the
+  service worker API_RE (its GET routes were falling through to the cache-first
+  path, so saved audits never re-fetched and a snapshot cached before the lgStats
+  fix was served forever). Bumped SW cache cms-v5 to cms-v6
+- Connection Audit UX: unified year + period (term) into one always-visible scope
+  bar on every audit tab + the hub, replacing the term-only switcher (the year was
+  previously invisible outside the Data tab). Year shows as inline pills (or a
+  select once there are many years); scope bar is styled apart from the page tabs;
+  hub hero now shows the "<year> · <term>" scope label
+
+-------------------------------------------------------------------------------
 SUMMARY OF CUMULATIVE CHANGES
 -------------------------------------------------------------------------------
 The project has evolved from a copy of youth-allocation-platform into a

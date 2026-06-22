@@ -51,9 +51,13 @@ export function makeOverviewService(
     async getStats(actor) {
       assertCan(actor, 'overview:read');
 
-      const allStudents = await studentRepo.findAll();
-      const allLeaders = await leaderRepo.findActive();
-      const allConns = await connRepo.findAll();
+      // Fetch in parallel — three serial round-trips to the Supabase pooler are
+      // a meaningful slice of this endpoint's latency on a cold serverless call.
+      const [allStudents, allLeaders, allConns] = await Promise.all([
+        studentRepo.findAll(),
+        leaderRepo.findActive(),
+        connRepo.findAll(),
+      ]);
 
       const scoped = allStudents.filter((s) =>
         (actor.role === 'grade' || actor.role === 'quad')

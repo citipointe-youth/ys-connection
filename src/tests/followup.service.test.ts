@@ -149,4 +149,36 @@ describe('makeFollowupService.leaderFollowup', () => {
     expect(out.notSeenService.map((s) => s.id)).toEqual(['S2']);
     expect(out.notSeenGroup.map((s) => s.id)).toEqual(['S2']);
   });
+
+  it('does NOT flag a student who attended a DIFFERENT lifegroup in the latest week', async () => {
+    // Weeks are keyed per (lifegroup, weekStart): two groups meeting the same
+    // calendar week produce two week records sharing a weekStart. A student in
+    // two groups who attended only ONE of them must count as "seen".
+    const connRepo = new InMemoryConnectionRepository();
+    const studentRepo = new InMemoryStudentRepository();
+    const leaderRepo = new InMemoryLeaderRepository();
+    const sessionRepo = new InMemoryServiceSessionRepository();
+    const svcAttRepo = new InMemoryServiceAttendanceRepository();
+    const weekRepo = new InMemoryLifegroupWeekRepository();
+    const grpAttRepo = new InMemoryLifegroupAttendanceRepository();
+    for (const r of [connRepo, studentRepo, leaderRepo, sessionRepo, svcAttRepo, weekRepo, grpAttRepo]) await r.init();
+
+    const leader = await leaderRepo.save({ id: 'L1', fullName: 'Em Leader', gender: 'female', grades: [9], active: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } as any);
+    const base = { gender: 'female', grade: 9, quad: 'g79', mobile: null, parentPhone: null, dateOfBirth: null, svcAttended: 0, svcTotal: 0, grpTotal: 4, grpMetWeeks: 4, prevSvcAttended: 0, prevSvcTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0, atRiskStatus: null, dataSource: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+    const inTwo = await studentRepo.save({ id: 'S1', firstName: 'Ann', lastName: 'A', grpAttended: 1, ...base } as any);
+    await connRepo.save({ id: 'C1', studentId: inTwo.id, leaderId: leader.id, createdAt: '2026-01-01T00:00:00.000Z' } as any);
+
+    // Two distinct week records for the same calendar week (one per lifegroup).
+    const wA = await weekRepo.save({ id: 'WA', importId: 'i', weekNum: 1, weekKey: '2026-06-08', weekStart: '2026-06-08', weekEnd: '2026-06-14' } as any);
+    const wB = await weekRepo.save({ id: 'WB', importId: 'i', weekNum: 1, weekKey: '2026-06-08', weekStart: '2026-06-08', weekEnd: '2026-06-14' } as any);
+    // Student is a member of both groups; attended group B only (group A: marked absent).
+    await grpAttRepo.saveMany([
+      { studentId: inTwo.id, weekId: wA.id, lifegroupId: 'gA', groupMet: true, attended: false },
+      { studentId: inTwo.id, weekId: wB.id, lifegroupId: 'gB', groupMet: true, attended: true },
+    ]);
+
+    const svc = makeFollowupService(connRepo, studentRepo, leaderRepo, sessionRepo, svcAttRepo, weekRepo, grpAttRepo);
+    const out = await svc.leaderFollowup(ADMIN, leader.id);
+    expect(out.notSeenGroup.map((s) => s.id)).toEqual([]);
+  });
 });
