@@ -589,7 +589,6 @@ function _initShell() {
         <div class="hdr-brand">${brandMark(26, '#fff')}<h1>Youth Connection</h1></div>
         <div class="hdr-meta">
           ${roleBadge(u)}
-          <div class="btn-icon" style="position:relative" onclick="go('notifications')" title="Notifications" aria-label="Notifications">${icN('bell')}<span id="notif-badge" class="notif-badge" hidden></span></div>
           <div class="btn-icon" onclick="doLogout()" title="Sign out" aria-label="Sign out">${icN('logout')}</div>
         </div>
       </div>
@@ -599,7 +598,7 @@ function _initShell() {
     <nav class="bot-nav">${mlinks}</nav>`;
   _shellReady = true;
   _prefetch();
-  _updateNotifBadge();
+  // _updateNotifBadge(); // PUSH-HIDDEN
 }
 
 function _prefetch() {
@@ -864,7 +863,7 @@ function navItems() {
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
-    { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' },
+    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
   // Quad: Home | Leaders & Connect | Trends | At Risk
   if (u.role === 'quad') return [
@@ -876,7 +875,7 @@ function navItems() {
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
-    { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' },
+    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
   // Admin: Home | Leaders & Connect | Trends | At Risk + quick actions
   if (u.role === 'admin') return [
@@ -889,7 +888,7 @@ function navItems() {
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'admin',      ic:'settings', label:'Admin Settings',     mbl:'Settings' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
-    { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' },
+    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
   // Director: same as admin minus admin tile
   return [
@@ -901,7 +900,7 @@ function navItems() {
     { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
-    { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' },
+    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
 }
 function bottomNavItems() { return navItems().slice(0, 4); }
@@ -962,7 +961,7 @@ async function render() {
   else if (p==='import') await renderImport();
   else if (p==='birthdays') await renderUpcomingBirthdays();
   else if (p==='admin') await renderAdmin();
-  else if (p==='notifications') await renderNotifications();
+  else if (p==='notifications') go('home'); // PUSH-HIDDEN — was: await renderNotifications()
   else await renderHome();
 }
 
@@ -990,7 +989,7 @@ async function doLogin() {
   const errEl = document.getElementById('lerr');
   try {
     const res = await API.post('/auth/login', { email, password });
-    API.setToken(res.token); S.user = res.user; go('home'); initPushSubscription();
+    API.setToken(res.token); S.user = res.user; go('home'); // initPushSubscription(); // PUSH-HIDDEN
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
