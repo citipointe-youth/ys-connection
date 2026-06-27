@@ -4240,7 +4240,9 @@ function parseRows(text){
   const iN=gi('name');
   const iF=Math.max(gi('first name'),gi('first_name'),gi('firstname'));
   const iL=Math.max(gi('last name'),gi('last_name'),gi('lastname'));
-  const iD=Math.max(gi('date'),gi('decision date'),gi('connect date'));
+  let iD=Math.max(gi('date'),gi('decision date'),gi('connect date'));
+  // Fallback: any header containing 'date' as a whole word that isn't birth/DOB-related.
+  if(iD<0)iD=hd.findIndex(h=>/\bdate\b/.test(h)&&!/birth|born|dob/.test(h));
   if(iN<0&&iF<0)return null;
   const out=[];
   for(const line of lines.slice(1)){
@@ -4250,6 +4252,36 @@ function parseRows(text){
     out.push({name,date:iD>=0?isoDate(v[iD]):null});
   }
   return out;
+}
+// Parse a connect/decision CSV in the service-matrix format: rows are people, date-format
+// column headers are sessions, cell Y/yes/1/true = attended/submitted on that date.
+// Returns [{name, date}] — one row per person with the earliest (connect) or latest
+// (decision) date — or null when no date-format column headers are found.
+function parseMatrixRows(text,kind){
+  const lines=String(text||'').trim().split(/\r?\n/);
+  if(lines.length<2)return null;
+  const raw=splitCSVLine(lines[0]).map(h=>h.replace(/^"|"$/g,''));
+  const hd=raw.map(h=>h.trim().toLowerCase());
+  const gi=n=>hd.indexOf(n);
+  const iN=gi('name');
+  const iF=Math.max(gi('first name'),gi('first_name'),gi('firstname'));
+  const iL=Math.max(gi('last name'),gi('last_name'),gi('lastname'));
+  if(iN<0&&iF<0)return null;
+  const dateCols=[];
+  for(let i=0;i<raw.length;i++){const d=_extractHeaderDate(raw[i]);if(d)dateCols.push({i,d});}
+  if(!dateCols.length)return null;
+  const YES=new Set(['y','yes','1','true']);
+  const pick=(dates)=>kind==='connect'?dates.reduce((a,b)=>a<b?a:b):dates.reduce((a,b)=>a>b?a:b);
+  const out=[];
+  for(const line of lines.slice(1)){
+    const v=splitCSVLine(line).map(x=>x.replace(/^"|"$/g,'').trim());
+    const name=iN>=0?v[iN]:((v[iF]||'')+' '+(iL>=0?(v[iL]||''):'')).trim();
+    if(!name)continue;
+    const yDates=dateCols.filter(c=>YES.has((v[c.i]||'').toLowerCase())).map(c=>c.d);
+    if(!yDates.length)continue;
+    out.push({name,date:pick(yDates)});
+  }
+  return out.length?out:null;
 }
 // People Flow export: sectioned CSV — "Step N - …" divider rows, then person rows.
 // Columns: Person, Contact Number, Demographics, Status, Date Entered, Due Date, Days in Step, Administrator, …
@@ -4332,7 +4364,8 @@ function model(){
   const marks=new Map();
   const mk=(k,nm)=>{let x=marks.get(k);if(!x){x={name:nm};marks.set(k,x);}return x;};
   // When a specific term is selected, filter connect/decision rows to that term's date range.
-  // Undated rows are always included. Team rows have no dates so are never filtered.
+  // Undated rows are always included. Team rows have no dates — for a specific term, a team
+  // member only counts toward stage 5 if they also attended in that term (see stage logic below).
   const tObj=TERM!=='ALL'&&AUDIT?(AUDIT.terms||[]).find(t=>t.key===TERM):null;
   const inPeriod=d=>!d||!tObj||(d>=tObj.startDate&&d<=tObj.endDate);
   for(const r of st.uploads.team.rows){const k=norm(r.name);if(!k)continue;mk(k,r.name).team=true;}
@@ -4342,7 +4375,10 @@ function model(){
   const people=[];
   for(const s of students){
     const k=norm(s.fn+' '+s.ln),x=marks.get(k)||{};
-    const stage=x.team?5:s.gA>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(x.hasConnect||x.hasDecision)?1:0;
+    // Team has no per-row dates: for a specific term, only count as team if they attended
+    // in that term (sA or gA > 0). For YTD (TERM==='ALL') count all team members.
+    const teamActive=x.team&&(TERM==='ALL'||(s.sA>0||s.gA>0));
+    const stage=teamActive?5:s.gA>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(x.hasConnect||x.hasDecision)?1:0;
     const trend=trendOf(s);
     people.push({id:s.id,name:s.fn+' '+s.ln,s,caOnly:false,stage,trend,score:scoreOf(stage,s,trend),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team});
   }
@@ -4791,7 +4827,10 @@ function upload(kind,input){
       PENDING.flows=frows;PENDING._flowsFn=f.name;
       toast(frows.length+' rows · '+frows.filter(r=>r.step>=2&&r.step<=4).length+' step 2–4 records');rerender();return;
     }
-    const rows=parseRows(text);
+    // For connect/decision try the matrix format (date-column headers, Y/N cells) first,
+    // then fall back to the lean single-date-column format.
+    let rows=kind!=='team'?parseMatrixRows(text,kind):null;
+    if(!rows)rows=parseRows(text);
     if(!rows||!rows.length){toast('Could not read that file — needs a Name (or First/Last Name) column');return;}
     const seen=new Map();
     for(const r of rows){
