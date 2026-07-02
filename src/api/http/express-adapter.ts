@@ -15,6 +15,7 @@ const loginRateLimiter = new RateLimiter(10, 15 * 60 * 1000);
 
 export function createApp(routes: Route[], authService: AuthService): Express {
   const app = express();
+  app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
 
   if (env.NODE_ENV === 'production' && env.CORS_ORIGINS.includes('*')) {
     logger.warn('CORS_ORIGINS is set to * in production — lock it to your domain for security');
@@ -26,6 +27,16 @@ export function createApp(routes: Route[], authService: AuthService): Express {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    // Cross-origin isolation: this is a standalone same-origin PWA (no cross-origin popups or
+    // embedders), so these are zero-friction hardening — they stop other sites opener-linking or
+    // hot-linking our resources. Ported from the Camp Platform sister app.
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    // HSTS: enforce HTTPS for a long window. Prod-only (localhost dev is plain HTTP); browsers
+    // ignore it over HTTP anyway, but gating on NODE_ENV keeps the header honest.
+    if (env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+    }
     next();
   });
 
@@ -55,6 +66,9 @@ export function createApp(routes: Route[], authService: AuthService): Express {
   for (const route of routes) {
     const method = route.method.toLowerCase() as 'get' | 'post' | 'patch' | 'delete';
     app[method](route.path, async (req: Request, res: Response) => {
+      // API + export responses can carry personal/medical-adjacent data — never let a browser
+      // or proxy cache them. Static assets are served by express.static above and stay cacheable.
+      res.setHeader('Cache-Control', 'no-store');
       try {
         // Rate-limit login attempts by IP
         if (route.path === '/auth/login' && route.method === 'POST') {
