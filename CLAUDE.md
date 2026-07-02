@@ -287,7 +287,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v6` (bump on breaking changes to force eviction)
+- Cache name: `cms-v7` (bump on breaking changes to force eviction)
 - HTML shell (`/`): **network-first** — always fetches fresh HTML when online, falls back to cache offline
 - API routes: **network-only** (never cached), matched by `API_RE`
 - Other assets: **cache-first**
