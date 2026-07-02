@@ -667,9 +667,14 @@ function quadChip(q) {
   return `<span class="chip quad-${q}">${QUAD_LABELS[q] || q}</span>`;
 }
 // Format a phone number with a space after the 4th and 7th digit (e.g. 0412 345 678).
+// Normalizes AU mobiles that lost their leading 0 to spreadsheet numeric coercion in
+// Elvanto/UCare CSV imports: an 11-digit "61…" becomes "0"+rest, a bare 9-digit "4…"
+// gets "0" prefixed. Ported from the camp app's fmtPhone (public/index.html ~1275).
 function fmtPhone(p) {
-  const d = String(p || '').replace(/\D/g, '');
+  let d = String(p || '').replace(/\D/g, '');
   if (!d) return '';
+  if (d.length === 11 && d.startsWith('61')) d = '0' + d.slice(2);
+  else if (d.length === 9 && d.startsWith('4')) d = '0' + d;
   if (d.length <= 4) return d;
   if (d.length <= 7) return d.slice(0, 4) + ' ' + d.slice(4);
   return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
