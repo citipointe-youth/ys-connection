@@ -1,4 +1,5 @@
 import { assertCan } from './access-control';
+import { BadRequestError } from '../core/errors/app-error';
 import type {
   IUserRepository,
   IStudentRepository,
@@ -25,10 +26,27 @@ export interface AdminAuditRow {
   detail: string;
 }
 
+export interface WipeOpts {
+  force?: boolean;
+  confirmWipe?: string;
+}
+
+// Mirrors the camp app's admin.service.ts wipe guard (src/services/admin.service.ts,
+// Project 9): a destructive route must be called with force:true AND this exact
+// confirmation string, checked BEFORE any data is touched. Unlike the camp's guard,
+// CMS has no lastExportedAt escape hatch — force+confirmWipe is always required.
+const CONFIRM_WIPE_STRING = 'I understand this cannot be undone';
+
+function assertForceConfirmed(opts?: WipeOpts): void {
+  if (!opts?.force || opts.confirmWipe !== CONFIRM_WIPE_STRING) {
+    throw new BadRequestError(`force requires confirmWipe: "${CONFIRM_WIPE_STRING}"`);
+  }
+}
+
 export interface AdminService {
-  reset(actor: Actor): Promise<void>;
+  reset(actor: Actor, opts?: WipeOpts): Promise<void>;
   saveDefaults(actor: Actor): Promise<void>;
-  clearServiceGroupData(actor: Actor): Promise<void>;
+  clearServiceGroupData(actor: Actor, opts?: WipeOpts): Promise<void>;
   getAuditLog(actor: Actor, limit?: number): Promise<AdminAuditRow[]>;
 }
 
@@ -78,8 +96,9 @@ export function makeAdminService(
   }
 
   return {
-    async reset(actor) {
+    async reset(actor, opts) {
       assertCan(actor, 'admin:manage');
+      assertForceConfirmed(opts);
       await wipeData({ includeLeaders: true });
       await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, connections, services and lifegroup data cleared');
     },
@@ -100,8 +119,9 @@ export function makeAdminService(
       await writeAudit(audit, actor, 'save-defaults', `Saved ${allUsers.length} accounts and ${allLeaders.length} leaders as defaults`);
     },
 
-    async clearServiceGroupData(actor) {
+    async clearServiceGroupData(actor, opts) {
       assertCan(actor, 'admin:manage');
+      assertForceConfirmed(opts);
       // Clear ALL service + lifegroup data but KEEP students (grade, age, phone),
       // their connections, leaders and accounts. Each student's attendance
       // aggregates are reset to 0 so the cleared data isn't still shown. Deletes
