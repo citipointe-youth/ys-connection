@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2563eb"/>
-  <!-- Youth Society V mark (matches brandMark() in index.html) -->
+  <rect width="512" height="512" rx="112" fill="#1a1af2"/>
+  <!-- Youth Society V mark (matches brandMark() in index.html), square raised for more separation from the V -->
   <g transform="scale(5.12)" fill="white">
-    <rect x="40" y="20" width="20" height="20" rx="2"/>
+    <rect x="40" y="14" width="20" height="20" rx="2"/>
     <path d="M16 42 L33 42 L50 64 L67 42 L84 42 L50 86 Z"/>
   </g>
 </svg>
