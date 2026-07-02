@@ -19,7 +19,7 @@ npm install
 npm run dev          # backend + frontend on http://localhost:4300 (tsx watch)
 npm run start        # same, no watch
 npm run typecheck    # tsc --noEmit (strict)
-npm run test         # vitest (130 tests)
+npm run test         # vitest (177 tests)
 ```
 
 Default port: **4300**. Set `PORT=xxxx` to override.
@@ -241,7 +241,9 @@ Transaction mode means no session-level prepared statements — fine for this ap
 
 **Client-side cache** — `Cache` object (30-second TTL) wraps all `API.get()` calls. Cache is invalidated on every write (connections, leaders, settings, import, admin, users). After login `_prefetch()` fires background fetches for all 7 common endpoints so navigations after the first are instant.
 
-**Cache-skip spinner** — render functions check `_allCached(...paths)` before showing the loading spinner; cached navigations render immediately.
+**Stale-while-revalidate navigation** — every page render function (`renderHome`, `renderTrends`, `renderConnect`, `renderUpcomingBirthdays`, `renderMyStudents`, `renderStudents`, `renderAtRisk`, `renderImport`, `renderAdmin`, plus the CA module's own pages) follows the same `<PAGE>_PATHS` + `allFresh`/`haveStale` pattern: all-fresh renders straight from cache; any-stale paints instantly from `Cache.getStale(...)` and revalidates in the background via a `_revalidate<Page>()` helper that re-renders only if `S.page` hasn't changed; nothing cached at all shows the spinner. `renderLeaders`/`renderQuadView`/`renderMyQuad`/`renderNotifications` are dead/unreachable code (not in the `render()` dispatch table) and were deliberately left on the old `_allCached` pattern.
+
+**Global loading bar (`#nprog`)** — a thin accent-coloured bar under the top edge, reference-counted via `_npStart`/`_npDone` called from the `API` IIFE's `r()`. Since `API.get` only calls `r()` on a cache miss, cached reads never trigger it — only real network requests do.
 
 **Scroll handling** — the **window** is the scroller (`.pg` is not). `setApp()` resets
 to top only when navigating to a DIFFERENT page (`S.page !== _lastRenderedPage`) and
@@ -287,7 +289,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v8` (bump on breaking changes to force eviction)
+- Cache name: `cms-v9` (bump on breaking changes to force eviction)
 - HTML shell (`/`): **network-first** — always fetches fresh HTML when online, falls back to cache offline
 - API routes: **network-only** (never cached), matched by `API_RE`
 - Other assets: **cache-first**

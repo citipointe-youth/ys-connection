@@ -345,6 +345,28 @@ PHASE: BUGFIXES + HOME/TRENDS PERFORMANCE + AUDIT UX  (2026-06-22)
   hub hero now shows the "<year> · <term>" scope label
 
 -------------------------------------------------------------------------------
+PHASE: CAMP-APP PARITY — PHONE FIX, WIPE GUARD, LOADING BAR, SWR  (2026-07-02)
+-------------------------------------------------------------------------------
+- fmtPhone now normalizes AU mobiles that lost their leading 0 to spreadsheet
+  numeric coercion in Elvanto/UCare CSV imports (11-digit "61…" and bare
+  9-digit "4…" forms), matching the camp app's fmtPhone. Applies everywhere a
+  number is displayed (phoneLink/callPhone); editable phone inputs untouched
+- POST /admin/reset and /admin/clear-service-group now require a body of
+  {force:true, confirmWipe:"I understand this cannot be undone"} — rejected
+  with BadRequestError before any data is touched otherwise. Mirrors the camp
+  app's wipe guard pattern (admin.service.ts); CMS keeps its own delete
+  semantics (reset still keeps accounts). SPA's confirmType/adminAction flow
+  sends the new fields automatically once the typed-word modal is confirmed
+- New global top loading bar (#nprog): a thin accent-coloured bar under the
+  top edge, reference-counted from the API layer's r() so only real network
+  requests drive it — cache hits never flash it
+- Stale-while-revalidate navigation (previously only Home + Trends) is now
+  generalized to Leaders/Connect, Birthdays, My Students, Students, At Risk,
+  Import, and Admin: a revisit paints the last-known data instantly and
+  refreshes in the background instead of spinnering on every cache expiry
+- Bumped service worker cache cms-v8 to cms-v9 (index.html changed)
+
+-------------------------------------------------------------------------------
 SUMMARY OF CUMULATIVE CHANGES
 -------------------------------------------------------------------------------
 The project has evolved from a copy of youth-allocation-platform into a
