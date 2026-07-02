@@ -26,9 +26,11 @@ const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const INSECURE_FALLBACK = 'cms-dev-secret-change-in-production';
 const SESSION_SECRET = process.env['SESSION_SECRET'] ?? INSECURE_FALLBACK;
 
+// Fail closed, not open: a missing SESSION_SECRET in production means every
+// session token is forgeable with a publicly-known string. Refuse to boot
+// rather than silently running in a forgeable state.
 if (process.env['NODE_ENV'] === 'production' && SESSION_SECRET === INSECURE_FALLBACK) {
-  // eslint-disable-next-line no-console
-  console.error(
+  throw new Error(
     '[SECURITY] SESSION_SECRET env var is not set. ' +
     'Session tokens can be forged. Set SESSION_SECRET in your deployment environment immediately.'
   );
