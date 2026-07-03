@@ -335,12 +335,14 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
-.connect-students{margin-top:12px;border-top:1px solid var(--paper-dark);padding-top:10px;max-height:126px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--ink-faint) transparent}
-/* A native mobile scrollbar only flashes on touch and is easy to miss inside this short
-   3-row preview window, so keep a faint thumb always visible as a "there's more" hint. */
-.connect-students::-webkit-scrollbar{width:4px}
-.connect-students::-webkit-scrollbar-track{background:transparent}
-.connect-students::-webkit-scrollbar-thumb{background:rgba(148,163,184,.5);border-radius:2px}
+/* A native scrollbar only flashes during an active touch drag on phones (OS-level
+   overlay-scrollbar behavior that CSS can't override), so this preview draws its own
+   always-visible track/thumb (sized in _syncConnectThumb) instead of relying on one. */
+.connect-students-wrap{position:relative;margin-top:12px}
+.connect-students{border-top:1px solid var(--paper-dark);padding:10px 10px 0 0;max-height:126px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.connect-students::-webkit-scrollbar{display:none}
+.connect-students-track{position:absolute;top:11px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
+.connect-students-thumb{position:absolute;left:0;width:3px;background:rgba(100,116,139,.55);border-radius:2px}
 .connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
 .connect-stud-row:last-child{border-bottom:none}
 .connect-stud-name{flex:1;font-size:14px;font-weight:600}
@@ -2231,13 +2233,36 @@ function renderConnectView() {
           <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
         </div>
         ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
-        ${assignedStudents.length?`<div class="connect-students">${studentRows}</div>`:''}
+        ${assignedStudents.length?`<div class="connect-students-wrap"><div class="connect-students" onscroll="_syncConnectThumb(this)">${studentRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`:''}
       </div>`;
     }
     body += '</div>';
   }
 
   setApp(shell(body));
+  // Native touch scrollbars only flash during an active drag, so the custom
+  // track/thumb above is what actually stays visible at rest — size/position
+  // it once now that the rows are laid out (and again on real scroll events).
+  document.querySelectorAll('.connect-students').forEach(_syncConnectThumb);
+}
+
+// Size/position the custom always-visible scroll thumb for a .connect-students
+// preview list against its sibling .connect-students-track/-thumb. Hides the
+// track entirely when everything fits (nothing to scroll).
+function _syncConnectThumb(el) {
+  const track = el.nextElementSibling;
+  if (!track || !track.classList.contains('connect-students-track')) return;
+  const thumb = track.firstElementChild;
+  const trackH = track.clientHeight;
+  const viewH = el.clientHeight;
+  const contentH = el.scrollHeight;
+  if (contentH <= viewH + 1 || trackH <= 0) { track.style.display = 'none'; return; }
+  track.style.display = '';
+  const thumbH = Math.max(20, trackH * (viewH / contentH));
+  const maxTop = trackH - thumbH;
+  const top = maxTop * (el.scrollTop / (contentH - viewH));
+  thumb.style.height = thumbH + 'px';
+  thumb.style.top = top + 'px';
 }
 
 function toggleAF(type, val) {
@@ -2661,7 +2686,7 @@ async function renderMyStudents() {
         // Prefer the birthday carried on the summary row; fall back to the scoped
         // /students lookup for any older cached payload.
         const bd = fmtBday(s.dateOfBirth ?? bdayOf[s.id]);
-        body += `<div class="li" style="cursor:pointer" onclick="showStudentDetail('${s.id}')">
+        body += `<div class="li" style="align-items:flex-start">
           <div class="li-body">
             <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.fullName)}</span>
@@ -2669,7 +2694,7 @@ async function renderMyStudents() {
             </div>
             ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)" onclick="event.stopPropagation()">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone)}` : ''}</div>` : ''}
+            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone)}` : ''}</div>` : ''}
           </div>
         </div>`;
       }
@@ -3584,20 +3609,38 @@ async function renderTrends() {
       body += `<div class="card"><div style="color:var(--ink-faint);font-size:13px">Lifegroup stats unavailable.</div></div>`;
     } else {
       const oc = lgStats.overall.current, op = lgStats.overall.previous;
-      body += `<div class="sh">Overview</div><div class="card">`;
-      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Individuals attending a lifegroup · this term</div>`;
-      body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Seen','Weekly'],
-        op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
-      body += `<div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${oc.weeksRan} week${oc.weeksRan===1?'':'s'} ran this term${op.weeksRan>0?' · '+op.weeksRan+' previous':''}</div>`;
-      // Weekly lifegroup attendance chart (current term) — bar = individuals that week
-      const wk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
-      if (wk.length) {
-        const peakW = Math.max(1, ...wk.map(w => w.attended));
-        const wkSess = wk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
-        body += `<div style="font-size:12px;color:var(--ink-mid);margin:12px 0 4px">Weekly attendance</div>`;
-        body += colChart(wkSess, 56);
+      if (u.role === 'grade') {
+        // Grade-only: mirror the Fridays tab's own layout — "Grade X Boys" stat
+        // card, then Weekly Attendance in its own separate box. No weeks-ran note
+        // here — that's already shown per-group in the breakout below.
+        body += `<div class="sh">Grade ${u.grade}${_gsfx(_loginGender(u))}</div><div class="card">`;
+        body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Seen','Weekly'],
+          op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
+        body += '</div>';
+        const gwk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
+        if (gwk.length) {
+          const gpeakW = Math.max(1, ...gwk.map(w => w.attended));
+          const gwkSess = gwk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / gpeakW * 100), att: w.attended, tot: w.attended }));
+          body += `<div class="sh">Weekly Attendance</div><div class="card">`;
+          body += colChart(gwkSess, 56);
+          body += '</div>';
+        }
+      } else {
+        body += `<div class="sh">Overview</div><div class="card">`;
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Individuals attending a lifegroup · this term</div>`;
+        body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Seen','Weekly'],
+          op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
+        body += `<div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${oc.weeksRan} week${oc.weeksRan===1?'':'s'} ran this term${op.weeksRan>0?' · '+op.weeksRan+' previous':''}</div>`;
+        // Weekly lifegroup attendance chart (current term) — bar = individuals that week
+        const wk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
+        if (wk.length) {
+          const peakW = Math.max(1, ...wk.map(w => w.attended));
+          const wkSess = wk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
+          body += `<div style="font-size:12px;color:var(--ink-mid);margin:12px 0 4px">Weekly attendance</div>`;
+          body += colChart(wkSess, 56);
+        }
+        body += '</div>';
       }
-      body += '</div>';
 
       if (u.role === 'grade') {
         const g = (lgStats.byGrade || [])[0];
