@@ -431,3 +431,29 @@ behaviour or add friction:
   tooling), SQL injection surface (all queries use postgres.js tagged
   templates), RBAC (access-control.ts), and error handling (prod hides
   internal error details from clients).
+
+-------------------------------------------------------------------------------
+IMPORT-HISTORY CLEAR FIX + ELVANTO EXPORT GUIDES  (2026-07-03)
+-------------------------------------------------------------------------------
+- Committed the import-history fix batch (migration 013, applied to prod
+  2026-07-03): service_sessions.import_id / lifegroup_weeks.import_id FKs are
+  now ON DELETE SET NULL (was CASCADE, which silently deleted attendance in
+  production when clearing the import-history log). importId typed
+  string|null; clear-history confirm copy states data is kept; the import
+  preview counts new-vs-known against a fresh /students fetch instead of the
+  expired 30s cache (re-uploads showed everyone as "new" with 0 updates).
+- NEW Elvanto export guides — full-screen screenshot walkthroughs (ported
+  from the Camp Platform import guide):
+  * Import screen: "How do I export these files from Elvanto?" -> 2 steps
+    (Service Individual Attendance for Friday Nights; Group Individual
+    Attendance), each with an amber date-range note: the app reads only the
+    current + previous term, so "This calendar year" is fine mid-year but in
+    Term 1 use a Custom range starting from the beginning of last year's
+    Term 4.
+  * Connection Audit Data tab: "How do I export the Team, Decision, New
+    people & Flow files?" -> 4 steps (Student Team = the Sunday 10:15am
+    service attendance report; Decision Form export; New Child/Youth form
+    export = the New Connect file; People Flow Steps Detail report).
+  * Steps flick via Back/Next, dots, or touch swipe; screenshots tap-to-zoom
+    (220% width, horizontal scroll) for phones. Images in
+    public/img/export-help/. sw.js cms-v14 -> cms-v15.

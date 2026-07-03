@@ -183,6 +183,28 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* Modal */
 .mo{position:fixed;inset:0;background:rgba(8,14,25,.55);z-index:200;display:flex;align-items:flex-end;justify-content:center}
 @media(min-width:768px){.mo{align-items:center;padding:24px}}
+/* Elvanto export guide — full-screen step viewer (Import screen + Connection Audit data tab) */
+.eg-wrap{position:fixed;inset:0;background:rgba(8,14,25,.62);z-index:210;display:none;align-items:center;justify-content:center;padding:12px}
+.eg-wrap.show{display:flex}
+.eg-card{background:var(--paper-card);border-radius:var(--radius);width:100%;max-width:760px;max-height:92dvh;display:flex;flex-direction:column;overflow:hidden}
+.eg-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px 10px;flex-shrink:0}
+.eg-hd .t{font-weight:800;color:var(--ink);font-size:16px}
+.eg-x{border:none;background:var(--paper-dark);color:var(--ink-mid);width:32px;height:32px;border-radius:50%;cursor:pointer;flex-shrink:0;display:grid;place-items:center}
+.eg-body{padding:0 16px 8px;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;flex:1}
+.eg-step{font-size:11px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.eg-cap{font-size:13px;color:var(--ink-mid);margin-bottom:10px;line-height:1.5}
+.eg-note{background:#fffbeb;border:1px solid #fcd34d;border-radius:var(--radius-sm);padding:10px 12px;font-size:12.5px;color:#92400e;margin-bottom:10px;line-height:1.5}
+.eg-imgwrap{border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden;cursor:zoom-in}
+.eg-imgwrap img{display:block;width:100%}
+.eg-imgwrap.zoom{overflow-x:auto;cursor:zoom-out;-webkit-overflow-scrolling:touch}
+.eg-imgwrap.zoom img{width:220%;max-width:none}
+.eg-zoomhint{font-size:11px;color:var(--ink-faint);text-align:center;margin-bottom:8px}
+.eg-ft{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px calc(12px + var(--safe-b));border-top:1px solid var(--line);flex-shrink:0}
+.eg-ft .btn{min-width:88px}
+.eg-ft button:disabled{opacity:.35;pointer-events:none}
+.eg-dots{display:flex;gap:6px}
+.eg-dots i{width:8px;height:8px;border-radius:999px;background:var(--paper-dark);display:block;transition:.15s}
+.eg-dots i.on{background:var(--accent);width:20px}
 .mo-box{background:var(--paper-card);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:94vh;overflow-y:auto;padding:18px 18px max(18px,env(safe-area-inset-bottom));animation:rise .2s}
 @media(min-width:768px){.mo-box{border-radius:var(--radius)}}
 .mo-handle{width:40px;height:4px;background:var(--paper-dark);border-radius:2px;margin:0 auto 16px}
@@ -461,6 +483,13 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="undo-toast"></div>
 <div id="modal-root"></div>
+<div class="eg-wrap" id="exportGuide" onclick="if(event.target===this)closeExportGuide()" role="dialog" aria-label="How to export from Elvanto">
+  <div class="eg-card">
+    <div class="eg-hd"><span class="t" id="egTitle"></span><button class="eg-x" id="egX" onclick="closeExportGuide()" aria-label="Close"></button></div>
+    <div class="eg-body" id="egBody" ontouchstart="_egTs(event)" ontouchend="_egTe(event)"></div>
+    <div class="eg-ft"><button class="btn btn-secondary btn-sm" id="egPrev" onclick="_egGo(-1)">Back</button><div class="eg-dots" id="egDots"></div><button class="btn btn-primary btn-sm" id="egNext"></button></div>
+  </div>
+</div>
 <script>
 // Top loading bar (#nprog) driver — reference-counted so overlapping fetches (e.g. a
 // parallel Promise.all) hold the bar until the LAST one finishes. Creeps toward 90%
@@ -591,6 +620,69 @@ function _clampTip(btn) {
 }
 document.addEventListener('click', e => { if (!e.target.closest('.htip')) document.querySelectorAll('.htip.open').forEach(t => t.classList.remove('open')); });
 document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('.htip'); if (b) _clampTip(b); });
+
+// ── Elvanto export guide — screenshot walkthroughs for the two upload points.
+// 'import' = the main Import screen (service + lifegroup attendance exports);
+// 'audit' = the Connection Audit data tab (team / decision / new-people / flows overlays).
+// Full-screen viewer (#exportGuide): flick steps via Back/Next, dots or touch swipe;
+// tap a screenshot to zoom (the Elvanto modals are dense on a phone at fit-width).
+// Ported from the Camp Platform import guide (its .ig-* viewer), adapted to this app's tokens.
+const _EG_DATE_NOTE = 'Date range — the app only reads the CURRENT term and the term before it, so the dates are flexible. Mid-year, "This calendar year" is fine. In Term 1, choose a Custom date range starting from the beginning of last year\'s Term 4 so the previous term comes with it.';
+const EXPORT_GUIDES = {
+  import: { title: 'Exporting from Elvanto', steps: [
+    { step: 'Step 1 of 2 · Service attendance', note: _EG_DATE_NOTE,
+      cap: 'In Elvanto open <b>Services › Reports</b> and generate the built-in <b>Service Individual Attendance</b> report with the highlighted settings: Attendance <b>"Only people who did attend"</b>; tick <b>"Filter services by service types"</b> and select the <b>Friday Nights</b> youth service; Demographics <b>Youth</b>; add the <b>School Grade</b> people column; tick <b>"Show Individual Service Grid"</b>; Output <b>Comma Delimited .csv</b>.',
+      imgs: [['/img/export-help/services-report.png', 'Elvanto: Services menu then Reports, Service Individual Attendance in the built-in report list'],
+             ['/img/export-help/services-settings.png', 'Service Individual Attendance settings with the required options highlighted']] },
+    { step: 'Step 2 of 2 · Lifegroup attendance', note: _EG_DATE_NOTE,
+      cap: 'Open <b>Groups › Reports</b> and generate <b>Group Individual Attendance</b>: Status <b>Active</b>; <b>All Groups</b>; Group Categories <b>Men\'s + Women\'s Lifegroup</b>; Demographics <b>Youth</b>; Locations <b>Brisbane</b>; Output <b>Comma Delimited .csv</b>. Then upload both files on this screen — each is detected automatically.',
+      imgs: [['/img/export-help/groups-report.png', 'Elvanto: Groups menu then Reports, Group Individual Attendance in the built-in report list'],
+             ['/img/export-help/groups-settings.png', 'Group Individual Attendance settings with the required options highlighted']] }
+  ]},
+  audit: { title: 'Exporting the audit files', steps: [
+    { step: 'Step 1 of 4 · Student Team',
+      cap: 'The team roster comes from <b>Sunday service attendance</b>: run the same <b>Service Individual Attendance</b> report (Services › Reports), but under "Filter services by service types" tick the <b>Sunday 10:15am</b> service instead of Friday Nights. Keep <b>"Only people who did attend"</b>, Demographics <b>Youth</b> and <b>.csv</b> output.',
+      imgs: [['/img/export-help/team-report.png', 'Service Individual Attendance settings with the Sunday 10:15am service selected']] },
+    { step: 'Step 2 of 4 · Decisions',
+      cap: 'Open <b>Forms › Brisbane - Youth - Decision Form › Submissions</b>, press <b>Export</b> (top right) and choose <b>CSV</b> — every decision with its date.',
+      imgs: [['/img/export-help/decision-export.png', 'Elvanto Forms: Decision Form submissions with the Export format dialog open']] },
+    { step: 'Step 3 of 4 · New people',
+      cap: 'Open <b>Forms › the New Child/Youth form › Submissions</b>, press <b>Export</b> and choose <b>CSV</b>. This is the <b>New Connect</b> file — new people and the date they first connected.',
+      imgs: [['/img/export-help/newpeople-export.png', 'Elvanto Forms: New Child/Youth form submissions with the Export format dialog open']] },
+    { step: 'Step 4 of 4 · People Flows',
+      cap: 'Open <b>People › Reports</b> and generate the built-in <b>People Flow Steps Detail</b> report: pick the <b>Brisbane - Youth - New People</b> flow for the year, Report Type <b>"All people in the People Flow"</b>, leave the date ranges and statuses blank, Output <b>Comma Delimited .csv</b>.',
+      imgs: [['/img/export-help/flows-report.png', 'Elvanto: People menu then Reports, People Flow Steps Detail in the built-in report list'],
+             ['/img/export-help/flows-settings.png', 'People Flow Steps Detail settings with the New People flow and CSV output highlighted']] }
+  ]}
+};
+let _egKey = 'import', _egIdx = 0, _egTouchX = null;
+function openExportGuide(key) {
+  _egKey = EXPORT_GUIDES[key] ? key : 'import'; _egIdx = 0;
+  document.getElementById('egTitle').textContent = EXPORT_GUIDES[_egKey].title;
+  document.getElementById('egX').innerHTML = icS('xmark');
+  _egDraw();
+  document.getElementById('exportGuide').classList.add('show');
+}
+function closeExportGuide() { document.getElementById('exportGuide').classList.remove('show'); }
+function _egGo(d) { const n = _egIdx + d; if (n < 0 || n >= EXPORT_GUIDES[_egKey].steps.length) return; _egIdx = n; _egDraw(); }
+function _egZoom(w) { w.classList.toggle('zoom'); }
+function _egDraw() {
+  const steps = EXPORT_GUIDES[_egKey].steps, s = steps[_egIdx], body = document.getElementById('egBody');
+  body.innerHTML = '<div class="eg-step">' + s.step + '</div>'
+    + (s.note ? '<div class="eg-note">' + esc(s.note) + '</div>' : '')
+    + '<p class="eg-cap">' + s.cap + '</p>'
+    + s.imgs.map(im => '<div class="eg-imgwrap" onclick="_egZoom(this)"><img src="' + im[0] + '" alt="' + esc(im[1]) + '" loading="lazy"></div>').join('')
+    + '<div class="eg-zoomhint">Tap a screenshot to zoom · swipe or use the buttons to change step</div>';
+  body.scrollTop = 0;
+  document.getElementById('egDots').innerHTML = steps.map((_, i) => '<i class="' + (i === _egIdx ? 'on' : '') + '"></i>').join('');
+  document.getElementById('egPrev').disabled = _egIdx === 0;
+  const last = _egIdx === steps.length - 1, nx = document.getElementById('egNext');
+  nx.textContent = last ? 'Done' : 'Next';
+  nx.onclick = last ? closeExportGuide : () => _egGo(1);
+}
+function _egTs(e) { _egTouchX = e.touches[0].clientX; }
+function _egTe(e) { if (_egTouchX == null) return; const dx = e.changedTouches[0].clientX - _egTouchX; _egTouchX = null; if (Math.abs(dx) > 48) _egGo(dx < 0 ? 1 : -1); }
+
 function go(page) { S.page = page; render(); }
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
@@ -3534,6 +3626,7 @@ async function renderImport() {
         <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">Service or Group — auto-detected</div>
       </div>
       <input type="file" id="csv-file" accept=".csv,.xlsx" style="display:none" onchange="handleUnifiedFile(this)">
+      <button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="openExportGuide('import')">${icS('info')} How do I export these files from Elvanto?</button>
       <div id="import-status" style="margin-top:12px"></div>
     </div>`;
 
@@ -4987,6 +5080,7 @@ function rData(){
     +slot('connect','New Connect CSV','Connect dates',PENDING.connect.length?(PENDING._connectFn||(PENDING.connect.length+' rows')):null)
     +slot('decision','Decision CSV','Decision dates',PENDING.decision.length?(PENDING._decisionFn||(PENDING.decision.length+' rows')):null)
     +slot('flows','People Flow CSV','Follow-up export',PENDING.flows.length?(PENDING._flowsFn||(PENDING.flows.length+' rows')):null)
+    +'<div style="padding:10px 0"><button class="btn btn-secondary btn-full" onclick="openExportGuide(\'audit\')">'+icS('info')+' How do I export the Team, Decision, New people &amp; Flow files?</button></div>'
     +'</div>';
   b+='<div class="card" style="display:flex;gap:10px;align-items:center;justify-content:space-between">'
     +'<div style="font-size:.66rem;color:var(--ca-muted);line-height:1.5">Saving computes the terms server-side and stores one audit for that year. Re-saving a year overwrites it. Other directors/admins can then load it.</div>'

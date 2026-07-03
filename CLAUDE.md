@@ -249,6 +249,25 @@ Transaction mode means no session-level prepared statements — fine for this ap
   the pure `src/services/connection-allocations.ts`; `parseAllocationCSV` in the SPA preserves
   all columns (unlike attendance `parseCSV`).
 
+### Elvanto export guide (2026-07-03)
+
+Two screenshot walkthroughs teach users how to produce the upload files in Elvanto, shown in a
+full-screen step viewer (`#exportGuide` overlay; `.eg-*` CSS; `EXPORT_GUIDES`/`openExportGuide`/
+`_egDraw`/`_egGo`/`_egZoom`/`_egTs`/`_egTe` — ported from the Camp Platform's import guide):
+- **`openExportGuide('import')`** — button on the main Import screen (`renderImport`). 2 steps:
+  Service Individual Attendance (Friday Nights) and Group Individual Attendance. Both steps carry
+  an amber **date-range note** (`_EG_DATE_NOTE`): the app reads only the current + previous term,
+  "This calendar year" is fine mid-year, but in **Term 1** the user must set a Custom range
+  starting from the beginning of last year's Term 4.
+- **`openExportGuide('audit')`** — button in the Connection Audit Data tab upload card (`rData`).
+  4 steps: Student Team (= Service Individual Attendance with the **Sunday 10:15am** service),
+  Decision Form export, New Child/Youth form export (the "New Connect" file), and People Flow
+  Steps Detail report (the flows file).
+- Steps flick via Back/Next buttons, dot indicators, or touch swipe (≥48px); screenshots
+  tap-to-zoom to a 220%-width horizontally-scrollable view (`.eg-imgwrap.zoom`). Images live in
+  **`public/img/export-help/*.png`** (same-origin, CSP `img-src 'self'` covers them, cache-first
+  in the SW — bump the SW cache if an image is replaced).
+
 ### SPA architecture
 
 **Persistent shell** — header + nav are built once on login via `_initShell()` and never rebuilt. All page navigations update only `<main id="page-main">` via `setApp(h)`. The `_shellReady` flag gates this; set to `false` on logout.
@@ -303,7 +322,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v11` (bump on breaking changes to force eviction)
+- Cache name: `cms-v15` (bump on breaking changes to force eviction)
 - **Excel import** (all upload points — main import, allocations, every Connection Audit slot):
   `readXlsx(buf)` now uses the vendored **SheetJS** build (`public/vendor/xlsx.full.min.js`),
   **lazy-loaded** via `_ensureXlsx()` only when an Excel file is chosen (same-origin, so CSP
