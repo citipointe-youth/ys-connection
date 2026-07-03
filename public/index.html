@@ -52,8 +52,12 @@
 /* Top loading bar (#nprog): a thin accent bar that animates whenever a real network
    request is in flight (driven from API's r() via _npStart/_npDone, ported from the
    camp app's #nprog). Cached GETs never reach r(), so instant navigations don't flash
-   the bar. Tune colour/height in this one rule. */
-#nprog{position:fixed;top:0;left:0;height:3px;width:0;z-index:1000;background:linear-gradient(90deg,var(--accent),var(--accent-dark));border-radius:0 2px 2px 0;opacity:0;transition:width .18s ease,opacity .3s ease;pointer-events:none;box-shadow:0 0 8px rgba(26,26,242,.55)}
+   the bar. Tune colour/height in this one rule.
+   `top` defaults to 0 (pre-login, no shell yet) and is overridden inline by
+   _positionNprog() to sit at the bottom edge of .hdr once the shell exists — matching
+   the camp app, where the bar hugs the header instead of sitting at the literal top of
+   the viewport (which put it in the notch/status-bar strip and made it barely visible). */
+#nprog{position:fixed;top:0;left:0;height:3px;width:0;z-index:1000;background:linear-gradient(90deg,var(--accent),var(--accent-dark));border-radius:0 2px 2px 0;opacity:0;transition:width .18s ease,opacity .3s ease,top .15s ease;pointer-events:none;box-shadow:0 0 8px rgba(26,26,242,.55)}
 #nprog.on{opacity:1}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:hidden;touch-action:pan-x pan-y;overscroll-behavior-y:contain}
@@ -248,11 +252,13 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .login-logo h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em}
 .login-logo p{font-size:13px;color:var(--ink-mid);margin-top:4px}
 
-/* Spinner */
-.spin{width:20px;height:20px;border:2.5px solid var(--paper-dark);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+/* Spinner — ported from the camp platform's loading indicator (spinner + "Loading…"
+   label, centered column, more breathing room than the old bare ring). */
+.spin{width:30px;height:30px;border:3px solid var(--paper-dark);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes rise{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
-.loading{display:flex;justify-content:center;padding:40px}
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 0;color:var(--ink-faint);gap:12px}
+.loading .lt{font-size:13px;font-weight:600}
 
 /* Respect reduced-motion: keep the spinner (it conveys loading state) but drop
    decorative transitions/animations. */
@@ -527,6 +533,15 @@ function _npDone() {
     _npResetTimer = setTimeout(() => { if (_npCount === 0) el.style.width = '0'; }, 320);
   }, 180);
 }
+// Sits the bar at the bottom edge of .hdr (once the persistent shell exists) instead of
+// the literal top of the viewport, so it reads as "this screen is loading" rather than a
+// stray line in the notch/status-bar strip. Falls back to top:0 pre-login (no .hdr yet).
+function _positionNprog() {
+  const el = document.getElementById('nprog'); if (!el) return;
+  const hdr = document.querySelector('.hdr');
+  el.style.top = (hdr ? hdr.getBoundingClientRect().height : 0) + 'px';
+}
+window.addEventListener('resize', _positionNprog);
 
 // ============================================================
 // API ADAPTER
@@ -777,6 +792,7 @@ function _initShell() {
     <main id="page-main" class="pg"></main>
     <nav class="bot-nav">${mlinks}</nav>`;
   _shellReady = true;
+  _positionNprog();
   _prefetch();
   // _updateNotifBadge(); // PUSH-HIDDEN
 }
@@ -1187,6 +1203,7 @@ function renderLogin() {
     </div>`;
   document.getElementById('lemail')?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
   document.getElementById('lpw')?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+  _positionNprog();
 }
 
 async function doLogin() {
@@ -1304,7 +1321,7 @@ async function renderHome() {
     _revalidateHome();
     return;
   }
-  setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
   try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
   // Cold load self-heal: if any endpoint failed this round (e.g. a slow
   // /lifegroups/stats timed out during the serverless cold start), Home would
@@ -1731,7 +1748,7 @@ function _timeAgo(isoStr) {
 async function renderNotifications() {
   const u = S.user; if (!u) return;
   const canSend = ['admin', 'director', 'quad'].includes(u.role);
-  if (!_allCached('/push/notifications')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/push/notifications')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
   let data;
   try { data = await API.get('/push/notifications'); }
   catch {
@@ -1817,7 +1834,7 @@ async function deleteNotification(id) {
 // LEADERS
 // ============================================================
 async function renderLeaders() {
-  if (!_allCached('/leaders', '/connections')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
   const [leaders, connectsRaw] = await Promise.all([
     API.get('/leaders').catch(() => []),
     API.get('/connections').catch(() => []),
@@ -2065,7 +2082,7 @@ async function renderConnect() {
     await loadConnectData(p => Promise.resolve(Cache.getStale(p)));
     if (!allFresh) _revalidateConnect();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     await loadConnectData(p => API.get(p));
     if (S.page !== _pg) return;
   }
@@ -2475,7 +2492,7 @@ async function renderUpcomingBirthdays() {
     conns = Cache.getStale('/connections') || [];
     if (!allFresh) _revalidateBirthdays();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     try { [students, leaders, conns] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/leaders').catch(() => []),
@@ -2559,7 +2576,7 @@ async function renderMyStudents() {
     allStudents = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateMyStudents();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     [leaders, allStudents] = await Promise.all([
       API.get('/leaders').catch(() => []),
       API.get('/students').catch(() => []),
@@ -2648,7 +2665,7 @@ async function exportConnectCSV() {
 // QUAD VIEW
 // ============================================================
 async function renderQuadView() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
   let leaders=[], connectsRaw=[], students=[];
   try { [leaders, connectsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
   const sById = {}; for (const s of students) sById[s.id]=s;
@@ -2707,7 +2724,7 @@ async function renderQuadView() {
 let _mqTab = 'leaders';
 
 async function renderMyQuad() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
   let leaders=[], connectsRaw2=[], students=[];
   try { [leaders, connectsRaw2, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
 
@@ -2867,7 +2884,7 @@ async function renderAtRisk() {
     allStu = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateAtRisk();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     try { allStu = await API.get('/students'); } catch {}
     if (S.page !== _pg) return;
   }
@@ -3025,7 +3042,7 @@ async function renderStudents() {
     leaders = Cache.getStale('/leaders') || [];
     if (!allFresh) _revalidateStudents();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     [students, leaders] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/leaders').catch(() => []),
@@ -3370,7 +3387,7 @@ async function renderTrends() {
     lgStats  = Cache.getStale('/lifegroups/stats');
     if (!allFresh) _revalidateTrends();
   } else {
-    if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     [students, overview, trends, lgStats] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/overview').catch(() => null),
@@ -3631,7 +3648,7 @@ async function renderImport() {
     history = Cache.getStale('/import/history') || [];
     if (!allFresh) _revalidateImport();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     try { history = await API.get('/import/history'); } catch {}
     if (S.page !== _pg) return;
   }
@@ -4060,7 +4077,7 @@ async function renderAdmin() {
     users = Cache.getStale('/accounts/users') || [];
     if (!allFresh) _revalidateAdmin();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div></div>'));
+    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
     [settings, users] = await Promise.all([
       API.get('/settings').catch(() => ({})),
       API.get('/accounts/users').catch(() => []),
@@ -4171,7 +4188,7 @@ async function renderAdminView(settings, users) {
 
   // Change 4: Audit tab
   if (_adminTab === 'audit') {
-    body += `<div id="audit-container"><div class="loading"><div class="spin"></div></div></div>`;
+    body += `<div id="audit-container"><div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div></div>`;
     setApp(shell(body));
     // Load audit entries async
     try {
