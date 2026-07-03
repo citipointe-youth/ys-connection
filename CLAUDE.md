@@ -233,7 +233,7 @@ Transaction mode means no session-level prepared statements — fine for this ap
   `_auditLgStats(sel, prev)` assembles the `byQuad→grades→lifegroups` shape `lifegroupRows()`
   expects. No live `/lifegroups/stats` call. (This needs `audits` in the SW `API_RE` — see
   the SW gotcha — or a stale snapshot is served and the table reads empty.)
-- **Term filtering in the SPA (`model()`):** connect/decision rows are filtered by `inPeriod(r.date)` against the selected term's `startDate`/`endDate` (ISO string comparison). Undated rows are always included. Team rows carry no dates — for a specific term, a team member only reaches stage 5 if they also attended that term (`sA>0 || gA>0`); YTD counts the full roster.
+- **Term / YTD date filtering in the SPA (`model()`):** connect/decision rows are filtered by `inPeriod(r.date)` (ISO string comparison). A specific term bounds to that term's `startDate`/`endDate`; **year-to-date (`TERM==='ALL'`) bounds to the UNION of the audit's term dates** (`min startDate … max endDate`) — the CRM exports carry the full submission history, so without this bound prior-year rows (and stray future-dated entries, e.g. a mis-typed "decision date" of 2028) leaked into the YTD funnel. Undated rows are always included. Note this is a safety net: `parseRows` already selects the **"Date Submitted"** column (not DOB / not the free-text "when did you make a decision" field), so the old years visible in the raw CSV aren't normally the date used. Team rows carry no dates — for a specific term, a team member only reaches stage 5 if they also attended that term (`sA>0 || gA>0`); YTD counts the full roster.
 - **CRM CSV parsing (`parseRows` / `parseMatrixRows`):** `parseRows` handles lean one-row-per-person exports with a name column and an optional date column; the date column is matched by exact name first ("date", "decision date", "connect date") then by any header containing `\bdate\b` that isn't birth/DOB-related. `parseMatrixRows` handles the service-attendance matrix format (date-format column headers, Y/yes/1/true cells per row per session) — connect takes the earliest Y date, decision takes the latest. `upload()` tries matrix first for connect/decision, falls back to `parseRows`.
 - **Known edge case:** the term `endDate` is the Saturday of the last service week. Decisions/connects recorded on the Friday of that same week fall after `endDate` and are excluded from the term (attributed to neither term, but appear in YTD).
 - **v1 limitations:** the Friday session sparkline depends on live `/trends` (null in audit
@@ -268,15 +268,71 @@ full-screen step viewer (`#exportGuide` overlay; `.eg-*` CSS; `EXPORT_GUIDES`/`o
   **`public/img/export-help/*.png`** (same-origin, CSP `img-src 'self'` covers them, cache-first
   in the SW — bump the SW cache if an image is replaced).
 
+### Grade-login UX overhaul (2026-07-03)
+
+A punch list of small UI fixes/renames, mostly targeted at the `grade` login but shared
+across roles wherever the same screen/component is used:
+- **Nav renames** (all roles, `navItems()`): `At Risk` → `At Risk & Rising`, `Leaders & Connect`
+  → `Connect Setup`, `My Students` → `My Connections`. Bottom-nav two-line labels (`mbl`) use a
+  shared `.ni-lbl` pattern (first line normal, second line smaller/faded) for any label that
+  wraps — keep new multi-word nav labels on this pattern rather than plain wrapped text, or the
+  bottom nav's row heights look uneven.
+- **Nav reorder** — grade-only: bottom-4 is now Home / At Risk & Rising / My Connections /
+  Connect Setup (was Home / My Students / Leaders & Connect / At Risk), with Student Search
+  dropped from grade's quick actions. Quad/director/admin keep their existing bottom-4 order,
+  just relabeled.
+- **Connect Setup icon** changed from the people icon (`users`, shared with My Connections) to
+  an arrow (`arrr`).
+- **Home hero card**: "Groups" → "Lifegroups" (hero card + the `_hAttTile` Attendance-by-Quad/Grade
+  tiles); the "Grade X" role badge no longer shows on the hero card itself (still shows in the
+  persistent header — that's `roleBadge(u)` at a different call site, untouched); "Quick Actions"
+  subtitle removed above the quick-action button grid.
+- **Home follow-up section**: heading "This week's follow-up" → "Follow Up"; a `helpTip()`
+  explains these are students who attended recently but weren't seen last time; "Not seen at
+  Friday"/"Not seen at Lifegroup" reworded to "Not Seen Last Friday (D/M)" / "Not At A Lifegroup
+  Last Week (ending D/M)"; `_followupListHtml` rows show name only (grade/gender/birthday
+  dropped to keep rows compact).
+- **Upcoming Birthdays**: rows drop grade, gender, and the parent phone number — only the
+  student's own mobile (if present) plus "turns N" and their leader(s).
+- **Connect Setup (`renderConnectView`)**: title and the Add Leader/Export CSV buttons sit on
+  one row (`align-items:center`, not `flex-start` against a two-line title+subtitle block); a
+  read-only "Students not Connected (N)" `.drop` dropdown sits below the Total/Connected/Pending
+  stat row (named "Unallocated students" until 2026-07-03); the grade-only "Tap Add Students…"
+  tip alert is gone (redundant with the tooltip). Per leader: grade/gender and the "N students"
+  count share one line (`justify-content:space-between`, ellipsis on the grade/gender span so a
+  long list still doesn't push the count off); the student preview (`.connect-students`) caps to
+  a ~3-row scroll window (`max-height:126px`, was a hard `slice(0,8)` + "+N more/View all" link)
+  with a persistent faint scrollbar thumb (`::-webkit-scrollbar-thumb` + `scrollbar-color`) since
+  a touch scrollbar only flashes during an active drag and is easy to miss in such a short list.
+- **At Risk & Rising tiles**: grade logins don't see the quad chip (constant/uninformative for a
+  single-grade login); grade/gender + the qualifier chips moved to their own second line below
+  the name (was crowding the name line). Qualifier chips get a dedicated `_arQualChips(s)` (NOT
+  the shared `qualChips(s)` used by Search/admin table/student detail, which is untouched):
+  rising/declining drop the "Rising"/"Declining" word and show just the coloured arrow icon +
+  stream name at a smaller size (`.ic-xs`, 12px vs the normal 16px `icS`), and "Service" → "Youth"
+  for that arrow variant specifically (the "Stopped …" wording, which uses the alert icon rather
+  than an arrow, is untouched — wasn't in scope).
+- **My Students**: the big centered leader-identity card above the list is gone (redundant with
+  the "I am…" dropdown right above it); each student row's Yr/gender/birthday moves onto the name
+  line in smaller text (was its own `li-sub` line, making rows taller); "Fridays" stream label →
+  "Youth".
+- **Mobile viewport fixes**: `overscroll-behavior-y:contain` on `html`/`body` stops the native
+  rubber-band bounce from dragging the whole page past the sticky header/fixed bottom nav;
+  `min-height:100vh;min-height:100dvh` (vh first as a fallback) on `body`/`#app` so the fixed
+  bottom nav doesn't visually jump as a mobile browser's URL bar hides/shows mid-scroll — both
+  ported from fixes already proven in the camp platform, adapted to this SPA's window-scroll
+  architecture (the camp app instead uses a fixed-height `.app` frame with per-screen absolute
+  `.screen` containers).
+
 ### SPA architecture
 
 **Persistent shell** — header + nav are built once on login via `_initShell()` and never rebuilt. All page navigations update only `<main id="page-main">` via `setApp(h)`. The `_shellReady` flag gates this; set to `false` on logout.
 
 **Client-side cache** — `Cache` object (30-second TTL) wraps all `API.get()` calls. Cache is invalidated on every write (connections, leaders, settings, import, admin, users). After login `_prefetch()` fires background fetches for all 7 common endpoints so navigations after the first are instant.
 
-**Stale-while-revalidate navigation** — every page render function (`renderHome`, `renderTrends`, `renderConnect`, `renderUpcomingBirthdays`, `renderMyStudents`, `renderStudents`, `renderAtRisk`, `renderImport`, `renderAdmin`, plus the CA module's own pages) follows the same `<PAGE>_PATHS` + `allFresh`/`haveStale` pattern: all-fresh renders straight from cache; any-stale paints instantly from `Cache.getStale(...)` and revalidates in the background via a `_revalidate<Page>()` helper that re-renders only if `S.page` hasn't changed; nothing cached at all shows the spinner. `renderLeaders`/`renderQuadView`/`renderMyQuad`/`renderNotifications` are dead/unreachable code (not in the `render()` dispatch table) and were deliberately left on the old `_allCached` pattern.
+**Stale-while-revalidate navigation** — every page render function (`renderHome`, `renderTrends`, `renderConnect`, `renderUpcomingBirthdays`, `renderMyStudents`, `renderStudents`, `renderAtRisk`, `renderImport`, `renderAdmin`, plus the CA module's own pages) follows the same `<PAGE>_PATHS` + `allFresh`/`haveStale` pattern: all-fresh renders straight from cache; any-stale paints instantly from `Cache.getStale(...)` and revalidates in the background via a `_revalidate<Page>()` helper that re-renders only if `S.page` hasn't changed; nothing cached at all just shows an empty `<main>` until data arrives (2026-07-03: no more full-page spinner placeholder — see the `#nprog` note below). `renderLeaders`/`renderQuadView`/`renderMyQuad`/`renderNotifications` are dead/unreachable code (not in the `render()` dispatch table) and were deliberately left on the old `_allCached` pattern.
 
-**Global loading bar (`#nprog`)** — a thin accent-coloured bar under the top edge, reference-counted via `_npStart`/`_npDone` called from the `API` IIFE's `r()`. Since `API.get` only calls `r()` on a cache miss, cached reads never trigger it — only real network requests do.
+**Global loading bar (`#nprog`)** — a thin accent-coloured bar, reference-counted via `_npStart`/`_npDone` called from the `API` IIFE's `r()`. Since `API.get` only calls `r()` on a cache miss, cached reads never trigger it — only real network requests do. **Position (2026-07-03):** `top` is *not* a fixed `0` — `_positionNprog()` measures `.hdr`'s rendered height and sets it inline so the bar sits at the header's bottom edge (falls back to `0` pre-login, before `.hdr` exists); called after `_initShell()`, after `renderLogin()`, and on `resize`. It used to sit at literal `top:0`, overlapping the notch/status-bar strip and the header's own gradient — functionally firing but effectively invisible. Ported from the camp platform, which anchors the same bar to its header's bottom edge natively (`position:absolute;bottom:-1px` inside the header); CMS's window-scroll architecture needs the bar to also work pre-login (no `.hdr` yet), hence the JS measurement instead of DOM nesting. The full-page loading **spinner** placeholder (`.loading`/`.spin`/`.lt`) that used to fill `<main>` while a screen's data was uncached has been removed — `#nprog` alone is the loading signal now. `.spin` still exists at its original small inline size for three contextual action-feedback spots (Recompute button, Import parsing/reading messages) that show *what* is in progress, not just *that* something is.
 
 **Scroll handling** — the **window** is the scroller (`.pg` is not). `setApp()` resets
 to top only when navigating to a DIFFERENT page (`S.page !== _lastRenderedPage`) and
@@ -287,7 +343,7 @@ jump to the top. Don't re-add per-page `.pg.scrollTop` save/restore — it's a n
 hidden and toggled in-DOM** (no re-render), like the At-Risk sections. Pattern: a `.drop`
 card with a `.drop-head` (`onclick="_drop('uniqueId')"`, chevron `.drop-chev`) and a
 `.drop-body` (hidden until the card gets `.open`); direct-child CSS selectors so nesting
-works. This avoids the loading-spinner flash when the 30s cache has expired. `_hAttTile`
+works. This avoids a re-render flash when the 30s cache has expired. `_hAttTile`
 (opts.dropId) and `_lgGradeBlock(g, showPrev, gsfx, id)` emit this structure. Don't bring
 back expand-state vars / `renderHome()`/`renderTrends()` toggles.
 
@@ -303,7 +359,10 @@ gender-specific (e.g. "Grade 11 Boys").
 **Shared display helpers** (defined near `quadChip`): `termRow(...)` renders "This term … ·
 Last term …" (student search, My Students, at-risk); `isRising(s)` / `_hasAttended(s)` /
 `attendQual(s)` classify students; `fmtPhone`/`callPhone`/`phoneLink` format numbers (space
-after the 4th & 7th digit) and tap-to-call (confirm → `tel:`).
+after the 4th & 7th digit) and tap-to-call. **`callPhone` (2026-07-03)** shows a Call /
+Message / Cancel action sheet via the shared `modal()` — iOS's native `tel:` confirmation
+can't be extended with a "Message" option, so this replaced the old bare `confirm('Call
+…?')`. Applies everywhere `phoneLink` is used (all roles, every screen with a phone number).
 
 ### Icon system
 
@@ -316,13 +375,13 @@ All icons are inline SVG via the `IC` path registry. Helper functions:
 | `icLg(k)` | 32 px | Large feature icons |
 | `icEmpty(k)` | 48 px | Empty-state backgrounds |
 
-Current IC keys: `home, users, chart, alert, id, upload, settings, link, edit, trash, lock, unlock, logout, target, check, key, info, clipboard, pie, group, deck, chevr, chevd, arru, arrd, arrr, xmark`
+Current IC keys: `home, users, chart, alert, id, upload, settings, link, edit, trash, lock, unlock, logout, target, check, key, info, clipboard, pie, group, deck, chevr, chevd, arru, arrd, arrr, xmark, cake`
 
 No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v15` (bump on breaking changes to force eviction)
+- Cache name: `cms-v21` (bump on breaking changes to force eviction)
 - **Excel import** (all upload points — main import, allocations, every Connection Audit slot):
   `readXlsx(buf)` now uses the vendored **SheetJS** build (`public/vendor/xlsx.full.min.js`),
   **lazy-loaded** via `_ensureXlsx()` only when an Excel file is chosen (same-origin, so CSP
