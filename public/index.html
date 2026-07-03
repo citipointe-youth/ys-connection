@@ -252,7 +252,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .login-logo h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em}
 .login-logo p{font-size:13px;color:var(--ink-mid);margin-top:4px}
 
-/* Inline action-feedback spinner (Recompute button, Import parsing/reading messages).
+/* Inline action-feedback spinner (Import parsing/reading messages).
    Page-navigation loading no longer gets its own spinner placeholder — the #nprog top
    bar (now correctly positioned at the header's bottom edge) is the sole indicator for
    that, so the content area just stays put/empty until data arrives. */
@@ -1094,41 +1094,43 @@ function navItems() {
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
-  // Quad: Home | Connect Setup | Trends | At Risk & Rising
+  // Quad: Home | At Risk & Rising | Trends | Connect Setup
   if (u.role === 'quad') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
-    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
+    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     // quick actions:
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
-    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
+    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
-  // Admin: Home | Connect Setup | Trends | At Risk & Rising + quick actions
+  // Admin: Home | At Risk & Rising | Trends | Connect Setup + quick actions
   if (u.role === 'admin') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
-    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
+    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'admin',      ic:'settings', label:'Admin Settings',     mbl:'Settings' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
+    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
   // Director: same as admin minus admin tile
   return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
-    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
+    { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
+    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
 }
@@ -1228,6 +1230,7 @@ async function doLogout() {
   API.setToken(null); S.user = null; S.page = 'home';
   _msLeader = null; _trTab = 'svc';
   _arFilter = { grade: null, gender: null };
+  _bdayFilter = { grade: null, gender: null };
   render();
 }
 
@@ -1417,11 +1420,11 @@ async function _renderHomeInner(stale) {
   const pSvcAtt = sc.reduce((a, s) => a + s.prevSvcAttended, 0), pSvcTot = sc.reduce((a, s) => a + s.prevSvcTotal, 0);
   const pGrpAtt = sc.reduce((a, s) => a + s.prevGrpAttended, 0), pGrpTot = sc.reduce((a, s) => a + s.prevGrpTotal, 0);
   const havePrev = pSvcTot > 0 || pGrpTot > 0;
-  // Grade-only: the Trends quick action moves up here, opposite the Prev term
-  // toggle, instead of sitting in the quick-action grid below.
-  const trendsPill = u.role === 'grade'
-    ? `<button onclick="go('trends')" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">${icS('chart')} Trends</button>`
-    : '';
+  // A Trends shortcut sits in the hero banner opposite the Prev term toggle for
+  // every role. For grade it replaces the quick-action grid entry (see below);
+  // for quad/director/admin, Trends is already its own bottom-nav tab, so this
+  // is just a convenience shortcut alongside it.
+  const trendsPill = `<button onclick="go('trends')" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">${icS('chart')} Trends</button>`;
   if (havePrev) {
     const pSvcUniq = sc.filter(s => s.prevSvcAttended > 0).length;
     const pSvcRun = sc.filter(s => s.prevSvcTotal > 0).length ? Math.max(...sc.filter(s => s.prevSvcTotal > 0).map(s => s.prevSvcTotal)) : 0;
@@ -1469,7 +1472,8 @@ async function _renderHomeInner(stale) {
       body += `<div style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
-        body += `<button class="btn btn-secondary" style="justify-content:flex-start${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${x.label}</button>`;
+        const wide = x.wide ? ';grid-column:1/-1' : '';
+        body += `<button class="btn btn-secondary" style="justify-content:flex-start${wide}${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${x.label}</button>`;
       }
       body += '</div>';
     }
@@ -2527,6 +2531,13 @@ function _fmtUpcoming(date) {
   return { weekday: WD[date.getDay()], day: date.getDate(), month: MON[date.getMonth()], monthName: FULL[date.getMonth()] };
 }
 const BIRTHDAYS_PATHS = ['/students', '/leaders', '/connections'];
+// Grade/gender filters — admin/director only (they see the whole ministry list;
+// grade/quad logins are already scoped to their own cohort server-side).
+let _bdayFilter = { grade: null, gender: null };
+function setBdayFilter(key, val) {
+  _bdayFilter[key] = val;
+  renderUpcomingBirthdays();
+}
 let _birthdaysRevalidating = false;
 function _revalidateBirthdays() {
   if (_birthdaysRevalidating) return;
@@ -2537,6 +2548,7 @@ function _revalidateBirthdays() {
     .finally(() => { _birthdaysRevalidating = false; });
 }
 async function renderUpcomingBirthdays() {
+  const u = S.user;
   const _pg = S.page;
   const allFresh = BIRTHDAYS_PATHS.every(p => Cache.get(p) !== null);
   const haveStale = BIRTHDAYS_PATHS.every(p => Cache.getStale(p) !== null);
@@ -2562,15 +2574,37 @@ async function renderUpcomingBirthdays() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cap = new Date(today.getFullYear(), today.getMonth() + 2, today.getDate());
 
+  // Grade/gender dropdown filters — admin/director only (they see the whole
+  // ministry list here; grade/quad logins are already scoped server-side).
+  const showBdayFilters = ['admin', 'director'].includes(u.role);
+  let scopedStudents = students || [];
+  if (showBdayFilters) {
+    if (_bdayFilter.grade) scopedStudents = scopedStudents.filter(s => s.grade === _bdayFilter.grade);
+    if (_bdayFilter.gender) scopedStudents = scopedStudents.filter(s => s.gender === _bdayFilter.gender);
+  }
+
   // Everyone in scope with a birthday between today and +2 months, soonest first.
   const upcoming = [];
-  for (const s of (students || [])) {
+  for (const s of scopedStudents) {
     const when = _nextBirthday(s.dateOfBirth, today);
     if (when && when <= cap) upcoming.push({ s, when });
   }
   upcoming.sort((a, b) => a.when - b.when);
 
   let body = `<div class="ph"><div class="ph-title">Upcoming Birthdays</div><div class="ph-sub">Next 2 months</div></div>`;
+  if (showBdayFilters) {
+    body += `<div style="display:flex;gap:8px;margin-bottom:12px">
+      <select class="fs" style="flex:1" onchange="setBdayFilter('grade', this.value ? Number(this.value) : null)">
+        <option value="">All grades</option>
+        ${[7,8,9,10,11,12].map(g => `<option value="${g}" ${_bdayFilter.grade === g ? 'selected' : ''}>Grade ${g}</option>`).join('')}
+      </select>
+      <select class="fs" style="flex:1" onchange="setBdayFilter('gender', this.value || null)">
+        <option value="">All genders</option>
+        <option value="female" ${_bdayFilter.gender === 'female' ? 'selected' : ''}>Female</option>
+        <option value="male" ${_bdayFilter.gender === 'male' ? 'selected' : ''}>Male</option>
+      </select>
+    </div>`;
+  }
 
   if (!upcoming.length) {
     body += `<div class="empty">${icEmpty('cake')}<div class="empty-title">No birthdays in the next 2 months</div></div>`;
@@ -2967,10 +3001,7 @@ async function renderAtRisk() {
 
   let body = `
     <div class="ph">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('alert')} At Risk & Rising ${helpTip('Stopped means no attendance in either stream this term. Declining or Mixed means a stream rate dropped 20+ points vs last term - calculated automatically, no manual thresholds.')}</div><div class="ph-sub">${flagged} need attention${sections.rising.length?` · ${sections.rising.length} rising`:''}</div></div>
-        ${['director','admin'].includes(u.role)?`<button class="btn btn-secondary btn-sm" onclick="recomputeAtRisk()">Recompute</button>`:''}
-      </div>
+      <div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('alert')} At Risk & Rising ${helpTip('Stopped means no attendance in either stream this term. Declining or Mixed means a stream rate dropped 20+ points vs last term - calculated automatically, no manual thresholds.')}</div><div class="ph-sub">${flagged} need attention${sections.rising.length?` · ${sections.rising.length} rising`:''}</div>
     </div>`;
   if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
   if (arGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_arFilter.gender?'on':''}" onclick="setArFilter('gender',null)">All</button></div>`;
@@ -3035,17 +3066,6 @@ function setArFilter(key, val) {
   _arFilter[key] = val;
   saveArFilter();
   renderAtRisk();
-}
-
-async function recomputeAtRisk() {
-  const btn = document.querySelector('[onclick="recomputeAtRisk()"]');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spin" style="width:14px;height:14px;border-width:2px"></div> Recomputing…'; }
-  try {
-    const res = await API.post('/at-risk/recompute', {});
-    Cache.del('/at-risk');
-    toast(`Recomputed: ${res.updated} students updated`);
-    await renderAtRisk();
-  } catch (e) { toast(e.message); if (btn) { btn.disabled = false; btn.innerHTML = 'Recompute'; } }
 }
 
 function showAtRiskUpdate(studentId, name, currentStatus) {
