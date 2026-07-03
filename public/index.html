@@ -971,9 +971,9 @@ function _arQualChips(s) {
   const { svcQ, grpQ, category } = attendQual(s);
   if (category === 'stopped') return _qualChip('Stopped both', 'stopped');
   let h = '';
-  if (svcQ === 'stopped') h += _qualChip('Stopped service', svcQ);
+  if (svcQ === 'stopped') h += _qualChip('No youths', svcQ);
   else if (svcQ === 'rising' || svcQ === 'declining') h += _qualChip('Youth', svcQ, 'ic-xs');
-  if (grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip('Stopped lifegroup', grpQ);
+  if (grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip('No lifegroup', grpQ);
   else if (grpQ === 'rising' || grpQ === 'declining') h += (h ? ' ' : '') + _qualChip('Lifegroup', grpQ, 'ic-xs');
   return h;
 }
@@ -1301,7 +1301,15 @@ function _hAttTile(label, studs, avgWk, opts) {
   return `<div class="qcard" style="padding:11px">${inner}</div>`;
 }
 
-const HOME_PATHS = ['/overview', '/trends', '/students', '/lifegroups/stats', '/connections'];
+// /connections is only needed by the admin/director "Connection by Grade" bars
+// (_connSet in _renderHomeInner) — skip that whole round-trip for grade/quad
+// logins, who never render that section, to shrink Home's cold-load fan-out.
+function HOME_PATHS() {
+  const wide = S.user && ['admin', 'director'].includes(S.user.role);
+  return wide
+    ? ['/overview', '/trends', '/students', '/lifegroups/stats', '/connections']
+    : ['/overview', '/trends', '/students', '/lifegroups/stats'];
+}
 function _homeError(err) {
   const msg = err instanceof Error ? err.message : String(err);
   setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${msg}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
@@ -1315,8 +1323,9 @@ function _homeError(err) {
 //    behind an already-painted page instead of behind a spinner.
 //  - nothing cached at all (first load) → spinner, then fetch.
 async function renderHome() {
-  const allFresh  = HOME_PATHS.every(p => Cache.get(p) !== null);
-  const haveStale = HOME_PATHS.every(p => Cache.getStale(p) !== null);
+  const _hp = HOME_PATHS();
+  const allFresh  = _hp.every(p => Cache.get(p) !== null);
+  const haveStale = _hp.every(p => Cache.getStale(p) !== null);
   if (allFresh) {
     try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
     return;
@@ -1334,7 +1343,7 @@ async function renderHome() {
   // the authoritative stats) until the user navigated away and back. Retry in the
   // background and repaint once the instance is warm — same mechanism as the
   // stale branch, so the wrong number self-corrects instead of sticking.
-  if (HOME_PATHS.some(p => Cache.get(p) === null)) _revalidateHome();
+  if (_hp.some(p => Cache.get(p) === null)) _revalidateHome();
 }
 let _homeRevalidating = false;
 function _revalidateHome() {
@@ -1342,7 +1351,7 @@ function _revalidateHome() {
   _homeRevalidating = true;
   // API.get re-fetches the expired paths (and returns any still-fresh ones as-is),
   // repopulating the cache; then repaint Home if the user is still on it.
-  Promise.all(HOME_PATHS.map(p => API.get(p).catch(() => null)))
+  Promise.all(HOME_PATHS().map(p => API.get(p).catch(() => null)))
     .then(() => { if (S.page === 'home') return _renderHomeInner(false); })
     .catch(() => {})
     .finally(() => { _homeRevalidating = false; });
@@ -1353,6 +1362,7 @@ async function _renderHomeInner(stale) {
   // Stale mode reads straight from the last-known cache (Promise.resolve, no network)
   // so the page paints instantly; renderHome handles the background refresh.
   const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
+  const needConns = ['admin', 'director'].includes(u.role);
   let stats, trends, sc = [], lgStats = null, conns = [];
   try {
     [stats, trends, sc, lgStats, conns] = await Promise.all([
@@ -1360,7 +1370,7 @@ async function _renderHomeInner(stale) {
       G('/trends').catch(() => null),
       G('/students').catch(() => []),
       G('/lifegroups/stats').catch(() => null),
-      G('/connections').catch(() => []),
+      needConns ? G('/connections').catch(() => []) : Promise.resolve([]),
     ]);
   } catch {}
   if (S.page !== _pg) return; // navigated away while awaiting — don't overwrite the new page
@@ -1404,7 +1414,13 @@ async function _renderHomeInner(stale) {
   // Previous-term summary
   const pSvcAtt = sc.reduce((a, s) => a + s.prevSvcAttended, 0), pSvcTot = sc.reduce((a, s) => a + s.prevSvcTotal, 0);
   const pGrpAtt = sc.reduce((a, s) => a + s.prevGrpAttended, 0), pGrpTot = sc.reduce((a, s) => a + s.prevGrpTotal, 0);
-  if (pSvcTot > 0 || pGrpTot > 0) {
+  const havePrev = pSvcTot > 0 || pGrpTot > 0;
+  // Grade-only: the Trends quick action moves up here, opposite the Prev term
+  // toggle, instead of sitting in the quick-action grid below.
+  const trendsPill = u.role === 'grade'
+    ? `<button onclick="go('trends')" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">${icS('chart')} Trends</button>`
+    : '';
+  if (havePrev) {
     const pSvcUniq = sc.filter(s => s.prevSvcAttended > 0).length;
     const pSvcRun = sc.filter(s => s.prevSvcTotal > 0).length ? Math.max(...sc.filter(s => s.prevSvcTotal > 0).map(s => s.prevSvcTotal)) : 0;
     const pSvcAvg = pSvcRun > 0 ? Math.round(pSvcAtt / pSvcRun) : 0;
@@ -1412,7 +1428,8 @@ async function _renderHomeInner(stale) {
     const pGrpUniq = sc.filter(s => s.prevGrpAttended > 0).length;
     const pGrpRun = pGrpEnr.length ? Math.max(...pGrpEnr.map(s => s.prevGrpTotal)) : 0;
     const pGrpAvg = lgStats ? lgStats.overall.previous.avgPerWeek : (pGrpRun > 0 ? Math.round(pGrpAtt / pGrpRun) : 0);
-    body += `<button onclick="_toggleHomePrev()" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px"><span id="home-prev-chev" style="display:inline-block;transition:transform .15s">›</span> Prev term</button>`;
+    const prevBtn = `<button onclick="_toggleHomePrev()" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px"><span id="home-prev-chev" style="display:inline-block;transition:transform .15s">›</span> Prev term</button>`;
+    body += trendsPill ? `<div style="display:flex;align-items:center;justify-content:space-between">${prevBtn}${trendsPill}</div>` : prevBtn;
     body += `<div id="home-prev-body" style="display:none">`;
     body += `<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:5px"><colgroup><col style="width:40%"><col style="width:30%"><col style="width:30%"></colgroup>`;
     body += `<thead><tr>
@@ -1424,6 +1441,9 @@ async function _renderHomeInner(stale) {
     if (pGrpTot > 0) body += `<tr style="background:rgba(255,255,255,.03)"><td style="font-size:12px;font-weight:700;opacity:.45;padding:3px 6px;border-radius:6px 0 0 6px;white-space:nowrap">Lifegroups</td><td style="text-align:center;padding:3px 4px"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpUniq}</span></td><td style="text-align:center;padding:3px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpAvg}</span></td></tr>`;
     body += `</tbody></table>`;
     body += `</div>`;
+  } else if (trendsPill) {
+    // No prev-term data to compare yet — Trends still gets its own row, right-aligned.
+    body += `<div style="display:flex;justify-content:flex-end">${trendsPill}</div>`;
   }
   body += `</div>`;
 
@@ -1440,9 +1460,11 @@ async function _renderHomeInner(stale) {
       </div>`;
     }
     // ── Quick action tiles ABOVE the breakdown ──
-    const qa = quickActionItems();
+    // Grade: Trends now lives in the hero banner (opposite Prev term), so drop it
+    // here — leaving just Birthdays, which then gets the full-width single column.
+    const qa = quickActionItems().filter(x => !(u.role === 'grade' && x.id === 'trends'));
     if (qa.length) {
-      body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">';
+      body += `<div style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         body += `<button class="btn btn-secondary" style="justify-content:flex-start${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${x.label}</button>`;
@@ -1577,11 +1599,10 @@ async function renderHomeFollowup() {
     try { leaders = await API.get('/leaders'); } catch {}
     if (!leaders.length) { host.innerHTML = ''; return; }
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
-    host.innerHTML = `<div class="sh" style="font-size:15px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
+    host.innerHTML = `<div class="sh" style="font-size:13px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
       <div class="card" style="padding:14px">
         <div style="font-size:13px;color:var(--ink-mid);margin-bottom:8px">Tell us who you are to see your students to follow up with this week.</div>
-        <select class="fs" id="home-leader-pick"><option value="">— Choose your name —</option>${opts}</select>
-        <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="chooseHomeLeader()">Show my follow-up</button>
+        <select class="fs" id="home-leader-pick" onchange="chooseHomeLeader()"><option value="">— Choose your name —</option>${opts}</select>
       </div>`;
     return;
   }
@@ -1598,8 +1619,8 @@ async function renderHomeFollowup() {
   const grpTitle = 'Not At A Lifegroup Last Week' + (data.latestGrpDate ? ` (ending ${_fridayLabel(data.latestGrpDate)})` : '');
   let h = `<div class="sh" style="display:flex;align-items:center;justify-content:space-between;font-size:13px"><span>Follow Up · ${esc(data.leader.fullName)} ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</span>${changeBtn}</div>`;
   h += _followupListHtml('Birthdays this week', data.birthdays, 'No birthdays this week');
-  h += _followupListHtml(svcTitle, data.notSeenService, data.latestSvcDate ? 'Everyone was seen' : 'No service data yet');
-  h += _followupListHtml(grpTitle, data.notSeenGroup, data.latestGrpDate ? 'Everyone was seen' : 'No lifegroup data yet');
+  h += _followupListHtml(svcTitle, data.notSeenService, data.latestSvcDate ? 'Everyone was seen' : 'No service data yet', 'svc');
+  h += _followupListHtml(grpTitle, data.notSeenGroup, data.latestGrpDate ? 'Everyone was seen' : 'No lifegroup data yet', 'grp');
   host.innerHTML = h;
 }
 
@@ -1616,8 +1637,12 @@ function _fridayLabel(iso) {
 
 // One follow-up list as a compact card. Shows name only (grade/gender/birthday
 // omitted to keep rows compact) + tap-to-call; deliberately NO at-risk/declining marker (per spec).
-function _followupListHtml(title, items, emptyMsg) {
-  let h = `<div class="card" style="padding:12px;margin-bottom:10px">
+// `stream` ('svc'/'grp') gives the youth vs lifegroup cards a faint distinct tint
+// so they're easier to tell apart at a glance; birthdays (no stream) stays plain white.
+const _FOLLOWUP_TINT = { svc: 'rgba(26,26,242,.04)', grp: 'rgba(16,185,129,.05)' };
+function _followupListHtml(title, items, emptyMsg, stream) {
+  const bg = _FOLLOWUP_TINT[stream];
+  let h = `<div class="card" style="padding:12px;margin-bottom:10px${bg ? `;background:${bg}` : ''}">
     <div style="font-size:12px;font-weight:800;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px">${title} (${items.length})</div>`;
   if (!items.length) { h += `<div style="font-size:13px;color:var(--ink-faint)">${emptyMsg}</div></div>`; return h; }
   for (const s of items) {
@@ -2137,7 +2162,7 @@ function renderConnectView() {
 
   const unallocated = connectable.filter(s => !connectedStudentIds.has(s.id)).sort(_pickByFirst);
   const unallocList = unallocated.length
-    ? unallocated.map(s => `<div style="padding:6px 0;border-top:1px solid var(--paper-dark);font-size:13px">${esc(s.firstName)} ${esc(s.lastName)} <span style="color:var(--ink-mid);font-size:11px">Gr ${s.grade || '—'} · ${s.gender}</span></div>`).join('')
+    ? unallocated.map(s => `<div style="padding:6px 0;border-top:1px solid var(--paper-dark);font-size:13px;cursor:pointer" onclick="showStudentDetail('${s.id}')">${esc(s.firstName)} ${esc(s.lastName)} <span style="color:var(--ink-mid);font-size:11px">Gr ${s.grade || '—'} · ${s.gender}</span></div>`).join('')
     : `<div style="font-size:13px;color:var(--ink-faint);padding:6px 0">Everyone is allocated!</div>`;
   const unallocDrop = `<div class="card drop" id="connect-unalloc" style="margin-bottom:12px">
     <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('connect-unalloc')">
@@ -2185,12 +2210,12 @@ function renderConnectView() {
       let studentRows = '';
       for (const s of assignedStudents) {
         const p = svcPct(s);
-        studentRows += `<div class="connect-stud-row">
+        studentRows += `<div class="connect-stud-row" style="cursor:pointer" onclick="showStudentDetail('${s.id}')">
           <div style="flex:1;min-width:0">
             <div class="connect-stud-name">${esc(s.firstName)} ${esc(s.lastName)}</div>
             <div class="connect-stud-meta">Gr ${s.grade||'—'} · ${s.gender}${p!==null?' · '+p+'%':''}</div>
           </div>
-          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="removeConnectWithUndo('${s.id}','${l.id}')" aria-label="Disconnect ${esc(s.firstName)} ${esc(s.lastName)} from ${esc(l.fullName)}">×</button>`:''}
+          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="event.stopPropagation();removeConnectWithUndo('${s.id}','${l.id}')" aria-label="Disconnect ${esc(s.firstName)} ${esc(s.lastName)} from ${esc(l.fullName)}">×</button>`:''}
         </div>`;
       }
 
@@ -2939,8 +2964,9 @@ async function renderAtRisk() {
     any = true;
     let cards = '';
     for (const s of items) {
+      const _arPhone = s.mobile || s.parentPhone;
       cards += `
-        <div class="li" style="cursor:pointer;align-items:flex-start" onclick="showStudentDetail('${s.id}')">
+        <div class="li" style="align-items:flex-start">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
@@ -2952,8 +2978,8 @@ async function renderAtRisk() {
             </div>
             ${termRow('Service', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
+            ${_arPhone ? `<div style="margin-top:6px;font-size:13px">${phoneLink(_arPhone)}</div>` : ''}
           </div>
-          <div class="li-right" style="color:var(--ink-faint)">›</div>
         </div>`;
     }
     body += `<div class="card" style="margin-bottom:12px;border-left:4px solid ${col}">
@@ -3456,27 +3482,30 @@ async function renderTrends() {
   const _termNote = _curTerm ? `${fmtDM(_curTerm.startDate)} – ${fmtDM(_curTerm.endDate)}` : 'this term';
 
   if (_trTab === 'svc') {
-    // Ministry-wide overview — ALWAYS the whole ministry (every login sees the
-    // ministry totals here), with previous-term subtext. From trends.ministry.
-    const mn = (trends && trends.ministry) || {};
-    body += `<div class="sh">Ministry Overview</div><div class="card">`;
-    body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
-    body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
-      (mn.prevSeenAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevSeenAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
-    body += '</div>';
+    // Ministry-wide overview — every login except grade (grade logins go straight
+    // to their own grade's numbers below; the ministry-wide block was redundant
+    // context for a single-grade login and just added scroll).
+    if (u.role !== 'grade') {
+      const mn = (trends && trends.ministry) || {};
+      body += `<div class="sh">Ministry Overview</div><div class="card">`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
+      body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
+        (mn.prevSeenAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevSeenAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
+      body += '</div>';
 
-    // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
-    if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
-      const valid = trends.ministry.sessions.filter(s => !s.isOutlier);
-      if (valid.length) {
-        const peak = Math.max(1, ...valid.map(s => s.totalAttended));
-        const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
-        body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
-        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance} · trend across this term</div>`;
-        body += colChart(chartSess, 56);
-        body += '</div>';
-      } else {
-        body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No valid services in the current term yet.</div></div>`;
+      // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
+      if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
+        const valid = trends.ministry.sessions.filter(s => !s.isOutlier);
+        if (valid.length) {
+          const peak = Math.max(1, ...valid.map(s => s.totalAttended));
+          const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
+          body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
+          body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance} · trend across this term</div>`;
+          body += colChart(chartSess, 56);
+          body += '</div>';
+        } else {
+          body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No valid services in the current term yet.</div></div>`;
+        }
       }
     }
 
