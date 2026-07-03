@@ -87,10 +87,11 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.hdr{padding:0 28px}.hdr-top{height:56px}.hdr h1{font-size:20px}}
 
 /* SVG icons */
-.ic-n,.ic-s,.ic-lg{display:inline-block;vertical-align:middle;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic-n,.ic-s,.ic-lg,.ic-xs{display:inline-block;vertical-align:middle;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ic-n{width:22px;height:22px}
 .ic-s{width:16px;height:16px}
 .ic-lg{width:32px;height:32px}
+.ic-xs{width:12px;height:12px}
 
 /* Desktop nav — wraps to max 2 rows; labels hidden below 1024px (icon-only) */
 .desk-nav{display:none}
@@ -325,7 +326,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .connect-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .connect-count-bar{height:8px;background:var(--paper-dark);border-radius:4px;overflow:hidden;margin-bottom:6px}
 .connect-count-fill{height:100%;border-radius:4px;transition:width .3s}
-.connect-count-label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-mid);margin-bottom:12px}
 .connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -927,10 +927,11 @@ const _QUAL_STYLE = {
   stopped: ['#fef3c7', '#92400e', 'alert'],
 };
 function _qualWord(q) { return q === 'rising' ? 'Rising' : q === 'declining' ? 'Declining' : q === 'stopped' ? 'Stopped' : ''; }
-function _qualChip(label, q) {
+function _qualChip(label, q, iconClass) {
   const st = _QUAL_STYLE[q];
   if (!st) return '';
-  return `<span class="chip" style="background:${st[0]};color:${st[1]};display:inline-flex;align-items:center;gap:3px">${icS(st[2])} ${label}</span>`;
+  const icon = iconClass ? `<svg class="${iconClass}" viewBox="0 0 24 24">${IC[st[2]]||''}</svg>` : icS(st[2]);
+  return `<span class="chip" style="background:${st[0]};color:${st[1]};display:inline-flex;align-items:center;gap:3px">${icon} ${label}</span>`;
 }
 // Dynamic status chip(s) for the search / at-risk screens (replaces the at-risk
 // chip). '' when steady.
@@ -950,9 +951,9 @@ function _arQualChips(s) {
   if (category === 'stopped') return _qualChip('Stopped both', 'stopped');
   let h = '';
   if (svcQ === 'stopped') h += _qualChip('Stopped service', svcQ);
-  else if (svcQ === 'rising' || svcQ === 'declining') h += _qualChip('Service', svcQ);
+  else if (svcQ === 'rising' || svcQ === 'declining') h += _qualChip('Youth', svcQ, 'ic-xs');
   if (grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip('Stopped lifegroup', grpQ);
-  else if (grpQ === 'rising' || grpQ === 'declining') h += (h ? ' ' : '') + _qualChip('Lifegroup', grpQ);
+  else if (grpQ === 'rising' || grpQ === 'declining') h += (h ? ' ' : '') + _qualChip('Lifegroup', grpQ, 'ic-xs');
   return h;
 }
 
@@ -1063,7 +1064,7 @@ function navItems() {
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
-    { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     // quick actions:
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
@@ -1078,7 +1079,7 @@ function navItems() {
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
     // quick actions:
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
-    { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
@@ -1089,7 +1090,7 @@ function navItems() {
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
-    { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'admin',      ic:'settings', label:'Admin Settings',     mbl:'Settings' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
@@ -1102,7 +1103,7 @@ function navItems() {
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
-    { id:'my-students',ic:'users',    label:'My Students',       mbl:'My Students' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'ca-hub',     ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
@@ -2178,9 +2179,9 @@ function renderConnectView() {
           <div class="connect-leader-name" style="flex:1">${gi}${esc(l.fullName)}</div>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
-        <div class="connect-leader-meta">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</div>
-        <div class="connect-count-label" style="margin-top:6px">
-          <span><b>${n}</b> student${n!==1?'s':''} allocated</span>
+        <div class="connect-leader-meta" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span>
+          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
         </div>
         ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students">${studentRows}</div>`:''}
@@ -2619,7 +2620,7 @@ async function renderMyStudents() {
               <span class="li-title">${esc(s.fullName)}</span>
               <span style="font-size:11px;color:var(--ink-mid)">Yr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</span>${riskChip(s.atRiskStatus)}
             </div>
-            ${termRow('Fridays', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
+            ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
             ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)" onclick="event.stopPropagation()">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone)}` : ''}</div>` : ''}
           </div>
@@ -2921,9 +2922,12 @@ async function renderAtRisk() {
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              ${_arQualChips(s)} ${u.role !== 'grade' ? quadChip(s.quad) : ''}
+              ${u.role !== 'grade' ? quadChip(s.quad) : ''}
             </div>
-            <div class="li-sub" style="margin-top:3px">Gr ${s.grade||'—'} · ${s.gender}</div>
+            <div class="li-sub" style="margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span>Gr ${s.grade||'—'} · ${s.gender}</span>
+              ${_arQualChips(s)}
+            </div>
             ${termRow('Service', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
           </div>
