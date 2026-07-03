@@ -252,13 +252,13 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .login-logo h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em}
 .login-logo p{font-size:13px;color:var(--ink-mid);margin-top:4px}
 
-/* Spinner — ported from the camp platform's loading indicator (spinner + "Loading…"
-   label, centered column, more breathing room than the old bare ring). */
-.spin{width:30px;height:30px;border:3px solid var(--paper-dark);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+/* Inline action-feedback spinner (Recompute button, Import parsing/reading messages).
+   Page-navigation loading no longer gets its own spinner placeholder — the #nprog top
+   bar (now correctly positioned at the header's bottom edge) is the sole indicator for
+   that, so the content area just stays put/empty until data arrives. */
+.spin{width:20px;height:20px;border:2.5px solid var(--paper-dark);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes rise{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
-.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 0;color:var(--ink-faint);gap:12px}
-.loading .lt{font-size:13px;font-weight:600}
 
 /* Respect reduced-motion: keep the spinner (it conveys loading state) but drop
    decorative transitions/animations. */
@@ -1321,7 +1321,7 @@ async function renderHome() {
     _revalidateHome();
     return;
   }
-  setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+  setApp(shell(''));
   try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
   // Cold load self-heal: if any endpoint failed this round (e.g. a slow
   // /lifegroups/stats timed out during the serverless cold start), Home would
@@ -1748,7 +1748,7 @@ function _timeAgo(isoStr) {
 async function renderNotifications() {
   const u = S.user; if (!u) return;
   const canSend = ['admin', 'director', 'quad'].includes(u.role);
-  if (!_allCached('/push/notifications')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+  if (!_allCached('/push/notifications')) setApp(shell(''));
   let data;
   try { data = await API.get('/push/notifications'); }
   catch {
@@ -1834,7 +1834,7 @@ async function deleteNotification(id) {
 // LEADERS
 // ============================================================
 async function renderLeaders() {
-  if (!_allCached('/leaders', '/connections')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+  if (!_allCached('/leaders', '/connections')) setApp(shell(''));
   const [leaders, connectsRaw] = await Promise.all([
     API.get('/leaders').catch(() => []),
     API.get('/connections').catch(() => []),
@@ -2082,7 +2082,7 @@ async function renderConnect() {
     await loadConnectData(p => Promise.resolve(Cache.getStale(p)));
     if (!allFresh) _revalidateConnect();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     await loadConnectData(p => API.get(p));
     if (S.page !== _pg) return;
   }
@@ -2492,7 +2492,7 @@ async function renderUpcomingBirthdays() {
     conns = Cache.getStale('/connections') || [];
     if (!allFresh) _revalidateBirthdays();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     try { [students, leaders, conns] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/leaders').catch(() => []),
@@ -2576,7 +2576,7 @@ async function renderMyStudents() {
     allStudents = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateMyStudents();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     [leaders, allStudents] = await Promise.all([
       API.get('/leaders').catch(() => []),
       API.get('/students').catch(() => []),
@@ -2665,7 +2665,7 @@ async function exportConnectCSV() {
 // QUAD VIEW
 // ============================================================
 async function renderQuadView() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell(''));
   let leaders=[], connectsRaw=[], students=[];
   try { [leaders, connectsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
   const sById = {}; for (const s of students) sById[s.id]=s;
@@ -2724,7 +2724,7 @@ async function renderQuadView() {
 let _mqTab = 'leaders';
 
 async function renderMyQuad() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell(''));
   let leaders=[], connectsRaw2=[], students=[];
   try { [leaders, connectsRaw2, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
 
@@ -2884,7 +2884,7 @@ async function renderAtRisk() {
     allStu = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateAtRisk();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     try { allStu = await API.get('/students'); } catch {}
     if (S.page !== _pg) return;
   }
@@ -3042,7 +3042,7 @@ async function renderStudents() {
     leaders = Cache.getStale('/leaders') || [];
     if (!allFresh) _revalidateStudents();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     [students, leaders] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/leaders').catch(() => []),
@@ -3387,7 +3387,7 @@ async function renderTrends() {
     lgStats  = Cache.getStale('/lifegroups/stats');
     if (!allFresh) _revalidateTrends();
   } else {
-    if (!_allCached('/students')) setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    if (!_allCached('/students')) setApp(shell(''));
     [students, overview, trends, lgStats] = await Promise.all([
       API.get('/students').catch(() => []),
       API.get('/overview').catch(() => null),
@@ -3648,7 +3648,7 @@ async function renderImport() {
     history = Cache.getStale('/import/history') || [];
     if (!allFresh) _revalidateImport();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     try { history = await API.get('/import/history'); } catch {}
     if (S.page !== _pg) return;
   }
@@ -4077,7 +4077,7 @@ async function renderAdmin() {
     users = Cache.getStale('/accounts/users') || [];
     if (!allFresh) _revalidateAdmin();
   } else {
-    setApp(shell('<div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div>'));
+    setApp(shell(''));
     [settings, users] = await Promise.all([
       API.get('/settings').catch(() => ({})),
       API.get('/accounts/users').catch(() => []),
@@ -4188,7 +4188,7 @@ async function renderAdminView(settings, users) {
 
   // Change 4: Audit tab
   if (_adminTab === 'audit') {
-    body += `<div id="audit-container"><div class="loading"><div class="spin"></div><div class="lt">Loading…</div></div></div>`;
+    body += `<div id="audit-container"></div>`;
     setApp(shell(body));
     // Load audit entries async
     try {
