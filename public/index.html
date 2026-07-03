@@ -63,10 +63,16 @@ html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:hidden;touch-action
    rubber-band bounce from dragging the whole page up/down past the sticky header and
    fixed bottom nav (camp app hit the same "screen dragging" bug — same fix, ported here
    since this SPA scrolls the window rather than a per-screen container). */
-body{font-family:var(--font);color:var(--ink);background:var(--paper);min-height:100vh;overflow-x:hidden;overscroll-behavior-y:contain}
+/* min-height:100dvh (with 100vh fallback) instead of a bare 100vh: on mobile, 100vh is
+   pinned to the tallest possible viewport (URL bar hidden), so as the URL bar shows/hides
+   while scrolling, the fixed .bot-nav (anchored to the actual visual viewport) could end up
+   momentarily out of step with the body's assumed height, reading as the bottom nav "jumping
+   up" mid-scroll. dvh tracks the live viewport instead — same fix/rationale as the camp
+   platform's html,body{height:100dvh}. */
+body{font-family:var(--font);color:var(--ink);background:var(--paper);min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-behavior-y:contain}
 button{cursor:pointer;border:none;background:none;font-family:inherit;font-size:inherit}
 input,select,textarea{font-family:inherit;font-size:inherit}
-#app{display:flex;flex-direction:column;min-height:100vh;max-width:100%;overflow-x:hidden}
+#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100%;overflow-x:hidden}
 
 /* Header */
 .hdr{background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%);color:#fff;padding:var(--safe-t) 16px 0;box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(10,10,46,.28)}
@@ -323,7 +329,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
-.connect-students{margin-top:12px;border-top:1px solid var(--paper-dark);padding-top:10px;max-height:200px;overflow-y:auto}
+.connect-students{margin-top:12px;border-top:1px solid var(--paper-dark);padding-top:10px;max-height:126px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
 .connect-stud-row:last-child{border-bottom:none}
 .connect-stud-name{flex:1;font-size:14px;font-weight:600}
@@ -936,6 +942,19 @@ function qualChips(s) {
   if (grpQ === 'rising' || grpQ === 'declining' || grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip(_qualWord(grpQ) + ' group', grpQ);
   return h;
 }
+// At Risk & Rising screen's own tile chips: rising/declining drop the qualifier
+// word entirely (the chip's arrow icon + colour already carry that meaning) and
+// keep just the stream name; stopped keeps its word since there's no arrow for it.
+function _arQualChips(s) {
+  const { svcQ, grpQ, category } = attendQual(s);
+  if (category === 'stopped') return _qualChip('Stopped both', 'stopped');
+  let h = '';
+  if (svcQ === 'stopped') h += _qualChip('Stopped service', svcQ);
+  else if (svcQ === 'rising' || svcQ === 'declining') h += _qualChip('Service', svcQ);
+  if (grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip('Stopped lifegroup', grpQ);
+  else if (grpQ === 'rising' || grpQ === 'declining') h += (h ? ' ' : '') + _qualChip('Lifegroup', grpQ);
+  return h;
+}
 
 // "This term / last term" attendance line for service or groups.
 function termRow(label, curA, curT, prevA, prevT) {
@@ -1535,7 +1554,7 @@ async function renderHomeFollowup() {
     try { leaders = await API.get('/leaders'); } catch {}
     if (!leaders.length) { host.innerHTML = ''; return; }
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
-    host.innerHTML = `<div class="sh" style="font-size:15px">This week's follow-up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
+    host.innerHTML = `<div class="sh" style="font-size:15px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
       <div class="card" style="padding:14px">
         <div style="font-size:13px;color:var(--ink-mid);margin-bottom:8px">Tell us who you are to see your students to follow up with this week.</div>
         <select class="fs" id="home-leader-pick"><option value="">— Choose your name —</option>${opts}</select>
@@ -1554,7 +1573,7 @@ async function renderHomeFollowup() {
   // Friday that ends that Sat–Fri week so the leader knows which week they're chasing up.
   const svcTitle = 'Not Seen Last Friday' + (data.latestSvcDate ? ` (${_fridayLabel(data.latestSvcDate)})` : '');
   const grpTitle = 'Not At A Lifegroup Last Week' + (data.latestGrpDate ? ` (ending ${_fridayLabel(data.latestGrpDate)})` : '');
-  let h = `<div class="sh" style="display:flex;align-items:center;justify-content:space-between;font-size:13px"><span>This week's follow-up · ${esc(data.leader.fullName)} ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</span>${changeBtn}</div>`;
+  let h = `<div class="sh" style="display:flex;align-items:center;justify-content:space-between;font-size:13px"><span>Follow Up · ${esc(data.leader.fullName)} ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</span>${changeBtn}</div>`;
   h += _followupListHtml('Birthdays this week', data.birthdays, 'No birthdays this week');
   h += _followupListHtml(svcTitle, data.notSeenService, data.latestSvcDate ? 'Everyone was seen' : 'No service data yet');
   h += _followupListHtml(grpTitle, data.notSeenGroup, data.latestGrpDate ? 'Everyone was seen' : 'No lifegroup data yet');
@@ -2108,15 +2127,13 @@ function renderConnectView() {
   let body = `
     <div class="ph">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <div class="ph-title">Connect Setup ${helpTip('Search and connect are scoped to your grade and gender. You can add students from other grades, but only ones matching your gender.')}</div>
-          <div class="ph-sub">${connectedCount}/${totalStudents} students connected · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
-        </div>
+        <div class="ph-title">Connect Setup ${helpTip('Search and connect are scoped to your grade and gender. You can add students from other grades, but only ones matching your gender.')}</div>
         <div style="display:flex;gap:6px">
           ${canEdit?`<button class="btn btn-primary btn-sm" onclick="showAddLeader()">+ Add Leader</button>`:''}
           <button class="btn btn-secondary btn-sm" onclick="exportConnectCSV()" aria-label="Export connections to CSV">Export CSV</button>
         </div>
       </div>
+      <div class="ph-sub">${connectedCount}/${totalStudents} students connected · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
       <div class="stat"><div class="stat-v">${totalStudents}</div><div class="stat-l">Total</div></div>
@@ -2139,8 +2156,11 @@ function renderConnectView() {
       const assignedStudents = students.filter(s => allocs[s.id]?.includes(l.id)).sort(_pickByFirst);
       const n = assignedStudents.length;
 
+      // Preview is capped to a ~3-row scroll window (.connect-students max-height);
+      // all assigned students render into it so a drag/scroll reveals the rest,
+      // rather than truncating with a "+N more" link.
       let studentRows = '';
-      for (const s of assignedStudents.slice(0, 8)) {
+      for (const s of assignedStudents) {
         const p = svcPct(s);
         studentRows += `<div class="connect-stud-row">
           <div style="flex:1;min-width:0">
@@ -2149,9 +2169,6 @@ function renderConnectView() {
           </div>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="removeConnectWithUndo('${s.id}','${l.id}')" aria-label="Disconnect ${esc(s.firstName)} ${esc(s.lastName)} from ${esc(l.fullName)}">×</button>`:''}
         </div>`;
-      }
-      if (assignedStudents.length > 8) {
-        studentRows += `<div style="font-size:12px;color:var(--ink-faint);padding:6px 0;text-align:center">+${assignedStudents.length - 8} more · <button class="btn btn-ghost btn-sm" onclick="showLeaderDetail('${l.id}')">View all</button></div>`;
       }
 
       const gi = l.gender==='female'?'♀ ':l.gender==='male'?'♂ ':'';
@@ -2904,7 +2921,7 @@ async function renderAtRisk() {
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              ${qualChips(s)} ${quadChip(s.quad)}
+              ${_arQualChips(s)} ${u.role !== 'grade' ? quadChip(s.quad) : ''}
             </div>
             <div class="li-sub" style="margin-top:3px">Gr ${s.grade||'—'} · ${s.gender}</div>
             ${termRow('Service', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
