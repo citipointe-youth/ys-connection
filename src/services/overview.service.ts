@@ -7,6 +7,17 @@ import type {
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
 import { QUADS, QUAD_LABELS } from '../core/types/enums';
+import { ResponseCache } from '../utils/response-cache';
+import { actorKey } from './actor-key';
+
+// Module-level cache — survives across requests on the same warm serverless instance.
+// Any code path that writes students/leaders/connections must call
+// invalidateOverviewCache() — there is no automatic invalidation.
+const _cache = new ResponseCache<OverviewStats>(60_000);
+
+export function invalidateOverviewCache(): void {
+  _cache.invalidateAll();
+}
 
 export interface QuadStat {
   quad: Quad;
@@ -50,6 +61,9 @@ export function makeOverviewService(
   return {
     async getStats(actor) {
       assertCan(actor, 'overview:read');
+      const cacheKey = actorKey(actor);
+      const cached = _cache.get(cacheKey);
+      if (cached) return cached;
 
       // Fetch in parallel — three serial round-trips to the Supabase pooler are
       // a meaningful slice of this endpoint's latency on a cold serverless call.
@@ -121,7 +135,7 @@ export function makeOverviewService(
         };
       });
 
-      return {
+      const result: OverviewStats = {
         ministryTotal: connectable.length,
         connectedTotal: connectable.filter((s) => connectedIds.has(s.id)).length,
         unconnectedTotal: connectable.filter((s) => !connectedIds.has(s.id)).length,
@@ -130,6 +144,8 @@ export function makeOverviewService(
         byQuad,
         byGrade,
       };
+      _cache.set(cacheKey, result);
+      return result;
     },
   };
 }

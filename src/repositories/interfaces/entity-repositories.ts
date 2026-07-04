@@ -33,6 +33,7 @@ export interface IStudentRepository extends IRepository<Student> {
 export interface ILeaderRepository extends IRepository<Leader> {
   findByGrade(grade: number): Promise<Leader[]>;
   findActive(): Promise<Leader[]>;
+  saveMany(leaders: Leader[]): Promise<void>;
   deleteAll(): Promise<void>;
 }
 

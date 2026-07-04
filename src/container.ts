@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { env } from './config/env';
+import { dedupeReads } from './utils/inflight-dedupe';
 
 import {
   InMemoryUserRepository,
@@ -169,6 +170,23 @@ export async function buildContainer(): Promise<Container> {
   const notifications: INotificationRepository = useSupabase
     ? new SupabaseNotificationRepository(sql)
     : new InMemoryNotificationRepository();
+
+  // Home/Trends fan out to several endpoints in parallel that each independently
+  // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
+  // load). Coalesce concurrent callers of these no-arg reads into a single query —
+  // safe because none of them vary by caller; actor-scoping happens in the service
+  // layer after the fetch. Supabase-only: in-memory repos (tests) are already
+  // instant and don't need it.
+  if (useSupabase) {
+    dedupeReads(students, 'students', ['findAll']);
+    dedupeReads(leaders, 'leaders', ['findActive']);
+    dedupeReads(connections, 'connections', ['findAll']);
+    dedupeReads(serviceSessions, 'serviceSessions', ['findAll']);
+    dedupeReads(lifegroups, 'lifegroups', ['findAll']);
+    dedupeReads(lifegroupWeeks, 'lifegroupWeeks', ['findAll']);
+    dedupeReads(lifegroupAttendance, 'lifegroupAttendance', ['findAll']);
+    dedupeReads(settings, 'settings', ['getSettings']);
+  }
 
   const repos: Repositories = {
     users, students, leaders, connections,

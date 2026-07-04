@@ -3,6 +3,7 @@ import { toIso } from './client';
 import type { ILeaderRepository } from '../interfaces/entity-repositories';
 import type { Leader } from '../../core/entities/leader';
 import type { Gender, Grade } from '../../core/types/enums';
+import { chunk } from './bulk';
 
 function toLeader(row: Record<string, unknown>): Leader {
   return {
@@ -75,6 +76,35 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
       returning *
     `;
     return toLeader(rows[0]!);
+  }
+
+  async saveMany(leaders: Leader[]): Promise<void> {
+    if (leaders.length === 0) return;
+    for (const batch of chunk(leaders)) {
+      await this.sql`
+        insert into leaders ${this.sql(
+          batch.map((l) => ({
+            id:                l.id,
+            full_name:         l.fullName,
+            gender:            l.gender ?? null,
+            grades:            l.grades as number[],
+            active:            l.active,
+            created_by_grade:  l.createdByGrade ?? null,
+            sms_template:      l.smsTemplate ?? null,
+            created_at:        l.createdAt,
+            updated_at:        l.updatedAt,
+          })),
+        )}
+        on conflict (id) do update set
+          full_name        = excluded.full_name,
+          gender           = excluded.gender,
+          grades           = excluded.grades,
+          active           = excluded.active,
+          created_by_grade = excluded.created_by_grade,
+          sms_template     = excluded.sms_template,
+          updated_at       = excluded.updated_at
+      `;
+    }
   }
 
   async delete(id: string): Promise<boolean> {

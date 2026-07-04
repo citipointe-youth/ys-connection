@@ -1,5 +1,8 @@
 import { assertCan } from './access-control';
 import { BadRequestError } from '../core/errors/app-error';
+import { invalidateOverviewCache } from './overview.service';
+import { invalidateTrendsCache } from './trends.service';
+import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import type {
   IStudentRepository,
   ILeaderRepository,
@@ -96,6 +99,9 @@ export function makeAdminService(
       assertForceConfirmed(opts);
       await wipeData({ includeLeaders: true });
       await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, connections, services and lifegroup data cleared');
+      invalidateOverviewCache();
+      invalidateTrendsCache();
+      invalidateLgStatsCache();
     },
 
     async clearServiceGroupData(actor, opts) {
@@ -126,6 +132,9 @@ export function makeAdminService(
       if (reset.length > 0) await students.saveMany(reset);
 
       await writeAudit(audit, actor, 'new-year', 'Cleared all service & lifegroup data; students, connections, leaders and accounts retained');
+      invalidateOverviewCache();
+      invalidateTrendsCache();
+      invalidateLgStatsCache();
     },
 
     async getAuditLog(actor, limit = 20) {

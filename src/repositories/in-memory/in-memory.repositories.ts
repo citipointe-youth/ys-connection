@@ -122,6 +122,11 @@ export class InMemoryLeaderRepository
       .sort((a, b) => a.fullName.localeCompare(b.fullName))
       .map((l) => this.clone(l));
   }
+
+  async saveMany(leaders: Leader[]): Promise<void> {
+    for (const l of leaders) this.store.set(l.id, this.clone(l));
+    await this.writeToPersistence();
+  }
 }
 
 // ---------------------------------------------------------------------------

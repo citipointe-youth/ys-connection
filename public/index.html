@@ -3916,11 +3916,19 @@ function previewGroupImport(filename, parsed) {
   window._pendingGroups = parsed;
 }
 
+// Guards against a second import firing while one is still in flight — the
+// confirm modal closes immediately on click (before the upload even starts),
+// so re-parsing and re-confirming a file mid-upload would otherwise be able to
+// kick off a second concurrent request.
+let _importBusy = false;
+
 async function uploadServiceImport(filename) {
   const statusEl = document.getElementById('import-status');
   const rows = window._pendingServiceRows; window._pendingServiceRows = null;
   if (!rows) return;
-  statusEl.innerHTML = `<div class="alert al-info">Uploading ${rows.length} rows…</div>`;
+  if (_importBusy) { toast('An import is already in progress'); return; }
+  _importBusy = true;
+  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${rows.length} rows…</div>`;
   try {
     const result = await API.post('/import/csv', { rows, filename }, 90000);
     Cache.clear();
@@ -3929,19 +3937,23 @@ async function uploadServiceImport(filename) {
       <div style="font-size:12px;color:var(--ink-mid)">Tip: last-term comparisons refresh on the next service import — re-upload if last term's numbers look off.</div>
     </div>`;
   } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+  finally { _importBusy = false; }
 }
 
 async function uploadGroupImport(filename) {
   const statusEl = document.getElementById('import-status');
   const parsed = window._pendingGroups; window._pendingGroups = null;
   if (!parsed) return;
+  if (_importBusy) { toast('An import is already in progress'); return; }
+  _importBusy = true;
   const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
-  statusEl.innerHTML = `<div class="alert al-info">Uploading ${parsed.groups.length} groups, ${totalMembers} members…</div>`;
+  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${parsed.groups.length} groups, ${totalMembers} members…</div>`;
   try {
     const result = await API.post('/import/group-csv', { groups: parsed.groups, filename }, 90000);
     Cache.clear();
     statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.groupsAdded} groups created, ${result.studentsAdded} students added, ${result.studentsUpdated} updated, ${result.weeksAdded} weeks</div>`;
   } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+  finally { _importBusy = false; }
 }
 
 // Parse a "Group Individual Attendance" CSV export (Elvanto/UCare).

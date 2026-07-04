@@ -3,6 +3,7 @@ import { generateId } from '../utils/id';
 import { assertCan } from './access-control';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
+import { invalidateOverviewCache } from './overview.service';
 import type {
   IStudentRepository,
   ILeaderRepository,
@@ -422,6 +423,7 @@ export function makeImportService(
 
       invalidateTrendsCache();
       invalidateLgStatsCache();
+      invalidateOverviewCache();
       return { importId, type: 'service', rowCount: rows.length, studentsAdded, studentsUpdated, sessionsAdded: dateKeys.length };
     },
 
@@ -435,15 +437,25 @@ export function makeImportService(
       if (groups.length === 0) throw new BadRequestError('No groups found in upload');
 
       // Replace semantics: a group import is the authoritative lifegroup dataset.
-      // Clear prior lifegroup data first. Students + connections are NOT touched.
-      await lifegroupAttendanceRepo.deleteAll();
-      await lifegroupWeekRepo.deleteAll();
-      await lifegroupRepo.deleteAll();
+      // lifegroup_attendance cascades from BOTH lifegroups (lifegroup_id FK) and
+      // lifegroup_weeks (week_id FK), on delete cascade — truncating these two
+      // (no FK dependency between them, so safe to run concurrently) already
+      // clears attendance; an explicit separate attendance truncate is redundant.
+      // Students + connections are NOT touched.
+      await Promise.all([
+        lifegroupWeekRepo.deleteAll(),
+        lifegroupRepo.deleteAll(),
+      ]);
 
-      const [allStudents, settings, existingLeaders] = await Promise.all([
+      // Everything this import needs to read, in one round-trip instead of two
+      // separate sequential batches (sessions/attendance used later for the term
+      // split — no data dependency forces fetching them after the writes above).
+      const [allStudents, settings, existingLeaders, allSessions, allSvcAtt] = await Promise.all([
         studentRepo.findAll(),
         settingsRepo.getSettings(),
         leaderRepo.findAll(),
+        sessionRepo.findAll(),
+        attendanceRepo.findAll(),
       ]);
 
       const importId = generateId();
@@ -620,14 +632,11 @@ export function makeImportService(
       });
 
       // ── Term split over BOTH streams. Lifegroup weeks split by the SAME
-      // boundaries the service dates define; service data is read fresh from the
-      // repos and re-split so its current/previous counts stay consistent with
-      // this group import. Members get their group counts; everyone else falls to
-      // 0 group (replace semantics) — all via one uniform recompute. ──
-      const [allSessions, allSvcAtt] = await Promise.all([
-        sessionRepo.findAll(),
-        attendanceRepo.findAll(),
-      ]);
+      // boundaries the service dates define; service data (allSessions/allSvcAtt,
+      // fetched upfront alongside the other reads) is re-split so its current/
+      // previous counts stay consistent with this group import. Members get their
+      // group counts; everyone else falls to 0 group (replace semantics) — all via
+      // one uniform recompute. ──
       const weekStartById = new Map(weeksToCreate.map((w) => [w.id, w.weekStart]));
       const agg = computeStudentAggregates({
         termGapDays: settings.termGapDays,
@@ -643,8 +652,7 @@ export function makeImportService(
 
       // Writes, FK-safe order.
       await importRepo.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount: 0, sessionsAdded: 0, studentsAdded: 0, studentsUpdated: 0, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
-      // Leader saves are independent — run in parallel instead of sequentially.
-      await Promise.all([...leadersToWrite.values()].map((l) => leaderRepo.save(l)));
+      await leaderRepo.saveMany([...leadersToWrite.values()]);
       await lifegroupRepo.saveMany(newLifegroups);
       await lifegroupWeekRepo.saveMany(weeksToCreate);
       await studentRepo.saveMany(studentsToSave);
@@ -653,6 +661,7 @@ export function makeImportService(
 
       invalidateTrendsCache();
       invalidateLgStatsCache();
+      invalidateOverviewCache();
       return { importId, type: 'lifegroup', rowCount, groupsAdded, studentsAdded, studentsUpdated, weeksAdded };
     },
 

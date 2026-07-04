@@ -13,15 +13,15 @@ import { QUADS, QUAD_LABELS } from '../core/types/enums';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
 import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { actorKey as _actorKey } from './actor-key';
 
 const _cache = new ResponseCache<LifegroupStatsData>(60_000);
 
+// Any code path that writes students/lifegroups/weeks/attendance/sessions must
+// call this — there is no automatic invalidation, only the call sites in
+// import.service.ts.
 export function invalidateLgStatsCache(): void {
   _cache.invalidateAll();
-}
-
-function _actorKey(actor: Actor): string {
-  return `${actor.role}:${actor.grade ?? '_'}:${actor.quad ?? '_'}:${actor.gender ?? '_'}`;
 }
 
 // One term's worth of lifegroup numbers for a scope (a single group, a grade, a

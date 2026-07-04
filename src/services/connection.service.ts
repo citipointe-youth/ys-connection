@@ -17,6 +17,7 @@ import type {
 import type { Connection } from '../core/entities/connection';
 import type { Actor } from '../core/entities/user';
 import { NotFoundError, BadRequestError, ConflictError } from '../core/errors/app-error';
+import { invalidateOverviewCache } from './overview.service';
 
 export interface ConnectionWithNames {
   id: string;
@@ -177,19 +178,22 @@ export function makeConnectionService(
       const existing = await connRepo.findByStudentAndLeader(studentId, leaderId);
       if (existing) throw new ConflictError('Connection already exists');
 
-      return connRepo.save({
+      const saved = await connRepo.save({
         id: generateId(),
         studentId,
         leaderId,
         assignedByRole: actor.role,
         createdAt: new Date().toISOString(),
       });
+      invalidateOverviewCache();
+      return saved;
     },
 
     async unassign(actor, studentId, leaderId) {
       assertCan(actor, 'connection:write');
       const deleted = await connRepo.deleteByStudentAndLeader(studentId, leaderId);
       if (!deleted) throw new NotFoundError('Connection not found');
+      invalidateOverviewCache();
     },
 
     async leaderSummary(actor, leaderId) {
@@ -279,6 +283,7 @@ export function makeConnectionService(
       for (const pair of plan.toRemove) {
         await connRepo.deleteByStudentAndLeader(pair.studentId, pair.leaderId);
       }
+      invalidateOverviewCache();
       return plan.report;
     },
   };

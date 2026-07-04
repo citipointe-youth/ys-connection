@@ -10,17 +10,16 @@ import type { Quad } from '../core/types/enums';
 import { QUADS, QUAD_LABELS } from '../core/types/enums';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
+import { actorKey as _actorKey } from './actor-key';
 
 // Module-level cache — survives across requests on the same warm serverless instance.
 // Cleared on every import so data is never stale after a CSV upload.
 const _cache = new ResponseCache<TrendsData>(60_000);
 
+// Any code path that writes students/sessions/attendance must call this —
+// there is no automatic invalidation, only the call sites in import.service.ts.
 export function invalidateTrendsCache(): void {
   _cache.invalidateAll();
-}
-
-function _actorKey(actor: Actor): string {
-  return `${actor.role}:${actor.grade ?? '_'}:${actor.quad ?? '_'}:${actor.gender ?? '_'}`;
 }
 
 export interface SessionPoint {

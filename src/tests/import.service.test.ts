@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeImportService } from '../services/import.service';
 import {
   InMemoryStudentRepository,
@@ -353,5 +353,31 @@ describe('Import Service', () => {
     expect(alice.prevSvcTotal).toBe(3);
     expect(alice.svcAttended).toBe(2);
     expect(alice.prevSvcAttended).toBe(3);
+  });
+
+  // ── Leader saves during a group import go through one bulk saveMany() call,
+  //    not N individual save() calls (the round-trip-count fix). ──
+  it('group import bulk-saves leaders via saveMany, not one save() per leader', async () => {
+    const r = makeRepos();
+    await initRepos(r);
+    const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
+    const saveManySpy = vi.spyOn(r.leaders, 'saveMany');
+    const saveSpy = vi.spyOn(r.leaders, 'save');
+
+    await svc.importGroupCsv(DIR, {
+      groups: [{
+        name: 'Grade 9 Girls Lifegroup',
+        meetings: ['2026-04-16', '2026-04-23'],
+        members: [
+          { first_name: 'Jane (leader)', last_name: 'Doe', attendance: [true, true] },
+          { first_name: 'Alice', last_name: 'Smith', attendance: [true, false] },
+        ],
+      }],
+    }, 'groups.csv');
+
+    expect(saveManySpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
+    const leaders = await r.leaders.findAll();
+    expect(leaders.find(l => l.fullName === 'Jane Doe')).toBeDefined();
   });
 });
