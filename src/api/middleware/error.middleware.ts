@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import { AppError } from '../../core/errors/app-error';
 import { ZodError } from 'zod';
+import { RequestTimeoutError } from '../../utils/timeout';
 
 // Transient DB / connection failures — surface as 503 (retryable) rather than 500
 // so logs and monitoring separate infra hiccups (cold/exhausted pooler, dropped
@@ -40,6 +41,14 @@ export function sendError(res: Response, err: unknown): void {
     res.status(503).json({
       code: 'SERVICE_UNAVAILABLE',
       message: 'The service is temporarily unavailable. Please try again.',
+    });
+    return;
+  }
+  if (err instanceof RequestTimeoutError) {
+    console.warn('Request timeout (503):', err.message);
+    res.status(503).json({
+      code: 'REQUEST_TIMEOUT',
+      message: 'This is taking longer than expected. Please try again.',
     });
     return;
   }

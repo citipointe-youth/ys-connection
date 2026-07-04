@@ -28,7 +28,13 @@ export function getSqlClient(): SqlClient {
       // prefetches) run in parallel instead of serialising.
       max: 5,
       prepare: false,
-      idle_timeout: 10,    // close idle connections after 10s (prevents stale TCP in serverless)
+      // Was 10s — too aggressive: a normal human-paced logout -> re-login gap (reading
+      // the screen, typing credentials) easily exceeds 10s, so every connection was
+      // closed and had to be re-established (fresh TCP+TLS to the pooler) right as the
+      // next login's login+prefetch queries fired, adding several seconds to an
+      // otherwise-warm serverless instance. 30s covers a normal login pause while still
+      // recycling stale connections well within max_lifetime.
+      idle_timeout: 30,
       max_lifetime: 60,    // never keep a connection longer than 60s
       connect_timeout: 10, // fail fast if the DB doesn't respond (cold starts can be slow)
       connection: {

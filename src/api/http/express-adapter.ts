@@ -7,11 +7,27 @@ import { sendError } from '../middleware/error.middleware';
 import { UnauthorizedError } from '../../core/errors/app-error';
 import { createLogger } from '../../utils/logger';
 import { RateLimiter } from '../../utils/rate-limiter';
+import { withTimeout } from '../../utils/timeout';
 
 const logger = createLogger('http');
 
 // 10 attempts per IP per 15 minutes
 const loginRateLimiter = new RateLimiter(10, 15 * 60 * 1000);
+
+// A stalled DB connection can hang a request indefinitely — Postgres's own
+// statement_timeout only protects a query that has actually started executing, not
+// a hang acquiring a connection from the pooler. This bounds every route so a stuck
+// request fails fast (503, retryable) instead of silently riding to Vercel's 60s
+// hard function limit and surfacing as an opaque runtime error. CSV/audit imports
+// are exempt — they're expected to run long (see the 90s client-side timeout for
+// those endpoints) and already have their own ceiling (Vercel's maxDuration).
+const ROUTE_TIMEOUT_MS = 20_000;
+const UNTIMED_ROUTES = new Set([
+  'POST /import/csv',
+  'POST /import/group-csv',
+  'POST /connections/allocations/import',
+  'POST /audits',
+]);
 
 export function createApp(routes: Route[], authService: AuthService): Express {
   const app = express();
@@ -90,7 +106,10 @@ export function createApp(routes: Route[], authService: AuthService): Express {
           body: req.body,
         };
 
-        const result = await route.handler(httpReq);
+        const untimed = UNTIMED_ROUTES.has(`${route.method} ${route.path}`);
+        const result = untimed
+          ? await route.handler(httpReq)
+          : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
         res.json(result);
       } catch (err) {
         sendError(res, err);
