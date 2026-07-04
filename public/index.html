@@ -831,7 +831,7 @@ const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr
 function quadLabel(q) { return QUAD_LABELS[q] || q; }
 const ROLE_TIPS = {
   grade: (u) => `Grade ${u.grade} login — manages leaders and connections for Year ${u.grade}`,
-  quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — read-only overview of your quad`,
+  quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — quads fully manage leaders and connections within their gender+bracket`,
   director: () => 'Director — full ministry access, can import data',
   admin: () => 'Admin — full access including settings and accounts',
 };
