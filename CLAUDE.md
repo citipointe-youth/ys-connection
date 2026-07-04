@@ -54,15 +54,16 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 |---|---|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` |
 | Students | `GET/POST /students`, `GET /students/search`, `GET/PATCH/DELETE /students/:id` |
-| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id` |
+| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id`, `PATCH /leaders/:id/sms-template` (self-service, no ownership check — see the SMS templates note below) |
 | Connections | `GET/POST /connections`, `GET /connections/export`, `GET /connections/student/:id`, `GET /connections/leader/:id`, `DELETE /connections/:studentId/:leaderId`, `GET /connections/allocations/export`, `POST /connections/allocations/import` (admin-only allocation CSV round-trip) |
 | Overview | `GET /overview` |
 | At-risk | `GET /at-risk`, `POST /at-risk/recompute` |
 | Trends | `GET /trends` |
-| Lifegroup stats | `GET /lifegroups/stats` (per-lifegroup/grade/quad/overall, current + previous term + weekly series) |
+| Lifegroup stats | `GET /lifegroups/stats` (per-lifegroup/grade/quad/overall, current + previous term + weekly series), `GET /lifegroups/:id/members` (per-student attendance detail, current term — powers "click a lifegroup to see who attended") |
 | Import | `POST /import/csv`, `GET /import/history`, `DELETE /import/history` (clear log), `DELETE /import/history/:id` (remove one) |
 | Settings | `GET/PATCH /settings` |
-| Admin | `POST /admin/reset` (clears students+leaders+connections+all data), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `POST /admin/save-defaults`, `GET /admin/audit` |
+| Admin | `POST /admin/reset` (clears students+leaders+connections+all data), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
+| Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `POST /audits/finalize-live` (builds this year's snapshot from live tables, no CSV upload — used by the New Year Refresh wizard) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, etc. |
 
 **Clearing import history ≠ deleting data.** The Import screen's "Clear All" and per-row
@@ -273,7 +274,8 @@ full-screen step viewer (`#exportGuide` overlay; `.eg-*` CSS; `EXPORT_GUIDES`/`o
 A punch list of small UI fixes/renames, mostly targeted at the `grade` login but shared
 across roles wherever the same screen/component is used:
 - **Nav renames** (all roles, `navItems()`): `At Risk` → `At Risk & Rising`, `Leaders & Connect`
-  → `Connect Setup`, `My Students` → `My Connections`. Bottom-nav two-line labels (`mbl`) use a
+  → `Connect Setup`, `My Students` → `My Connections`. (`At Risk & Rising` was renamed again,
+  later the same day, to **`Health`** — see the note below.) Bottom-nav two-line labels (`mbl`) use a
   shared `.ni-lbl` pattern (first line normal, second line smaller/faded) for any label that
   wraps — keep new multi-word nav labels on this pattern rather than plain wrapped text, or the
   bottom nav's row heights look uneven.
@@ -304,7 +306,7 @@ across roles wherever the same screen/component is used:
   a ~3-row scroll window (`max-height:126px`, was a hard `slice(0,8)` + "+N more/View all" link)
   with a persistent faint scrollbar thumb (`::-webkit-scrollbar-thumb` + `scrollbar-color`) since
   a touch scrollbar only flashes during an active drag and is easy to miss in such a short list.
-- **At Risk & Rising tiles**: grade logins don't see the quad chip (constant/uninformative for a
+- **At Risk & Rising tiles** (screen since renamed to `Health` — see below): grade logins don't see the quad chip (constant/uninformative for a
   single-grade login); grade/gender + the qualifier chips moved to their own second line below
   the name (was crowding the name line). Qualifier chips get a dedicated `_arQualChips(s)` (NOT
   the shared `qualChips(s)` used by Search/admin table/student detail, which is untouched):
@@ -459,6 +461,96 @@ service worker (`public/sw.js`) — those were left fully intact.
   points** vs the previous term (raised from 5pts). Threshold lives in **both** the
   backend (`atrisk.service.ts`, `trends.service.ts` groupSummary) and the SPA
   (`isRising`, `_streamQual`, and the CA module rate trends) — keep them in sync.
+
+### Screen rename + operational hardening (2026-07-03)
+
+- **`At Risk & Rising` → `Health`**: new heart icon, subtitle dropped, added a `Stable`
+  category for previously-uncategorized students, shrunk card height. `_arQualChips`/
+  `qualChips` and the underlying `computeStatus`/`attendQual` model are unchanged — this
+  was a rename + display tweak, not a scoring change.
+- **Admin**: the Audit tab was removed from Admin Settings (the backend `/admin/audit`
+  route and its log are kept, just unreachable from the SPA — nothing in the frontend
+  calls it). Deleting an account now requires typing its email to confirm.
+- **Connection Audit**: the separate audit-hub and deck-preview screens were deleted;
+  the CA tab nav moved to the top of the module and the YTD/term strip was dropped in
+  favour of the `scopeBar()` year+period picker described elsewhere in this doc.
+- **DB timeout gotcha**: production logs showed `/lifegroups/stats` occasionally hanging
+  the full 60s and surfacing a raw Vercel platform timeout instead of a clean error, and
+  idle Postgres connections closing after only 10s — shorter than a normal logout-then-
+  login pause, forcing every post-login query to reopen a fresh connection. Fix: every
+  route now fails fast with a retryable 503 after 20s instead of riding to the platform's
+  hard 60s limit (CSV/audit import routes are exempt — they're expected to run long); the
+  idle-connection timeout was raised 10s → 30s.
+
+### Bug fixes, New Year Data Refresh wizard, SMS templates (2026-07-04)
+
+- **Connect Setup**: removed the per-leader "N at risk" tile badge (added only the day
+  before — turned out not to be wanted).
+- **Home**: admin/director's "Attendance by Quad" renamed to **`Youth By Quad`** and
+  stripped down to youth-only numbers (no Lifegroups row/columns) — the separate
+  "Lifegroups by Quad" section below already covers that, so showing it twice was
+  redundant. `_hAttTile` gained an `opts.hideLifegroupRow` flag for this; quad's own
+  "Attendance by Grade" tiles (which still show a Lifegroups row) are untouched since
+  `_hGradeMini` — the admin/director-only per-grade dropdown renderer — was the only
+  thing simplified.
+- **Click a lifegroup → see who attended**: added to the main Trends lifegroup tab, the
+  Home lifegroup dropdowns (quad/director/admin), and Connection Audit's own Lifegroup
+  Health tab. Live-app screens hit a new `GET /lifegroups/:id/members` endpoint
+  (`lifegroup-stats.service.ts`); the CA tab reads a `roster` array now included in each
+  named lifegroup's per-term stat inside the audit snapshot (`AuditLgStat.roster`,
+  `attendance-build.ts`). Audits saved before this shipped won't have a roster until
+  re-uploaded/re-finalized. **Gotcha**: the SPA's `_lgCombine()` (merges per-term stats
+  into one when the CA scope spans several terms, e.g. "Year to date") rebuilds each
+  lifegroup entry from a fixed field list — any new per-lifegroup field (like `roster`)
+  needs to be explicitly folded into that merge or it silently disappears whenever more
+  than one term is selected, even though a single-term view shows it fine.
+- **Connection Audit people tab**: dropped the colored initial-circle avatar; stage/
+  year/gender now sit inline with the name on one line instead of two, shrinking row
+  height.
+- **Connection Audit lifegroup tab + Executive Brief deck**: named lifegroups display
+  with a `"Brisbane - YS - "` prefix and trailing `"Lifegroup"` stripped when present
+  (`lgDisplayName()`), display-only — underlying data/exports keep the full name. Note
+  this is independent of `import.service.ts`'s own `shortName` derivation (which strips
+  everything before the *first* `" - "` at import time) — the two aren't composed, so
+  `AuditLgStat.name` always uses the un-stripped `fullName`/raw uploaded name to keep
+  CSV-audit-upload and live-finalize snapshots displaying consistently.
+- **Admin → New Year Refresh** (new 4th Admin tab): a gated, in-order checklist through
+  the existing pieces needed to roll into a new year — nothing here is a new capability,
+  it's the existing Export/Reset/Import endpoints walked in the one order that actually
+  works, since Full Reset deletes the leaders that the allocations import needs to match
+  against, and re-importing the lifegroup CSV is what recreates them (`(leader)`-tagged
+  names). Steps: (1) Export Allocations CSV + finalize this year's Connection Audit
+  snapshot straight from live data (new `ConnectionAuditService.finalizeFromLive`,
+  `POST /audits/finalize-live` — reuses `computeYearAggregates`/a live-data variant of
+  `buildLifegroupStats`, sourced from live tables instead of parsed CSVs; CRM overlays
+  are left empty and a later manual CA upload for the same year overwrites it, same
+  idempotent-per-year behavior as the normal upload path); (2) Full Reset (unchanged
+  typed-RESET flow); (3) a reminder card to re-import attendance CSVs, unlocked by an
+  explicit "I've done this" acknowledgement (no reliable server-side signal for this);
+  (4) Import Allocations. Wizard state is in-memory only — re-opening the tab always
+  starts fresh.
+- **Removed "Save Defaults"**: it wrote a snapshot of accounts+leaders to an `app_defaults`
+  table that nothing in the codebase ever read back (no restore path existed anywhere) —
+  dead write-only functionality that didn't fit the refresh flow above. Removed the
+  button, route, service method, `ISnapshotRepository` + both implementations, and the
+  `AppDefaults` entity; dropped the `app_defaults` table (migration `015`).
+- **Call-sheet SMS templates**: `callPhone`/`phoneLink` gained an optional `firstName`
+  param (all 6 call sites updated). The action sheet is now Call / Message (default
+  `"Hey {first name} "` via an `sms:` `body=` param) / **Message Custom** (shown only
+  when the device's self-identified leader, `getMyLeaderId()`, has a saved template) /
+  Cancel. New `Leader.smsTemplate: string | null` (migration `014`), with a placeholder
+  `<first name>` substituted case-insensitively at send time. Saved via a **dedicated**
+  `PATCH /leaders/:id/sms-template` endpoint rather than the general leader `update()` —
+  the general endpoint's ownership checks (grade logins can only edit leaders *they*
+  created) would reject most self-identified leaders, since most are auto-created by CSV
+  import (`createdByGrade: null`); there's no server-verified binding between an Actor
+  and "the leader they identify as" anyway, so the template — a low-stakes preference,
+  not an RBAC-sensitive field — skips that check. Editable from a new box under the Home
+  Follow Up section. **`sms:` URL gotcha**: `encodeURIComponent` does not escape `'`
+  (it's a valid URI char), so a name/template containing an apostrophe (e.g. "D'Angelo")
+  would break out of the single-quoted JS string in the `onclick` attribute — `_smsHref()`
+  manually replaces `'` → `%27` after encoding, the same reason `phoneLink()`'s raw digits
+  are stripped of `'`/`\` before interpolation.
 
 ## Security notes
 
