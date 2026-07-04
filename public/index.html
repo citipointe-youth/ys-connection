@@ -4806,7 +4806,7 @@ function rGroups(){
     +Object.keys(QLBL).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+(QLBL[q]||q)+'</span>').join('')
     +'</div>';
   if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';caShell(b,'ca-groups');return;}
-  const rc='text-align:right;padding:7px 8px;white-space:nowrap';
+  const rc='text-align:center;padding:7px 8px;white-space:nowrap';
   b+='<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'
     +'<thead><tr style="color:var(--ca-muted)"><th style="text-align:left;padding:8px 10px">Lifegroup</th>'
     +['Enrolled','Seen','Visits/person','Run','Weekly'].map(h=>'<th style="'+rc+'">'+h+'</th>').join('')
