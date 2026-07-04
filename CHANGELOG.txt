@@ -4,6 +4,35 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+CONNECTION AUDIT FIXES  (2026-07-04)
+-------------------------------------------------------------------------------
+- Fixed quad role-tip: quads fully manage leaders/connections in their
+  gender+bracket, was wrongly described as "read-only".
+- Deleted the Connection Audit hub landing page and the standalone "Build
+  Presentation" screen (folded into the Data tab's existing direct export
+  button); the Overview/Funnel/Lifegroups/People/Data tab bar now sits at the
+  top of every CA screen (bold, uppercase) in place of the old
+  back-to-hub/back-to-home buttons.
+- Removed the year-to-date per-term summary strip; the Year/Period scope
+  picker stays on every CA tab.
+- Overview hero cards no longer show a prev-term delta/commentary line when
+  viewing Year-to-date or the audit's first term (no meaningful comparison
+  exists in either case).
+- Renamed the grade x gender cohort cards on Overview from "Group
+  highlights/alerts" to "Cohort highlights/alerts" to stop conflating them
+  with the real named Lifegroups shown in the Lifegroups tab.
+- Renamed "Friday(s)"/"service" wording to "Youth" and "group export" to
+  "Lifegroup export" throughout the audit and the executive deck.
+- Fixed the executive deck's methodology slide (and two echoes of the same
+  claim elsewhere in the deck): audits are server-stored, year-keyed
+  snapshots computed at upload time, not a live read of the platform.
+- Centered the numeric columns under their headers on the Lifegroups tab.
+- Removed the "Declining only" filter chip and the per-tile Youth-attendance
+  line from the People tab's person tiles.
+- Fixed the Data tab's "How do I export..." button text overflowing its
+  border on narrow screens.
+
+-------------------------------------------------------------------------------
 PHASE 1: INITIAL SETUP & REBRAND  (2026-06-12)
 -------------------------------------------------------------------------------
 - Forked codebase from youth-allocation-platform
