@@ -4946,10 +4946,15 @@ function rData(){
     +'<div style="font-size:.66rem;color:var(--ca-muted);line-height:1.5">Saving computes the terms server-side and stores one audit for that year. Re-saving a year overwrites it. Other directors/admins can then load it.</div>'
     +'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.saveAudit()">Save audit</button>'
     +'</div>';
-  b+='<div class="sh">Export</div><div class="card" style="display:flex;align-items:center;gap:12px">'
+  const deckTermOpts=AUDIT?(AUDIT.terms||[]).map(t=>{const ip=(AUDIT.perTerm[t.key]||{}).inProgress;return '<option value="'+t.key+'"'+(TERM===t.key?' selected':'')+'>T'+t.ordinal+(ip?' (in progress)':'')+'</option>';}).join(''):'';
+  const deckTermSel='<select id="ca-deck-term" class="fs ca-sel" style="flex:1"><option value="ALL"'+(TERM==='ALL'?' selected':'')+'>Year to date</option>'+deckTermOpts+'</select>';
+  b+='<div class="sh">Export</div><div class="card">'
+    +'<div style="display:flex;align-items:center;gap:12px'+(AUDIT?';margin-bottom:10px':'')+'">'
     +'<div class="ca-uic ok" style="background:var(--ca-chip);color:var(--ca-blue)">'+icS('deck')+'</div>'
-    +'<div class="ca-usl"><div class="ca-ust">Executive brief</div><div class="ca-uss">Self-contained slide deck of the loaded audit · opens in a new tab</div></div>'
-    +'<button class="btn btn-primary btn-sm" onclick="CA.buildDeck()">Export ↗</button>'
+    +'<div class="ca-usl"><div class="ca-ust">Executive brief</div><div class="ca-uss">Self-contained slide deck · opens in a new tab</div></div>'
+    +(AUDIT?'':'<button class="btn btn-primary btn-sm" onclick="CA.buildDeck()">Export ↗</button>')
+    +'</div>'
+    +(AUDIT?'<div style="display:flex;gap:8px;align-items:center">'+deckTermSel+'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.buildDeck(document.getElementById(\'ca-deck-term\').value)">Export ↗</button></div>':'')
     +'</div>';
   caShell(b,'ca-data');
 }
@@ -5022,7 +5027,19 @@ async function saveAudit(){
   }catch(e){toast((e&&e.message)||'Save failed');}
 }
 
-function buildDeck(){
+// Public entry point: builds the deck for whichever term is currently active,
+// or for `termOverride` ('ALL' or a specific AUDIT.terms[].key) when the Data
+// tab's export-term picker is used — independent of the on-screen Year/Period
+// scope bar. Temporarily swaps the module's term-scoped state, runs the
+// (unchanged) deck body, then restores whatever was active before, so picking
+// an export term never disturbs the rest of the screen.
+async function buildDeck(termOverride){
+  const prior=(termOverride!=null&&termOverride!==TERM)?{term:TERM,d:D,mdl:mdl,st:st}:null;
+  if(prior){TERM=termOverride;D=null;mdl=null;st=null;await load(true);}
+  try{ _buildDeckBody(); }
+  finally{ if(prior){TERM=prior.term;D=prior.d;mdl=prior.mdl;st=prior.st;} }
+}
+function _buildDeckBody(){
   const m=model(),k=m.kpis;
   const ministry=(D.settings&&D.settings.ministryName)||'Youth Ministry';
   const dateStr=new Date().toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
@@ -5082,7 +5099,7 @@ function buildDeck(){
   };
   const slides=[
     {cls:'cover',
-      kicker:dateStr+' · '+N+' people tracked · a point-in-time snapshot',
+      kicker:dateStr+' · '+scopeLabel()+' · '+N+' people tracked · a point-in-time snapshot',
       title:'The Health of '+ministry,
       core:'An honest, data-driven read on how students move from first contact to committed discipleship — and the one move that matters most this term.',
       body:isStale?'<p class="covfoot">'+esc(currency)+'</p>':'',
