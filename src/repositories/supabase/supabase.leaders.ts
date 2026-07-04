@@ -12,6 +12,7 @@ function toLeader(row: Record<string, unknown>): Leader {
     grades: ((row['grades'] as number[] | null) ?? []) as Grade[],
     active: row['active'] as boolean,
     createdByGrade: (row['created_by_grade'] as number | null) ?? null,
+    smsTemplate: (row['sms_template'] as string | null) ?? null,
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -51,7 +52,7 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
 
   async save(leader: Leader): Promise<Leader> {
     const rows = await this.sql`
-      insert into leaders (id, full_name, gender, grades, active, created_by_grade, created_at, updated_at)
+      insert into leaders (id, full_name, gender, grades, active, created_by_grade, sms_template, created_at, updated_at)
       values (
         ${leader.id},
         ${leader.fullName},
@@ -59,6 +60,7 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
         ${leader.grades as number[]},
         ${leader.active},
         ${leader.createdByGrade ?? null},
+        ${leader.smsTemplate ?? null},
         ${leader.createdAt},
         ${leader.updatedAt}
       )
@@ -68,6 +70,7 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
         grades           = excluded.grades,
         active           = excluded.active,
         created_by_grade = excluded.created_by_grade,
+        sms_template     = excluded.sms_template,
         updated_at       = excluded.updated_at
       returning *
     `;

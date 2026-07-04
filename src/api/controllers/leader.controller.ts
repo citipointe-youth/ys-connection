@@ -29,5 +29,11 @@ export function makeLeaderController(deps: { leader: LeaderService }) {
       await deps.leader.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },
+
+    async updateSmsTemplate(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      const body = req.body as { smsTemplate?: unknown };
+      return deps.leader.updateSmsTemplate(req.ctx, req.params['id']!, body?.smsTemplate ?? null);
+    },
   };
 }

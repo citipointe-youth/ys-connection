@@ -1,7 +1,6 @@
 import { assertCan } from './access-control';
 import { BadRequestError } from '../core/errors/app-error';
 import type {
-  IUserRepository,
   IStudentRepository,
   ILeaderRepository,
   IConnectionRepository,
@@ -11,7 +10,6 @@ import type {
   ILifegroupWeekRepository,
   ILifegroupAttendanceRepository,
   IImportRepository,
-  ISnapshotRepository,
   IAuditRepository,
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
@@ -45,7 +43,6 @@ function assertForceConfirmed(opts?: WipeOpts): void {
 
 export interface AdminService {
   reset(actor: Actor, opts?: WipeOpts): Promise<void>;
-  saveDefaults(actor: Actor): Promise<void>;
   clearServiceGroupData(actor: Actor, opts?: WipeOpts): Promise<void>;
   getAuditLog(actor: Actor, limit?: number): Promise<AdminAuditRow[]>;
 }
@@ -66,7 +63,6 @@ async function writeAudit(
 }
 
 export function makeAdminService(
-  users: IUserRepository,
   students: IStudentRepository,
   leaders: ILeaderRepository,
   connections: IConnectionRepository,
@@ -76,7 +72,6 @@ export function makeAdminService(
   lifegroupWeeks: ILifegroupWeekRepository,
   lifegroupAttendance: ILifegroupAttendanceRepository,
   imports: IImportRepository,
-  snapshots: ISnapshotRepository,
   audit: IAuditRepository,
 ): AdminService {
   // Wipe all attendance/connection data in FK-safe order (children before
@@ -101,22 +96,6 @@ export function makeAdminService(
       assertForceConfirmed(opts);
       await wipeData({ includeLeaders: true });
       await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, connections, services and lifegroup data cleared');
-    },
-
-    async saveDefaults(actor) {
-      assertCan(actor, 'admin:manage');
-      const allUsers = await users.findAll();
-      const allLeaders = await leaders.findAll();
-      const now = new Date().toISOString();
-      await snapshots.save({
-        id: generateId(),
-        snapshot: {
-          users: allUsers.map(({ passwordHash: _pw, ...u }) => u),
-          leaders: allLeaders,
-        },
-        createdAt: now,
-      });
-      await writeAudit(audit, actor, 'save-defaults', `Saved ${allUsers.length} accounts and ${allLeaders.length} leaders as defaults`);
     },
 
     async clearServiceGroupData(actor, opts) {

@@ -12,7 +12,6 @@ export {
 } from './supabase.attendance';
 export {
   SupabaseSettingsRepository,
-  SupabaseSnapshotRepository,
   SupabaseAuditRepository,
 } from './supabase.settings';
 export { getSqlClient } from './client';

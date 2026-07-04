@@ -25,5 +25,9 @@ export function makeConnectionAuditController(deps: { connectionAudit: Connectio
       await deps.connectionAudit.remove(req.ctx, year);
       return { ok: true };
     },
+    async finalizeFromLive(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.connectionAudit.finalizeFromLive(req.ctx);
+    },
   };
 }

@@ -11,6 +11,7 @@ const CreateLeaderSchema = z.object({
   fullName: z.string().min(1).max(100),
   gender: z.enum(['male', 'female', 'other']).nullable().optional(),
   grades: z.array(z.number().int().min(7).max(12)).optional(),
+  smsTemplate: z.string().max(500).nullable().optional(),
 });
 
 export interface LeaderService {
@@ -19,6 +20,7 @@ export interface LeaderService {
   create(actor: Actor, input: unknown): Promise<Leader>;
   update(actor: Actor, id: string, input: unknown): Promise<Leader>;
   remove(actor: Actor, id: string): Promise<void>;
+  updateSmsTemplate(actor: Actor, id: string, smsTemplate: unknown): Promise<Leader>;
 }
 
 /** A quad may only manage leaders within its gender + year bracket. */
@@ -101,6 +103,7 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
         grades,
         active: true,
         createdByGrade: actor.role === 'grade' ? actor.grade : null,
+        smsTemplate: data.smsTemplate ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -143,6 +146,7 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
         gender: nextGender,
         grades: nextGrades,
         active: patch.active !== undefined ? patch.active : existing.active,
+        smsTemplate: patch.smsTemplate !== undefined ? patch.smsTemplate : existing.smsTemplate,
         updatedAt: new Date().toISOString(),
       };
       return repo.save(updated);
@@ -159,6 +163,23 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
         assertLeaderInQuadScope(actor, existing);
       }
       await repo.delete(id);
+    },
+
+    // Self-service edit of the call-sheet "Message Custom" template. Deliberately
+    // skips the creator/quad-scope ownership checks used by update(): there is no
+    // server-side binding between an Actor and "the leader they identify as"
+    // (getMyLeaderId() is a client-side convenience), and most self-identified
+    // leaders were auto-created by CSV import (createdByGrade: null), which the
+    // grade-role ownership check in update() would otherwise reject. The template
+    // is a low-stakes preference field — it doesn't affect grade/gender/active
+    // scoping — so any actor who can see the leader may set it.
+    async updateSmsTemplate(actor, id, smsTemplate) {
+      assertCan(actor, 'leader:write');
+      const existing = await repo.findById(id);
+      if (!existing) throw new NotFoundError('Leader not found');
+      const parsed = z.string().max(500).nullable().parse(smsTemplate);
+      const updated: Leader = { ...existing, smsTemplate: parsed, updatedAt: new Date().toISOString() };
+      return repo.save(updated);
     },
   };
 }

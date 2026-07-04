@@ -14,6 +14,7 @@ import { NotFoundError } from '../core/errors/app-error';
 
 export interface FollowupStudent {
   id: string;
+  firstName: string;
   fullName: string;
   grade: number | null;
   gender: string;
@@ -61,6 +62,7 @@ export function isGroupEligible(s: { grpAttended: number; prevGrpAttended: numbe
 function toFollowup(s: Student): FollowupStudent {
   return {
     id: s.id,
+    firstName: s.firstName,
     fullName: `${s.firstName} ${s.lastName}`,
     grade: s.grade,
     gender: s.gender,
@@ -93,7 +95,7 @@ export function buildFollowup(
 }
 
 export interface LeaderFollowup {
-  leader: { id: string; fullName: string };
+  leader: { id: string; fullName: string; smsTemplate: string | null };
   latestSvcDate: string | null;
   latestGrpDate: string | null;
   birthdays: FollowupStudent[];
@@ -165,7 +167,7 @@ export function makeFollowupService(
         new Date(),
       );
       return {
-        leader: { id: leader.id, fullName: leader.fullName },
+        leader: { id: leader.id, fullName: leader.fullName, smsTemplate: leader.smsTemplate },
         latestSvcDate: latestSession ? latestSession.sessionDate : null,
         latestGrpDate,
         ...lists,

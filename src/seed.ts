@@ -78,14 +78,14 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
 
   // Demo leaders
   const leaders: Leader[] = [
-    { id: generateId(), fullName: 'Sarah Mitchell', gender: 'female', grades: [7, 8], active: true, createdByGrade: 7, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'Emma Clarke', gender: 'female', grades: [9], active: true, createdByGrade: 9, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'James Thompson', gender: 'male', grades: [7, 8], active: true, createdByGrade: 7, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'Michael Roberts', gender: 'male', grades: [9], active: true, createdByGrade: 9, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'Rachel Green', gender: 'female', grades: [10, 11], active: true, createdByGrade: 10, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'David Kim', gender: 'male', grades: [10, 11], active: true, createdByGrade: 10, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'Natasha Brown', gender: 'female', grades: [12], active: true, createdByGrade: 12, createdAt: now, updatedAt: now },
-    { id: generateId(), fullName: 'Chris Wilson', gender: 'male', grades: [12], active: true, createdByGrade: 12, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Sarah Mitchell', gender: 'female', grades: [7, 8], active: true, createdByGrade: 7, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Emma Clarke', gender: 'female', grades: [9], active: true, createdByGrade: 9, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'James Thompson', gender: 'male', grades: [7, 8], active: true, createdByGrade: 7, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Michael Roberts', gender: 'male', grades: [9], active: true, createdByGrade: 9, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Rachel Green', gender: 'female', grades: [10, 11], active: true, createdByGrade: 10, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'David Kim', gender: 'male', grades: [10, 11], active: true, createdByGrade: 10, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Natasha Brown', gender: 'female', grades: [12], active: true, createdByGrade: 12, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Chris Wilson', gender: 'male', grades: [12], active: true, createdByGrade: 12, smsTemplate: null, createdAt: now, updatedAt: now },
   ];
   for (const l of leaders) await repos.leaders.save(l);
 

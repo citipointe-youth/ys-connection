@@ -10,6 +10,9 @@ export interface Leader {
   active: boolean;
   // Which grade-login created this leader
   createdByGrade: number | null;
+  // Custom SMS template for the "Message Custom" call-sheet option; "<first name>"
+  // is substituted with the recipient's first name at send time.
+  smsTemplate: string | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

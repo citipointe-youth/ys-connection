@@ -13,7 +13,6 @@ import {
   InMemoryLifegroupAttendanceRepository,
   InMemoryImportRepository,
   InMemorySettingsRepository,
-  InMemorySnapshotRepository,
   InMemoryAuditRepository,
   InMemoryConnectionAuditRepository,
   InMemoryPushSubscriptionRepository,
@@ -32,7 +31,6 @@ import {
   SupabaseLifegroupAttendanceRepository,
   SupabaseImportRepository,
   SupabaseSettingsRepository,
-  SupabaseSnapshotRepository,
   SupabaseAuditRepository,
   SupabaseConnectionAuditRepository,
   SupabasePushSubscriptionRepository,
@@ -52,7 +50,6 @@ import type {
   ILifegroupAttendanceRepository,
   IImportRepository,
   ISettingsRepository,
-  ISnapshotRepository,
   IAuditRepository,
   IConnectionAuditRepository,
   IPushSubscriptionRepository,
@@ -87,7 +84,6 @@ export interface Repositories {
   lifegroupAttendance: ILifegroupAttendanceRepository;
   imports: IImportRepository;
   settings: ISettingsRepository;
-  snapshots: ISnapshotRepository;
   audit: IAuditRepository;
   connectionAudits: IConnectionAuditRepository;
   pushSubscriptions: IPushSubscriptionRepository;
@@ -161,9 +157,6 @@ export async function buildContainer(): Promise<Container> {
   const settings: ISettingsRepository = useSupabase
     ? new SupabaseSettingsRepository(sql)
     : new InMemorySettingsRepository(useJson ? makeJson('settings.json') : undefined);
-  const snapshots: ISnapshotRepository = useSupabase
-    ? new SupabaseSnapshotRepository(sql)
-    : new InMemorySnapshotRepository(useJson ? makeJson('snapshots.json') : undefined);
   const audit: IAuditRepository = useSupabase
     ? new SupabaseAuditRepository(sql)
     : new InMemoryAuditRepository(useJson ? makeJson('audit.json') : undefined);
@@ -181,7 +174,7 @@ export async function buildContainer(): Promise<Container> {
     users, students, leaders, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, settings, snapshots, audit, connectionAudits,
+    imports, settings, audit, connectionAudits,
     pushSubscriptions, notifications,
   };
 
@@ -190,7 +183,7 @@ export async function buildContainer(): Promise<Container> {
     users.init(), students.init(), leaders.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
-    imports.init(), settings.init(), snapshots.init(), audit.init(), connectionAudits.init(),
+    imports.init(), settings.init(), audit.init(), connectionAudits.init(),
     pushSubscriptions.init(), notifications.init(),
   ]);
 
@@ -212,10 +205,10 @@ export async function buildContainer(): Promise<Container> {
   const settingsSvc = makeSettingsService(settings, audit);
   const account = makeAccountService(users);
   const admin = makeAdminService(
-    users, students, leaders, connections,
+    students, leaders, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, snapshots, audit,
+    imports, audit,
   );
   const push = makePushService({
     vapidPublicKey: env.VAPID_PUBLIC_KEY,
@@ -225,7 +218,11 @@ export async function buildContainer(): Promise<Container> {
     notifRepo: notifications,
     userRepo: users,
   });
-  const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
+  const connectionAudit = makeConnectionAuditService(
+    connectionAudits, settings, students,
+    serviceSessions, serviceAttendance,
+    lifegroups, lifegroupWeeks, lifegroupAttendance,
+  );
 
   const services: Services = {
     auth, student, leader, connection, followup, overview, atRisk, trends, lifegroupStats,

@@ -510,7 +510,7 @@ export function makeImportService(
               const existing = existingLeaderByName.get(key);
               lead = existing
                 ? { ...existing, grades: [...existing.grades], gender: existing.gender ?? gGender, updatedAt: now }
-                : { id: generateId(), fullName, gender: gGender, grades: [] as unknown as Parameters<typeof leaderRepo.save>[0]['grades'], active: true, createdByGrade: null, createdAt: now, updatedAt: now };
+                : { id: generateId(), fullName, gender: gGender, grades: [] as unknown as Parameters<typeof leaderRepo.save>[0]['grades'], active: true, createdByGrade: null, smsTemplate: null, createdAt: now, updatedAt: now };
               leadersToWrite.set(key, lead);
             }
             // Accumulate grade focus: a leader appearing in more than one grade's

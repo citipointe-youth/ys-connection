@@ -11,7 +11,6 @@ import {
   InMemoryLifegroupWeekRepository,
   InMemoryLifegroupAttendanceRepository,
   InMemoryImportRepository,
-  InMemorySnapshotRepository,
   InMemoryAuditRepository,
 } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
@@ -36,13 +35,12 @@ async function buildService() {
   const lifegroupWeeks = new InMemoryLifegroupWeekRepository();
   const lifegroupAttendance = new InMemoryLifegroupAttendanceRepository();
   const imports = new InMemoryImportRepository();
-  const snapshots = new InMemorySnapshotRepository();
   const audit = new InMemoryAuditRepository();
   await Promise.all([
     users.init(), students.init(), leaders.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(), lifegroups.init(),
     lifegroupWeeks.init(), lifegroupAttendance.init(), imports.init(),
-    snapshots.init(), audit.init(),
+    audit.init(),
   ]);
 
   await students.save({
@@ -55,8 +53,8 @@ async function buildService() {
   });
 
   const svc = makeAdminService(
-    users, students, leaders, connections, serviceSessions, serviceAttendance,
-    lifegroups, lifegroupWeeks, lifegroupAttendance, imports, snapshots, audit,
+    students, leaders, connections, serviceSessions, serviceAttendance,
+    lifegroups, lifegroupWeeks, lifegroupAttendance, imports, audit,
   );
   return { svc, students };
 }

@@ -451,8 +451,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* ── CA MODULE CSS START ── */
 :root{--ca-navy:#0a0a2e;--ca-blue:#1a1af2;--ca-teal:#0ea5a4;--ca-amber:#f59e0b;--ca-rose:#e11d48;--ca-green:#16a34a;--ca-paper:#f4f7fc;--ca-card:#fff;--ca-ink:#1f2937;--ca-muted:#647488;--ca-line:#e8edf4;--ca-chip:#ececff;--ca-r:14px;--ca-rs:11px;--ca-sh:0 3px 10px rgba(10,10,46,.06);}
 .ca-cw{background:#fef3c7;color:#92660b}
-.ca-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:.74rem;font-weight:700;flex:none}
-.ca-av.f{background:#fce4f1;color:#c0257e}.ca-av.m{background:#dbe6ff;color:#2851a3}.ca-av.n{background:#fef3c7;color:#92660b}
 .ca-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:4px}
 .ca-tile{background:var(--ca-card);border:1px solid var(--ca-line);border-radius:var(--ca-r);padding:13px 8px;min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-shadow:var(--ca-sh);cursor:pointer}
 .ca-tile .tic{display:flex;justify-content:center;margin-bottom:6px}.ca-tile .tic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -898,23 +896,57 @@ function fmtPhone(p) {
   if (d.length <= 7) return d.slice(0, 4) + ' ' + d.slice(4);
   return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
 }
-// Tap-to-call: show a Call / Message / Cancel action sheet (iOS's native tel:
-// confirmation can't be extended with a Message option, so we build our own).
-function callPhone(raw) {
+// Fills the "<first name>" placeholder (case-insensitive) in a custom SMS
+// template with the recipient's actual first name.
+function _fillSmsTemplate(template, firstName) {
+  return String(template || '').replace(/<first name>/ig, firstName || '');
+}
+// sms: URLs go inside a single-quoted JS string in an onclick attribute;
+// encodeURIComponent leaves "'" unescaped (it's a valid URI char), so escape
+// it manually or a name/template containing an apostrophe (e.g. "D'Angelo")
+// would break out of that string. Mirrors the digit-stripping already done
+// for phone numbers in phoneLink() below, for the same reason.
+function _smsHref(digits, body) {
+  return 'sms:' + digits + '?body=' + encodeURIComponent(body).replace(/'/g, '%27');
+}
+// The device's self-identified leader's (getMyLeaderId()) saved custom
+// template, if any — read from whatever /leaders response is already cached
+// (most screens that show a phone number have already fetched it), so this
+// stays synchronous for the tap-to-call action sheet.
+function _myCustomSmsTemplate() {
+  const id = getMyLeaderId();
+  if (!id) return null;
+  const leaders = Cache.getStale('/leaders');
+  if (!leaders) return null;
+  const me = leaders.find(l => l.id === id);
+  return (me && me.smsTemplate) ? me.smsTemplate : null;
+}
+// Tap-to-call: show a Call / Message / Message Custom / Cancel action sheet
+// (iOS's native tel: confirmation can't be extended with a Message option, so
+// we build our own). `firstName` (when known) personalises the default
+// message and fills the "<first name>" placeholder in a custom template.
+function callPhone(raw, firstName) {
   const d = String(raw || '').replace(/[^\d+]/g, '');
   if (!d) return;
+  const defaultMsg = 'Hey ' + (firstName || '') + ' ';
+  const customTpl = _myCustomSmsTemplate();
+  const customBtn = customTpl
+    ? `<button class="btn btn-secondary" onclick="closeModal();window.location.href='${_smsHref(d, _fillSmsTemplate(customTpl, firstName))}'">Message Custom</button>`
+    : '';
   modal(`
     <div class="mo-title">${esc(fmtPhone(raw))}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
       <button class="btn btn-primary" onclick="closeModal();window.location.href='tel:${d}'">Call</button>
-      <button class="btn btn-secondary" onclick="closeModal();window.location.href='sms:${d}'">Message</button>
+      <button class="btn btn-secondary" onclick="closeModal();window.location.href='${_smsHref(d, defaultMsg)}'">Message</button>
+      ${customBtn}
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     </div>
   `);
 }
-function phoneLink(raw) {
+function phoneLink(raw, firstName) {
   if (!raw) return '';
-  return `<a onclick="callPhone('${String(raw).replace(/['\\]/g, '')}')" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${fmtPhone(raw)}</a>`;
+  const fn = String(firstName || '').replace(/['\\]/g, '');
+  return `<a onclick="callPhone('${String(raw).replace(/['\\]/g, '')}','${fn}')" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${fmtPhone(raw)}</a>`;
 }
 // A student is "rising" if their service OR lifegroup rate improved by >=20
 // points vs last term (needs data in both terms to judge).
@@ -1283,18 +1315,17 @@ function _hScopeSvcSess(trends, u) {
   if (u.role === 'grade') { const g = (trends.byGrade || []).find(x => x.grade === u.grade); return g && g.sessions ? g.sessions.length : 0; }
   return trends.ministry && trends.ministry.sessions ? trends.ministry.sessions.length : 0;
 }
-function _hGradeMini(label, studs, avgWk, gLg) {
+// Per-grade dropdown row for admin/director's "Youth By Quad" tiles — youth
+// attendance only (no lifegroup row; that data lives in the separate
+// "Lifegroups by Quad" section below, so showing it here was redundant).
+function _hGradeMini(label, studs, avgWk) {
   const sUniq = studs.filter(s => s.svcAttended > 0).length;
-  const gUniq = studs.filter(s => s.grpAttended > 0).length;
-  const gAvg = gLg ? gLg.current.avgPerWeek : 0;
-  const cell = (v, lbl, dim) => `<div style="text-align:center;background:${dim?'#eef0fb':'var(--paper)'};border-radius:6px;padding:4px 2px"><div style="font-family:var(--font-display);font-size:13px;font-weight:700${dim?';opacity:.72':''}">${v}</div><div style="font-size:11px;color:var(--ink-faint);font-weight:700;text-transform:uppercase">${lbl}</div></div>`;
-  const cap = (t) => `<span style="text-align:center;font-size:11px;font-weight:800;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.03em">${t}</span>`;
+  const cell = (v, lbl) => `<div style="text-align:center;background:var(--paper);border-radius:6px;padding:4px 2px"><div style="font-family:var(--font-display);font-size:13px;font-weight:700">${v}</div><div style="font-size:11px;color:var(--ink-faint);font-weight:700;text-transform:uppercase">${lbl}</div></div>`;
   return `<div style="padding:6px 0;border-top:1px solid var(--paper-dark)">
     <div style="font-size:11px;font-weight:800;color:var(--ink-mid);margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em">${label}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px">
-      ${cell(sUniq,'Seen')}${cell(avgWk,'Weekly')}${cell(gUniq,'Seen',true)}${cell(gAvg,'Weekly',true)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      ${cell(sUniq,'Seen')}${cell(avgWk,'Weekly')}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px">${cap('Youth')}${cap('Group')}</div>
   </div>`;
 }
 function _hAttTile(label, studs, avgWk, opts) {
@@ -1307,16 +1338,16 @@ function _hAttTile(label, studs, avgWk, opts) {
   const drop = !!opts.dropId;
   const chev = drop ? `<span class="drop-chev" style="display:inline-block;color:var(--ink-faint);font-weight:800">›</span>` : '';
   const inner = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">${chev}<div style="font-size:13px;font-weight:700;color:var(--ink-mid)">${label}</div></div>`
-    + `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center;margin-bottom:3px">
+    + `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center${opts.hideLifegroupRow ? '' : ';margin-bottom:3px'}">
     <div style="font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px">Youth</div>
     <div style="text-align:center;background:var(--paper-dark);border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${svcUniq}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Seen</div></div>
     <div style="text-align:center;background:var(--paper-dark);border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${avgWk}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
   </div>`
-    + `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center">
+    + (opts.hideLifegroupRow ? '' : `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center">
     <div style="font-size:9px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px;opacity:.8">Lifegroups</div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpUniq}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Seen</div></div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpAvg}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
-  </div>`;
+  </div>`);
   if (drop) {
     return `<div class="qcard drop" id="${opts.dropId}" style="padding:11px">`
       + `<div class="drop-head" style="cursor:pointer" onclick="_drop('${opts.dropId}')">${inner}</div>`
@@ -1545,22 +1576,22 @@ async function _renderHomeInner(stale) {
         }
       }
 
-      // Director/Admin: Attendance by Quad — tap to expand per-grade rows
+      // Director/Admin: Youth By Quad — tap to expand per-grade rows. Youth-only
+      // (no Lifegroups row/columns): the separate "Lifegroups by Quad" section
+      // below already covers that, so showing it here too was redundant.
       if (['admin', 'director'].includes(u.role)) {
         const vq = (stats.byQuad || []).filter(q => q.totalStudents > 0);
         if (vq.length) {
-          body += '<div class="sh">Attendance by Quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+          body += '<div class="sh">Youth By Quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
           for (const q of vq) {
             const qStud = sc.filter(s => s.quad === q.quad);
-            const qLg = _lgQuad(q.quad);
             // Gendered per-grade rows, rendered up-front (hidden until expanded).
             let gradeRows = '';
             for (const gr of _hQuadGrades(q.quad)) {
-              const qgLg = (qLg && qLg.grades || []).find(x => x.grade === gr);
               const gradeStuds = qStud.filter(s => s.grade === gr);
-              gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds), qgLg);
+              gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds));
             }
-            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, grpAvgWk: qLg ? qLg.current.avgPerWeek : 0 });
+            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true });
           }
           body += '</div>';
         }
@@ -1653,7 +1684,22 @@ async function renderHomeFollowup() {
   h += _followupListHtml('Birthdays this week', data.birthdays, 'No birthdays this week');
   h += _followupListHtml(svcTitle, data.notSeenService, data.latestSvcDate ? 'Everyone was seen' : 'No service data yet', 'svc');
   h += _followupListHtml(grpTitle, data.notSeenGroup, data.latestGrpDate ? 'Everyone was seen' : 'No lifegroup data yet', 'grp');
+  h += `<div class="card" style="padding:12px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;display:flex;align-items:center;gap:5px">Custom Message Template ${helpTip('Adds a "Message Custom" option next to Call and Message on the tap-to-call sheet for any student’s number. Use <first name> anywhere you want their first name inserted.')}</div>
+    <textarea class="fi" id="fu-sms-tpl" rows="2" style="width:100%;box-sizing:border-box;resize:vertical" placeholder="e.g. Hey <first name>, so good to see you this week!">${esc(data.leader.smsTemplate || '')}</textarea>
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="_saveFollowupSmsTemplate('${data.leader.id}')">Save</button>
+  </div>`;
   host.innerHTML = h;
+}
+
+async function _saveFollowupSmsTemplate(leaderId) {
+  const el = document.getElementById('fu-sms-tpl');
+  const val = el ? el.value.trim() : '';
+  try {
+    await API.patch(`/leaders/${leaderId}/sms-template`, { smsTemplate: val || null });
+    Cache.del('/leaders');
+    toast('✓ Template saved');
+  } catch (e) { toast(e.message); }
 }
 
 // Friday that ends the Sat–Fri week containing an ISO date, formatted "D/M" (Australian day/month).
@@ -1690,7 +1736,7 @@ function _followupListHtml(title, items, emptyMsg, stream) {
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:14px">${esc(s.fullName)}</div>
       </div>
-      ${phone ? `<div style="font-size:13px;white-space:nowrap" onclick="event.stopPropagation()">${phoneLink(phone)}</div>` : ''}
+      ${phone ? `<div style="font-size:13px;white-space:nowrap" onclick="event.stopPropagation()">${phoneLink(phone, s.firstName)}</div>` : ''}
     </div>`;
   }
   h += '</div>';
@@ -2194,7 +2240,6 @@ function renderConnectView() {
 
       const gi = l.gender==='female'?icS('genderF'):l.gender==='male'?icS('genderM'):'';
       const nm = l.fullName.replace(/'/g,"\\'");
-      const atRiskCount = assignedStudents.filter(s => s && ['stopped','declining'].includes(s.atRiskStatus)).length;
       body += `<div class="connect-leader">
         <div style="display:flex;align-items:flex-start;gap:6px">
           <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
@@ -2202,7 +2247,7 @@ function renderConnectView() {
         </div>
         <div class="connect-leader-meta" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span>
-          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}${atRiskCount?` · <span style="display:inline-flex;align-items:center;gap:2px">${icS('alert')}${atRiskCount} at risk</span>`:''}</span>
+          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
         </div>
         ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students-wrap"><div class="connect-students" onscroll="_syncConnectThumb(this)">${studentRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`:''}
@@ -2597,7 +2642,7 @@ async function renderUpcomingBirthdays() {
         ${(leadersByStudent[s.id] || []).length
           ? `<div style="font-size:12px;margin-top:4px;color:var(--accent-dark);font-weight:600;display:flex;align-items:center;gap:5px">${icS('users')}<span>${leadersByStudent[s.id].map(esc).join(', ')}</span></div>`
           : `<div style="font-size:12px;margin-top:4px;color:var(--ink-faint)">No leader connected</div>`}
-        ${s.mobile ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)" onclick="event.stopPropagation()"><span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}</div>` : ''}
+        ${s.mobile ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)" onclick="event.stopPropagation()"><span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}</div>` : ''}
       </div>
       <div style="position:absolute;top:13px;right:13px;text-align:right">
         <div style="font-weight:800;font-size:14px">${f.day} ${f.month}</div>
@@ -2696,7 +2741,7 @@ async function renderMyStudents() {
             </div>
             ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone)}` : ''}</div>` : ''}
+            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName)}` : ''}</div>` : ''}
           </div>
         </div>`;
       }
@@ -2815,7 +2860,7 @@ async function renderAtRisk() {
             </div>
             ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal, true)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal, true):''}
-            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone)}</div>` : ''}
+            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName)}</div>` : ''}
           </div>
         </div>`;
     }
@@ -3086,8 +3131,8 @@ async function showStudentDetail(id) {
 
     ${s.mobile||s.parentPhone?`
     <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
-      ${s.mobile?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Mobile:</span> ${phoneLink(s.mobile)}</div>`:''}
-      ${s.parentPhone?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Parent:</span> ${phoneLink(s.parentPhone)}</div>`:''}
+      ${s.mobile?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}</div>`:''}
+      ${s.parentPhone?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName)}</div>`:''}
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -3172,11 +3217,34 @@ function _lgPrevBits(a) {
 }
 // One lifegroup detail row (per-grade dropdown content).
 function _lgGroupRow(lg, showPrev) {
-  return `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
+  const nm = String(lg.name).replace(/'/g, "\\'");
+  return `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px;cursor:pointer" onclick="_showLgMembers('${lg.lifegroupId}','${nm}')">
     <div style="font-size:13px;font-weight:600;margin-bottom:2px">${esc(lg.name)}</div>
     <div style="font-size:12px;color:var(--ink-mid)">${_lgAggBits(lg.current)}</div>
     ${showPrev ? _lgPrevBits(lg.previous) : ''}
   </div>`;
+}
+// Click a named lifegroup row → who attended, current term only.
+async function _showLgMembers(id, name) {
+  modal(`<div class="mo-title">${esc(name)}</div><div style="text-align:center;padding:20px;color:var(--ink-faint);font-size:13px">Loading…</div>`);
+  let members;
+  try { members = await API.get('/lifegroups/' + id + '/members'); }
+  catch {
+    modal(`<div class="mo-title">${esc(name)}</div><div style="padding:10px 0;color:var(--ink-faint);font-size:13px">Couldn't load attendees.</div><button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
+    return;
+  }
+  let h = `<div class="mo-title">${esc(name)}</div>`;
+  if (!members.length) {
+    h += `<div style="padding:10px 0;color:var(--ink-faint);font-size:13px">No attendees this term</div>`;
+  } else {
+    h += `<div style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch">`;
+    for (const m of members) {
+      h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--paper-dark)"><div style="font-size:14px;font-weight:600">${esc(m.firstName + ' ' + m.lastName)}</div><div style="font-size:12px;color:var(--ink-mid)">${m.attended}/${m.total} lifegroup</div></div>`;
+    }
+    h += `</div>`;
+  }
+  h += `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>`;
+  modal(h);
 }
 // A grade block as a pre-rendered collapsible (.drop). `id` must be unique on the
 // page; the lifegroups are rendered hidden and toggled in-DOM (no re-render).
@@ -3669,12 +3737,13 @@ async function exportAllocationsCSV() {
     a.href = url; a.download = 'allocations.csv'; a.click();
     URL.revokeObjectURL(url);
     toast(`Exported ${rowCount} rows`);
-  } catch (e) { toast('Export failed: ' + e.message); }
+    return true;
+  } catch (e) { toast('Export failed: ' + e.message); return false; }
 }
 
 function handleAllocationImportFile(input) { const f = input.files[0]; if (f) processAllocationImport(f); }
 
-function processAllocationImport(file) {
+function processAllocationImport(file, onDone) {
   const statusEl = document.getElementById('alloc-import-status');
   const isExcel = /\.xlsx?$/i.test(file.name);
   statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Parsing ${isExcel ? 'Excel' : 'CSV'}…</div>`;
@@ -3691,6 +3760,7 @@ function processAllocationImport(file) {
       Cache.clear();
       statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Imported: ${report.connectionsAdded} added, ${report.connectionsRemoved} removed, ${report.connectionsUnchanged} unchanged</div>`;
       showAllocationReport(report);
+      if (onDone) onDone(report);
     } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
@@ -3977,8 +4047,9 @@ async function renderAdmin() {
 }
 
 async function renderAdminView(settings, users) {
-  const tabs = ['settings','accounts','data'];
-  const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('');
+  const tabs = ['settings','accounts','data','newyear'];
+  const tabLabels = { settings:'Settings', accounts:'Accounts', data:'Data', newyear:'New Year Refresh' };
+  const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${tabLabels[t]}</button>`).join('');
 
   let body = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>
     <div class="tbbar">${tabHtml}</div>`;
@@ -4054,10 +4125,6 @@ async function renderAdminView(settings, users) {
     </div>`;
     // Change 12: Visual separation of destructive actions
     body += `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-      <div>
-        <button class="btn btn-secondary btn-full" onclick="if(confirm('Save current users and leaders as year defaults?'))adminAction('/admin/save-defaults','✓ Defaults saved')">Save Defaults</button>
-        <div class="help-text" style="margin-top:4px;display:flex;align-items:center;gap:5px">Snapshots accounts + leaders as baseline for next year ${helpTip('Saves a snapshot of current accounts and leaders you can refer back to later. Does not touch students, connections or attendance.')}</div>
-      </div>
       <div class="destructive-section">
         <div class="destructive-header">Destructive Actions ${helpTip('Clear Service/Group Data only deletes attendance - students, leaders and connections stay. Full Reset also deletes students, leaders and connections (accounts are always kept).')}</div>
         <div style="display:flex;flex-direction:column;gap:10px">
@@ -4074,13 +4141,111 @@ async function renderAdminView(settings, users) {
     </div>`;
   }
 
+  if (_adminTab === 'newyear') {
+    body += renderNewYearWizard();
+  }
+
   setApp(shell(body));
+}
+
+// ── New Year Data Refresh wizard ──
+// A gated, in-order checklist through the existing pieces needed to roll the
+// platform into a new year: export the current allocations + freeze this
+// year's Connection Audit snapshot, wipe last year's data, re-import fresh
+// attendance, then restore the allocations onto the new roster. Nothing here
+// is a new capability — it's the existing Export/Reset/Import endpoints
+// walked in the one order that actually works, since Full Reset (step 2)
+// deletes the leaders that step 4's allocation import needs to match against,
+// and re-importing the lifegroup CSV (step 3) is what recreates them.
+// State is deliberately in-memory only (session-based) — re-opening this tab
+// always starts a fresh run; there's no reliable way to know from the server
+// whether a past export was actually saved somewhere by the admin.
+let _wiz = { step1Done: false, step2Done: false, step3Ack: false, step4Done: false };
+function _wizReset() { _wiz = { step1Done: false, step2Done: false, step3Ack: false, step4Done: false }; }
+function renderWizard() { renderAdminView(_adminData.settings, _adminData.users); }
+
+function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
+  return `<div class="card" style="margin-bottom:10px${locked ? ';opacity:.5' : ''}">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div style="width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:${done ? '#16a34a' : 'var(--paper-dark)'};color:${done ? '#fff' : 'var(--ink-mid)'}">${done ? '✓' : n}</div>
+      <div style="font-size:14px;font-weight:700">${esc(title)}</div>
+    </div>
+    <div class="help-text" style="margin-bottom:10px">${esc(desc)}</div>
+    ${locked ? '' : bodyHtml}
+  </div>`;
+}
+
+function renderNewYearWizard() {
+  let b = `<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+    <div style="flex:1;font-size:13px;color:var(--ink-mid)">Walks through the new-year data refresh in order — each step unlocks once the one before it is done.</div>
+    ${helpTip('Step 1 exports current allocations and freezes this year’s attendance into the Connection Audit (so it stays available for comparison after the reset). Step 2 (Full Reset) then wipes students, leaders, connections and attendance — accounts are kept. Step 3 is a reminder to re-import this year’s attendance CSVs, which also recreates leaders tagged "(leader)" in the group export. Step 4 restores the allocations you exported in step 1 onto the freshly imported roster.')}
+  </div>`;
+
+  b += _wizStepCard(1, "Export allocations & finalize this year's audit baseline",
+    "Downloads a CSV of every student–leader allocation (you'll re-import it in step 4), and saves this year's attendance into the Connection Audit so it's kept for year-over-year comparison.",
+    `<button class="btn btn-secondary btn-full" onclick="wizStep1()">Export &amp; Finalize Baseline</button>`,
+    _wiz.step1Done, false);
+
+  b += _wizStepCard(2, 'Full Reset',
+    'Permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.',
+    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.',onConfirm:wizStep2Confirmed})">Full Reset</button>`,
+    _wiz.step2Done, !_wiz.step1Done);
+
+  b += _wizStepCard(3, "Re-import this year's attendance",
+    'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 4 can match allocations back on.',
+    _wiz.step3Ack
+      ? `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Confirmed</div>`
+      : `<button class="btn btn-secondary btn-full" onclick="wizStep3Ack()">I've re-imported this year's attendance</button>`,
+    _wiz.step3Ack, !_wiz.step2Done);
+
+  b += _wizStepCard(4, 'Import allocations',
+    "Re-import the allocations CSV from step 1 to restore every student–leader pairing onto the freshly imported roster.",
+    `<label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
+      <input type="file" accept=".csv,.xlsx" style="display:none" onchange="wizHandleAllocationImportFile(this)">
+    </label>
+    <div id="alloc-import-status" style="margin-top:8px"></div>`,
+    _wiz.step4Done, !_wiz.step3Ack);
+
+  return b;
+}
+
+async function wizStep1() {
+  const exportOk = await exportAllocationsCSV();
+  if (!exportOk) return;
+  try {
+    await API.post('/audits/finalize-live', {});
+    toast('✓ Baseline finalized');
+    _wiz.step1Done = true;
+    renderWizard();
+  } catch (e) { toast('Finalize failed: ' + e.message); }
+}
+
+async function wizStep2Confirmed() {
+  try {
+    await API.post('/admin/reset', { force: true, confirmWipe: CONFIRM_WIPE_STRING });
+    Cache.clear();
+    if (window.CA) CA.reset(); /*CA-HOOK*/
+    toast('✓ Full reset complete');
+    _wiz.step2Done = true;
+    renderWizard();
+  } catch (e) { toast(e.message); }
+}
+
+function wizStep3Ack() {
+  _wiz.step3Ack = true;
+  renderWizard();
+}
+
+function wizHandleAllocationImportFile(input) {
+  const f = input.files[0];
+  if (f) processAllocationImport(f, () => { _wiz.step4Done = true; renderWizard(); });
 }
 
 let _adminData = { settings: {}, users: [] };
 
 async function switchAdminTab(tab) {
   _adminTab = tab;
+  if (tab === 'newyear') _wizReset();
   const [settings, users] = await Promise.all([
     API.get('/settings').catch(() => ({})),
     API.get('/accounts/users').catch(() => []),
@@ -4312,7 +4477,15 @@ const CA_NAMES=['Ava Okafor','Noah Castellanos','Isla Vandermeer','Eli Borowski'
 // ---------- utils ----------
 function h32(x){let h=0;for(const c of String(x))h=(h*31+c.charCodeAt(0))>>>0;return h;}
 function norm(n){return String(n||'').toLowerCase().replace(/\s+/g,' ').trim();}
-function ini(n){const p=String(n).trim().split(/\s+/);return((p[0]||'?')[0]+(p[1]?p[1][0]:'')).toUpperCase();}
+// Display-only shortening for named lifegroups: strips the "Brisbane - YS - "
+// prefix and trailing "Lifegroup" suffix when present, exact match only.
+// Underlying data/exports are untouched — this only affects what's rendered.
+function lgDisplayName(name){
+  let n=String(name||'');
+  if(n.startsWith('Brisbane - YS - '))n=n.slice('Brisbane - YS - '.length);
+  if(n.endsWith('Lifegroup'))n=n.slice(0,-'Lifegroup'.length);
+  return n.trim()||String(name||'');
+}
 function fmtD(iso){if(!iso)return'—';const d=new Date(iso);return isNaN(d)?'—':d.getUTCDate()+'/'+(d.getUTCMonth()+1);}
 function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
@@ -4354,11 +4527,23 @@ function _lgCombine(lists){
   const m={};
   for(const list of lists)for(const x of (list||[])){
     let e=m[x.lifegroupId];
-    if(!e){e=m[x.lifegroupId]={lifegroupId:x.lifegroupId,name:x.name,grade:x.grade,gender:x.gender,quad:x.quad,members:0,uniqueAttenders:0,totalVisits:0,weeksRan:0};}
+    if(!e){e=m[x.lifegroupId]={lifegroupId:x.lifegroupId,name:x.name,grade:x.grade,gender:x.gender,quad:x.quad,members:0,uniqueAttenders:0,totalVisits:0,weeksRan:0,_roster:{}};}
     e.members=Math.max(e.members,x.members);e.uniqueAttenders=Math.max(e.uniqueAttenders,x.uniqueAttenders);
     e.totalVisits+=x.totalVisits;e.weeksRan+=x.weeksRan;
+    for(const rm of (x.roster||[])){
+      const key=rm.firstName+' '+rm.lastName;
+      let r=e._roster[key];
+      if(!r)r=e._roster[key]={firstName:rm.firstName,lastName:rm.lastName,attended:0,total:0};
+      r.attended+=rm.attended;r.total+=rm.total;
+    }
   }
-  return Object.keys(m).map(id=>{const e=m[id];e.avgPerWeek=e.weeksRan?Math.round(e.totalVisits/e.weeksRan):0;return e;});
+  return Object.keys(m).map(id=>{
+    const e=m[id];
+    e.avgPerWeek=e.weeksRan?Math.round(e.totalVisits/e.weeksRan):0;
+    e.roster=Object.values(e._roster).sort((a,b)=>b.attended-a.attended||a.firstName.localeCompare(b.firstName));
+    delete e._roster;
+    return e;
+  });
 }
 function _auditLgStats(sel,prev){
   const by=(AUDIT&&AUDIT.lgStatsByTerm)||null;if(!by)return null;
@@ -4372,7 +4557,7 @@ function _auditLgStats(sel,prev){
     quads[q].grades[g]=quads[q].grades[g]||{grade:(x.grade==null?null:x.grade),lifegroups:[]};
     const pv=prevById[x.lifegroupId];
     quads[q].grades[g].lifegroups.push({lifegroupId:x.lifegroupId,name:x.name,grade:x.grade,
-      current:{members:x.members,uniqueAttenders:x.uniqueAttenders,totalVisits:x.totalVisits,weeksRan:x.weeksRan,avgPerWeek:x.avgPerWeek},
+      current:{members:x.members,uniqueAttenders:x.uniqueAttenders,totalVisits:x.totalVisits,weeksRan:x.weeksRan,avgPerWeek:x.avgPerWeek,roster:x.roster||[]},
       previous:pv?{avgPerWeek:pv.avgPerWeek}:{}});
   }
   return {byQuad:Object.keys(quads).map(q=>({quad:q,grades:Object.values(quads[q].grades)}))};
@@ -4789,7 +4974,7 @@ function lifegroupRows(){
     out.push({id:lg.lifegroupId,name:lg.name,quad:q.quad,grade:lg.grade,
       enrolled:c.members||0,unique:c.uniqueAttenders||0,
       vpu:c.uniqueAttenders?+((c.totalVisits||0)/c.uniqueAttenders).toFixed(1):0,
-      run:c.weeksRan||0,avgT:c.avgPerWeek||0,avgL:p.avgPerWeek||0});
+      run:c.weeksRan||0,avgT:c.avgPerWeek||0,avgL:p.avgPerWeek||0,roster:c.roster||[]});
   }
   return out;
 }
@@ -4812,12 +4997,31 @@ function rGroups(){
     +['Enrolled','Seen','Visits/person','Run','Weekly'].map(h=>'<th style="'+rc+'">'+h+'</th>').join('')
     +'</tr></thead><tbody>';
   for(const r of rows){
-    b+='<tr style="border-top:1px solid var(--ca-line)"><td style="padding:7px 10px;font-weight:600">'+esc(r.name)+'</td>'
+    b+='<tr style="border-top:1px solid var(--ca-line);cursor:pointer" onclick="CA.showLgRoster(\''+r.id+'\')"><td style="padding:7px 10px;font-weight:600">'+esc(lgDisplayName(r.name))+'</td>'
       +'<td style="'+rc+'">'+r.enrolled+'</td><td style="'+rc+'">'+r.unique+'</td><td style="'+rc+'">'+r.vpu+'</td>'
       +'<td style="'+rc+'">'+r.run+'</td><td style="'+rc+'">'+r.avgT+'</td></tr>';
   }
   b+='</tbody></table></div>';
   caShell(b,'ca-groups');
+}
+// Click a named lifegroup row in CA's own Lifegroup Health tab → who attended.
+// Roster comes from the loaded audit snapshot (already in memory, no fetch).
+// Snapshots saved before this feature shipped won't have a roster yet — show a
+// graceful "re-upload to see detail" message rather than an empty list.
+function showLgRoster(id){
+  const r=lifegroupRows().find(x=>x.id===id);if(!r)return;
+  let h='<div class="mo-title">'+esc(lgDisplayName(r.name))+'</div>';
+  if(!r.roster.length){
+    h+='<div style="padding:10px 0;color:var(--ca-muted);font-size:.78rem">No attendee detail for this snapshot — re-upload this year\'s data in the Data tab to see who attended.</div>';
+  }else{
+    h+='<div style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--ca-line)">';
+    for(const m of r.roster){
+      h+='<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--ca-line)"><div style="font-size:.8rem;font-weight:600">'+esc(m.firstName+' '+m.lastName)+'</div><div style="font-size:.72rem;color:var(--ca-muted)">'+m.attended+'/'+m.total+' lifegroup</div></div>';
+    }
+    h+='</div>';
+  }
+  h+='<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>';
+  modal(h);
 }
 function showGroup(id){
   const g=model().groups.find(x=>x.id===id);if(!g)return;
@@ -4843,14 +5047,13 @@ function plist(){
   let b='';
   for(const p of list.slice(0,PF.cap)){
     const s=p.s;
-    const av=s?'<div class="ca-av '+(s.gender==='female'?'f':'m')+'">'+ini(p.name)+'</div>':'<div class="ca-av n">'+ini(p.name)+'</div>';
     const stChip='<span class="chip '+(p.stage>=4?'c-success':p.stage>0?'c-accent':'c-neutral')+'">Stage '+p.stage+' · '+STG[p.stage]+'</span>';
-    const meta=s?'<span>Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>';
+    const meta=s?'<span style="font-size:.72rem;color:var(--ca-muted)">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>';
     const declChip=p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'';
     const tail=s
       ?''
       :'<div style="font-size:.6rem;color:var(--ca-muted);margin-top:3px">From '+(p.dec?'Decision':'Connect')+' upload'+(p.connect||p.decision?' · '+fmtD(p.connect||p.decision):'')+'</div>';
-    b+='<div class="li" style="cursor:pointer'+(p.caOnly?';border:1px dashed var(--ca-line)':'')+'" onclick="CA.showPerson(\''+p.id+'\')">'+av+'<div class="li-body"><div class="li-title">'+esc(p.name)+'</div><div class="li-sub" style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+stChip+meta+declChip+'</div>'+tail+'</div><div class="ca-scr">'+p.score+'<small>score</small></div></div>';
+    b+='<div class="li" style="cursor:pointer;padding:8px 13px'+(p.caOnly?';border:1px dashed var(--ca-line)':'')+'" onclick="CA.showPerson(\''+p.id+'\')"><div class="li-body"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:14px;font-weight:600">'+esc(p.name)+'</span>'+stChip+meta+declChip+'</div>'+tail+'</div><div class="ca-scr">'+p.score+'<small>score</small></div></div>';
   }
   if(!list.length)b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No people match</div>';
   if(list.length>PF.cap)b+='<button class="btn btn-secondary btn-full" onclick="CA.pmore()">Show more ('+(list.length-PF.cap)+' remaining)</button>';
@@ -5077,7 +5280,7 @@ function _buildDeckBody(){
   const lgTableViz=()=>{
     const rows=lifegroupRows().sort((a,b)=>b.unique-a.unique||a.name.localeCompare(b.name));
     if(!rows.length)return '<p class="muted">No lifegroup data.</p>';
-    const tr=rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td class="r">'+r.enrolled+'</td><td class="r">'+r.unique+'</td><td class="r">'+r.vpu+'</td><td class="r">'+r.run+'</td><td class="r">'+r.avgT+'</td><td class="r">'+r.avgL+'</td></tr>').join('');
+    const tr=rows.map(r=>'<tr><td>'+esc(lgDisplayName(r.name))+'</td><td class="r">'+r.enrolled+'</td><td class="r">'+r.unique+'</td><td class="r">'+r.vpu+'</td><td class="r">'+r.run+'</td><td class="r">'+r.avgT+'</td><td class="r">'+r.avgL+'</td></tr>').join('');
     return '<table class="lgt"><thead><tr><th>Lifegroup</th><th class="r">Enrolled</th><th class="r">Seen</th><th class="r">Visits/person</th><th class="r">Run</th><th class="r">Weekly this</th><th class="r">Weekly last</th></tr></thead><tbody>'+tr+'</tbody></table>';
   };
   const tilesViz=()=>{
@@ -5369,7 +5572,7 @@ async function render(p){
 }
 return{render,reset,stale,seedOn,dismissWarn,setYear,setTerm,saveAudit,
   model:async()=>{await load();restore();return model();},
-  fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,exportMenu,exportQuad,buildDeck,
+  fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,showLgRoster,exportMenu,exportQuad,buildDeck,
   pq,pstage,pquad,pmore};
 })();
 window.CA=CA;

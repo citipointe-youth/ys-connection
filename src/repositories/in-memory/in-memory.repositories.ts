@@ -16,7 +16,7 @@ import type {
   LifegroupAttendance,
   ImportRecord,
 } from '../../core/entities/attendance';
-import type { AppSettings, AppDefaults, AdminAuditEntry } from '../../core/entities/settings';
+import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 import type { ConnectionAudit } from '../../core/entities/connection-audit';
 import type { UserRole } from '../../core/types/enums';
 
@@ -32,7 +32,6 @@ import type {
   ILifegroupAttendanceRepository,
   IImportRepository,
   ISettingsRepository,
-  ISnapshotRepository,
   IAuditRepository,
   IConnectionAuditRepository,
   IPushSubscriptionRepository,
@@ -393,16 +392,6 @@ export class InMemorySettingsRepository
       updatedAt: new Date().toISOString(),
     };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Snapshots
-// ---------------------------------------------------------------------------
-export class InMemorySnapshotRepository
-  extends InMemoryBaseRepository<AppDefaults>
-  implements ISnapshotRepository
-{
-  constructor(persistence?: IPersistenceAdapter<AppDefaults>) { super(persistence); }
 }
 
 // ---------------------------------------------------------------------------

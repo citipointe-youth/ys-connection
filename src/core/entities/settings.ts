@@ -15,18 +15,8 @@ export interface AppSettings {
 // Admin action audit entry
 export interface AdminAuditEntry {
   id: ID;
-  action: 'reset' | 'new-year' | 'save-defaults' | 'settings-update' | 'lock-date-set';
+  action: 'reset' | 'new-year' | 'settings-update' | 'lock-date-set';
   performedBy: string;
   performedAt: ISODateString;
   detail: string;
-}
-
-// Snapshot for year-rollover
-export interface AppDefaults {
-  id: ID;
-  snapshot: {
-    users: unknown[];
-    leaders: unknown[];
-  };
-  createdAt: ISODateString;
 }

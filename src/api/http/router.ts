@@ -65,6 +65,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/leaders/:id', auth: true, handler: (r) => leader.get(r) },
     { method: 'PATCH',  path: '/leaders/:id', auth: true, handler: (r) => leader.update(r) },
     { method: 'DELETE', path: '/leaders/:id', auth: true, handler: (r) => leader.remove(r) },
+    { method: 'PATCH',  path: '/leaders/:id/sms-template', auth: true, handler: (r) => leader.updateSmsTemplate(r) },
 
     // ----- Connections -----
     { method: 'GET',    path: '/connections',                          auth: true, handler: (r) => connection.listAll(r) },
@@ -85,6 +86,7 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Trends -----
     { method: 'GET', path: '/trends', auth: true, handler: (r) => trends.get(r) },
     { method: 'GET', path: '/lifegroups/stats', auth: true, handler: (r) => lifegroupStats.get(r) },
+    { method: 'GET', path: '/lifegroups/:id/members', auth: true, handler: (r) => lifegroupStats.getMembers(r) },
 
     // ----- Import -----
     { method: 'POST',   path: '/import/csv',          auth: true, handler: (r) => importCtrl.importCsv(r) },
@@ -95,7 +97,6 @@ export function buildRoutes(services: Services): Route[] {
 
     // ----- Admin -----
     { method: 'POST', path: '/admin/reset',         auth: true, handler: (r) => admin.reset(r) },
-    { method: 'POST', path: '/admin/save-defaults', auth: true, handler: (r) => admin.saveDefaults(r) },
     { method: 'POST', path: '/admin/clear-service-group', auth: true, handler: (r) => admin.clearServiceGroupData(r) },
     { method: 'GET',  path: '/admin/audit',         auth: true, handler: (r) => admin.auditLog(r) },
 
@@ -121,5 +122,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/audits',       auth: true, handler: (r) => connectionAudit.list(r) },
     { method: 'GET',    path: '/audits/:year', auth: true, handler: (r) => connectionAudit.get(r) },
     { method: 'DELETE', path: '/audits/:year', auth: true, handler: (r) => connectionAudit.remove(r) },
+    { method: 'POST',   path: '/audits/finalize-live', auth: true, handler: (r) => connectionAudit.finalizeFromLive(r) },
   ];
 }

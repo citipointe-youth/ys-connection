@@ -65,6 +65,7 @@ function summariseStudent(s: {
 }) {
   return {
     id: s.id,
+    firstName: s.firstName,
     fullName: `${s.firstName} ${s.lastName}`,
     grade: s.grade,
     gender: s.gender,

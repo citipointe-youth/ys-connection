@@ -217,6 +217,13 @@ export function buildGroupModel(groups: GroupInput[]): GroupParsed {
 // ── per-named-lifegroup, per-term stats (powers the audit Lifegroup Health tab) ──
 // Lifegroup-centric: counts every attender of the group regardless of whether
 // they matched a service record, bucketed into terms by the group's meeting week.
+export interface AuditLgMember {
+  firstName: string;
+  lastName: string;
+  attended: number; // weeks attended this term
+  total: number;    // weeks the group ran this term
+}
+
 export interface AuditLgStat {
   lifegroupId: string;
   name: string;
@@ -228,6 +235,7 @@ export interface AuditLgStat {
   totalVisits: number;
   weeksRan: number;
   avgPerWeek: number;
+  roster: AuditLgMember[]; // who attended, for the "click to see attendees" popup
 }
 
 export function buildLifegroupStats(groups: GroupInput[], terms: LabeledTerm[]): Record<string, AuditLgStat[]> {
@@ -246,11 +254,14 @@ export function buildLifegroupStats(groups: GroupInput[], terms: LabeledTerm[]):
     const weekOfIdx = group.meetings.map((d) => weekStartOf(d));
     const youth = group.members.filter((m) => !LEADER_RE.test(`${m.first_name} ${m.last_name}`));
 
-    // termKey -> { weeks, members, attenders, visits }
-    const perTerm = new Map<string, { weeks: Set<string>; members: Set<string>; attenders: Set<string>; visits: number }>();
+    // termKey -> { weeks, members, attenders, visits, roster }
+    const perTerm = new Map<string, {
+      weeks: Set<string>; members: Set<string>; attenders: Set<string>; visits: number;
+      roster: Map<string, { firstName: string; lastName: string; attended: number }>;
+    }>();
     const ensure = (k: string) => {
       let a = perTerm.get(k);
-      if (!a) { a = { weeks: new Set(), members: new Set(), attenders: new Set(), visits: 0 }; perTerm.set(k, a); }
+      if (!a) { a = { weeks: new Set(), members: new Set(), attenders: new Set(), visits: 0, roster: new Map() }; perTerm.set(k, a); }
       return a;
     };
 
@@ -266,7 +277,9 @@ export function buildLifegroupStats(groups: GroupInput[], terms: LabeledTerm[]):
         const acc = ensure(tk);
         acc.weeks.add(w);
         acc.members.add(key);
-        if (mark === true) { acc.attenders.add(key); acc.visits++; }
+        let entry = acc.roster.get(key);
+        if (!entry) { entry = { firstName: m.first_name, lastName: m.last_name, attended: 0 }; acc.roster.set(key, entry); }
+        if (mark === true) { acc.attenders.add(key); acc.visits++; entry.attended++; }
       }
     }
 
@@ -283,6 +296,9 @@ export function buildLifegroupStats(groups: GroupInput[], terms: LabeledTerm[]):
         totalVisits: acc.visits,
         weeksRan,
         avgPerWeek: weeksRan ? Math.round(acc.visits / weeksRan) : 0,
+        roster: [...acc.roster.values()]
+          .map((r) => ({ firstName: r.firstName, lastName: r.lastName, attended: r.attended, total: weeksRan }))
+          .sort((a, b) => b.attended - a.attended || a.firstName.localeCompare(b.firstName)),
       });
     }
   });

@@ -13,7 +13,7 @@ import type {
   LifegroupAttendance,
   ImportRecord,
 } from '../../core/entities/attendance';
-import type { AppSettings, AppDefaults, AdminAuditEntry } from '../../core/entities/settings';
+import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 import type { ConnectionAudit } from '../../core/entities/connection-audit';
 import type { UserRole } from '../../core/types/enums';
 
@@ -92,8 +92,6 @@ export interface ISettingsRepository extends IRepository<AppSettings> {
   getSettings(): Promise<AppSettings>;
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
 }
-
-export interface ISnapshotRepository extends IRepository<AppDefaults> {}
 
 export interface IAuditRepository extends IRepository<AdminAuditEntry> {
   findRecent(limit: number): Promise<AdminAuditEntry[]>;

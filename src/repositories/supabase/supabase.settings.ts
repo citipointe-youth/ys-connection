@@ -2,10 +2,9 @@ import type { SqlClient } from './client';
 import { toIso } from './client';
 import type {
   ISettingsRepository,
-  ISnapshotRepository,
   IAuditRepository,
 } from '../interfaces/entity-repositories';
-import type { AppSettings, AppDefaults, AdminAuditEntry } from '../../core/entities/settings';
+import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 
 // ---------------------------------------------------------------------------
 // Mappers
@@ -20,14 +19,6 @@ function toAppSettings(row: Record<string, unknown>): AppSettings {
     validThresholdPct: row['valid_threshold_pct'] as number,
     serviceMinAttendance: (row['service_min_attendance'] as number | null) ?? 100,
     updatedAt: toIso(row['updated_at']),
-  };
-}
-
-function toAppDefaults(row: Record<string, unknown>): AppDefaults {
-  return {
-    id: row['id'] as string,
-    snapshot: row['snapshot'] as { users: unknown[]; leaders: unknown[] },
-    createdAt: (row['created_at'] as Date).toISOString(),
   };
 }
 
@@ -129,49 +120,6 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
   async delete(_id: string): Promise<boolean> {
     // Settings row should never be deleted — no-op
     return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// SupabaseSnapshotRepository
-// ---------------------------------------------------------------------------
-
-export class SupabaseSnapshotRepository implements ISnapshotRepository {
-  constructor(private sql: SqlClient) {}
-
-  async init(): Promise<void> {
-    // No-op: Supabase table already exists
-  }
-
-  async findById(id: string): Promise<AppDefaults | null> {
-    const rows = await this.sql`select * from app_defaults where id = ${id}`;
-    return rows[0] ? toAppDefaults(rows[0]) : null;
-  }
-
-  async findAll(): Promise<AppDefaults[]> {
-    const rows = await this.sql`select * from app_defaults order by created_at desc`;
-    return rows.map(toAppDefaults);
-  }
-
-  async save(snapshot: AppDefaults): Promise<AppDefaults> {
-    const rows = await this.sql`
-      insert into app_defaults (id, snapshot, created_at)
-      values (
-        ${snapshot.id},
-        ${this.sql.json(snapshot.snapshot as Parameters<typeof this.sql.json>[0])},
-        ${snapshot.createdAt}
-      )
-      on conflict (id) do update set
-        snapshot   = excluded.snapshot,
-        created_at = excluded.created_at
-      returning *
-    `;
-    return toAppDefaults(rows[0]!);
-  }
-
-  async delete(id: string): Promise<boolean> {
-    const rows = await this.sql`delete from app_defaults where id = ${id} returning id`;
-    return rows.length > 0;
   }
 }
 

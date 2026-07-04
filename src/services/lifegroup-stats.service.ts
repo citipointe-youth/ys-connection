@@ -12,6 +12,7 @@ import type { Quad } from '../core/types/enums';
 import { QUADS, QUAD_LABELS } from '../core/types/enums';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
+import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
 
 const _cache = new ResponseCache<LifegroupStatsData>(60_000);
 
@@ -72,8 +73,17 @@ export interface LifegroupStatsData {
   generatedAt: string;
 }
 
+export interface LifegroupMemberStat {
+  id: string;
+  firstName: string;
+  lastName: string;
+  attended: number; // weeks attended this term
+  total: number;    // weeks the group ran this term
+}
+
 export interface LifegroupStatsService {
   get(actor: Actor): Promise<LifegroupStatsData>;
+  getMembers(actor: Actor, lifegroupId: string): Promise<LifegroupMemberStat[]>;
 }
 
 // A lifegroup attendance row joined with its week date and the attender's grade/quad.
@@ -327,6 +337,61 @@ export function makeLifegroupStatsService(
       };
       _cache.set(cacheKey, result);
       return result;
+    },
+
+    // Per-student attendance detail for one named lifegroup, current term only —
+    // powers the "click a lifegroup to see who attended" popups. Self-contained
+    // (re-fetches + recomputes term boundaries) rather than sharing get()'s
+    // cached closure, since it's a per-click lookup, not part of the Home fan-out.
+    async getMembers(actor, lifegroupId) {
+      assertCan(actor, 'overview:read');
+      const [settings, students, lg, weeks, attendance, sessions] = await Promise.all([
+        settingsRepo.getSettings(),
+        studentRepo.findAll(),
+        lifegroupRepo.findById(lifegroupId),
+        lifegroupWeekRepo.findAll(),
+        lifegroupAttendanceRepo.findAll(),
+        sessionRepo.findAll(),
+      ]);
+      if (!lg) throw new NotFoundError('Lifegroup not found');
+      if (!canAccessGrade(actor, lg.grade)) throw new ForbiddenError('Cannot access this lifegroup');
+      if (lg.gender && !canAccessGender(actor, lg.gender)) throw new ForbiddenError('Cannot access this lifegroup');
+
+      const studentById = new Map(students.map((s) => [s.id, s]));
+      const weekStartById = new Map(weeks.map((w) => [w.id, w.weekStart]));
+
+      const validDates = sessions.filter((s) => s.isValid).map((s) => saturdayOf(s.sessionDate));
+      const boundarySource = validDates.length > 0 ? validDates : [...weekStartById.values()];
+      const terms = computeTerms(boundarySource, settings.termGapDays);
+
+      const weeksRan = new Set<string>();
+      const attendedByStudent = new Map<string, number>();
+      const enrolledStudents = new Set<string>();
+      for (const r of attendance) {
+        if (r.lifegroupId !== lifegroupId) continue;
+        const weekStart = weekStartById.get(r.weekId);
+        if (!weekStart) continue;
+        if (classifyDate(weekStart, terms) !== 'current') continue;
+        weeksRan.add(weekStart);
+        enrolledStudents.add(r.studentId);
+        if (r.attended) attendedByStudent.set(r.studentId, (attendedByStudent.get(r.studentId) ?? 0) + 1);
+      }
+      const total = weeksRan.size;
+
+      const isVisibleStudent = (sid: string): boolean => {
+        const s = studentById.get(sid);
+        if (!s) return false;
+        return (actor.role === 'grade' || actor.role === 'quad') ? canAccessStudent(actor, s.grade, s.gender) : true;
+      };
+
+      const out: LifegroupMemberStat[] = [];
+      for (const sid of enrolledStudents) {
+        if (!isVisibleStudent(sid)) continue;
+        const s = studentById.get(sid)!;
+        out.push({ id: sid, firstName: s.firstName, lastName: s.lastName, attended: attendedByStudent.get(sid) ?? 0, total });
+      }
+      out.sort((a, b) => b.attended - a.attended || a.firstName.localeCompare(b.firstName));
+      return out;
     },
   };
 }
