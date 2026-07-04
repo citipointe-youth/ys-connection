@@ -38,6 +38,9 @@ export interface ExportRow {
   svcAttended: number;
   svcTotal: number;
   svcPct: string;
+  grpAttended: number;
+  grpTotal: number;
+  grpPct: string;
   atRiskStatus: string | null;
 }
 
@@ -220,6 +223,9 @@ export function makeConnectionService(
         const pct = student.svcTotal > 0
           ? Math.round((student.svcAttended / student.svcTotal) * 100) + '%'
           : '—';
+        const grpPct = student.grpTotal > 0
+          ? Math.round((student.grpAttended / student.grpTotal) * 100) + '%'
+          : '—';
         rows.push({
           leaderName: leader.fullName,
           leaderGender: leader.gender,
@@ -230,6 +236,9 @@ export function makeConnectionService(
           svcAttended: student.svcAttended,
           svcTotal: student.svcTotal,
           svcPct: pct,
+          grpAttended: student.grpAttended,
+          grpTotal: student.grpTotal,
+          grpPct: grpPct,
           atRiskStatus: student.atRiskStatus,
         });
       }

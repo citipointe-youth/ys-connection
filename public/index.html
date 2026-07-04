@@ -60,7 +60,18 @@
 #nprog{position:fixed;top:0;left:0;height:3px;width:0;z-index:1000;background:linear-gradient(90deg,var(--accent),var(--accent-dark));border-radius:0 2px 2px 0;opacity:0;transition:width .18s ease,opacity .3s ease,top .15s ease;pointer-events:none;box-shadow:0 0 8px rgba(26,26,242,.55)}
 #nprog.on{opacity:1}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:hidden;touch-action:pan-x pan-y;overscroll-behavior-y:contain}
+/* overflow-x here (and on body/#app/.pg below) MUST be 'clip', not 'hidden'. Per the CSS
+   overflow spec, pairing overflow-x:hidden with an un-set overflow-y silently promotes the
+   'visible' y-axis to 'auto' (a real box can't clip one axis while truly leaving the other
+   unclipped/non-scrollable). That 'auto' makes html/body/#app/.pg each their OWN scroll
+   container, which broke the persistent .hdr's position:sticky (its "nearest scroll
+   ancestor" became #app instead of the real window scroller, and since #app's own
+   scrollTop never moves — the outer window is what actually scrolls — the header just
+   scrolled away with the page on every desktop screen instead of staying pinned).
+   'clip' clips horizontal overflow the same as 'hidden' but never creates a scroll
+   container, so overflow-y stays 'visible' and window is the sole scroller again, per
+   the "Scroll handling" architecture note in CLAUDE.md. Don't revert to 'hidden' here. */
+html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:clip;touch-action:pan-x pan-y;overscroll-behavior-y:contain}
 @media(min-width:768px){html{font-size:17px}}
 @media(min-width:1280px){html{font-size:18px}}
 /* overscroll-behavior-y:contain on the window scroller stops the native pull-to-refresh/
@@ -73,10 +84,10 @@ html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:hidden;touch-action
    momentarily out of step with the body's assumed height, reading as the bottom nav "jumping
    up" mid-scroll. dvh tracks the live viewport instead — same fix/rationale as the camp
    platform's html,body{height:100dvh}. */
-body{font-family:var(--font);color:var(--ink);background:var(--paper);min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-behavior-y:contain}
+body{font-family:var(--font);color:var(--ink);background:var(--paper);min-height:100vh;min-height:100dvh;overflow-x:clip;overscroll-behavior-y:contain}
 button{cursor:pointer;border:none;background:none;font-family:inherit;font-size:inherit}
 input,select,textarea{font-family:inherit;font-size:inherit}
-#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100%;overflow-x:hidden}
+#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100%;overflow-x:clip}
 
 /* Header */
 .hdr{background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%);color:#fff;padding:var(--safe-t) 16px 0;box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(10,10,46,.28)}
@@ -112,7 +123,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.bot-nav{display:none}}
 
 /* Page */
-.pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:hidden}
+.pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
 
 /* Cards */
@@ -732,14 +743,19 @@ function closeModal() { const r = document.getElementById('modal-root'); if (r._
 
 // Irreversible bulk actions: require typing a word to arm the confirm button
 // (Recommendation 5). Reuses modal(); onConfirm is a zero-arg function.
+// `exact: true` compares the typed value verbatim (case-sensitive, no forced
+// uppercase/autocapitalize) — used when `word` is real data like an email
+// address rather than a fixed shout-word like RESET/CLEAR.
 function confirmType(opts) {
-  const { title, body, word, danger, onConfirm } = opts;
+  const { title, body, word, danger, onConfirm, exact } = opts;
   window._confirmTypeFn = onConfirm;
+  window._confirmTypeExact = !!exact;
+  window._confirmTypeWord = exact ? word : String(word).toUpperCase();
   modal(`<div class="mo-title">${title}</div>
     <p style="color:var(--ink-mid);margin-bottom:14px">${body}</p>
-    <p style="font-size:13px;margin-bottom:6px">Type <strong>${word}</strong> to confirm:</p>
-    <input class="fi" id="ct-input" autocomplete="off" autocapitalize="characters"
-      oninput="document.getElementById('ct-go').disabled = this.value.trim().toUpperCase() !== '${word}'">
+    <p style="font-size:13px;margin-bottom:6px">Type <strong>${esc(word)}</strong> to confirm:</p>
+    <input class="fi" id="ct-input" autocomplete="off" ${exact ? '' : 'autocapitalize="characters"'}
+      oninput="document.getElementById('ct-go').disabled = (window._confirmTypeExact ? this.value.trim() : this.value.trim().toUpperCase()) !== window._confirmTypeWord">
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn ${danger ? 'btn-danger' : 'btn-secondary'}" id="ct-go" style="flex:1" disabled
         onclick="closeModal(); const f=window._confirmTypeFn; window._confirmTypeFn=null; if(f)f();">Confirm</button>
@@ -929,7 +945,7 @@ function _streamQual(curA, curT, prevA, prevT) {
   return 'steady';
 }
 // Overall category: stopped (neither stream this term) / mixed (one up + one
-// down) / rising / declining / steady.
+// down) / rising / declining / stable.
 function attendQual(s) {
   const svcQ = _streamQual(s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal);
   const grpQ = _streamQual(s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal);
@@ -940,7 +956,7 @@ function attendQual(s) {
   else {
     const up = svcQ === 'rising' || grpQ === 'rising';
     const down = svcQ === 'declining' || svcQ === 'stopped' || grpQ === 'declining' || grpQ === 'stopped';
-    category = (up && down) ? 'mixed' : up ? 'rising' : down ? 'declining' : 'steady';
+    category = (up && down) ? 'mixed' : up ? 'rising' : down ? 'declining' : 'stable';
   }
   return { svcQ, grpQ, category };
 }
@@ -966,7 +982,7 @@ function qualChips(s) {
   if (grpQ === 'rising' || grpQ === 'declining' || grpQ === 'stopped') h += (h ? ' ' : '') + _qualChip(_qualWord(grpQ) + ' group', grpQ);
   return h;
 }
-// At Risk & Rising screen's own tile chips: rising/declining drop the qualifier
+// Health screen's own tile chips: rising/declining drop the qualifier
 // word entirely (the chip's arrow icon + colour already carry that meaning) and
 // keep just the stream name; stopped keeps its word since there's no arrow for it.
 function _arQualChips(s) {
@@ -991,7 +1007,7 @@ function termRow(label, curA, curT, prevA, prevT) {
 }
 function riskChip(s) {
   if (!s || s === 'regular') return '';
-  const m = { stopped:['Stopped','risk-stopped'], atrisk:['At Risk','risk-atrisk'], declining:['Declining','risk-declining'], watch:['Watch','risk-watch'], new:['New','risk-new'] };
+  const m = { stopped:['Stopped','risk-stopped'], declining:['Declining','risk-declining'] };
   const [l, c] = m[s] || [s, 'c-neutral'];
   return `<span class="chip ${c}">${l}</span>`;
 }
@@ -1068,6 +1084,9 @@ const IC = {
   bell:     '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
   cake:     '<path d="M20 21v-8a2 2 0 00-2-2H6a2 2 0 00-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><line x1="2" y1="21" x2="22" y2="21"/><line x1="7" y1="8" x2="7" y2="11"/><line x1="12" y1="8" x2="12" y2="11"/><line x1="17" y1="8" x2="17" y2="11"/>',
   cross:    '<line x1="12" y1="4" x2="12" y2="20"/><line x1="6.5" y1="9.5" x2="17.5" y2="9.5"/>',
+  heart:    '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>',
+  genderF:  '<circle cx="12" cy="8" r="5"/><line x1="12" y1="13" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/>',
+  genderM:  '<circle cx="10" cy="14" r="6"/><line x1="14.5" y1="9.5" x2="20" y2="4"/><polyline points="14 4 20 4 20 10"/>',
 };
 function icN(k){ return `<svg class="ic-n" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
 function icS(k){ return `<svg class="ic-s" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
@@ -1083,10 +1102,10 @@ function brandMark(px, color){
 
 function navItems() {
   const u = S.user; if (!u) return [];
-  // Grade: Home | At Risk & Rising | My Students | Connect Setup  (Trends + Birthdays in quick actions)
+  // Grade: Home | Health | My Students | Connect Setup  (Trends + Birthdays in quick actions)
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     // quick actions:
@@ -1094,10 +1113,10 @@ function navItems() {
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
-  // Quad: Home | At Risk & Rising | Trends | Connect Setup
+  // Quad: Home | Health | Trends | Connect Setup
   if (u.role === 'quad') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     // quick actions:
@@ -1106,10 +1125,10 @@ function navItems() {
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
     // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
   ];
-  // Admin: Home | At Risk & Rising | Trends | Connect Setup + quick actions
+  // Admin: Home | Health | Trends | Connect Setup + quick actions
   if (u.role === 'admin') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
@@ -1123,7 +1142,7 @@ function navItems() {
   // Director: same as admin minus admin tile
   return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'at-risk',    ic:'alert',    label:'At Risk & Rising',  mbl:'<span class="ni-lbl"><span>At Risk</span><span style="opacity:.75;font-size:8px">&amp; Rising</span></span>' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'leaders',    ic:'arrr',     label:'Connect Setup',     mbl:'<span class="ni-lbl"><span>Connect</span><span style="opacity:.75;font-size:8px">Setup</span></span>' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
@@ -1289,12 +1308,12 @@ function _hAttTile(label, studs, avgWk, opts) {
   const chev = drop ? `<span class="drop-chev" style="display:inline-block;color:var(--ink-faint);font-weight:800">›</span>` : '';
   const inner = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">${chev}<div style="font-size:13px;font-weight:700;color:var(--ink-mid)">${label}</div></div>`
     + `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center;margin-bottom:3px">
-    <div style="font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:46px">Youth</div>
+    <div style="font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px">Youth</div>
     <div style="text-align:center;background:var(--paper-dark);border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${svcUniq}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Seen</div></div>
     <div style="text-align:center;background:var(--paper-dark);border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${avgWk}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
   </div>`
     + `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center">
-    <div style="font-size:9px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:46px;opacity:.8">Lifegroups</div>
+    <div style="font-size:9px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px;opacity:.8">Lifegroups</div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpUniq}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Seen</div></div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpAvg}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
   </div>`;
@@ -1485,64 +1504,8 @@ async function _renderHomeInner(stale) {
 
     {
       // Connection Summary for grade logins now lives on Connect Setup (Rec 4a).
-      // Director/Admin: Attendance by Quad — tap to expand per-grade rows
-      if (['admin', 'director'].includes(u.role)) {
-        const vq = (stats.byQuad || []).filter(q => q.totalStudents > 0);
-        if (vq.length) {
-          body += '<div class="sh">Attendance by Quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-          for (const q of vq) {
-            const qStud = sc.filter(s => s.quad === q.quad);
-            const qLg = _lgQuad(q.quad);
-            // Gendered per-grade rows, rendered up-front (hidden until expanded).
-            let gradeRows = '';
-            for (const gr of _hQuadGrades(q.quad)) {
-              const qgLg = (qLg && qLg.grades || []).find(x => x.grade === gr);
-              const gradeStuds = qStud.filter(s => s.grade === gr);
-              gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds), qgLg);
-            }
-            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, grpAvgWk: qLg ? qLg.current.avgPerWeek : 0 });
-          }
-          body += '</div>';
-        }
-      }
-      // Quad: Attendance by Grade tiles (their bracket)
-      if (u.role === 'quad') {
-        body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-        for (const gr of _hQuadGrades(u.quad)) { const gLg = _lgGrade(gr); body += _hAttTile('Yr ' + gr + _gsfx(_loginGender(u)), sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr), { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0 }); }
-        body += '</div>';
-      }
-      // ── Lifegroup Attendance (current term only on Home) ──
-      // average = individuals attending a lifegroup each week the scope ran.
-      if (lgStats && ['admin', 'director'].includes(u.role)) {
-        const quads = (lgStats.byQuad || []).filter(q => q.current.uniqueAttenders > 0 || q.current.members > 0);
-        if (quads.length) {
-          body += '<div class="sh">Lifegroups by Quad</div><div style="margin-bottom:16px">';
-          for (const q of quads) {
-            const qid = 'hlq-' + q.quad;
-            body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;padding:11px">
-              <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
-                <span class="drop-chev" style="font-size:12px;color:var(--ink-faint);font-weight:800">›</span>
-                <div style="flex:1;font-size:13px;font-weight:700">${q.label}</div>
-                <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
-              </div><div class="drop-body">`;
-            for (const gr of _hQuadGrades(q.quad)) {
-              const g = (q.grades || []).find(x => x.grade === gr);
-              if (g) body += _lgGradeBlock(g, false, _gsfx(quadGender(q.quad)), 'hlqg-' + q.quad + '-' + gr);
-            }
-            body += '</div></div>';
-          }
-          body += '</div>';
-        }
-      } else if (lgStats && u.role === 'quad') {
-        const grades = (lgStats.byGrade || []).filter(g => g.current.uniqueAttenders > 0 || g.current.members > 0);
-        if (grades.length) {
-          body += '<div class="sh">Lifegroups by Grade</div><div class="card" style="margin-bottom:16px">';
-          for (const g of grades) body += _lgGradeBlock(g, false, _gsfx(_loginGender(u)), 'hlg-' + g.grade);
-          body += '</div>';
-        }
-      }
-
-      // Connection by Grade bars
+      // Connection by Grade bars — rendered FIRST (above Attendance/Lifegroups),
+      // so leaders see the connection gap before the raw attendance numbers.
       if (['admin', 'director'].includes(u.role)) {
         // Director/admin: each grade row split into girls (left) and boys (right).
         const grades = [7,8,9,10,11,12].filter(gr => sc.some(s => s.grade === gr));
@@ -1577,6 +1540,69 @@ async function _renderHomeInner(stale) {
               <div style="flex:1"><div class="pb"><div class="pb-f ${pct >= 80 ? 'fill-g' : pct >= 50 ? 'fill-a' : 'fill-r'}" style="width:${pct}%"></div></div></div>
               <div style="font-size:12px;color:var(--ink-mid);width:90px;text-align:right">${g.connectedStudents}/${g.totalStudents} (${pct}%)</div>
             </div>`;
+          }
+          body += '</div>';
+        }
+      }
+
+      // Director/Admin: Attendance by Quad — tap to expand per-grade rows
+      if (['admin', 'director'].includes(u.role)) {
+        const vq = (stats.byQuad || []).filter(q => q.totalStudents > 0);
+        if (vq.length) {
+          body += '<div class="sh">Attendance by Quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+          for (const q of vq) {
+            const qStud = sc.filter(s => s.quad === q.quad);
+            const qLg = _lgQuad(q.quad);
+            // Gendered per-grade rows, rendered up-front (hidden until expanded).
+            let gradeRows = '';
+            for (const gr of _hQuadGrades(q.quad)) {
+              const qgLg = (qLg && qLg.grades || []).find(x => x.grade === gr);
+              const gradeStuds = qStud.filter(s => s.grade === gr);
+              gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds), qgLg);
+            }
+            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, grpAvgWk: qLg ? qLg.current.avgPerWeek : 0 });
+          }
+          body += '</div>';
+        }
+      }
+      // Quad: Attendance by Grade tiles (their bracket) — each tile doubles as a
+      // dropdown onto that grade's named-lifegroup breakdown (formerly a separate
+      // "Lifegroups by Grade" section below; folded in here so quad only has to
+      // tap one tile instead of scrolling to a second section for the same grade).
+      if (u.role === 'quad') {
+        body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+        for (const gr of _hQuadGrades(u.quad)) {
+          const gLg = _lgGrade(gr);
+          const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0 };
+          if (gLg) {
+            attOpts.dropId = 'hlg-' + gr;
+            attOpts.gradeRows = _lgGradeBlock(gLg, false, _gsfx(_loginGender(u)), 'hlg-' + gr + '-lg');
+          }
+          body += _hAttTile('Yr ' + gr + _gsfx(_loginGender(u)), sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr), attOpts);
+        }
+        body += '</div>';
+      }
+      // ── Lifegroup Attendance (current term only on Home) ──
+      // average = individuals attending a lifegroup each week the scope ran.
+      // Quad no longer gets a separate "Lifegroups by Grade" section here — that
+      // content now lives inside each Attendance-by-Grade tile's dropdown above.
+      if (lgStats && ['admin', 'director'].includes(u.role)) {
+        const quads = (lgStats.byQuad || []).filter(q => q.current.uniqueAttenders > 0 || q.current.members > 0);
+        if (quads.length) {
+          body += '<div class="sh">Lifegroups by Quad</div><div style="margin-bottom:16px">';
+          for (const q of quads) {
+            const qid = 'hlq-' + q.quad;
+            body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;padding:11px">
+              <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
+                <span class="drop-chev" style="font-size:12px;color:var(--ink-faint);font-weight:800">›</span>
+                <div style="flex:1;font-size:13px;font-weight:700">${q.label}</div>
+                <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
+              </div><div class="drop-body">`;
+            for (const gr of _hQuadGrades(q.quad)) {
+              const g = (q.grades || []).find(x => x.grade === gr);
+              if (g) body += _lgGradeBlock(g, false, _gsfx(quadGender(q.quad)), 'hlqg-' + q.quad + '-' + gr);
+            }
+            body += '</div></div>';
           }
           body += '</div>';
         }
@@ -1653,7 +1679,14 @@ function _followupListHtml(title, items, emptyMsg, stream) {
   if (!items.length) { h += `<div style="font-size:13px;color:var(--ink-faint)">${emptyMsg}</div></div>`; return h; }
   for (const s of items) {
     const phone = s.mobile || s.parentPhone;
-    h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--paper-dark)">
+    // Row divider: var(--paper-dark)/#e8edf4 against a near-white (or lightly
+    // tinted, see _FOLLOWUP_TINT) card background is ~1.05:1 contrast — for
+    // practical purposes invisible, which is what left these rows reading as a
+    // single undivided block with the name and phone "floating" far apart on a
+    // wide viewport. A low-opacity dark overlay reads consistently faint-but-
+    // visible on white AND on the svc/grp tints alike (unlike a fixed hex, whose
+    // contrast against those different backgrounds isn't independently tunable).
+    h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(15,23,42,.12)">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:14px">${esc(s.fullName)}</div>
       </div>
@@ -1869,75 +1902,6 @@ async function deleteNotification(id) {
 // ============================================================
 // LEADERS
 // ============================================================
-async function renderLeaders() {
-  if (!_allCached('/leaders', '/connections')) setApp(shell(''));
-  const [leaders, connectsRaw] = await Promise.all([
-    API.get('/leaders').catch(() => []),
-    API.get('/connections').catch(() => []),
-  ]);
-  const countByLeader = {};
-  for (const a of connectsRaw) countByLeader[a.leaderId] = (countByLeader[a.leaderId] || 0) + 1;
-  const u = S.user;
-  const canEdit = ['grade','quad','director','admin'].includes(u.role);
-
-  let body = `<div class="ph"><div style="display:flex;align-items:center;justify-content:space-between">
-    <div><div class="ph-title">Leaders</div><div class="ph-sub">${leaders.length} active</div></div>
-    ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="showAddLeader()">+ Add</button>` : ''}
-  </div></div>`;
-
-  if (u.role === 'quad') {
-    body += `<div class="alert al-info">${icS('info')} You can add, edit and connect leaders within your quad (${u.quad ? quadGender(u.quad) : ''} · Yr ${quadGrades(u.quad).join('–') || '—'}).</div>`;
-  }
-
-  if (canEdit) {
-    body += `<button class="btn btn-primary btn-full" style="margin-bottom:12px" onclick="go('leaders')">${icS('link')} Connect Students</button>`;
-  }
-
-  if (!leaders.length) {
-    body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders to start connecting students</div></div>`;
-  } else {
-    // Mobile cards
-    body += '<div class="mob">';
-    for (const l of leaders) {
-      const assigned = countByLeader[l.id] || 0;
-      const gi = l.gender==='female'?'♀':l.gender==='male'?'♂':'⚥';
-      body += `
-        <div class="li" style="cursor:pointer" onclick="showLeaderDetail('${l.id}')">
-          <div style="width:42px;height:42px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${gi}</div>
-          <div class="li-body">
-            <div class="li-title">${esc(l.fullName)}</div>
-            <div class="li-sub">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any'} · ${assigned} student${assigned!==1?'s':''}</div>
-          </div>
-          ${canEdit?`<div class="li-right">
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showEditLeader('${l.id}')" title="Edit">${icS('edit')}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();confirmDelLeader('${l.id}','${l.fullName.replace(/'/g,"\\'")}') " title="Delete">${icS('trash')}</button>
-          </div>`:''}
-        </div>`;
-    }
-    body += '</div>';
-    // Desktop table
-    body += `<div class="desk"><table class="dt"><thead><tr>
-      <th>Name</th><th>Gender</th><th>Grades</th><th>Assigned</th><th></th>
-    </tr></thead><tbody>`;
-    for (const l of leaders) {
-      const assigned = countByLeader[l.id] || 0;
-      body += `<tr style="cursor:pointer" onclick="showLeaderDetail('${l.id}')">
-        <td><strong>${esc(l.fullName)}</strong></td>
-        <td>${l.gender||'—'}</td>
-        <td>${l.grades?.length?'Gr '+l.grades.join(', '):'All'}</td>
-        <td><span class="chip ${assigned>0?'c-success':'c-neutral'}">${assigned} student${assigned!==1?'s':''}</span></td>
-        <td onclick="event.stopPropagation()">
-          <button class="btn btn-ghost btn-sm" onclick="showLeaderDetail('${l.id}')">View</button>
-          ${canEdit?`<button class="btn btn-ghost btn-sm" onclick="showEditLeader('${l.id}')">Edit</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="confirmDelLeader('${l.id}','${l.fullName.replace(/'/g,"\\'")}')">Del</button>`:''}
-        </td>
-      </tr>`;
-    }
-    body += '</tbody></table></div>';
-  }
-  setApp(shell(body));
-}
-
 async function showLeaderDetail(id) {
   let leader, summary;
   try {
@@ -2215,26 +2179,27 @@ function renderConnectView() {
       // rather than truncating with a "+N more" link.
       let studentRows = '';
       for (const s of assignedStudents) {
-        const p = svcPct(s);
-        studentRows += `<div class="connect-stud-row" style="cursor:pointer" onclick="showStudentDetail('${s.id}')">
+        studentRows += `<div class="connect-stud-row">
           <div style="flex:1;min-width:0">
             <div class="connect-stud-name">${esc(s.firstName)} ${esc(s.lastName)}</div>
-            <div class="connect-stud-meta">Gr ${s.grade||'—'} · ${s.gender}${p!==null?' · '+p+'%':''}</div>
+            <div class="connect-stud-meta">Gr ${s.grade||'—'} · ${s.gender}</div>
           </div>
+          <button class="btn btn-ghost btn-sm" style="padding:4px 6px;background:#eef0fb;color:var(--accent-dark)" onclick="event.stopPropagation();showStudentDetail('${s.id}')" aria-label="View profile for ${esc(s.firstName)} ${esc(s.lastName)}">Profile</button>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:4px 6px;color:var(--danger)" onclick="event.stopPropagation();removeConnectWithUndo('${s.id}','${l.id}')" aria-label="Disconnect ${esc(s.firstName)} ${esc(s.lastName)} from ${esc(l.fullName)}">×</button>`:''}
         </div>`;
       }
 
-      const gi = l.gender==='female'?'♀ ':l.gender==='male'?'♂ ':'';
+      const gi = l.gender==='female'?icS('genderF'):l.gender==='male'?icS('genderM'):'';
       const nm = l.fullName.replace(/'/g,"\\'");
+      const atRiskCount = assignedStudents.filter(s => s && ['stopped','declining'].includes(s.atRiskStatus)).length;
       body += `<div class="connect-leader">
         <div style="display:flex;align-items:flex-start;gap:6px">
-          <div class="connect-leader-name" style="flex:1">${gi}${esc(l.fullName)}</div>
+          <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
         <div class="connect-leader-meta" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span>
-          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
+          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}${atRiskCount?` · <span style="display:inline-flex;align-items:center;gap:2px">${icS('alert')}${atRiskCount} at risk</span>`:''}</span>
         </div>
         ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students-wrap"><div class="connect-students" onscroll="_syncConnectThumb(this)">${studentRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`:''}
@@ -2751,194 +2716,6 @@ async function exportConnectCSV() {
 }
 
 // ============================================================
-// QUAD VIEW
-// ============================================================
-async function renderQuadView() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell(''));
-  let leaders=[], connectsRaw=[], students=[];
-  try { [leaders, connectsRaw, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
-  const sById = {}; for (const s of students) sById[s.id]=s;
-  const aByL = {}; for (const a of connectsRaw) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
-
-  // Change 10: Last connection timestamp
-  let lastConnectStr = '';
-  if (connectsRaw.length) {
-    const latest = connectsRaw.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
-    if (latest?.createdAt) {
-      lastConnectStr = `Last connection made: ${fmtDate(latest.createdAt)}`;
-    }
-  }
-
-  let body = `<div class="ph"><div class="ph-title">Quad View</div><div class="ph-sub">${lastConnectStr || 'Leader assignments in your scope'}</div></div>`;
-
-  if (!leaders.length) {
-    body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders in scope</div></div>`;
-  } else {
-    for (const l of leaders) {
-      const allocs = (aByL[l.id]||[]).map(a => sById[a.studentId]).filter(Boolean);
-      const atRiskCount = allocs.filter(s => s && ['atrisk','stopped','declining'].includes(s.atRiskStatus)).length;
-      body += `<div class="card">
-        <div class="card-hdr">
-          <div>
-            <div class="card-title">${esc(l.fullName)}</div>
-            <div class="card-sub">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any'} · ${allocs.length} student${allocs.length!==1?'s':''}${atRiskCount?` · <span style="display:inline-flex;align-items:center;gap:2px">${icS('alert')}${atRiskCount} at risk</span>`:''}</div>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="showLeaderDetail('${l.id}')">View →</button>
-        </div>`;
-      if (!allocs.length) {
-        body += '<p style="color:var(--ink-faint);font-size:13px">No students assigned</p>';
-      } else {
-        for (const s of allocs) {
-          if (!s) continue;
-          const pct = svcPct(s);
-          body += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--paper-dark)">
-            <div style="flex:1">
-              <span style="font-weight:600;font-size:14px">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              <span style="font-size:12px;color:var(--ink-mid);margin-left:6px">Gr ${s.grade||'—'} · ${s.gender}</span>
-            </div>
-            ${riskChip(s.atRiskStatus)}
-            ${pct!==null?`<span style="font-size:12px;font-weight:700;color:${pct<50?'var(--danger)':'var(--ink-mid)'}">${pct}%</span>`:''}
-          </div>`;
-        }
-      }
-      body += '</div>';
-    }
-  }
-  setApp(shell(body));
-}
-
-// ============================================================
-// MY QUAD (Change 3: merged quad+students for quad logins)
-// ============================================================
-let _mqTab = 'leaders';
-
-async function renderMyQuad() {
-  if (!_allCached('/leaders', '/connections', '/students')) setApp(shell(''));
-  let leaders=[], connectsRaw2=[], students=[];
-  try { [leaders, connectsRaw2, students] = await Promise.all([API.get('/leaders'), API.get('/connections'), API.get('/students')]); } catch {}
-
-  // Change 10: Last connection timestamp for My Quad too
-  let lastConnectStr2 = '';
-  if (connectsRaw2.length) {
-    const latest = connectsRaw2.reduce((max, a) => (!max || new Date(a.createdAt) > new Date(max.createdAt) ? a : max), null);
-    if (latest?.createdAt) lastConnectStr2 = `Last connection made: ${fmtDate(latest.createdAt)}`;
-  }
-
-  const tabHtml = ['leaders','students','at-risk'].map(t => {
-    const lbl = t === 'at-risk' ? 'At Risk' : t.charAt(0).toUpperCase() + t.slice(1);
-    return `<button class="tbbtn ${_mqTab===t?'on':''}" onclick="switchMQTab('${t}')">${lbl}</button>`;
-  }).join('');
-
-  let body = `
-    <div class="ph">
-      <div class="ph-title">My Quad</div>
-      <div class="ph-sub">${lastConnectStr2 || 'Your quad overview'}</div>
-    </div>
-    <div class="tbbar">${tabHtml}</div>`;
-
-  const sById = {}; for (const s of students) sById[s.id] = s;
-  const aByL = {}; for (const a of connectsRaw2) { if (!aByL[a.leaderId]) aByL[a.leaderId]=[]; aByL[a.leaderId].push(a); }
-
-  if (_mqTab === 'leaders') {
-    if (!leaders.length) {
-      body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders in scope</div></div>`;
-    } else {
-      for (const l of leaders) {
-        const allocs = (aByL[l.id]||[]).map(a => sById[a.studentId]).filter(Boolean);
-        const atRiskCount = allocs.filter(s => s && ['atrisk','stopped','declining'].includes(s.atRiskStatus)).length;
-        body += `<div class="card">
-          <div class="card-hdr">
-            <div>
-              <div class="card-title">${esc(l.fullName)}</div>
-              <div class="card-sub">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any'} · ${allocs.length} student${allocs.length!==1?'s':''}${atRiskCount?` · <span style="display:inline-flex;align-items:center;gap:2px">${icS('alert')}${atRiskCount} at risk</span>`:''}</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="showLeaderDetail('${l.id}')">View →</button>
-          </div>`;
-        if (!allocs.length) {
-          body += '<p style="color:var(--ink-faint);font-size:13px">No students assigned</p>';
-        } else {
-          for (const s of allocs) {
-            if (!s) continue;
-            const pct = svcPct(s);
-            body += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--paper-dark)">
-              <div style="flex:1">
-                <span style="font-weight:600;font-size:14px">${esc(s.firstName)} ${esc(s.lastName)}</span>
-                <span style="font-size:12px;color:var(--ink-mid);margin-left:6px">Gr ${s.grade||'—'} · ${s.gender}</span>
-              </div>
-              ${riskChip(s.atRiskStatus)}
-              ${pct!==null?`<span style="font-size:12px;font-weight:700;color:${pct<50?'var(--danger)':'var(--ink-mid)'}">${pct}%</span>`:''}
-            </div>`;
-          }
-        }
-        body += '</div>';
-      }
-    }
-  }
-
-  if (_mqTab === 'students') {
-    if (!students.length) {
-      body += `<div class="empty">${icEmpty('id')}<div class="empty-title">No students in scope</div></div>`;
-    } else {
-      for (const s of students) {
-        const pct = svcPct(s);
-        body += `<div class="li" onclick="showStudentDetail('${s.id}')" style="cursor:pointer">
-          <div class="li-body">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              ${riskChip(s.atRiskStatus)}
-            </div>
-            <div class="li-sub">Gr ${s.grade||'—'} · ${s.gender} ${quadChip(s.quad)}</div>
-            ${pct!==null?`<div style="margin-top:5px">${pBar(pct)}<div style="font-size:11px;color:var(--ink-faint);margin-top:2px">${s.svcAttended}/${s.svcTotal} (${pct}%)</div></div>`:''}
-          </div>
-          <div class="li-right" style="color:var(--ink-faint)">›</div>
-        </div>`;
-      }
-    }
-  }
-
-  if (_mqTab === 'at-risk') {
-    const atRiskStudents = students.filter(s => s.atRiskStatus && s.atRiskStatus !== 'regular');
-    if (!atRiskStudents.length) {
-      body += `<div class="empty">${icEmpty('check')}<div class="empty-title">No at-risk students</div><div class="empty-sub">Great news — attendance looks healthy</div></div>`;
-    } else {
-      const groups = { stopped:[], atrisk:[], declining:[], watch:[] };
-      for (const s of atRiskStudents) if (groups[s.atRiskStatus]) groups[s.atRiskStatus].push(s);
-      const labels = { stopped:'Stopped Attending', atrisk:'At Risk', declining:'Declining', watch:'Watch List' };
-      for (const [status, items] of Object.entries(groups)) {
-        if (!items.length) continue;
-        body += `<div class="sh">${labels[status]} (${items.length})</div>`;
-        for (const s of items) {
-          const pct = s.svcTotal > 0 ? Math.round(s.svcAttended / s.svcTotal * 100) : 0;
-          body += `<div class="li" style="cursor:default;align-items:flex-start">
-            <div class="li-body">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-                ${riskChip(s.atRiskStatus)} ${quadChip(s.quad)}
-              </div>
-              <div class="li-sub" style="margin-top:3px">Gr ${s.grade||'—'} · ${s.gender}</div>
-              <div style="display:flex;gap:16px;margin-top:8px">
-                <div>
-                  <div style="font-size:11px;color:var(--ink-faint);font-weight:700;text-transform:uppercase">Service</div>
-                  <div style="font-size:13px;font-weight:700;color:${pct<50?'var(--danger)':'var(--ink)'}">${s.svcAttended}/${s.svcTotal} (${pct}%)</div>
-                  <div class="pb" style="width:80px">${pBar(pct)}</div>
-                </div>
-              </div>
-            </div>
-          </div>`;
-        }
-      }
-    }
-  }
-
-  setApp(shell(body));
-}
-
-async function switchMQTab(tab) {
-  _mqTab = tab;
-  await renderMyQuad();
-}
-
-// ============================================================
 // AT RISK
 // ============================================================
 let _arFilter = { grade:null, gender:null };
@@ -2988,7 +2765,7 @@ async function renderAtRisk() {
   // term — they aren't "at risk", they've simply never engaged.
   scoped = scoped.filter(_hasAttended);
 
-  const sections = { rising:[], mixed:[], declining:[], stopped:[] };
+  const sections = { rising:[], mixed:[], declining:[], stopped:[], stable:[] };
   for (const s of scoped) { const cat = attendQual(s).category; if (sections[cat]) sections[cat].push(s); }
   for (const k of Object.keys(sections)) sections[k].sort((a,b)=>(a.firstName||'').localeCompare(b.firstName||''));
   const flagged = sections.mixed.length + sections.declining.length + sections.stopped.length;
@@ -3001,7 +2778,7 @@ async function renderAtRisk() {
 
   let body = `
     <div class="ph">
-      <div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('alert')} At Risk & Rising ${helpTip('Stopped means no attendance in either stream this term. Declining or Mixed means a stream rate dropped 20+ points vs last term - calculated automatically, no manual thresholds.')}</div><div class="ph-sub">${flagged} need attention${sections.rising.length?` · ${sections.rising.length} rising`:''}</div>
+      <div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('heart')} Health ${helpTip("Rising/Declining: a stream's rate moved 20+ points vs last term. Mixed: one stream up, one down. Stable: no 20-point swing either way. Stopped: no attendance in either stream this term. All calculated automatically — no manual thresholds.")}</div>
     </div>`;
   if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
   if (arGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_arFilter.gender?'on':''}" onclick="setArFilter('gender',null)">All</button></div>`;
@@ -3009,6 +2786,7 @@ async function renderAtRisk() {
   // Sections: Rising / Mixed (one stream up, one down) / Declining / Stopped (neither this term).
   const SEC = [
     ['rising', 'Rising', '#065f46', 'arru'],
+    ['stable', 'Stable', '#475569', 'check'],
     ['mixed', 'Mixed', '#92400e', 'arrr'],
     ['declining', 'Declining', '#991b1b', 'arrd'],
     ['stopped', 'Stopped', '#991b1b', 'alert'],
@@ -3022,19 +2800,19 @@ async function renderAtRisk() {
     for (const s of items) {
       const _arPhone = s.mobile || s.parentPhone;
       cards += `
-        <div class="li" style="align-items:flex-start">
+        <div class="li" style="align-items:flex-start;padding:11px;margin-bottom:4px">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
               ${u.role !== 'grade' ? quadChip(s.quad) : ''}
             </div>
-            <div class="li-sub" style="margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="li-sub" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span>Gr ${s.grade||'—'} · ${s.gender}</span>
               ${_arQualChips(s)}
             </div>
             ${termRow('Service', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${_arPhone ? `<div style="margin-top:6px;font-size:13px">${phoneLink(_arPhone)}</div>` : ''}
+            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone)}</div>` : ''}
           </div>
         </div>`;
     }
@@ -3045,7 +2823,7 @@ async function renderAtRisk() {
         <span class="badge" style="margin-left:auto">${items.length}</span>
       </div>
       <div id="ar-body-${key}" style="display:none;padding:0 12px 12px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">${cards}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px">${cards}</div>
       </div>
     </div>`;
   }
@@ -3066,27 +2844,6 @@ function setArFilter(key, val) {
   _arFilter[key] = val;
   saveArFilter();
   renderAtRisk();
-}
-
-function showAtRiskUpdate(studentId, name, currentStatus) {
-  const statuses = ['regular','watch','declining','atrisk','stopped'];
-  const opts = statuses.map(s => `<option value="${s}" ${s===currentStatus?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
-  modal(`
-    <div class="mo-title">Update At-Risk Status</div>
-    <p style="color:var(--ink-mid);margin-bottom:14px"><strong>${esc(name)}</strong></p>
-    <div class="fg"><label class="fl">Status</label><select class="fs" id="ar-status">${opts}</select></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitAtRiskUpdate('${studentId}')">Update</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
-}
-
-async function submitAtRiskUpdate(studentId) {
-  const status = document.getElementById('ar-status')?.value;
-  try {
-    await API.patch(`/students/${studentId}/at-risk`, { status });
-    closeModal(); toast('Status updated'); await renderAtRisk();
-  } catch (e) { toast(e.message); }
 }
 
 // ============================================================
@@ -3527,10 +3284,13 @@ async function renderTrends() {
   const _termNote = _curTerm ? `${fmtDM(_curTerm.startDate)} – ${fmtDM(_curTerm.endDate)}` : 'this term';
 
   if (_trTab === 'svc') {
-    // Ministry-wide overview — every login except grade (grade logins go straight
-    // to their own grade's numbers below; the ministry-wide block was redundant
-    // context for a single-grade login and just added scroll).
-    if (u.role !== 'grade') {
+    // Ministry-wide overview — director/admin only. Grade logins go straight to
+    // their own grade's numbers below (the ministry-wide block was redundant
+    // context for a single-grade login and just added scroll); quad logins get
+    // their own scoped quad+by-grade section further down (matching how the
+    // Lifegroups tab already scopes quad server-side), so this whole-ministry
+    // block would otherwise leak ministry-wide data to a quad account.
+    if (['director', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
       body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
@@ -3797,15 +3557,25 @@ async function renderImport() {
   setApp(shell(body));
 }
 
-async function deleteImportEntry(id) {
-  if (!confirm('Remove this import from the history log? Attendance data is kept.')) return;
+function deleteImportEntry(id) {
+  modal(`<div class="mo-title">Remove Import?</div>
+    <p style="color:var(--ink-mid);margin-bottom:20px">Remove this import from the history log? Attendance data is kept.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="doDeleteImportEntry('${id}')">Confirm</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function doDeleteImportEntry(id) {
   try {
     await API.del(`/import/history/${id}`);
     Cache.clear();
+    closeModal();
     const el = document.getElementById(`ih-${id}`);
     if (el) el.remove();
   } catch (e) {
-    alert('Failed to delete: ' + (e.message || e));
+    closeModal();
+    toast('Failed to delete: ' + (e.message || e));
   }
 }
 
@@ -4185,8 +3955,7 @@ async function renderAdmin() {
 }
 
 async function renderAdminView(settings, users) {
-  // Change 4: four tabs including Audit
-  const tabs = ['settings','accounts','data','audit'];
+  const tabs = ['settings','accounts','data'];
   const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('');
 
   let body = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>
@@ -4281,53 +4050,6 @@ async function renderAdminView(settings, users) {
         </div>
       </div>
     </div>`;
-  }
-
-  // Change 4: Audit tab
-  if (_adminTab === 'audit') {
-    body += `<div id="audit-container"></div>`;
-    setApp(shell(body));
-    // Load audit entries async
-    try {
-      const entries = await API.get('/admin/audit');
-      let auditHtml = '';
-      if (!entries || !entries.length) {
-        auditHtml = `<div class="empty">${icEmpty('clipboard')}<div class="empty-title">No audit entries</div><div class="empty-sub">Actions will appear here as they are performed</div></div>`;
-      } else {
-        // Define chip colours for common action types
-        function auditChip(action) {
-          if (!action) return '';
-          const a = action.toLowerCase();
-          let cls = 'c-neutral';
-          if (a.includes('create') || a.includes('add') || a.includes('import')) cls = 'c-success';
-          else if (a.includes('delete') || a.includes('remove') || a.includes('reset')) cls = 'c-danger';
-          else if (a.includes('update') || a.includes('edit') || a.includes('patch') || a.includes('save')) cls = 'c-accent';
-          else if (a.includes('login') || a.includes('logout')) cls = 'c-warn';
-          return `<span class="chip ${cls}" style="font-size:11px">${action}</span>`;
-        }
-        auditHtml = '<div class="card" style="padding:14px">';
-        for (const e of entries) {
-          auditHtml += `<div class="audit-entry">
-            <div class="audit-dot"></div>
-            <div class="audit-body">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${auditChip(e.action)}
-                <span style="font-size:12px;color:var(--ink-mid)">${fmtDate(e.performedAt)}</span>
-              </div>
-              <div class="audit-who">by ${e.performedBy || 'system'}</div>
-              ${e.detail ? `<div class="audit-detail">${e.detail}</div>` : ''}
-            </div>
-          </div>`;
-        }
-        auditHtml += '</div>';
-      }
-      const container = document.getElementById('audit-container');
-      if (container) container.innerHTML = auditHtml;
-    } catch (err) {
-      const container = document.getElementById('audit-container');
-      if (container) container.innerHTML = `<div class="alert al-err">Failed to load audit log: ${err.message}</div>`;
-    }
-    return; // already called setApp above
   }
 
   setApp(shell(body));
@@ -4524,12 +4246,13 @@ async function toggleUserStatus(id, currentStatus) {
 
 function confirmDelUser(id) {
   const u = (_adminData.users || []).find(x => x.id === id);
-  modal(`<div class="mo-title">Delete Account?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">Delete account for <strong>${esc(u ? u.displayName : 'this account')}</strong>?</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="doDelUser('${id}')">Delete</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
+  if (!u) return;
+  confirmType({
+    title: 'Delete Account?',
+    body: `Delete account for <strong>${esc(u.displayName)}</strong>? This cannot be undone.`,
+    word: u.email, exact: true, danger: true,
+    onConfirm: () => doDelUser(id),
+  });
 }
 
 async function doDelUser(id) {

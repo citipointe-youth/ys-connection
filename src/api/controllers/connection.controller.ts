@@ -40,9 +40,9 @@ export function makeConnectionController(deps: { connection: ConnectionService }
       if (!req.ctx) throw new UnauthorizedError();
       const rows = await deps.connection.exportCsv(req.ctx);
       // Return as CSV string
-      const header = 'Leader,Leader Gender,Leader Grades,Student,Grade,Gender,Svc Attended,Svc Total,Svc %,At Risk';
+      const header = 'Leader,Leader Gender,Leader Grades,Student,Grade,Gender,Youth Attended,Youth %,Lifegroup Attended,Lifegroup %,At Risk';
       const lines = rows.map((r) =>
-        [r.leaderName, r.leaderGender ?? '', r.leaderGrades, r.studentName, r.studentGrade ?? '', r.studentGender, r.svcAttended, r.svcTotal, r.svcPct, r.atRiskStatus ?? '']
+        [r.leaderName, r.leaderGender ?? '', r.leaderGrades, r.studentName, r.studentGrade ?? '', r.studentGender, r.svcAttended, r.svcPct, r.grpAttended, r.grpPct, r.atRiskStatus ?? '']
           .map((v) => `"${String(v).replace(/"/g, '""')}"`)
           .join(','),
       );
