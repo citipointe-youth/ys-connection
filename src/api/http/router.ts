@@ -15,6 +15,7 @@ import { makeTrendsController } from '../controllers/trends.controller';
 import { makeLifegroupStatsController } from '../controllers/lifegroup-stats.controller';
 import { makePushController } from '../controllers/push.controller';
 import { makeConnectionAuditController } from '../controllers/connection-audit.controller';
+import { makeBatchController } from '../controllers/batch.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -36,8 +37,21 @@ export function buildRoutes(services: Services): Route[] {
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });
   const push = makePushController({ push: services.push });
   const connectionAudit = makeConnectionAuditController({ connectionAudit: services.connectionAudit });
+  const batch = makeBatchController({
+    overview: services.overview,
+    trends: services.trends,
+    student: services.student,
+    lifegroupStats: services.lifegroupStats,
+    connection: services.connection,
+    atRisk: services.atRisk,
+    settings: services.settings,
+    leader: services.leader,
+  });
 
   return [
+    // ----- Batch (compose several read endpoints into one request; see batch.controller) -----
+    { method: 'GET', path: '/batch', auth: true, handler: (r) => batch.get(r) },
+
     // ----- Auth -----
     { method: 'POST', path: '/auth/login',  auth: false, handler: (r) => auth.login(r) },
     { method: 'GET',  path: '/auth/me',     auth: true,  handler: (r) => auth.me(r) },

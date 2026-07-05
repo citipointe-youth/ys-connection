@@ -564,6 +564,18 @@ window.addEventListener('resize', _positionNprog);
 // ============================================================
 // API ADAPTER
 // ============================================================
+// Endpoint path -> /batch section key. Only these no-arg, actor-scoped reads can be
+// composed into a single /batch request; anything not listed falls back to its own GET.
+const SECTION_OF = {
+  '/overview': 'overview',
+  '/trends': 'trends',
+  '/students': 'students',
+  '/lifegroups/stats': 'lifegroupStats',
+  '/connections': 'connections',
+  '/at-risk': 'atRisk',
+  '/settings': 'settings',
+  '/leaders': 'leaders',
+};
 const API = (() => {
   // The session token is kept in localStorage (sent as a Bearer header). This is
   // an accepted risk: the XSS vector that could read it is closed by escaping all
@@ -607,6 +619,32 @@ const API = (() => {
         .catch(err => { _inflight.delete(p); throw err; });
       _inflight.set(p, promise);
       return promise;
+    },
+    // batch(paths): fetch the batchable paths in ONE /batch request and seed the cache
+    // under each path's OWN key, so every renderer that reads Cache.get(path) is
+    // unchanged. Any path with no batch section falls back to an individual GET. This is
+    // the core of the 2026-07-05 fan-out fix: a screen load becomes 1 request instead of
+    // 5-9, keeping total Supavisor pooler connections under the free-tier ceiling.
+    batch: (paths) => {
+      const batchable = [], passthrough = [];
+      for (const p of paths) (SECTION_OF[p] ? batchable : passthrough).push(p);
+      const jobs = passthrough.map(p => API.get(p).catch(() => null));
+      if (batchable.length) {
+        const sections = [...new Set(batchable.map(p => SECTION_OF[p]))].sort();
+        jobs.push(
+          API.get('/batch?sections=' + sections.join(','))
+            .then(res => {
+              const results = (res && res.results) || {};
+              for (const p of batchable) {
+                const k = SECTION_OF[p];
+                if (Object.prototype.hasOwnProperty.call(results, k)) Cache.set(p, results[k]);
+              }
+              return res;
+            })
+            .catch(() => null),
+        );
+      }
+      return Promise.all(jobs);
     },
     post: (p, b, timeoutMs) => r('POST', p, b, timeoutMs),
     patch: (p, b) => r('PATCH', p, b),
@@ -837,18 +875,14 @@ function _initShell() {
 }
 
 function _prefetch() {
-  // Firing all 8 at once (plus Home's own /connections/leader/:id/followup call)
-  // meant a single login could momentarily demand ~9 requests' worth of concurrent
-  // DB connections at once — a self-inflicted burst against the free-tier Supavisor
-  // pool that showed up as connection-acquisition timeouts even with just one user
-  // logged in. Staggering into small batches spreads that demand out over ~300ms,
-  // which is invisible to the user (these are background prefetches) but cuts the
-  // peak simultaneous connection count several-fold.
-  const paths = ['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'];
-  const BATCH_SIZE = 3, BATCH_GAP_MS = 150;
-  paths.forEach((p, i) => {
-    setTimeout(() => API.get(p).catch(() => {}), Math.floor(i / BATCH_SIZE) * BATCH_GAP_MS);
-  });
+  // ONE /batch request warms all the common read endpoints (the 7 batchable ones are
+  // composed server-side and seeded into the cache under their own keys; /import/history
+  // has no batch section so it falls back to its own GET). Previously this fired 8
+  // separate requests, staggered to soften the burst — but on the free-tier Supavisor
+  // pooler the real problem is that a page's fan-out multiplies serverless instances ->
+  // pooler client connections (the EMAXCONN / 200 ceiling). Collapsing login's prefetch
+  // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
+  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history']);
 }
 
 // ============================================================
@@ -1421,6 +1455,11 @@ async function renderHome() {
     return;
   }
   setApp(shell(''));
+  // Cold load: warm the cache with ONE /batch request first, so _renderHomeInner's
+  // per-path API.get calls all hit the cache instead of fanning out into 4-5 separate
+  // requests. That login-time fan-out (multiplied across many simultaneous logins) is
+  // what overwhelmed the free-tier Supavisor pooler — see CLAUDE.md 2026-07-05.
+  await API.batch(_hp).catch(() => {});
   try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
   // Cold load self-heal: if any endpoint failed this round (e.g. a slow
   // /lifegroups/stats timed out during the serverless cold start), Home would
@@ -1436,7 +1475,7 @@ function _revalidateHome() {
   _homeRevalidating = true;
   // API.get re-fetches the expired paths (and returns any still-fresh ones as-is),
   // repopulating the cache; then repaint Home if the user is still on it.
-  Promise.all(HOME_PATHS().map(p => API.get(p).catch(() => null)))
+  API.batch(HOME_PATHS())
     .then(() => { if (S.page === 'home') return _renderHomeInner(false); })
     .catch(() => {})
     .finally(() => { _homeRevalidating = false; });
@@ -2147,7 +2186,7 @@ let _connectRevalidating = false;
 function _revalidateConnect() {
   if (_connectRevalidating) return;
   _connectRevalidating = true;
-  Promise.all(CONNECT_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(CONNECT_PATHS)
     .then(() => { if (S.page === 'leaders') return renderConnect(); })
     .catch(() => {})
     .finally(() => { _connectRevalidating = false; });
@@ -2587,7 +2626,7 @@ let _birthdaysRevalidating = false;
 function _revalidateBirthdays() {
   if (_birthdaysRevalidating) return;
   _birthdaysRevalidating = true;
-  Promise.all(BIRTHDAYS_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(BIRTHDAYS_PATHS)
     .then(() => { if (S.page === 'birthdays') return renderUpcomingBirthdays(); })
     .catch(() => {})
     .finally(() => { _birthdaysRevalidating = false; });
@@ -2695,7 +2734,7 @@ let _myStudentsRevalidating = false;
 function _revalidateMyStudents() {
   if (_myStudentsRevalidating) return;
   _myStudentsRevalidating = true;
-  Promise.all(MYSTUDENTS_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(MYSTUDENTS_PATHS)
     .then(() => { if (S.page === 'my-students') return renderMyStudents(); })
     .catch(() => {})
     .finally(() => { _myStudentsRevalidating = false; });
@@ -2818,7 +2857,7 @@ let _atRiskRevalidating = false;
 function _revalidateAtRisk() {
   if (_atRiskRevalidating) return;
   _atRiskRevalidating = true;
-  Promise.all(ATRISK_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(ATRISK_PATHS)
     .then(() => { if (S.page === 'at-risk') return renderAtRisk(); })
     .catch(() => {})
     .finally(() => { _atRiskRevalidating = false; });
@@ -2979,7 +3018,7 @@ let _studentsRevalidating = false;
 function _revalidateStudents() {
   if (_studentsRevalidating) return;
   _studentsRevalidating = true;
-  Promise.all(STUDENTS_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(STUDENTS_PATHS)
     .then(() => { if (S.page === 'students') return renderStudents(); })
     .catch(() => {})
     .finally(() => { _studentsRevalidating = false; });
@@ -3338,7 +3377,7 @@ let _trendsRevalidating = false;
 function _revalidateTrends() {
   if (_trendsRevalidating) return;
   _trendsRevalidating = true;
-  Promise.all(TREND_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(TREND_PATHS)
     .then(() => { if (S.page === 'trends') return renderTrends(); })
     .catch(() => {})
     .finally(() => { _trendsRevalidating = false; });
@@ -3633,7 +3672,7 @@ let _importRevalidating = false;
 function _revalidateImport() {
   if (_importRevalidating) return;
   _importRevalidating = true;
-  Promise.all(IMPORT_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(IMPORT_PATHS)
     .then(() => { if (S.page === 'import') return renderImport(); })
     .catch(() => {})
     .finally(() => { _importRevalidating = false; });
@@ -4084,7 +4123,7 @@ let _adminRevalidating = false;
 function _revalidateAdmin() {
   if (_adminRevalidating) return;
   _adminRevalidating = true;
-  Promise.all(ADMIN_PATHS.map(p => API.get(p).catch(() => null)))
+  API.batch(ADMIN_PATHS)
     .then(() => { if (S.page === 'admin') return renderAdmin(); })
     .catch(() => {})
     .finally(() => { _adminRevalidating = false; });
