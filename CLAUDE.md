@@ -906,6 +906,34 @@ levers, in order of preference:
 Do **not** stress-test production to find the limit — heavy load testing is what degraded the
 pooler during the incident. Watch the connection count during a real session instead.
 
+### Small bug/polish punch list (2026-07-06)
+
+- **Student Search table**: desktop `.dt` table headers are now clickable to sort (Name, Gr,
+  Gender, DOB, Youth, Lifegroup, Status); Youth/Lifegroup sort by this-term % only (last-term
+  stays a comparison, not a sort key), Status sorts worst-first (stopped/declining ahead of
+  stable/rising). The **Quad** column is removed from the desktop table (grade + gender already
+  identify it); the mobile card view is untouched and still shows the quad chip inline.
+- **Connection Audit "Stage 1" renamed to "Interacted"** everywhere it appears — the `STG` label
+  map, the Integration ladder / funnel rung labels, the People-tab stage filter dropdown, and the
+  executive brief's per-quad funnel viz + methodology slide. A new `helpTip` next to the
+  Overview's "Interacted" rung explains it: "Everyone who attended a service, attended a
+  lifegroup, or submitted a New Connect/Decision form."
+- **People tab per-student badge**: the chip on each person's row (list + detail popup) changed
+  from "Stage 1 · First contact" to a compact `STG_SHORT` form — "1 - Interacted", "2 - Youth",
+  "3 - Regular", "4 - Lifegroup", "5 - S-Team". The Stage filter dropdown keeps the old
+  "Stage N · Label" format (just with the renamed word).
+- **Tooltip clipped on a widescreen laptop**: `_clampTip()` only clamped against the raw
+  viewport, but `.pg` caps at `max-width:1000px` and centers itself — on a wide screen there's a
+  dead zone between the true viewport edge and `.pg`'s own edge, and `overflow-x:clip` on
+  `.pg`/body/html silently sliced off any popup that fell in it (worst case: the scope bar's
+  Year tooltip, whose "?" sits close to `.pg`'s left edge on every Connection Audit page). Fixed
+  by clamping against the nearest ancestor with clipping/scrolling overflow instead of the
+  viewport.
+- **Parent-number SMS default message**: `phoneLink`/`callPhone` gained an `isParent` flag (all 6
+  call sites updated — the 2 that fall back between `mobile`/`parentPhone` pass
+  `!s.mobile && !!s.parentPhone`). Tapping a parent's number now defaults the Message text to
+  "Hey, `<First Name>`'s leader here, " instead of "Hey `<First Name>` ".
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, emails, notification title/message,

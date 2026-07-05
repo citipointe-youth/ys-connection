@@ -700,15 +700,30 @@ function _toggleTip(e, btn) {
 // Keeps the bubble fully on-screen regardless of where the "?" sits: resets to the
 // CSS-default position, measures, then nudges horizontally so neither edge runs
 // past the viewport (8px margin). Runs on tap and via a delegated hover listener.
+// Clamping against the raw viewport isn't enough on a wide screen: `.pg` caps at
+// max-width:1000px and centers itself, so on a widescreen laptop there's a wide
+// dead zone between the viewport edge and `.pg`'s own edge — `overflow-x:clip`
+// on `.pg`/body/html silently slices off a popup that the viewport-only check
+// thought had room. Clamp against the nearest clipping ancestor's box instead.
 function _clampTip(btn) {
   const pop = btn.querySelector('.htip-pop');
   if (!pop) return;
   const left = btn.classList.contains('tip-left');
   pop.style.transform = left ? 'none' : 'translateX(-50%)';
-  const r = pop.getBoundingClientRect(), m = 8, vw = document.documentElement.clientWidth;
+  const m = 8, vw = document.documentElement.clientWidth;
+  let bound = { left: m, right: vw - m };
+  for (let el = pop.parentElement; el; el = el.parentElement) {
+    const ox = getComputedStyle(el).overflowX;
+    if (ox === 'clip' || ox === 'hidden' || ox === 'auto' || ox === 'scroll') {
+      const cr = el.getBoundingClientRect();
+      bound = { left: Math.max(bound.left, cr.left), right: Math.min(bound.right, cr.right) };
+      break;
+    }
+  }
+  const r = pop.getBoundingClientRect();
   let shift = 0;
-  if (r.right > vw - m) shift = (vw - m) - r.right;
-  if (r.left + shift < m) shift = m - (r.left + shift);
+  if (r.right > bound.right) shift = bound.right - r.right;
+  if (r.left + shift < bound.left) shift = bound.left - (r.left + shift);
   if (shift) pop.style.transform = left ? `translateX(${shift}px)` : `translateX(calc(-50% + ${shift}px))`;
 }
 document.addEventListener('click', e => { if (!e.target.closest('.htip')) document.querySelectorAll('.htip.open').forEach(t => t.classList.remove('open')); });
@@ -988,10 +1003,10 @@ function _myCustomSmsTemplate() {
 // (iOS's native tel: confirmation can't be extended with a Message option, so
 // we build our own). `firstName` (when known) personalises the default
 // message and fills the "<first name>" placeholder in a custom template.
-function callPhone(raw, firstName) {
+function callPhone(raw, firstName, isParent) {
   const d = String(raw || '').replace(/[^\d+]/g, '');
   if (!d) return;
-  const defaultMsg = 'Hey ' + (firstName || '') + ' ';
+  const defaultMsg = isParent ? 'Hey, ' + (firstName || '') + "'s leader here, " : 'Hey ' + (firstName || '') + ' ';
   const customTpl = _myCustomSmsTemplate();
   const customBtn = customTpl
     ? `<button class="btn btn-secondary" onclick="closeModal();window.location.href='${_smsHref(d, _fillSmsTemplate(customTpl, firstName))}'">Message Custom</button>`
@@ -1006,10 +1021,10 @@ function callPhone(raw, firstName) {
     </div>
   `);
 }
-function phoneLink(raw, firstName) {
+function phoneLink(raw, firstName, isParent) {
   if (!raw) return '';
   const fn = String(firstName || '').replace(/['\\]/g, '');
-  return `<a onclick="callPhone('${String(raw).replace(/['\\]/g, '')}','${fn}')" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${fmtPhone(raw)}</a>`;
+  return `<a onclick="callPhone('${String(raw).replace(/['\\]/g, '')}','${fn}',${isParent ? 'true' : 'false'})" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${fmtPhone(raw)}</a>`;
 }
 // A student is "rising" if their service OR lifegroup rate improved by >=20
 // points vs last term (needs data in both terms to judge).
@@ -1807,7 +1822,7 @@ function _followupListHtml(title, items, emptyMsg, stream) {
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:14px">${esc(s.fullName)}</div>
       </div>
-      ${phone ? `<div style="font-size:13px;white-space:nowrap" onclick="event.stopPropagation()">${phoneLink(phone, s.firstName)}</div>` : ''}
+      ${phone ? `<div style="font-size:13px;white-space:nowrap" onclick="event.stopPropagation()">${phoneLink(phone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}
     </div>`;
   }
   h += '</div>';
@@ -2812,7 +2827,7 @@ async function renderMyStudents() {
             </div>
             ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName)}` : ''}</div>` : ''}
+            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : ''}</div>` : ''}
           </div>
         </div>`;
       }
@@ -2962,7 +2977,7 @@ function _arSectionsHtml(scoped, u) {
             </div>
             ${termRow('Youth', s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal, true)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow('Lifegroup', s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal, true):''}
-            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName)}</div>` : ''}
+            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}
           </div>
         </div>`;
     }
@@ -3011,7 +3026,33 @@ function setArNameFilter(v) {
 // ============================================================
 // STUDENTS
 // ============================================================
-let _sS = { students:[], leaderNames:new Set(), search:'', gf:new Set(), df:new Set() };
+let _sS = { students:[], leaderNames:new Set(), search:'', gf:new Set(), df:new Set(), sort:{key:'', dir:1} };
+// Sort keys for the desktop Student Search table. Youth/Lifegroup sort by
+// this-term % only (last-term is a comparison, not sorted on); Status sorts
+// worst-first (stopped/declining ahead of stable/rising) so a click surfaces
+// students needing attention.
+const _STUD_STATUS_ORDER = { stopped:0, declining:1, mixed:2, stable:3, rising:4 };
+const _STUD_SORT_KEYS = {
+  name: s => `${s.firstName} ${s.lastName}`.trim().toLowerCase(),
+  gr: s => s.grade == null ? -1 : s.grade,
+  gender: s => (s.gender || '').toLowerCase(),
+  dob: s => s.dateOfBirth || '',
+  youth: s => s.svcTotal > 0 ? s.svcAttended / s.svcTotal : -1,
+  lifegroup: s => s.grpTotal > 0 ? s.grpAttended / s.grpTotal : -1,
+  status: s => { const c = _STUD_STATUS_ORDER[attendQual(s).category]; return c == null ? 3 : c; },
+};
+function _sortedStudents(vis) {
+  const { key, dir } = _sS.sort;
+  const f = _STUD_SORT_KEYS[key];
+  if (!f) return vis;
+  return vis.slice().sort((a, b) => { const av = f(a), bv = f(b); return av < bv ? -dir : av > bv ? dir : 0; });
+}
+function _sortArrow(key) { return _sS.sort.key === key ? (_sS.sort.dir === 1 ? ' ▲' : ' ▼') : ''; }
+function sortStud(key) {
+  _sS.sort = { key, dir: _sS.sort.key === key ? -_sS.sort.dir : 1 };
+  const res = document.getElementById('stu-results');
+  if (res) res.innerHTML = _studentResultsHtml(_visStudents());
+}
 
 const STUDENTS_PATHS = ['/students', '/leaders'];
 let _studentsRevalidating = false;
@@ -3070,8 +3111,9 @@ function _visStudents() {
 // keystroke WITHOUT rebuilding the search input, so the cursor never jumps.
 function _studentResultsHtml(vis) {
   if (!vis.length) return `<div class="empty">${icEmpty('id')}<div class="empty-title">No students found</div></div>`;
+  const sorted = _sortedStudents(vis);
   let h = '<div class="mob">';
-  for (const s of vis) {
+  for (const s of sorted) {
     const pct = svcPct(s);
     h += `<div class="li" onclick="showStudentDetail('${s.id}')" style="cursor:pointer">
       <div class="li-body">
@@ -3087,8 +3129,9 @@ function _studentResultsHtml(vis) {
     </div>`;
   }
   h += '</div>';
-  h += `<div class="desk"><table class="dt"><thead><tr><th>Name</th><th>Gr</th><th>Gender</th><th>DOB</th><th>Quad</th><th>Youth (this / last)</th><th>Lifegroup (this / last)</th><th>Status</th><th></th></tr></thead><tbody>`;
-  for (const s of vis) {
+  const sh = (key, label) => `<th onclick="sortStud('${key}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}${_sortArrow(key)}</th>`;
+  h += `<div class="desk"><table class="dt"><thead><tr>${sh('name','Name')}${sh('gr','Gr')}${sh('gender','Gender')}${sh('dob','DOB')}${sh('youth','Youth (this / last)')}${sh('lifegroup','Lifegroup (this / last)')}${sh('status','Status')}<th></th></tr></thead><tbody>`;
+  for (const s of sorted) {
     const pct = svcPct(s);
     const psvc = s.prevSvcTotal > 0 ? Math.round(s.prevSvcAttended / s.prevSvcTotal * 100) + '%' : '—';
     const gp = s.grpTotal > 0 ? Math.round(s.grpAttended / s.grpTotal * 100) + '%' : '—';
@@ -3097,7 +3140,6 @@ function _studentResultsHtml(vis) {
       <td><strong>${esc(s.firstName)} ${esc(s.lastName)}</strong></td>
       <td>${s.grade||'—'}</td><td>${s.gender}</td>
       <td>${fmtBday(s.dateOfBirth) || '—'}</td>
-      <td>${quadChip(s.quad)}</td>
       <td>${pct!==null?pct+'%':'—'} <span style="color:var(--ink-faint)">/ ${psvc}</span></td>
       <td>${gp} <span style="color:var(--ink-faint)">/ ${pgp}</span></td>
       <td>${qualChips(s) || '<span style="color:var(--ink-faint)">—</span>'}</td>
@@ -3246,7 +3288,7 @@ async function showStudentDetail(id) {
     ${s.mobile||s.parentPhone?`
     <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px">
       ${s.mobile?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}</div>`:''}
-      ${s.parentPhone?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName)}</div>`:''}
+      ${s.parentPhone?`<div style="font-size:14px"><span style="color:var(--ink-mid);font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}</div>`:''}
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -4867,7 +4909,7 @@ function model(){
     const stage=x.team?5:1;
     people.push({id:'cax-'+h32(k),name:x.name,s:null,caOnly:true,stage,trend:'stable',score:scoreOf(stage,null,'stable'),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team});
   }
-  const rungs=[[1,'First contact'],[2,'Came to Youth'],[3,'Regular'],[4,'Attended a lifegroup this term'],[5,'Student team']]
+  const rungs=[[1,'Interacted'],[2,'Came to Youth'],[3,'Regular'],[4,'Attended a lifegroup this term'],[5,'Student team']]
     .map(([n,lb])=>({n,lb,v:people.filter(p=>p.stage>=n).length}));
   // KPIs
   const act=students.filter(s=>s.sA>0).length;
@@ -4981,7 +5023,7 @@ function rOverview(){
     +'</div>';
   const max=m.rungs[0].v||1;
   const cols=['#0a0a2e','#1414a0','#1a1af2','#5b5bf7','#9a9afb'];
-  b+='<div class="card"><div class="ca-ct">Integration ladder</div>'+m.rungs.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round(r.v/max*100))+'%;background:'+cols[i]+'">'+r.v+'</div></div></div>').join('')+'</div>';
+  b+='<div class="card"><div class="ca-ct">Integration ladder</div>'+m.rungs.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+(i===0?' '+helpTip('Everyone who attended a service, attended a lifegroup, or submitted a New Connect/Decision form.'):'')+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round(r.v/max*100))+'%;background:'+cols[i]+'">'+r.v+'</div></div></div>').join('')+'</div>';
   const row=(g,chip)=>'<div class="ca-alr" onclick="CA.showGroup(\''+g.id+'\')"><div style="font-size:.78rem;font-weight:600">'+esc(g.name)+'</div>'+chip+'</div>';
   const hasTrend=m.groups.some(g=>g.trendPct!==0);
   const tops=m.groups.filter(g=>g.active>0).slice().sort((a,b)=>hasTrend?(b.trendPct-a.trendPct||b.active-a.active):(b.active-a.active||b.va-a.va)).slice(0,2);
@@ -5037,7 +5079,7 @@ function rFunnel(){
   const qc={};for(const p of stuck){const q=p.s&&p.s.quad;if(q)qc[q]=(qc[q]||0)+1;}
   const worst=Object.entries(qc).sort((a,b)=>b[1]-a[1])[0];
   let b='';
-  b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run First contact, Youth, Regular, Lifegroup, then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
+  b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run Interacted, Youth, Regular, Lifegroup, then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
   b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+(QLBL[worst[0]]||worst[0])+' ('+worst[1]+').':'')+'</div></div>';
   b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
   if(FQ){
@@ -5138,7 +5180,10 @@ function showGroup(id){
   h+='<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>';
   modal(h);
 }
-const STG={0:'No data',1:'First contact',2:'Youth',3:'Regular',4:'Lifegroup',5:'Student team'};
+const STG={0:'No data',1:'Interacted',2:'Youth',3:'Regular',4:'Lifegroup',5:'Student team'};
+// Compact per-student badge label (People tab list + person detail popup) — a
+// shorter set of words than STG, e.g. "1 - Interacted" instead of "Stage 1 · Interacted".
+const STG_SHORT={0:'No data',1:'Interacted',2:'Youth',3:'Regular',4:'Lifegroup',5:'S-Team'};
 function plist(){
   const m=model();
   let list;
@@ -5150,7 +5195,7 @@ function plist(){
   let b='';
   for(const p of list.slice(0,PF.cap)){
     const s=p.s;
-    const stChip='<span class="chip '+(p.stage>=4?'c-success':p.stage>0?'c-accent':'c-neutral')+'">Stage '+p.stage+' · '+STG[p.stage]+'</span>';
+    const stChip='<span class="chip '+(p.stage>=4?'c-success':p.stage>0?'c-accent':'c-neutral')+'">'+p.stage+' - '+STG_SHORT[p.stage]+'</span>';
     const meta=s?'<span style="font-size:.72rem;color:var(--ca-muted)">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>';
     const declChip=p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'';
     const tail=s
@@ -5185,7 +5230,7 @@ function showPerson(id){
   const cons=s&&s.sT>0?Math.round(10*s.sA/s.sT):0;
   const tm=p.trend==='rising'?5:p.trend==='declining'?-10:0;
   let h='<div style="font-size:1rem;font-weight:800;margin-bottom:6px">'+esc(p.name)+'</div>';
-  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+(s?'<span class="chip c-neutral">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>')+'<span class="chip c-accent">Stage '+p.stage+' · '+STG[p.stage]+'</span>'+(p.trend==='rising'?'<span class="chip c-success">▲ Rising</span>':p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'')+'</div>';
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+(s?'<span class="chip c-neutral">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>')+'<span class="chip c-accent">'+p.stage+' - '+STG_SHORT[p.stage]+'</span>'+(p.trend==='rising'?'<span class="chip c-success">▲ Rising</span>':p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'')+'</div>';
   h+='<div class="card" style="margin-bottom:10px"><div class="ca-ct">Score · '+p.score+'</div><div style="font-size:.74rem;line-height:1.8;color:var(--ca-muted)">Stage base <b style="color:var(--ca-ink)">'+base+'</b> · Consistency <b style="color:var(--ca-ink)">+'+cons+'</b>'+(s&&s.sT?' ('+s.sA+'/'+s.sT+' Youth)':'')+' · Trend <b style="color:var(--ca-ink)">'+(tm>=0?'+':'')+tm+'</b></div></div>';
   const ev=[];
   if(p.connect)ev.push(['Connect card',p.connect]);
@@ -5393,7 +5438,7 @@ function _buildDeckBody(){
   const bigNumViz=(num,cap)=>'<div class="bignum"><b>'+num+'</b><span>'+esc(cap)+'</span></div>';
   const quadFunnelViz=()=>{
     const QUADS=[['g79','Girls Yr 7–9'],['b79','Boys Yr 7–9'],['g1012','Girls Yr 10–12'],['b1012','Boys Yr 10–12']];
-    const RLBL=['First contact','Came to Youth','Regular','Attended a lifegroup','Student Team'];
+    const RLBL=['Interacted','Came to Youth','Regular','Attended a lifegroup','Student Team'];
     const cells=QUADS.map(([q,ql])=>{
       const qp=m.people.filter(p=>p.s&&p.s.quad===q);
       if(!qp.length)return '<div class="qfcell"><div class="qfl">'+esc(ql)+'</div><p class="muted" style="font-size:.82rem">No data</p></div>';
@@ -5523,7 +5568,7 @@ function _buildDeckBody(){
       title:'How these numbers are built',
       core:'So you can trust them — and challenge them.',
       args:[
-        'Ladder: 1 First contact (connect/decision record) · 2 Came to Youth · 3 Regular (≥'+rrPct+'% of Youth nights) · 4 Attended a lifegroup (≥1 this term) · 5 Student Team. Each rung counts people at that stage or beyond.',
+        'Ladder: 1 Interacted (attended a service, attended a lifegroup, or submitted a connect/decision record) · 2 Came to Youth · 3 Regular (≥'+rrPct+'% of Youth nights) · 4 Attended a lifegroup (≥1 this term) · 5 Student Team. Each rung counts people at that stage or beyond.',
         'Personal trend compares each student’s current-term attendance rate with their previous-term rate (students tracked both terms); cohort trend does the same per grade × gender.',
         'Youth and lifegroup attendance are part of the same audit snapshot as the uploads below — a frozen, year-keyed record computed when the audit was last saved, not a live feed. '+currency,
         'Names in uploads are matched to platform students; unmatched names are tracked as audit-only people. The whole audit — Youth and lifegroup attendance plus Student Team, Connect and Decision uploads — is stored server-side as one snapshot for the year.'
