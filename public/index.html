@@ -837,7 +837,18 @@ function _initShell() {
 }
 
 function _prefetch() {
-  ['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'].forEach(p => API.get(p).catch(() => {}));
+  // Firing all 8 at once (plus Home's own /connections/leader/:id/followup call)
+  // meant a single login could momentarily demand ~9 requests' worth of concurrent
+  // DB connections at once — a self-inflicted burst against the free-tier Supavisor
+  // pool that showed up as connection-acquisition timeouts even with just one user
+  // logged in. Staggering into small batches spreads that demand out over ~300ms,
+  // which is invisible to the user (these are background prefetches) but cuts the
+  // peak simultaneous connection count several-fold.
+  const paths = ['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'];
+  const BATCH_SIZE = 3, BATCH_GAP_MS = 150;
+  paths.forEach((p, i) => {
+    setTimeout(() => API.get(p).catch(() => {}), Math.floor(i / BATCH_SIZE) * BATCH_GAP_MS);
+  });
 }
 
 // ============================================================
