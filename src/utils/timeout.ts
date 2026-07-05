@@ -13,7 +13,14 @@ export class RequestTimeoutError extends Error {
   }
 }
 
-export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+// Optional escalation beyond cancelling individual queries — e.g. destroying the
+// underlying DB connection outright, for backends where a soft per-query cancel
+// isn't enough to stop a request queuing behind a stuck connection. Left generic
+// (no persistence-specific import here) — the caller wires in whatever "give up on
+// this connection" means for its backend.
+export type TimeoutHook = () => void;
+
+export function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout?: TimeoutHook): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       // Just rejecting here used to leave the route's DB queries running: with only
@@ -23,8 +30,12 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       // dispatched but not actually sent for ~5s, and a driver-level "Unknown Message"
       // protocol desync) — turning one slow request into a pile-up across unrelated
       // endpoints. Cancelling sends a real Postgres cancel request and frees the
-      // connection instead of abandoning it.
+      // connection instead of abandoning it. That alone still isn't enough for a
+      // query queued behind another one on the same connection (cancel() only
+      // soft-marks it there) — onTimeout lets the caller escalate to actually
+      // destroying the connection.
       for (const q of requestContext.getStore()?.pendingQueries ?? []) q.cancel();
+      onTimeout?.();
       reject(new RequestTimeoutError(ms));
     }, ms);
     promise.then(
