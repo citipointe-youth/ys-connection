@@ -577,7 +577,12 @@ const API = (() => {
     const timer = setTimeout(() => ac.abort(new Error('Request timed out')), timeoutMs || 25000);
     try {
       const res = await fetch(path, { method, headers: hdr(), signal: ac.signal, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || e.error || res.statusText || 'Request failed'); }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        const err = new Error(e.message || e.error || res.statusText || 'Request failed');
+        err.status = res.status;
+        throw err;
+      }
       return res.json();
     } finally {
       clearTimeout(timer);
@@ -592,7 +597,14 @@ const API = (() => {
       const cached = Cache.get(p);
       if (cached !== null) return Promise.resolve(cached);
       if (_inflight.has(p)) return _inflight.get(p);
-      const promise = r('GET', p).then(data => { Cache.set(p, data); _inflight.delete(p); return data; }).catch(err => { _inflight.delete(p); throw err; });
+      // A 503 here is the server's own request-timeout guard (a slow/cold DB connection
+      // acquisition, not a real data or permission error) — explicitly retryable, and a
+      // retry right after almost always succeeds. Retry once, transparently, before
+      // surfacing a failure (GET only: safe to retry since reads are idempotent).
+      const promise = r('GET', p)
+        .catch(err => (err.status === 503 ? r('GET', p) : Promise.reject(err)))
+        .then(data => { Cache.set(p, data); _inflight.delete(p); return data; })
+        .catch(err => { _inflight.delete(p); throw err; });
       _inflight.set(p, promise);
       return promise;
     },
