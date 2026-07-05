@@ -13,8 +13,15 @@ import { generateId } from '../../utils/id';
 
 const logger = createLogger('http');
 
-// 10 attempts per IP per 15 minutes
-const loginRateLimiter = new RateLimiter(10, 15 * 60 * 1000);
+// Login throttle: 30 attempts per 15 minutes, keyed by IP+account (see the login
+// block below) — NOT by raw IP. The real deployment is 30-40 leaders on one shared
+// church/school network (a single public IP via NAT); a per-raw-IP cap of 10 meant
+// the whole team collectively got 10 logins per 15 minutes and everyone past that
+// was locked out for 15 min (the 429s seen during the 2026-07 incident). Keying by
+// IP+account gives each login its own bucket so a shared IP isn't pooled, while
+// still capping brute-force against any one account. In-memory per instance — this
+// is best-effort throttling, not a hard security boundary (that's password + JWT).
+const loginRateLimiter = new RateLimiter(30, 15 * 60 * 1000);
 
 // A stalled DB connection can hang a request indefinitely — Postgres's own
 // statement_timeout only protects a query that has actually started executing, not
@@ -97,11 +104,17 @@ export function createApp(routes: Route[], authService: AuthService, onRouteTime
       // Remove once the incident's root cause is confirmed and fixed.
       logger.info(`[reqtiming] ${reqId} ${routeLabel} start`);
       try {
-        // Rate-limit login attempts by IP
+        // Throttle login attempts per account, keyed by IP+email (not raw IP) so a
+        // whole youth team behind one shared NAT/public IP isn't collectively capped.
+        // Falls back to IP-only if the email is missing (malformed request).
         if (route.path === '/auth/login' && route.method === 'POST') {
           const ip = req.ip ?? req.headers['x-forwarded-for']?.toString() ?? 'unknown';
-          if (loginRateLimiter.isBlocked(ip)) {
-            res.status(429).setHeader('Retry-After', String(loginRateLimiter.retryAfterSeconds(ip)));
+          const email = typeof (req.body as { email?: unknown })?.email === 'string'
+            ? (req.body as { email: string }).email.toLowerCase().trim()
+            : '';
+          const rlKey = email ? `${ip}:${email}` : ip;
+          if (loginRateLimiter.isBlocked(rlKey)) {
+            res.status(429).setHeader('Retry-After', String(loginRateLimiter.retryAfterSeconds(rlKey)));
             res.json({ code: 'RATE_LIMITED', message: 'Too many login attempts. Try again later.' });
             return;
           }
