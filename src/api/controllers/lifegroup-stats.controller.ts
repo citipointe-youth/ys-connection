@@ -8,10 +8,5 @@ export function makeLifegroupStatsController(deps: { lifegroupStats: LifegroupSt
       if (!req.ctx) throw new UnauthorizedError();
       return deps.lifegroupStats.get(req.ctx);
     },
-
-    async getMembers(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
-      return deps.lifegroupStats.getMembers(req.ctx, req.params['id']!);
-    },
   };
 }

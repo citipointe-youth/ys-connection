@@ -86,7 +86,6 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Trends -----
     { method: 'GET', path: '/trends', auth: true, handler: (r) => trends.get(r) },
     { method: 'GET', path: '/lifegroups/stats', auth: true, handler: (r) => lifegroupStats.get(r) },
-    { method: 'GET', path: '/lifegroups/:id/members', auth: true, handler: (r) => lifegroupStats.getMembers(r) },
 
     // ----- Import -----
     { method: 'POST',   path: '/import/csv',          auth: true, handler: (r) => importCtrl.importCsv(r) },

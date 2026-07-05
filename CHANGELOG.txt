@@ -4,6 +4,18 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+REMOVE LIFEGROUP "WHO ATTENDED" CLICK-THROUGH FROM MAIN APP  (2026-07-05)
+-------------------------------------------------------------------------------
+- Removed the "click a lifegroup to see who attended" popup from the Home
+  lifegroup dropdowns and the main Trends lifegroup tab (added 2026-07-04) -
+  it wasn't a useful part of the workflow there and its per-click endpoint
+  re-fetched full attendance tables on every click, adding load to Home/Trends.
+- Deleted the now-unused GET /lifegroups/:id/members route and service method.
+- Left untouched: Connection Audit's own Lifegroup Health tab, which reads
+  attendee rosters from the already-loaded audit snapshot (no live fetch) -
+  the capability still lives there, where it was originally ported from.
+
+-------------------------------------------------------------------------------
 CONNECTION AUDIT FIXES  (2026-07-04)
 -------------------------------------------------------------------------------
 - Fixed quad role-tip: quads fully manage leaders/connections in their

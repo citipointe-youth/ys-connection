@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { makeLifegroupStatsService } from '../services/lifegroup-stats.service';
-import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
 import { makeImportService } from '../services/import.service';
 import {
   InMemoryStudentRepository,
@@ -222,35 +221,5 @@ describe('Lifegroup Stats Service', () => {
     expect(grade9.current.uniqueAttenders).toBe(1);
     const b79 = data.byQuad.find((q) => q.quad === 'b79')!;
     expect(b79.grades.find((g) => g.grade === 9)!.lifegroups.map((l) => l.name)).toEqual(['Grade 9 Boys Lifegroup']);
-  });
-
-  describe('getMembers', () => {
-    it('returns per-student attendance detail for the current term, sorted by attended desc', async () => {
-      const { statsSvc } = await setup();
-      const data = await statsSvc.get(ADMIN);
-      const lg = data.byGrade.find((g) => g.grade === 9)!.lifegroups[0]!;
-
-      const members = await statsSvc.getMembers(ADMIN, lg.lifegroupId);
-      expect(members.map((m) => `${m.firstName} ${m.lastName}`)).toEqual(['Amy A', 'Bea B']);
-      const amy = members.find((m) => m.firstName === 'Amy')!;
-      expect(amy.attended).toBe(2);
-      expect(amy.total).toBe(2);
-      const bea = members.find((m) => m.firstName === 'Bea')!;
-      expect(bea.attended).toBe(1);
-      expect(bea.total).toBe(2);
-    });
-
-    it('throws NotFoundError for an unknown lifegroup id', async () => {
-      const { statsSvc } = await setup();
-      await expect(statsSvc.getMembers(ADMIN, 'nope')).rejects.toBeInstanceOf(NotFoundError);
-    });
-
-    it('rejects a grade login trying to view a lifegroup outside their grade', async () => {
-      const { statsSvc } = await setup();
-      const data = await statsSvc.get(ADMIN);
-      const lg = data.byGrade.find((g) => g.grade === 9)!.lifegroups[0]!;
-      const grade7Actor: Actor = { id: 'g7', role: 'grade', displayName: 'G7', grade: 7, quad: null };
-      await expect(statsSvc.getMembers(grade7Actor, lg.lifegroupId)).rejects.toBeInstanceOf(ForbiddenError);
-    });
   });
 });

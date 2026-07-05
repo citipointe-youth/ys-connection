@@ -3269,34 +3269,11 @@ function _lgPrevBits(a) {
 }
 // One lifegroup detail row (per-grade dropdown content).
 function _lgGroupRow(lg, showPrev) {
-  const nm = String(lg.name).replace(/'/g, "\\'");
-  return `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px;cursor:pointer" onclick="_showLgMembers('${lg.lifegroupId}','${nm}')">
+  return `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
     <div style="font-size:13px;font-weight:600;margin-bottom:2px">${esc(lg.name)}</div>
     <div style="font-size:12px;color:var(--ink-mid)">${_lgAggBits(lg.current)}</div>
     ${showPrev ? _lgPrevBits(lg.previous) : ''}
   </div>`;
-}
-// Click a named lifegroup row → who attended, current term only.
-async function _showLgMembers(id, name) {
-  modal(`<div class="mo-title">${esc(name)}</div><div style="text-align:center;padding:20px;color:var(--ink-faint);font-size:13px">Loading…</div>`);
-  let members;
-  try { members = await API.get('/lifegroups/' + id + '/members'); }
-  catch {
-    modal(`<div class="mo-title">${esc(name)}</div><div style="padding:10px 0;color:var(--ink-faint);font-size:13px">Couldn't load attendees.</div><button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
-    return;
-  }
-  let h = `<div class="mo-title">${esc(name)}</div>`;
-  if (!members.length) {
-    h += `<div style="padding:10px 0;color:var(--ink-faint);font-size:13px">No attendees this term</div>`;
-  } else {
-    h += `<div style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch">`;
-    for (const m of members) {
-      h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--paper-dark)"><div style="font-size:14px;font-weight:600">${esc(m.firstName + ' ' + m.lastName)}</div><div style="font-size:12px;color:var(--ink-mid)">${m.attended}/${m.total} lifegroup</div></div>`;
-    }
-    h += `</div>`;
-  }
-  h += `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>`;
-  modal(h);
 }
 // A grade block as a pre-rendered collapsible (.drop). `id` must be unique on the
 // page; the lifegroups are rendered hidden and toggled in-DOM (no re-render).

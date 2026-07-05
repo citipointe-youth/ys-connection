@@ -612,6 +612,22 @@ logs showed this wasn't a chronic drip — every failure (7×503 + 1×504) clust
 New tests: `src/tests/overview.service.test.ts` (cache hit + invalidation), plus a case in
 `import.service.test.ts` asserting leader saves go through `saveMany` once, not `save()` N times.
 
+### Removed "click a lifegroup → see who attended" from the main app (2026-07-05)
+
+The feature added the day before (Home lifegroup dropdowns + the main Trends lifegroup tab)
+was pulled back out: it wasn't a useful part of the workflow there, and `getMembers` was
+**self-contained and per-click** — every click re-fetched full `students`/`lifegroupWeeks`/
+`lifegroupAttendance`/`sessions` tables and recomputed term boundaries from scratch rather than
+sharing `get()`'s cached closure, so it was a real (if intermittent) load spike on Home/Trends,
+consistent with the slowness reports.
+- `GET /lifegroups/:id/members` route, `LifegroupStatsService.getMembers`, and the controller
+  method are deleted (dead once the only caller was removed). `_lgGroupRow` (Home/Trends) is
+  back to a plain, non-clickable row.
+- **Connection Audit's own Lifegroup Health tab is untouched** — it never called this endpoint.
+  `CA.showLgRoster()` reads `roster` straight off the loaded audit snapshot (already in memory),
+  so the "who attended" capability still lives there, which is where it was ported from
+  originally.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, emails, notification title/message,
