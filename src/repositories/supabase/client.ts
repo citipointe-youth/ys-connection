@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { env } from '../../config/env';
+import { requestContext } from '../../utils/request-context';
 
 export type SqlClient = ReturnType<typeof postgres>;
 
@@ -47,6 +48,19 @@ export function getSqlClient(): SqlClient {
       connect_timeout: 10, // fail fast if the DB doesn't respond (cold starts can be slow)
       connection: {
         statement_timeout: 15000,  // kill any query running > 15s (prevents indefinite hangs)
+      },
+      // TEMP DIAGNOSTIC (2026-07-05, active 503/timeout incident — see plannedupdate.md):
+      // `debug` fires only once a query has been handed to a physical connection and is
+      // about to go out on the wire — i.e. AFTER any wait for a free pool slot / new
+      // connection. Comparing this timestamp against the request-start log in
+      // express-adapter.ts tells us whether a slow request stalled acquiring a
+      // connection (big gap here) or executing/transferring the query (small gap here,
+      // long gap before the route's own "done" log). Never logs `parameters` — those
+      // are bound query values (names, phone numbers) and must not hit logs.
+      debug: (connectionId, query) => {
+        const store = requestContext.getStore();
+        const tag = store ? `${store.id} ${store.route} +${Date.now() - store.start}ms` : 'no-request-ctx';
+        console.log(`[db-dispatch] conn=${connectionId} ${tag} :: ${query.slice(0, 80)}`);
       },
     });
   }

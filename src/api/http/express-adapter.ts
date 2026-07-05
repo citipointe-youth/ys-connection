@@ -8,6 +8,8 @@ import { UnauthorizedError } from '../../core/errors/app-error';
 import { createLogger } from '../../utils/logger';
 import { RateLimiter } from '../../utils/rate-limiter';
 import { withTimeout } from '../../utils/timeout';
+import { requestContext } from '../../utils/request-context';
+import { generateId } from '../../utils/id';
 
 const logger = createLogger('http');
 
@@ -85,6 +87,15 @@ export function createApp(routes: Route[], authService: AuthService): Express {
       // API + export responses can carry personal/medical-adjacent data — never let a browser
       // or proxy cache them. Static assets are served by express.static above and stay cacheable.
       res.setHeader('Cache-Control', 'no-store');
+      const reqId = generateId().slice(0, 8);
+      const routeLabel = `${route.method} ${route.path}`;
+      const store = { id: reqId, route: routeLabel, start: Date.now() };
+      await requestContext.run(store, async () => {
+      // TEMP DIAGNOSTIC (2026-07-05, active 503/timeout incident — see plannedupdate.md):
+      // pairs with the debug hook in repositories/supabase/client.ts to show whether a
+      // slow request is stuck waiting for a DB connection or actually executing a query.
+      // Remove once the incident's root cause is confirmed and fixed.
+      logger.info(`[reqtiming] ${reqId} ${routeLabel} start`);
       try {
         // Rate-limit login attempts by IP
         if (route.path === '/auth/login' && route.method === 'POST') {
@@ -106,14 +117,17 @@ export function createApp(routes: Route[], authService: AuthService): Express {
           body: req.body,
         };
 
-        const untimed = UNTIMED_ROUTES.has(`${route.method} ${route.path}`);
+        const untimed = UNTIMED_ROUTES.has(routeLabel);
         const result = untimed
           ? await route.handler(httpReq)
           : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
+        logger.info(`[reqtiming] ${reqId} ${routeLabel} done in ${Date.now() - store.start}ms`);
         res.json(result);
       } catch (err) {
+        logger.info(`[reqtiming] ${reqId} ${routeLabel} failed in ${Date.now() - store.start}ms: ${err instanceof Error ? err.message : String(err)}`);
         sendError(res, err);
       }
+      });
     });
   }
 
