@@ -23,18 +23,17 @@ let _realClient: SqlClient | undefined;
 function createRealClient(): SqlClient {
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required when PERSISTENCE=supabase');
   return postgres(env.DATABASE_URL, {
-    // Pool size per serverless instance. Restored to 5 (from the incident-era max:2)
-    // to match the sister Youth Camp Platform, which runs max:5 on the same free-tier
-    // Supavisor pool at comparable scale with no timeout machinery and no contention
-    // problems. max:2 was too small for CMS's per-page fan-out: live [db-dispatch]
-    // traces (2026-07-05) showed a request's own queries dispatching 15-19s late
-    // because only 2 could be in-flight per instance while the rest queued —
-    // head-of-line blocking that then tripped the 20s route timeout. A warm instance
-    // multiplexes concurrent requests, so 2 connections choke a Home/Trends load that
-    // fans out 5-9 requests each issuing several queries; 5 gives them room. The
-    // transaction pooler multiplexes, and warm-instance reuse (not one cold Lambda per
-    // user) keeps real simultaneous backend connections well under the 60 ceiling.
-    max: 5,
+    // Pool size per serverless instance. Kept SMALL on purpose. The binding limit on
+    // the free tier is Supavisor's CLIENT-connection cap (EMAXCONN, limit 200), and
+    // under a concurrent burst Vercel spins up many serverless instances at once — so
+    // total pooler connections = (instances) x (max). A load test (2026-07-05) at
+    // ~10-30 simultaneous Home loads hit `(EMAXCONN) max client connections reached,
+    // limit: 200` and failed fast; raising max from 2->5 made it hit the ceiling
+    // sooner, not later. Every extra connection per instance is multiplied across
+    // every warm instance, so this stays low. The real fix for the target concurrency
+    // is architectural (fewer requests per page / fewer queries per request), not a
+    // bigger pool — see the incident notes in CLAUDE.md.
+    max: 2,
     prepare: false,
     // idle_timeout/max_lifetime were tuned low (30s/60s) specifically to recycle
     // connections quickly, but that means even a warm, actively-used Lambda
