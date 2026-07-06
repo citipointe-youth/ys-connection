@@ -4912,7 +4912,12 @@ function model(){
   }
   for(const[k,x]of marks){
     if(byName.has(k))continue;
-    const stage=x.team?5:1;
+    // No matching platform student means no gA to check, so — unlike the loop above —
+    // there's no way to confirm a Team-roster name here is currently in a lifegroup.
+    // Capped at 1 rather than an unverified 5, so this can never inflate rung 4 past
+    // the "In a lifegroup" tile (which only ever sums matched students). `team` stays
+    // true regardless, so the person-detail Journey popup still shows them as team.
+    const stage=1;
     people.push({id:'cax-'+h32(k),name:x.name,s:null,caOnly:true,stage,trend:'stable',score:scoreOf(stage,null,'stable'),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team});
   }
   const rungs=[[1,'Interacted'],[2,'Came to Youth'],[3,'Regular'],[4,'Attended a lifegroup this period'],[5,'Student team']]

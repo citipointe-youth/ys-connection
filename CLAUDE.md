@@ -953,11 +953,12 @@ pooler during the incident. Watch the connection count during a real session ins
   the person-detail "Journey" popup and the executive brief's `teamN`, now computed directly as
   `m.people.filter(p=>p.team).length` instead of the old `atLeast(5)`) still reflects true team
   roster membership regardless of this reclassification, so "how many serve on Student Team"
-  in the executive brief is unaffected. **Known residual edge case, not fixed**: an audit-only
+  in the executive brief is unaffected. **Edge case closed on request**: an audit-only
   team-roster entry with no matching platform student (`caOnly` people, `s===null`) has no `gA`
-  to check at all, so it's still promoted to stage 5 unconditionally — a rare case (an unmatched
-  name in the Team CSV) and one the "In a lifegroup" tile never counted anyway (it only sums
-  over matched `students`), so it doesn't reproduce the reported discrepancy.
+  to check at all, so it used to still be promoted to stage 5 unconditionally. Capped at stage 1
+  instead (there's no way to confirm they're currently in a lifegroup), so rung 4 can never run
+  ahead of the "In a lifegroup" tile even with an unmatched Team CSV name. `team:true` is
+  unaffected, so they still show as team in the person-detail Journey popup and in `teamN`.
 
 ## Security notes
 
