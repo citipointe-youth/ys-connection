@@ -38,3 +38,9 @@ export class ConflictError extends AppError {
     super('CONFLICT', message, 409);
   }
 }
+
+export class MustChangePasswordError extends AppError {
+  constructor(message = 'Password must be changed before continuing') {
+    super('MUST_CHANGE_PASSWORD', message, 403);
+  }
+}

@@ -54,8 +54,8 @@ export function buildRoutes(services: Services): Route[] {
 
     // ----- Auth -----
     { method: 'POST', path: '/auth/login',  auth: false, handler: (r) => auth.login(r) },
-    { method: 'GET',  path: '/auth/me',     auth: true,  handler: (r) => auth.me(r) },
-    { method: 'POST', path: '/auth/logout', auth: true,  handler: (r) => auth.logout(r) },
+    { method: 'GET',  path: '/auth/me',     auth: true,  allowMustChangePassword: true, handler: (r) => auth.me(r) },
+    { method: 'POST', path: '/auth/logout', auth: true,  allowMustChangePassword: true, handler: (r) => auth.logout(r) },
 
     // ----- Overview -----
     { method: 'GET', path: '/overview', auth: true, handler: (r) => overview.stats(r) },
@@ -128,7 +128,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/accounts/users',               auth: true, handler: (r) => account.create(r) },
     { method: 'PATCH',  path: '/accounts/users/:id',           auth: true, handler: (r) => account.update(r) },
     { method: 'POST',   path: '/accounts/users/password',      auth: true, handler: (r) => account.setPassword(r) },
-    { method: 'POST',   path: '/accounts/me/password',         auth: true, handler: (r) => account.changeOwnPassword(r) },
+    { method: 'POST',   path: '/accounts/me/password',         auth: true, allowMustChangePassword: true, handler: (r) => account.changeOwnPassword(r) },
     { method: 'PATCH',  path: '/accounts/users/:id/status',    auth: true, handler: (r) => account.toggleStatus(r) },
     { method: 'DELETE', path: '/accounts/users/:id',           auth: true, handler: (r) => account.remove(r) },
 

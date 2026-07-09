@@ -498,3 +498,33 @@ IMPORT-HISTORY CLEAR FIX + ELVANTO EXPORT GUIDES  (2026-07-03)
   * Steps flick via Back/Next, dots, or touch swipe; screenshots tap-to-zoom
     (220% width, horizontal scroll) for phones. Images in
     public/img/export-help/. sw.js cms-v14 -> cms-v15.
+
+-------------------------------------------------------------------------------
+FORCED PASSWORD CHANGE FOR SEEDED ACCOUNTS  (2026-07-09)
+-------------------------------------------------------------------------------
+- A privacy/security audit of the public GitHub repo found that
+  002_seed_admin.sql / 005_seed_users.sql and CLAUDE.md documented a shared
+  default password in plaintext next to the real seeded account emails
+  (admin, director, 4 quad, 12 grade). Anyone reading the public repo had a
+  same-day login to those accounts if the password had never been changed.
+- Added User/Actor.mustChangePassword, embedded in the signed session token
+  (auth.service.ts toActor()) and enforced in express-adapter.ts: any route
+  without allowMustChangePassword: true 403s (MUST_CHANGE_PASSWORD) for a
+  flagged actor. Only /auth/me, /auth/logout, and /accounts/me/password are
+  allowlisted. changeOwnPassword() is the only path that clears it; create()
+  defaults new admin-created accounts to false (scope is deliberately the
+  historically-seeded accounts only, not every admin-set password).
+- Frontend mirrors this: render() shows a full-page renderMustChangePassword()
+  instead of the normal app shell for a flagged S.user.
+- Migration 017_must_change_password.sql adds the column (default false — does
+  not retroactively affect any other row) and flags the specific seeded
+  emails, matching both the original seed convention (grade7f/grade7m) and the
+  renamed convention documented in CLAUDE.md (grade7g/grade7b), since account
+  emails are editable and may have been renamed since seeding. Applied to
+  production 2026-07-09: 0 of the then-current 20 production accounts matched
+  (none use the @youth.ministry seed domain), so this specifically protects
+  any future fresh install/reseed, not any account already renamed away from
+  that domain in this deployment.
+- Removed the plaintext default-password callouts from CLAUDE.md and the
+  002/005 migration comments; the seed account email/role table stays (not
+  sensitive by itself).

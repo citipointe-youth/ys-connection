@@ -14,6 +14,7 @@ function toUser(row: Record<string, unknown>): User {
     quad: (row['quad'] as Quad | null) ?? null,
     status: row['status'] as 'active' | 'inactive',
     passwordHash: (row['password_hash'] as string | null) ?? undefined,
+    mustChangePassword: (row['must_change_password'] as boolean | null) ?? false,
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -48,7 +49,7 @@ export class SupabaseUserRepository implements IUserRepository {
 
   async save(user: User): Promise<User> {
     const rows = await this.sql`
-      insert into users (id, display_name, email, role, grade, quad, status, password_hash, created_at, updated_at)
+      insert into users (id, display_name, email, role, grade, quad, status, password_hash, must_change_password, created_at, updated_at)
       values (
         ${user.id},
         ${user.displayName},
@@ -58,6 +59,7 @@ export class SupabaseUserRepository implements IUserRepository {
         ${user.quad ?? null},
         ${user.status},
         ${user.passwordHash ?? null},
+        ${user.mustChangePassword ?? false},
         ${user.createdAt},
         ${user.updatedAt}
       )
@@ -69,6 +71,7 @@ export class SupabaseUserRepository implements IUserRepository {
         quad         = excluded.quad,
         status       = excluded.status,
         password_hash = excluded.password_hash,
+        must_change_password = excluded.must_change_password,
         updated_at   = excluded.updated_at
       returning *
     `;

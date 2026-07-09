@@ -1,9 +1,14 @@
--- Pre-seed all ministry user accounts with default password: demo1234
--- All accounts are created with ON CONFLICT DO NOTHING so this is safe to
--- re-run and will not overwrite passwords that have already been changed.
+-- Pre-seed all ministry user accounts with a shared default password (legacy
+-- salt:sha256 hash format — see 002_seed_admin.sql). All accounts are created
+-- with ON CONFLICT DO NOTHING so this is safe to re-run and will not overwrite
+-- passwords that have already been changed.
 --
--- DEFAULT PASSWORD: demo1234
--- After running this migration, change every password via Admin → Accounts.
+-- Every account inserted here is flagged must_change_password = true by
+-- migration 017_must_change_password.sql, which runs after this one — the
+-- account holder must set their own password via Admin → Accounts (self-service
+-- change) before anything else in the app is reachable. Do not restore a
+-- plaintext default password to this comment; that's exactly what 017 exists
+-- to stop being exploitable.
 
 insert into users (display_name, email, role, grade, quad, status, password_hash)
 values

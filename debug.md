@@ -14,7 +14,7 @@
    bugs live in one function.
 
 > **Verify & deploy conventions (this repo):**
-> - Primary gate: `npm run typecheck` + `npm run test` (186+ tests). Both must be clean before
+> - Primary gate: `npm run typecheck` + `npm run test` (208+ tests). Both must be clean before
 >   calling anything done.
 > - Browser verification (via the Chrome extension) is worthwhile here for UI/scroll/CSS
 >   changes and has caught real issues in past sessions — but it's confirmatory, not a
@@ -154,6 +154,14 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   (`AccountService.changeOwnPassword`) — verifies the CURRENT password server-side; requires no
   `admin:manage` permission (any authenticated actor can change their own). Distinct from
   `POST /accounts/users/password` (admin resetting someone else).
+- **A login gets stuck on "Set a New Password" / every screen 403s with `MUST_CHANGE_PASSWORD`**:
+  expected for any account with `must_change_password = true` (2026-07-09) — seeded/migration
+  005 accounts, until they successfully call `POST /accounts/me/password`. Not a bug unless the
+  account has already changed its password (check `account.service.test.ts` — `changeOwnPassword`
+  should have cleared the flag) or it's an admin-created account that was never seeded (`create()`
+  in `account.service.ts` defaults `mustChangePassword: false` — if a freshly-created account is
+  gated, that default regressed). The gate itself lives in `express-adapter.ts` right after
+  `resolveContext` and in `render()` (public/index.html) via `S.user.mustChangePassword`.
 
 ### RBAC / scoping (backend)
 

@@ -77,6 +77,7 @@ export function makeAccountService(users: IUserRepository): AccountService {
         quad: (data.quad ?? null) as Quad | null,
         status: 'active',
         passwordHash,
+        mustChangePassword: false,
         createdAt: now,
         updatedAt: now,
       };
@@ -125,7 +126,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
       }
       if (newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
       const passwordHash = await hashPassword(newPassword);
-      await users.save({ ...existing, passwordHash, updatedAt: new Date().toISOString() });
+      // Proving the current password and choosing a new one yourself is what clears
+      // mustChangePassword — an admin-set/seeded password never does.
+      await users.save({ ...existing, passwordHash, mustChangePassword: false, updatedAt: new Date().toISOString() });
     },
 
     async toggleStatus(actor, id) {

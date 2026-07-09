@@ -70,6 +70,7 @@ export function toActor(user: User): Actor {
     grade: (user.grade ?? null) as Grade | null,
     quad: (user.quad ?? null) as Quad | null,
     gender: deriveActorGender(user),
+    mustChangePassword: user.mustChangePassword ?? false,
   };
 }
 

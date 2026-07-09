@@ -603,6 +603,13 @@ const API = (() => {
         const e = await res.json().catch(() => ({}));
         const err = new Error(e.message || e.error || res.statusText || 'Request failed');
         err.status = res.status;
+        err.code = e.code;
+        // A stale S.user (e.g. another tab already changed the password) can drift
+        // out of sync with the server; if the server says the gate is still up,
+        // trust it and re-render into the gate screen instead of a raw error toast.
+        if (e.code === 'MUST_CHANGE_PASSWORD' && S.user && !S.user.mustChangePassword) {
+          S.user.mustChangePassword = true; render();
+        }
         throw err;
       }
       return res.json();
@@ -1317,6 +1324,7 @@ function _drop(id) { const el = document.getElementById(id); if (el) el.classLis
 // ============================================================
 async function render() {
   if (!S.user) { renderLogin(); return; }
+  if (S.user.mustChangePassword) { renderMustChangePassword(); return; }
   if (!_shellReady) _initShell();
   _updateNavActive();
   const p = S.page;
@@ -1373,6 +1381,45 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   render();
+}
+
+// Full-page gate for accounts flagged mustChangePassword (seeded/admin-set
+// passwords) — blocks everything else app-side too, mirroring the server's
+// MUST_CHANGE_PASSWORD 403 (see express-adapter.ts). Reuses the same
+// /accounts/me/password endpoint as the Connect Setup "Change Your Password"
+// modal (submitChangeOwnPassword), just as a blocking full page instead of a modal.
+function renderMustChangePassword() {
+  _shellReady = false;
+  Cache.clear();
+  document.getElementById('app').innerHTML = `
+    <div class="login-pg">
+      <div class="login-card">
+        <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>Set a New Password</h1><p>This account's password must be changed before continuing</p></div>
+        <div id="mcperr"></div>
+        <div class="fg"><label class="fl">Current Password</label><input class="fi" id="mcp-cur" type="password" placeholder="Current password" autocomplete="current-password"></div>
+        <div class="fg"><label class="fl">New Password (min 8 chars)</label><input class="fi" id="mcp-new" type="password" placeholder="New password" autocomplete="new-password"></div>
+        <div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="mcp-new2" type="password" placeholder="Confirm new password" autocomplete="new-password"></div>
+        <button class="btn btn-primary btn-full" onclick="submitMustChangePassword()">Set Password &amp; Continue</button>
+        <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="doLogout()">Sign Out</button>
+      </div>
+    </div>`;
+  document.getElementById('mcp-new2')?.addEventListener('keydown', e => { if (e.key==='Enter') submitMustChangePassword(); });
+  _positionNprog();
+}
+
+async function submitMustChangePassword() {
+  const cur = document.getElementById('mcp-cur')?.value;
+  const pw1 = document.getElementById('mcp-new')?.value;
+  const pw2 = document.getElementById('mcp-new2')?.value;
+  const errEl = document.getElementById('mcperr');
+  if (!cur) { errEl.innerHTML = '<div class="alert al-err">Enter your current password</div>'; return; }
+  if (!pw1 || pw1.length < 8) { errEl.innerHTML = '<div class="alert al-err">New password must be at least 8 characters</div>'; return; }
+  if (pw1 !== pw2) { errEl.innerHTML = '<div class="alert al-err">New passwords do not match</div>'; return; }
+  try {
+    await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
+    S.user.mustChangePassword = false;
+    toast('Password updated'); render();
+  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
 // ============================================================

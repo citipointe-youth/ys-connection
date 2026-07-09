@@ -184,7 +184,7 @@ is the default, previous is shown as a comparison.
 - `IConnectionRepository` / `InMemoryConnectionRepository` / `SupabaseConnectionRepository`
 - Supabase repositories live in `src/repositories/supabase/`
 
-## Seed demo accounts (password: `demo1234`)
+## Seed demo accounts
 
 | Email | Role | Scope |
 |-------|------|-------|
@@ -195,6 +195,14 @@ is the default, previous is shown as a comparison.
 | `g1012@youth.ministry` | quad | Girls Yr 10–12 |
 | `b1012@youth.ministry` | quad | Boys Yr 10–12 |
 | `grade7@youth.ministry` … `grade12@youth.ministry` | grade | one per grade (the in-code seed has one account per grade) |
+
+Local `PERSISTENCE=memory` dev/demo mode: password `demo1234` for all of the above,
+same as before. **Supabase/production accounts are different:** every account
+inserted by `002_seed_admin.sql` / `005_seed_users.sql` (and any account matching
+one of the emails above, post-rename) is flagged `must_change_password = true` by
+migration `017_must_change_password.sql` — the account holder must set their own
+password via `POST /accounts/me/password` (or the forced first-login screen) before
+anything else is reachable. See "Forced password change" under Security notes.
 
 **Email convention:** grade logins use **`g` (girls) / `b` (boys)** suffixes —
 e.g. `grade7g@youth.ministry`, `grade7b@youth.ministry` (NOT `…f` / `…m`). Account
@@ -1065,3 +1073,16 @@ pooler during the incident. Watch the connection count during a real session ins
   holds the linked-project ref / pooler URL / tool versions and must stay out of git. Use explicit
   paths (not `git add -A`) when committing so untracked local dirs (`supabase/.temp/`, `_design/`)
   aren't swept in.
+- **Forced password change (2026-07-09).** `User.mustChangePassword` / `Actor.mustChangePassword`
+  is embedded in the signed session token (`toActor()` in `auth.service.ts`) and enforced in
+  `express-adapter.ts` right after `resolveContext`: any route without `allowMustChangePassword:
+  true` on its `Route` entry throws `MustChangePasswordError` (403, code `MUST_CHANGE_PASSWORD`)
+  for a flagged actor. Only `GET /auth/me`, `POST /auth/logout`, and `POST
+  /accounts/me/password` are allowlisted. The frontend mirrors this in `render()` — a flagged
+  `S.user` gets `renderMustChangePassword()` (full-page, blocks the whole app) instead of the
+  normal shell. `changeOwnPassword` is the only path that clears the flag; `create()` defaults
+  new admin-created accounts to `false` (not in scope — see migration 017's comment for why the
+  scope is deliberately narrow: only the historically-seeded accounts, not every admin-set
+  password). This exists because `002_seed_admin.sql` / `005_seed_users.sql` and this file used
+  to document a shared default password in plaintext next to real account emails, in a *public*
+  repo — see `017_must_change_password.sql`.

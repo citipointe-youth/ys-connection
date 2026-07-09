@@ -16,7 +16,7 @@ async function buildService() {
   const grade = await users.save({
     id: 'u-grade', displayName: 'Grade Leader', email: 'grade7g@youth.ministry', role: 'grade',
     grade: 7, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
-    createdAt: now, updatedAt: now,
+    mustChangePassword: true, createdAt: now, updatedAt: now,
   });
   const svc = makeAccountService(users);
   return { svc, users, grade };
@@ -42,5 +42,37 @@ describe('Account Service — self-service password change', () => {
     await svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'correcthorse1', 'newpassword1');
     const updated = await users.findById(grade.id);
     expect(updated?.passwordHash).not.toBe(grade.passwordHash);
+  });
+
+  it('clears mustChangePassword on a successful self-change', async () => {
+    const { svc, users, grade } = await buildService();
+    expect(grade.mustChangePassword).toBe(true);
+    await svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'correcthorse1', 'newpassword1');
+    const updated = await users.findById(grade.id);
+    expect(updated?.mustChangePassword).toBe(false);
+  });
+
+  it('leaves mustChangePassword untouched when the current password is wrong', async () => {
+    const { svc, users, grade } = await buildService();
+    await expect(
+      svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'wrongpassword', 'newpassword1'),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
+    const unchanged = await users.findById(grade.id);
+    expect(unchanged?.mustChangePassword).toBe(true);
+  });
+});
+
+describe('Account Service — create() defaults mustChangePassword to false', () => {
+  it('a freshly admin-created account is not flagged', async () => {
+    const users = new InMemoryUserRepository();
+    await users.init();
+    const svc = makeAccountService(users);
+    const admin = actorFor('u-admin', 'admin');
+    const created = await svc.create(admin, {
+      displayName: 'New Leader', email: 'newleader@youth.ministry', password: 'longenoughpw',
+      role: 'grade', grade: 8,
+    });
+    const stored = await users.findById(created.id);
+    expect(stored?.mustChangePassword).toBe(false);
   });
 });
