@@ -123,7 +123,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.bot-nav{display:none}}
 
 /* Page */
-.pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
+.pg{flex:1;padding:14px 16px calc(38px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
 
 /* Cards */
@@ -356,6 +356,11 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .connect-students::-webkit-scrollbar{display:none}
 .connect-students-track{position:absolute;top:11px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
 .connect-students-thumb{position:absolute;left:0;width:3px;background:rgba(100,116,139,.55);border-radius:2px}
+/* Student profile "Leader Assignments" preview — same track/thumb pattern as
+   .connect-students above, sized for this list's shorter single-line rows
+   (~29px each) so ~2.5 rows show before it scrolls. */
+.leader-assign-list{max-height:73px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.leader-assign-list::-webkit-scrollbar{display:none}
 .connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
 .connect-stud-row:last-child{border-bottom:none}
 .connect-stud-name{flex:1;font-size:14px;font-weight:600}
@@ -2282,9 +2287,9 @@ function renderConnectView() {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div class="ph-title">Connect Setup ${helpTip('Search and connect are scoped to your grade and gender. You can add students from other grades, but only ones matching your gender.')}</div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="showChangeOwnPassword()" title="Change your password" aria-label="Change your password">${icS('key')}</button>
           ${canEdit?`<button class="btn btn-primary btn-sm" onclick="showAddLeader()">+ Add Leader</button>`:''}
           <button class="btn btn-secondary btn-sm" onclick="exportConnectCSV()" aria-label="Export connections to CSV">Export CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="showChangeOwnPassword()" aria-label="Change your password">Reset Password</button>
         </div>
       </div>
       <div class="ph-sub">${connectedCount}/${totalStudents} students connected · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
@@ -2394,7 +2399,7 @@ function openStudentPicker(leaderId, leaderGender) {
     <div class="picker-done" style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>
     </div>`,
-    () => { _pickerCtx = null; _teardownPickerSize(); },
+    () => { _pickerCtx = null; _teardownPickerSize(); pickerSyncBg(); },
     { overlayClass: 'mo-top', boxClass: 'picker pflex' }
   );
 
@@ -2552,13 +2557,15 @@ async function addConnFromPicker(studentId) {
     _aS.allocs[studentId] = [...cur, leaderId];
     window._pickerAssigned.add(studentId);
     filterPicker();
-    pickerSyncBg();
     const s = _aS.students.find(x => x.id === studentId);
     if (s) toast(`${s.firstName} ${s.lastName} added`);
   } catch (e) { toast(e.message); }
 }
 
-// Remove a connection from inside the picker (demo: remPick) + keep the page behind in sync.
+// Remove a connection from inside the picker (demo: remPick). The page behind
+// stays untouched until the picker closes (see pickerSyncBg below) — it's
+// hidden by the modal anyway, and re-rendering it on every toggle was
+// clobbering the admin's scroll position by the time they closed the picker.
 async function remPick(studentId) {
   if (!_pickerCtx) return;
   const { leaderId } = _pickerCtx;
@@ -2568,12 +2575,13 @@ async function remPick(studentId) {
     _aS.allocs[studentId] = (_aS.allocs[studentId] || []).filter(id => id !== leaderId);
     window._pickerAssigned.delete(studentId);
     filterPicker();
-    pickerSyncBg();
     const s = _aS.students.find(x => x.id === studentId);
     if (s) toast(`${s.firstName} ${s.lastName} removed`);
   } catch (e) { toast(e.message); }
 }
-// Repaint the page behind the open picker so leader counts stay current.
+// Repaint the page behind the picker once it closes, so leader counts are
+// current when the admin sees Connect Setup again — NOT called per-toggle
+// (see the comment on remPick above for why).
 function pickerSyncBg() { render(); }
 
 async function removeConnectWithUndo(studentId, leaderId) {
@@ -2913,7 +2921,7 @@ async function renderAtRisk() {
   let body = `
     <div class="ph">
       <div class="ph-title" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        <span style="display:flex;align-items:center;gap:7px">${icN('heart')} Health ${helpTip("All calculated automatically — no manual thresholds. Rising/Declining: a stream's rate moved 20+ points vs last term. Mixed: one stream up, one down. Stable: no 20-point swing either way.\nStopped: no attendance in either stream this term.")}</span>
+        <span style="display:flex;align-items:center;gap:7px">${icN('heart')} Health ${helpTip("Worked out automatically from attendance — nothing to set yourself. Rising / Declining: Youth or Lifegroup attendance has changed a lot since last term. Mixed: up in one, down in the other. Stopped: hasn't been to Youth or Lifegroup this term. Stable: no big change.")}</span>
         <input id="ar-name-filter" type="text" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
       </div>
     </div>`;
@@ -3247,11 +3255,15 @@ async function showStudentDetail(id) {
   const pct = svcPct(s);
   const grpPct = s.grpTotal > 0 ? Math.round(s.grpAttended / s.grpTotal * 100) : null;
 
-  const assignedHtml = myAllocs.length
-    ? myAllocs.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--paper-dark)">
+  // Preview is capped to a ~2.5-row scroll window, same custom always-visible
+  // scrollbar treatment as the Connect Setup leader cards' student preview
+  // (.connect-students-track/-thumb, synced via _syncConnectThumb).
+  const assignedRows = myAllocs.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--paper-dark)">
         <span style="font-size:13px;font-weight:600">${a.leaderName}</span>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;color:var(--danger)" onclick="unassignSD('${s.id}','${a.leaderId}')">Remove</button>` : '<span class="chip c-accent">assigned</span>'}
-      </div>`).join('')
+      </div>`).join('');
+  const assignedHtml = myAllocs.length
+    ? `<div class="connect-students-wrap"><div class="leader-assign-list" onscroll="_syncConnectThumb(this)">${assignedRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`
     : '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0">Not connected yet</p>';
 
   modal(`
@@ -3293,10 +3305,10 @@ async function showStudentDetail(id) {
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal();go('leaders')">Connect →</button>
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
   if (canEdit) sdLeaderSearch(id);
+  document.querySelectorAll('.leader-assign-list').forEach(_syncConnectThumb);
 }
 
 // ============================================================
