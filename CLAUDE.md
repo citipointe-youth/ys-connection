@@ -54,17 +54,17 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 |---|---|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` |
 | Students | `GET/POST /students`, `GET /students/search`, `GET/PATCH/DELETE /students/:id` |
-| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id`, `PATCH /leaders/:id/sms-template` (self-service, no ownership check — see the SMS templates note below) |
+| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id`, `PATCH /leaders/:id/sms-template` (self-service, no ownership check — see the SMS templates note below), `PATCH /leaders/:id/grades` (self-service grade broadening, same no-ownership-check pattern — see "Leader self-service grade broadening" below) |
 | Connections | `GET/POST /connections`, `GET /connections/export`, `GET /connections/student/:id`, `GET /connections/leader/:id`, `DELETE /connections/:studentId/:leaderId`, `GET /connections/allocations/export`, `POST /connections/allocations/import` (admin-only allocation CSV round-trip) |
 | Overview | `GET /overview` |
 | At-risk | `GET /at-risk`, `POST /at-risk/recompute` |
 | Trends | `GET /trends` |
-| Lifegroup stats | `GET /lifegroups/stats` (per-lifegroup/grade/quad/overall, current + previous term + weekly series), `GET /lifegroups/:id/members` (per-student attendance detail, current term — powers "click a lifegroup to see who attended") |
+| Lifegroup stats | `GET /lifegroups/stats` (per-lifegroup/grade/quad/overall, current + previous term + weekly series) |
 | Import | `POST /import/csv`, `GET /import/history`, `DELETE /import/history` (clear log), `DELETE /import/history/:id` (remove one) |
 | Settings | `GET/PATCH /settings` |
-| Admin | `POST /admin/reset` (clears students+leaders+connections+all data), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
-| Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `POST /audits/finalize-live` (builds this year's snapshot from live tables, no CSV upload — used by the New Year Refresh wizard) |
-| Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, etc. |
+| Admin | `POST /admin/reset` (clears students+leaders+connections+attendance **and connection_audits** — see below), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
+| Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `POST /audits/finalize-live` (builds this year's snapshot from live tables, no CSV upload — used by the New Year Refresh wizard), `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
+| Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed) |
 
 **Clearing import history ≠ deleting data.** The Import screen's "Clear All" and per-row
 trash only remove `import_records` log rows. `service_sessions.import_id` /
@@ -959,6 +959,72 @@ pooler during the incident. Watch the connection count during a real session ins
   instead (there's no way to confirm they're currently in a lifegroup), so rung 4 can never run
   ahead of the "In a lifegroup" tile even with an unmatched Team CSV name. `team:true` is
   unaffected, so they still show as team in the person-detail Journey popup and in `teamN`.
+
+### Admin/Connect Setup punch list + New Year Refresh audit backup/restore (2026-07-09)
+
+- **New Year Refresh wizard reworked to 6 steps.** Step 1 ("Export & Finalize Baseline")
+  used to both export allocations AND call `finalize-live` — split so step 1 is just
+  "Export Allocations". New step 2 "Export Configuration Audit Data" downloads the
+  **entire `connection_audits` table** as one JSON file (`GET /audits/export-all`) before
+  step 3's Full Reset wipes it; new step 6 "Re-import Configuration Audit Data" restores
+  it after step 5 (`POST /audits/import-all`, upserts by year id). Both routes are
+  admin-only and registered **before** `/audits/:year` in `router.ts` — Express matches
+  routes in registration order, so a param route registered first would swallow the
+  static ones.
+- **Full Reset now also wipes `connection_audits`.** Previously a Full Reset left last
+  year's frozen audit snapshots (which contain per-student rows) behind — silently
+  defeating the point of a "full" reset. `admin.service.ts`'s `reset()` now also
+  `findAll()` + `delete()`s every row in that table.
+- **Self-service password change**, distinct from the admin's existing "reset another
+  account" flow: `POST /accounts/me/password` (verifies current password, no
+  `admin:manage` needed — any authenticated actor can change their own). Key icon on
+  Connect Setup, next to Export CSV. The admin's own "Reset password" flow (Accounts tab)
+  now shows the new password **once**, in a copyable box — there's no way to retrieve it
+  later since it's bcrypt-hashed one-way.
+- **Connection Audit funnel bug — CRM overlays wiped by a partial re-upload.** The Data
+  tab's `saveAudit()` replaces the WHOLE year's snapshot; if the admin re-uploaded just
+  Service/Group attendance without also restaging Team/Connect/Decision/Flows, those
+  overlays silently reset to `[]` (Zod defaults), collapsing the "Interacted" funnel rung
+  down to equal "Came to Youth" (the only source of stage-1-only people is
+  `hasConnect`/`hasDecision` marks + unmatched `caOnly` names). Fixed with a `carry()`
+  fallback in `saveAudit()`: an unstaged slot now falls back to `AUDIT.uploads.<kind>`
+  from the currently-loaded year instead of defaulting to empty; the Data tab UI shows
+  "N rows carried over from `<year>`" so it's not silently invisible.
+- **Quad funnel breakdown couldn't see unmatched people, even after the fix above.**
+  `rFunnel()`'s per-quad panel filtered on `p.s && p.s.quad===q` — an unmatched
+  (`caOnly`) Connect/Decision submitter has `p.s===null`, so they were structurally
+  excluded from every quad's breakdown even though the overall funnel counted them. Since
+  the Connect/Decision CRM export actually carries grade + gender columns, `parseRows`/
+  `parseMatrixRows` now read them (optional — absent on exports that don't have them), and
+  every `people.push(...)` (both matched-student and `caOnly`) now carries a `quad` field
+  — computed via a client-side `computeQuad(grade, gender)` (mirrors
+  `src/core/types/enums.ts`) for `caOnly` people, straight from `s.quad` for matched ones.
+  All 4 quad-filtering call sites (`rFunnel`, the People tab's quad filter, the exec
+  brief's `quadFunnelViz`) now read `p.quad` instead of `p.s.quad`. The one exception,
+  `exportQuad()`'s follow-up CSV export, still requires `p.s` truthy — it dereferences
+  `p.s.gT`/`p.s.grade`/`p.s.ph`, which only a matched student record has.
+- **Leader self-service grade broadening, gender stays locked.** A grade/quad login
+  editing a leader (Connect Setup's pencil icon) can now check grades outside their own
+  bracket, so they can see and connect students from those grades too — same rationale
+  as the SMS-template carve-out: most leaders are auto-created by CSV import
+  (`createdByGrade: null`), so the general `update()` endpoint's ownership check would
+  otherwise reject almost everyone. New `PATCH /leaders/:id/grades` /
+  `LeaderService.updateGrades()` skips that check entirely and only ever touches
+  `grades`. In the Edit Leader modal, `lockGender = role==='grade'||role==='quad'` shows
+  gender as a disabled, read-only select for those two roles (admin/director unaffected);
+  `submitEditLeader()` sends grades through the new endpoint (always succeeds) and
+  name/active best-effort through the general endpoint (silently skipped if you don't own
+  the leader — that's a pre-existing restriction, not a regression).
+- Also: Data tab gained a "Go to Import" shortcut; allocations export is now date-stamped
+  (`allocations-YYYY-MM-DD.csv`, matching the audit backup file); `.pg`'s bottom padding
+  halved (was `76px`, pure dead space on desktop where the mobile bottom-nav it was
+  clearing doesn't even render); the Connect Setup "Add Students" picker no longer
+  repaints the page behind it on every single add/remove (only once, on close) — the
+  per-toggle repaints were clobbering the admin's scroll position; Health tab cards gained
+  a profile-icon button; student profile's "Leader Assignments" dropped the redundant
+  "Connect →" button and the "search a leader to assign" results list (not the already-
+  connected list) got the same capped-scroll treatment as Connect Setup's student
+  preview, with gender/grade dropped from each row.
 
 ## Security notes
 
