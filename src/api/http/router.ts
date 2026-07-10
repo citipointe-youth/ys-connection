@@ -138,12 +138,11 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'DELETE', path: '/accounts/users/:id',           auth: true, handler: (r) => account.remove(r) },
 
     // ----- Connection Audits -----
-    // NOTE: static /audits/* sub-paths (export-all, finalize-live) MUST be
-    // registered before the /audits/:year param routes below — Express matches
-    // routes in registration order, and :year would otherwise swallow them.
+    // NOTE: static /audits/* sub-paths (export-all) MUST be registered before
+    // the /audits/:year param routes below — Express matches routes in
+    // registration order, and :year would otherwise swallow them.
     { method: 'POST',   path: '/audits',       auth: true, handler: (r) => connectionAudit.upload(r) },
     { method: 'GET',    path: '/audits',       auth: true, handler: (r) => connectionAudit.list(r) },
-    { method: 'POST',   path: '/audits/finalize-live', auth: true, handler: (r) => connectionAudit.finalizeFromLive(r) },
     { method: 'GET',    path: '/audits/export-all', auth: true, handler: (r) => connectionAudit.exportAll(r) },
     { method: 'POST',   path: '/audits/import-all', auth: true, handler: (r) => connectionAudit.importAll(r) },
     { method: 'GET',    path: '/audits/:year', auth: true, handler: (r) => connectionAudit.get(r) },

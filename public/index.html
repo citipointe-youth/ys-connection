@@ -750,6 +750,13 @@ function _brandingField(key, fallback) {
 function appName() { return _brandingField('appName', 'Youth Connection'); }
 function ministryName() { return _brandingField('ministryName', 'Youth Society Brisbane'); }
 
+// modules.exportGuides: 'elvanto' (default, current behaviour) shows the
+// Elvanto walkthrough buttons; 'hidden' removes them (other-ChMS ministries).
+function _exportGuidesOn() {
+  const modules = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules;
+  return !modules || modules.exportGuides !== 'hidden';
+}
+
 // Generates the 5-step funnel/ladder colour ramp (darkest -> lightest) from
 // the ministry's accent colour, via HSL lightness steps — the one JS colour
 // array design doc 03 §3.1 says should derive from the accent (unlike
@@ -992,16 +999,21 @@ function _updateNavActive() {
 function _initShell() {
   const u = S.user;
   if (!u) return;
+  const pushOn = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.pushNotifications === true;
   const items = navItems();
   const bn = bottomNavItems();
   const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
   const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const bellBtn = pushOn
+    ? `<div class="btn-icon" style="position:relative" onclick="go('notifications')" title="Notifications" aria-label="Notifications">${icN('bell')}<span class="notif-badge" id="notif-badge" style="display:none"></span></div>`
+    : '';
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       <div class="hdr-top">
         <div class="hdr-brand">${brandMark(26, '#fff')}<h1>${esc(appName())}</h1></div>
         <div class="hdr-meta">
           ${roleBadge(u)}
+          ${bellBtn}
           <div class="btn-icon" onclick="doLogout()" title="Sign out" aria-label="Sign out">${icN('logout')}</div>
         </div>
       </div>
@@ -1012,7 +1024,7 @@ function _initShell() {
   _shellReady = true;
   _positionNprog();
   _prefetch();
-  // _updateNotifBadge(); // PUSH-HIDDEN
+  if (pushOn) _updateNotifBadge();
 }
 
 function _prefetch() {
@@ -1345,6 +1357,13 @@ function brandMark(px, color){
 
 function navItems() {
   const u = S.user; if (!u) return [];
+  const modules = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules) || {};
+  // CA defaults true (empty/absent config = current behaviour); push defaults
+  // false (it's hidden today, so false IS the faithful default).
+  const caOn = modules.connectionAudit !== false;
+  const pushOn = modules.pushNotifications === true;
+  const caItem = { id:'ca-overview', ic:'link', label:'Connection Audit', mbl:'Connection Audit' };
+  const notifItem = { id:'notifications', ic:'bell', label:'Notifications', mbl:'Alerts' };
   // Grade: Home | Health | My Students | Connect Setup  (Trends + Birthdays in quick actions)
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
@@ -1354,7 +1373,7 @@ function navItems() {
     // quick actions:
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
-    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
+    ...(pushOn ? [notifItem] : []),
   ];
   // Quad: Home | Health | Trends | Connect Setup
   if (u.role === 'quad') return [
@@ -1366,7 +1385,7 @@ function navItems() {
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
-    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
+    ...(pushOn ? [notifItem] : []),
   ];
   // Admin: Home | Health | Trends | Connect Setup + quick actions
   if (u.role === 'admin') return [
@@ -1378,9 +1397,9 @@ function navItems() {
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
     { id:'admin',      ic:'settings', label:'Admin Settings',     mbl:'Settings' },
-    { id:'ca-overview', ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
+    ...(caOn ? [caItem] : []), /*CA-HOOK*/
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
-    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
+    ...(pushOn ? [notifItem] : []),
   ];
   // Director: same as admin minus admin tile
   return [
@@ -1391,9 +1410,9 @@ function navItems() {
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
-    { id:'ca-overview', ic:'link',     label:'Connection Audit',  mbl:'Connection Audit' }, /*CA-HOOK*/
+    ...(caOn ? [caItem] : []), /*CA-HOOK*/
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
-    // { id:'notifications', ic:'bell',  label:'Notifications',     mbl:'Alerts' }, // PUSH-HIDDEN
+    ...(pushOn ? [notifItem] : []),
   ];
 }
 function bottomNavItems() { return navItems().slice(0, 4); }
@@ -1455,7 +1474,10 @@ async function render() {
   else if (p==='import') await renderImport();
   else if (p==='birthdays') await renderUpcomingBirthdays();
   else if (p==='admin') await renderAdmin();
-  else if (p==='notifications') go('home'); // PUSH-HIDDEN — was: await renderNotifications()
+  else if (p==='notifications') {
+    const pushOn = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.pushNotifications === true;
+    if (pushOn) await renderNotifications(); else go('home');
+  }
   else await renderHome();
 }
 
@@ -1484,7 +1506,9 @@ async function doLogin() {
   const errEl = document.getElementById('lerr');
   try {
     const res = await API.post('/auth/login', { email, password });
-    API.setToken(res.token); S.user = res.user; go('home'); // initPushSubscription(); // PUSH-HIDDEN
+    API.setToken(res.token); S.user = res.user; go('home');
+    const pushOn = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.pushNotifications === true;
+    if (pushOn) initPushSubscription();
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
@@ -1671,6 +1695,7 @@ function _revalidateHome() {
 async function _renderHomeInner(stale) {
   const u = S.user;
   const _pg = S.page;
+  const lifegroupsOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.lifegroups === false);
   // Stale mode reads straight from the last-known cache (Promise.resolve, no network)
   // so the page paints instantly; renderHome handles the background refresh.
   const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
@@ -1861,8 +1886,8 @@ async function _renderHomeInner(stale) {
       if (u.role === 'quad') {
         body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
         for (const gr of _hQuadGrades(u.quad)) {
-          const gLg = _lgGrade(gr);
-          const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0 };
+          const gLg = lifegroupsOn ? _lgGrade(gr) : null;
+          const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0, hideLifegroupRow: !lifegroupsOn };
           if (gLg) {
             attOpts.dropId = 'hlg-' + gr;
             attOpts.gradeRows = _lgGradeBlock(gLg, false, _gsfx(_loginGender(u)), 'hlg-' + gr + '-lg');
@@ -1875,7 +1900,7 @@ async function _renderHomeInner(stale) {
       // average = individuals attending a lifegroup each week the scope ran.
       // Quad no longer gets a separate "Lifegroups by Grade" section here — that
       // content now lives inside each Attendance-by-Grade tile's dropdown above.
-      if (lgStats && ['admin', 'director'].includes(u.role)) {
+      if (lifegroupsOn && lgStats && ['admin', 'director'].includes(u.role)) {
         const quads = (lgStats.byQuad || []).filter(q => q.current.uniqueAttenders > 0 || q.current.members > 0);
         if (quads.length) {
           body += '<div class="sh">' + L('smallGroupPlural') + ' by Quad</div><div style="margin-bottom:16px">';
@@ -3762,10 +3787,12 @@ async function renderTrends() {
     ${canExport?'<button class="btn btn-secondary btn-sm" onclick="exportTrendsCSV()">Export CSV</button>':''}
   </div></div>`;
 
-  // Tab bar
+  // Tab bar — the Lifegroups tab only exists when modules.lifegroups is on.
+  const lifegroupsOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.lifegroups === false);
+  if (!lifegroupsOn && _trTab === 'grp') _trTab = 'svc';
   body += `<div class="tbbar">
     <button class="tbbtn ${_trTab==='svc'?'on':''}" onclick="_trTab='svc';renderTrends()">Fridays</button>
-    <button class="tbbtn ${_trTab==='grp'?'on':''}" onclick="_trTab='grp';renderTrends()">${L('smallGroupPlural')}</button>
+    ${lifegroupsOn ? `<button class="tbbtn ${_trTab==='grp'?'on':''}" onclick="_trTab='grp';renderTrends()">${L('smallGroupPlural')}</button>` : ''}
   </div>`;
 
   // Term label for the "this term" sub-heading (uses the trends term range).
@@ -4019,7 +4046,7 @@ async function renderImport() {
         <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">Service or Group — auto-detected</div>
       </div>
       <input type="file" id="csv-file" accept=".csv,.xlsx" style="display:none" onchange="handleUnifiedFile(this)">
-      <button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="openExportGuide('import')">${icS('info')} How do I export these files from Elvanto?</button>
+      ${_exportGuidesOn() ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="openExportGuide('import')">${icS('info')} How do I export these files from Elvanto?</button>` : ''}
       <div id="import-status" style="margin-top:12px"></div>
     </div>`;
 
@@ -4601,6 +4628,13 @@ function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
 }
 
 function renderNewYearWizard() {
+  const caOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.connectionAudit === false);
+  const skippedCard = `<div class="alert al-info">Skipped — Connection Audit is disabled for this deployment.</div>`;
+  // When CA is off, steps 2 and 6 (audit backup/restore) count as satisfied
+  // for gating purposes without any action — nothing to back up or restore.
+  const step2Satisfied = caOn ? _wiz.step2Done : true;
+  const step6Satisfied = caOn ? _wiz.step6Done : true;
+
   let b = `<div class="card" style="margin-bottom:10px">
     <div style="font-size:13px;color:var(--ink-mid)">Walks through the new-year data refresh in order — each step unlocks once the one before it is done.</div>
   </div>`;
@@ -4612,13 +4646,13 @@ function renderNewYearWizard() {
 
   b += _wizStepCard(2, 'Export Configuration Audit Data',
     "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 3. You'll re-load it in step 6, once the roster is rebuilt.",
-    `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>`,
-    _wiz.step2Done, !_wiz.step1Done);
+    caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
+    step2Satisfied, !_wiz.step1Done);
 
   b += _wizStepCard(3, 'Full Reset',
     'Permanently deletes all students, leaders, connections, attendance and the Connection Audit. Accounts are kept. This cannot be undone.',
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance and the Connection Audit. Accounts are kept. This cannot be undone.',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
-    _wiz.step3Done, !_wiz.step2Done);
+    _wiz.step3Done, !step2Satisfied);
 
   b += _wizStepCard(4, "Re-import this year's attendance",
     'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 5 can match allocations back on.',
@@ -4637,11 +4671,11 @@ function renderNewYearWizard() {
 
   b += _wizStepCard(6, 'Re-import Configuration Audit Data',
     "Re-load the Connection Audit backup from step 2 so past years are available again for comparison.",
-    `<label class="btn btn-secondary btn-full" style="cursor:pointer">Re-import Configuration Audit Data
+    caOn ? `<label class="btn btn-secondary btn-full" style="cursor:pointer">Re-import Configuration Audit Data
       <input type="file" accept=".json" style="display:none" onchange="wizHandleAuditImportFile(this)">
     </label>
-    <div id="audit-import-status" style="margin-top:8px"></div>`,
-    _wiz.step6Done, !_wiz.step5Done);
+    <div id="audit-import-status" style="margin-top:8px"></div>` : skippedCard,
+    step6Satisfied, !_wiz.step5Done);
 
   return b;
 }
@@ -5848,7 +5882,7 @@ function rData(){
     +slot('connect','New Connect CSV','Connect dates',PENDING.connect.length?(PENDING._connectFn||(PENDING.connect.length+' rows')):carried('connect'))
     +slot('decision','Decision CSV','Decision dates',PENDING.decision.length?(PENDING._decisionFn||(PENDING.decision.length+' rows')):carried('decision'))
     +slot('flows','People Flow CSV','Follow-up export',PENDING.flows.length?(PENDING._flowsFn||(PENDING.flows.length+' rows')):carried('flows'))
-    +'<div style="padding:10px 0"><button class="btn btn-secondary btn-full" style="white-space:normal;text-align:left;line-height:1.35;height:auto" onclick="openExportGuide(\'audit\')">'+icS('info')+' How do I export the Team, Decision, New people &amp; Flow files?</button></div>'
+    +(_exportGuidesOn() ? '<div style="padding:10px 0"><button class="btn btn-secondary btn-full" style="white-space:normal;text-align:left;line-height:1.35;height:auto" onclick="openExportGuide(\'audit\')">'+icS('info')+' How do I export the Team, Decision, New people &amp; Flow files?</button></div>' : '')
     +'</div>';
   b+='<div class="card" style="display:flex;gap:10px;align-items:center;justify-content:space-between">'
     +'<div style="font-size:.66rem;color:var(--ca-muted);line-height:1.5">Saving computes the terms server-side and stores one audit for that year. Re-saving a year overwrites it. Other directors/admins can then load it.</div>'

@@ -236,11 +236,7 @@ export async function buildContainer(): Promise<Container> {
     notifRepo: notifications,
     userRepo: users,
   });
-  const connectionAudit = makeConnectionAuditService(
-    connectionAudits, settings, students,
-    serviceSessions, serviceAttendance,
-    lifegroups, lifegroupWeeks, lifegroupAttendance,
-  );
+  const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
 
   const services: Services = {
     auth, student, leader, connection, followup, overview, atRisk, trends, lifegroupStats,

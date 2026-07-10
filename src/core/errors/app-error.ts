@@ -44,3 +44,12 @@ export class MustChangePasswordError extends AppError {
     super('MUST_CHANGE_PASSWORD', message, 403);
   }
 }
+
+// A ministryConfig.modules.* flag is off for this deployment. 404-shaped (not
+// 403) since a disabled module's routes should read as "doesn't exist here",
+// not "you're not allowed" — matching design doc 03 §4's toggle semantics.
+export class ModuleDisabledError extends AppError {
+  constructor(module: string) {
+    super('MODULE_DISABLED', `${module} is disabled for this deployment`, 404);
+  }
+}
