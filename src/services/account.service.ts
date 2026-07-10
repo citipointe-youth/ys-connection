@@ -12,7 +12,9 @@ const CreateUserSchema = z.object({
   displayName: z.string().min(1),
   email: z.string().min(1),
   password: z.string().min(8),
-  role: z.enum(['grade', 'quad', 'director', 'admin']),
+  role: z.enum(['leader', 'grade', 'quad', 'director', 'admin']),
+  // For a `leader` (junior leader) account — the Leader record it is bound to.
+  leaderId: z.string().nullable().optional(),
   // Legacy single-grade field (back-compat). New account forms send `grades`.
   grade: z.number().int().min(7).max(12).nullable().optional(),
   // Multi-grade grade accounts (§5.1a): one or more grades. When present it is
@@ -93,6 +95,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
       if (data.role === 'quad' && data.quad == null) {
         throw new BadRequestError('Quad login requires a quad');
       }
+      if (data.role === 'leader' && !data.leaderId) {
+        throw new BadRequestError('Junior leader login requires a linked leader record');
+      }
 
       const passwordHash = await hashPassword(data.password);
       const now = new Date().toISOString();
@@ -105,6 +110,7 @@ export function makeAccountService(users: IUserRepository): AccountService {
         grades: gradeSet ? gradeSet.grades : null,
         gender: data.role === 'grade' ? (data.gender ?? null) : null,
         quad: (data.quad ?? null) as Quad | null,
+        leaderId: data.role === 'leader' ? (data.leaderId ?? null) : null,
         status: 'active',
         passwordHash,
         mustChangePassword: false,
@@ -133,6 +139,10 @@ export function makeAccountService(users: IUserRepository): AccountService {
       if (nextRole === 'grade' && nextGrades.length === 0) {
         throw new BadRequestError('Grade login requires at least one grade');
       }
+      const nextLeaderId = patch.leaderId !== undefined ? (patch.leaderId ?? null) : (existing.leaderId ?? null);
+      if (nextRole === 'leader' && !nextLeaderId) {
+        throw new BadRequestError('Junior leader login requires a linked leader record');
+      }
       const updated: User = {
         ...existing,
         ...(patch.displayName ? { displayName: patch.displayName } : {}),
@@ -141,6 +151,8 @@ export function makeAccountService(users: IUserRepository): AccountService {
         ...(gradeSet ? { grade: gradeSet.grade, grades: gradeSet.grades } : {}),
         ...(patch.gender !== undefined ? { gender: (patch.gender ?? null) } : {}),
         ...(patch.quad !== undefined ? { quad: patch.quad as Quad | null } : {}),
+        // Bind/unbind the leader record; cleared when the role is no longer 'leader'.
+        leaderId: nextRole === 'leader' ? nextLeaderId : null,
         updatedAt: new Date().toISOString(),
       };
       return toSafe(await users.save(updated));

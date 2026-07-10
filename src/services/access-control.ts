@@ -17,6 +17,16 @@ export type Action =
   | 'admin:manage';           // settings, accounts, year-rollover
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
+  // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
+  // students. Can view students (incl. phone for call sheets), their at-risk
+  // health, and leader records. No connection:write, no leader:write, no
+  // overview:read (no ministry-wide stats), no import/admin.
+  leader: new Set<Action>([
+    'student:read',
+    'student:read:sensitive',
+    'leader:read',
+    'atrisk:read',
+  ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
     'student:read',
@@ -85,6 +95,17 @@ export function assertCan(actor: Actor, action: Action): void {
 export function actorGrades(actor: Actor): number[] {
   if (actor.grades && actor.grades.length > 0) return actor.grades;
   return actor.grade != null ? [actor.grade] : [];
+}
+
+/**
+ * A junior-leader (§5.2) may only act on their OWN linked leader record. Used to
+ * lock leaderId-parameterised read paths (own connections, own follow-up) so a
+ * `leader` login can't pass another leader's id. No-op for every other role.
+ */
+export function assertLeaderSelf(actor: Actor, leaderId: string): void {
+  if (actor.role === 'leader' && actor.leaderId !== leaderId) {
+    throw new ForbiddenError('Junior leaders can only view their own connections');
+  }
 }
 
 /**

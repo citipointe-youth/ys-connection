@@ -80,6 +80,7 @@ export function toActor(user: User): Actor {
         ? [user.grade]
         : []) as Grade[],
     quad: (user.quad ?? null) as Quad | null,
+    leaderId: user.leaderId ?? null,
     gender: deriveActorGender(user),
     mustChangePassword: user.mustChangePassword ?? false,
   };

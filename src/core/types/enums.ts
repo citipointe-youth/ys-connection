@@ -26,11 +26,13 @@ export function computeQuad(grade: number | null, gender: string): Quad | null {
 }
 
 // Role hierarchy:
-//   grade  — login scoped to one grade level (e.g. Grade 9)
+//   leader — junior leader: sees ONLY their own connected students (own-
+//            connections-only scope; the flat model's "Junior Leader"). §5.2.
+//   grade  — login scoped to one grade level (e.g. Grade 9), or several (§5.1a)
 //   quad   — login scoped to one quad (e.g. Girls Yr 7-9)
-//   director — camp-wide read/write
-//   admin  — everything + back-office
-export const USER_ROLES = ['grade', 'quad', 'director', 'admin'] as const;
+//   director — ministry-wide read/write (flat model's "Senior Leader")
+//   admin  — everything + back-office (flat model's "Youth Pastor")
+export const USER_ROLES = ['leader', 'grade', 'quad', 'director', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const STUDENT_GENDERS = ['male', 'female'] as const;

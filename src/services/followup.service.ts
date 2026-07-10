@@ -10,7 +10,7 @@ import type {
 } from '../repositories/interfaces';
 import type { Actor } from '../core/entities/user';
 import { assertCan } from './access-control';
-import { NotFoundError } from '../core/errors/app-error';
+import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
 
 export interface FollowupStudent {
   id: string;
@@ -119,6 +119,11 @@ export function makeFollowupService(
   return {
     async leaderFollowup(actor, leaderId) {
       assertCan(actor, 'leader:read');
+      // A junior leader may only pull their OWN follow-up list.
+      if (actor.role === 'leader') {
+        if (!actor.leaderId) throw new ForbiddenError('No leader record is linked to this account');
+        leaderId = actor.leaderId;
+      }
       // These six reads are mutually independent, so fetch them concurrently instead
       // of chaining round-trips one after another — a sequential chain was holding a
       // DB connection open for the sum of all six latencies instead of the max.

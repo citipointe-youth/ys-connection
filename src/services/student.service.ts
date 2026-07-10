@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, can, canAccessGender, canAccessStudent, type StructureScope } from './access-control';
-import type { IStudentRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import type { IStudentRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
 import type { AtRiskStatus } from '../core/types/enums';
@@ -36,7 +36,7 @@ function stripSensitive(s: Student): Student {
   return { ...s, mobile: null, parentPhone: null };
 }
 
-export function makeStudentService(repo: IStudentRepository, settingsRepo?: ISettingsRepository): StudentService {
+export function makeStudentService(repo: IStudentRepository, settingsRepo?: ISettingsRepository, connRepo?: IConnectionRepository): StudentService {
   // Structure config for scoping (cohortModel/genderPolicy, §5). Optional repo so
   // existing test harnesses constructing makeStudentService(repo) keep today's
   // all-defaults behaviour; the container always supplies it in production.
@@ -44,18 +44,28 @@ export function makeStudentService(repo: IStudentRepository, settingsRepo?: ISet
     if (!settingsRepo) return MINISTRY_CONFIG_DEFAULTS.structure;
     return (await settingsRepo.getSettings()).ministryConfig.structure;
   }
+  // Junior leaders (§5.2) see ONLY students connected to their linked leader
+  // record. Returns null for every other role (or when no connRepo is wired).
+  async function leaderStudentIds(actor: Actor): Promise<Set<string> | null> {
+    if (actor.role !== 'leader' || !connRepo) return null;
+    if (!actor.leaderId) return new Set();
+    const conns = await connRepo.findByLeader(actor.leaderId);
+    return new Set(conns.map((c) => c.studentId));
+  }
   return {
     async list(actor, filter) {
       assertCan(actor, 'student:read');
-      const [students0, structure] = await Promise.all([repo.findAll(), structureScope()]);
+      const [students0, structure, myIds] = await Promise.all([repo.findAll(), structureScope(), leaderStudentIds(actor)]);
       let students = students0;
 
+      // Junior leader: only their own connected students (§5.2).
+      if (myIds) students = students.filter((s) => myIds.has(s.id));
       // Role-based scoping (grade -> own grade(s) + own gender; quad -> bracket +
       // gender). cohortModel/genderPolicy from config relax this appropriately.
       // `crossGrade` widens this to "own gender only" — used by Connect Setup's Add
       // Students picker so a leader whose grades have been broadened (self-service,
       // see updateGrades) can actually be offered students from that other grade.
-      if (actor.role === 'grade' || actor.role === 'quad') {
+      else if (actor.role === 'grade' || actor.role === 'quad') {
         students = filter?.crossGrade
           ? students.filter((s) => canAccessGender(actor, s.gender, structure))
           : students.filter((s) => canAccessStudent(actor, s.grade, s.gender, structure));
@@ -87,6 +97,11 @@ export function makeStudentService(repo: IStudentRepository, settingsRepo?: ISet
       const s = await repo.findById(id);
       if (!s) throw new NotFoundError('Student not found');
 
+      // Junior leader may only fetch a student connected to them.
+      if (actor.role === 'leader') {
+        const myIds = await leaderStudentIds(actor);
+        if (!myIds || !myIds.has(s.id)) throw new NotFoundError('Student not found');
+      }
       // Grade logins may fetch a student of ANY grade (the cross-grade connect
       // exception) but only of their OWN gender.
       const structure = await structureScope();
@@ -174,11 +189,13 @@ export function makeStudentService(repo: IStudentRepository, settingsRepo?: ISet
     async search(actor, query) {
       assertCan(actor, 'student:read');
       if (!query.trim()) throw new BadRequestError('Search query required');
-      const [results0, structure] = await Promise.all([repo.search(query), structureScope()]);
+      const [results0, structure, myIds] = await Promise.all([repo.search(query), structureScope(), leaderStudentIds(actor)]);
       let results = results0;
 
+      // Junior leader: only their own connected students.
+      if (myIds) results = results.filter((s) => myIds.has(s.id));
       // Gender-scoped for grade + quad (cross-grade allowed — the connect exception).
-      if (actor.role === 'quad' || actor.role === 'grade') {
+      else if (actor.role === 'quad' || actor.role === 'grade') {
         results = results.filter((s) => canAccessGender(actor, s.gender, structure));
       }
 

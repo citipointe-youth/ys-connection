@@ -1043,18 +1043,27 @@ function _prefetch() {
 // ============================================================
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 function quadLabel(q) { return QUAD_LABELS[q] || q; }
+// Configurable role label (roles.labels, §5.2). Under the flat preset:
+// admin→"Youth Pastor", director→"Senior Leader", leader→"Junior Leader".
+// grade/quad keep their own richer badges (grade numbers / quad name).
+const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Quad' };
+function _roleLabel(role) {
+  const labels = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.labels) || {};
+  return labels[role] || _ROLE_LABEL_DEFAULTS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
+}
 const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
   quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — quads fully manage leaders and connections within their gender+bracket`,
-  director: () => 'Director — full ministry access, can import data',
-  admin: () => 'Admin — full access including settings and accounts',
+  leader: () => `${_roleLabel('leader')} — sees and follows up only their own connected students`,
+  director: () => `${_roleLabel('director')} — full ministry access, can import data`,
+  admin: () => `${_roleLabel('admin')} — full access including settings and accounts`,
 };
 function roleBadge(u) {
   if (!u) return '';
   let label, tip;
   if (u.role === 'grade') { label = gradeBadgeLabel(u); }
   else if (u.role === 'quad') { label = quadLabel(u.quad); }
-  else { label = u.role.charAt(0).toUpperCase() + u.role.slice(1); }
+  else { label = _roleLabel(u.role); }
   tip = (ROLE_TIPS[u.role]||(() => ''))(u);
   return `<span class="role-badge" data-tip="${tip}">${label}</span>`;
 }
@@ -1063,13 +1072,18 @@ function roleBadgeInner(u) {
   if (!u) return '';
   if (u.role === 'grade') return gradeBadgeLabel(u);
   if (u.role === 'quad') return quadLabel(u.quad);
-  return u.role.charAt(0).toUpperCase() + u.role.slice(1);
+  return _roleLabel(u.role);
 }
 
 // ── LEADER IDENTITY (per-device "I am …" — Recommendation 2) ──
 // Not authentication: a convenience so a leader sharing a grade/quad login can
 // default their views (My Students, Home follow-up) to their own students.
-function getMyLeaderId() { try { return localStorage.getItem('yap_leader_id') || null; } catch { return null; } }
+function getMyLeaderId() {
+  // A junior-leader login is permanently bound to its own leader record (§5.2) —
+  // not the per-device "I am…" choice grade/quad logins use.
+  if (S.user && S.user.role === 'leader' && S.user.leaderId) return S.user.leaderId;
+  try { return localStorage.getItem('yap_leader_id') || null; } catch { return null; }
+}
 function setMyLeaderId(id) { try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {} }
 
 // ── UNDO SYSTEM ──
@@ -1416,6 +1430,15 @@ function navItems() {
   const pushOn = modules.pushNotifications === true;
   const caItem = { id:'ca-overview', ic:'link', label:'Connection Audit', mbl:'Connection Audit' };
   const notifItem = { id:'notifications', ic:'bell', label:'Notifications', mbl:'Alerts' };
+  // Leader (junior leader, §5.2): a slim, follow-up-focused nav — Home (lite) |
+  // My Connections | Health | Birthdays. No Connect Setup / Trends / Import.
+  if (u.role === 'leader') return [
+    { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:8px">Connections</span></span>' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
+    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
+    ...(pushOn ? [notifItem] : []),
+  ];
   // Grade: Home | Health | My Students | Connect Setup  (Trends + Birthdays in quick actions)
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
@@ -1513,6 +1536,9 @@ async function render() {
   if (!_shellReady) _initShell();
   _updateNavActive();
   const p = S.page;
+  // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
+  // other route home (defence-in-depth; the server also scopes/403s their data).
+  if (S.user.role === 'leader' && !['home','my-students','at-risk','birthdays','notifications'].includes(p)) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='leaders') await renderConnect();
@@ -1724,6 +1750,9 @@ function _homeError(err) {
 //    behind an already-painted page instead of behind a spinner.
 //  - nothing cached at all (first load) → spinner, then fetch.
 async function renderHome() {
+  // Junior leader: a lite, follow-up-focused home — they have no overview:read,
+  // so none of the ministry-stats endpoints below are fetched (§5.2).
+  if (S.user && S.user.role === 'leader') return renderLeaderHome();
   const _hp = HOME_PATHS();
   const allFresh  = _hp.every(p => Cache.get(p) !== null);
   const haveStale = _hp.every(p => Cache.getStale(p) !== null);
@@ -2003,6 +2032,22 @@ async function _renderHomeInner(stale) {
   renderHomeFollowup();
 }
 
+// Junior-leader home (§5.2): no ministry stats — just a greeting, quick actions,
+// and their own follow-up list. Everything here uses leader-scoped endpoints.
+async function renderLeaderHome() {
+  const u = S.user;
+  let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
+  const acts = navItems().filter(i => i.id !== 'home');
+  if (acts.length) {
+    body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
+    for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
+    body += `</div>`;
+  }
+  body += '<div id="home-followup"></div>';
+  setApp(shell(body));
+  renderHomeFollowup();
+}
+
 // Render the weekly follow-up into #home-followup. If no leader identity is set,
 // show a self-identify picker first (Recommendation 2 + 3).
 async function renderHomeFollowup() {
@@ -2029,7 +2074,8 @@ async function renderHomeFollowup() {
   catch { host.innerHTML = ''; return; }
   if (!data) { host.innerHTML = ''; return; }
 
-  const changeBtn = `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="setMyLeaderId(null);renderHomeFollowup()">Not you?</button>`;
+  // A junior-leader login is bound to its own leader record — no "Not you?".
+  const changeBtn = (S.user && S.user.role === 'leader') ? '' : `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="setMyLeaderId(null);renderHomeFollowup()">Not you?</button>`;
   // Each "not seen" list reflects the most recent session/week — label it with the
   // service day that ends that week so the leader knows which week they're chasing up.
   // serviceDayOfWeek (§5, phase 6b) drives both the word and _fridayLabel()'s date math.
@@ -4631,9 +4677,14 @@ async function renderAdminView(settings, users) {
       <button class="btn btn-primary btn-sm" onclick="showAddUser()">+ Add Account</button>
     </div>`;
 
-    // Group-by-role for clarity at 12+ accounts
-    const roleOrder = ['admin','director','quad','grade'];
-    const roleLabels = { admin:'Admin', director:'Director', quad:'Quad Leaders', grade:'Grade Logins' };
+    // Group-by-role for clarity at 12+ accounts. Labels are config-aware (§5.2);
+    // grade/quad only appear under the graded model, `leader` at the end.
+    const roleOrder = ['admin','director','quad','grade','leader'];
+    const roleLabels = {
+      admin: _roleLabel('admin'), director: _roleLabel('director'),
+      quad: _roleLabel('quad') + ' Logins', grade: _roleLabel('grade') + ' Logins',
+      leader: _roleLabel('leader') + 's',
+    };
     const grouped = {};
     for (const u of users) { if (!grouped[u.role]) grouped[u.role]=[]; grouped[u.role].push(u); }
     // Sort grade logins by grade number, quads by quad label
@@ -4646,7 +4697,7 @@ async function renderAdminView(settings, users) {
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
-        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):u.role.charAt(0).toUpperCase()+u.role.slice(1);
+        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):_roleLabel(u.role);
         body += `<div class="li" style="cursor:default;margin-bottom:6px">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -5137,7 +5188,8 @@ function suggestEmail() {
   if (suggested) emailEl.value = suggested;
 }
 
-function showAddUser() {
+async function showAddUser() {
+  try { _accLeaders = await API.get('/leaders'); } catch { _accLeaders = []; }
   modal(`
     <div class="mo-title">Add Account</div>
     <div id="uerr"></div>
@@ -5145,12 +5197,7 @@ function showAddUser() {
     <div class="fg"><label class="fl">Username ${helpTip('Free-form login name. For a grade login, set the Gender scope field below rather than relying on a g/b suffix — a login spanning several grades cannot encode its gender in the old grade7g pattern.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
     <div class="fg"><label class="fl">Password</label><input class="fi" id="u-pw" type="password" placeholder="Min 8 chars"></div>
     <div class="fg"><label class="fl">Role</label>
-      <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">
-        <option value="grade">Grade</option>
-        <option value="quad">Quad</option>
-        <option value="director">Director</option>
-        <option value="admin">Admin</option>
-      </select>
+      <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">${_accRoleOptions('')}</select>
     </div>
     <div id="u-grade-f" class="fg">
       <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
@@ -5171,12 +5218,16 @@ function showAddUser() {
         <option value="g1012">Girls Yr 10–12</option><option value="b1012">Boys Yr 10–12</option>
       </select>
     </div>
+    <div id="u-leader-f" class="fg" style="display:none">
+      <label class="fl">${esc(_roleLabel('leader'))} — linked leader ${helpTip('A junior-leader login sees only the students connected to this leader record. Leaders are created by importing the group CSV.')}</label>
+      <select class="fs" id="u-leader">${_accLeaderOptions('')}</select>
+    </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" style="flex:1" onclick="submitAddUser()">Create</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   toggleUserRoleFields();
-  // Trigger initial email suggestion for default role (grade)
+  // Trigger initial email suggestion for the default role
   suggestEmail();
 }
 
@@ -5189,11 +5240,28 @@ function _accGradeChecks(sel) {
   ).join('');
 }
 
+// Config-aware role <option>s: flat model hides grade/quad; labels from
+// roles.labels (§5.2 — Youth Pastor / Senior Leader / Junior Leader).
+function _accRoleOptions(selected) {
+  const flat = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.model) === 'flat';
+  const roles = flat ? ['admin', 'director', 'leader'] : ['grade', 'quad', 'director', 'admin', 'leader'];
+  // Ensure the current role is present even if the model would normally hide it.
+  if (selected && !roles.includes(selected)) roles.unshift(selected);
+  return roles.map(r => `<option value="${r}" ${r===selected?'selected':''}>${esc(_roleLabel(r))}</option>`).join('');
+}
+// Leader-record picker options for binding a junior-leader account.
+let _accLeaders = [];
+function _accLeaderOptions(selectedId) {
+  return `<option value="">— Select a leader —</option>` +
+    _accLeaders.map(l => `<option value="${l.id}" ${l.id===selectedId?'selected':''}>${esc(l.fullName)}</option>`).join('');
+}
+
 function toggleUserRoleFields() {
   const role = document.getElementById('u-role')?.value;
   const g = document.getElementById('u-grade-f'); if (g) g.style.display = role==='grade'?'block':'none';
   const gen = document.getElementById('u-gender-f'); if (gen) gen.style.display = role==='grade'?'block':'none';
   const q = document.getElementById('u-quad-f'); if (q) q.style.display = role==='quad'?'block':'none';
+  const ld = document.getElementById('u-leader-f'); if (ld) ld.style.display = role==='leader'?'block':'none';
 }
 
 async function submitAddUser() {
@@ -5204,11 +5272,13 @@ async function submitAddUser() {
   const grades = role==='grade' ? [...document.querySelectorAll('.ugcb:checked')].map(el=>parseInt(el.value,10)) : null;
   const gender = role==='grade' ? (document.getElementById('u-gender')?.value || null) : null;
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
+  const leaderId = role==='leader' ? (document.getElementById('u-leader')?.value || null) : null;
   const errEl = document.getElementById('uerr');
   if (!displayName || !email || !password) { errEl.innerHTML='<div class="alert al-err">All fields required</div>'; return; }
   if (role==='grade' && (!grades || !grades.length)) { errEl.innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
+  if (role==='leader' && !leaderId) { errEl.innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
   try {
-    const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad });
+    const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad, leaderId });
     Cache.del('/accounts/users');
     _adminData.users = [..._adminData.users, created];
     closeModal(); toast('Account created');
@@ -5219,15 +5289,14 @@ async function submitAddUser() {
 async function showEditUser(id) {
   let u; try { u = (await API.get('/accounts/users')).find(x => x.id===id); } catch {}
   if (!u) { toast('User not found'); return; }
+  try { _accLeaders = await API.get('/leaders'); } catch { _accLeaders = []; }
   modal(`
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>
     <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}"></div>
     <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off"></div>
     <div class="fg"><label class="fl">Role</label>
-      <select class="fs" id="u-role" onchange="toggleUserRoleFields()">
-        ${['grade','quad','director','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r.charAt(0).toUpperCase()+r.slice(1)}</option>`).join('')}
-      </select>
+      <select class="fs" id="u-role" onchange="toggleUserRoleFields()">${_accRoleOptions(u.role)}</select>
     </div>
     <div id="u-grade-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
       <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
@@ -5245,6 +5314,10 @@ async function showEditUser(id) {
       <label class="fl">Quad</label>
       <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${QUAD_LABELS[q]||q}</option>`).join('')}</select>
     </div>
+    <div id="u-leader-f" class="fg" style="${u.role!=='leader'?'display:none':''}">
+      <label class="fl">${esc(_roleLabel('leader'))} — linked leader ${helpTip('A junior-leader login sees only the students connected to this leader record.')}</label>
+      <select class="fs" id="u-leader">${_accLeaderOptions(u.leaderId)}</select>
+    </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" style="flex:1" onclick="submitEditUser('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -5258,10 +5331,12 @@ async function submitEditUser(id) {
   const grades = role==='grade' ? [...document.querySelectorAll('.ugcb:checked')].map(el=>parseInt(el.value,10)) : null;
   const gender = role==='grade' ? (document.getElementById('u-gender')?.value || null) : null;
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
+  const leaderId = role==='leader' ? (document.getElementById('u-leader')?.value || null) : null;
   if (!displayName || !email) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Name and username are required</div>'; return; }
   if (role==='grade' && (!grades || !grades.length)) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
+  if (role==='leader' && !leaderId) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
   try {
-    const updated = await API.patch(`/accounts/users/${id}`, { displayName, email, role, grades, gender, quad });
+    const updated = await API.patch(`/accounts/users/${id}`, { displayName, email, role, grades, gender, quad, leaderId });
     Cache.del('/accounts/users');
     _adminData.users = _adminData.users.map(u => u.id === id ? updated : u);
     closeModal(); toast('Account updated');

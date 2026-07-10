@@ -15,6 +15,7 @@ function toUser(row: Record<string, unknown>): User {
     grades: (row['grades'] as Grade[] | null) ?? null,
     gender: (row['gender'] as 'male' | 'female' | null) ?? null,
     quad: (row['quad'] as Quad | null) ?? null,
+    leaderId: (row['leader_id'] as string | null) ?? null,
     status: row['status'] as 'active' | 'inactive',
     passwordHash: (row['password_hash'] as string | null) ?? undefined,
     mustChangePassword: (row['must_change_password'] as boolean | null) ?? false,
@@ -55,7 +56,7 @@ export class SupabaseUserRepository implements IUserRepository {
     // serialised and cast, mirroring ministry_config's write in the settings repo.
     const gradesJson = user.grades == null ? null : JSON.stringify(user.grades);
     const rows = await this.sql`
-      insert into users (id, display_name, email, role, grade, grades, gender, quad, status, password_hash, must_change_password, created_at, updated_at)
+      insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, created_at, updated_at)
       values (
         ${user.id},
         ${user.displayName},
@@ -65,6 +66,7 @@ export class SupabaseUserRepository implements IUserRepository {
         ${gradesJson}::jsonb,
         ${user.gender ?? null},
         ${user.quad ?? null},
+        ${user.leaderId ?? null},
         ${user.status},
         ${user.passwordHash ?? null},
         ${user.mustChangePassword ?? false},
@@ -79,6 +81,7 @@ export class SupabaseUserRepository implements IUserRepository {
         grades       = excluded.grades,
         gender       = excluded.gender,
         quad         = excluded.quad,
+        leader_id    = excluded.leader_id,
         status       = excluded.status,
         password_hash = excluded.password_hash,
         must_change_password = excluded.must_change_password,

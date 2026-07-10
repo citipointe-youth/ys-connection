@@ -21,6 +21,9 @@ export interface User {
   gender?: 'male' | 'female' | null;
   // For quad logins — which quad this account manages
   quad?: Quad | null;
+  // For `leader` (junior leader) logins — the Leader record this account is bound
+  // to (§5.2). The account sees exactly that leader's connected students.
+  leaderId?: string | null;
   status: 'active' | 'inactive';
   passwordHash?: string;
   // True for accounts whose password was set by someone/something other than the
@@ -45,6 +48,9 @@ export interface Actor {
   // to [grade] when this is absent, so old tokens keep working.
   grades?: Grade[] | null;
   quad: Quad | null;
+  // For `leader` logins — the bound Leader record id (§5.2); the actor sees only
+  // students connected to it. null/absent for every other role.
+  leaderId?: string | null;
   // Gender scope, derived at sign-in: quad logins from their quad; grade logins
   // from their email convention (grade7g -> female, grade7b -> male). null/absent
   // = no gender restriction (director/admin, or an ungendered grade login).

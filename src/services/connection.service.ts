@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessStudent, canAccessGender, actorGrades } from './access-control';
+import { assertCan, canAccessStudent, canAccessGender, actorGrades, assertLeaderSelf } from './access-control';
 import {
   parseAllocationRows,
   planAllocationSync,
@@ -16,7 +16,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Connection } from '../core/entities/connection';
 import type { Actor } from '../core/entities/user';
-import { NotFoundError, BadRequestError, ConflictError } from '../core/errors/app-error';
+import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from '../core/errors/app-error';
 import { invalidateOverviewCache } from './overview.service';
 
 export interface ConnectionWithNames {
@@ -129,11 +129,16 @@ export function makeConnectionService(
         connRepo.findByStudent(studentId),
         buildLookups(),
       ]);
+      // A junior leader may only see a student they are themselves connected to.
+      if (actor.role === 'leader' && !conns.some((c) => c.leaderId === actor.leaderId)) {
+        throw new ForbiddenError('Junior leaders can only view their own students');
+      }
       return enrichWith(conns, studentsById, leadersById);
     },
 
     async listByLeader(actor, leaderId) {
       assertCan(actor, 'leader:read');
+      assertLeaderSelf(actor, leaderId); // a junior leader can only list their own connections
       const [conns, { studentsById, leadersById }] = await Promise.all([
         connRepo.findByLeader(leaderId),
         buildLookups(),
@@ -156,6 +161,8 @@ export function makeConnectionService(
       const filtered = all.filter((a) => {
         const student = studentsById.get(a.studentId);
         if (!student) return false;
+        // Junior leader: only their own connections.
+        if (actor.role === 'leader') return a.leaderId === actor.leaderId;
         if (actor.role === 'grade' || actor.role === 'quad') {
           return opts?.crossGrade
             ? canAccessGender(actor, student.gender, structure)

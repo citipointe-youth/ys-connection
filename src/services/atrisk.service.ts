@@ -1,5 +1,5 @@
 import { assertCan, canAccessStudent } from './access-control';
-import type { IStudentRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import type { IStudentRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { AtRiskStatus } from '../core/types/enums';
@@ -129,6 +129,7 @@ const AT_RISK_DISPLAY = new Set<AtRiskStatus>(['atrisk', 'stopped', 'declining',
 export function makeAtRiskService(
   studentRepo: IStudentRepository,
   settingsRepo: ISettingsRepository,
+  connRepo?: IConnectionRepository,
 ): AtRiskService {
   return {
     async list(actor, filter) {
@@ -137,9 +138,15 @@ export function makeAtRiskService(
       const structure = settings.ministryConfig.structure;
       let students = allStudents;
 
-      // Scope by role (grade -> own grade(s) + own gender; quad -> bracket +
-      // gender). cohortModel/genderPolicy from config relax this appropriately.
-      if (actor.role === 'grade' || actor.role === 'quad') {
+      // Junior leader (§5.2): only their own connected students.
+      if (actor.role === 'leader') {
+        const myIds = (connRepo && actor.leaderId)
+          ? new Set((await connRepo.findByLeader(actor.leaderId)).map((c) => c.studentId))
+          : new Set<string>();
+        students = students.filter((s) => myIds.has(s.id));
+      } else if (actor.role === 'grade' || actor.role === 'quad') {
+        // Scope by role (grade -> own grade(s) + own gender; quad -> bracket +
+        // gender). cohortModel/genderPolicy from config relax this appropriately.
         students = students.filter((s) => canAccessStudent(actor, s.grade, s.gender, structure));
       }
 
