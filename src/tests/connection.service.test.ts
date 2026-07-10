@@ -72,6 +72,33 @@ describe('Connection Service', () => {
     expect(row?.dateOfBirth).toBe('2009-05-05');
   });
 
+  // Connect Setup's "Export" button — grouped by leader, own grade/gender per
+  // row (not the leader's), plus DOB/mobile/parent mobile for leader visibility.
+  it('exportCsv carries per-row leader + student details, sorted by leader then student name', async () => {
+    const { connSvc, studentSvc, leaderSvc } = await buildServices();
+    const stud = await studentSvc.create(ADMIN, {
+      firstName: 'Zoe', lastName: 'Adams', gender: 'female', grade: 9,
+      dateOfBirth: '2009-05-05', mobile: '0412 345 678', parentPhone: '0423 456 789',
+    });
+    const leader = await leaderSvc.create(ADMIN, { fullName: 'Priya Leader', gender: 'female', grades: [9, 10] });
+    await connSvc.assign(ADMIN, { studentId: stud.id, leaderId: leader.id });
+
+    const rows = await connSvc.exportCsv(ADMIN);
+    const row = rows.find((r) => r.studentName === 'Zoe Adams');
+    expect(row).toMatchObject({
+      leaderName: 'Priya Leader',
+      leaderGrade: '9; 10',
+      leaderGender: 'female',
+      studentGrade: 9,
+      studentGender: 'female',
+      dateOfBirth: '2009-05-05',
+      mobile: '0412 345 678',
+      parentPhone: '0423 456 789',
+    });
+    expect(row).not.toHaveProperty('svcAttended');
+    expect(row).not.toHaveProperty('grpAttended');
+  });
+
   // TC23 — admin can connect any student to any leader
   it('TC23: admin can connect', async () => {
     const { connSvc, student, leaderF } = await buildServices();

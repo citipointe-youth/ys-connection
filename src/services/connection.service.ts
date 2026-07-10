@@ -31,18 +31,17 @@ export interface ConnectionWithNames {
 
 export interface ExportRow {
   leaderName: string;
+  leaderGrade: string;
   leaderGender: string | null;
-  leaderGrades: string;
   studentName: string;
   studentGrade: number | null;
   studentGender: string;
-  svcAttended: number;
-  svcTotal: number;
+  health: string | null;
   svcPct: string;
-  grpAttended: number;
-  grpTotal: number;
   grpPct: string;
-  atRiskStatus: string | null;
+  dateOfBirth: string | null;
+  mobile: string | null;
+  parentPhone: string | null;
 }
 
 export interface ConnectionService {
@@ -236,7 +235,7 @@ export function makeConnectionService(
         // "Export CSV" button, so it should include cross-grade connections the actor
         // made there, same as the picker and listAll() above.
         if ((actor.role === 'grade' || actor.role === 'quad') && !canAccessGender(actor, student.gender)) continue;
-        const pct = student.svcTotal > 0
+        const svcPct = student.svcTotal > 0
           ? Math.round((student.svcAttended / student.svcTotal) * 100) + '%'
           : '—';
         const grpPct = student.grpTotal > 0
@@ -244,18 +243,17 @@ export function makeConnectionService(
           : '—';
         rows.push({
           leaderName: leader.fullName,
+          leaderGrade: leader.grades.length ? leader.grades.join('; ') : 'All',
           leaderGender: leader.gender,
-          leaderGrades: leader.grades.length ? leader.grades.join('; ') : 'All',
           studentName: `${student.firstName} ${student.lastName}`,
           studentGrade: student.grade,
           studentGender: student.gender,
-          svcAttended: student.svcAttended,
-          svcTotal: student.svcTotal,
-          svcPct: pct,
-          grpAttended: student.grpAttended,
-          grpTotal: student.grpTotal,
-          grpPct: grpPct,
-          atRiskStatus: student.atRiskStatus,
+          health: student.atRiskStatus,
+          svcPct,
+          grpPct,
+          dateOfBirth: student.dateOfBirth,
+          mobile: student.mobile,
+          parentPhone: student.parentPhone,
         });
       }
       return rows.sort((a, b) => a.leaderName.localeCompare(b.leaderName) || a.studentName.localeCompare(b.studentName));

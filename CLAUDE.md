@@ -262,6 +262,16 @@ the full evidence and the connection-ceiling mitigation levers.
   leader names is unmatched, and returns a report of unmatched/ambiguous names. Logic lives in
   the pure `src/services/connection-allocations.ts`; `parseAllocationCSV` in the SPA preserves
   all columns (unlike attendance `parseCSV`).
+- **Connect Setup export** (`exportConnectCSV()`, all roles — own-gender-only for grade/quad):
+  `GET /connections/export` now returns structured rows (`ConnectionService.exportCsv` /
+  `ExportRow`, not a CSV string); the SPA builds an **.xlsx** workbook client-side via the
+  same vendored SheetJS build used to read Excel imports (`_ensureXlsx()`), lazy-loaded on
+  click. One row per leader (name/grade/gender only) followed by that leader's connected
+  students (their own grade/gender — not the leader's — plus Health/Youth %/Lifegroup %/DOB/
+  Mobile/Parent Mobile), grouping relies on the rows already being sorted leader-then-student.
+  **Independent of** the admin-only allocations export/import above — separate route, service
+  method (`exportCsv` vs `exportAllocations`), and frontend function
+  (`exportConnectCSV()` vs `exportAllocationsCSV()`); changing one doesn't affect the other.
 
 ### Elvanto export guide (2026-07-03)
 

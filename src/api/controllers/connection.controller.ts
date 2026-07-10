@@ -40,14 +40,9 @@ export function makeConnectionController(deps: { connection: ConnectionService }
     async exportCsv(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
       const rows = await deps.connection.exportCsv(req.ctx);
-      // Return as CSV string
-      const header = 'Leader,Leader Gender,Leader Grades,Student,Grade,Gender,Youth Attended,Youth %,Lifegroup Attended,Lifegroup %,At Risk';
-      const lines = rows.map((r) =>
-        [r.leaderName, r.leaderGender ?? '', r.leaderGrades, r.studentName, r.studentGrade ?? '', r.studentGender, r.svcAttended, r.svcPct, r.grpAttended, r.grpPct, r.atRiskStatus ?? '']
-          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-          .join(','),
-      );
-      return { csv: [header, ...lines].join('\n'), rowCount: rows.length };
+      // Returned as structured rows (not a CSV string) — the SPA builds an .xlsx
+      // workbook client-side, grouping rows by leader.
+      return { rows, rowCount: rows.length };
     },
 
     async exportAllocations(req: HttpRequest) {
