@@ -4787,9 +4787,12 @@ function wizHandleAllocationImportFile(input) {
 // preset, then fine-tune. Phase 1 ships step 0 (the preset picker) + a save
 // step; steps 1-5 (branding/terminology/structure/roles/modules fine-tuning)
 // are filled in by later phases — see the /* SETUP-STEP-STUB */ markers below.
+// 'Two-bracket ministry' was retired 2026-07-10 — a medium/junior-senior
+// ministry now just starts from "Large graded ministry (AU)" and creates
+// broader grade-equivalent accounts (Admin -> Accounts), optionally skipping
+// quad accounts entirely. See design doc §5.1a / CLAUDE.md.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Large graded ministry (AU)', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default.' },
-  { id: 'two-bracket', title: 'Two-bracket ministry', desc: 'Junior/senior brackets instead of per-grade logins. Connection Audit on.' },
+  { id: 'large-graded-au', title: 'Large graded ministry (AU)', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. Also the starting point for junior/senior-style ministries — just create broader grade accounts and skip quad accounts.' },
   { id: 'small-flat', title: 'Small flat ministry', desc: 'Youth Pastor / Senior Leader / Junior Leader, no grade or quad cohorting. Connection Audit off, Lifegroups on.' },
   { id: 'micro', title: 'Micro ministry', desc: 'Same as Small flat, plus Lifegroups off and export guides hidden — for spreadsheet-only ministries.' },
 ];
@@ -4813,7 +4816,6 @@ function _deepMergeClient(base, patch) {
 // threshold shared between the backend and this file.
 const PRESET_CONFIGS_CLIENT = {
   'large-graded-au': {},
-  'two-bracket': { preset: 'two-bracket', structure: { cohortModel: 'brackets-only' }, roles: { model: 'graded' } },
   'small-flat': {
     preset: 'small-flat',
     structure: { cohortModel: 'none', genderPolicy: 'soft' },
@@ -4827,7 +4829,7 @@ const PRESET_CONFIGS_CLIENT = {
     modules: { connectionAudit: false, lifegroups: false, exportGuides: 'hidden' },
   },
 };
-const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, 'two-bracket': 25, 'small-flat': 10, micro: 0 };
+const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, 'small-flat': 10, micro: 0 };
 
 // Mirrors src/core/ministry-config.ts's MINISTRY_CONFIG_DEFAULTS. Needed so
 // switching presets always computes "defaults + this preset's overrides" from

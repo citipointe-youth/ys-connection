@@ -10,7 +10,11 @@ import { z } from 'zod';
 
 const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex colour (e.g. #1a1af2)');
 
-export const MINISTRY_PRESETS = ['large-graded-au', 'two-bracket', 'small-flat', 'micro'] as const;
+// 'two-bracket' was dropped 2026-07-10: a medium ministry wanting bracket-sized
+// cohorts now just creates broader grade-equivalent accounts (1+ grades each)
+// under 'large-graded-au' and skips creating quad accounts — an account-creation
+// choice, not a ministryConfig difference. See CLAUDE.md / design doc §5.1a.
+export const MINISTRY_PRESETS = ['large-graded-au', 'small-flat', 'micro'] as const;
 export type MinistryPreset = (typeof MINISTRY_PRESETS)[number];
 
 export const MinistryConfigSchema = z.object({
@@ -44,7 +48,11 @@ export const MinistryConfigSchema = z.object({
 
   structure: z
     .object({
-      cohortModel: z.enum(['grades-quads', 'brackets-only', 'none']).default('grades-quads'),
+      // Only two values (design §5.1a) — grade-equivalent accounts (one or
+      // more grades each) are always the base under 'grades-quads'; whether
+      // any quad-equivalent rollup accounts exist is an independent,
+      // per-account-creation choice, not a cohortModel value.
+      cohortModel: z.enum(['grades-quads', 'none']).default('grades-quads'),
       gradeMin: z.number().int().default(7),
       gradeMax: z.number().int().default(12),
       gradeLabel: z.string().max(20).default('Grade'),
@@ -112,11 +120,6 @@ export const MINISTRY_CONFIG_DEFAULTS: MinistryConfig = MinistryConfigSchema.par
 // on AppSettings, not inside ministryConfig — see PRESET_SERVICE_MIN_ATTENDANCE.
 export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
   'large-graded-au': {},
-  'two-bracket': {
-    preset: 'two-bracket',
-    structure: { cohortModel: 'brackets-only' },
-    roles: { model: 'graded' },
-  },
   'small-flat': {
     preset: 'small-flat',
     structure: { cohortModel: 'none', genderPolicy: 'soft' },
@@ -144,7 +147,6 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
 // as a second field in the same PATCH /settings call.
 export const PRESET_SERVICE_MIN_ATTENDANCE: Record<MinistryPreset, number> = {
   'large-graded-au': 100,
-  'two-bracket': 25,
   'small-flat': 10,
   micro: 0,
 };
