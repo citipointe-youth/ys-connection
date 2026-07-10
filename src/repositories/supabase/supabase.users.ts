@@ -52,9 +52,14 @@ export class SupabaseUserRepository implements IUserRepository {
   }
 
   async save(user: User): Promise<User> {
-    // grades is a jsonb column (nullable) — null stays null; an array is
-    // serialised and cast, mirroring ministry_config's write in the settings repo.
-    const gradesJson = user.grades == null ? null : JSON.stringify(user.grades);
+    // grades is a nullable jsonb column. Write via sql.json() (porsager-native
+    // json Parameter) — NOT `${JSON.stringify(arr)}::jsonb`, which double-encodes
+    // into a jsonb string because postgres.js re-stringifies a value it has typed
+    // as jsonb from the ::jsonb cast (the 2026-07-11 config-lockout bug; grades
+    // was the same latent bug, never yet triggered on prod). null stays SQL NULL.
+    const gradesParam = user.grades == null
+      ? null
+      : this.sql.json(user.grades as unknown as Parameters<typeof this.sql.json>[0]);
     const rows = await this.sql`
       insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, created_at, updated_at)
       values (
@@ -63,7 +68,7 @@ export class SupabaseUserRepository implements IUserRepository {
         ${user.email},
         ${user.role},
         ${user.grade ?? null},
-        ${gradesJson}::jsonb,
+        ${gradesParam},
         ${user.gender ?? null},
         ${user.quad ?? null},
         ${user.leaderId ?? null},

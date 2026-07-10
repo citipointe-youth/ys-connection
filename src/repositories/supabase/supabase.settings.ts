@@ -13,15 +13,32 @@ import { MinistryConfigSchema, MINISTRY_CONFIG_DEFAULTS } from '../../core/minis
 
 const SETTINGS_ID = 'global';
 
+// Parse the stored ministry_config resiliently. A corrupt/misencoded blob must
+// NEVER throw here: this row is read on essentially every request, so a throw
+// takes down the WHOLE app — including the Admin → Setup screen needed to fix
+// it (this exact lockout happened 2026-07-11 when a legacy write double-encoded
+// the config as a jsonb *string*). So: unwrap a stringified value (legacy
+// double-encode) with JSON.parse, then schema-parse; on any failure fall back
+// to defaults (current YS Brisbane behaviour) rather than bricking the app.
+export function parseMinistryConfig(raw: unknown) {
+  let v: unknown = raw ?? {};
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch { v = {}; }
+  }
+  try {
+    return MinistryConfigSchema.parse(v);
+  } catch {
+    return MINISTRY_CONFIG_DEFAULTS;
+  }
+}
+
 function toAppSettings(row: Record<string, unknown>): AppSettings {
   return {
     id: (row['id'] as string | undefined) ?? SETTINGS_ID,
     termGapDays: row['term_gap_days'] as number,
     validThresholdPct: row['valid_threshold_pct'] as number,
     serviceMinAttendance: (row['service_min_attendance'] as number | null) ?? 100,
-    // Parsing on read is the "loud failure" guard — a hand-edited/corrupt JSON
-    // blob in the DB throws here instead of silently serving garbage config.
-    ministryConfig: MinistryConfigSchema.parse(row['ministry_config'] ?? {}),
+    ministryConfig: parseMinistryConfig(row['ministry_config']),
     updatedAt: toIso(row['updated_at']),
   };
 }
@@ -108,7 +125,14 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
   }
 
   async save(settings: AppSettings): Promise<AppSettings> {
-    const ministryConfigJson = JSON.stringify(settings.ministryConfig ?? MINISTRY_CONFIG_DEFAULTS);
+    // Write jsonb via sql.json() (the porsager-native json Parameter, OID 3802) —
+    // NOT `${JSON.stringify(cfg)}::jsonb`. postgres.js detects the ::jsonb cast,
+    // types the parameter as jsonb, and runs its own JSON.stringify serializer;
+    // handing it an already-stringified string double-encodes it into a jsonb
+    // *string* (the 2026-07-11 config-lockout bug). This mirrors the audit repo.
+    const ministryConfigParam = this.sql.json(
+      (settings.ministryConfig ?? MINISTRY_CONFIG_DEFAULTS) as unknown as Parameters<typeof this.sql.json>[0],
+    );
     const rows = await this.sql`
       insert into app_settings (
         id,
@@ -123,7 +147,7 @@ export class SupabaseSettingsRepository implements ISettingsRepository {
         ${settings.termGapDays},
         ${settings.validThresholdPct},
         ${settings.serviceMinAttendance},
-        ${ministryConfigJson}::jsonb,
+        ${ministryConfigParam},
         ${settings.updatedAt}
       )
       on conflict (id) do update set
