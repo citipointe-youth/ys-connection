@@ -76,6 +76,18 @@ export function assertCan(actor: Actor, action: Action): void {
 }
 
 /**
+ * The effective set of grades a grade login manages (§5.1a). Prefers the new
+ * multi-grade `grades` array; falls back to the legacy single `grade` so old
+ * tokens and existing single-grade seeded accounts behave identically. Returns
+ * [] for a grade login with no grade at all, and for non-grade roles (their
+ * grade access is decided elsewhere in canAccessGrade).
+ */
+export function actorGrades(actor: Actor): number[] {
+  if (actor.grades && actor.grades.length > 0) return actor.grades;
+  return actor.grade != null ? [actor.grade] : [];
+}
+
+/**
  * Returns true if the actor can access data for a given grade.
  * - grade: own grade only
  * - quad: all grades within their quad
@@ -87,7 +99,10 @@ export function canAccessGrade(actor: Actor, grade: number | null): boolean {
     case 'director':
       return true;
     case 'grade':
-      return actor.grade != null && actor.grade === grade;
+      // Multi-grade grade accounts (§5.1a): access any of the actor's grades.
+      // actorGrades() falls back to [actor.grade] for legacy single-grade
+      // accounts, so this is byte-identical for YS Brisbane's existing logins.
+      return grade != null && actorGrades(actor).includes(grade);
     case 'quad': {
       if (!actor.quad || grade == null) return false;
       const isJunior = grade >= 7 && grade <= 9;

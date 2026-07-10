@@ -1,4 +1,4 @@
-import { assertCan, canAccessGrade, canAccessGender, canAccessStudent, quadGenderOf, quadGradesOf } from './access-control';
+import { assertCan, canAccessGrade, canAccessGender, canAccessStudent, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
 import type {
   IStudentRepository,
   ILifegroupRepository,
@@ -230,7 +230,7 @@ export function makeLifegroupStatsService(
       // Visible grades/quads for this login.
       const allGrades = [7, 8, 9, 10, 11, 12];
       const visibleGrades = actor.role === 'grade'
-        ? (actor.grade != null ? [actor.grade] : [])
+        ? actorGrades(actor)
         : actor.role === 'quad'
           ? quadGradesOf(actor.quad)
           : allGrades;

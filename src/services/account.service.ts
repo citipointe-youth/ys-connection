@@ -13,9 +13,36 @@ const CreateUserSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(8),
   role: z.enum(['grade', 'quad', 'director', 'admin']),
+  // Legacy single-grade field (back-compat). New account forms send `grades`.
   grade: z.number().int().min(7).max(12).nullable().optional(),
+  // Multi-grade grade accounts (§5.1a): one or more grades. When present it is
+  // authoritative and `grade` is derived from it.
+  grades: z.array(z.number().int().min(7).max(12)).nullable().optional(),
+  // Explicit gender scope for a grade login (null = both). Required in practice
+  // for a >1-grade account; optional for single-grade ones (email convention).
+  gender: z.enum(['male', 'female']).nullable().optional(),
   quad: z.enum(['g79', 'b79', 'g1012', 'b1012']).nullable().optional(),
 });
+
+/**
+ * Normalise the incoming grade/grades pair into the stored representation:
+ * `grades` is the full deduped, sorted set; `grade` is the single-grade
+ * back-compat anchor (set only when exactly one grade, else null). Returns
+ * undefined when neither field was supplied (so a partial update leaves them
+ * untouched).
+ */
+function normaliseGrades(
+  grade: number | null | undefined,
+  grades: number[] | null | undefined,
+): { grade: Grade | null; grades: Grade[] } | undefined {
+  let list: number[] | undefined;
+  if (grades !== undefined && grades !== null) list = grades;
+  else if (grade !== undefined && grade !== null) list = [grade];
+  else if (grades === null || grade === null) list = [];
+  else return undefined;
+  const uniq = [...new Set(list)].sort((a, b) => a - b) as Grade[];
+  return { grade: (uniq.length === 1 ? uniq[0]! : null) as Grade | null, grades: uniq };
+}
 
 function toSafe(u: User): SafeUser {
   const { passwordHash: _pw, ...safe } = u;
@@ -59,8 +86,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
       const existing = await users.findByEmail(data.email);
       if (existing) throw new ConflictError('Email already in use');
 
-      if (data.role === 'grade' && data.grade == null) {
-        throw new BadRequestError('Grade login requires a grade');
+      const gradeSet = normaliseGrades(data.grade, data.grades);
+      if (data.role === 'grade' && (!gradeSet || gradeSet.grades.length === 0)) {
+        throw new BadRequestError('Grade login requires at least one grade');
       }
       if (data.role === 'quad' && data.quad == null) {
         throw new BadRequestError('Quad login requires a quad');
@@ -73,7 +101,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
         displayName: data.displayName,
         email: data.email,
         role: data.role as UserRole,
-        grade: (data.grade ?? null) as Grade | null,
+        grade: gradeSet ? gradeSet.grade : ((data.grade ?? null) as Grade | null),
+        grades: gradeSet ? gradeSet.grades : null,
+        gender: data.role === 'grade' ? (data.gender ?? null) : null,
         quad: (data.quad ?? null) as Quad | null,
         status: 'active',
         passwordHash,
@@ -97,12 +127,19 @@ export function makeAccountService(users: IUserRepository): AccountService {
         const other = await users.findByEmail(patch.email);
         if (other && other.id !== id) throw new ConflictError('Email already in use');
       }
+      const gradeSet = normaliseGrades(patch.grade, patch.grades);
+      const nextRole = (patch.role ?? existing.role) as UserRole;
+      const nextGrades = gradeSet ? gradeSet.grades : (existing.grades ?? (existing.grade != null ? [existing.grade] : []));
+      if (nextRole === 'grade' && nextGrades.length === 0) {
+        throw new BadRequestError('Grade login requires at least one grade');
+      }
       const updated: User = {
         ...existing,
         ...(patch.displayName ? { displayName: patch.displayName } : {}),
         ...(patch.email ? { email: patch.email } : {}),
         ...(patch.role ? { role: patch.role as UserRole } : {}),
-        ...(patch.grade !== undefined ? { grade: patch.grade as Grade | null } : {}),
+        ...(gradeSet ? { grade: gradeSet.grade, grades: gradeSet.grades } : {}),
+        ...(patch.gender !== undefined ? { gender: (patch.gender ?? null) } : {}),
         ...(patch.quad !== undefined ? { quad: patch.quad as Quad | null } : {}),
         updatedAt: new Date().toISOString(),
       };

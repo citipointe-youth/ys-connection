@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessGrade, canAccessGender, quadGenderOf, quadGradesOf } from './access-control';
+import { assertCan, canAccessGrade, canAccessGender, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
 import type { ILeaderRepository } from '../repositories/interfaces/entity-repositories';
 import type { Leader } from '../core/entities/leader';
 import type { Actor } from '../core/entities/user';
@@ -50,14 +50,16 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
       const all = await repo.findActive();
 
       if (actor.role === 'grade') {
-        // Grade login sees only leaders of their own GENDER that are for their
-        // grade (or all-grades / created by them).
+        // Grade login sees only leaders of their own GENDER that are for any of
+        // their grade(s) (or all-grades / created by them). actorGrades()
+        // generalises the single-grade case to a multi-grade account (§5.1a).
+        const myGrades = actorGrades(actor);
         return all.filter(
           (l) =>
             (l.gender == null || canAccessGender(actor, l.gender)) &&
-            (l.createdByGrade === actor.grade ||
+            ((l.createdByGrade != null && myGrades.includes(l.createdByGrade)) ||
               l.grades.length === 0 ||
-              l.grades.includes(actor.grade as Grade)),
+              l.grades.some((g) => myGrades.includes(g))),
         );
       }
       if (actor.role === 'quad') {
@@ -87,8 +89,9 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
       let grades: Grade[];
       let leaderGender: Leader['gender'] = (data.gender ?? null) as Leader['gender'];
       if (actor.role === 'grade') {
-        if (actor.grade == null) throw new BadRequestError('Grade login has no grade assigned');
-        grades = [actor.grade];
+        const myGrades = actorGrades(actor) as Grade[];
+        if (myGrades.length === 0) throw new BadRequestError('Grade login has no grade assigned');
+        grades = myGrades;
       } else if (actor.role === 'quad') {
         // Quad login: new leaders auto-set to the quad's gender; year focus limited to the bracket.
         const bracket = quadGradesOf(actor.quad) as Grade[];
@@ -111,7 +114,7 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
         gender: leaderGender,
         grades,
         active: true,
-        createdByGrade: actor.role === 'grade' ? actor.grade : null,
+        createdByGrade: actor.role === 'grade' ? (actorGrades(actor)[0] ?? null) as Grade | null : null,
         smsTemplate: data.smsTemplate ?? null,
         createdAt: now,
         updatedAt: now,
@@ -124,8 +127,8 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
 
-      // Grade login can only update leaders they created
-      if (actor.role === 'grade' && existing.createdByGrade !== actor.grade) {
+      // Grade login can only update leaders they created (any of their grades)
+      if (actor.role === 'grade' && !(existing.createdByGrade != null && actorGrades(actor).includes(existing.createdByGrade))) {
         throw new ForbiddenError('You can only edit leaders you created');
       }
       // Quad login can only edit leaders within their gender + year bracket
@@ -165,7 +168,7 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
       assertCan(actor, 'leader:write');
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
-      if (actor.role === 'grade' && existing.createdByGrade !== actor.grade) {
+      if (actor.role === 'grade' && !(existing.createdByGrade != null && actorGrades(actor).includes(existing.createdByGrade))) {
         throw new ForbiddenError('You can only delete leaders you created');
       }
       if (actor.role === 'quad') {

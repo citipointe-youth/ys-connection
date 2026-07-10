@@ -6,8 +6,19 @@ export interface User {
   displayName: string;
   email: string;
   role: UserRole;
-  // For grade logins — which grade this account manages
+  // For grade logins — which grade this account manages. Legacy single-grade
+  // field kept for back-compat with existing seeded accounts and old tokens.
   grade?: Grade | null;
+  // For grade logins — the full set of grades this account manages (§5.1a,
+  // generalisation). One or more grades. When present it is authoritative;
+  // `grade` remains as the single-grade back-compat representation. Absent on
+  // legacy single-grade accounts (which still work via `grade`).
+  grades?: Grade[] | null;
+  // For grade logins spanning >1 grade: gender scope set explicitly at account
+  // creation (the grade7g/grade7b email regex only encodes one grade number and
+  // doesn't generalise to a list). null = both genders. Single-grade accounts
+  // may still leave this unset and rely on the email convention (back-compat).
+  gender?: 'male' | 'female' | null;
   // For quad logins — which quad this account manages
   quad?: Quad | null;
   status: 'active' | 'inactive';
@@ -27,7 +38,12 @@ export interface Actor {
   id: ID;
   role: UserRole;
   displayName: string;
+  // Legacy single grade (back-compat with old tokens); prefer `grades`.
   grade: Grade | null;
+  // Full grade set for a grade login (§5.1a). When present it is authoritative;
+  // access-control derives the effective list via actorGrades() which falls back
+  // to [grade] when this is absent, so old tokens keep working.
+  grades?: Grade[] | null;
   quad: Quad | null;
   // Gender scope, derived at sign-in: quad logins from their quad; grade logins
   // from their email convention (grade7g -> female, grade7b -> male). null/absent

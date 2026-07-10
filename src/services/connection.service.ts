@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessStudent, canAccessGender } from './access-control';
+import { assertCan, canAccessStudent, canAccessGender, actorGrades } from './access-control';
 import {
   parseAllocationRows,
   planAllocationSync,
@@ -174,7 +174,7 @@ export function makeConnectionService(
       if (!leader) throw new NotFoundError('Leader not found');
 
       if (actor.role === 'grade') {
-        const ownGrade = student.grade === actor.grade;
+        const ownGrade = student.grade != null && actorGrades(actor).includes(student.grade);
         if (!ownGrade) {
           if (!leader.gender || student.gender !== leader.gender) {
             throw new BadRequestError('Cross-grade connection requires student and leader to share gender');

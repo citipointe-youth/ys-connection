@@ -14,6 +14,10 @@ import { quadGenderOf } from './access-control';
 export function deriveActorGender(user: User): 'male' | 'female' | null {
   if (user.role === 'quad') return quadGenderOf(user.quad);
   if (user.role === 'grade') {
+    // Explicit gender field wins when set (§5.1a — multi-grade accounts can't
+    // encode gender in a single-grade email regex). Falls through to the email
+    // convention for existing single-grade accounts that never set it.
+    if (user.gender === 'male' || user.gender === 'female') return user.gender;
     const local = (user.email || '').split('@')[0]?.toLowerCase() ?? '';
     if (!local.startsWith('grade')) return null;
     if (/^grade\s*\d+\s*g$/.test(local) || local.includes('girl')) return 'female';
@@ -68,6 +72,13 @@ export function toActor(user: User): Actor {
     role: user.role,
     displayName: user.displayName,
     grade: (user.grade ?? null) as Grade | null,
+    // Multi-grade grade accounts (§5.1a): carry the full set. Falls back to the
+    // single grade for legacy accounts so old tokens/behaviour are unchanged.
+    grades: (user.grades && user.grades.length > 0
+      ? user.grades
+      : user.grade != null
+        ? [user.grade]
+        : []) as Grade[],
     quad: (user.quad ?? null) as Quad | null,
     gender: deriveActorGender(user),
     mustChangePassword: user.mustChangePassword ?? false,

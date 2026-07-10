@@ -11,6 +11,9 @@ function toUser(row: Record<string, unknown>): User {
     email: row['email'] as string,
     role: row['role'] as UserRole,
     grade: (row['grade'] as Grade | null) ?? null,
+    // jsonb column; postgres.js returns it already parsed (array) or null.
+    grades: (row['grades'] as Grade[] | null) ?? null,
+    gender: (row['gender'] as 'male' | 'female' | null) ?? null,
     quad: (row['quad'] as Quad | null) ?? null,
     status: row['status'] as 'active' | 'inactive',
     passwordHash: (row['password_hash'] as string | null) ?? undefined,
@@ -48,14 +51,19 @@ export class SupabaseUserRepository implements IUserRepository {
   }
 
   async save(user: User): Promise<User> {
+    // grades is a jsonb column (nullable) — null stays null; an array is
+    // serialised and cast, mirroring ministry_config's write in the settings repo.
+    const gradesJson = user.grades == null ? null : JSON.stringify(user.grades);
     const rows = await this.sql`
-      insert into users (id, display_name, email, role, grade, quad, status, password_hash, must_change_password, created_at, updated_at)
+      insert into users (id, display_name, email, role, grade, grades, gender, quad, status, password_hash, must_change_password, created_at, updated_at)
       values (
         ${user.id},
         ${user.displayName},
         ${user.email},
         ${user.role},
         ${user.grade ?? null},
+        ${gradesJson}::jsonb,
+        ${user.gender ?? null},
         ${user.quad ?? null},
         ${user.status},
         ${user.passwordHash ?? null},
@@ -68,6 +76,8 @@ export class SupabaseUserRepository implements IUserRepository {
         email        = excluded.email,
         role         = excluded.role,
         grade        = excluded.grade,
+        grades       = excluded.grades,
+        gender       = excluded.gender,
         quad         = excluded.quad,
         status       = excluded.status,
         password_hash = excluded.password_hash,

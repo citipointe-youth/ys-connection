@@ -1044,7 +1044,7 @@ function _prefetch() {
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 function quadLabel(q) { return QUAD_LABELS[q] || q; }
 const ROLE_TIPS = {
-  grade: (u) => `Grade ${u.grade} login — manages leaders and connections for Year ${u.grade}`,
+  grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
   quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — quads fully manage leaders and connections within their gender+bracket`,
   director: () => 'Director — full ministry access, can import data',
   admin: () => 'Admin — full access including settings and accounts',
@@ -1052,7 +1052,7 @@ const ROLE_TIPS = {
 function roleBadge(u) {
   if (!u) return '';
   let label, tip;
-  if (u.role === 'grade') { label = `Grade ${u.grade}`; }
+  if (u.role === 'grade') { label = gradeBadgeLabel(u); }
   else if (u.role === 'quad') { label = quadLabel(u.quad); }
   else { label = u.role.charAt(0).toUpperCase() + u.role.slice(1); }
   tip = (ROLE_TIPS[u.role]||(() => ''))(u);
@@ -1061,7 +1061,7 @@ function roleBadge(u) {
 function roleBadgeInner(u) {
   // Returns just the label string for use inside shell() where we can't return HTML
   if (!u) return '';
-  if (u.role === 'grade') return `Grade ${u.grade}`;
+  if (u.role === 'grade') return gradeBadgeLabel(u);
   if (u.role === 'quad') return quadLabel(u.quad);
   return u.role.charAt(0).toUpperCase() + u.role.slice(1);
 }
@@ -1289,6 +1289,10 @@ function _loginGender(u) {
   if (!u) return null;
   if (u.role === 'quad') return quadGender(u.quad);
   if (u.role === 'grade') {
+    // Explicit gender field wins (§5.1a — a multi-grade account sets it at
+    // creation; a single-grade one may still rely on the email convention).
+    // Mirrors backend deriveActorGender(). Keep in sync.
+    if (u.gender === 'male' || u.gender === 'female') return u.gender;
     const local = (u.email || '').split('@')[0].toLowerCase();
     if (/^grade\s*\d+\s*g$/.test(local) || local.includes('girl')) return 'female';
     if (/^grade\s*\d+\s*b$/.test(local) || local.includes('boy') || local.includes('guy')) return 'male';
@@ -1297,6 +1301,30 @@ function _loginGender(u) {
 }
 // " Girls" / " Boys" / "" — suffix for gendered grade/quad tile labels.
 function _gsfx(gender) { return gender === 'female' ? ' Girls' : gender === 'male' ? ' Boys' : ''; }
+
+// ── Multi-grade grade accounts (§5.1a) ──
+// A grade login may now be scoped to one OR more grades. `u.grades` (array) is
+// authoritative when present; `u.grade` (single) is the legacy back-compat
+// value. userGrades() returns the effective list — mirrors backend actorGrades().
+function userGrades(u) {
+  if (u && Array.isArray(u.grades) && u.grades.length) return u.grades.slice().sort((a, b) => a - b);
+  return (u && u.grade != null) ? [u.grade] : [];
+}
+// "7" | "7–9" (contiguous run) | "7, 9, 11" — compact list of grade numbers.
+function gradesLabel(grades) {
+  const g = [...grades].sort((a, b) => a - b);
+  if (!g.length) return '';
+  if (g.length === 1) return String(g[0]);
+  const contiguous = g.every((v, i) => i === 0 || v === g[i - 1] + 1);
+  return contiguous ? g[0] + '–' + g[g.length - 1] : g.join(', ');
+}
+// "Grade 7" | "Grades 7–9" — role badge / section header for a grade login.
+// (The grade-noun becomes config-aware — structure.gradeLabel — in phase 6b via
+// this single helper.)
+function gradeBadgeLabel(u) {
+  const g = userGrades(u);
+  return g.length > 1 ? ('Grades ' + gradesLabel(g)) : ('Grade ' + (g[0] != null ? g[0] : ''));
+}
 
 // ============================================================
 // ICON SYSTEM
@@ -1580,15 +1608,33 @@ function _hGradeSvcAvg(studs) {
 function _hQuadAvg(trends, q) { const x = ((trends && trends.byQuad) || []).find(y => y.quad === q); return x ? Math.round(x.averageAttendance) : 0; }
 function _hScopeSvcAvg(trends, u) {
   if (!trends) return 0;
-  if (u.role === 'grade') return _hGradeAvg(trends, u.grade);
+  // Multi-grade grade login: sum the per-grade averages across its grades.
+  if (u.role === 'grade') return userGrades(u).reduce((a, g) => a + _hGradeAvg(trends, g), 0);
   if (u.role === 'quad') return _hQuadAvg(trends, u.quad);
   return trends.ministry ? Math.round(trends.ministry.averageAttendance) : 0;
 }
 function _hScopeSvcSess(trends, u) {
   if (!trends) return 0;
   if (u.role === 'quad') { const q = (trends.byQuad || []).find(x => x.quad === u.quad); return q && q.sessions ? q.sessions.length : 0; }
-  if (u.role === 'grade') { const g = (trends.byGrade || []).find(x => x.grade === u.grade); return g && g.sessions ? g.sessions.length : 0; }
+  if (u.role === 'grade') { const first = userGrades(u)[0]; const g = (trends.byGrade || []).find(x => x.grade === first); return g && g.sessions ? g.sessions.length : 0; }
   return trends.ministry && trends.ministry.sessions ? trends.ministry.sessions.length : 0;
+}
+// Merge per-grade session series (trends.byGrade) across a set of grades into a
+// single series (sum attendance per session date). For a single-grade login this
+// returns exactly that grade's series unchanged. Used by a multi-grade grade
+// login's Weekly Attendance chart, which has no single byGrade entry to read.
+function _mergeGradeSessions(trends, grades) {
+  const byDate = new Map();
+  for (const gr of grades) {
+    const gt = ((trends && trends.byGrade) || []).find(x => x.grade === gr);
+    if (!gt || !Array.isArray(gt.sessions)) continue;
+    for (const s of gt.sessions) {
+      const cur = byDate.get(s.sessionDate) || { sessionDate: s.sessionDate, sessionName: s.sessionName, totalAttended: 0, totalPresent: 0, isOutlier: s.isOutlier };
+      cur.totalAttended += s.totalAttended; cur.totalPresent += s.totalPresent;
+      byDate.set(s.sessionDate, cur);
+    }
+  }
+  return [...byDate.values()].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
 }
 // Per-grade dropdown row for admin/director's "Youth By Quad" tiles — youth
 // attendance only (no lifegroup row; that data lives in the separate
@@ -2283,7 +2329,7 @@ function showAddLeader() {
   const u = S.user;
   const allowedGrades = u.role === 'quad' ? quadGrades(u.quad) : [7,8,9,10,11,12];
   const gcbs = allowedGrades.map(g =>
-    `<label style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><input type="checkbox" value="${g}" class="gcb" ${u.role==='grade'&&u.grade===g?'checked disabled':''}> Grade ${g}</label>`
+    `<label style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><input type="checkbox" value="${g}" class="gcb" ${u.role==='grade'&&userGrades(u).includes(g)?'checked disabled':''}> Grade ${g}</label>`
   ).join('');
   const qg = u.role === 'quad' ? quadGender(u.quad) : null;
   const genderField = qg
@@ -2473,8 +2519,9 @@ function renderConnectView() {
   // a grade login, own quad bracket for a quad login), or they double-count
   // students who only show up here because of that widening. director/admin have
   // no narrower remit than the full fetch, so they're unfiltered.
+  const _ownGrades = new Set(userGrades(u));
   const inOwnScope = s => u.role === 'quad' ? s.quad === u.quad
-    : (u.role === 'grade' && u.grade != null) ? s.grade === u.grade
+    : (u.role === 'grade') ? _ownGrades.has(s.grade)
     : true;
   const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
   const connectable = students.filter(_hasAttended).filter(inOwnScope);
@@ -2648,7 +2695,7 @@ function openStudentPicker(leaderId, leaderGender) {
   // other grade(s) they were broadened into further down the same list.
   const mu = S.user || {};
   window._pickerOwnGrades = new Set(
-    mu.role === 'grade' && mu.grade != null ? [mu.grade]
+    mu.role === 'grade' ? userGrades(mu)
     : mu.role === 'quad' ? quadGrades(mu.quad)
     : []
   );
@@ -3831,14 +3878,16 @@ async function renderTrends() {
     }
 
     if (u.role === 'grade') {
-      const gl = students.filter(s => s.grade === u.grade);
+      const _og = new Set(userGrades(u));
+      const gl = students.filter(s => _og.has(s.grade));
       const c = _svcAgg(gl, false), p = _svcAgg(gl, true);
-      body += `<div class="sh">Grade ${u.grade}${_gsfx(_loginGender(u))}</div><div class="card">`;
+      body += `<div class="sh">${gradeBadgeLabel(u)}${_gsfx(_loginGender(u))}</div><div class="card">`;
       body += statCard([c.uniq, c.avg], ['Seen','Weekly'], _svcPrevSub(p));
       body += '</div>';
-      // Weekly attendance bar graph for this grade (already gender-scoped server-side).
-      const gtr = (trends && trends.byGrade || []).find(x => x.grade === u.grade);
-      const gvalid = gtr && Array.isArray(gtr.sessions) ? gtr.sessions.filter(s => !s.isOutlier) : [];
+      // Weekly attendance bar graph for this login's grade(s) (gender-scoped
+      // server-side). Merge the per-grade session series so a multi-grade login
+      // sees one combined chart (single-grade → that grade's series unchanged).
+      const gvalid = _mergeGradeSessions(trends, userGrades(u)).filter(s => !s.isOutlier);
       if (gvalid.length) {
         const peak = Math.max(1, ...gvalid.map(s => s.totalAttended));
         const cs = gvalid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
@@ -3909,7 +3958,7 @@ async function renderTrends() {
         // Grade-only: mirror the Fridays tab's own layout — "Grade X Boys" stat
         // card, then Weekly Attendance in its own separate box. No weeks-ran note
         // here — that's already shown per-group in the breakout below.
-        body += `<div class="sh">Grade ${u.grade}${_gsfx(_loginGender(u))}</div><div class="card">`;
+        body += `<div class="sh">${gradeBadgeLabel(u)}${_gsfx(_loginGender(u))}</div><div class="card">`;
         body += statCard([oc.uniqueAttenders, oc.avgPerWeek], ['Seen','Weekly'],
           op.weeksRan>0 ? ['prev: '+op.uniqueAttenders, 'prev: '+op.avgPerWeek] : null);
         body += '</div>';
@@ -3939,9 +3988,11 @@ async function renderTrends() {
       }
 
       if (u.role === 'grade') {
-        const g = (lgStats.byGrade || [])[0];
-        body += `<div class="sh">Grade ${u.grade}${_gsfx(_loginGender(u))} ${L('smallGroupPlural')}</div><div class="card">`;
-        if (g && g.lifegroups.length) for (const lg of g.lifegroups) body += _lgGroupRow(lg, true);
+        // Multi-grade grade login: flatten every visible grade's lifegroups
+        // (single-grade → exactly its one byGrade entry, unchanged).
+        const allLg = (lgStats.byGrade || []).flatMap(gg => gg.lifegroups || []);
+        body += `<div class="sh">${gradeBadgeLabel(u)}${_gsfx(_loginGender(u))} ${L('smallGroupPlural')}</div><div class="card">`;
+        if (allLg.length) for (const lg of allLg) body += _lgGroupRow(lg, true);
         else body += `<div style="color:var(--ink-faint);font-size:13px">No lifegroups ran this term</div>`;
         body += '</div>';
       } else if (u.role === 'quad') {
@@ -4571,7 +4622,7 @@ async function renderAdminView(settings, users) {
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
-        const rl = u.role==='grade'?`Grade ${u.grade}`:u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):u.role.charAt(0).toUpperCase()+u.role.slice(1);
+        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):u.role.charAt(0).toUpperCase()+u.role.slice(1);
         body += `<div class="li" style="cursor:default;margin-bottom:6px">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -4965,8 +5016,9 @@ function suggestEmail() {
   if (!emailEl) return;
   let suggested = '';
   if (role === 'grade') {
-    const grade = document.getElementById('u-grade')?.value;
-    if (grade) suggested = `grade${grade}`;
+    const gs = [...document.querySelectorAll('.ugcb:checked')].map(el => el.value);
+    const gender = document.getElementById('u-gender')?.value;
+    if (gs.length) suggested = 'grade' + gs.join('') + (gender === 'female' ? 'g' : gender === 'male' ? 'b' : '');
   } else if (role === 'quad') {
     const quad = document.getElementById('u-quad')?.value;
     if (quad) suggested = quad;
@@ -4983,7 +5035,7 @@ function showAddUser() {
     <div class="mo-title">Add Account</div>
     <div id="uerr"></div>
     <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" placeholder="Grade 9"></div>
-    <div class="fg"><label class="fl">Username ${helpTip('For a grade login, add g or b to the end (e.g. grade9g) to scope that account to one gender. Leave it off and the account sees both genders.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
+    <div class="fg"><label class="fl">Username ${helpTip('Free-form login name. For a grade login, set the Gender scope field below rather than relying on a g/b suffix — a login spanning several grades cannot encode its gender in the old grade7g pattern.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
     <div class="fg"><label class="fl">Password</label><input class="fi" id="u-pw" type="password" placeholder="Min 8 chars"></div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">
@@ -4994,8 +5046,16 @@ function showAddUser() {
       </select>
     </div>
     <div id="u-grade-f" class="fg">
-      <label class="fl">Grade</label>
-      <select class="fs" id="u-grade" onchange="suggestEmail()">${[7,8,9,10,11,12].map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
+      <div id="u-grades" onchange="suggestEmail()">${_accGradeChecks([])}</div>
+    </div>
+    <div id="u-gender-f" class="fg">
+      <label class="fl">Gender scope</label>
+      <select class="fs" id="u-gender" onchange="suggestEmail()">
+        <option value="">Both (all genders)</option>
+        <option value="female">Girls only</option>
+        <option value="male">Boys only</option>
+      </select>
     </div>
     <div id="u-quad-f" class="fg" style="display:none">
       <label class="fl">Quad</label>
@@ -5008,14 +5068,25 @@ function showAddUser() {
       <button class="btn btn-primary" style="flex:1" onclick="submitAddUser()">Create</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
+  toggleUserRoleFields();
   // Trigger initial email suggestion for default role (grade)
   suggestEmail();
 }
 
+// Grade checkboxes for the account form (mirrors the leader-grades `gcb` UI, own
+// class `ugcb` so the two don't collide). `sel` = pre-checked grades.
+function _accGradeChecks(sel) {
+  const set = new Set(sel || []);
+  return [7,8,9,10,11,12].map(g =>
+    `<label style="display:inline-flex;align-items:center;gap:6px;margin:0 12px 5px 0"><input type="checkbox" value="${g}" class="ugcb" ${set.has(g)?'checked':''}> ${g}</label>`
+  ).join('');
+}
+
 function toggleUserRoleFields() {
   const role = document.getElementById('u-role')?.value;
-  document.getElementById('u-grade-f').style.display = role==='grade'?'block':'none';
-  document.getElementById('u-quad-f').style.display = role==='quad'?'block':'none';
+  const g = document.getElementById('u-grade-f'); if (g) g.style.display = role==='grade'?'block':'none';
+  const gen = document.getElementById('u-gender-f'); if (gen) gen.style.display = role==='grade'?'block':'none';
+  const q = document.getElementById('u-quad-f'); if (q) q.style.display = role==='quad'?'block':'none';
 }
 
 async function submitAddUser() {
@@ -5023,12 +5094,14 @@ async function submitAddUser() {
   const email = document.getElementById('u-email')?.value?.trim();
   const password = document.getElementById('u-pw')?.value;
   const role = document.getElementById('u-role')?.value;
-  const grade = role==='grade' ? parseInt(document.getElementById('u-grade')?.value||'7',10) : null;
+  const grades = role==='grade' ? [...document.querySelectorAll('.ugcb:checked')].map(el=>parseInt(el.value,10)) : null;
+  const gender = role==='grade' ? (document.getElementById('u-gender')?.value || null) : null;
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
   const errEl = document.getElementById('uerr');
   if (!displayName || !email || !password) { errEl.innerHTML='<div class="alert al-err">All fields required</div>'; return; }
+  if (role==='grade' && (!grades || !grades.length)) { errEl.innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
   try {
-    const created = await API.post('/accounts/users', { displayName, email, password, role, grade, quad });
+    const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad });
     Cache.del('/accounts/users');
     _adminData.users = [..._adminData.users, created];
     closeModal(); toast('Account created');
@@ -5050,8 +5123,16 @@ async function showEditUser(id) {
       </select>
     </div>
     <div id="u-grade-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
-      <label class="fl">Grade</label>
-      <select class="fs" id="u-grade">${[7,8,9,10,11,12].map(g=>`<option value="${g}" ${g===u.grade?'selected':''}>${g}</option>`).join('')}</select>
+      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
+      <div id="u-grades" onchange="suggestEmail()">${_accGradeChecks(userGrades(u))}</div>
+    </div>
+    <div id="u-gender-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
+      <label class="fl">Gender scope</label>
+      <select class="fs" id="u-gender" onchange="suggestEmail()">
+        <option value="" ${!u.gender?'selected':''}>Both (all genders)</option>
+        <option value="female" ${u.gender==='female'?'selected':''}>Girls only</option>
+        <option value="male" ${u.gender==='male'?'selected':''}>Boys only</option>
+      </select>
     </div>
     <div id="u-quad-f" class="fg" style="${u.role!=='quad'?'display:none':''}">
       <label class="fl">Quad</label>
@@ -5067,11 +5148,13 @@ async function submitEditUser(id) {
   const displayName = document.getElementById('u-name')?.value?.trim();
   const email = document.getElementById('u-email')?.value?.trim();
   const role = document.getElementById('u-role')?.value;
-  const grade = role==='grade' ? parseInt(document.getElementById('u-grade')?.value||'7',10) : null;
+  const grades = role==='grade' ? [...document.querySelectorAll('.ugcb:checked')].map(el=>parseInt(el.value,10)) : null;
+  const gender = role==='grade' ? (document.getElementById('u-gender')?.value || null) : null;
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
   if (!displayName || !email) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Name and username are required</div>'; return; }
+  if (role==='grade' && (!grades || !grades.length)) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
   try {
-    const updated = await API.patch(`/accounts/users/${id}`, { displayName, email, role, grade, quad });
+    const updated = await API.patch(`/accounts/users/${id}`, { displayName, email, role, grades, gender, quad });
     Cache.del('/accounts/users');
     _adminData.users = _adminData.users.map(u => u.id === id ? updated : u);
     closeModal(); toast('Account updated');
