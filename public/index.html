@@ -2323,8 +2323,18 @@ function renderConnectView() {
 
   // Counts — only students who have attended count toward connected/total; those
   // who never attended (current/prev term) aren't treated as "unconnected".
+  // `students` is fetched with crossGrade=1 (see CONNECT_PATHS) so the leader cards
+  // and Add Students picker can surface other-grade/other-bracket same-gender
+  // students to connect — but Total/Connected/Pending and the "Students not
+  // Connected" dropdown should reflect only the login's OWN remit (own grade for
+  // a grade login, own quad bracket for a quad login), or they double-count
+  // students who only show up here because of that widening. director/admin have
+  // no narrower remit than the full fetch, so they're unfiltered.
+  const inOwnScope = s => u.role === 'quad' ? s.quad === u.quad
+    : (u.role === 'grade' && u.grade != null) ? s.grade === u.grade
+    : true;
   const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
-  const connectable = students.filter(_hasAttended);
+  const connectable = students.filter(_hasAttended).filter(inOwnScope);
   const totalStudents = connectable.length;
   const connectedCount = connectable.filter(s => connectedStudentIds.has(s.id)).length;
 
