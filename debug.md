@@ -16,11 +16,15 @@
 > **Verify & deploy conventions (this repo):**
 > - Primary gate: `npm run typecheck` + `npm run test` (208+ tests). Both must be clean before
 >   calling anything done.
-> - Browser verification (via the Chrome extension) is worthwhile here for UI/scroll/CSS
->   changes and has caught real issues in past sessions — but it's confirmatory, not a
->   substitute for typecheck/test, and the extension is occasionally flaky (screenshot timeouts
->   that resolve on retry/new tab — not usually a real app hang; cross-check with
->   `get_page_text` or `read_console_messages` before assuming a JS bug).
+> - **Don't browser-verify by default.** `typecheck` + `test` passing is normally sufficient to
+>   call a fix done — don't spin up the dev server and drive the Chrome extension as a matter of
+>   routine, it's slower than the signal is worth for most changes. Reserve it for a change that's
+>   significant or risky enough to want a real look (broad RBAC/scoping change, something with no
+>   test coverage, a fix you're not fully confident reads correctly from the diff alone) — and
+>   even then, **ask the user first** rather than doing it unprompted. If you do go ahead, it's
+>   confirmatory, not a substitute for typecheck/test, and the extension is occasionally flaky
+>   (screenshot timeouts that resolve on retry/new tab — not usually a real app hang; cross-check
+>   with `get_page_text` or `read_console_messages` before assuming a JS bug).
 > - GitHub (`citipointe-youth/connection-made-simple`) is linked to Vercel — **a push to
 >   `master` IS the deploy.** No need to poll Vercel or curl prod to confirm it shipped; a
 >   `curl .../health` right after push is a reasonable one-off sanity check, not a routine step.
@@ -123,6 +127,20 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   come first; it reads `window._pickerOwnGrades`, set in `openStudentPicker()` from
   `S.user.grade` (grade role) or `quadGrades(S.user.quad)` (quad role). Admin/director have no
   "home grade" so this is a no-op for them (falls back to plain first-name order).
+- **Total/Connected/Pending or "Students not Connected" includes students from the wrong
+  quad/grade** (e.g. a Girls Yr 7–9 quad login's counts are inflated by Girls Yr 10–12 students):
+  `renderConnectView()`'s `inOwnScope` filter (grep it) — `connectable` is built from `students`,
+  which is fetched with `crossGrade=1` (see the entry above) and therefore includes other-
+  bracket/other-grade same-gender students on purpose, for the leader cards + Add Students
+  picker. `inOwnScope` narrows `connectable` back down to `s.quad === u.quad` (quad) /
+  `s.grade === u.grade` (grade) before it feeds Total/Connected/Pending and the unallocated
+  list — those two must stay wrapped in that filter even if the surrounding code changes;
+  `students`/`_aS.students` itself must NOT be filtered (that would break cross-grade
+  connecting via the picker).
+- **"Students not Connected" list is in a weird order for a quad/director/admin login**: sorted
+  grade-ascending first, then alphabetically within the grade (`unallocated.sort(...)` in
+  `renderConnectView()`, grep the comment above it) — a no-op for grade logins since
+  `connectable` there is already one grade.
 
 ### Student profile modal (`showStudentDetail`)
 

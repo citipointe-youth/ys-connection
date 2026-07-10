@@ -1066,6 +1066,27 @@ pooler during the incident. Watch the connection count during a real session ins
   (`_pickByOwnGradeFirst`, derived from `S.user.grade` or `quadGrades(S.user.quad)`), so a
   broadened leader's home grade still reads at the top with the extra grade below it.
 
+### Connect Setup: "unallocated students" scoping + sort fix (2026-07-10)
+
+- **Bug**: a quad login's Total/Connected/Pending stat tiles and "Students not Connected"
+  dropdown were inflated by students outside their own quad bracket — e.g. a Girls Yr 7–9
+  quad login also saw Girls Yr 10–12 students counted there. Root cause: both are computed
+  from `students`, which Connect Setup fetches with `?crossGrade=1` so the leader cards and
+  Add Students picker can surface other-grade/other-bracket same-gender students to connect
+  (intentional — see the "Add Students picker" entries above) — but that widened list was
+  being reused, unfiltered, for the aggregate counts too.
+- **Fix**: `renderConnectView()` now derives `connectable` through an `inOwnScope` filter
+  (`s.quad === u.quad` for quad logins, `s.grade === u.grade` for grade logins, unfiltered for
+  director/admin) before computing Total/Connected/Pending and the unallocated list.
+  `students`/`_aS.students` itself stays unfiltered, so the leader cards and the Add Students
+  picker still show/allow cross-grade connections exactly as before — only the two aggregate
+  displays were narrowed. Verified in-browser (a quad login's totals dropped to match its own
+  bracket; a leader was still connectable to an out-of-bracket same-gender student via the
+  picker, and that connection didn't move the quad's own counts).
+- **Also**: the "Students not Connected" list now sorts grade-ascending first, then
+  alphabetically within each grade (`unallocated.sort(...)` in the same function) — relevant
+  for quad/director/admin logins whose list spans multiple grades; a no-op for grade logins.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, emails, notification title/message,
