@@ -2351,7 +2351,12 @@ function renderConnectView() {
     `<button class="fc ${df.has(g)?'on':''}" onclick="toggleAF('d','${g}')" aria-pressed="${df.has(g)}">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`
   ).join('') : '';
 
-  const unallocated = connectable.filter(s => !connectedStudentIds.has(s.id)).sort(_pickByFirst);
+  // Grade ascending first, then alphabetical within the grade — matters for
+  // quad/director/admin logins whose "Students not Connected" list spans
+  // multiple grades; a no-op ordering for grade logins since connectable is
+  // already scoped to a single grade there.
+  const unallocated = connectable.filter(s => !connectedStudentIds.has(s.id))
+    .sort((a, b) => (a.grade || 0) - (b.grade || 0) || _pickByFirst(a, b));
   const unallocList = unallocated.length
     ? unallocated.map(s => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--paper-dark);font-size:13px">
         <div>${esc(s.firstName)} ${esc(s.lastName)} <span style="color:var(--ink-mid);font-size:11px">Gr ${s.grade || '—'} · ${s.gender}</span></div>
