@@ -4910,9 +4910,9 @@ function wizHandleAllocationImportFile(input) {
 
 // ── Youth Ministry Setup wizard ──
 // One-time (but revisitable) configuration walk-through: pick an archetype
-// preset, then fine-tune. Phase 1 ships step 0 (the preset picker) + a save
-// step; steps 1-5 (branding/terminology/structure/roles/modules fine-tuning)
-// are filled in by later phases — see the /* SETUP-STEP-STUB */ markers below.
+// preset (step 0), then fine-tune on step 1 — Structure, Roles, Branding,
+// Terminology and Modules are all fully editable, followed by a Review card and
+// a synthesised "Deploy to another church" hand-off guide.
 // 'Two-bracket ministry' was retired 2026-07-10 — a medium/junior-senior
 // ministry now just starts from "Large graded ministry (AU)" and creates
 // broader grade-equivalent accounts (Admin -> Accounts), optionally skipping
@@ -5029,9 +5029,9 @@ function renderMinistrySetup() {
     }
     b += `<button class="btn btn-ghost btn-full" onclick="closeMinistrySetup()">Cancel</button>`;
   } else {
-    // Fine-tuning. Branding/terminology/modules editors remain phase 2/3 scope
-    // (still stubbed); the STRUCTURE and ROLES sections below are phase 6/7's own
-    // deliverable and are fully editable. Everything is applied to _setupDraft.
+    // Fine-tuning. Structure, Roles, Branding, Terminology and Modules are all
+    // fully editable here; every input writes into _setupDraft via _setupSet and
+    // is saved by saveMinistrySetup() through PATCH /settings.
     const st = cfg.structure || {};
     const dst = MINISTRY_CONFIG_DEFAULTS_CLIENT.structure;
     const rl = cfg.roles || {};
@@ -5067,6 +5067,15 @@ function renderMinistrySetup() {
       return `<div class="fg"><label class="fl">${esc(hint)}</label><input class="fi" value="${esc(v)}" onchange="_setupSet('roles.labels.${k}', this.value)"></div>`;
     }).join('');
 
+    // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
+    // fallback to the mirrored defaults, same shape as the Structure/Roles cards.
+    const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
+    const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
+    const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
+    const bv = (k) => br[k] != null ? br[k] : dbr[k];
+    const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
+    const mv = (k) => md[k] != null ? md[k] : dmd[k];
+
     b += `<div class="card">
       <div class="sh" style="margin-top:0">Structure</div>
       <div class="fg"><label class="fl">Cohort model ${helpTip('“Grades + quads” = the graded model (grade/quad logins scope by grade & gender). “No cohorting” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden.')}</label>
@@ -5101,12 +5110,55 @@ function renderMinistrySetup() {
       ${roleLabelRows}
     </div>
     <div class="card">
+      <div class="sh" style="margin-top:0">Branding</div>
+      <div class="fg"><label class="fl">Ministry name ${helpTip('Shown under the app name on the login screen.')}</label>
+        <input class="fi" value="${esc(bv('ministryName'))}" onchange="_setupSet('branding.ministryName', this.value)"></div>
+      <div class="fg"><label class="fl">App name ${helpTip('The product name in the header, the browser tab, and the installed (PWA) app.')}</label>
+        <input class="fi" value="${esc(bv('appName'))}" onchange="_setupSet('branding.appName', this.value)"></div>
+      <div class="fg"><label class="fl">Short name ${helpTip('Home-screen icon label when installed — keep it short.')}</label>
+        <input class="fi" value="${esc(bv('shortName'))}" onchange="_setupSet('branding.shortName', this.value)"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${[['accent','Accent'],['accentDark','Accent dark'],['accentLight','Accent light'],['navy','Navy']].map(([k,lab])=>
+          `<div class="fg" style="flex:1;min-width:120px"><label class="fl">${lab}</label>
+            <input type="color" value="${esc(bv(k))}" style="width:100%;height:38px;padding:2px;border-radius:8px;border:1px solid var(--line)" onchange="_setupSet('branding.${k}', this.value)"></div>`).join('')}
+      </div>
+      <div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark. Scripts/handlers are stripped on save.')}</label>
+        <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>
+    </div>
+    <div class="card">
+      <div class="sh" style="margin-top:0">Terminology</div>
+      <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
+      ${[['smallGroup','Small group (singular)'],['smallGroupPlural','Small group (plural)'],['service','Service / main gathering'],['serviceNight','Service night wording'],['studentTeam','Student team'],['connection','Connection']].map(([k,lab])=>
+        `<div class="fg"><label class="fl">${lab}</label><input class="fi" value="${esc(lv(k))}" onchange="_setupSet('labels.${k}', this.value)"></div>`).join('')}
+      <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ".')}</label>
+        <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>
+    </div>
+    <div class="card">
+      <div class="sh" style="margin-top:0">Modules</div>
+      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('The year-over-year integration-funnel module (Data tab). Turn off for ministries that do not run it.')}</span></label>
+      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>Lifegroups ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
+      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('pushNotifications')?'checked':''} onchange="_setupSet('modules.pushNotifications', this.checked)"> <span>Push notifications ${helpTip('Currently hidden app-wide regardless of this setting — reserved for when the feature is re-enabled.')}</span></label>
+      <div class="fg"><label class="fl">Export guides ${helpTip('The in-app Elvanto CSV-export walkthroughs. Hide them if your church uses a different management system.')}</label>
+        <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
+          ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
+        </select></div>
+    </div>
+    <div class="card">
       <div class="sh" style="margin-top:0">Review</div>
       <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
-      <div class="help-text" style="margin:6px 0">Branding, terminology and module fine-tuning screens are still coming; the preset already set sensible values for those. Changes may take a minute to appear everywhere after saving.</div>
+      <div class="help-text" style="margin:6px 0">Some changes (app name, nav, role labels) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button class="btn btn-ghost" onclick="_setupStep=0;renderMinistrySetup()">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="saveMinistrySetup()">Save &amp; Close</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sh" style="margin-top:0">Deploy this setup to another church</div>
+      <div class="help-text" style="margin-bottom:8px">A ready-to-follow guide for standing up an independent copy of the app on another church's own Supabase + Vercel accounts, pre-configured to match this exact setup. Copy or download it and hand it over.</div>
+      <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow:auto;max-height:260px;white-space:pre-wrap">${esc(_deployGuideText(cfg, _setupServiceMinAttendance))}</pre>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-secondary" style="flex:1" onclick="copyDeployGuide()">Copy guide</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="downloadDeployGuide()">Download .md</button>
       </div>
     </div>`;
   }
@@ -5129,6 +5181,109 @@ function _setupSet(path, val) {
   renderMinistrySetup();
 }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
+// Store a newline-separated textarea as a trimmed, non-empty string array
+// (e.g. labels.groupNameStrip). _setupSet would otherwise store the raw string.
+function _setupSetList(path, val) {
+  _setupSet(path, String(val).split('\n').map((s) => s.trim()).filter(Boolean));
+}
+
+// Synthesise a tailored, hand-off-ready deployment guide from the current draft
+// config: the concrete Supabase + Vercel steps a DIFFERENT church would follow to
+// stand up their own independent copy, pre-configured to match this setup. Mirrors
+// docs/DEPLOYING.md, specialised with this ministry's name/config so it can be
+// copied/downloaded and handed over. Reference/export only — never mutates state.
+function _deployGuideText(cfg, svcMin) {
+  cfg = cfg || {};
+  const b = cfg.branding || {};
+  const appName = b.appName || 'Youth Connection';
+  const ministry = b.ministryName || 'your ministry';
+  const preset = cfg.preset || 'large-graded-au';
+  const json = JSON.stringify(cfg, null, 2);
+  const sqlJson = json.replace(/'/g, "''"); // escape single quotes for the SQL literal
+  const minAtt = (svcMin == null ? 100 : svcMin);
+  return [
+    `# Deploy "${appName}" for ${ministry}`,
+    ``,
+    `A step-by-step guide to stand up a fresh, INDEPENDENT copy of this app on`,
+    `${ministry}'s own Supabase + Vercel accounts, pre-configured to match the`,
+    `setup you just built. Nothing here touches any existing deployment.`,
+    ``,
+    `You'll need: the app's source code (the connection-made-simple repo) and`,
+    `admin access to a Supabase account and a Vercel account for this church.`,
+    ``,
+    `## 1. Supabase (database)`,
+    `1. Create a new project at supabase.com. Pick the region closest to your`,
+    `   people (the reference deployment uses Sydney / ap-southeast-2).`,
+    `2. Open the SQL editor and run every file in supabase/migrations/ IN NUMERIC`,
+    `   ORDER (001, 002, ... through the highest number). Each one is additive`,
+    `   and safe to run once.`,
+    `3. Apply the statement timeout — this is NOT in any migration file:`,
+    `     alter role postgres set statement_timeout = '15s';`,
+    `4. Copy the connection string: Project Settings -> Database -> Connection`,
+    `   Pooling -> SESSION mode (port 5432, NOT the 6543 transaction pooler).`,
+    `   It looks like:`,
+    `     postgresql://postgres.<ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres`,
+    ``,
+    `## 2. Vercel (hosting)`,
+    `1. Import the repo into Vercel (New Project -> import the Git repo).`,
+    `2. Add these Environment Variables (Project -> Settings -> Environment Variables):`,
+    `     PERSISTENCE    = supabase`,
+    `     DATABASE_URL   = <the SESSION-mode string from step 1.4>`,
+    `     SESSION_SECRET = <a random secret; generate with:  openssl rand -hex 32>`,
+    `     APP_ORIGIN     = https://<your-project>.vercel.app  (your final URL)`,
+    `3. Deploy. Vercel auto-builds from the main branch.`,
+    ``,
+    `## 3. First login`,
+    `1. Log in with a seeded admin account (see the repo README / seed migrations).`,
+    `   You'll be forced to set a new password before anything else — do it.`,
+    `   Never leave a seeded password in place.`,
+    `2. In Admin -> Accounts, create this church's real leaders and delete the`,
+    `   placeholder accounts you don't need.`,
+    ``,
+    `## 4. Apply THIS ministry's configuration`,
+    `Preset: ${preset}`,
+    `Minimum service attendance (valid-service floor): ${minAtt}`,
+    ``,
+    `Two ways to reproduce this exact setup:`,
+    ` (a) By hand: Admin -> Settings -> Youth Ministry Setup, pick the "${preset}"`,
+    `     preset, then match the fields to the configuration below; or`,
+    ` (b) Directly in Supabase (SQL editor) — fastest, exact copy:`,
+    `     update app_settings`,
+    `        set ministry_config = '${sqlJson}'::jsonb,`,
+    `            service_min_attendance = ${minAtt};`,
+    ``,
+    `## This ministry's configuration (ministryConfig)`,
+    json,
+    ``,
+    `## Icons / PWA (optional)`,
+    `Replace public/icons/* in your fork with this church's own icon before`,
+    `deploying. App name, colours and short name come from the config above —`,
+    `no file edit needed for those.`,
+    ``,
+    `## If something goes wrong`,
+    `Vercel -> Deployments -> "Instant Rollback" reverts code without touching`,
+    `the database (migrations are additive, so older code runs fine on a newer`,
+    `schema).`,
+    ``,
+  ].join('\n');
+}
+function copyDeployGuide() { copyText(_deployGuideText(_setupDraft || {}, _setupServiceMinAttendance)); }
+function downloadDeployGuide() {
+  const cfg = _setupDraft || {};
+  const app = (((cfg.branding && cfg.branding.appName) || 'youth-connection')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')) || 'youth-connection';
+  _downloadText('deploy-' + app + '.md', _deployGuideText(cfg, _setupServiceMinAttendance));
+}
+function _downloadText(filename, text) {
+  try {
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast('Downloaded');
+  } catch (e) { toast('Could not download'); }
+}
 
 let _adminData = { settings: {}, users: [] };
 

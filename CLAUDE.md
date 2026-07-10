@@ -406,7 +406,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
 
 ### Service worker (`public/sw.js`)
 
-- Cache name: `cms-v21` (bump on breaking changes to force eviction)
+- Cache name: `cms-v32` (bump on any SPA/asset change to force eviction — see the dated changelog for the running history)
 - **Excel import** (all upload points — main import, allocations, every Connection Audit slot):
   `readXlsx(buf)` now uses the vendored **SheetJS** build (`public/vendor/xlsx.full.min.js`),
   **lazy-loaded** via `_ensureXlsx()` only when an Excel file is chosen (same-origin, so CSP
@@ -1308,6 +1308,50 @@ rollback recipe still holds.
   construction.
 - **SW cache**: `cms-v28` → **`cms-v31`** across phases 6a/6b/7. No new top-level
   API route was added, so `API_RE` is unchanged.
+
+### Generalisation went LIVE + first-deploy incidents + Setup editors (2026-07-11)
+
+The whole generalisation branch (phases 1–8, not just 6–7) was merged to `master`
+and deployed to production (first time any of it went live — prod was
+pre-generalisation `cms-v22`, DB at migration 017). Prod Supabase
+(`ltcblcudlzlzfcyzlhpc`) migrated 017 → **020** (additive `add column if not
+exists`: 018 ministry_config, 019 users.grades/gender, 020 users.leader_id);
+existing data untouched (20 users / 677 students / 60 connections),
+`ministry_config = '{}'` so behaviour is byte-identical. App name is now **"Youth
+Connection"** (branding default). Two incidents surfaced on first real use, both
+fixed:
+
+- **`/manifest.json` served the SPA HTML** (broke the PWA manifest). Phase 8
+  deleted static `public/manifest.json` for a dynamic Express route but didn't add
+  it to **`vercel.json`'s `routes[]`** (which runs before Express). Fix: route
+  `^/manifest\.json` → `/api/index.ts`. **Lesson: a new top-level route served by
+  the function on Vercel must be added to `vercel.json` routes[], not just the
+  Express router** (and to `sw.js` `API_RE`).
+- **jsonb double-encoding → full app lockout.** Saving Setup stored
+  `ministry_config` as a jsonb *string*; `getSettings()` (run on ~every request)
+  threw in `MinistryConfigSchema.parse` → every `/settings` 500'd → whole SPA +
+  Admin unreachable, unfixable in-app (recovered via `update app_settings set
+  ministry_config='{}'::jsonb`). Root cause: `` `${JSON.stringify(cfg)}::jsonb` `` —
+  postgres.js sees the `::jsonb` cast, types the param jsonb, and re-`JSON.stringify`s
+  the already-stringified string. **Fix: write jsonb via `sql.json(value)`, never
+  `JSON.stringify(x)::jsonb`** (fixed `supabase.settings.ts` + `supabase.users.ts`
+  grades — same latent bug, never yet triggered on prod; `connection-audit.ts`
+  already did it right). Also made the READ resilient (`parseMinistryConfig`:
+  unwrap a stringified blob, fall back to defaults instead of throwing) so a bad
+  config can't brick the app again. Tests: `ministry-config-encoding.test.ts`.
+
+**Setup wizard — Branding / Terminology / Modules editors + deploy hand-off (built
+2026-07-11).** The wizard's `renderMinistrySetup()` (public/index.html) now has
+fully-editable **Branding** (`branding.*` incl. colour pickers + logo SVG),
+**Terminology** (`labels.*`, incl. `groupNameStrip` as a per-line array via
+`_setupSetList`), and **Modules** (`modules.*` toggles + `exportGuides`) cards,
+alongside the existing Structure/Roles. No backend change — all flow through
+`saveMinistrySetup()` → `PATCH /settings`. A final **"Deploy this setup to another
+church"** card synthesises a tailored Supabase+Vercel deployment guide from the
+current config (`_deployGuideText`), copyable/downloadable (`copyDeployGuide` /
+`downloadDeployGuide`). Still stubbed: none of Setup — Branding/Terminology/Modules
+were the last stubs. SW `cms-v31` → **`cms-v32`**. (Handoff brief that scoped this:
+`SETUP-EDITORS-HANDOFF.md` at repo root.)
 
 ## Security notes
 

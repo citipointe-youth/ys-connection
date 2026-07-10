@@ -181,6 +181,38 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   gated, that default regressed). The gate itself lives in `express-adapter.ts` right after
   `resolveContext` and in `render()` (public/index.html) via `S.user.mustChangePassword`.
 
+### Youth Ministry Setup / ministryConfig
+
+- **Whole app blank / every screen fails / can't reach Admin, after saving Setup** — and a
+  toast said "validation failed": the stored `app_settings.ministry_config` is a jsonb *string*,
+  not an object. `getSettings()` runs on nearly every request and used to throw in
+  `MinistryConfigSchema.parse` → total lockout (you can't fix it in-app because Admin itself
+  won't load). **Recover immediately** via Supabase SQL:
+  `update app_settings set ministry_config = '{}'::jsonb, service_min_attendance = 100;`
+  (`'{}'` = current YS Brisbane defaults). Root cause was the jsonb WRITE — see next entry. The
+  READ is now resilient (`parseMinistryConfig` in `supabase.settings.ts`: unwraps a stringified
+  blob, falls back to defaults instead of throwing), so this can't fully brick the app anymore,
+  but a bad write still misbehaves.
+- **A jsonb column round-trips as a double-encoded string** (config, `users.grades`, audit
+  snapshot, notification target): NEVER write jsonb as `` `${JSON.stringify(x)}::jsonb` `` —
+  postgres.js sees the `::jsonb` cast, types the param jsonb, and runs its OWN `JSON.stringify`,
+  encoding an already-stringified string twice. **Always use `this.sql.json(value)`** (grep it in
+  `supabase.settings.ts` / `supabase.users.ts` / `supabase.connection-audit.ts`). Regression test:
+  `ministry-config-encoding.test.ts`.
+- **A Setup field (Branding/Terminology/Modules/Structure/Roles) doesn't save**: every input in
+  `renderMinistrySetup()` (public/index.html) writes to `_setupDraft` via `_setupSet` /
+  `_setupSetNum` / `_setupSetList` (arrays), and `saveMinistrySetup()` PATCHes the whole draft to
+  `/settings`. The backend accepts/validates it in `settings.service.ts` (`mergeMinistryConfig` →
+  full `MinistryConfigSchema`). If a value is rejected, the whole save is (clear error toast) —
+  check the field against the schema in `src/core/ministry-config.ts`. Client defaults live in
+  `MINISTRY_CONFIG_DEFAULTS_CLIENT` — keep in sync with the server `MINISTRY_CONFIG_DEFAULTS`.
+- **"Deploy to another church" guide looks wrong / empty**: `_deployGuideText(cfg, svcMin)`
+  (public/index.html) is a pure string builder off the current draft; Copy/Download go through
+  `copyDeployGuide` / `downloadDeployGuide` → `_downloadText` (Blob + `a.download`, same pattern
+  as the CSV/xlsx exports).
+- **A branding/terminology change didn't appear everywhere**: expected — the header/nav are built
+  once at login (`_initShell`) and only rebuild on re-login; stats cache ~60s. Not a bug.
+
 ### RBAC / scoping (backend)
 
 - **A role can/can't do something and you're not sure why**: `src/services/access-control.ts`
