@@ -5072,9 +5072,11 @@ function renderMinistrySetup() {
     const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
     const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
     const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
+    const im = cfg.import || {}, dim = MINISTRY_CONFIG_DEFAULTS_CLIENT.import;
     const bv = (k) => br[k] != null ? br[k] : dbr[k];
     const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
     const mv = (k) => md[k] != null ? md[k] : dmd[k];
+    const iv = (k) => im[k] != null ? im[k] : dim[k];
 
     b += `<div class="card">
       <div class="sh" style="margin-top:0">Structure</div>
@@ -5124,6 +5126,14 @@ function renderMinistrySetup() {
       </div>
       <div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark. Scripts/handlers are stripped on save.')}</label>
         <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>
+      <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo appears here once saved — it is shown sanitised, same as the app itself, not the raw unsaved textarea.')}</label>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
+          <div style="color:#fff;min-width:0">
+            <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
+            <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
+          </div>
+        </div></div>
     </div>
     <div class="card">
       <div class="sh" style="margin-top:0">Terminology</div>
@@ -5142,6 +5152,15 @@ function renderMinistrySetup() {
         <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
           ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
         </select></div>
+    </div>
+    <div class="card">
+      <div class="sh" style="margin-top:0">Import</div>
+      <div class="fg"><label class="fl">Date order ${helpTip('How an ambiguous slash-separated date (e.g. 03/04/2026) is read. Any date component over 12 is auto-resolved as the day regardless of this setting.')}</label>
+        <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
+          ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
+        </select></div>
+      <div class="fg"><label class="fl">Leader name tag ${helpTip('The word the group importer looks for in a "(word)"-tagged name to recognise a leader row, e.g. "(leader)".')}</label>
+        <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>
     </div>
     <div class="card">
       <div class="sh" style="margin-top:0">Review</div>
