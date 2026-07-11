@@ -8,6 +8,7 @@ import { mergeMinistryConfig, sanitiseLogoSvg } from '../core/ministry-config';
 import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
+import { BadRequestError } from '../core/errors/app-error';
 
 const SettingsPatchSchema = z.object({
   termGapDays: z.number().int().min(1).optional(),
@@ -45,6 +46,12 @@ export function makeSettingsService(
             ...ministryConfigPatch,
             branding: { ...branding, logoSvg: sanitiseLogoSvg(branding['logoSvg']) },
           };
+        }
+        // logoImage is a client-baked data URI (crop tool output) — no server-side
+        // re-encoding, just a shape check. The Zod schema's .max() already caps size.
+        const logoImage = branding ? branding['logoImage'] : undefined;
+        if (logoImage !== undefined && logoImage !== null && !(typeof logoImage === 'string' && logoImage.startsWith('data:image/'))) {
+          throw new BadRequestError('branding.logoImage must be null or a data:image/... URI');
         }
       }
 

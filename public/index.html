@@ -1426,7 +1426,15 @@ function icEmpty(k){ return `<svg class="empty-icon" viewBox="0 0 24 24">${IC[k]
 // YS brand mark — the square + open-funnel glyph from the logo. Fill-based (not a
 // stroke icon), so it lives outside the IC registry. `color` defaults to currentColor.
 function brandMark(px, color){
-  const custom = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.branding && S.settings.ministryConfig.branding.logoSvg;
+  const branding = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.branding;
+  const image = branding && branding.logoImage;
+  if (image) {
+    // Uploaded-photo path (crop tool output, baked to a fixed square JPEG/PNG
+    // data URI client-side — see the Youth Setup Branding card). object-fit:cover
+    // guards against a stored image whose aspect ratio isn't perfectly square.
+    return `<img src="${esc(image)}" alt="" style="width:${px}px;height:${px}px;border-radius:${Math.round(px*0.22)}px;object-fit:cover;flex-shrink:0" aria-hidden="true">`;
+  }
+  const custom = branding && branding.logoSvg;
   if (custom) {
     // Server-sanitised (settings.service.ts strips <script>/foreignObject/event
     // handlers on save) — still wrapped at a fixed size here, not re-escaped,
@@ -4986,6 +4994,198 @@ function _setupResetBranding() {
   _setupDraft.branding = JSON.parse(JSON.stringify(MINISTRY_CONFIG_DEFAULTS_CLIENT.branding));
   _setupRerender();
 }
+
+// Logo mode switch (Default mark / Paste SVG / Upload image) — only one of
+// logoSvg/logoImage is ever set in the draft, so switching modes nulls the
+// other out (brandMark() prefers logoImage, but keeping both consistent
+// avoids a stale hidden value resurfacing if the mode is switched back).
+function _setupSetLogoMode(mode) {
+  if (!_setupDraft) _setupDraft = {};
+  if (!_setupDraft.branding) _setupDraft.branding = {};
+  if (mode === 'default') { _setupDraft.branding.logoSvg = null; _setupDraft.branding.logoImage = null; }
+  else if (mode === 'svg') { _setupDraft.branding.logoImage = null; }
+  else if (mode === 'image') { _setupDraft.branding.logoSvg = null; }
+  _setupRerender();
+}
+
+// File chosen for "Upload image" mode — reads it as a data URI and opens the
+// crop modal rather than setting anything directly (the crop tool's "Use this
+// crop" button is what actually writes _setupDraft.branding.logoImage).
+function _setupLogoFileChosen(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => _openLogoCropModal(String(reader.result));
+  reader.onerror = () => toast('Could not read that image file');
+  reader.readAsDataURL(file);
+  input.value = ''; // allow re-choosing the same file later
+}
+
+// ── Logo crop tool ─────────────────────────────────────────────────────────
+// A draggable/zoomable square crop over an uploaded photo, baked out to a
+// fixed-size square JPEG via canvas. State lives in this module-level object
+// (not in _setupDraft — it's transient, discarded on cancel) so a re-render
+// of the Youth Setup tab behind the modal (e.g. from an unrelated field's
+// onchange) can't clobber an in-progress crop.
+let _crop = null;
+const _CROP_OUT = 512; // output logo size (px, square)
+
+function _openLogoCropModal(dataUrl) {
+  const probe = new Image();
+  probe.onload = () => {
+    _crop = { dataUrl, natW: probe.naturalWidth, natH: probe.naturalHeight, zoom: 1, panX: 0, panY: 0, dragging: false };
+    modal(`
+      <div class="sh">Crop your logo</div>
+      <div class="help-text" style="margin-bottom:10px">Drag to reposition, use the slider (or scroll/pinch) to zoom. The square is exactly what becomes your logo.</div>
+      <div id="cropVp" style="width:min(280px,82vw);aspect-ratio:1/1;margin:0 auto;overflow:hidden;position:relative;border-radius:16px;background:var(--paper-dark);touch-action:none">
+        <img id="cropImg" src="${dataUrl}" draggable="false" alt="" style="position:absolute;left:0;top:0;transform-origin:top left;user-select:none;-webkit-user-drag:none">
+      </div>
+      <div class="fg" style="margin-top:14px"><label class="fl">Zoom</label>
+        <input type="range" id="cropZoomInput" min="1" max="3" step="0.01" value="1" oninput="_cropZoomChange(this.value)" style="width:100%"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" class="btn btn-secondary" style="flex:1" onclick="_cropCancel()">Cancel</button>
+        <button type="button" class="btn btn-primary" style="flex:1" onclick="_cropConfirm()">Use this crop</button>
+      </div>`, () => { _crop = null; });
+    _cropCenter();
+    _cropApplyTransform();
+    _cropBindDrag();
+  };
+  probe.onerror = () => toast('Could not read that image file');
+  probe.src = dataUrl;
+}
+
+// Pure math: the on-screen (CSS) width/height of the image at the current
+// zoom, given it must "cover" a square viewport of size `vp` (its smaller
+// natural dimension exactly fills `vp` at zoom 1). Exposed as a standalone
+// helper so _cropRectFor / _cropClampPan (also pure) can share it.
+function _cropDispSizeFor(natW, natH, zoom, vp) {
+  const scale = (vp / Math.min(natW, natH)) * zoom;
+  return { scale, w: natW * scale, h: natH * scale };
+}
+function _cropDispSize() {
+  const vp = _cropViewportSize();
+  const { scale, w, h } = _cropDispSizeFor(_crop.natW, _crop.natH, _crop.zoom, vp);
+  return { scale, w, h, vp };
+}
+function _cropViewportSize() {
+  const el = document.getElementById('cropVp');
+  return el ? el.getBoundingClientRect().width : 280;
+}
+
+// Pure: clamp a candidate pan (image top-left, in viewport px) so the image
+// (displayed at dispW x dispH) always fully covers a `vp`-square viewport —
+// i.e. never reveals empty space past its own edges.
+function _cropClampPan(panX, panY, dispW, dispH, vp) {
+  return {
+    x: Math.min(0, Math.max(vp - dispW, panX)),
+    y: Math.min(0, Math.max(vp - dispH, panY)),
+  };
+}
+
+// Pure: the source rectangle (in the image's OWN natural pixel coordinates)
+// that canvas drawImage should read from to reproduce exactly what the
+// viewport shows. Viewport is always square, so sw===sh always — a square
+// source crop regardless of zoom or the image's own aspect ratio.
+//   dispScale = (vp / min(imgW,imgH)) * zoom  — natural px -> on-screen px
+//   image top-left sits at viewport position (panX,panY), so viewport-space
+//   point (0,0) is at image-space (-panX,-panY) and (vp,vp) is at
+//   (vp-panX, vp-panY), both in ON-SCREEN px; divide by dispScale to get
+//   back to the image's natural px.
+function _cropRectFor(imgW, imgH, panX, panY, zoom, vp) {
+  const { scale } = _cropDispSizeFor(imgW, imgH, zoom, vp);
+  const sw = vp / scale;
+  return { sx: -panX / scale, sy: -panY / scale, sw, sh: sw };
+}
+
+function _cropCenter() {
+  const { w, h, vp } = _cropDispSize();
+  const clamped = _cropClampPan((vp - w) / 2, (vp - h) / 2, w, h, vp);
+  _crop.panX = clamped.x; _crop.panY = clamped.y;
+}
+function _cropApplyTransform() {
+  const img = document.getElementById('cropImg');
+  if (!img || !_crop) return;
+  const { scale } = _cropDispSize();
+  img.style.transform = `translate(${_crop.panX}px, ${_crop.panY}px) scale(${scale})`;
+}
+
+function _cropBindDrag() {
+  const vp = document.getElementById('cropVp');
+  if (!vp) return;
+  vp.onpointerdown = _cropPointerDown;
+  vp.onpointermove = _cropPointerMove;
+  vp.onpointerup = _cropPointerUp;
+  vp.onpointercancel = _cropPointerUp;
+  // Wheel-to-zoom bonus (slider remains the primary, standalone control).
+  vp.onwheel = (e) => {
+    if (!_crop) return;
+    e.preventDefault();
+    const next = Math.max(1, Math.min(3, _crop.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+    const slider = document.getElementById('cropZoomInput');
+    if (slider) slider.value = next;
+    _cropZoomChange(next);
+  };
+}
+function _cropPointerDown(e) {
+  if (!_crop) return;
+  _crop.dragging = true;
+  _crop.startX = e.clientX; _crop.startY = e.clientY;
+  _crop.startPanX = _crop.panX; _crop.startPanY = _crop.panY;
+  if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+}
+function _cropPointerMove(e) {
+  if (!_crop || !_crop.dragging) return;
+  const dx = e.clientX - _crop.startX, dy = e.clientY - _crop.startY;
+  const { w, h, vp } = _cropDispSize();
+  const clamped = _cropClampPan(_crop.startPanX + dx, _crop.startPanY + dy, w, h, vp);
+  _crop.panX = clamped.x; _crop.panY = clamped.y;
+  _cropApplyTransform();
+}
+function _cropPointerUp() { if (_crop) _crop.dragging = false; }
+
+// Zoom around the viewport's own center point (not the image's top-left) so
+// the slider feels like it's zooming into "the middle of what you're looking
+// at", not yanking the image toward its origin.
+function _cropZoomChange(val) {
+  if (!_crop) return;
+  const newZoom = Math.max(1, Math.min(3, parseFloat(val) || 1));
+  const before = _cropDispSize();
+  const fx = (before.vp / 2 - _crop.panX) / before.w;
+  const fy = (before.vp / 2 - _crop.panY) / before.h;
+  _crop.zoom = newZoom;
+  const after = _cropDispSize();
+  const rawX = after.vp / 2 - fx * after.w;
+  const rawY = after.vp / 2 - fy * after.h;
+  const clamped = _cropClampPan(rawX, rawY, after.w, after.h, after.vp);
+  _crop.panX = clamped.x; _crop.panY = clamped.y;
+  _cropApplyTransform();
+}
+
+function _cropConfirm() {
+  if (!_crop) return;
+  const img = document.getElementById('cropImg');
+  const vp = _cropViewportSize();
+  const rect = _cropRectFor(_crop.natW, _crop.natH, _crop.panX, _crop.panY, _crop.zoom, vp);
+  const canvas = document.createElement('canvas');
+  canvas.width = _CROP_OUT; canvas.height = _CROP_OUT;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, _CROP_OUT, _CROP_OUT);
+  // JPEG @ 0.85 keeps even a busy photo well under the 500,000-char schema
+  // cap (a fully-random 512x512 frame is still only ~120-180KB base64 at
+  // this quality; a real photo compresses further).
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  if (!_setupDraft) _setupDraft = {};
+  if (!_setupDraft.branding) _setupDraft.branding = {};
+  _setupDraft.branding.logoImage = dataUrl;
+  _setupDraft.branding.logoSvg = null;
+  _crop = null;
+  closeModal();
+  _setupRerender();
+}
+function _cropCancel() {
+  _crop = null;
+  closeModal();
+}
 function _setupSetMinAtt(val) { const n = parseInt(val, 10); _setupServiceMinAttendance = isNaN(n) ? 0 : n; _setupRerender(); }
 function _setupSetTermGap(val) { const n = parseInt(val, 10); _setupTermGapDays = isNaN(n) ? 14 : n; _setupRerender(); }
 
@@ -5021,7 +5221,7 @@ const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, simple: 1
 // prior preset) leak into a later large-graded-au pick instead of reverting.
 const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   version: 1, preset: 'large-graded-au',
-  branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoSvg: null },
+  branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoSvg: null, logoImage: null },
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '] },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
@@ -5132,6 +5332,10 @@ function _youthSetupBody(settings, users) {
   const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
   const mv = (k) => md[k] != null ? md[k] : dmd[k];
   const iv = (k) => im[k] != null ? im[k] : dim[k];
+  // At most one of logoImage/logoSvg is ever set (enforced by _setupSetLogoMode
+  // nulling the other on switch) — image wins if somehow both are, matching
+  // brandMark()'s own precedence.
+  const logoMode = bv('logoImage') ? 'image' : (bv('logoSvg') ? 'svg' : 'default');
 
   let b = `<div class="card" style="margin-bottom:10px">
     <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
@@ -5192,9 +5396,23 @@ function _youthSetupBody(settings, users) {
         `<div class="fg" style="flex:1;min-width:120px"><label class="fl">${lab}</label>
           <input type="color" value="${esc(bv(k))}" style="width:100%;height:38px;padding:2px;border-radius:8px;border:1px solid var(--line)" onchange="_setupSet('branding.${k}', this.value)"></div>`).join('')}
     </div>
-    <div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark. Scripts/handlers are stripped on save.')}</label>
-      <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>
-    <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo appears here once saved — it is shown sanitised, same as the app itself, not the raw unsaved textarea.')}</label>
+    <div class="fg"><label class="fl">Logo ${helpTip('Choose how your logo appears across the app: the built-in mark, your own pasted SVG, or an uploaded photo cropped to a square.')}</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${[['default','Default mark'],['svg','Paste SVG'],['image','Upload image']].map(([v,l]) =>
+          `<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);cursor:pointer;background:${logoMode===v?'var(--accent-light)':'transparent'}">
+            <input type="radio" name="logoMode" value="${v}" ${logoMode===v?'checked':''} onchange="_setupSetLogoMode('${v}')"> <span style="font-size:13px">${l}</span>
+          </label>`).join('')}
+      </div></div>
+    ${logoMode==='svg' ? `<div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark.')}</label>
+      <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>` : ''}
+    ${logoMode==='image' ? `<div class="fg"><label class="fl">Upload image ${helpTip('Choose a PNG or JPEG photo, then drag to reposition and use the slider to zoom into a square crop.')}</label>
+      <input type="file" class="fi" accept="image/png,image/jpeg" onchange="_setupLogoFileChosen(this)">
+      ${bv('logoImage') ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+          <img src="${esc(bv('logoImage'))}" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--line)">
+          <span class="help-text" style="margin:0">Cropped logo saved — choose a file above to replace it.</span>
+        </div>` : `<div class="help-text" style="margin-top:6px">Choose a file to open the crop tool.</div>`}
+      </div>` : ''}
+    <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo or uploaded image appears here once saved — it is shown the same way the app itself renders it, not straight from the unsaved draft.')}</label>
       <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
         <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
         <div style="color:#fff;min-width:0">

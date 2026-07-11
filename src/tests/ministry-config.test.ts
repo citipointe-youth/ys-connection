@@ -16,6 +16,8 @@ describe('MinistryConfigSchema', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.branding.ministryName).toBe('Youth Society Brisbane');
     expect(MINISTRY_CONFIG_DEFAULTS.branding.appName).toBe('YS Connection');
     expect(MINISTRY_CONFIG_DEFAULTS.branding.accent).toBe('#1a1af2');
+    expect(MINISTRY_CONFIG_DEFAULTS.branding.logoSvg).toBe(null);
+    expect(MINISTRY_CONFIG_DEFAULTS.branding.logoImage).toBe(null);
     expect(MINISTRY_CONFIG_DEFAULTS.modules.pushNotifications).toBe(false);
     expect(MINISTRY_CONFIG_DEFAULTS.modules.connectionAudit).toBe(true);
     expect(MINISTRY_CONFIG_DEFAULTS.structure.cohortModel).toBe('grades-quads');

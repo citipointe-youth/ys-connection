@@ -74,6 +74,32 @@ describe('SettingsService', () => {
     expect(updated.ministryConfig.branding.logoSvg).not.toContain('<script');
   });
 
+  it('accepts a logoImage data URI patch and stores it verbatim (no server-side re-encoding)', async () => {
+    const { service } = await makeService();
+    const dataUri = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+    const updated = await service.update(ADMIN, {
+      ministryConfig: { branding: { logoImage: dataUri } },
+    });
+    expect(updated.ministryConfig.branding.logoImage).toBe(dataUri);
+  });
+
+  it('accepts logoImage: null (clearing it)', async () => {
+    const { service } = await makeService();
+    await service.update(ADMIN, { ministryConfig: { branding: { logoImage: 'data:image/png;base64,abc' } } });
+    const cleared = await service.update(ADMIN, { ministryConfig: { branding: { logoImage: null } } });
+    expect(cleared.ministryConfig.branding.logoImage).toBe(null);
+  });
+
+  it('rejects a logoImage patch that is not a data:image/... URI', async () => {
+    const { service } = await makeService();
+    await expect(
+      service.update(ADMIN, { ministryConfig: { branding: { logoImage: 'https://evil.example/x.png' } } }),
+    ).rejects.toThrow();
+    await expect(
+      service.update(ADMIN, { ministryConfig: { branding: { logoImage: '<script>alert(1)</script>' } } }),
+    ).rejects.toThrow();
+  });
+
   it('invalidates the overview/trends/lifegroup-stats caches on every update', async () => {
     const studentRepo = new InMemoryStudentRepository();
     const leaderRepo = new InMemoryLeaderRepository();

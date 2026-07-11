@@ -35,6 +35,12 @@ export const MinistryConfigSchema = z.object({
       accentLight: hexColour.default('#ececff'),
       navy: hexColour.default('#0a0a2e'),
       logoSvg: z.string().max(20_000).nullable().default(null),
+      // A cropped-to-square data URI (image/png or image/jpeg) baked client-side
+      // by the Youth Setup crop tool — the alternative to pasting logoSvg. At
+      // most one of logoSvg/logoImage is ever set (brandMark() prefers
+      // logoImage). 500_000 chars (~375KB decoded) comfortably fits a 512x512
+      // JPEG at quality 0.85.
+      logoImage: z.string().max(500_000).nullable().default(null),
     })
     .default({}),
 
