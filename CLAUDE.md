@@ -1435,9 +1435,24 @@ covered by the existing multi-grade `grade` account feature (§5.1a, phase
   change.
 - Tests: `ministry-config.test.ts` updated (`roles.enabled.*` assertions
   replace the old `roles.model`/`roles.labels` ones).
-- **SW cache**: `ysc-v34` → `ysc-v35` → **`ysc-v36`** (public/index.html
-  changed twice: the initial toggle rework, then adding the Grade toggle +
-  the fixed Admin row the same day).
+- **SW cache**: `ysc-v34` → `ysc-v35` → `ysc-v36` → **`ysc-v37`** (public/
+  index.html changed three times: the initial toggle rework, adding the
+  Grade toggle + the fixed Admin row, then the syntax-error fix below.
+- **Incident: white screen in production** — the Admin row's `helpTip(...)`
+  call used a single-quoted JS string whose text contained an apostrophe
+  ("...and it **can't** be turned off."), which closed the string early and
+  left a trailing `t be turned off.')` as invalid tokens — a hard
+  `SyntaxError` in the app's one inline `<script>` block, so **nothing** ran
+  (not just that row — the whole SPA). The app already has this exact
+  pattern flagged: earlier `helpTip(...)` calls whose text contains an
+  apostrophe use **double quotes** instead (e.g. the Health tab's "hasn't
+  been to Youth..." tip) — this one didn't follow it. **Lesson**: any
+  contraction (can't/won't/doesn't/isn't/hasn't/...) inside a single-quoted
+  JS string literal in this file is a syntax error, not just a stray
+  character — grep `helpTip\('[^']*'(t|s|re|ve|ll|d)\b` (or similar) for
+  apostrophes before shipping new inline help text, and verified here with
+  `node --check` on the extracted `<script>` body (533–6842), the same
+  syntax-check convention documented for Project 1's single-file apps.
 
 ## Security notes
 

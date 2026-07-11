@@ -5063,7 +5063,7 @@ function renderMinistrySetup() {
     const dayOpts = _DAY_NAMES.map((n, i) => `<option value="${i}" ${i===svcDay?'selected':''}>${n}</option>`).join('');
     // Admin is a fixed, always-on row (checked + disabled) — shown so its
     // tooltip is reachable, not because it's a real toggle.
-    const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin ${helpTip('Full access including settings, accounts, and everything the roles below can do. Always on — there is exactly one Admin account and it can't be turned off.')}</span></label>`;
+    const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin ${helpTip("Full access including settings, accounts, and everything the roles below can do. Always on — there is exactly one Admin account and it can't be turned off.")}</span></label>`;
     const roleToggleRows = [
       ['director', 'Director', 'Ministry-wide read/write, can import data.'],
       ['grade', 'Grade', 'Login scoped to one or more grades (e.g. Grade 9 — one account can cover several grades at once).'],
