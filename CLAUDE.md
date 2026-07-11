@@ -1633,6 +1633,42 @@ the Elvanto guide's "Lifegroup" category-name mentions) — grep for a bare
 `'Lifegroup'`/`'Grade'` string literal before adding new UI copy; the
 correct call is `L('smallGroup')`/`L('smallGroupPlural')`/`_gradeWord()`.
 
+### Admin account preview (2026-07-12)
+
+Admin → Accounts gets a **"Preview"** button on every **active `grade`/`quad`** account row
+(not director/leader/admin). Clicking it drops the admin into a real, fully-functional session
+as that account — same nav, same server-side RBAC scoping, real reads AND writes (the app has
+no per-write attribution today and the admin explicitly wanted read+write parity, not a
+read-only simulation) — with a persistent amber banner ("Previewing: *name*" + Exit Preview)
+visible on every screen until they exit. Design rationale + rejected alternatives (a `?viewAs=`
+query-param override; a pure client-side simulation mirroring the Youth Camp Platform's
+same-user "at-camp preview") are in
+`docs/superpowers/specs/2026-07-12-admin-account-preview-design.md`.
+
+- **Backend**: `POST /accounts/users/:id/preview` (admin-only) → `AccountService.previewAccount`
+  validates the target is active + grade/quad, then `AuthService.issueTokenFor(id,
+  { mustChangePassword: false })` mints it a real session token. `issueTokenFor` gained an
+  optional `actorOverrides` param for this (all existing call sites unaffected). The endpoint's
+  JSON response ALSO forces `mustChangePassword:false` on the returned `user` object, not just
+  the token — the frontend renders off `S.user.mustChangePassword` directly, separately from
+  whatever's embedded in the token, so both had to be overridden or previewing a
+  never-logged-in account would immediately show *that* account's forced-password screen.
+- **Frontend**: `enterPreview(id)`/`exitPreview()` (public/index.html) swap `API`'s token +
+  `S.user`, `Cache.clear()`, and rebuild the persistent shell (`_initShell()`) — nav, role
+  badge, and screen visibility all come for free since it's swapping in a real actor, not
+  duplicating RBAC client-side. The admin's own session is stashed in a module-level
+  `_previewStash` var, mirrored to `localStorage['yap_preview_stash']` so a page refresh
+  mid-preview doesn't strand the admin — restored at the top of `boot()`. Both `exitPreview()`
+  and `doLogout()` clear the stash.
+  - **Gotcha this surfaced**: `boot()`'s `/auth/me` refresh (used to restore `S.user` after any
+    page reload) reads the raw DB record, which doesn't know a preview session is in progress —
+    without re-applying the `mustChangePassword:false` override there too, a page refresh
+    mid-preview of an account with a genuinely-unset password would re-trigger its forced-
+    password screen even though the initial preview response had already suppressed it.
+- **Explicitly not built** (decided during brainstorming, matches "the app is already agnostic
+  about who makes changes"): no write-blocking, no audit/logging of preview sessions, no
+  confirmation modal before entering preview.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,

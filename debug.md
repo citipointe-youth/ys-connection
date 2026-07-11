@@ -198,6 +198,29 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   `.acct-girls`/`.acct-boys` class in `renderAdminView()` — it mirrors the backend's
   `deriveActorGender()` (explicit `gender` field first, username/quad fallback), so a wrong tint
   usually means the account's `gender` field doesn't match what you'd expect, not a CSS bug.
+- **Admin account preview (2026-07-12)** — "Preview" button, Admin → Accounts, active grade/quad
+  rows only: `enterPreview(id)`/`exitPreview()` (public/index.html) swap `API`'s token + `S.user`
+  to/from a real session minted by `POST /accounts/users/:id/preview`
+  (`AccountService.previewAccount` + `AuthService.issueTokenFor` with an actor-override param).
+  It's a genuine impersonation, not a simulation — RBAC/nav/writes are all real, on purpose (no
+  write-blocking, no audit log — see `docs/superpowers/specs/2026-07-12-admin-account-preview-
+  design.md`).
+  - **No Preview button on a row**: only shows for `role in (grade, quad)` AND
+    `status === 'active'` — check both, not just role.
+  - **Exit Preview button missing/banner not showing**: gated on `_previewStash` being non-null
+    (module-level var, mirrored to `localStorage['yap_preview_stash']`). If it's null after a
+    page refresh mid-preview, the boot-time restore (top of `boot()`) didn't find the
+    `localStorage` key — check nothing else calls `localStorage.removeItem('yap_preview_stash')`
+    (currently only `exitPreview()` and `doLogout()` do).
+  - **Previewing a never-logged-in account immediately shows its forced "Set a New Password"
+    screen**: the controller forces `mustChangePassword:false` in both the minted token AND the
+    response's `user` object, and `boot()`'s `/auth/me` refresh re-applies that override
+    (`_previewStash ? {...user, mustChangePassword:false} : user`) since `/auth/me` itself always
+    returns the raw DB value. If this regresses, check that override wasn't dropped from one of
+    those three spots.
+  - **Stuck in preview with no way back**: `exitPreview()` restores the admin's stashed
+    token/user — if the admin's original 12h token had already expired by the time they exit,
+    the next API call 401s and falls back to the login screen (known limitation, not a bug).
 
 ### Allocation import
 
