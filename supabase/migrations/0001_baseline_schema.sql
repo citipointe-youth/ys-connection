@@ -145,9 +145,9 @@ create table if not exists app_settings (
   id text primary key default 'global',
   term_gap_days int not null default 14,
   valid_threshold_pct int not null default 25,
+  updated_at timestamptz default now(),
   service_min_attendance int not null default 100,
-  ministry_config jsonb not null default '{}'::jsonb,
-  updated_at timestamptz default now()
+  ministry_config jsonb not null default '{}'::jsonb
 );
 
 create table if not exists admin_audit (
