@@ -8,12 +8,15 @@ branded deployment. It assumes you've cloned/forked this repo.
 1. Create a new project at [supabase.com](https://supabase.com) — pick the
    region closest to your users (the reference deployment uses Sydney,
    `ap-southeast-2`).
-2. Run every migration in `supabase/migrations/`, **in numeric order**, via
-   the Supabase SQL editor or the Supabase CLI (`supabase db push`). Each
-   migration is additive (`add column if not exists …`) — there's no seed
-   data to skip, but read `002_seed_admin.sql` / `005_seed_users.sql` before
-   running them if you want a different starting account set than the
-   YS Brisbane defaults (see step 6 below).
+2. Run the 3 migrations in `supabase/migrations/`, **in numeric order**
+   (`0001_baseline_schema.sql`, `0002_rls.sql`, `0003_seed_accounts.sql`), via
+   the Supabase SQL editor or the Supabase CLI (`supabase db push`). (A 20-file
+   history of how this schema evolved lives in `supabase/migrations_archive/`,
+   kept for reference only — you don't need to run those.) There's no seed
+   data to skip, but read `0003_seed_accounts.sql` before running it if you
+   want a different starting account set than the YS Brisbane defaults (see
+   step 6 below). Seed logins are bare usernames (e.g. `admin`, `grade7g`),
+   not real email addresses.
 3. **Re-apply the role-level statement timeout — this is not in any migration:**
    ```sql
    alter role postgres set statement_timeout = '15s';
@@ -41,12 +44,13 @@ branded deployment. It assumes you've cloned/forked this repo.
 ## 3. First login and setup
 
 1. Log in with one of the seeded accounts (see `README.md` for the list, or
-   `002_seed_admin.sql`/`005_seed_users.sql` if you customised them).
+   `0003_seed_accounts.sql` if you customised them).
 2. Every seeded account is flagged `must_change_password` — you'll be forced
    to set your own password before anything else is reachable
-   (migration `017_must_change_password.sql`). This exists because the seed
-   migrations, and this repo's history, document a shared default password in
-   a public repo — never leave a seeded password in place.
+   (`0003_seed_accounts.sql` sets this inline on every seeded row). This
+   exists because the seed migrations, and this repo's history, document a
+   shared default password in a public repo — never leave a seeded password
+   in place.
 3. Go to **Admin → Settings → Youth Ministry Setup** and pick the preset
    closest to your ministry's shape (see `README.md`'s config section, or
    `../Generalisation of the app/02-youth-ministry-structures.md` if you have
@@ -56,7 +60,7 @@ branded deployment. It assumes you've cloned/forked this repo.
 ## Seed accounts by preset
 
 - **Large graded ministry (AU)** (the default): the full grade+quad account
-  set from `002_seed_admin.sql`/`005_seed_users.sql` works as-is.
+  set from `0003_seed_accounts.sql` works as-is.
 - **Small flat / Micro**: the grade/quad seed accounts won't match your
   structure. Simplest path: log in as the seeded `admin` account, delete the
   accounts you don't need from Admin → Accounts, and create Grade accounts
