@@ -19,6 +19,7 @@ describe('MinistryConfigSchema', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.modules.pushNotifications).toBe(false);
     expect(MINISTRY_CONFIG_DEFAULTS.modules.connectionAudit).toBe(true);
     expect(MINISTRY_CONFIG_DEFAULTS.structure.cohortModel).toBe('grades-quads');
+    expect(MINISTRY_CONFIG_DEFAULTS.roles.enabled).toEqual({ director: true, quad: true, leader: false });
   });
 
   it('rejects an invalid hex colour', () => {
@@ -43,8 +44,9 @@ describe('mergeMinistryConfig', () => {
   it('applies the small-flat preset overrides on top of defaults', () => {
     const merged = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, PRESET_CONFIGS['small-flat']);
     expect(merged.structure.cohortModel).toBe('none');
-    expect(merged.roles.model).toBe('flat');
-    expect(merged.roles.labels.admin).toBe('Youth Pastor');
+    expect(merged.roles.enabled.director).toBe(false);
+    expect(merged.roles.enabled.quad).toBe(false);
+    expect(merged.roles.enabled.leader).toBe(false);
     expect(merged.modules.connectionAudit).toBe(false);
     expect(merged.modules.lifegroups).toBe(true);
     // Untouched by the preset — still default

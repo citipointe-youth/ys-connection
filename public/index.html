@@ -1043,13 +1043,12 @@ function _prefetch() {
 // ============================================================
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 function quadLabel(q) { return QUAD_LABELS[q] || q; }
-// Configurable role label (roles.labels, §5.2). Under the flat preset:
-// admin→"Youth Pastor", director→"Senior Leader", leader→"Junior Leader".
-// grade/quad keep their own richer badges (grade numbers / quad name).
+// Fixed role labels (not per-deployment configurable, §5.2). grade/quad
+// logins keep their own richer badges (grade numbers / quad name) — see
+// roleBadge/roleBadgeInner below.
 const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Quad' };
 function _roleLabel(role) {
-  const labels = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.labels) || {};
-  return labels[role] || _ROLE_LABEL_DEFAULTS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
+  return _ROLE_LABEL_DEFAULTS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
 }
 const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
@@ -4677,8 +4676,9 @@ async function renderAdminView(settings, users) {
       <button class="btn btn-primary btn-sm" onclick="showAddUser()">+ Add Account</button>
     </div>`;
 
-    // Group-by-role for clarity at 12+ accounts. Labels are config-aware (§5.2);
-    // grade/quad only appear under the graded model, `leader` at the end.
+    // Group-by-role for clarity at 12+ accounts. Only groups with existing
+    // accounts render — a group with none (e.g. Quad when disabled) is
+    // skipped below, not shown empty. `leader` sorts last.
     const roleOrder = ['admin','director','quad','grade','leader'];
     const roleLabels = {
       admin: _roleLabel('admin'), director: _roleLabel('director'),
@@ -4918,8 +4918,8 @@ function wizHandleAllocationImportFile(input) {
 // broader grade-equivalent accounts (Admin -> Accounts), optionally skipping
 // quad accounts entirely. See design doc §5.1a / CLAUDE.md.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Large graded ministry (AU)', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. Also the starting point for junior/senior-style ministries — just create broader grade accounts and skip quad accounts.' },
-  { id: 'small-flat', title: 'Small flat ministry', desc: 'Youth Pastor / Senior Leader / Junior Leader, no grade or quad cohorting. Connection Audit off, Lifegroups on.' },
+  { id: 'large-graded-au', title: 'Large graded ministry (AU)', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
+  { id: 'small-flat', title: 'Small flat ministry', desc: 'Admin + Grade accounts only, no grade/quad cohorting — Director and Quad roles are off. Connection Audit off, Lifegroups on.' },
   { id: 'micro', title: 'Micro ministry', desc: 'Same as Small flat, plus Lifegroups off and export guides hidden — for spreadsheet-only ministries.' },
 ];
 let _setupStep = 0;
@@ -4945,13 +4945,13 @@ const PRESET_CONFIGS_CLIENT = {
   'small-flat': {
     preset: 'small-flat',
     structure: { cohortModel: 'none', genderPolicy: 'soft' },
-    roles: { model: 'flat', labels: { admin: 'Youth Pastor', director: 'Senior Leader', leader: 'Junior Leader' } },
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: true },
   },
   micro: {
     preset: 'micro',
     structure: { cohortModel: 'none', genderPolicy: 'off' },
-    roles: { model: 'flat', labels: { admin: 'Youth Pastor', director: 'Senior Leader', leader: 'Junior Leader' } },
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: false, exportGuides: 'hidden' },
   },
 };
@@ -4967,7 +4967,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoSvg: null },
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '] },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
-  roles: { model: 'graded', labels: { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Quad' } },
+  roles: { enabled: { director: true, quad: true, leader: false } },
   modules: { connectionAudit: true, lifegroups: true, pushNotifications: false, exportGuides: 'elvanto' },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
 };
@@ -5036,7 +5036,9 @@ function renderMinistrySetup() {
     const dst = MINISTRY_CONFIG_DEFAULTS_CLIENT.structure;
     const rl = cfg.roles || {};
     const drl = MINISTRY_CONFIG_DEFAULTS_CLIENT.roles;
-    const roleModel = rl.model || drl.model;
+    const rlEn = rl.enabled || {};
+    const drlEn = drl.enabled;
+    const roleEnabled = (k) => rlEn[k] != null ? rlEn[k] : drlEn[k];
     const cohort = st.cohortModel || dst.cohortModel;
     const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
     const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
@@ -5059,13 +5061,13 @@ function renderMinistrySetup() {
     }
 
     const dayOpts = _DAY_NAMES.map((n, i) => `<option value="${i}" ${i===svcDay?'selected':''}>${n}</option>`).join('');
-    const roleLabelRows = (roleModel === 'flat'
-      ? [['admin','Youth Pastor (admin)'],['director','Senior Leader (director)'],['leader','Junior Leader (leader)']]
-      : [['grade','Grade'],['quad','Quad'],['director','Director'],['admin','Admin'],['leader','Leader']]
-    ).map(([k, hint]) => {
-      const v = (rl.labels && rl.labels[k] != null) ? rl.labels[k] : drl.labels[k];
-      return `<div class="fg"><label class="fl">${esc(hint)}</label><input class="fi" value="${esc(v)}" onchange="_setupSet('roles.labels.${k}', this.value)"></div>`;
-    }).join('');
+    const roleToggleRows = [
+      ['director', 'Director', 'Ministry-wide read/write, can import data.'],
+      ['quad', 'Quad', 'Logins scoped to one gender+bracket (e.g. Girls Yr 7-9).'],
+      ['leader', 'Leader', 'A narrow login that sees only its own connected students.'],
+    ].map(([k, label, hint]) =>
+      `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
+    ).join('');
 
     // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
     // fallback to the mirrored defaults, same shape as the Structure/Roles cards.
@@ -5103,13 +5105,8 @@ function renderMinistrySetup() {
     </div>
     <div class="card">
       <div class="sh" style="margin-top:0">Roles</div>
-      <div class="fg"><label class="fl">Role model ${helpTip('Graded = five roles (grade, quad, director, admin, + leader). Flat = a small ministry: Youth Pastor / Senior Leader / Junior Leader, mapped onto admin / director / leader.')}</label>
-        <select class="fs" onchange="_setupSet('roles.model', this.value)">
-          <option value="graded" ${roleModel==='graded'?'selected':''}>Graded</option>
-          <option value="flat" ${roleModel==='flat'?'selected':''}>Flat</option>
-        </select></div>
-      <div class="help-text" style="margin-bottom:8px">Labels shown in the account picker and role badges. The new <b>Junior Leader</b> (leader) role sees only their own connected students.</div>
-      ${roleLabelRows}
+      <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin and Grade logins are always available for every ministry — choose which of the others this ministry uses.</div>
+      ${roleToggleRows}
     </div>
     <div class="card">
       <div class="sh" style="margin-top:0">Branding</div>
@@ -5165,7 +5162,7 @@ function renderMinistrySetup() {
     <div class="card">
       <div class="sh" style="margin-top:0">Review</div>
       <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
-      <div class="help-text" style="margin:6px 0">Some changes (app name, nav, role labels) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>
+      <div class="help-text" style="margin:6px 0">Some changes (app name, nav, available roles) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button class="btn btn-ghost" onclick="_setupStep=0;renderMinistrySetup()">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="saveMinistrySetup()">Save &amp; Close</button>
@@ -5414,12 +5411,16 @@ function _accGradeChecks(sel) {
   ).join('');
 }
 
-// Config-aware role <option>s: flat model hides grade/quad; labels from
-// roles.labels (§5.2 — Youth Pastor / Senior Leader / Junior Leader).
+// Config-aware role <option>s: Admin + Grade always available; Director/Quad/
+// Leader are opt-in per ministry (ministryConfig.roles.enabled, §5.2).
 function _accRoleOptions(selected) {
-  const flat = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.model) === 'flat';
-  const roles = flat ? ['admin', 'director', 'leader'] : ['grade', 'quad', 'director', 'admin', 'leader'];
-  // Ensure the current role is present even if the model would normally hide it.
+  const en = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.enabled) || {};
+  const roles = ['grade'];
+  if (en.quad) roles.push('quad');
+  if (en.director) roles.push('director');
+  roles.push('admin');
+  if (en.leader) roles.push('leader');
+  // Ensure the current role is present even if it's since been disabled.
   if (selected && !roles.includes(selected)) roles.unshift(selected);
   return roles.map(r => `<option value="${r}" ${r===selected?'selected':''}>${esc(_roleLabel(r))}</option>`).join('');
 }

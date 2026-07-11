@@ -74,16 +74,16 @@ export const MinistryConfigSchema = z.object({
     })
     .default({}),
 
+  // Role names are fixed (Admin, Director, Grade, Quad, Leader) — not
+  // per-deployment relabelable. `enabled` picks which OPTIONAL roles this
+  // ministry uses; Admin and Grade always exist and aren't toggleable.
   roles: z
     .object({
-      model: z.enum(['graded', 'flat']).default('graded'),
-      labels: z
+      enabled: z
         .object({
-          admin: z.string().max(30).default('Admin'),
-          director: z.string().max(30).default('Director'),
-          leader: z.string().max(30).default('Leader'),
-          grade: z.string().max(30).default('Grade'),
-          quad: z.string().max(30).default('Quad'),
+          director: z.boolean().default(true),
+          quad: z.boolean().default(true),
+          leader: z.boolean().default(false),
         })
         .default({}),
     })
@@ -132,19 +132,13 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
   'small-flat': {
     preset: 'small-flat',
     structure: { cohortModel: 'none', genderPolicy: 'soft' },
-    roles: {
-      model: 'flat',
-      labels: { admin: 'Youth Pastor', director: 'Senior Leader', leader: 'Junior Leader' },
-    },
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: true },
   },
   micro: {
     preset: 'micro',
     structure: { cohortModel: 'none', genderPolicy: 'off' },
-    roles: {
-      model: 'flat',
-      labels: { admin: 'Youth Pastor', director: 'Senior Leader', leader: 'Junior Leader' },
-    },
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: false, exportGuides: 'hidden' },
   },
 };

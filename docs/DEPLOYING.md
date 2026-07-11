@@ -57,13 +57,15 @@ branded deployment. It assumes you've cloned/forked this repo.
 
 - **Large graded ministry (AU)** (the default): the full grade+quad account
   set from `002_seed_admin.sql`/`005_seed_users.sql` works as-is.
-- **Two-bracket / Small flat / Micro**: the grade/quad seed accounts won't
-  match your structure. Simplest path: log in as the seeded `admin` account,
-  delete the accounts you don't need from Admin → Accounts, and create the
-  ones you do (Youth Pastor / Senior Leader / Junior Leader roles under the
-  flat preset — the Junior Leader role is added by a later phase of the
-  generalisation work; if it's not yet in your checkout, senior/junior
-  leaders temporarily share the Senior Leader (`director`) scope).
+- **Small flat / Micro**: the grade/quad seed accounts won't match your
+  structure. Simplest path: log in as the seeded `admin` account, delete the
+  accounts you don't need from Admin → Accounts, and create Grade accounts
+  for the rest of your team — a Grade account can be assigned any set of
+  grades (e.g. one broad login covering grades 10-12), so it doesn't need a
+  matching cohort structure. Director/Quad are off by default under these
+  presets (Admin → Settings → Youth Ministry Setup → Roles turns them back on
+  if you need them); the optional Leader role (read-only, scoped to one
+  leader's own connected students) is off by default for every preset.
 
 ## Icons and PWA identity
 

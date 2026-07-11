@@ -64,7 +64,7 @@ Admin → Settings → **Youth Ministry Setup** walks through:
 2. **Branding** — ministry name, app name, colours, logo.
 3. **Terminology** — what to call a small group, the main service, etc.
 4. **Structure** — grade range, cohort model, gender policy.
-5. **Roles** — role labels (e.g. "Youth Pastor" instead of "Admin").
+5. **Roles** — which optional roles this ministry uses (Director, Quad, Leader). Names are fixed; Admin and Grade are always available.
 6. **Modules** — Connection Audit, lifegroups, push notifications, export guides.
 
 Nothing here deletes data and it's revisitable at any time.
