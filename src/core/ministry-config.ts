@@ -14,7 +14,11 @@ const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex c
 // cohorts now just creates broader grade-equivalent accounts (1+ grades each)
 // under 'large-graded-au' and skips creating quad accounts — an account-creation
 // choice, not a ministryConfig difference. See CLAUDE.md / design doc §5.1a.
-export const MINISTRY_PRESETS = ['large-graded-au', 'small-flat', 'micro'] as const;
+// 'small-flat' and 'micro' were merged into a single 'simple' preset 2026-07-11 —
+// having 3 presets with a subtle micro-vs-small-flat distinction (lifegroups/
+// export guides only) wasn't earning its complexity; a ministry that wants those
+// off individually can still flip them in the (now un-layered) fine-tuning cards.
+export const MINISTRY_PRESETS = ['large-graded-au', 'simple'] as const;
 export type MinistryPreset = (typeof MINISTRY_PRESETS)[number];
 
 export const MinistryConfigSchema = z.object({
@@ -130,17 +134,11 @@ export const MINISTRY_CONFIG_DEFAULTS: MinistryConfig = MinistryConfigSchema.par
 // on AppSettings, not inside ministryConfig — see PRESET_SERVICE_MIN_ATTENDANCE.
 export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
   'large-graded-au': {},
-  'small-flat': {
-    preset: 'small-flat',
-    structure: { cohortModel: 'none', genderPolicy: 'soft' },
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: true },
-  },
-  micro: {
-    preset: 'micro',
-    structure: { cohortModel: 'none', genderPolicy: 'off' },
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: false, exportGuides: 'hidden' },
+  simple: {
+    preset: 'simple',
+    structure: { cohortModel: 'none', genderPolicy: 'strict' },
+    roles: { enabled: { director: true, quad: false } },
+    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
   },
 };
 
@@ -151,8 +149,7 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
 // as a second field in the same PATCH /settings call.
 export const PRESET_SERVICE_MIN_ATTENDANCE: Record<MinistryPreset, number> = {
   'large-graded-au': 100,
-  'small-flat': 10,
-  micro: 0,
+  simple: 10,
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

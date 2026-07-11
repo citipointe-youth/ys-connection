@@ -4,6 +4,41 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+GRADE-LOGIN + ADMIN SETUP POLISH PUNCH LIST  (2026-07-11)
+-------------------------------------------------------------------------------
+- Header brand mark now swaps for a back arrow (-> Home) on any page outside
+  the current role's 4 bottom-nav root tabs.
+- Admin tabs reordered/renamed: Import (now its own first tab, content
+  embedded inline via a shared _importBodyHtml() also used by the standalone
+  Import nav page) / Accounts / Data (allocations + destructive actions only
+  now) / New Year Refresh / Youth Setup (last).
+- Youth Setup rebuilt: no more "Open Setup" click-through or preset-picker
+  step - everything renders inline in the Admin tab as independently
+  expand/collapse cards (Attendance incl. Min Attendance + Term Gap merged in
+  from the old Settings tab, Structure & Roles merged into one card,
+  Branding, Terminology, Modules, Import, Review, Deploy guide). One Save
+  button PATCHes ministryConfig + serviceMinAttendance + termGapDays together.
+- Ministry Setup presets consolidated 3 -> 2: "Complex Ministry" (was
+  large-graded-au, unchanged) and "Simple Ministry" (replaces small-flat +
+  micro; admin+director+grade roles, no quads, Connection Audit off,
+  Lifegroups on). Backend MINISTRY_PRESETS/PRESET_CONFIGS updated to match.
+- Terminology: "Grade word" moved from Structure into Terminology; the
+  explicit "Small group (plural)" field removed - it's now auto-derived from
+  the singular via simple English pluralisation.
+- Modules: Push Notifications toggle removed from the Setup UI (feature stays
+  hidden app-wide regardless).
+- Branding card gained a "Reset to defaults" button.
+- Grade accounts (single- or multi-grade) now require an explicit gender
+  scope on both create and edit - the "Both (all genders)" option is gone
+  from the account form, enforced client- and server-side.
+- Grade-login Home hero card now shows an auto-generated "Grade N[-M] Girls/
+  Boys" title (matching the header-bar pattern) instead of the account's
+  Display Name, so it stays correct when a login's grades change.
+- "Email already in use" -> "Username already in use" (account creation/edit
+  conflict error) - the field is a free-form username, not an email address.
+- SW cache bumped ysc-v37 -> ysc-v38.
+
+-------------------------------------------------------------------------------
 REMOVE LIFEGROUP "WHO ATTENDED" CLICK-THROUGH FROM MAIN APP  (2026-07-05)
 -------------------------------------------------------------------------------
 - Removed the "click a lifegroup to see who attended" popup from the Home

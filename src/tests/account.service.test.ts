@@ -70,7 +70,7 @@ describe('Account Service — create() defaults mustChangePassword to false', ()
     const admin = actorFor('u-admin', 'admin');
     const created = await svc.create(admin, {
       displayName: 'New Leader', email: 'newleader@youth.ministry', password: 'longenoughpw',
-      role: 'grade', grade: 8,
+      role: 'grade', grade: 8, gender: 'female',
     });
     const stored = await users.findById(created.id);
     expect(stored?.mustChangePassword).toBe(false);

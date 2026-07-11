@@ -93,7 +93,7 @@ describe('AccountService — multi-grade create/update', () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
       displayName: 'Grade 8', email: 'grade8@youth.ministry', password: 'longenoughpw',
-      role: 'grade', grade: 8,
+      role: 'grade', grade: 8, gender: 'male',
     });
     const stored = await users.findById(created.id);
     expect(stored?.grade).toBe(8);
@@ -110,11 +110,32 @@ describe('AccountService — multi-grade create/update', () => {
     ).rejects.toBeInstanceOf(BadRequestError);
   });
 
+  it('rejects a grade account with no gender scope', async () => {
+    const { account } = await svc();
+    await expect(
+      account.create(admin, {
+        displayName: 'No Gender', email: 'nogender@youth.ministry', password: 'longenoughpw',
+        role: 'grade', grade: 7,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('rejects clearing gender on an existing grade account via update', async () => {
+    const { account } = await svc();
+    const created = await account.create(admin, {
+      displayName: 'Grade 9', email: 'grade9x@youth.ministry', password: 'longenoughpw',
+      role: 'grade', grade: 9, gender: 'female',
+    });
+    await expect(
+      account.update(admin, created.id, { gender: null }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+  });
+
   it('updates an existing account to span multiple grades', async () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
       displayName: 'Grade 7', email: 'grade7@youth.ministry', password: 'longenoughpw',
-      role: 'grade', grade: 7,
+      role: 'grade', grade: 7, gender: 'female',
     });
     await account.update(admin, created.id, { grades: [7, 8, 9], gender: 'male' });
     const stored = await users.findById(created.id);
@@ -127,7 +148,7 @@ describe('AccountService — multi-grade create/update', () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
       displayName: 'Messy', email: 'messy@youth.ministry', password: 'longenoughpw',
-      role: 'grade', grades: [9, 7, 8, 7],
+      role: 'grade', grades: [9, 7, 8, 7], gender: 'female',
     });
     const stored = await users.findById(created.id);
     expect(stored?.grades).toEqual([7, 8, 9]);

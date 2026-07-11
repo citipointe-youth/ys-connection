@@ -11,12 +11,12 @@ import { MINISTRY_CONFIG_DEFAULTS, MinistryConfigSchema } from '../core/ministry
 
 describe('parseMinistryConfig — read resilience (anti-lockout)', () => {
   it('reads a normal jsonb object config', () => {
-    const cfg = MinistryConfigSchema.parse({ preset: 'small-flat', structure: { cohortModel: 'none' } });
+    const cfg = MinistryConfigSchema.parse({ preset: 'simple', structure: { cohortModel: 'none' } });
     expect(parseMinistryConfig(cfg)).toEqual(cfg);
   });
 
   it('recovers a legacy double-encoded (stringified) config instead of throwing', () => {
-    const cfg = MinistryConfigSchema.parse({ preset: 'small-flat' });
+    const cfg = MinistryConfigSchema.parse({ preset: 'simple' });
     // What the DB actually held during the incident: the JSON text of the config
     // stored as a jsonb string, so postgres.js returns a JS string on read.
     const doubleEncoded = JSON.stringify(cfg);

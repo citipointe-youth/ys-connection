@@ -86,11 +86,14 @@ export function makeAccountService(users: IUserRepository): AccountService {
       assertCan(actor, 'admin:manage');
       const data = CreateUserSchema.parse(input);
       const existing = await users.findByEmail(data.email);
-      if (existing) throw new ConflictError('Email already in use');
+      if (existing) throw new ConflictError('Username already in use');
 
       const gradeSet = normaliseGrades(data.grade, data.grades);
       if (data.role === 'grade' && (!gradeSet || gradeSet.grades.length === 0)) {
         throw new BadRequestError('Grade login requires at least one grade');
+      }
+      if (data.role === 'grade' && data.gender == null) {
+        throw new BadRequestError('Grade login requires a gender scope');
       }
       if (data.role === 'quad' && data.quad == null) {
         throw new BadRequestError('Quad login requires a quad');
@@ -131,13 +134,17 @@ export function makeAccountService(users: IUserRepository): AccountService {
       // but must stay unique across accounts.
       if (patch.email && patch.email !== existing.email) {
         const other = await users.findByEmail(patch.email);
-        if (other && other.id !== id) throw new ConflictError('Email already in use');
+        if (other && other.id !== id) throw new ConflictError('Username already in use');
       }
       const gradeSet = normaliseGrades(patch.grade, patch.grades);
       const nextRole = (patch.role ?? existing.role) as UserRole;
       const nextGrades = gradeSet ? gradeSet.grades : (existing.grades ?? (existing.grade != null ? [existing.grade] : []));
       if (nextRole === 'grade' && nextGrades.length === 0) {
         throw new BadRequestError('Grade login requires at least one grade');
+      }
+      const nextGender = patch.gender !== undefined ? patch.gender : existing.gender;
+      if (nextRole === 'grade' && nextGender == null) {
+        throw new BadRequestError('Grade login requires a gender scope');
       }
       const nextLeaderId = patch.leaderId !== undefined ? (patch.leaderId ?? null) : (existing.leaderId ?? null);
       if (nextRole === 'leader' && !nextLeaderId) {

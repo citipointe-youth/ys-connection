@@ -992,6 +992,22 @@ function _updateNavActive() {
   document.querySelectorAll('[data-nav-page]').forEach(el => {
     el.classList.toggle('on', el.dataset.navPage === cur);
   });
+  const brandIc = document.getElementById('hdr-brand-ic');
+  if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
+}
+// Root pages = this role's bottom-nav tabs (the "home base" screens). Anything
+// else (Trends, Student Search, Import, Admin, Connection Audit, Birthdays,
+// Notifications, and every screen/tab/wizard nested inside those) counts as a
+// sub-page, so the header's brand mark swaps for a back arrow that always
+// returns to Home — a flat "back to base" rather than a real history stack.
+function _isRootPage(page) {
+  return bottomNavItems().some(it => it.id === page);
+}
+function _hdrBrandHtml() {
+  if (!_isRootPage(S.page)) {
+    return `<button type="button" onclick="go('home')" title="Back" aria-label="Back to Home" style="background:none;border:none;padding:0;margin:0;display:flex;align-items:center;cursor:pointer;color:inherit;flex-shrink:0">${icN('arrl')}</button>`;
+  }
+  return brandMark(26, '#fff');
 }
 
 // Build the persistent shell (header + empty main + bottom nav) once per login.
@@ -1010,7 +1026,7 @@ function _initShell() {
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       <div class="hdr-top">
-        <div class="hdr-brand">${brandMark(26, '#fff')}<h1>${esc(appName())}</h1></div>
+        <div class="hdr-brand" id="hdr-brand"><span id="hdr-brand-ic">${_hdrBrandHtml()}</span><h1>${esc(appName())}</h1></div>
         <div class="hdr-meta">
           ${roleBadge(u)}
           ${bellBtn}
@@ -1393,6 +1409,7 @@ const IC = {
   arru:     '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   arrd:     '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
   arrr:     '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+  arrl:     '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
   xmark:    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   bell:     '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
   cake:     '<path d="M20 21v-8a2 2 0 00-2-2H6a2 2 0 00-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><line x1="2" y1="21" x2="22" y2="21"/><line x1="7" y1="8" x2="7" y2="11"/><line x1="12" y1="8" x2="12" y2="11"/><line x1="17" y1="8" x2="17" y2="11"/>',
@@ -1828,7 +1845,8 @@ async function _renderHomeInner(stale) {
   const grpAvgWk = lgStats ? lgStats.overall.current.avgPerWeek : (grpWeeks > 0 ? Math.round(grpAtt / grpWeeks) : 0);
 
   let body = `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
-  body += `<div style="display:flex;align-items:center;margin-bottom:6px"><div style="font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.1;display:flex;align-items:center;gap:7px">${icN('users')} ${esc(u.displayName)}</div></div>`;
+  const heroTitle = u.role === 'grade' ? (gradeBadgeLabel(u) + _gsfx(_loginGender(u))) : u.displayName;
+  body += `<div style="display:flex;align-items:center;margin-bottom:6px"><div style="font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.1;display:flex;align-items:center;gap:7px">${icN('users')} ${esc(heroTitle)}</div></div>`;
   body += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:40%"><col style="width:30%"><col style="width:30%"></colgroup>`;
   body += `<thead><tr>
     <th style="font-size:11px;font-weight:700;opacity:.55;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding-bottom:4px">This term</th>
@@ -4130,24 +4148,19 @@ function _revalidateImport() {
   if (_importRevalidating) return;
   _importRevalidating = true;
   API.batch(IMPORT_PATHS)
-    .then(() => { if (S.page === 'import') return renderImport(); })
+    .then(() => {
+      if (S.page === 'import') return renderImport();
+      if (S.page === 'admin' && _adminTab === 'import') return renderAdmin();
+    })
     .catch(() => {})
     .finally(() => { _importRevalidating = false; });
 }
-async function renderImport() {
-  const _pg = S.page;
-  const allFresh = IMPORT_PATHS.every(p => Cache.get(p) !== null);
-  const haveStale = IMPORT_PATHS.every(p => Cache.getStale(p) !== null);
-  let history = [];
-  if (allFresh || haveStale) {
-    history = Cache.getStale('/import/history') || [];
-    if (!allFresh) _revalidateImport();
-  } else {
-    setApp(shell(''));
-    try { history = await API.get('/import/history'); } catch {}
-    if (S.page !== _pg) return;
-  }
-
+// Pure HTML builder for the Import screen — takes already-fetched history, does
+// no fetching/caching/setApp. Shared by the standalone Import page (renderImport,
+// still reachable directly from nav for director/admin) and the embedded Import
+// tab inside Admin (renderAdminView) so the two never drift apart.
+function _importBodyHtml(history) {
+  history = history || [];
   let body = `
     <div class="ph"><div class="ph-title">Import Data</div><div class="ph-sub">Upload CSV files to update students and attendance</div></div>
     <div class="card">
@@ -4191,8 +4204,22 @@ async function renderImport() {
       </div>`;
     }
   }
-
-  setApp(shell(body));
+  return body;
+}
+async function renderImport() {
+  const _pg = S.page;
+  const allFresh = IMPORT_PATHS.every(p => Cache.get(p) !== null);
+  const haveStale = IMPORT_PATHS.every(p => Cache.getStale(p) !== null);
+  let history = [];
+  if (allFresh || haveStale) {
+    history = Cache.getStale('/import/history') || [];
+    if (!allFresh) _revalidateImport();
+  } else {
+    setApp(shell(''));
+    try { history = await API.get('/import/history'); } catch {}
+    if (S.page !== _pg) return;
+  }
+  setApp(shell(_importBodyHtml(history)));
 }
 
 function deleteImportEntry(id) {
@@ -4607,9 +4634,9 @@ function parseCSV(csv) {
 // ============================================================
 // ADMIN
 // ============================================================
-let _adminTab = 'settings';
+let _adminTab = 'import';
 
-const ADMIN_PATHS = ['/settings', '/accounts/users'];
+const ADMIN_PATHS = ['/settings', '/accounts/users', '/import/history'];
 let _adminRevalidating = false;
 function _revalidateAdmin() {
   if (_adminRevalidating) return;
@@ -4624,51 +4651,40 @@ async function renderAdmin() {
   const _pg = S.page;
   const allFresh = ADMIN_PATHS.every(p => Cache.get(p) !== null);
   const haveStale = ADMIN_PATHS.every(p => Cache.getStale(p) !== null);
-  let settings, users;
+  let settings, users, history;
   if (allFresh || haveStale) {
     settings = Cache.getStale('/settings') || {};
     users = Cache.getStale('/accounts/users') || [];
+    history = Cache.getStale('/import/history') || [];
     if (!allFresh) _revalidateAdmin();
   } else {
     setApp(shell(''));
-    [settings, users] = await Promise.all([
+    [settings, users, history] = await Promise.all([
       API.get('/settings').catch(() => ({})),
       API.get('/accounts/users').catch(() => []),
+      API.get('/import/history').catch(() => []),
     ]);
     if (S.page !== _pg) return;
   }
-  renderAdminView(settings, users);
+  _adminData = { settings, users, history };
+  renderAdminView(settings, users, history);
 }
 
-async function renderAdminView(settings, users) {
-  const tabs = ['settings','accounts','data','newyear'];
-  const tabLabels = { settings:'Settings', accounts:'Accounts', data:'Data', newyear:'New Year Refresh' };
+async function renderAdminView(settings, users, history) {
+  history = history || _adminData.history || [];
+  const tabs = ['import','accounts','data','newyear','youthsetup'];
+  const tabLabels = { import:'Import', accounts:'Accounts', data:'Data', newyear:'New Year Refresh', youthsetup:'Youth Setup' };
   const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${tabLabels[t]}</button>`).join('');
 
   let body = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>
     <div class="tbbar">${tabHtml}</div>`;
 
-  if (_adminTab === 'settings') {
-    body += `<div class="card">
-      <div class="sh" style="margin-top:0">Attendance</div>
-      <p class="help-text" style="margin-bottom:10px">Students are flagged as declining or stopped automatically from their attendance trend (a rate drop of ≥20 points vs last term, or no attendance this term). There are no manual thresholds.</p>
-      <div class="form-row">
-        <div class="fg"><label class="fl">Min attendance for a valid service</label>
-          <input class="fi" id="s-minatt" type="number" min="0" max="2000" value="${settings.serviceMinAttendance ?? 100}">
-          <div class="help-text">${esc(_serviceDayName())}s below this total attendance are disregarded (holidays / breaks) — excluded from averages and attendance rates</div>
-        </div>
-        <div class="fg"><label class="fl">Term Gap (days)</label>
-          <input class="fi" id="s-tg" type="number" min="1" max="90" value="${settings.termGapDays||14}">
-          <div class="help-text">Days between sessions = new term</div>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
-    </div>`;
-    body += `<div class="card">
-      <div class="sh" style="margin-top:0">Youth Ministry Setup</div>
-      <p class="help-text" style="margin-bottom:10px">One-time setup for branding, terminology, structure, roles and modules. Safe to revisit any time — nothing here deletes data.</p>
-      <button class="btn btn-secondary btn-full" onclick="openMinistrySetup()">Open Setup</button>
-    </div>`;
+  if (_adminTab === 'import') {
+    body += _importBodyHtml(history);
+  }
+
+  if (_adminTab === 'youthsetup') {
+    body += _youthSetupBody(settings, users);
   }
 
   if (_adminTab === 'accounts') {
@@ -4720,11 +4736,6 @@ async function renderAdminView(settings, users) {
 
   if (_adminTab === 'data') {
     body += `<div class="card">
-      <div class="sh" style="margin-top:0">Attendance Data</div>
-      <div class="help-text" style="margin-bottom:10px">Upload the latest Service and Group attendance exports.</div>
-      <button class="btn btn-secondary btn-full" onclick="go('import')">Go to Import</button>
-    </div>`;
-    body += `<div class="card">
       <div class="sh" style="margin-top:0">Connection Allocations</div>
       <div class="help-text" style="margin-bottom:10px">Export every student–leader allocation as a CSV (one leader per row, grouped by student), edit it, then re-import. Import matches students and leaders by name and reports anything it can't match. Students missing from the file are left untouched.</div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportAllocationsCSV()">Export Allocations</button>
@@ -4774,7 +4785,7 @@ async function renderAdminView(settings, users) {
 // whether a past export was actually saved somewhere by the admin.
 let _wiz = { step1Done: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
 function _wizReset() { _wiz = { step1Done: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
-function renderWizard() { renderAdminView(_adminData.settings, _adminData.users); }
+function renderWizard() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 
 function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
   return `<div class="card" style="margin-bottom:10px${locked ? ';opacity:.5' : ''}">
@@ -4908,23 +4919,68 @@ function wizHandleAllocationImportFile(input) {
   if (f) processAllocationImport(f, () => { _wiz.step4Done = true; renderWizard(); });
 }
 
-// ── Youth Ministry Setup wizard ──
-// One-time (but revisitable) configuration walk-through: pick an archetype
-// preset (step 0), then fine-tune on step 1 — Structure, Roles, Branding,
-// Terminology and Modules are all fully editable, followed by a Review card and
-// a synthesised "Deploy to another church" hand-off guide.
+// ── Youth Setup (Admin tab) ──
+// Fully inline, always-editable configuration screen — no separate "Open
+// Setup" click-through and no step wizard (retired 2026-07-11): a 2-preset
+// quick-pick up top, then Structure+Roles / Branding / Terminology / Modules /
+// Import / Review / Deploy-guide as independently expand/collapse cards
+// (`.drop`, same pattern as the Home/Trends dropdowns) so the screen doesn't
+// dump everything on you at once. Every input writes into _setupDraft via
+// _setupSet and is saved by saveMinistrySetup() through PATCH /settings.
 // 'Two-bracket ministry' was retired 2026-07-10 — a medium/junior-senior
-// ministry now just starts from "Large graded ministry (AU)" and creates
-// broader grade-equivalent accounts (Admin -> Accounts), optionally skipping
-// quad accounts entirely. See design doc §5.1a / CLAUDE.md.
+// ministry now just starts from "Complex Ministry" and creates broader
+// grade-equivalent accounts (Admin -> Accounts), optionally skipping quad
+// accounts entirely. See design doc §5.1a / CLAUDE.md.
+// 'small-flat'/'micro' were merged into one 'simple' preset 2026-07-11.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Large graded ministry (AU)', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
-  { id: 'small-flat', title: 'Small flat ministry', desc: 'Admin + Grade accounts only, no grade/quad cohorting — Director and Quad roles are off. Connection Audit off, Lifegroups on.' },
-  { id: 'micro', title: 'Micro ministry', desc: 'Same as Small flat, plus Lifegroups off and export guides hidden — for spreadsheet-only ministries.' },
+  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
+  { id: 'simple', title: 'Simple Ministry', desc: 'Admin + Director + Grade accounts only, no quads or grade/quad cohorting. Connection Audit off, Lifegroups on.' },
 ];
-let _setupStep = 0;
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
+let _setupTermGapDays = null;
+// Which collapsible cards are expanded — keyed by card id, persists across the
+// full-body re-renders every field edit triggers (renderAdminView), so editing
+// a field inside an open card doesn't collapse it back.
+let _setupOpen = {};
+function _setupToggle(id) { _setupOpen[id] = !_setupOpen[id]; _setupRerender(); }
+function _setupRerender() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
+function _setupCard(id, title, bodyHtml) {
+  const open = !!_setupOpen[id];
+  return `<div class="drop card${open ? ' open' : ''}" id="su-${id}">
+    <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_setupToggle('${id}')">
+      <span class="drop-chev" style="font-size:14px">›</span>
+      <div class="sh" style="margin:0;border-bottom:none;flex:1">${esc(title)}</div>
+    </div>
+    <div class="drop-body" style="margin-top:10px">${bodyHtml}</div>
+  </div>`;
+}
+// Simple English pluralisation for the small-group term (e.g. "Lifegroup" ->
+// "Lifegroups") — replaces the old explicit "plural" input field (2026-07-11):
+// the plural is derived from the singular whenever it changes, not typed
+// separately. Good enough for ordinary nouns; an irregular plural is rare
+// enough for this one label that it isn't worth a second free-text field.
+function _pluralize(word) {
+  word = String(word || '').trim();
+  if (!word) return '';
+  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
+  if (/(s|x|z|ch|sh)$/i.test(word)) return word + 'es';
+  return word + 's';
+}
+function _setupSetSmallGroup(val) {
+  if (!_setupDraft) _setupDraft = {};
+  if (!_setupDraft.labels) _setupDraft.labels = {};
+  _setupDraft.labels.smallGroup = val;
+  _setupDraft.labels.smallGroupPlural = _pluralize(val);
+  _setupRerender();
+}
+function _setupResetBranding() {
+  if (!_setupDraft) _setupDraft = {};
+  _setupDraft.branding = JSON.parse(JSON.stringify(MINISTRY_CONFIG_DEFAULTS_CLIENT.branding));
+  _setupRerender();
+}
+function _setupSetMinAtt(val) { const n = parseInt(val, 10); _setupServiceMinAttendance = isNaN(n) ? 0 : n; _setupRerender(); }
+function _setupSetTermGap(val) { const n = parseInt(val, 10); _setupTermGapDays = isNaN(n) ? 14 : n; _setupRerender(); }
 
 function _deepMergeClient(base, patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch === undefined ? base : patch;
@@ -4942,26 +4998,20 @@ function _deepMergeClient(base, patch) {
 // threshold shared between the backend and this file.
 const PRESET_CONFIGS_CLIENT = {
   'large-graded-au': {},
-  'small-flat': {
-    preset: 'small-flat',
-    structure: { cohortModel: 'none', genderPolicy: 'soft' },
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: true },
-  },
-  micro: {
-    preset: 'micro',
-    structure: { cohortModel: 'none', genderPolicy: 'off' },
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: false, exportGuides: 'hidden' },
+  simple: {
+    preset: 'simple',
+    structure: { cohortModel: 'none', genderPolicy: 'strict' },
+    roles: { enabled: { director: true, quad: false } },
+    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
   },
 };
-const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, 'small-flat': 10, micro: 0 };
+const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, simple: 10 };
 
 // Mirrors src/core/ministry-config.ts's MINISTRY_CONFIG_DEFAULTS. Needed so
 // switching presets always computes "defaults + this preset's overrides" from
 // a clean baseline — merging a preset onto whatever the PREVIOUS preset left
-// behind would let old overrides (e.g. modules.connectionAudit:false from
-// small-flat) leak into a later large-graded-au pick instead of reverting.
+// behind would let old overrides (e.g. modules.connectionAudit:false from a
+// prior preset) leak into a later large-graded-au pick instead of reverting.
 const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   version: 1, preset: 'large-graded-au',
   branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoSvg: null },
@@ -4972,219 +5022,220 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
 };
 
-function openMinistrySetup() {
-  _setupStep = 0;
-  _setupDraft = JSON.parse(JSON.stringify((S.settings && S.settings.ministryConfig) || {}));
-  _setupServiceMinAttendance = (_adminData.settings && _adminData.settings.serviceMinAttendance) ?? 100;
-  renderMinistrySetup();
-}
-
-async function closeMinistrySetup() {
-  _setupStep = 0; _setupDraft = null;
-  // Re-fetch rather than reusing _adminData.settings — it was captured before
-  // this wizard's own PATCH, so it would otherwise show stale scalar fields
-  // (e.g. Min Attendance) that a preset just changed server-side.
-  const [settings, users] = await Promise.all([
-    API.get('/settings').catch(() => _adminData.settings),
-    API.get('/accounts/users').catch(() => _adminData.users),
-  ]);
-  _adminData = { settings, users };
-  await renderAdminView(settings, users);
+// Lazily seed the draft from freshly-fetched settings — only when there isn't
+// one in progress yet. switchAdminTab() nulls these out whenever the admin
+// switches INTO this tab, so re-entering after time away picks up any
+// server-side changes; edits within a visit persist across every re-render.
+function _ensureSetupDraft(settings) {
+  if (_setupDraft == null) {
+    _setupDraft = JSON.parse(JSON.stringify((settings && settings.ministryConfig) || {}));
+    _setupServiceMinAttendance = (settings && settings.serviceMinAttendance) ?? 100;
+    _setupTermGapDays = (settings && settings.termGapDays) ?? 14;
+  }
 }
 
 function pickMinistryPreset(id) {
   // Always layer the preset onto a clean defaults baseline (not onto whatever
   // _setupDraft currently holds) so switching presets fully replaces the
-  // previous preset's overrides instead of accumulating them.
+  // previous preset's overrides instead of accumulating them. Doesn't touch
+  // serviceMinAttendance... actually it does (presets scale it) — but leaves
+  // termGapDays alone, since that's not part of any preset.
   _setupDraft = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
   _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
-  _setupStep = 1;
-  renderMinistrySetup();
+  _setupRerender();
 }
 
 async function saveMinistrySetup() {
   try {
-    const fresh = await API.patch('/settings', { ministryConfig: _setupDraft, serviceMinAttendance: _setupServiceMinAttendance });
+    const fresh = await API.patch('/settings', {
+      ministryConfig: _setupDraft,
+      serviceMinAttendance: _setupServiceMinAttendance,
+      termGapDays: _setupTermGapDays,
+    });
     Cache.del('/settings');
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
-    toast('Youth Ministry Setup saved');
-    await closeMinistrySetup(); // re-fetches _adminData so Settings shows the new values, not the pre-save snapshot
+    toast('Youth Setup saved');
+    // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
+    // see the new values too (e.g. the orphaned-accounts check below).
+    const [settings, users, history] = await Promise.all([
+      API.get('/settings').catch(() => fresh),
+      API.get('/accounts/users').catch(() => _adminData.users),
+      API.get('/import/history').catch(() => _adminData.history),
+    ]);
+    _adminData = { settings, users, history };
+    await renderAdminView(settings, users, history);
   } catch (e) { toast(e.message); }
 }
 
-function renderMinistrySetup() {
+function _youthSetupBody(settings, users) {
+  _ensureSetupDraft(settings);
   const cfg = _setupDraft || {};
-  let b = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Youth Ministry Setup</div></div>`;
+  const st = cfg.structure || {};
+  const dst = MINISTRY_CONFIG_DEFAULTS_CLIENT.structure;
+  const rl = cfg.roles || {};
+  const drl = MINISTRY_CONFIG_DEFAULTS_CLIENT.roles;
+  const rlEn = rl.enabled || {};
+  const drlEn = drl.enabled;
+  const roleEnabled = (k) => rlEn[k] != null ? rlEn[k] : drlEn[k];
+  const cohort = st.cohortModel || dst.cohortModel;
+  const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
+  const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
+  const gMax = st.gradeMax != null ? st.gradeMax : dst.gradeMax;
+  const gPolicy = st.genderPolicy || dst.genderPolicy;
+  const svcDay = st.serviceDayOfWeek != null ? st.serviceDayOfWeek : dst.serviceDayOfWeek;
 
-  if (_setupStep === 0) {
-    b += `<div class="card" style="margin-bottom:10px"><div class="help-text">Pick the shape that's closest to your ministry. You can fine-tune everything afterwards.</div></div>`;
-    for (const p of MINISTRY_PRESETS_INFO) {
-      b += `<div class="li" style="cursor:pointer;margin-bottom:8px" onclick="pickMinistryPreset('${p.id}')">
-        <div class="li-body">
-          <div class="li-title">${esc(p.title)}</div>
-          <div class="li-sub">${esc(p.desc)}</div>
-        </div>
-      </div>`;
-    }
-    b += `<button class="btn btn-ghost btn-full" onclick="closeMinistrySetup()">Cancel</button>`;
+  // Orphaned-accounts warning: switching to cohortModel 'none' leaves any
+  // existing grade/quad logins with no cohort to scope to. Never deletes
+  // anything — just flags them. (Also flags grade accounts whose grade(s) now
+  // fall outside the configured range.)
+  const allUsers = users || [];
+  let orphanNote = '';
+  if (cohort === 'none') {
+    const gq = allUsers.filter(u => u.role === 'grade' || u.role === 'quad');
+    if (gq.length) orphanNote = `${gq.length} existing grade/quad account${gq.length===1?'':'s'} (${gq.map(u=>esc(u.displayName)).join(', ')}) will have no cohort to scope to under “no cohorting”. Nothing is deleted — reassign or remove them in Accounts.`;
   } else {
-    // Fine-tuning. Structure, Roles, Branding, Terminology and Modules are all
-    // fully editable here; every input writes into _setupDraft via _setupSet and
-    // is saved by saveMinistrySetup() through PATCH /settings.
-    const st = cfg.structure || {};
-    const dst = MINISTRY_CONFIG_DEFAULTS_CLIENT.structure;
-    const rl = cfg.roles || {};
-    const drl = MINISTRY_CONFIG_DEFAULTS_CLIENT.roles;
-    const rlEn = rl.enabled || {};
-    const drlEn = drl.enabled;
-    const roleEnabled = (k) => rlEn[k] != null ? rlEn[k] : drlEn[k];
-    const cohort = st.cohortModel || dst.cohortModel;
-    const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
-    const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
-    const gMax = st.gradeMax != null ? st.gradeMax : dst.gradeMax;
-    const gPolicy = st.genderPolicy || dst.genderPolicy;
-    const svcDay = st.serviceDayOfWeek != null ? st.serviceDayOfWeek : dst.serviceDayOfWeek;
-
-    // Orphaned-accounts warning: switching to cohortModel 'none' leaves any
-    // existing grade/quad logins with no cohort to scope to. Never deletes
-    // anything — just flags them. (Also flags grade accounts whose grade(s) now
-    // fall outside the configured range.)
-    const users = _adminData.users || [];
-    let orphanNote = '';
-    if (cohort === 'none') {
-      const gq = users.filter(u => u.role === 'grade' || u.role === 'quad');
-      if (gq.length) orphanNote = `${gq.length} existing grade/quad account${gq.length===1?'':'s'} (${gq.map(u=>esc(u.displayName)).join(', ')}) will have no cohort to scope to under “no cohorting”. Nothing is deleted — reassign or remove them in Accounts.`;
-    } else {
-      const outOfRange = users.filter(u => u.role === 'grade' && userGrades(u).some(g => g < gMin || g > gMax));
-      if (outOfRange.length) orphanNote = `${outOfRange.length} grade account${outOfRange.length===1?'':'s'} cover grades outside ${gMin}–${gMax} and won't fully match students. Nothing is deleted — adjust them in Accounts.`;
-    }
-
-    const dayOpts = _DAY_NAMES.map((n, i) => `<option value="${i}" ${i===svcDay?'selected':''}>${n}</option>`).join('');
-    // Admin is a fixed, always-on row (checked + disabled) — shown so its
-    // tooltip is reachable, not because it's a real toggle.
-    const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin ${helpTip("Full access including settings, accounts, and everything the roles below can do. Always on — there is exactly one Admin account and it can't be turned off.")}</span></label>`;
-    const roleToggleRows = [
-      ['director', 'Director', 'Ministry-wide read/write, can import data.'],
-      ['grade', 'Grade', 'Login scoped to one or more grades (e.g. Grade 9 — one account can cover several grades at once).'],
-      ['quad', 'Quad', 'Logins scoped to one gender+bracket (e.g. Girls Yr 7-9).'],
-      ['leader', 'Leader', 'A narrow login that sees only its own connected students.'],
-    ].map(([k, label, hint]) =>
-      `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
-    ).join('');
-
-    // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
-    // fallback to the mirrored defaults, same shape as the Structure/Roles cards.
-    const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
-    const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
-    const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
-    const im = cfg.import || {}, dim = MINISTRY_CONFIG_DEFAULTS_CLIENT.import;
-    const bv = (k) => br[k] != null ? br[k] : dbr[k];
-    const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
-    const mv = (k) => md[k] != null ? md[k] : dmd[k];
-    const iv = (k) => im[k] != null ? im[k] : dim[k];
-
-    b += `<div class="card">
-      <div class="sh" style="margin-top:0">Structure</div>
-      <div class="fg"><label class="fl">Cohort model ${helpTip('“Grades + quads” = the graded model (grade/quad logins scope by grade & gender). “No cohorting” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden.')}</label>
-        <select class="fs" onchange="_setupSet('structure.cohortModel', this.value)">
-          <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Grades + quads (graded)</option>
-          <option value="none" ${cohort==='none'?'selected':''}>No cohorting (flat)</option>
-        </select></div>
-      ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
-      <div class="fg"><label class="fl">Grade word</label>
-        <select class="fs" onchange="_setupSet('structure.gradeLabel', this.value)">
-          ${['Grade','Year'].map(w=>`<option ${gLabel===w?'selected':''}>${w}</option>`).join('')}
-        </select></div>
-      <div style="display:flex;gap:8px">
-        <div class="fg" style="flex:1"><label class="fl">Lowest grade</label><input class="fi" type="number" value="${gMin}" onchange="_setupSetNum('structure.gradeMin', this.value)"></div>
-        <div class="fg" style="flex:1"><label class="fl">Highest grade</label><input class="fi" type="number" value="${gMax}" onchange="_setupSetNum('structure.gradeMax', this.value)"></div>
-      </div>
-      <div class="fg"><label class="fl">Gender policy ${helpTip('Strict = leaders connect within their own gender and reads are gender-scoped (current YS Brisbane). Soft = gender shown but never blocks. Off = no gendered UI at all.')}</label>
-        <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
-          ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
-        </select></div>
-      <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs. Drives week bucketing for terms and the follow-up “not seen last …” labels, not just wording.')}</label>
-        <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Roles</div>
-      <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses.</div>
-      ${adminRoleRow}
-      ${roleToggleRows}
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Branding</div>
-      <div class="fg"><label class="fl">Ministry name ${helpTip('Shown under the app name on the login screen.')}</label>
-        <input class="fi" value="${esc(bv('ministryName'))}" onchange="_setupSet('branding.ministryName', this.value)"></div>
-      <div class="fg"><label class="fl">App name ${helpTip('The product name in the header, the browser tab, and the installed (PWA) app.')}</label>
-        <input class="fi" value="${esc(bv('appName'))}" onchange="_setupSet('branding.appName', this.value)"></div>
-      <div class="fg"><label class="fl">Short name ${helpTip('Home-screen icon label when installed — keep it short.')}</label>
-        <input class="fi" value="${esc(bv('shortName'))}" onchange="_setupSet('branding.shortName', this.value)"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${[['accent','Accent'],['accentDark','Accent dark'],['accentLight','Accent light'],['navy','Navy']].map(([k,lab])=>
-          `<div class="fg" style="flex:1;min-width:120px"><label class="fl">${lab}</label>
-            <input type="color" value="${esc(bv(k))}" style="width:100%;height:38px;padding:2px;border-radius:8px;border:1px solid var(--line)" onchange="_setupSet('branding.${k}', this.value)"></div>`).join('')}
-      </div>
-      <div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark. Scripts/handlers are stripped on save.')}</label>
-        <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>
-      <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo appears here once saved — it is shown sanitised, same as the app itself, not the raw unsaved textarea.')}</label>
-        <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
-          <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
-          <div style="color:#fff;min-width:0">
-            <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
-            <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
-          </div>
-        </div></div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Terminology</div>
-      <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
-      ${[['smallGroup','Small group (singular)'],['smallGroupPlural','Small group (plural)'],['service','Service / main gathering'],['serviceNight','Service night wording'],['studentTeam','Student team'],['connection','Connection']].map(([k,lab])=>
-        `<div class="fg"><label class="fl">${lab}</label><input class="fi" value="${esc(lv(k))}" onchange="_setupSet('labels.${k}', this.value)"></div>`).join('')}
-      <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ".')}</label>
-        <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Modules</div>
-      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('The year-over-year integration-funnel module (Data tab). Turn off for ministries that do not run it.')}</span></label>
-      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>Lifegroups ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
-      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('pushNotifications')?'checked':''} onchange="_setupSet('modules.pushNotifications', this.checked)"> <span>Push notifications ${helpTip('Currently hidden app-wide regardless of this setting — reserved for when the feature is re-enabled.')}</span></label>
-      <div class="fg"><label class="fl">Export guides ${helpTip('The in-app Elvanto CSV-export walkthroughs. Hide them if your church uses a different management system.')}</label>
-        <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
-          ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
-        </select></div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Import</div>
-      <div class="fg"><label class="fl">Date order ${helpTip('How an ambiguous slash-separated date (e.g. 03/04/2026) is read. Any date component over 12 is auto-resolved as the day regardless of this setting.')}</label>
-        <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
-          ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
-        </select></div>
-      <div class="fg"><label class="fl">Leader name tag ${helpTip('The word the group importer looks for in a "(word)"-tagged name to recognise a leader row, e.g. "(leader)".')}</label>
-        <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Review</div>
-      <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
-      <div class="help-text" style="margin:6px 0">Some changes (app name, nav, available roles) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="btn btn-ghost" onclick="_setupStep=0;renderMinistrySetup()">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="saveMinistrySetup()">Save &amp; Close</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="sh" style="margin-top:0">Deploy this setup to another church</div>
-      <div class="help-text" style="margin-bottom:8px">A ready-to-follow guide for standing up an independent copy of the app on another church's own Supabase + Vercel accounts, pre-configured to match this exact setup. Copy or download it and hand it over.</div>
-      <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow:auto;max-height:260px;white-space:pre-wrap">${esc(_deployGuideText(cfg, _setupServiceMinAttendance))}</pre>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-secondary" style="flex:1" onclick="copyDeployGuide()">Copy guide</button>
-        <button class="btn btn-secondary" style="flex:1" onclick="downloadDeployGuide()">Download .md</button>
-      </div>
-    </div>`;
+    const outOfRange = allUsers.filter(u => u.role === 'grade' && userGrades(u).some(g => g < gMin || g > gMax));
+    if (outOfRange.length) orphanNote = `${outOfRange.length} grade account${outOfRange.length===1?'':'s'} cover grades outside ${gMin}–${gMax} and won't fully match students. Nothing is deleted — adjust them in Accounts.`;
   }
 
-  setApp(b);
+  const dayOpts = _DAY_NAMES.map((n, i) => `<option value="${i}" ${i===svcDay?'selected':''}>${n}</option>`).join('');
+  // Admin is a fixed, always-on row (checked + disabled) — shown so its
+  // tooltip is reachable, not because it's a real toggle.
+  const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin ${helpTip("Full access including settings, accounts, and everything the roles below can do. Always on — there is exactly one Admin account and it can't be turned off.")}</span></label>`;
+  const roleToggleRows = [
+    ['director', 'Director', 'Ministry-wide read/write, can import data.'],
+    ['grade', 'Grade', 'Login scoped to one or more grades (e.g. Grade 9 — one account can cover several grades at once).'],
+    ['quad', 'Quad', 'Logins scoped to one gender+bracket (e.g. Girls Yr 7-9).'],
+    ['leader', 'Leader', 'A narrow login that sees only its own connected students.'],
+  ].map(([k, label, hint]) =>
+    `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
+  ).join('');
+
+  // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
+  // fallback to the mirrored defaults.
+  const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
+  const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
+  const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
+  const im = cfg.import || {}, dim = MINISTRY_CONFIG_DEFAULTS_CLIENT.import;
+  const bv = (k) => br[k] != null ? br[k] : dbr[k];
+  const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
+  const mv = (k) => md[k] != null ? md[k] : dmd[k];
+  const iv = (k) => im[k] != null ? im[k] : dim[k];
+
+  let b = `<div class="card" style="margin-bottom:10px">
+    <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
+    </div>
+    ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
+    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveMinistrySetup()">Save Youth Setup</button>
+  </div>`;
+
+  b += _setupCard('attendance', 'Attendance', `
+    <p class="help-text" style="margin-bottom:10px">Students are flagged as declining or stopped automatically from their attendance trend (a rate drop of ≥20 points vs last term, or no attendance this term). There are no manual thresholds.</p>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Min attendance for a valid service</label>
+        <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
+        <div class="help-text">${esc(_serviceDayName())}s below this total attendance are disregarded (holidays / breaks) — excluded from averages and attendance rates</div>
+      </div>
+      <div class="fg"><label class="fl">Term Gap (days)</label>
+        <input class="fi" type="number" min="1" max="90" value="${_setupTermGapDays}" onchange="_setupSetTermGap(this.value)">
+        <div class="help-text">Days between sessions = new term</div>
+      </div>
+    </div>`);
+
+  b += _setupCard('structure', 'Structure & Roles', `
+    <div class="fg"><label class="fl">Cohort model ${helpTip('“Grades + quads” = the graded model (grade/quad logins scope by grade & gender). “No cohorting” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden.')}</label>
+      <select class="fs" onchange="_setupSet('structure.cohortModel', this.value)">
+        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Grades + quads (graded)</option>
+        <option value="none" ${cohort==='none'?'selected':''}>No cohorting (flat)</option>
+      </select></div>
+    ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
+    <div style="display:flex;gap:8px">
+      <div class="fg" style="flex:1"><label class="fl">Lowest grade</label><input class="fi" type="number" value="${gMin}" onchange="_setupSetNum('structure.gradeMin', this.value)"></div>
+      <div class="fg" style="flex:1"><label class="fl">Highest grade</label><input class="fi" type="number" value="${gMax}" onchange="_setupSetNum('structure.gradeMax', this.value)"></div>
+    </div>
+    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict = leaders connect within their own gender and reads are gender-scoped (current YS Brisbane). Soft = gender shown but never blocks. Off = no gendered UI at all.')}</label>
+      <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
+        ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs. Drives week bucketing for terms and the follow-up “not seen last …” labels, not just wording.')}</label>
+      <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
+    <div class="sh" style="margin:16px 0 8px">Roles</div>
+    <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses.</div>
+    ${adminRoleRow}
+    ${roleToggleRows}`);
+
+  b += _setupCard('branding', 'Branding', `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button class="btn btn-ghost btn-sm" onclick="_setupResetBranding()">Reset to defaults</button>
+    </div>
+    <div class="fg"><label class="fl">Ministry name ${helpTip('Shown under the app name on the login screen.')}</label>
+      <input class="fi" value="${esc(bv('ministryName'))}" onchange="_setupSet('branding.ministryName', this.value)"></div>
+    <div class="fg"><label class="fl">App name ${helpTip('The product name in the header, the browser tab, and the installed (PWA) app.')}</label>
+      <input class="fi" value="${esc(bv('appName'))}" onchange="_setupSet('branding.appName', this.value)"></div>
+    <div class="fg"><label class="fl">Short name ${helpTip('Home-screen icon label when installed — keep it short.')}</label>
+      <input class="fi" value="${esc(bv('shortName'))}" onchange="_setupSet('branding.shortName', this.value)"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${[['accent','Accent'],['accentDark','Accent dark'],['accentLight','Accent light'],['navy','Navy']].map(([k,lab])=>
+        `<div class="fg" style="flex:1;min-width:120px"><label class="fl">${lab}</label>
+          <input type="color" value="${esc(bv(k))}" style="width:100%;height:38px;padding:2px;border-radius:8px;border:1px solid var(--line)" onchange="_setupSet('branding.${k}', this.value)"></div>`).join('')}
+    </div>
+    <div class="fg"><label class="fl">Logo SVG ${helpTip('Optional. Paste raw <svg>…</svg> markup for your logo; leave blank for the default mark. Scripts/handlers are stripped on save.')}</label>
+      <textarea class="fi" rows="3" placeholder="<svg …>…</svg>" onchange="_setupSet('branding.logoSvg', this.value.trim() || null)">${esc(bv('logoSvg') || '')}</textarea></div>
+    <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo appears here once saved — it is shown sanitised, same as the app itself, not the raw unsaved textarea.')}</label>
+      <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
+        <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
+        <div style="color:#fff;min-width:0">
+          <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
+          <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
+        </div>
+      </div></div>`);
+
+  b += _setupCard('terminology', 'Terminology', `
+    <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
+    <div class="fg"><label class="fl">Small group (singular)</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
+    <div class="fg"><label class="fl">Small group (plural) ${helpTip('Generated automatically from the singular above (e.g. “Lifegroup” -> “Lifegroups”) — no longer a separate field.')}</label>
+      <input class="fi" value="${esc(lv('smallGroupPlural'))}" disabled></div>
+    ${[['service','Service / main gathering'],['serviceNight','Service night wording'],['studentTeam','Student team'],['connection','Connection']].map(([k,lab])=>
+      `<div class="fg"><label class="fl">${lab}</label><input class="fi" value="${esc(lv(k))}" onchange="_setupSet('labels.${k}', this.value)"></div>`).join('')}
+    <div class="fg"><label class="fl">Grade word</label>
+      <select class="fs" onchange="_setupSet('structure.gradeLabel', this.value)">
+        ${['Grade','Year'].map(w=>`<option ${gLabel===w?'selected':''}>${w}</option>`).join('')}
+      </select></div>
+    <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ".')}</label>
+      <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>`);
+
+  b += _setupCard('modules', 'Modules', `
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('The year-over-year integration-funnel module (Data tab). Turn off for ministries that do not run it.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>Lifegroups ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
+    <div class="fg"><label class="fl">Export guides ${helpTip('The in-app Elvanto CSV-export walkthroughs. Hide them if your church uses a different management system.')}</label>
+      <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
+        ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>`);
+
+  b += _setupCard('import', 'Import', `
+    <div class="fg"><label class="fl">Date order ${helpTip('How an ambiguous slash-separated date (e.g. 03/04/2026) is read. Any date component over 12 is auto-resolved as the day regardless of this setting.')}</label>
+      <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
+        ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+    <div class="fg"><label class="fl">Leader name tag ${helpTip('The word the group importer looks for in a "(word)"-tagged name to recognise a leader row, e.g. "(leader)".')}</label>
+      <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>`);
+
+  b += _setupCard('review', 'Review', `
+    <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
+    <div class="help-text" style="margin:6px 0">Some changes (app name, nav, available roles) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>`);
+
+  b += _setupCard('deploy', 'Deploy this setup to another church', `
+    <div class="help-text" style="margin-bottom:8px">A ready-to-follow guide for standing up an independent copy of the app on another church's own Supabase + Vercel accounts, pre-configured to match this exact setup. Copy or download it and hand it over.</div>
+    <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow:auto;max-height:260px;white-space:pre-wrap">${esc(_deployGuideText(cfg, _setupServiceMinAttendance))}</pre>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="copyDeployGuide()">Copy guide</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="downloadDeployGuide()">Download .md</button>
+    </div>`);
+
+  return b;
 }
 
 // Set a nested field in the setup draft (e.g. 'structure.cohortModel') and
@@ -5199,7 +5250,7 @@ function _setupSet(path, val) {
     o = o[parts[i]];
   }
   o[parts[parts.length - 1]] = val;
-  renderMinistrySetup();
+  _setupRerender();
 }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
 // Store a newline-separated textarea as a trimmed, non-empty string array
@@ -5266,7 +5317,7 @@ function _deployGuideText(cfg, svcMin) {
     `Minimum service attendance (valid-service floor): ${minAtt}`,
     ``,
     `Two ways to reproduce this exact setup:`,
-    ` (a) By hand: Admin -> Settings -> Youth Ministry Setup, pick the "${preset}"`,
+    ` (a) By hand: Admin -> Youth Setup, pick the "${preset}"`,
     `     preset, then match the fields to the configuration below; or`,
     ` (b) Directly in Supabase (SQL editor) — fastest, exact copy:`,
     `     update app_settings`,
@@ -5306,29 +5357,23 @@ function _downloadText(filename, text) {
   } catch (e) { toast('Could not download'); }
 }
 
-let _adminData = { settings: {}, users: [] };
+let _adminData = { settings: {}, users: [], history: [] };
 
 async function switchAdminTab(tab) {
   _adminTab = tab;
   if (tab === 'newyear') _wizReset();
-  const [settings, users] = await Promise.all([
+  // Re-entering Youth Setup always starts from the server's current state, not
+  // whatever was left over from an earlier visit this session.
+  if (tab === 'youthsetup') { _setupDraft = null; _setupServiceMinAttendance = null; _setupTermGapDays = null; _setupOpen = {}; }
+  const [settings, users, history] = await Promise.all([
     API.get('/settings').catch(() => ({})),
     API.get('/accounts/users').catch(() => []),
+    API.get('/import/history').catch(() => []),
   ]);
-  _adminData = { settings, users };
-  await renderAdminView(settings, users);
+  _adminData = { settings, users, history };
+  await renderAdminView(settings, users, history);
 }
 
-async function saveSettings() {
-  try {
-    await API.patch('/settings', {
-      serviceMinAttendance: parseInt(document.getElementById('s-minatt')?.value||'100',10),
-      termGapDays: parseInt(document.getElementById('s-tg')?.value||'14',10),
-    });
-    Cache.del('/settings');
-    toast('Settings saved');
-  } catch (e) { toast(e.message); }
-}
 
 // Mirrors the server's admin.service.ts CONFIRM_WIPE_STRING — required by the
 // wipe guard on POST /admin/reset and /admin/clear-service-group.
@@ -5382,7 +5427,7 @@ async function showAddUser() {
     <div id="u-gender-f" class="fg">
       <label class="fl">Gender scope</label>
       <select class="fs" id="u-gender" onchange="suggestEmail()">
-        <option value="">Both (all genders)</option>
+        <option value="" selected disabled>Select gender…</option>
         <option value="female">Girls only</option>
         <option value="male">Boys only</option>
       </select>
@@ -5457,6 +5502,7 @@ async function submitAddUser() {
   const errEl = document.getElementById('uerr');
   if (!displayName || !email || !password) { errEl.innerHTML='<div class="alert al-err">All fields required</div>'; return; }
   if (role==='grade' && (!grades || !grades.length)) { errEl.innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
+  if (role==='grade' && !gender) { errEl.innerHTML='<div class="alert al-err">Select a gender scope</div>'; return; }
   if (role==='leader' && !leaderId) { errEl.innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
   try {
     const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad, leaderId });
@@ -5486,7 +5532,7 @@ async function showEditUser(id) {
     <div id="u-gender-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
       <label class="fl">Gender scope</label>
       <select class="fs" id="u-gender" onchange="suggestEmail()">
-        <option value="" ${!u.gender?'selected':''}>Both (all genders)</option>
+        <option value="" ${!u.gender?'selected':''} disabled>Select gender…</option>
         <option value="female" ${u.gender==='female'?'selected':''}>Girls only</option>
         <option value="male" ${u.gender==='male'?'selected':''}>Boys only</option>
       </select>
@@ -5515,6 +5561,7 @@ async function submitEditUser(id) {
   const leaderId = role==='leader' ? (document.getElementById('u-leader')?.value || null) : null;
   if (!displayName || !email) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Name and username are required</div>'; return; }
   if (role==='grade' && (!grades || !grades.length)) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
+  if (role==='grade' && !gender) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select a gender scope</div>'; return; }
   if (role==='leader' && !leaderId) { document.getElementById('uerr').innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
   try {
     const updated = await API.patch(`/accounts/users/${id}`, { displayName, email, role, grades, gender, quad, leaderId });
