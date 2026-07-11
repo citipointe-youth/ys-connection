@@ -430,56 +430,12 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG.
   showing" — a snapshot cached before the lgStats fix was served forever). `audits`
   is now in `API_RE` as of `cms-v6`.
 
-## Notifications (web push)
+## Notifications (web push) — removed
 
-> **CURRENTLY HIDDEN** (as of 2026-06-27). The feature is fully implemented and all code
-> is intact — only the UI entry points and the permission request have been disabled. To
-> re-enable, see the **Re-enabling push notifications** section below.
-
-- Backend: `push.service.ts` + `/push/*` routes (`vapid-key`, `subscribe`, `unsubscribe`,
-  `send`, `notifications`, `notifications/:id` delete, `notifications/:id/dismiss`).
-- **Targeting:** `all` (director/admin only), `quad`, `grade` (gendered). A **quad**
-  notification fans out to the quad login **and** the gendered grade logins inside that
-  quad (e.g. `g79` → `grade7g`/`grade8g`/`grade9g`) — see `getUsersForTarget`.
-- **Expiry:** notifications expire **7 days** after creation (`send()` in `push.service.ts`).
-- `findReceivedByUser` already filters out dismissed/deleted/expired, so the SPA unread
-  count is just `received.length`.
-- **SPA:** notifications live on their **own page** (`renderNotifications`, route
-  `notifications`, in `navItems()` for every role incl. grade). The header **bell**
-  navigates there and shows a red unread **badge** (`_updateNotifBadge`). Admin/director/
-  quad get a **Send notification** button at the top of that page (`showSendNotification`).
-
-## Re-enabling push notifications
-
-All changes are in `public/index.html`. Search for `// PUSH-HIDDEN` to locate every
-disabled touch point. There are five things to restore:
-
-1. **Header bell button** — in the function that builds the persistent app shell
-   (the function called after login that sets up the header, top nav, and bottom nav),
-   restore the bell icon button that sits between the role badge and the logout button.
-   It should navigate to the `notifications` route on click and contain an empty badge
-   element (`id="notif-badge"`) that the badge-refresh function uses to show an unread
-   count. The `PUSH-HIDDEN` comment marks where it was removed.
-
-2. **Badge refresh on login** — in the same shell-building function, after it calls the
-   prefetch helper, there was a call to `_updateNotifBadge()`. Uncomment it (marked
-   `PUSH-HIDDEN`).
-
-3. **Nav items for all roles** — in the function that returns the navigation item list
-   (`navItems()`), each role's array (grade, quad, admin, director) had a `notifications`
-   entry with the bell icon, labelled "Notifications" / "Alerts". Uncomment the four
-   commented-out entries (each marked `PUSH-HIDDEN`).
-
-4. **Route handler** — in the main page-routing function (`go()`), the `notifications`
-   route currently redirects to home. Change it back to call `renderNotifications()`
-   (marked `PUSH-HIDDEN` on the same line).
-
-5. **Permission request on login** — in the login submit handler (`doLogin()`), the call
-   to `initPushSubscription()` (which requests browser permission and registers the push
-   subscription) was commented out. Uncomment it (marked `PUSH-HIDDEN`).
-
-No changes are needed to the backend (`router.ts`, `push.service.ts`, etc.) or the
-service worker (`public/sw.js`) — those were left fully intact.
+Push notifications were fully removed from the codebase 2026-07-11 and archived to
+`../Archive/push-notifications-2026-07-11/` (source + a README with reinstatement notes).
+The Supabase `push_subscriptions`/`notifications`/`notification_recipients` tables may
+still exist in the database — that's out of scope for this code-only removal.
 
 ## Trend qualifiers
 
