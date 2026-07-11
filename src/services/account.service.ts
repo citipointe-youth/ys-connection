@@ -136,6 +136,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
         const other = await users.findByEmail(patch.email);
         if (other && other.id !== id) throw new ConflictError('Username already in use');
       }
+      if (existing.displayName === 'Admin' && patch.displayName !== undefined && patch.displayName !== 'Admin') {
+        throw new BadRequestError('The Admin account name cannot be changed');
+      }
       const gradeSet = normaliseGrades(patch.grade, patch.grades);
       const nextRole = (patch.role ?? existing.role) as UserRole;
       const nextGrades = gradeSet ? gradeSet.grades : (existing.grades ?? (existing.grade != null ? [existing.grade] : []));
@@ -194,6 +197,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
       if (existing.role === 'admin' && existing.status === 'active') {
         await guardAdmin(id, 'deactivate');
       }
+      if (existing.displayName === 'Admin' && existing.status === 'active') {
+        throw new BadRequestError('The "Admin" account cannot be deactivated');
+      }
       const updated = await users.save({
         ...existing,
         status: existing.status === 'active' ? 'inactive' : 'active',
@@ -207,6 +213,9 @@ export function makeAccountService(users: IUserRepository): AccountService {
       const existing = await users.findById(id);
       if (!existing) throw new NotFoundError('User not found');
       if (existing.role === 'admin') await guardAdmin(id, 'delete');
+      if (existing.displayName === 'Admin') {
+        throw new BadRequestError('The "Admin" account cannot be deleted');
+      }
       await users.delete(id);
     },
   };

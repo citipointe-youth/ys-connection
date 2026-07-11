@@ -76,3 +76,115 @@ describe('Account Service — create() defaults mustChangePassword to false', ()
     expect(stored?.mustChangePassword).toBe(false);
   });
 });
+
+describe('Account Service — the "Admin" display-name account is always protected', () => {
+  // Sets up TWO admin-role accounts: one named exactly "Admin" (the protected
+  // one) and a second, differently-named admin ("Ops Admin") that should
+  // remain freely manageable — the guard must key off displayName, not role.
+  async function buildTwoAdmins() {
+    const users = new InMemoryUserRepository();
+    await users.init();
+    const now = new Date().toISOString();
+    const admin = await users.save({
+      id: 'u-admin-named', displayName: 'Admin', email: 'admin@youth.ministry', role: 'admin',
+      grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
+      mustChangePassword: false, createdAt: now, updatedAt: now,
+    });
+    const opsAdmin = await users.save({
+      id: 'u-admin-ops', displayName: 'Ops Admin', email: 'ops@youth.ministry', role: 'admin',
+      grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
+      mustChangePassword: false, createdAt: now, updatedAt: now,
+    });
+    const svc = makeAccountService(users);
+    const actor = actorFor(admin.id, 'admin');
+    return { svc, users, admin, opsAdmin, actor };
+  }
+
+  it('cannot delete the account named "Admin", even with other admin accounts present', async () => {
+    const { svc, actor, admin } = await buildTwoAdmins();
+    await expect(svc.remove(actor, admin.id)).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('cannot deactivate the account named "Admin", even with other admin accounts present', async () => {
+    const { svc, actor, admin } = await buildTwoAdmins();
+    await expect(svc.toggleStatus(actor, admin.id)).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('cannot rename the account named "Admin" to something else via update()', async () => {
+    const { svc, actor, admin } = await buildTwoAdmins();
+    await expect(
+      svc.update(actor, admin.id, { displayName: 'Not Admin' }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('other fields on the "Admin" account (e.g. email) remain freely editable', async () => {
+    const { svc, users, actor, admin } = await buildTwoAdmins();
+    const updated = await svc.update(actor, admin.id, { email: 'newadmin@youth.ministry' });
+    expect(updated.email).toBe('newadmin@youth.ministry');
+    const stored = await users.findById(admin.id);
+    expect(stored?.displayName).toBe('Admin');
+  });
+
+  it('submitting displayName unchanged ("Admin") via update() is not blocked', async () => {
+    const { svc, actor, admin } = await buildTwoAdmins();
+    const updated = await svc.update(actor, admin.id, { displayName: 'Admin', email: admin.email });
+    expect(updated.displayName).toBe('Admin');
+  });
+
+  it('a second admin account with a different display name CAN be deleted', async () => {
+    const { svc, users, actor, opsAdmin } = await buildTwoAdmins();
+    await svc.remove(actor, opsAdmin.id);
+    expect(await users.findById(opsAdmin.id)).toBeNull();
+  });
+
+  it('a second admin account with a different display name CAN be deactivated', async () => {
+    const { svc, actor, opsAdmin } = await buildTwoAdmins();
+    const updated = await svc.toggleStatus(actor, opsAdmin.id);
+    expect(updated.status).toBe('inactive');
+  });
+
+  it('a second admin account with a different display name CAN be renamed', async () => {
+    const { svc, actor, opsAdmin } = await buildTwoAdmins();
+    const updated = await svc.update(actor, opsAdmin.id, { displayName: 'Renamed Ops Admin' });
+    expect(updated.displayName).toBe('Renamed Ops Admin');
+  });
+
+  it('a second, freely-named admin account CAN be created alongside the protected "Admin" one', async () => {
+    const { svc, actor } = await buildTwoAdmins();
+    const created = await svc.create(actor, {
+      displayName: 'Yet Another Admin', email: 'yetanother@youth.ministry', password: 'longenoughpw',
+      role: 'admin',
+    });
+    expect(created.role).toBe('admin');
+    expect(created.displayName).toBe('Yet Another Admin');
+  });
+
+  it('the pre-existing "last remaining admin" guard still blocks deleting the sole admin, unchanged', async () => {
+    // Only ONE admin account total, and it is NOT named "Admin" — this must
+    // still be blocked by guardAdmin's last-admin check, proving that guard
+    // is untouched by the new displayName-based protection.
+    const users = new InMemoryUserRepository();
+    await users.init();
+    const now = new Date().toISOString();
+    const sole = await users.save({
+      id: 'u-sole-admin', displayName: 'Sole Admin', email: 'sole@youth.ministry', role: 'admin',
+      grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
+      mustChangePassword: false, createdAt: now, updatedAt: now,
+    });
+    const svc = makeAccountService(users);
+    const actor = actorFor(sole.id, 'admin');
+    await expect(svc.remove(actor, sole.id)).rejects.toBeInstanceOf(BadRequestError);
+    await expect(svc.toggleStatus(actor, sole.id)).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('the last-remaining-admin guard still allows deleting a non-"Admin"-named admin once a second admin exists', async () => {
+    const { svc, users, actor, admin, opsAdmin } = await buildTwoAdmins();
+    // Two admins exist ("Admin" + "Ops Admin"); deleting the non-protected one
+    // should succeed under both guards (not the last admin, not named "Admin").
+    await svc.remove(actor, opsAdmin.id);
+    expect(await users.findById(opsAdmin.id)).toBeNull();
+    // The protected "Admin" account must still be present and undeletable now
+    // that it actually IS the last remaining admin too.
+    await expect(svc.remove(actor, admin.id)).rejects.toBeInstanceOf(BadRequestError);
+  });
+});

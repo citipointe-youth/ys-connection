@@ -147,6 +147,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .btn-warn{background:var(--warn);color:#fff}
 .btn-sm{padding:7px 12px;font-size:13px;border-radius:6px}
 .btn-ghost{background:transparent;color:var(--ink-mid);padding:6px 8px}.btn-ghost:hover{background:var(--paper-dark);color:var(--ink)}
+.btn-ghost:disabled{opacity:.35;cursor:not-allowed}.btn-ghost:disabled:hover{background:transparent}
 .btn-full{width:100%}
 
 /* Forms */
@@ -4714,6 +4715,12 @@ async function renderAdminView(settings, users, history) {
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
         const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):_roleLabel(u.role);
+        // The account named "Admin" is protected: it can always be edited (except
+        // renamed — see showEditUser), but never deactivated or deleted, regardless
+        // of how many other admin accounts exist.
+        const isProtectedAdmin = u.displayName === 'Admin';
+        const lockTitle = isProtectedAdmin ? (u.status==='active'?"The Admin account can't be deactivated":"The Admin account can't be activated") : (u.status==='active'?'Deactivate':'Activate');
+        const delTitle = isProtectedAdmin ? "The Admin account can't be deleted" : `Delete ${esc(u.displayName)}`;
         body += `<div class="li" style="cursor:default;margin-bottom:6px">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -4725,8 +4732,8 @@ async function renderAdminView(settings, users, history) {
           <div class="li-right">
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
-            <button class="btn btn-ghost btn-sm" onclick="toggleUserStatus('${u.id}','${u.status}')" title="${u.status==='active'?'Deactivate':'Activate'}" aria-label="${u.status==='active'?'Deactivate':'Activate'} ${esc(u.displayName)}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="confirmDelUser('${u.id}')" aria-label="Delete ${esc(u.displayName)}">${icS('trash')}</button>
+            <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" ${isProtectedAdmin?'disabled':''} onclick="confirmDelUser('${u.id}')" title="${delTitle}" aria-label="${delTitle}">${icS('trash')}</button>
           </div>
         </div>`;
       }
@@ -5508,7 +5515,7 @@ async function showEditUser(id) {
   modal(`
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>
-    <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}"></div>
+    <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}" ${u.displayName==='Admin'?'disabled':''}>${u.displayName==='Admin'?`<p style="font-size:11px;color:var(--ink-mid);margin-top:3px">The Admin account can't be renamed</p>`:''}</div>
     <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off"></div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields()">${_accRoleOptions(u.role)}</select>
