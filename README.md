@@ -25,12 +25,12 @@ npm run test         # vitest
 Default persistence is in-memory with seed data (`PERSISTENCE=memory`) — no
 database needed for local development. Seed accounts (password `demo1234`):
 
-| Email | Role |
+| Username | Role |
 |-------|------|
-| `admin@youth.ministry` | admin |
-| `director@youth.ministry` | director |
-| `g79@youth.ministry` / `b79@youth.ministry` / `g1012@youth.ministry` / `b1012@youth.ministry` | quad |
-| `grade7@youth.ministry` … `grade12@youth.ministry` | grade |
+| `admin` | admin |
+| `director` | director |
+| `g79` / `b79` / `g1012` / `b1012` | quad |
+| `grade7` … `grade12` | grade |
 
 ## Deploying your own copy
 
