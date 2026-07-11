@@ -5196,12 +5196,12 @@ function _youthSetupBody(settings, users) {
   // (opacity) is scoped to a nested span, NOT the whole label — opacity < 1
   // creates a new CSS stacking context, which was trapping the helpTip
   // popup's z-index and letting the next role row paint over it.
-  const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin</span></span> ${helpTip("Full access including settings, accounts, and everything the roles below can do. You can create additional Admin accounts freely — but the account named “Admin” specifically can't be renamed, deactivated, or deleted.")}</label>`;
+  const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin</span></span> ${helpTip("Full access to everything, including settings and accounts. You can create more Admin logins, but the one named “Admin” can't be renamed, deactivated, or deleted.")}</label>`;
   const roleToggleRows = [
-    ['director', 'Director', 'Ministry-wide read/write, can import data.'],
-    ['grade', 'Grade', 'Login scoped to one or more grades (e.g. '+gLabel+' 9 — one account can cover several grades at once).'],
-    ['quad', 'Quad', 'Logins scoped to one gender+bracket (e.g. Girls Yr 7-9) — oversees several grades and leaders at once within that bracket, and sees trends broken down per grade, not just the combined total.'],
-    ['leader', 'Leader', 'A narrow login that sees only its own connected students.'],
+    ['director', 'Director', 'Sees and manages every student and leader across the whole ministry, and can upload attendance files.'],
+    ['grade', 'Grade', 'A login responsible for one or more grades, e.g. '+gLabel+' 9. One login can cover several grades at once.'],
+    ['quad', 'Quad', 'A login for one age group and gender, e.g. Girls Yr 7-9. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
+    ['leader', 'Leader', 'A login that only sees the students connected to it.'],
   ].map(([k, label, hint]) =>
     `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
@@ -5235,18 +5235,18 @@ function _youthSetupBody(settings, users) {
   </div>`;
 
   b += _setupCard('structure', 'Structure & Roles', `
-    <div class="fg"><label class="fl">Cohort model ${helpTip('Both models scope every grade/quad login to its own assigned students — nobody sees outside their bracket. The difference is account layout, not access: Complex is one account per single grade plus 4 gender+bracket quad rollups (12-18 grade/quad accounts total); Simple is 3 broad 2-3-grade brackets per gender and no quad accounts (6 accounts total). Pick Simple for a smaller team that doesn\'t need grade-by-grade logins or quad-level reporting.')}</label>
-      <select class="fs" onchange="_setupSet('structure.cohortModel', this.value)">
-        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex — one account per grade + quads</option>
-        <option value="none" ${cohort==='none'?'selected':''}>Simple — 3 broad brackets, no quads</option>
+    <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only ever sees its own students. Changing this also switches Director/Quad on or off below to match.')}</label>
+      <select class="fs" onchange="_setupSetCohortModel(this.value)">
+        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
+        <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
-    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade an account can be responsible for is always '+esc(gLabel)+' 12. Turn this on if your ministry also receives incoming '+esc(gLabel).toLowerCase()+' 6 students straight from kids church. Under Complex this adds 2 more single-grade accounts ('+esc(gLabel)+' 6 Girls/Boys); under Simple the lowest bracket widens to cover '+esc(gLabel)+'s 6-8 instead of 7-8 — it does NOT add a 4th Simple account.')}</span></label>
-    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict = every read is gender-scoped and leaders can only connect within their own gender (current YS Brisbane, both cohort models). Soft = gender is still shown but never blocks access or connecting. Off = gender is hidden everywhere, including on quad-login labels and grade badges.')}</label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
+    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders (the current setup). Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. Drives week bucketing for current-vs-previous term boundaries and the Home follow-up "Not Seen Last …" labels — a real scheduling input, not just display wording (that\'s the separate "Service night wording" field in Terminology below).')}</label>
+    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. This changes how the app works out term start/end dates and the Home screen\'s "Not Seen Last…" reminders — it\'s a real date setting, not just wording (see "Service night wording" in Terminology below for that).')}</label>
       <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
     <div class="sh" style="margin:16px 0 8px">Roles</div>
     <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
@@ -5254,10 +5254,10 @@ function _youthSetupBody(settings, users) {
     ${roleToggleRows}
     <div class="sh" style="margin:16px 0 8px">Attendance</div>
     <div class="form-row">
-      <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip(esc(_serviceDayName()) + 's below this total attendance are disregarded (holidays / breaks) — excluded from averages and attendance rates')}</label>
+      <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
         <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
       </div>
-      <div class="fg"><label class="fl">Term Gap (days) ${helpTip('Days between sessions = new term')}</label>
+      <div class="fg"><label class="fl">Term Gap (days) ${helpTip('If this many days pass with no services, the app treats it as the start of a new term (e.g. over the school holidays).')}</label>
         <input class="fi" type="number" min="1" max="90" value="${_setupTermGapDays}" onchange="_setupSetTermGap(this.value)">
       </div>
     </div>`);
@@ -5265,16 +5265,16 @@ function _youthSetupBody(settings, users) {
   b += _setupCard('branding', 'Branding', `
     <div class="fg"><label class="fl">Ministry name ${helpTip('Shown under the app name on the login screen.')}</label>
       <input class="fi" value="${esc(bv('ministryName'))}" onchange="_setupSet('branding.ministryName', this.value)"></div>
-    <div class="fg"><label class="fl">App name ${helpTip('The product name in the header, the browser tab, and the installed (PWA) app.')}</label>
+    <div class="fg"><label class="fl">App name ${helpTip('The name shown at the top of the app, in the browser tab, and when installed on a phone\'s home screen.')}</label>
       <input class="fi" value="${esc(bv('appName'))}" onchange="_setupSet('branding.appName', this.value)"></div>
-    <div class="fg"><label class="fl">Short name ${helpTip('Home-screen icon label when installed — keep it short.')}</label>
+    <div class="fg"><label class="fl">Short name ${helpTip('The label under the icon when installed on a phone\'s home screen — keep it short so it isn\'t cut off.')}</label>
       <input class="fi" value="${esc(bv('shortName'))}" onchange="_setupSet('branding.shortName', this.value)"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${[['accent','Accent'],['accentDark','Accent dark'],['accentLight','Accent light'],['navy','Navy']].map(([k,lab])=>
         `<div class="fg" style="flex:1;min-width:120px"><label class="fl">${lab}</label>
           <input type="color" value="${esc(bv(k))}" style="width:100%;height:38px;padding:2px;border-radius:8px;border:1px solid var(--line)" onchange="_setupSet('branding.${k}', this.value)"></div>`).join('')}
     </div>
-    <div class="fg"><label class="fl">Logo ${helpTip('Choose how your logo appears across the app: the built-in mark, your own pasted SVG, or an uploaded photo cropped to a square.')}</label>
+    <div class="fg"><label class="fl">Logo ${helpTip('Choose how your logo appears: the app\'s default mark, your own logo pasted in as code, or a photo you upload and crop.')}</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${[['default','Default mark'],['svg','Paste SVG'],['image','Upload image']].map(([v,l]) =>
           `<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);cursor:pointer;background:${logoMode===v?'var(--accent-light)':'transparent'}">
@@ -5290,7 +5290,7 @@ function _youthSetupBody(settings, users) {
           <span class="help-text" style="margin:0">Cropped logo saved — choose a file above to replace it.</span>
         </div>` : `<div class="help-text" style="margin-top:6px">Choose a file to open the crop tool.</div>`}
       </div>` : ''}
-    <div class="fg"><label class="fl">Preview ${helpTip('Colours and names update live as you edit above. A pasted custom logo or uploaded image appears here once saved — it is shown the same way the app itself renders it, not straight from the unsaved draft.')}</label>
+    <div class="fg"><label class="fl">Preview ${helpTip('Updates live as you change colours and names above. A custom logo only shows up here after you save.')}</label>
       <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
         <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
         <div style="color:#fff;min-width:0">
@@ -5302,28 +5302,28 @@ function _youthSetupBody(settings, users) {
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
-    <div class="fg"><label class="fl">Small group (singular) ${helpTip('The plural (e.g. "Lifegroups") is generated from this automatically. Reflected widely: Home, Trends, My Connections, Connect Setup, Health, and every "Lifegroup"-labelled export/CSV column.')}</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
-    <div class="fg"><label class="fl">Service / main gathering ${helpTip('Only reflected today on the Health/At-Risk qualifier chip (e.g. "Youth" declining). Most other on-screen references to your main gathering are still the fixed word "Youth" and are not yet driven by this setting.')}</label><input class="fi" value="${esc(lv('service'))}" onchange="_setupSet('labels.service', this.value)"></div>
-    <div class="fg"><label class="fl">Service night wording ${helpTip('Not currently shown anywhere in the app — reserved for a future use (e.g. import-guide/date-range hints). Safe to leave as the default.')}</label><input class="fi" value="${esc(lv('serviceNight'))}" onchange="_setupSet('labels.serviceNight', this.value)"></div>
-    <div class="fg"><label class="fl">Grade word ${helpTip('Swaps "Grade" for "Year" everywhere a grade number is shown: role badges, Accounts, Connect Setup, student rows/search, and the New Year Refresh wizard.')}</label>
+    <div class="fg"><label class="fl">Small group (singular) ${helpTip('The word for your small groups, e.g. "Lifegroup". The plural is worked out automatically. Used throughout the app: Home, Trends, My Connections, Health, and every export that mentions small groups.')}</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
+    <div class="fg"><label class="fl">Service / main gathering ${helpTip('The name for your main weekly gathering, e.g. "Youth". Used throughout the app: Home, Trends, Health, Student Search, exports, and the Connection Audit reports.')}</label><input class="fi" value="${esc(lv('service'))}" onchange="_setupSet('labels.service', this.value)"></div>
+    <div class="fg"><label class="fl">Service night wording ${helpTip('What your main service is called in Elvanto, e.g. "Friday Nights". Shown in the app\'s step-by-step Elvanto export instructions so they match what you\'ll actually see there.')}</label><input class="fi" value="${esc(lv('serviceNight'))}" onchange="_setupSet('labels.serviceNight', this.value)"></div>
+    <div class="fg"><label class="fl">Grade word ${helpTip('Swaps the word "Grade" for "Year" everywhere a grade number is shown, e.g. logins, student lists, and search.')}</label>
       <select class="fs" onchange="_setupSet('structure.gradeLabel', this.value)">
         ${['Grade','Year'].map(w=>`<option ${gLabel===w?'selected':''}>${w}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ". Reflected on the Connection Audit lifegroup tab and the Executive Brief deck.')}</label>
+    <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Text removed from the start of small-group names when shown in the app, one per line, e.g. "Brisbane - YS - ". Used on the Connection Audit lifegroup tab and its slide deck.')}</label>
       <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>`);
 
   b += _setupCard('modules', 'Modules & Import', `
-    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('The year-over-year integration-funnel module (Data tab). Requires uploading a New Person form, a Decision form, and Student Team service data, in addition to the basic service/group attendance this app already needs — turn off for ministries that do not run those extra forms.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
-    <div class="fg"><label class="fl">Export guides ${helpTip('The in-app Elvanto CSV-export walkthroughs. Hide them if your church uses a different management system.')}</label>
+    <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Date order ${helpTip('How an ambiguous slash-separated date (e.g. 03/04/2026) is read. Any date component over 12 is auto-resolved as the day regardless of this setting.')}</label>
+    <div class="fg"><label class="fl">Date order ${helpTip('How to read a date like 03/04/2026 when it\'s not obvious which number is the day and which is the month. (If one number is over 12, the app can already tell.)')}</label>
       <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
         ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Leader name tag ${helpTip('The word the group importer looks for in a "(word)"-tagged name to recognise a leader row, e.g. "(leader)".')}</label>
+    <div class="fg"><label class="fl">Leader name tag ${helpTip('When importing a lifegroup file, a name written like "John Smith (leader)" marks that person as a leader. This sets the word used in the brackets.')}</label>
       <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>`);
 
   b += _setupCard('review', 'Review', `
@@ -5497,6 +5497,23 @@ function _setupSetGrade6(checked) {
   if (!_setupDraft.structure) _setupDraft.structure = {};
   _setupDraft.structure.gradeMin = checked ? 6 : 7;
   _setupDraft.structure.gradeMax = 12;
+  _setupRerender();
+}
+// Changing the Cohort model dropdown directly (not via the preset buttons
+// above) auto-selects Director/Quad the same way the Complex/Simple presets
+// do — Complex turns both on, Simple turns both off. Only touches those two
+// role toggles, unlike pickMinistryPreset() which replaces the whole draft —
+// an admin who's already customised branding/terminology shouldn't lose that
+// just from flipping this one dropdown.
+function _setupSetCohortModel(value) {
+  if (!_setupDraft) _setupDraft = {};
+  if (!_setupDraft.structure) _setupDraft.structure = {};
+  _setupDraft.structure.cohortModel = value;
+  if (!_setupDraft.roles) _setupDraft.roles = {};
+  if (!_setupDraft.roles.enabled) _setupDraft.roles.enabled = {};
+  const on = value !== 'none';
+  _setupDraft.roles.enabled.director = on;
+  _setupDraft.roles.enabled.quad = on;
   _setupRerender();
 }
 // Store a newline-separated textarea as a trimmed, non-empty string array
