@@ -1403,25 +1403,30 @@ covered by the existing multi-grade `grade` account feature (§5.1a, phase
 7-9 for "junior"; no role change needed for that at all.
 
 - **`roles.model`/`roles.labels` removed**, replaced by `roles.enabled: {
-  director, quad, leader }` (`src/core/ministry-config.ts`). Role names are
-  fixed everywhere — Admin, Director, Grade, Quad, Leader — no per-deployment
-  renaming. Admin and Grade always exist and aren't toggleable; Director/Quad
-  default **on** (today's YS Brisbane behaviour under `{}` config); Leader
-  defaults **off** for every preset, including small-flat/micro (previously
-  it was silently on under 'graded' and relabeled "Junior Leader" under
-  'flat' — neither was actually wanted by default).
+  director, grade, quad, leader }` (`src/core/ministry-config.ts`). Role
+  names are fixed everywhere — Admin, Director, Grade, Quad, Leader — no
+  per-deployment renaming. Admin always exists and isn't toggleable;
+  Director/Grade/Quad default **on** (today's YS Brisbane behaviour under
+  `{}` config); Leader defaults **off** for every preset, including
+  small-flat/micro (previously it was silently on under 'graded' and
+  relabeled "Junior Leader" under 'flat' — neither was actually wanted by
+  default). Grade is toggleable too (not fixed-on like Admin) so a ministry
+  can run on Leader-only logins instead of Grade logins if it wants.
 - **`small-flat`/`micro` presets** now set `roles.enabled: { director: false,
   quad: false }` instead of relabeling — a simple ministry manages everything
-  through Admin + (multi-grade) Grade accounts, with Director/Quad/Leader all
-  available as opt-in toggles in Setup → Roles if a ministry wants them.
+  through Admin + (multi-grade) Grade accounts by default, with
+  Director/Grade/Quad/Leader all available as opt-in toggles in Setup →
+  Roles if a ministry wants a different mix.
 - **SPA**: `_roleLabel()` returns the fixed name directly (no more reading
   `ministryConfig.roles.labels`); `_accRoleOptions()` (the account-creation
-  role `<select>`) now reads `roles.enabled.{director,quad,leader}` instead of
-  `roles.model === 'flat'` — grade/admin are unconditional, the other three
-  are only offered when enabled (an already-assigned-but-since-disabled role
-  stays selectable for that one account, same guard as before). Setup's Roles
-  card is now three checkboxes (Director/Quad/Leader) replacing the old "Role
-  model" dropdown + free-text label inputs.
+  role `<select>`) now reads `roles.enabled.{director,grade,quad,leader}`
+  instead of `roles.model === 'flat'` — admin is unconditional, the other
+  four are only offered when enabled (an already-assigned-but-since-disabled
+  role stays selectable for that one account, same guard as before). Setup's
+  Roles card shows Admin as a fixed checked-and-disabled row (so its tooltip
+  is reachable even though it's not a real toggle) above four checkboxes
+  (Director/Grade/Quad/Leader), replacing the old "Role model" dropdown +
+  free-text label inputs.
 - **UI-only, same as the field it replaced**: nothing server-side gates
   account creation by `roles.enabled` (mirrors how `roles.model` was never
   enforced server-side either) — `account.service.ts`'s role validation is
@@ -1430,7 +1435,9 @@ covered by the existing multi-grade `grade` account feature (§5.1a, phase
   change.
 - Tests: `ministry-config.test.ts` updated (`roles.enabled.*` assertions
   replace the old `roles.model`/`roles.labels` ones).
-- **SW cache**: `ysc-v34` → **`ysc-v35`** (public/index.html changed).
+- **SW cache**: `ysc-v34` → `ysc-v35` → **`ysc-v36`** (public/index.html
+  changed twice: the initial toggle rework, then adding the Grade toggle +
+  the fixed Admin row the same day).
 
 ## Security notes
 

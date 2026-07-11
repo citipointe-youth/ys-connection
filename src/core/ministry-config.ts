@@ -76,12 +76,13 @@ export const MinistryConfigSchema = z.object({
 
   // Role names are fixed (Admin, Director, Grade, Quad, Leader) — not
   // per-deployment relabelable. `enabled` picks which OPTIONAL roles this
-  // ministry uses; Admin and Grade always exist and aren't toggleable.
+  // ministry uses; Admin always exists and isn't toggleable.
   roles: z
     .object({
       enabled: z
         .object({
           director: z.boolean().default(true),
+          grade: z.boolean().default(true),
           quad: z.boolean().default(true),
           leader: z.boolean().default(false),
         })

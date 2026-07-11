@@ -19,7 +19,7 @@ describe('MinistryConfigSchema', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.modules.pushNotifications).toBe(false);
     expect(MINISTRY_CONFIG_DEFAULTS.modules.connectionAudit).toBe(true);
     expect(MINISTRY_CONFIG_DEFAULTS.structure.cohortModel).toBe('grades-quads');
-    expect(MINISTRY_CONFIG_DEFAULTS.roles.enabled).toEqual({ director: true, quad: true, leader: false });
+    expect(MINISTRY_CONFIG_DEFAULTS.roles.enabled).toEqual({ director: true, grade: true, quad: true, leader: false });
   });
 
   it('rejects an invalid hex colour', () => {
@@ -47,6 +47,7 @@ describe('mergeMinistryConfig', () => {
     expect(merged.roles.enabled.director).toBe(false);
     expect(merged.roles.enabled.quad).toBe(false);
     expect(merged.roles.enabled.leader).toBe(false);
+    expect(merged.roles.enabled.grade).toBe(true); // untouched by the preset — a simple ministry still uses Grade accounts
     expect(merged.modules.connectionAudit).toBe(false);
     expect(merged.modules.lifegroups).toBe(true);
     // Untouched by the preset — still default
