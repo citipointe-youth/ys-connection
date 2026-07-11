@@ -95,6 +95,13 @@ export interface AuthService {
   login(input: unknown): Promise<{ token: string; user: SafeUser }>;
   resolveToken(token: string): Promise<Actor | null>;
   logout(token: string): Promise<void>;
+  // Mint a fresh session token from the user's CURRENT DB state. Needed after
+  // any change that flips a claim baked into the token at login (right now:
+  // mustChangePassword) — resolveToken() trusts the token's embedded actor and
+  // never re-reads the DB, so without this the old token keeps enforcing the
+  // stale claim for the rest of its 12h TTL. Returns null if the user no
+  // longer exists/is inactive.
+  issueTokenFor(userId: string): Promise<string | null>;
 }
 
 export function makeAuthService(users: IUserRepository): AuthService {
@@ -135,6 +142,12 @@ export function makeAuthService(users: IUserRepository): AuthService {
 
     async logout(_token: string) {
       // Stateless tokens — logout is handled client-side by discarding the token
+    },
+
+    async issueTokenFor(userId: string) {
+      const user = await users.findById(userId);
+      if (!user || user.status !== 'active') return null;
+      return signSession(toActor(user), Date.now() + TOKEN_TTL_MS);
     },
   };
 }

@@ -1415,6 +1415,79 @@ covered by the existing multi-grade `grade` account feature (§5.1a, phase
   `node --check` on the extracted `<script>` body (533–6842), the same
   syntax-check convention documented for Project 1's single-file apps.
 
+### Bug/polish punch list — password-change token bug, role-disable cascade, Youth Setup reorg (2026-07-11)
+
+- **Fixed: blank page after first-login "Set Password & Continue"** (previously
+  needed refresh + sign out + sign back in). Root cause: `mustChangePassword`
+  is baked into the signed session token at login (`toActor()`/`signSession()`
+  in `auth.service.ts`) and `resolveToken()` trusts the embedded actor with no
+  DB re-check — so `changeOwnPassword()` clearing the DB flag left the
+  client's existing token still enforcing `MUST_CHANGE_PASSWORD` (403) on
+  every route except the 3 allowlisted ones for the rest of its 12h TTL. Only
+  a fresh login (new token) worked around it. Fix: new `AuthService.
+  issueTokenFor(userId)` mints a token from current DB state;
+  `POST /accounts/me/password` (`account.controller.ts`) now returns
+  `{ ok, token }` and both frontend call sites (`submitMustChangePassword`,
+  the Connect Setup "Change Your Password" modal) call `API.setToken()` with
+  it before re-rendering.
+- **Fixed: Branding logo-mode buttons ("Default mark"/"Paste SVG"/"Upload
+  image") didn't work.** `logoMode` was derived purely from whether
+  `branding.logoSvg`/`logoImage` already had content — so picking "Paste SVG"
+  before typing anything left both still `null`, and the next re-render
+  recomputed `logoMode` back to `'default'`, snapping the picker (and the
+  textarea/file input it gates) back before you could use it. Fix: a
+  transient `_logoModeOverride` var, set the instant a mode button is
+  clicked, used as the fallback when neither field has content yet; reset
+  whenever the setup draft is freshly loaded (`_ensureSetupDraft`).
+- **New: disabling a role in Youth Setup (Director/Grade/Quad/Leader) now
+  deactivates its accounts and hides its Accounts-screen section.**
+  `settings.service.ts`'s `update()` diffs `roles.enabled` before vs. after
+  the merge; any role that flips `true→false` bulk-deactivates every
+  currently-active `User` of that role (`IUserRepository.findByRole`).
+  Re-enabling a role later does **not** auto-reactivate — deliberate, so an
+  account an admin separately deactivated for an unrelated reason isn't
+  silently un-deactivated by an unrelated toggle; reactivation stays manual
+  via the existing per-account lock/unlock. The Accounts screen
+  (`renderAdminView`) now also skips a role's whole group when
+  `roles.enabled.<role> === false`, not just when it happens to have zero
+  accounts.
+- **My Students: added the same "Custom Message Template" editor Home's
+  Follow Up section has**, right below the leader picker once a leader is
+  selected — so a leader doesn't have to go back to Home to edit it. Both
+  spots now share `_smsTemplateBoxHtml()`/`_saveSmsTemplate()` (was
+  Home-only, named `_saveFollowupSmsTemplate`).
+- **Youth Setup reorg**: "Save Youth Setup" moved from the top of the tab to
+  the bottom, now behind a confirm modal (`confirmSaveMinistrySetup()` — it's
+  live config for every user, not a per-device preference); the preset-picker
+  card gained a "Pre-set Configurations" heading; the standalone Attendance
+  card is gone — Min Attendance/Term Gap moved to the bottom of Structure &
+  Roles with `helpTip()` tooltips instead of inline paragraphs, and the
+  "students are flagged as..." paragraph (redundant with the Health tab's own
+  tooltip) was dropped; Terminology's disabled/read-only "Small group
+  (plural)" row was removed (the plural has been auto-derived since the
+  2026-07-11 entry above — this just stopped rendering the leftover dead
+  field); the standalone Import card was merged into Modules (now "Modules &
+  Import"); Branding's "Reset to defaults" button moved into the card's own
+  header row, next to the title, via a new optional `headerActionHtml` param
+  on `_setupCard()`.
+- **Dropdown `<select>` styling**: `.fs` previously had no custom arrow at
+  all (relied on each browser's inconsistent native one, with no reserved
+  padding) — added a fixed, centered SVG chevron + right padding so the
+  arrow position is consistent and doesn't crowd the selected text.
+- **Lifegroups module gating gaps closed**: the Home hero card's two
+  "Lifegroups" summary-table rows (this-term and prev-term) and the Import
+  screen's "Service or Group" copy/tooltip were unconditional even when
+  `modules.lifegroups` is off — everywhere else on Home already respected it.
+  New shared `_lifegroupsOn()` helper (mirrors `_exportGuidesOn()`).
+- **Trends export** (`exportTrendsCSV`, quad/director/admin only): now builds
+  an `.xlsx` via the same vendored SheetJS used elsewhere (was a fixed-name
+  `trends.csv` text blob) with a dated filename (`trends-YYYY-MM-DD.xlsx`);
+  the Grp/lifegroup columns are now also skipped when `modules.lifegroups`
+  is off, same gating as above.
+- **SW cache**: `ysc-v39` → **`ysc-v40`**.
+- New/updated tests: `auth.service.test.ts` (`issueTokenFor`),
+  `settings.service.test.ts` (role-disable deactivation cascade, 5 new cases).
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,

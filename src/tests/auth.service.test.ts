@@ -29,4 +29,29 @@ describe('Auth Service — mustChangePassword in the session', () => {
     const actor = await auth.resolveToken(token);
     expect(actor?.mustChangePassword).toBe(false);
   });
+
+  it('issueTokenFor mints a token reflecting the CURRENT DB state, not the old one', async () => {
+    const { users, auth } = await seedUser(true);
+    const { token: staleToken } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(true);
+
+    // Simulate changeOwnPassword() clearing the flag in the DB — the old token
+    // is still trusted as-is (that's the bug this covers) until a fresh one is issued.
+    const existing = await users.findById('u-1');
+    await users.save({ ...existing!, mustChangePassword: false });
+    expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(true);
+
+    const freshToken = await auth.issueTokenFor('u-1');
+    expect(freshToken).not.toBeNull();
+    expect((await auth.resolveToken(freshToken!))?.mustChangePassword).toBe(false);
+  });
+
+  it('issueTokenFor returns null for a missing or inactive user', async () => {
+    const { users, auth } = await seedUser(false);
+    expect(await auth.issueTokenFor('no-such-id')).toBeNull();
+
+    const existing = await users.findById('u-1');
+    await users.save({ ...existing!, status: 'inactive' });
+    expect(await auth.issueTokenFor('u-1')).toBeNull();
+  });
 });

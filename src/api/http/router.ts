@@ -32,7 +32,7 @@ export function buildRoutes(services: Services): Route[] {
   const importCtrl = makeImportController({ importService: services.importService });
   const settings = makeSettingsController({ settings: services.settings });
   const manifest = makeManifestController({ settings: services.settings });
-  const account = makeAccountController({ account: services.account });
+  const account = makeAccountController({ account: services.account, auth: services.auth });
   const admin = makeAdminController({ admin: services.admin });
   const trends = makeTrendsController({ trends: services.trends });
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });

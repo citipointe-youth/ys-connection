@@ -153,6 +153,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .fg{margin-bottom:14px}
 .fl{display:block;font-size:12px;font-weight:700;color:var(--ink-mid);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
 .fi,.fs,.ft{width:100%;padding:11px 14px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:15px;color:var(--ink);background:var(--paper-card);outline:none;transition:border-color .15s;-webkit-appearance:none}
+.fs{-moz-appearance:none;appearance:none;padding-right:38px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23647488' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:10px 6px}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .help-text{font-size:12px;color:var(--ink-faint);margin-top:4px}
@@ -755,6 +756,12 @@ function ministryName() { return _brandingField('ministryName', 'Youth Society B
 function _exportGuidesOn() {
   const modules = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules;
   return !modules || modules.exportGuides !== 'hidden';
+}
+// modules.lifegroups: on by default; false hides small-group tracking/wording
+// ministry-wide (Setup > Modules & Import).
+function _lifegroupsOn() {
+  const modules = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules;
+  return !(modules && modules.lifegroups === false);
 }
 
 // Generates the 5-step funnel/ladder colour ramp (darkest -> lightest) from
@@ -1636,7 +1643,13 @@ async function submitMustChangePassword() {
   if (!pw1 || pw1.length < 8) { errEl.innerHTML = '<div class="alert al-err">New password must be at least 8 characters</div>'; return; }
   if (pw1 !== pw2) { errEl.innerHTML = '<div class="alert al-err">New passwords do not match</div>'; return; }
   try {
-    await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
+    // The session token issued at login has mustChangePassword:true baked in
+    // (resolveToken trusts it, no DB re-check) — the server mints a fresh one
+    // reflecting the cleared flag; without swapping to it every subsequent
+    // request keeps 403ing MUST_CHANGE_PASSWORD until the old token expires,
+    // which is what produced the blank-page-after-set-password bug.
+    const res = await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
+    if (res && res.token) API.setToken(res.token);
     S.user.mustChangePassword = false;
     toast('Password updated'); render();
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
@@ -1846,11 +1859,12 @@ async function _renderHomeInner(stale) {
     <td style="text-align:center;padding:5px 4px"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em">${svcUniq}</span></td>
     <td style="text-align:center;padding:5px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em">${svcAvg}</span></td>
   </tr>`;
-  body += `<tr style="background:rgba(255,255,255,.05)">
+  if (lifegroupsOn) body += `<tr style="background:rgba(255,255,255,.05)">
     <td style="font-size:13px;font-weight:700;opacity:.62;padding:5px 6px;border-radius:6px 0 0 6px;white-space:nowrap">${L('smallGroupPlural')}</td>
     <td style="text-align:center;padding:5px 4px"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em;opacity:.82">${grpUniq}</span></td>
     <td style="text-align:center;padding:5px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em;opacity:.82">${grpAvgWk}</span></td>
-  </tr></tbody></table>`;
+  </tr>`;
+  body += `</tbody></table>`;
 
   // Previous-term summary
   const pSvcAtt = sc.reduce((a, s) => a + s.prevSvcAttended, 0), pSvcTot = sc.reduce((a, s) => a + s.prevSvcTotal, 0);
@@ -1879,7 +1893,7 @@ async function _renderHomeInner(stale) {
       <th style="font-size:11px;font-weight:700;opacity:.4;text-transform:uppercase;letter-spacing:.04em;text-align:center;padding-bottom:3px">Weekly</th>
     </tr></thead><tbody>`;
     if (pSvcTot > 0) body += `<tr style="background:rgba(255,255,255,.06)"><td style="font-size:12px;font-weight:700;opacity:.5;padding:3px 6px;border-radius:6px 0 0 6px;white-space:nowrap">Youth</td><td style="text-align:center;padding:3px 4px"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.62">${pSvcUniq}</span></td><td style="text-align:center;padding:3px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.62">${pSvcAvg}</span></td></tr>`;
-    if (pGrpTot > 0) body += `<tr style="background:rgba(255,255,255,.03)"><td style="font-size:12px;font-weight:700;opacity:.45;padding:3px 6px;border-radius:6px 0 0 6px;white-space:nowrap">Lifegroups</td><td style="text-align:center;padding:3px 4px"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpUniq}</span></td><td style="text-align:center;padding:3px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpAvg}</span></td></tr>`;
+    if (lifegroupsOn && pGrpTot > 0) body += `<tr style="background:rgba(255,255,255,.03)"><td style="font-size:12px;font-weight:700;opacity:.45;padding:3px 6px;border-radius:6px 0 0 6px;white-space:nowrap">${L('smallGroupPlural')}</td><td style="text-align:center;padding:3px 4px"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpUniq}</span></td><td style="text-align:center;padding:3px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:15px;font-weight:700;opacity:.52">${pGrpAvg}</span></td></tr>`;
     body += `</tbody></table>`;
     body += `</div>`;
   } else if (trendsPill) {
@@ -2090,16 +2104,23 @@ async function renderHomeFollowup() {
   h += _followupListHtml('Birthdays this week', data.birthdays, 'No birthdays this week');
   h += _followupListHtml(svcTitle, data.notSeenService, data.latestSvcDate ? 'Everyone was seen' : 'No service data yet', 'svc');
   h += _followupListHtml(grpTitle, data.notSeenGroup, data.latestGrpDate ? 'Everyone was seen' : 'No lifegroup data yet', 'grp');
-  h += `<div class="card" style="padding:12px;margin-bottom:10px">
-    <div style="font-size:12px;font-weight:800;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;display:flex;align-items:center;gap:5px">Custom Message Template ${helpTip('Adds a "Message Custom" option next to Call and Message on the tap-to-call sheet for any student’s number. Use <first name> anywhere you want their first name inserted.')}</div>
-    <textarea class="fi" id="fu-sms-tpl" rows="2" style="width:100%;box-sizing:border-box;resize:vertical" placeholder="e.g. Hey <first name>, so good to see you this week!">${esc(data.leader.smsTemplate || '')}</textarea>
-    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="_saveFollowupSmsTemplate('${data.leader.id}')">Save</button>
-  </div>`;
+  h += _smsTemplateBoxHtml(data.leader.id, data.leader.smsTemplate, 'fu-sms-tpl');
   host.innerHTML = h;
 }
 
-async function _saveFollowupSmsTemplate(leaderId) {
-  const el = document.getElementById('fu-sms-tpl');
+// Shared "Custom Message Template" editor card — used on Home's Follow Up
+// section and at the top of My Students once a leader is selected, so a
+// leader doesn't have to go back to Home just to edit their template.
+function _smsTemplateBoxHtml(leaderId, smsTemplate, elId) {
+  return `<div class="card" style="padding:12px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;display:flex;align-items:center;gap:5px">Custom Message Template ${helpTip('Adds a "Message Custom" option next to Call and Message on the tap-to-call sheet for any student’s number. Use <first name> anywhere you want their first name inserted.')}</div>
+    <textarea class="fi" id="${elId}" rows="2" style="width:100%;box-sizing:border-box;resize:vertical" placeholder="e.g. Hey <first name>, so good to see you this week!">${esc(smsTemplate || '')}</textarea>
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="_saveSmsTemplate('${leaderId}','${elId}')">Save</button>
+  </div>`;
+}
+
+async function _saveSmsTemplate(leaderId, elId) {
+  const el = document.getElementById(elId || 'fu-sms-tpl');
   const val = el ? el.value.trim() : '';
   try {
     await API.patch(`/leaders/${leaderId}/sms-template`, { smsTemplate: val || null });
@@ -3013,6 +3034,11 @@ async function renderMyStudents() {
     try { summary = await API.get(`/connections/leader/${_msLeader}/summary`); } catch {}
     const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
 
+    // Same custom-message editor as Home's Follow Up section, surfaced here too
+    // so a leader browsing My Students doesn't have to go back to Home to edit it.
+    const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
+    if (msLeaderObj) body += _smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl');
+
     body += `<div class="sh">My Students (${students.length})</div>`;
     if (!students.length) {
       body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students connected yet.</div>';
@@ -3924,22 +3950,30 @@ async function renderTrends() {
 async function exportTrendsCSV() {
   try {
     const students = await API.get('/students');
-    const rows = [['Grade','Students','Seen Svc','Avg Svc Sess','Grp Enrolled','Seen Grp','Avg Grp Sess']];
+    const lgOn = _lifegroupsOn();
+    const header = ['Grade','Students','Seen Svc','Avg Svc Sess'];
+    if (lgOn) header.push(L('smallGroup') + ' Enrolled', 'Seen ' + L('smallGroup'), 'Avg ' + L('smallGroup') + ' Sess');
+    const aoa = [header];
     for (const gr of _gradeList()) {
       const gs = students.filter(s=>s.grade===gr);
       if (!gs.length) continue;
       const u=gs.filter(s=>s.svcAttended>0).length;
       const avgSvc=gs.length?Math.round(gs.reduce((s,x)=>s+x.svcAttended,0)/gs.length):0;
-      const grpS=gs.filter(s=>s.grpTotal>0);
-      const uG=grpS.filter(s=>s.grpAttended>0).length;
-      const avgGrp=grpS.length?Math.round(grpS.reduce((s,x)=>s+x.grpAttended,0)/grpS.length):0;
-      rows.push([gr,gs.length,u,avgSvc,grpS.length,uG,avgGrp]);
+      const row = [gr,gs.length,u,avgSvc];
+      if (lgOn) {
+        const grpS=gs.filter(s=>s.grpTotal>0);
+        const uG=grpS.filter(s=>s.grpAttended>0).length;
+        const avgGrp=grpS.length?Math.round(grpS.reduce((s,x)=>s+x.grpAttended,0)/grpS.length):0;
+        row.push(grpS.length,uG,avgGrp);
+      }
+      aoa.push(row);
     }
-    const csv = rows.map(r=>r.join(',')).join('\r\n');
-    const blob = new Blob([csv],{type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='trends.csv'; a.click();
-    URL.revokeObjectURL(url); toast('Exported');
+    await _ensureXlsx();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Trends');
+    XLSX.writeFile(wb, `trends-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast('Exported');
   } catch(e) { toast('Export failed: '+e.message); }
 }
 
@@ -3968,9 +4002,9 @@ function _importBodyHtml(history) {
   let body = `
     <div class="ph"><div class="ph-title">Import Data</div><div class="ph-sub">Upload CSV files to update students and attendance</div></div>
     <div class="card">
-      <div class="card-title" style="margin-bottom:6px">Import Attendance ${helpTip('Each import recalculates both service and lifegroup term stats from scratch. If you only upload one type, re-upload the other afterwards too so both stay accurate.')}</div>
+      <div class="card-title" style="margin-bottom:6px">Import Attendance ${helpTip(_lifegroupsOn() ? `Each import recalculates both service and ${L('smallGroup').toLowerCase()} term stats from scratch. If you only upload one type, re-upload the other afterwards too so both stay accurate.` : 'Each import recalculates service term stats from scratch.')}</div>
       <p style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">
-        Drop a <strong>Service</strong> or <strong>Group</strong> attendance export from Elvanto/UCare — we'll detect which it is.<br>
+        Drop a <strong>Service</strong>${_lifegroupsOn() ? ' or <strong>Group</strong> attendance export' : ' attendance export'} from Elvanto/UCare — we'll detect which it is.<br>
         Columns and dates are detected automatically. CSV or .xlsx, up to 10MB.
       </p>
       <div id="drop-zone" style="border:2px dashed var(--paper-dark);border-radius:var(--radius-sm);padding:32px;text-align:center;cursor:pointer;transition:border-color .2s"
@@ -4496,15 +4530,18 @@ async function renderAdminView(settings, users, history) {
       <button class="btn btn-primary btn-sm" onclick="showAddUser()">+ Add Account</button>
     </div>`;
 
-    // Group-by-role for clarity at 12+ accounts. Only groups with existing
-    // accounts render — a group with none (e.g. Quad when disabled) is
-    // skipped below, not shown empty. `leader` sorts last.
+    // Group-by-role for clarity at 12+ accounts. `leader` sorts last. A role
+    // toggled off in Youth Setup (roles.enabled.<role> === false) hides its
+    // whole section here even if inactive accounts of that role still exist —
+    // settings.service.ts's role-disable also bulk-deactivates them, but the
+    // section itself is gated on the toggle, not on "any accounts left".
     const roleOrder = ['admin','director','quad','grade','leader'];
     const roleLabels = {
       admin: _roleLabel('admin'), director: _roleLabel('director'),
       quad: _roleLabel('quad') + ' Logins', grade: _roleLabel('grade') + ' Logins',
       leader: _roleLabel('leader') + 's',
     };
+    const rolesEnabled = (settings.ministryConfig && settings.ministryConfig.roles && settings.ministryConfig.roles.enabled) || {};
     const grouped = {};
     for (const u of users) { if (!grouped[u.role]) grouped[u.role]=[]; grouped[u.role].push(u); }
     // Sort grade logins by grade number, quads by quad label
@@ -4514,6 +4551,7 @@ async function renderAdminView(settings, users, history) {
     for (const role of roleOrder) {
       const group = grouped[role];
       if (!group?.length) continue;
+      if (role !== 'admin' && rolesEnabled[role] === false) continue;
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
@@ -4749,18 +4787,27 @@ const MINISTRY_PRESETS_INFO = [
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
 let _setupTermGapDays = null;
+// Which logo mode button was last clicked, even before its content field (SVG
+// text / uploaded image) is filled in — see the logoMode fallback comment
+// where this is read, in _youthSetupBody.
+let _logoModeOverride = null;
 // Which collapsible cards are expanded — keyed by card id, persists across the
 // full-body re-renders every field edit triggers (renderAdminView), so editing
 // a field inside an open card doesn't collapse it back.
 let _setupOpen = {};
 function _setupToggle(id) { _setupOpen[id] = !_setupOpen[id]; _setupRerender(); }
 function _setupRerender() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
-function _setupCard(id, title, bodyHtml) {
+// headerActionHtml (optional) renders in the same row as the title, right-
+// aligned — e.g. Branding's "Reset to defaults" button. Its own onclick must
+// call event.stopPropagation() or the click also bubbles into the header's
+// own onclick and toggles the card open/closed.
+function _setupCard(id, title, bodyHtml, headerActionHtml) {
   const open = !!_setupOpen[id];
   return `<div class="drop card${open ? ' open' : ''}" id="su-${id}">
     <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_setupToggle('${id}')">
       <span class="drop-chev" style="font-size:14px">›</span>
       <div class="sh" style="margin:0;border-bottom:none;flex:1">${esc(title)}</div>
+      ${headerActionHtml || ''}
     </div>
     <div class="drop-body" style="margin-top:10px">${bodyHtml}</div>
   </div>`;
@@ -4797,6 +4844,7 @@ function _setupResetBranding() {
 function _setupSetLogoMode(mode) {
   if (!_setupDraft) _setupDraft = {};
   if (!_setupDraft.branding) _setupDraft.branding = {};
+  _logoModeOverride = mode;
   if (mode === 'default') { _setupDraft.branding.logoSvg = null; _setupDraft.branding.logoImage = null; }
   else if (mode === 'svg') { _setupDraft.branding.logoImage = null; }
   else if (mode === 'image') { _setupDraft.branding.logoSvg = null; }
@@ -5033,6 +5081,7 @@ function _ensureSetupDraft(settings) {
     _setupDraft = JSON.parse(JSON.stringify((settings && settings.ministryConfig) || {}));
     _setupServiceMinAttendance = (settings && settings.serviceMinAttendance) ?? 100;
     _setupTermGapDays = (settings && settings.termGapDays) ?? 14;
+    _logoModeOverride = null;
   }
 }
 
@@ -5129,30 +5178,21 @@ function _youthSetupBody(settings, users) {
   const iv = (k) => im[k] != null ? im[k] : dim[k];
   // At most one of logoImage/logoSvg is ever set (enforced by _setupSetLogoMode
   // nulling the other on switch) — image wins if somehow both are, matching
-  // brandMark()'s own precedence.
-  const logoMode = bv('logoImage') ? 'image' : (bv('logoSvg') ? 'svg' : 'default');
+  // brandMark()'s own precedence. Falls back to _logoModeOverride (set the
+  // instant a mode button is clicked) so picking "Paste SVG"/"Upload image"
+  // before any content exists doesn't snap the picker back to "Default mark"
+  // on the next re-render — bv() alone can't tell "svg chosen, box still empty"
+  // apart from "never touched", since both look like null/null.
+  const logoMode = bv('logoImage') ? 'image' : (bv('logoSvg') ? 'svg' : (_logoModeOverride || 'default'));
 
   let b = `<div class="card" style="margin-bottom:10px">
+    <div class="sh" style="margin-top:0">Pre-set Configurations</div>
     <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
     </div>
     ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
-    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveMinistrySetup()">Save Youth Setup</button>
   </div>`;
-
-  b += _setupCard('attendance', 'Attendance', `
-    <p class="help-text" style="margin-bottom:10px">Students are flagged as declining or stopped automatically from their attendance trend (a rate drop of ≥20 points vs last term, or no attendance this term). There are no manual thresholds.</p>
-    <div class="form-row">
-      <div class="fg"><label class="fl">Min attendance for a valid service</label>
-        <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
-        <div class="help-text">${esc(_serviceDayName())}s below this total attendance are disregarded (holidays / breaks) — excluded from averages and attendance rates</div>
-      </div>
-      <div class="fg"><label class="fl">Term Gap (days)</label>
-        <input class="fi" type="number" min="1" max="90" value="${_setupTermGapDays}" onchange="_setupSetTermGap(this.value)">
-        <div class="help-text">Days between sessions = new term</div>
-      </div>
-    </div>`);
 
   b += _setupCard('structure', 'Structure & Roles', `
     <div class="fg"><label class="fl">Cohort model ${helpTip('“Grades + quads” = the graded model (grade/quad logins scope by grade & gender). “No cohorting” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden.')}</label>
@@ -5174,12 +5214,18 @@ function _youthSetupBody(settings, users) {
     <div class="sh" style="margin:16px 0 8px">Roles</div>
     <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses.</div>
     ${adminRoleRow}
-    ${roleToggleRows}`);
+    ${roleToggleRows}
+    <div class="sh" style="margin:16px 0 8px">Attendance</div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip(esc(_serviceDayName()) + 's below this total attendance are disregarded (holidays / breaks) — excluded from averages and attendance rates')}</label>
+        <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
+      </div>
+      <div class="fg"><label class="fl">Term Gap (days) ${helpTip('Days between sessions = new term')}</label>
+        <input class="fi" type="number" min="1" max="90" value="${_setupTermGapDays}" onchange="_setupSetTermGap(this.value)">
+      </div>
+    </div>`);
 
   b += _setupCard('branding', 'Branding', `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-      <button class="btn btn-ghost btn-sm" onclick="_setupResetBranding()">Reset to defaults</button>
-    </div>
     <div class="fg"><label class="fl">Ministry name ${helpTip('Shown under the app name on the login screen.')}</label>
       <input class="fi" value="${esc(bv('ministryName'))}" onchange="_setupSet('branding.ministryName', this.value)"></div>
     <div class="fg"><label class="fl">App name ${helpTip('The product name in the header, the browser tab, and the installed (PWA) app.')}</label>
@@ -5214,13 +5260,12 @@ function _youthSetupBody(settings, users) {
           <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
           <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
         </div>
-      </div></div>`);
+      </div></div>`,
+    `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_setupResetBranding()">Reset to defaults</button>`);
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
-    <div class="fg"><label class="fl">Small group (singular)</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
-    <div class="fg"><label class="fl">Small group (plural) ${helpTip('Generated automatically from the singular above (e.g. “Lifegroup” -> “Lifegroups”) — no longer a separate field.')}</label>
-      <input class="fi" value="${esc(lv('smallGroupPlural'))}" disabled></div>
+    <div class="fg"><label class="fl">Small group (singular) ${helpTip('The plural (e.g. "Lifegroups") is generated from this automatically.')}</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
     ${[['service','Service / main gathering'],['serviceNight','Service night wording']].map(([k,lab])=>
       `<div class="fg"><label class="fl">${lab}</label><input class="fi" value="${esc(lv(k))}" onchange="_setupSet('labels.${k}', this.value)"></div>`).join('')}
     <div class="fg"><label class="fl">Grade word</label>
@@ -5230,15 +5275,13 @@ function _youthSetupBody(settings, users) {
     <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ".')}</label>
       <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>`);
 
-  b += _setupCard('modules', 'Modules', `
+  b += _setupCard('modules', 'Modules & Import', `
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('The year-over-year integration-funnel module (Data tab). Requires uploading a New Person form, a Decision form, and Student Team service data, in addition to the basic service/group attendance this app already needs — turn off for ministries that do not run those extra forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>Lifegroups ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <div class="fg"><label class="fl">Export guides ${helpTip('The in-app Elvanto CSV-export walkthroughs. Hide them if your church uses a different management system.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
-      </select></div>`);
-
-  b += _setupCard('import', 'Import', `
+      </select></div>
     <div class="fg"><label class="fl">Date order ${helpTip('How an ambiguous slash-separated date (e.g. 03/04/2026) is read. Any date component over 12 is auto-resolved as the day regardless of this setting.')}</label>
       <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
         ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
@@ -5258,7 +5301,21 @@ function _youthSetupBody(settings, users) {
       <button class="btn btn-secondary" style="flex:1" onclick="downloadDeployGuide()">Download .md</button>
     </div>`);
 
+  b += `<button class="btn btn-primary btn-full" style="margin-top:4px" onclick="confirmSaveMinistrySetup()">Save Youth Setup</button>`;
+
   return b;
+}
+
+// Confirm before applying Youth Setup changes — this is live config for
+// every user of the app, not a per-device preference, so a stray tap
+// shouldn't silently rebrand/reconfigure the ministry.
+function confirmSaveMinistrySetup() {
+  modal(`<div class="mo-title">Save Youth Setup?</div>
+    <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup()">Save</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
 }
 
 // Set a nested field in the setup draft (e.g. 'structure.cohortModel') and
@@ -5643,7 +5700,8 @@ async function submitChangeOwnPassword() {
   if (!pw1 || pw1.length < 8) { errEl.innerHTML = '<div class="alert al-err">New password must be at least 8 characters</div>'; return; }
   if (pw1 !== pw2) { errEl.innerHTML = '<div class="alert al-err">New passwords do not match</div>'; return; }
   try {
-    await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
+    const res = await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
+    if (res && res.token) API.setToken(res.token);
     closeModal(); toast('Password updated');
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }

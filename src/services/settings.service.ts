@@ -1,14 +1,20 @@
 import { z } from 'zod';
 import { assertCan } from './access-control';
-import type { ISettingsRepository, IAuditRepository } from '../repositories/interfaces/entity-repositories';
+import type { ISettingsRepository, IAuditRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { AppSettings } from '../core/entities/settings';
 import type { Actor } from '../core/entities/user';
+import type { UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
 import { mergeMinistryConfig, sanitiseLogoSvg } from '../core/ministry-config';
 import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { BadRequestError } from '../core/errors/app-error';
+
+// The optional roles a ministry can switch off in Setup (Admin always exists
+// and isn't toggleable — see ministry-config.ts). User.role values match these
+// names exactly, so no extra mapping is needed to find the accounts a toggle covers.
+const OPTIONAL_ROLES: Exclude<UserRole, 'admin'>[] = ['director', 'grade', 'quad', 'leader'];
 
 const SettingsPatchSchema = z.object({
   termGapDays: z.number().int().min(1).optional(),
@@ -28,6 +34,7 @@ export interface SettingsService {
 export function makeSettingsService(
   repo: ISettingsRepository,
   audit: IAuditRepository,
+  users: IUserRepository,
 ): SettingsService {
   return {
     async get() {
@@ -58,9 +65,20 @@ export function makeSettingsService(
       const { ministryConfig: _omit, ...scalarPatch } = patch;
       const update: Partial<AppSettings> = { ...scalarPatch };
 
+      // Roles newly turned OFF by this save (compared against the pre-save config) —
+      // computed before repo.updateSettings() so we still have both the old and new
+      // enabled-map to diff. Deactivation itself runs after the settings write
+      // succeeds (below), matching the confirm-then-cascade shape of a live setting.
+      let rolesJustDisabled: UserRole[] = [];
+
       if (ministryConfigPatch !== undefined) {
         const current = await repo.getSettings();
-        update.ministryConfig = mergeMinistryConfig(current.ministryConfig, ministryConfigPatch);
+        const merged = mergeMinistryConfig(current.ministryConfig, ministryConfigPatch);
+        update.ministryConfig = merged;
+
+        const before = current.ministryConfig.roles?.enabled;
+        const after = merged.roles.enabled;
+        rolesJustDisabled = OPTIONAL_ROLES.filter((r) => before?.[r] !== false && after[r] === false);
       }
 
       if (Object.keys(patch).length > 0) {
@@ -74,6 +92,22 @@ export function makeSettingsService(
       }
 
       const updated = await repo.updateSettings({ ...update, updatedAt: new Date().toISOString() });
+
+      // A role toggled OFF in Setup deactivates every currently-active account of
+      // that role — the Accounts screen also hides that role's whole section
+      // while disabled (index.html), so a leftover active account there would be
+      // both unreachable to manage AND still able to log in. Turning the role
+      // back ON later does NOT auto-reactivate these — deliberate: an admin who'd
+      // separately deactivated one of these accounts for an unrelated reason
+      // shouldn't have that overridden by an unrelated toggle. Re-activation is
+      // manual, via the existing per-account lock/unlock in Accounts.
+      for (const role of rolesJustDisabled) {
+        const accounts = await users.findByRole(role);
+        for (const u of accounts) {
+          if (u.status !== 'active') continue;
+          await users.save({ ...u, status: 'inactive', updatedAt: new Date().toISOString() });
+        }
+      }
 
       // Fix for the pre-existing invalidation gap: any settings change (term
       // math, min-attendance floor, or ministryConfig) could affect the three

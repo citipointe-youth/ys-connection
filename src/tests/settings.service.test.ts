@@ -3,9 +3,9 @@ import { makeSettingsService } from '../services/settings.service';
 import { invalidateOverviewCache, makeOverviewService } from '../services/overview.service';
 import { invalidateTrendsCache } from '../services/trends.service';
 import { invalidateLgStatsCache } from '../services/lifegroup-stats.service';
-import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryConnectionRepository } from '../repositories/in-memory';
+import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryConnectionRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
-import type { Actor } from '../core/entities/user';
+import type { Actor, User } from '../core/entities/user';
 
 function actor(role: string): Actor {
   return { id: 'a-test', role: role as any, displayName: 'T', grade: null as any, quad: null as any };
@@ -20,8 +20,19 @@ async function makeService() {
   invalidateLgStatsCache();
   const repo = new InMemorySettingsRepository();
   const audit = new InMemoryAuditRepository();
-  await Promise.all([repo.init(), audit.init()]);
-  return { repo, audit, service: makeSettingsService(repo, audit) };
+  const users = new InMemoryUserRepository();
+  await Promise.all([repo.init(), audit.init(), users.init()]);
+  return { repo, audit, users, service: makeSettingsService(repo, audit, users) };
+}
+
+function makeUser(overrides: Partial<User>): User {
+  const now = new Date().toISOString();
+  return {
+    id: overrides.id ?? 'u-' + Math.random().toString(36).slice(2),
+    displayName: 'Test User', email: 'test-user', role: 'grade', grade: null, quad: null,
+    status: 'active', mustChangePassword: false,
+    createdAt: now, updatedAt: now, ...overrides,
+  } as User;
 }
 
 describe('SettingsService', () => {
@@ -131,5 +142,68 @@ describe('SettingsService', () => {
 
     const afterSettingsUpdate = await overviewSvc.getStats(ADMIN);
     expect(afterSettingsUpdate.ministryTotal).toBe(1); // fresh — proves settings.update() invalidated it
+  });
+
+  describe('turning a role off in Setup deactivates its accounts', () => {
+    it('deactivates active quad accounts when roles.enabled.quad flips false, leaves other roles alone', async () => {
+      const { service, users } = await makeService();
+      const q1 = await users.save(makeUser({ id: 'q1', role: 'quad', quad: 'g79' }));
+      const g1 = await users.save(makeUser({ id: 'g1', role: 'grade', grade: 9 }));
+
+      await service.update(ADMIN, { ministryConfig: { roles: { enabled: { quad: false } } } });
+
+      expect((await users.findById(q1.id))!.status).toBe('inactive');
+      expect((await users.findById(g1.id))!.status).toBe('active');
+    });
+
+    it('covers all four optional roles (director/grade/quad/leader), never admin', async () => {
+      const { service, users } = await makeService();
+      const admin1 = await users.save(makeUser({ id: 'admin1', role: 'admin' }));
+      const dir1 = await users.save(makeUser({ id: 'dir1', role: 'director' }));
+      const lead1 = await users.save(makeUser({ id: 'lead1', role: 'leader' }));
+
+      // leader defaults to disabled — enable it first so disabling it below is a
+      // real true->false transition, not a no-op against the already-false default.
+      await service.update(ADMIN, { ministryConfig: { roles: { enabled: { leader: true } } } });
+
+      await service.update(ADMIN, {
+        ministryConfig: { roles: { enabled: { director: false, leader: false } } },
+      });
+
+      expect((await users.findById(dir1.id))!.status).toBe('inactive');
+      expect((await users.findById(lead1.id))!.status).toBe('inactive');
+      expect((await users.findById(admin1.id))!.status).toBe('active'); // never touched
+    });
+
+    it('does not re-deactivate an already-inactive account, and leaves an unrelated inactive account alone', async () => {
+      const { service, users } = await makeService();
+      const q1 = await users.save(makeUser({ id: 'q1', role: 'quad', quad: 'g79', status: 'inactive' }));
+
+      await expect(
+        service.update(ADMIN, { ministryConfig: { roles: { enabled: { quad: false } } } }),
+      ).resolves.toBeTruthy();
+
+      expect((await users.findById(q1.id))!.status).toBe('inactive');
+    });
+
+    it('re-enabling a role does NOT auto-reactivate accounts deactivated while it was off', async () => {
+      const { service, users } = await makeService();
+      const q1 = await users.save(makeUser({ id: 'q1', role: 'quad', quad: 'g79' }));
+
+      await service.update(ADMIN, { ministryConfig: { roles: { enabled: { quad: false } } } });
+      expect((await users.findById(q1.id))!.status).toBe('inactive');
+
+      await service.update(ADMIN, { ministryConfig: { roles: { enabled: { quad: true } } } });
+      expect((await users.findById(q1.id))!.status).toBe('inactive'); // still inactive — manual reactivation only
+    });
+
+    it('a patch that leaves roles.enabled unchanged does not touch any account', async () => {
+      const { service, users } = await makeService();
+      const q1 = await users.save(makeUser({ id: 'q1', role: 'quad', quad: 'g79' }));
+
+      await service.update(ADMIN, { ministryConfig: { branding: { accent: '#ff0000' } } });
+
+      expect((await users.findById(q1.id))!.status).toBe('active');
+    });
   });
 });

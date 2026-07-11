@@ -1,8 +1,9 @@
 import type { HttpRequest } from '../http/types';
 import type { AccountService } from '../../services/account.service';
+import type { AuthService } from '../../services/auth.service';
 import { UnauthorizedError } from '../../core/errors/app-error';
 
-export function makeAccountController(deps: { account: AccountService }) {
+export function makeAccountController(deps: { account: AccountService; auth: AuthService }) {
   return {
     async list(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
@@ -30,7 +31,13 @@ export function makeAccountController(deps: { account: AccountService }) {
       if (!req.ctx) throw new UnauthorizedError();
       const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
       await deps.account.changeOwnPassword(req.ctx, currentPassword, newPassword);
-      return { ok: true };
+      // The caller's existing session token may still have mustChangePassword:
+      // true baked in from login (resolveToken trusts the embedded actor, no DB
+      // re-check) — issue a fresh one reflecting the just-cleared flag so the
+      // client isn't stuck 403ing on MUST_CHANGE_PASSWORD for the rest of the
+      // old token's TTL.
+      const token = await deps.auth.issueTokenFor(req.ctx.id);
+      return { ok: true, token };
     },
 
     async toggleStatus(req: HttpRequest) {
