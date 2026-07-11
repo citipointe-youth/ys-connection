@@ -1040,7 +1040,7 @@ function _hdrBrandHtml() {
 // Subsequent navigations only update <main id="page-main">.
 function _previewBannerHtml(u) {
   return `<div class="preview-banner">
-    <span>${icS('id')} Previewing: <strong>${esc(u.displayName)}</strong></span>
+    <span>${icS('eye')} Previewing: <strong>${esc(u.displayName)}</strong></span>
     <button class="btn btn-sm" onclick="exitPreview()">Exit Preview</button>
   </div>`;
 }
@@ -1355,6 +1355,13 @@ function _loginGender(u) {
   }
   return null;
 }
+// Mirrors backend isProtectedAdmin() (account.service.ts) — the bootstrap admin
+// account's USERNAME is locked (stable login identity), not its display name.
+// Also matches on displayName === 'Admin' for back-compat with an account
+// already renamed away from username "admin" under the old (backwards) rules.
+function _isProtectedAdmin(u) {
+  return u.email === 'admin' || u.displayName === 'Admin';
+}
 // " Girls" / " Boys" / "" — suffix for gendered grade/quad tile labels. Suppressed
 // entirely under genderPolicy 'off' (no gendered UI anywhere — §5, phase 6b).
 function _gsfx(gender) {
@@ -1444,6 +1451,7 @@ const IC = {
   heart:    '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>',
   genderF:  '<circle cx="12" cy="8" r="5"/><line x1="12" y1="13" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/>',
   genderM:  '<circle cx="10" cy="14" r="6"/><line x1="14.5" y1="9.5" x2="20" y2="4"/><polyline points="14 4 20 4 20 10"/>',
+  eye:      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
 };
 function icN(k){ return `<svg class="ic-n" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
 function icS(k){ return `<svg class="ic-s" viewBox="0 0 24 24">${IC[k]||''}</svg>`; }
@@ -4597,9 +4605,9 @@ async function renderAdminView(settings, users, history) {
         // The account named "Admin" is protected: it can always be edited (except
         // renamed — see showEditUser), but never deactivated or deleted, regardless
         // of how many other admin accounts exist.
-        const isProtectedAdmin = u.displayName === 'Admin';
-        const lockTitle = isProtectedAdmin ? (u.status==='active'?"The Admin account can't be deactivated":"The Admin account can't be activated") : (u.status==='active'?'Deactivate':'Activate');
-        const delTitle = isProtectedAdmin ? "The Admin account can't be deleted" : `Delete ${esc(u.displayName)}`;
+        const isProtectedAdmin = _isProtectedAdmin(u);
+        const lockTitle = isProtectedAdmin ? (u.status==='active'?`The "${esc(u.displayName)}" account can't be deactivated`:`The "${esc(u.displayName)}" account can't be activated`) : (u.status==='active'?'Deactivate':'Activate');
+        const delTitle = isProtectedAdmin ? `The "${esc(u.displayName)}" account can't be deleted` : `Delete ${esc(u.displayName)}`;
         // Light gender-tinted background (girls/boys) on grade/quad rows — a
         // scanning aid, purely cosmetic. _loginGender() already mirrors the
         // backend's deriveActorGender() (explicit field first, email/quad
@@ -4617,7 +4625,7 @@ async function renderAdminView(settings, users, history) {
           <div class="li-right">
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
-            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" onclick="enterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('id')}</button>` : ''}
+            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)" ${isProtectedAdmin?'disabled':''} onclick="confirmDelUser('${u.id}')" title="${delTitle}" aria-label="${delTitle}">${icS('trash')}</button>
           </div>
@@ -5826,11 +5834,12 @@ async function showEditUser(id) {
   } else {
     _acctAutoEmail = null; _acctAutoName = null;
   }
+  const _protectedEdit = _isProtectedAdmin(u);
   modal(`
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>
-    <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}" ${u.displayName==='Admin'?'disabled':''}>${u.displayName==='Admin'?`<p style="font-size:11px;color:var(--ink-mid);margin-top:3px">The Admin account can't be renamed</p>`:''}</div>
-    <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off"></div>
+    <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}"></div>
+    <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off" ${_protectedEdit?'disabled':''}>${_protectedEdit?`<p style="font-size:11px;color:var(--ink-mid);margin-top:3px">This account's username can't be changed</p>`:''}</div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields()">${_accRoleOptions(u.role)}</select>
     </div>
@@ -5982,6 +5991,17 @@ async function doDelUser(id) {
 }
 
 // ── Admin account preview ("Preview" button, Admin -> Accounts) ──
+function confirmEnterPreview(id) {
+  const u = (_adminData.users || []).find(x => x.id === id);
+  if (!u) return;
+  modal(`
+    <div class="mo-title">Preview Account?</div>
+    <p style="color:var(--ink-mid);margin-bottom:14px">Do you want to preview the <strong>${esc(u.displayName)}</strong> login?</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal(); enterPreview('${id}')">Preview</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
 async function enterPreview(id) {
   try {
     const res = await API.post(`/accounts/users/${id}/preview`, {});
