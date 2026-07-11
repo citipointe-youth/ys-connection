@@ -14,7 +14,7 @@ async function buildService() {
   await users.init();
   const now = new Date().toISOString();
   const grade = await users.save({
-    id: 'u-grade', displayName: 'Grade Leader', email: 'grade7g@youth.ministry', role: 'grade',
+    id: 'u-grade', displayName: 'Grade Leader', email: 'grade7g', role: 'grade',
     grade: 7, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
     mustChangePassword: true, createdAt: now, updatedAt: now,
   });
@@ -69,7 +69,7 @@ describe('Account Service — create() defaults mustChangePassword to false', ()
     const svc = makeAccountService(users);
     const admin = actorFor('u-admin', 'admin');
     const created = await svc.create(admin, {
-      displayName: 'New Leader', email: 'newleader@youth.ministry', password: 'longenoughpw',
+      displayName: 'New Leader', email: 'newleader', password: 'longenoughpw',
       role: 'grade', grade: 8, gender: 'female',
     });
     const stored = await users.findById(created.id);
@@ -86,12 +86,12 @@ describe('Account Service — the "Admin" display-name account is always protect
     await users.init();
     const now = new Date().toISOString();
     const admin = await users.save({
-      id: 'u-admin-named', displayName: 'Admin', email: 'admin@youth.ministry', role: 'admin',
+      id: 'u-admin-named', displayName: 'Admin', email: 'admin', role: 'admin',
       grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
       mustChangePassword: false, createdAt: now, updatedAt: now,
     });
     const opsAdmin = await users.save({
-      id: 'u-admin-ops', displayName: 'Ops Admin', email: 'ops@youth.ministry', role: 'admin',
+      id: 'u-admin-ops', displayName: 'Ops Admin', email: 'ops', role: 'admin',
       grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
       mustChangePassword: false, createdAt: now, updatedAt: now,
     });
@@ -119,8 +119,8 @@ describe('Account Service — the "Admin" display-name account is always protect
 
   it('other fields on the "Admin" account (e.g. email) remain freely editable', async () => {
     const { svc, users, actor, admin } = await buildTwoAdmins();
-    const updated = await svc.update(actor, admin.id, { email: 'newadmin@youth.ministry' });
-    expect(updated.email).toBe('newadmin@youth.ministry');
+    const updated = await svc.update(actor, admin.id, { email: 'newadmin' });
+    expect(updated.email).toBe('newadmin');
     const stored = await users.findById(admin.id);
     expect(stored?.displayName).toBe('Admin');
   });
@@ -152,7 +152,7 @@ describe('Account Service — the "Admin" display-name account is always protect
   it('a second, freely-named admin account CAN be created alongside the protected "Admin" one', async () => {
     const { svc, actor } = await buildTwoAdmins();
     const created = await svc.create(actor, {
-      displayName: 'Yet Another Admin', email: 'yetanother@youth.ministry', password: 'longenoughpw',
+      displayName: 'Yet Another Admin', email: 'yetanother', password: 'longenoughpw',
       role: 'admin',
     });
     expect(created.role).toBe('admin');
@@ -167,7 +167,7 @@ describe('Account Service — the "Admin" display-name account is always protect
     await users.init();
     const now = new Date().toISOString();
     const sole = await users.save({
-      id: 'u-sole-admin', displayName: 'Sole Admin', email: 'sole@youth.ministry', role: 'admin',
+      id: 'u-sole-admin', displayName: 'Sole Admin', email: 'sole', role: 'admin',
       grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
       mustChangePassword: false, createdAt: now, updatedAt: now,
     });

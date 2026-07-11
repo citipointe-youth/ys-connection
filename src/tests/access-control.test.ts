@@ -53,11 +53,11 @@ describe('RBAC — can()', () => {
   it('deriveActorGender reads grade email g/b suffix and quad gender', () => {
     const mk = (role: string, email: string, quad?: string): User =>
       ({ id: 'u', displayName: 'X', email, role: role as any, grade: 7 as any, quad: (quad ?? null) as any, status: 'active', createdAt: '', updatedAt: '' });
-    expect(deriveActorGender(mk('grade', 'grade7g@youth.ministry'))).toBe('female');
-    expect(deriveActorGender(mk('grade', 'grade7b@youth.ministry'))).toBe('male');
-    expect(deriveActorGender(mk('grade', 'grade7@youth.ministry'))).toBeNull(); // no suffix
-    expect(deriveActorGender(mk('quad', 'b1012@youth.ministry', 'b1012'))).toBe('male');
-    expect(deriveActorGender(mk('admin', 'admin@youth.ministry'))).toBeNull();
+    expect(deriveActorGender(mk('grade', 'grade7g'))).toBe('female');
+    expect(deriveActorGender(mk('grade', 'grade7b'))).toBe('male');
+    expect(deriveActorGender(mk('grade', 'grade7'))).toBeNull(); // no suffix
+    expect(deriveActorGender(mk('quad', 'b1012', 'b1012'))).toBe('male');
+    expect(deriveActorGender(mk('admin', 'admin'))).toBeNull();
   });
 
   // TC06 — quad login can allocate

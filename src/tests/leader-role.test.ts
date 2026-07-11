@@ -122,13 +122,13 @@ describe('account.service — leader accounts require a linked leader record', (
   it('rejects a leader account without leaderId', async () => {
     const { account } = await accountSvc();
     await expect(account.create(admin, {
-      displayName: 'JL', email: 'jl@youth.ministry', password: 'longenoughpw', role: 'leader',
+      displayName: 'JL', email: 'jl', password: 'longenoughpw', role: 'leader',
     })).rejects.toBeInstanceOf(BadRequestError);
   });
   it('creates a leader account bound to a leader record', async () => {
     const { users, account } = await accountSvc();
     const created = await account.create(admin, {
-      displayName: 'JL', email: 'jl@youth.ministry', password: 'longenoughpw', role: 'leader', leaderId: LEADER_ID,
+      displayName: 'JL', email: 'jl', password: 'longenoughpw', role: 'leader', leaderId: LEADER_ID,
     });
     const stored = await users.findById(created.id);
     expect(stored?.role).toBe('leader');

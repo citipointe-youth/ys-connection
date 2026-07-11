@@ -49,7 +49,7 @@ describe('canAccessGrade() with a multi-grade grade login', () => {
 
 describe('deriveActorGender() — explicit field vs email convention', () => {
   const mk = (over: Partial<User>): User => ({
-    id: 'u', displayName: 'X', email: 'grade789@youth.ministry', role: 'grade',
+    id: 'u', displayName: 'X', email: 'grade789', role: 'grade',
     grade: null, quad: null, status: 'active', createdAt: '', updatedAt: '', ...over,
   });
   it('uses the explicit gender field when set (multi-grade accounts)', () => {
@@ -57,8 +57,8 @@ describe('deriveActorGender() — explicit field vs email convention', () => {
     expect(deriveActorGender(mk({ grades: [7, 8, 9], gender: 'male' }))).toBe('male');
   });
   it('still honours the email convention when no explicit gender is set', () => {
-    expect(deriveActorGender(mk({ email: 'grade7g@youth.ministry', grade: 7 }))).toBe('female');
-    expect(deriveActorGender(mk({ email: 'grade7@youth.ministry', grade: 7 }))).toBeNull();
+    expect(deriveActorGender(mk({ email: 'grade7g', grade: 7 }))).toBe('female');
+    expect(deriveActorGender(mk({ email: 'grade7', grade: 7 }))).toBeNull();
   });
   it('toActor carries the full grade set and derived gender', () => {
     const a = toActor(mk({ grades: [7, 8, 9], gender: 'male' }));
@@ -79,7 +79,7 @@ describe('AccountService — multi-grade create/update', () => {
   it('creates a grade account spanning several grades with an explicit gender', async () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
-      displayName: 'Junior Girls', email: 'juniorg@youth.ministry', password: 'longenoughpw',
+      displayName: 'Junior Girls', email: 'juniorg', password: 'longenoughpw',
       role: 'grade', grades: [7, 8, 9], gender: 'female',
     });
     const stored = await users.findById(created.id);
@@ -92,7 +92,7 @@ describe('AccountService — multi-grade create/update', () => {
   it('keeps the legacy single-grade path working (grade → grades:[grade])', async () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
-      displayName: 'Grade 8', email: 'grade8@youth.ministry', password: 'longenoughpw',
+      displayName: 'Grade 8', email: 'grade8', password: 'longenoughpw',
       role: 'grade', grade: 8, gender: 'male',
     });
     const stored = await users.findById(created.id);
@@ -104,7 +104,7 @@ describe('AccountService — multi-grade create/update', () => {
     const { account } = await svc();
     await expect(
       account.create(admin, {
-        displayName: 'Bad', email: 'bad@youth.ministry', password: 'longenoughpw',
+        displayName: 'Bad', email: 'bad', password: 'longenoughpw',
         role: 'grade', grades: [],
       }),
     ).rejects.toBeInstanceOf(BadRequestError);
@@ -114,7 +114,7 @@ describe('AccountService — multi-grade create/update', () => {
     const { account } = await svc();
     await expect(
       account.create(admin, {
-        displayName: 'No Gender', email: 'nogender@youth.ministry', password: 'longenoughpw',
+        displayName: 'No Gender', email: 'nogender', password: 'longenoughpw',
         role: 'grade', grade: 7,
       }),
     ).rejects.toBeInstanceOf(BadRequestError);
@@ -123,7 +123,7 @@ describe('AccountService — multi-grade create/update', () => {
   it('rejects clearing gender on an existing grade account via update', async () => {
     const { account } = await svc();
     const created = await account.create(admin, {
-      displayName: 'Grade 9', email: 'grade9x@youth.ministry', password: 'longenoughpw',
+      displayName: 'Grade 9', email: 'grade9x', password: 'longenoughpw',
       role: 'grade', grade: 9, gender: 'female',
     });
     await expect(
@@ -134,7 +134,7 @@ describe('AccountService — multi-grade create/update', () => {
   it('updates an existing account to span multiple grades', async () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
-      displayName: 'Grade 7', email: 'grade7@youth.ministry', password: 'longenoughpw',
+      displayName: 'Grade 7', email: 'grade7', password: 'longenoughpw',
       role: 'grade', grade: 7, gender: 'female',
     });
     await account.update(admin, created.id, { grades: [7, 8, 9], gender: 'male' });
@@ -147,7 +147,7 @@ describe('AccountService — multi-grade create/update', () => {
   it('dedupes and sorts an out-of-order grade set', async () => {
     const { users, account } = await svc();
     const created = await account.create(admin, {
-      displayName: 'Messy', email: 'messy@youth.ministry', password: 'longenoughpw',
+      displayName: 'Messy', email: 'messy', password: 'longenoughpw',
       role: 'grade', grades: [9, 7, 8, 7], gender: 'female',
     });
     const stored = await users.findById(created.id);
