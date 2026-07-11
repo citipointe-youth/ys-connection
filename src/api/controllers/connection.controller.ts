@@ -59,8 +59,8 @@ export function makeConnectionController(deps: { connection: ConnectionService }
 
     async importAllocations(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
-      const rows = (req.body as { rows?: unknown })?.rows;
-      return deps.connection.importAllocations(req.ctx, rows);
+      const body = req.body as { rows?: unknown; autoCreateLeaders?: unknown };
+      return deps.connection.importAllocations(req.ctx, body?.rows, body?.autoCreateLeaders === true);
     },
   };
 }

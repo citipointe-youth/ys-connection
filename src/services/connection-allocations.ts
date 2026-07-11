@@ -32,6 +32,9 @@ export interface AllocationImportReport {
   ambiguousStudents: { row: number; name: string }[];
   ambiguousLeaders: { row: number; name: string }[];
   studentsWithSkippedRemovals: string[];
+  // Only present when the caller passed autoCreateLeaders: true — the Leader
+  // records that were created to resolve otherwise-unmatched leader names.
+  leadersCreated?: LeaderToCreate[];
 }
 
 export interface AllocationPlan {
@@ -79,6 +82,56 @@ type LeaderLite = { id: string; fullName: string };
 type ConnLite = { studentId: string; leaderId: string };
 
 const nameKey = (a: string, b: string) => `${a} ${b}`.toLowerCase().trim();
+
+export interface LeaderToCreate {
+  name: string; // original casing, as it appeared in the file
+  grades: number[];
+  gender: 'male' | 'female' | null; // null when the matched students disagree on gender
+}
+
+type StudentWithGradeGender = StudentLite & { grade: number | null; gender: string | null };
+
+// Bug 6 (admin bug list, 2026-07-11): when an allocation re-import's "auto-
+// create unmatched leaders" option is on, work out what those new Leader
+// records should look like — one per distinct unmatched leader name, with
+// grades/gender derived from whichever already-matched students the file
+// pairs it with (only unambiguous single-student matches are used, same
+// matching rule planAllocationSync applies). Deliberately pure/DB-free like
+// the rest of this file: the caller creates the actual Leader rows, then
+// re-runs planAllocationSync with the enlarged leaders list so those pairs
+// resolve normally instead of landing in the report's unmatchedLeaders.
+export function deriveLeadersToCreate(
+  parsed: ParsedAllocationRow[],
+  students: StudentWithGradeGender[],
+  leaders: LeaderLite[],
+): LeaderToCreate[] {
+  const studentsByName = new Map<string, StudentWithGradeGender[]>();
+  for (const s of students) {
+    const k = nameKey(s.firstName, s.lastName);
+    (studentsByName.get(k) ?? studentsByName.set(k, []).get(k)!).push(s);
+  }
+  const knownLeaderNames = new Set(leaders.map((l) => l.fullName.toLowerCase().trim()));
+
+  const byKey = new Map<string, { name: string; grades: Set<number>; genders: Set<string> }>();
+  for (const r of parsed) {
+    if (!r.leaderName) continue;
+    const key = r.leaderName.toLowerCase().trim();
+    if (knownLeaderNames.has(key)) continue; // already a real leader — not our concern here
+    const sMatches = studentsByName.get(nameKey(r.firstName, r.lastName)) ?? [];
+    if (sMatches.length !== 1) continue; // only derive from an unambiguous student match
+    const student = sMatches[0]!;
+    let entry = byKey.get(key);
+    if (!entry) { entry = { name: r.leaderName.trim(), grades: new Set(), genders: new Set() }; byKey.set(key, entry); }
+    if (student.grade != null) entry.grades.add(student.grade);
+    if (student.gender === 'male' || student.gender === 'female') entry.genders.add(student.gender);
+  }
+
+  return [...byKey.values()].map((e) => ({
+    name: e.name,
+    grades: [...e.grades].sort((a, b) => a - b),
+    gender: e.genders.size === 1 ? ([...e.genders][0] as 'male' | 'female') : null,
+  }));
+}
 
 export function planAllocationSync(
   parsed: ParsedAllocationRow[],

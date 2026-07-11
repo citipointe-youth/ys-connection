@@ -5,6 +5,7 @@ import {
   parseAllocationRows,
   planAllocationSync,
   buildAllocationExportRows,
+  deriveLeadersToCreate,
   type AllocationExportRow,
   type AllocationImportReport,
 } from './connection-allocations';
@@ -15,7 +16,9 @@ import type {
   ISettingsRepository,
 } from '../repositories/interfaces/entity-repositories';
 import type { Connection } from '../core/entities/connection';
+import type { Leader } from '../core/entities/leader';
 import type { Actor } from '../core/entities/user';
+import type { Gender, Grade } from '../core/types/enums';
 import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from '../core/errors/app-error';
 import { invalidateOverviewCache } from './overview.service';
 
@@ -53,7 +56,7 @@ export interface ConnectionService {
   leaderSummary(actor: Actor, leaderId: string): Promise<{ students: ReturnType<typeof summariseStudent>[]; leader: { id: string; fullName: string } }>;
   exportCsv(actor: Actor): Promise<ExportRow[]>;
   exportAllocations(actor: Actor): Promise<AllocationExportRow[]>;
-  importAllocations(actor: Actor, rows: unknown): Promise<AllocationImportReport>;
+  importAllocations(actor: Actor, rows: unknown, autoCreateLeaders?: boolean): Promise<AllocationImportReport>;
 }
 
 function summariseStudent(s: {
@@ -280,17 +283,45 @@ export function makeConnectionService(
       return buildAllocationExportRows(students, leaders, connections);
     },
 
-    async importAllocations(actor, rows) {
+    async importAllocations(actor, rows, autoCreateLeaders) {
       assertCan(actor, 'connection:import');
       const inputRows = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
       const parsed = parseAllocationRows(inputRows);
-      const [students, leaders, connections] = await Promise.all([
+      const [students, existingLeaders, connections] = await Promise.all([
         studentRepo.findAll(),
         leaderRepo.findAll(),
         connRepo.findAll(),
       ]);
-      const plan = planAllocationSync(parsed, students, leaders, connections);
       const now = new Date().toISOString();
+
+      // Bug 6 (admin bug list): optionally create a Leader record for any name
+      // in the file that doesn't match an existing one, before planning the
+      // sync — so those rows resolve as matched leaders instead of landing in
+      // the report's unmatchedLeaders. Grade/gender come from whichever
+      // already-matched students the file pairs that name with.
+      let leaders = existingLeaders;
+      let leadersCreated: AllocationImportReport['leadersCreated'];
+      if (autoCreateLeaders) {
+        const toCreate = deriveLeadersToCreate(parsed, students, leaders);
+        if (toCreate.length) {
+          const newLeaders: Leader[] = toCreate.map((lc) => ({
+            id: generateId(),
+            fullName: lc.name,
+            gender: lc.gender as Gender | null,
+            grades: lc.grades as Grade[],
+            active: true,
+            createdByGrade: null,
+            smsTemplate: null,
+            createdAt: now,
+            updatedAt: now,
+          }));
+          await leaderRepo.saveMany(newLeaders);
+          leaders = [...leaders, ...newLeaders];
+          leadersCreated = toCreate;
+        }
+      }
+
+      const plan = planAllocationSync(parsed, students, leaders, connections);
       for (const pair of plan.toAdd) {
         await connRepo.save({
           id: generateId(),
@@ -304,7 +335,7 @@ export function makeConnectionService(
         await connRepo.deleteByStudentAndLeader(pair.studentId, pair.leaderId);
       }
       invalidateOverviewCache();
-      return plan.report;
+      return leadersCreated ? { ...plan.report, leadersCreated } : plan.report;
     },
   };
 }

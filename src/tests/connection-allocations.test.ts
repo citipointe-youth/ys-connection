@@ -195,6 +195,55 @@ async function buildAllocSvc() {
   return { connSvc, alice, emma };
 }
 
+import { deriveLeadersToCreate } from '../services/connection-allocations';
+
+describe('deriveLeadersToCreate (bug 6 — auto-create unmatched leaders)', () => {
+  const students = [
+    { id: 's1', firstName: 'Alice', lastName: 'Smith', grade: 9, gender: 'female' },
+    { id: 's2', firstName: 'Beth', lastName: 'Jones', grade: 9, gender: 'female' },
+    { id: 's3', firstName: 'Cal', lastName: 'Reed', grade: 10, gender: 'male' },
+  ];
+
+  it('derives grades/gender from the matched students paired with a new leader name', () => {
+    const parsed = [
+      row(1, 'Alice', 'Smith', 'New Leader'),
+      row(2, 'Beth', 'Jones', 'New Leader'),
+    ];
+    const toCreate = deriveLeadersToCreate(parsed, students, []);
+    expect(toCreate).toEqual([{ name: 'New Leader', grades: [9], gender: 'female' }]);
+  });
+
+  it('leaves gender null when matched students disagree', () => {
+    const parsed = [
+      row(1, 'Alice', 'Smith', 'Mixed Leader'),
+      row(2, 'Cal', 'Reed', 'Mixed Leader'),
+    ];
+    const toCreate = deriveLeadersToCreate(parsed, students, []);
+    expect(toCreate).toEqual([{ name: 'Mixed Leader', grades: [9, 10], gender: null }]);
+  });
+
+  it('skips a name that already matches an existing leader', () => {
+    const parsed = [row(1, 'Alice', 'Smith', 'Jane Doe')];
+    const toCreate = deriveLeadersToCreate(parsed, students, LEADERS);
+    expect(toCreate).toEqual([]);
+  });
+
+  it('does not derive from an ambiguous (duplicate-name) student match', () => {
+    const dupStudents = [
+      { id: 'd1', firstName: 'Dup', lastName: 'Name', grade: 8, gender: 'male' },
+      { id: 'd2', firstName: 'Dup', lastName: 'Name', grade: 11, gender: 'female' },
+    ];
+    const parsed = [row(1, 'Dup', 'Name', 'Ambiguous Source')];
+    const toCreate = deriveLeadersToCreate(parsed, dupStudents, []);
+    expect(toCreate).toEqual([]); // no unambiguous match to derive grade/gender from
+  });
+
+  it('ignores blank-leader rows', () => {
+    const parsed = [row(1, 'Alice', 'Smith', '')];
+    expect(deriveLeadersToCreate(parsed, students, [])).toEqual([]);
+  });
+});
+
 describe('ConnectionService allocations', () => {
   it('exportAllocations emits a blank-leader row for an unconnected student', async () => {
     const { connSvc, alice } = await buildAllocSvc();
@@ -224,5 +273,30 @@ describe('ConnectionService allocations', () => {
     const { connSvc } = await buildAllocSvc();
     await expect(connSvc.exportAllocations(DIRECTOR)).rejects.toThrow(ForbiddenError);
     await expect(connSvc.importAllocations(DIRECTOR, [])).rejects.toThrow(ForbiddenError);
+  });
+
+  it('autoCreateLeaders creates an unmatched leader and connects it, gender/grade derived from the matched student', async () => {
+    const { connSvc, alice } = await buildAllocSvc();
+    const report = await connSvc.importAllocations(
+      ADMIN,
+      [{ 'first name': 'Alice', 'last name': 'Smith', leader: 'Brand New Leader' }],
+      true,
+    );
+    expect(report.leadersCreated).toEqual([{ name: 'Brand New Leader', grades: [9], gender: 'female' }]);
+    expect(report.unmatchedLeaders).toEqual([]);
+    expect(report.connectionsAdded).toBe(1);
+    const rows = await connSvc.exportAllocations(ADMIN);
+    expect(rows).toEqual([{ firstName: 'Alice', lastName: 'Smith', grade: 9, gender: 'female', leader: 'Brand New Leader' }]);
+    void alice;
+  });
+
+  it('without autoCreateLeaders, an unmatched leader is reported and nothing is created', async () => {
+    const { connSvc } = await buildAllocSvc();
+    const report = await connSvc.importAllocations(ADMIN, [
+      { 'first name': 'Alice', 'last name': 'Smith', leader: 'Nobody Yet' },
+    ]);
+    expect(report.leadersCreated).toBeUndefined();
+    expect(report.unmatchedLeaders).toEqual([{ row: 1, name: 'Nobody Yet', student: 'Alice Smith' }]);
+    expect(report.connectionsAdded).toBe(0);
   });
 });

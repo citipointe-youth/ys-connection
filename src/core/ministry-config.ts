@@ -142,7 +142,12 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
   simple: {
     preset: 'simple',
     structure: { cohortModel: 'none', genderPolicy: 'strict' },
-    roles: { enabled: { director: true, quad: false } },
+    // Director was on here until 2026-07-11 — bug 8 (admin bug list): a Simple
+    // ministry's intended account layout is Admin + the 6 grade-bracket
+    // accounts only, so Director is switched off too (an existing active
+    // Director account is auto-deactivated by the generic role-disable
+    // cascade in settings.service.ts, same as quad already was).
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
   },
 };

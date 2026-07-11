@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeAccountService } from '../services/account.service';
-import { InMemoryUserRepository } from '../repositories/in-memory';
+import { InMemoryUserRepository, InMemorySettingsRepository } from '../repositories/in-memory';
 import { hashPassword } from '../utils/crypto';
 import type { Actor } from '../core/entities/user';
 import { BadRequestError, UnauthorizedError } from '../core/errors/app-error';
@@ -18,7 +18,9 @@ async function buildService() {
     grade: 7, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
     mustChangePassword: true, createdAt: now, updatedAt: now,
   });
-  const svc = makeAccountService(users);
+  const settings = new InMemorySettingsRepository();
+  await settings.init();
+  const svc = makeAccountService(users, settings);
   return { svc, users, grade };
 }
 
@@ -66,7 +68,9 @@ describe('Account Service — create() defaults mustChangePassword to false', ()
   it('a freshly admin-created account is not flagged', async () => {
     const users = new InMemoryUserRepository();
     await users.init();
-    const svc = makeAccountService(users);
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    const svc = makeAccountService(users, settings);
     const admin = actorFor('u-admin', 'admin');
     const created = await svc.create(admin, {
       displayName: 'New Leader', email: 'newleader', password: 'longenoughpw',
@@ -95,7 +99,9 @@ describe('Account Service — the "Admin" display-name account is always protect
       grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
       mustChangePassword: false, createdAt: now, updatedAt: now,
     });
-    const svc = makeAccountService(users);
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    const svc = makeAccountService(users, settings);
     const actor = actorFor(admin.id, 'admin');
     return { svc, users, admin, opsAdmin, actor };
   }
@@ -171,7 +177,9 @@ describe('Account Service — the "Admin" display-name account is always protect
       grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
       mustChangePassword: false, createdAt: now, updatedAt: now,
     });
-    const svc = makeAccountService(users);
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    const svc = makeAccountService(users, settings);
     const actor = actorFor(sole.id, 'admin');
     await expect(svc.remove(actor, sole.id)).rejects.toBeInstanceOf(BadRequestError);
     await expect(svc.toggleStatus(actor, sole.id)).rejects.toBeInstanceOf(BadRequestError);
@@ -186,5 +194,50 @@ describe('Account Service — the "Admin" display-name account is always protect
     // The protected "Admin" account must still be present and undeletable now
     // that it actually IS the last remaining admin too.
     await expect(svc.remove(actor, admin.id)).rejects.toBeInstanceOf(BadRequestError);
+  });
+});
+
+describe('Account Service — cohort account layout (bug 8)', () => {
+  const admin = actorFor('adm', 'admin');
+
+  it('plan is a pure dry-run — nothing is written', async () => {
+    const { svc, users } = await buildService();
+    const plan = await svc.planCohortLayout(admin, 'none');
+    expect(plan.toCreate).toHaveLength(6);
+    expect(await users.findAll()).toHaveLength(1); // just the seeded grade7g account from buildService()
+  });
+
+  it('apply creates the target accounts with one-time passwords and mustChangePassword: true', async () => {
+    const { svc, users } = await buildService();
+    const report = await svc.applyCohortLayout(admin, 'none');
+    expect(report.created).toHaveLength(6);
+    expect(report.created.every((c) => c.password.length >= 8)).toBe(true);
+    const created = await users.findByEmail('grade78g');
+    expect(created?.mustChangePassword).toBe(true);
+    expect(created?.gender).toBe('female');
+    expect(created?.grades).toEqual([7, 8]);
+  });
+
+  it('re-applying the same layout is a no-op the second time', async () => {
+    const { svc } = await buildService();
+    await svc.applyCohortLayout(admin, 'none');
+    const second = await svc.applyCohortLayout(admin, 'none');
+    expect(second.created).toHaveLength(0);
+    expect(second.deactivated).toHaveLength(0);
+  });
+
+  it('applying Complex deactivates the pre-existing grade7g seed account (outside the 12-grade+quad target only if not matching) — verifies matching, not blanket wipe', async () => {
+    const { svc, users } = await buildService();
+    // grade7g already matches the Complex layout's own username convention,
+    // so it must be left alone, not deactivated.
+    await svc.applyCohortLayout(admin, 'grades-quads');
+    const stillActive = await users.findByEmail('grade7g');
+    expect(stillActive?.status).toBe('active');
+  });
+
+  it('rejects a non-admin caller', async () => {
+    const { svc } = await buildService();
+    const grade = actorFor('g', 'grade');
+    await expect(svc.planCohortLayout(grade, 'none')).rejects.toBeInstanceOf(Error);
   });
 });

@@ -161,6 +161,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* List items */
 .li{background:var(--paper-card);border-radius:var(--radius);border:1px solid var(--line);padding:13px;margin-bottom:8px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;transition:box-shadow .15s,transform .12s}
 .li:hover{box-shadow:var(--shadow-md)}.li:active{transform:scale(.985)}
+.li.acct-girls{background:#fdf2f8}
+.li.acct-boys{background:#eff6ff}
 .li-body{flex:1;min-width:0}
 .li-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
@@ -4169,7 +4171,8 @@ function processAllocationImport(file, onDone) {
     if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
     try {
-      const report = await API.post('/connections/allocations/import', { rows }, 90000);
+      const autoCreateLeaders = !!document.getElementById('alloc-auto-leaders')?.checked;
+      const report = await API.post('/connections/allocations/import', { rows, autoCreateLeaders }, 90000);
       Cache.clear();
       statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Imported: ${report.connectionsAdded} added, ${report.connectionsRemoved} removed, ${report.connectionsUnchanged} unchanged</div>`;
       showAllocationReport(report);
@@ -4194,6 +4197,9 @@ function showAllocationReport(r) {
   };
   let h = `<div class="mo-title" style="font-size:16px;font-weight:800;margin-bottom:8px">Allocation import result</div>`;
   h += `<div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">${r.studentsInFile} students in file · <b>${r.connectionsAdded}</b> added · <b>${r.connectionsRemoved}</b> removed · ${r.connectionsUnchanged} unchanged</div>`;
+  if (r.leadersCreated && r.leadersCreated.length) {
+    h += `<div class="alert al-info" style="margin-bottom:8px">${icS('check')} Created ${r.leadersCreated.length} leader${r.leadersCreated.length===1?'':'s'}: ${r.leadersCreated.map(l => esc(l.name)).join(', ')}</div>`;
+  }
   h += sec('ar-us', 'Unmatched students', r.unmatchedStudents, x => `<div>Row ${x.row}: ${esc(x.name)}</div>`);
   h += sec('ar-ul', 'Unmatched leaders', r.unmatchedLeaders, x => `<div>Row ${x.row}: ${esc(x.name)} <span style="color:var(--ink-faint)">(student: ${esc(x.student)})</span></div>`);
   h += sec('ar-as', 'Ambiguous students', r.ambiguousStudents, x => `<div>Row ${x.row}: ${esc(x.name)}</div>`);
@@ -4547,6 +4553,12 @@ async function renderAdminView(settings, users, history) {
     // Sort grade logins by grade number, quads by quad label
     if (grouped.grade) grouped.grade.sort((a,b) => (a.grade||0) - (b.grade||0));
     if (grouped.quad) grouped.quad.sort((a,b) => (a.quad||'').localeCompare(b.quad||''));
+    // Inactive accounts sink to the bottom of their own role group — stable
+    // sort (JS's Array#sort is stable) so it layers on top of the grade-number/
+    // quad-label ordering above rather than replacing it.
+    for (const role of roleOrder) {
+      if (grouped[role]) grouped[role].sort((a, b) => (a.status === 'inactive' ? 1 : 0) - (b.status === 'inactive' ? 1 : 0));
+    }
 
     for (const role of roleOrder) {
       const group = grouped[role];
@@ -4562,7 +4574,13 @@ async function renderAdminView(settings, users, history) {
         const isProtectedAdmin = u.displayName === 'Admin';
         const lockTitle = isProtectedAdmin ? (u.status==='active'?"The Admin account can't be deactivated":"The Admin account can't be activated") : (u.status==='active'?'Deactivate':'Activate');
         const delTitle = isProtectedAdmin ? "The Admin account can't be deleted" : `Delete ${esc(u.displayName)}`;
-        body += `<div class="li" style="cursor:default;margin-bottom:6px">
+        // Light gender-tinted background (girls/boys) on grade/quad rows — a
+        // scanning aid, purely cosmetic. _loginGender() already mirrors the
+        // backend's deriveActorGender() (explicit field first, email/quad
+        // fallback), so this reflects the account's real scope, not a guess.
+        const acctGender = _loginGender(u);
+        const acctGenderClass = acctGender === 'female' ? ' acct-girls' : acctGender === 'male' ? ' acct-boys' : '';
+        body += `<div class="li${acctGenderClass}" style="cursor:default;margin-bottom:6px">
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(u.displayName)}</span>
@@ -4587,6 +4605,7 @@ async function renderAdminView(settings, users, history) {
       <div class="sh" style="margin-top:0">Connection Allocations</div>
       <div class="help-text" style="margin-bottom:10px">Export every student–leader allocation as a CSV (one leader per row, grouped by student), edit it, then re-import. Import matches students and leaders by name and reports anything it can't match. Students missing from the file are left untouched.</div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportAllocationsCSV()">Export Allocations</button>
+      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alloc-auto-leaders"> <span>Auto-create leaders that don't match an existing leader ${helpTip('A leader name in the file with no matching Leader record is normally reported as unmatched and skipped. With this on, a new Leader is created for it instead — grade(s)/gender taken from whichever students in the file are matched to that name.')}</span></label>
       <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
         <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handleAllocationImportFile(this)">
       </label>
@@ -4782,7 +4801,7 @@ function wizHandleAllocationImportFile(input) {
 // 'small-flat'/'micro' were merged into one 'simple' preset 2026-07-11.
 const MINISTRY_PRESETS_INFO = [
   { id: 'large-graded-au', title: 'Complex Ministry', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
-  { id: 'simple', title: 'Simple Ministry', desc: 'Admin + Director + Grade accounts only, no quads or grade/quad cohorting. Connection Audit off, Lifegroups on.' },
+  { id: 'simple', title: 'Simple Ministry', desc: 'Admin + Grade accounts only — no Director, no quads or grade/quad cohorting. The intended layout is 6 grade accounts (boys/girls per 2-grade bracket); use "Apply account layout" below once you’ve saved this to create/deactivate accounts to match. Connection Audit off, Lifegroups on.' },
 ];
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
@@ -5051,7 +5070,7 @@ const PRESET_CONFIGS_CLIENT = {
   simple: {
     preset: 'simple',
     structure: { cohortModel: 'none', genderPolicy: 'strict' },
-    roles: { enabled: { director: true, quad: false } },
+    roles: { enabled: { director: false, quad: false } },
     modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
   },
 };
@@ -5130,6 +5149,11 @@ function _youthSetupBody(settings, users) {
   const drlEn = drl.enabled;
   const roleEnabled = (k) => rlEn[k] != null ? rlEn[k] : drlEn[k];
   const cohort = st.cohortModel || dst.cohortModel;
+  // The currently-SAVED cohort model (not the draft) — drives whether the
+  // "Apply account layout" button (bug 8) shows at all. Read from `settings`
+  // (the server value passed into this function), not `_setupDraft`.
+  const savedStructure = (settings.ministryConfig && settings.ministryConfig.structure) || {};
+  const savedCohort = savedStructure.cohortModel || dst.cohortModel;
   const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
   const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
   const gMax = st.gradeMax != null ? st.gradeMax : dst.gradeMax;
@@ -5195,10 +5219,10 @@ function _youthSetupBody(settings, users) {
   </div>`;
 
   b += _setupCard('structure', 'Structure & Roles', `
-    <div class="fg"><label class="fl">Cohort model ${helpTip('“Grades + quads” = the graded model (grade/quad logins scope by grade & gender). “No cohorting” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden.')}</label>
+    <div class="fg"><label class="fl">Cohort model ${helpTip('“Complex” = the graded model (grade/quad logins scope by grade & gender) — matches the Complex Ministry preset above. “Simple” = a flat ministry: nobody is scoped by grade/gender and the grade/quad breakdowns are hidden — matches the Simple Ministry preset.')}</label>
       <select class="fs" onchange="_setupSet('structure.cohortModel', this.value)">
-        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Grades + quads (graded)</option>
-        <option value="none" ${cohort==='none'?'selected':''}>No cohorting (flat)</option>
+        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex (grades + quads)</option>
+        <option value="none" ${cohort==='none'?'selected':''}>Simple (no cohorting)</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
     <div style="display:flex;gap:8px">
@@ -5265,14 +5289,14 @@ function _youthSetupBody(settings, users) {
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
-    <div class="fg"><label class="fl">Small group (singular) ${helpTip('The plural (e.g. "Lifegroups") is generated from this automatically.')}</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
-    ${[['service','Service / main gathering'],['serviceNight','Service night wording']].map(([k,lab])=>
-      `<div class="fg"><label class="fl">${lab}</label><input class="fi" value="${esc(lv(k))}" onchange="_setupSet('labels.${k}', this.value)"></div>`).join('')}
-    <div class="fg"><label class="fl">Grade word</label>
+    <div class="fg"><label class="fl">Small group (singular) ${helpTip('The plural (e.g. "Lifegroups") is generated from this automatically. Reflected widely: Home, Trends, My Connections, Connect Setup, Health, and every "Lifegroup"-labelled export/CSV column.')}</label><input class="fi" value="${esc(lv('smallGroup'))}" onchange="_setupSetSmallGroup(this.value)"></div>
+    <div class="fg"><label class="fl">Service / main gathering ${helpTip('Only reflected today on the Health/At-Risk qualifier chip (e.g. "Youth" declining). Most other on-screen references to your main gathering are still the fixed word "Youth" and are not yet driven by this setting.')}</label><input class="fi" value="${esc(lv('service'))}" onchange="_setupSet('labels.service', this.value)"></div>
+    <div class="fg"><label class="fl">Service night wording ${helpTip('Not currently shown anywhere in the app — reserved for a future use (e.g. import-guide/date-range hints). Safe to leave as the default.')}</label><input class="fi" value="${esc(lv('serviceNight'))}" onchange="_setupSet('labels.serviceNight', this.value)"></div>
+    <div class="fg"><label class="fl">Grade word ${helpTip('Swaps "Grade" for "Year" everywhere a grade number is shown: role badges, Accounts, Connect Setup, student rows/search, and the New Year Refresh wizard.')}</label>
       <select class="fs" onchange="_setupSet('structure.gradeLabel', this.value)">
         ${['Grade','Year'].map(w=>`<option ${gLabel===w?'selected':''}>${w}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ".')}</label>
+    <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Prefixes stripped from imported small-group names for display — one per line. e.g. "Brisbane - YS - ". Reflected on the Connection Audit lifegroup tab and the Executive Brief deck.')}</label>
       <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>`);
 
   b += _setupCard('modules', 'Modules & Import', `
@@ -5303,7 +5327,72 @@ function _youthSetupBody(settings, users) {
 
   b += `<button class="btn btn-primary btn-full" style="margin-top:4px" onclick="confirmSaveMinistrySetup()">Save Youth Setup</button>`;
 
+  // "Apply account layout" (bug 8) — a separate, explicit, typed-confirm
+  // action that reconciles Accounts with a cohort model, independent of
+  // Save. Only shown once the draft's cohort model differs from what's
+  // actually saved, i.e. there's a real switch to reconcile accounts for.
+  if (cohort !== savedCohort) {
+    const targetLabel = cohort === 'none' ? 'Simple' : 'Complex';
+    b += `<button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${cohort}')">Apply account layout for ${targetLabel}</button>
+      <div class="help-text" style="margin-top:4px;margin-bottom:4px">Creates/deactivates grade &amp; quad accounts to match the Cohort model selected above — separate from Save, and only touches Accounts (not students, leaders or connections).</div>`;
+  }
+
   return b;
+}
+
+// ── Apply account layout (bug 8) ──
+async function previewCohortLayout(targetCohort) {
+  try {
+    const plan = await API.post('/accounts/cohort-layout/preview', { targetCohort });
+    _showCohortLayoutPreview(targetCohort, plan);
+  } catch (e) { toast(e.message); }
+}
+
+function _showCohortLayoutPreview(targetCohort, plan) {
+  const label = targetCohort === 'none' ? 'Simple' : 'Complex';
+  const rows = (items) => items.map(x => `<div class="li-sub">${esc(x.displayName)} <span style="color:var(--ink-faint)">(${esc(x.username)})</span></div>`).join('');
+  let h = `<div class="mo-title">Apply ${label} account layout?</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">This only creates/deactivates grade &amp; quad Accounts — it never touches students, leaders or connections, and never deletes an account.</div>`;
+  if (plan.toCreate.length) h += `<div class="sh">Accounts to create (${plan.toCreate.length})</div>${rows(plan.toCreate.map(t => ({ displayName: t.displayName, username: t.username })))}`;
+  if (plan.toDeactivate.length) h += `<div class="sh" style="margin-top:8px">Accounts to deactivate (${plan.toDeactivate.length})</div>${rows(plan.toDeactivate)}`;
+  if (!plan.toCreate.length && !plan.toDeactivate.length) h += `<div class="alert al-ok">Accounts already match this layout — nothing to do.</div>`;
+  h += `<p style="font-size:13px;margin:14px 0 6px">Type <strong>APPLY</strong> to confirm:</p>
+    <input class="fi" id="col-confirm" autocomplete="off" autocapitalize="characters"
+      oninput="document.getElementById('col-go').disabled = this.value.trim().toUpperCase() !== 'APPLY'">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-danger" id="col-go" style="flex:1" disabled onclick="_submitApplyCohortLayout('${targetCohort}')">Apply</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`;
+  modal(h);
+}
+
+async function _submitApplyCohortLayout(targetCohort) {
+  try {
+    const report = await API.post('/accounts/cohort-layout/apply', { targetCohort });
+    Cache.clear();
+    _showCohortLayoutResult(report);
+    const [settings, users, history] = await Promise.all([
+      API.get('/settings').catch(() => _adminData.settings),
+      API.get('/accounts/users').catch(() => _adminData.users),
+      API.get('/import/history').catch(() => _adminData.history),
+    ]);
+    _adminData = { settings, users, history };
+  } catch (e) { toast(e.message); }
+}
+
+function _showCohortLayoutResult(report) {
+  let h = `<div class="mo-title">Account layout applied</div>`;
+  if (report.created.length) {
+    h += `<div class="sh">New accounts — passwords shown once, save them now</div>`;
+    h += report.created.map(c => `<div class="fg"><label class="fl">${esc(c.displayName)} (${esc(c.username)})</label><input class="fi" readonly value="${esc(c.password)}" onclick="this.select()"></div>`).join('');
+  }
+  if (report.deactivated.length) {
+    h += `<div class="sh" style="margin-top:8px">Deactivated (${report.deactivated.length})</div>`;
+    h += report.deactivated.map(d => `<div class="li-sub">${esc(d.displayName)} <span style="color:var(--ink-faint)">(${esc(d.username)})</span></div>`).join('');
+  }
+  if (!report.created.length && !report.deactivated.length) h += `<div class="alert al-ok">Nothing to change — accounts already matched this layout.</div>`;
+  h += `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="closeModal();renderAdminView(_adminData.settings,_adminData.users,_adminData.history)">Done</button>`;
+  modal(h);
 }
 
 // Confirm before applying Youth Setup changes — this is live config for
@@ -5453,29 +5542,55 @@ async function adminAction(path, msg, body) {
 }
 
 // Account modals
-// Change 6: auto-suggest email on account creation
+// Change 6: auto-suggest email (and, for grade accounts, display name) on
+// account creation/edit. `_acctAutoEmail`/`_acctAutoName` track the last
+// value WE wrote into each field — a field is only ever overwritten while
+// its current value still equals that tracked value (or is empty), so a
+// grade/gender change keeps a still-default username/name in sync but never
+// clobbers a value the admin has since typed themselves (bug 1 + bug 3).
+// showAddUser() resets both trackers to '' (nothing typed yet); showEditUser()
+// seeds them from the existing account only when its stored email/displayName
+// still match what this same logic would have generated for its current
+// grades/gender — i.e. it looks like an untouched seed/auto-generated name.
+let _acctAutoEmail = null;
+let _acctAutoName = null;
+function _acctSuggestedGradeEmail(grades, gender) {
+  if (!grades || !grades.length) return '';
+  return 'grade' + grades.slice().sort((a, b) => a - b).join('') + (gender === 'female' ? 'g' : gender === 'male' ? 'b' : '');
+}
+function _acctSuggestedGradeName(grades, gender) {
+  if (!grades || !grades.length) return '';
+  const g = grades.slice().sort((a, b) => a - b);
+  return gradeBadgeLabel({ grades: g }) + (gender === 'female' ? ' Girls' : gender === 'male' ? ' Boys' : '');
+}
 function suggestEmail() {
   const role = document.getElementById('u-role')?.value;
   const emailEl = document.getElementById('u-email');
+  const nameEl = document.getElementById('u-name');
   if (!emailEl) return;
-  let suggested = '';
+  let suggestedEmail = '', suggestedName = '';
   if (role === 'grade') {
-    const gs = [...document.querySelectorAll('.ugcb:checked')].map(el => el.value);
+    const gs = [...document.querySelectorAll('.ugcb:checked')].map(el => parseInt(el.value, 10));
     const gender = document.getElementById('u-gender')?.value;
-    if (gs.length) suggested = 'grade' + gs.join('') + (gender === 'female' ? 'g' : gender === 'male' ? 'b' : '');
+    suggestedEmail = _acctSuggestedGradeEmail(gs, gender);
+    suggestedName = _acctSuggestedGradeName(gs, gender);
   } else if (role === 'quad') {
     const quad = document.getElementById('u-quad')?.value;
-    if (quad) suggested = quad;
+    if (quad) suggestedEmail = quad;
   } else if (role === 'director') {
-    suggested = 'director';
+    suggestedEmail = 'director';
   } else if (role === 'admin') {
-    suggested = 'admin';
+    suggestedEmail = 'admin';
   }
-  if (suggested) emailEl.value = suggested;
+  if (suggestedEmail && (emailEl.value === '' || emailEl.value === _acctAutoEmail)) emailEl.value = suggestedEmail;
+  if (suggestedEmail) _acctAutoEmail = suggestedEmail;
+  if (nameEl && suggestedName && (nameEl.value === '' || nameEl.value === _acctAutoName)) nameEl.value = suggestedName;
+  if (suggestedName) _acctAutoName = suggestedName;
 }
 
 async function showAddUser() {
   try { _accLeaders = await API.get('/leaders'); } catch { _accLeaders = []; }
+  _acctAutoEmail = ''; _acctAutoName = '';
   modal(`
     <div class="mo-title">Add Account</div>
     <div id="uerr"></div>
@@ -5582,6 +5697,18 @@ async function showEditUser(id) {
   let u; try { u = (await API.get('/accounts/users')).find(x => x.id===id); } catch {}
   if (!u) { toast('User not found'); return; }
   try { _accLeaders = await API.get('/leaders'); } catch { _accLeaders = []; }
+  // Seed the auto-suggest trackers: only treat the stored username/display name
+  // as "still the default" (and therefore still eligible to be kept in sync by
+  // suggestEmail() below) when they exactly match what this account's CURRENT
+  // grades/gender would generate. A name the admin already customised away from
+  // that pattern never matches here, so it's left alone (bug 3).
+  if (u.role === 'grade') {
+    const g = userGrades(u);
+    _acctAutoEmail = (u.email === _acctSuggestedGradeEmail(g, u.gender)) ? u.email : null;
+    _acctAutoName = (u.displayName === _acctSuggestedGradeName(g, u.gender)) ? u.displayName : null;
+  } else {
+    _acctAutoEmail = null; _acctAutoName = null;
+  }
   modal(`
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>

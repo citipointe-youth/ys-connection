@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { actorGrades, canAccessGrade, canAccessStudent } from '../services/access-control';
 import { makeAccountService } from '../services/account.service';
 import { deriveActorGender, toActor } from '../services/auth.service';
-import { InMemoryUserRepository } from '../repositories/in-memory';
+import { InMemoryUserRepository, InMemorySettingsRepository } from '../repositories/in-memory';
 import type { Actor, User } from '../core/entities/user';
 import { BadRequestError } from '../core/errors/app-error';
 
@@ -73,7 +73,9 @@ describe('AccountService — multi-grade create/update', () => {
   async function svc() {
     const users = new InMemoryUserRepository();
     await users.init();
-    return { users, account: makeAccountService(users) };
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    return { users, account: makeAccountService(users, settings) };
   }
 
   it('creates a grade account spanning several grades with an explicit gender', async () => {

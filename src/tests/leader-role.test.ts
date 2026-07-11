@@ -117,7 +117,9 @@ describe('account.service — leader accounts require a linked leader record', (
   async function accountSvc() {
     const users = new InMemoryUserRepository();
     await users.init();
-    return { users, account: makeAccountService(users) };
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    return { users, account: makeAccountService(users, settings) };
   }
   it('rejects a leader account without leaderId', async () => {
     const { account } = await accountSvc();

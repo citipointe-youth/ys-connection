@@ -50,5 +50,17 @@ export function makeAccountController(deps: { account: AccountService; auth: Aut
       await deps.account.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },
+
+    async planCohortLayout(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      const { targetCohort } = req.body as { targetCohort: 'grades-quads' | 'none' };
+      return deps.account.planCohortLayout(req.ctx, targetCohort);
+    },
+
+    async applyCohortLayout(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      const { targetCohort } = req.body as { targetCohort: 'grades-quads' | 'none' };
+      return deps.account.applyCohortLayout(req.ctx, targetCohort);
+    },
   };
 }

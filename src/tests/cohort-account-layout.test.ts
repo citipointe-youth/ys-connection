@@ -1,0 +1,91 @@
+import { describe, it, expect } from 'vitest';
+import { gradeBrackets, buildTargetAccounts, planCohortAccountLayout } from '../services/cohort-account-layout';
+
+describe('gradeBrackets', () => {
+  it('splits the default 7-12 range into 2-grade brackets (bug 8: 7/8, 9/10, 11/12)', () => {
+    expect(gradeBrackets(7, 12)).toEqual([[7, 8], [9, 10], [11, 12]]);
+  });
+
+  it('gives the leftover grade to the last bracket on an odd-sized range', () => {
+    expect(gradeBrackets(7, 11)).toEqual([[7, 8], [9, 10], [11]]);
+  });
+
+  it('handles a single-grade range', () => {
+    expect(gradeBrackets(9, 9)).toEqual([[9]]);
+  });
+});
+
+describe('buildTargetAccounts', () => {
+  it('Simple (none) yields exactly 6 grade-bracket accounts, boys+girls per bracket', () => {
+    const targets = buildTargetAccounts('none', 7, 12, 'Grade');
+    expect(targets).toHaveLength(6);
+    expect(targets).toEqual([
+      { role: 'grade', username: 'grade78g', displayName: 'Grades 7–8 Girls', grades: [7, 8], gender: 'female' },
+      { role: 'grade', username: 'grade78b', displayName: 'Grades 7–8 Boys', grades: [7, 8], gender: 'male' },
+      { role: 'grade', username: 'grade910g', displayName: 'Grades 9–10 Girls', grades: [9, 10], gender: 'female' },
+      { role: 'grade', username: 'grade910b', displayName: 'Grades 9–10 Boys', grades: [9, 10], gender: 'male' },
+      { role: 'grade', username: 'grade1112g', displayName: 'Grades 11–12 Girls', grades: [11, 12], gender: 'female' },
+      { role: 'grade', username: 'grade1112b', displayName: 'Grades 11–12 Boys', grades: [11, 12], gender: 'male' },
+    ]);
+  });
+
+  it('respects the "Year" grade word', () => {
+    const targets = buildTargetAccounts('none', 9, 9, 'Year');
+    expect(targets[0]?.displayName).toBe('Year 9 Girls');
+  });
+
+  it('Complex (grades-quads) yields one account per grade per gender plus the 4 quads', () => {
+    const targets = buildTargetAccounts('grades-quads', 7, 12, 'Grade');
+    expect(targets.filter((t) => t.role === 'grade')).toHaveLength(12);
+    expect(targets.filter((t) => t.role === 'quad')).toHaveLength(4);
+    expect(targets[0]).toEqual({ role: 'grade', username: 'grade7g', displayName: 'Grade 7 Girls', grades: [7], gender: 'female' });
+    expect(targets).toContainEqual({ role: 'quad', username: 'g79', displayName: 'Girls Yr 7-9', quad: 'g79' });
+  });
+});
+
+describe('planCohortAccountLayout', () => {
+  it('everything to create when there are no existing accounts', () => {
+    const plan = planCohortAccountLayout('none', 7, 12, 'Grade', []);
+    expect(plan.toCreate).toHaveLength(6);
+    expect(plan.toDeactivate).toHaveLength(0);
+  });
+
+  it('an existing account with a matching username is left alone (not re-created, not touched)', () => {
+    const existing = [{ id: 'u1', role: 'grade', email: 'grade78g', displayName: 'Custom Name', status: 'active' }];
+    const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
+    expect(plan.toCreate.some((t) => t.username === 'grade78g')).toBe(false);
+    expect(plan.toDeactivate).toHaveLength(0);
+  });
+
+  it('flags an active grade/quad account outside the target set for deactivation, never deletion', () => {
+    const existing = [
+      { id: 'u1', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'active' },
+      { id: 'u2', role: 'admin', email: 'admin', displayName: 'Admin', status: 'active' },
+    ];
+    const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
+    expect(plan.toDeactivate).toEqual([{ id: 'u1', username: 'g79', displayName: 'Girls Yr 7-9' }]);
+    // admin is never touched by this plan (only grade/quad roles are in scope)
+  });
+
+  it('an already-inactive out-of-target account is not re-flagged', () => {
+    const existing = [{ id: 'u1', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'inactive' }];
+    const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
+    expect(plan.toDeactivate).toHaveLength(0);
+  });
+
+  it('username matching is case-insensitive', () => {
+    const existing = [{ id: 'u1', role: 'grade', email: 'GRADE78G', displayName: 'Legacy', status: 'active' }];
+    const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
+    expect(plan.toCreate.some((t) => t.username === 'grade78g')).toBe(false);
+  });
+
+  it('switching back to Complex flags the Simple-layout bracket accounts for deactivation', () => {
+    const existing = [
+      { id: 'u1', role: 'grade', email: 'grade78g', displayName: 'Grades 7–8 Girls', status: 'active' },
+      { id: 'u2', role: 'grade', email: 'grade78b', displayName: 'Grades 7–8 Boys', status: 'active' },
+    ];
+    const plan = planCohortAccountLayout('grades-quads', 7, 12, 'Grade', existing);
+    expect(plan.toDeactivate.map((d) => d.username).sort()).toEqual(['grade78b', 'grade78g']);
+    expect(plan.toCreate).toHaveLength(16); // 12 grade + 4 quad, none pre-existing
+  });
+});

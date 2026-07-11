@@ -1,12 +1,16 @@
 import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
 import { generateId } from '../utils/id';
 import { hashPassword, verifyPassword } from '../utils/crypto';
 import { assertCan } from './access-control';
-import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
+import type { IUserRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import type { User, SafeUser } from '../core/entities/user';
 import type { Actor } from '../core/entities/user';
 import type { UserRole, Grade, Quad } from '../core/types/enums';
 import { NotFoundError, BadRequestError, ConflictError, UnauthorizedError } from '../core/errors/app-error';
+import { planCohortAccountLayout, type CohortLayoutPlan } from './cohort-account-layout';
+
+const CohortModelSchema = z.enum(['grades-quads', 'none']);
 
 const CreateUserSchema = z.object({
   displayName: z.string().min(1),
@@ -51,6 +55,11 @@ function toSafe(u: User): SafeUser {
   return safe as SafeUser;
 }
 
+export interface CohortLayoutApplyReport {
+  created: { username: string; displayName: string; password: string }[];
+  deactivated: { username: string; displayName: string }[];
+}
+
 export interface AccountService {
   list(actor: Actor): Promise<SafeUser[]>;
   create(actor: Actor, input: unknown): Promise<SafeUser>;
@@ -63,9 +72,21 @@ export interface AccountService {
   changeOwnPassword(actor: Actor, currentPassword: string, newPassword: string): Promise<void>;
   toggleStatus(actor: Actor, id: string): Promise<SafeUser>;
   remove(actor: Actor, id: string): Promise<void>;
+  // Bug 8 (admin bug list, 2026-07-11): "Apply account layout" — a separate,
+  // explicit, typed-confirm action in Youth Setup (not tied to Save) that
+  // reconciles Accounts with the target cohort model. planCohortLayout is the
+  // dry-run preview; applyCohortLayout actually creates/deactivates accounts.
+  planCohortLayout(actor: Actor, targetCohort: unknown): Promise<CohortLayoutPlan>;
+  applyCohortLayout(actor: Actor, targetCohort: unknown): Promise<CohortLayoutApplyReport>;
 }
 
-export function makeAccountService(users: IUserRepository): AccountService {
+function generateTempPassword(): string {
+  // 12 base64url chars (72 bits) — comfortably over the 8-char minimum and
+  // never contains characters that need escaping when shown/copied.
+  return randomBytes(9).toString('base64url');
+}
+
+export function makeAccountService(users: IUserRepository, settings: ISettingsRepository): AccountService {
   async function guardAdmin(id: string, action: string) {
     const admins = await users.findByRole('admin');
     if (admins.length <= 1) {
@@ -217,6 +238,66 @@ export function makeAccountService(users: IUserRepository): AccountService {
         throw new BadRequestError('The "Admin" account cannot be deleted');
       }
       await users.delete(id);
+    },
+
+    async planCohortLayout(actor, targetCohortInput) {
+      assertCan(actor, 'admin:manage');
+      const targetCohort = CohortModelSchema.parse(targetCohortInput);
+      const [current, all] = await Promise.all([settings.getSettings(), users.findAll()]);
+      const structure = current.ministryConfig.structure;
+      return planCohortAccountLayout(
+        targetCohort,
+        structure.gradeMin,
+        structure.gradeMax,
+        structure.gradeLabel,
+        all.map((u) => ({ id: u.id, role: u.role, email: u.email, displayName: u.displayName, status: u.status })),
+      );
+    },
+
+    async applyCohortLayout(actor, targetCohortInput) {
+      assertCan(actor, 'admin:manage');
+      const targetCohort = CohortModelSchema.parse(targetCohortInput);
+      const [current, all] = await Promise.all([settings.getSettings(), users.findAll()]);
+      const structure = current.ministryConfig.structure;
+      const plan = planCohortAccountLayout(
+        targetCohort,
+        structure.gradeMin,
+        structure.gradeMax,
+        structure.gradeLabel,
+        all.map((u) => ({ id: u.id, role: u.role, email: u.email, displayName: u.displayName, status: u.status })),
+      );
+
+      const now = new Date().toISOString();
+      const created: CohortLayoutApplyReport['created'] = [];
+      for (const spec of plan.toCreate) {
+        const password = generateTempPassword();
+        const passwordHash = await hashPassword(password);
+        const user: User =
+          spec.role === 'grade'
+            ? {
+                id: generateId(), displayName: spec.displayName, email: spec.username, role: 'grade',
+                grade: (spec.grades.length === 1 ? spec.grades[0]! : null) as Grade | null,
+                grades: spec.grades as Grade[], gender: spec.gender, quad: null, leaderId: null,
+                status: 'active', passwordHash, mustChangePassword: true, createdAt: now, updatedAt: now,
+              }
+            : {
+                id: generateId(), displayName: spec.displayName, email: spec.username, role: 'quad',
+                grade: null, grades: null, gender: null, quad: spec.quad as Quad, leaderId: null,
+                status: 'active', passwordHash, mustChangePassword: true, createdAt: now, updatedAt: now,
+              };
+        await users.save(user);
+        created.push({ username: spec.username, displayName: spec.displayName, password });
+      }
+
+      const deactivated: CohortLayoutApplyReport['deactivated'] = [];
+      for (const d of plan.toDeactivate) {
+        const existing = await users.findById(d.id);
+        if (!existing || existing.status !== 'active') continue;
+        await users.save({ ...existing, status: 'inactive', updatedAt: now });
+        deactivated.push({ username: d.username, displayName: d.displayName });
+      }
+
+      return { created, deactivated };
     },
   };
 }
