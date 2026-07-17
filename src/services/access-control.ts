@@ -14,7 +14,10 @@ export type Action =
   | 'atrisk:read'             // view at-risk data
   | 'import:run'              // upload CSV data
   | 'connection:import'       // admin-only: bulk import/export of connection allocations
-  | 'admin:manage';           // settings, accounts, year-rollover
+  | 'admin:manage'            // settings, accounts, year-rollover
+  | 'prayer:read'             // view prayer requests in scope
+  | 'prayer:write'            // add/edit/mark/delete a prayer in scope
+  | 'prayer:import';          // admin-only: bulk CSV import/export of prayers
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -26,6 +29,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'student:read:sensitive',
     'leader:read',
     'atrisk:read',
+    'prayer:read',
+    'prayer:write',
   ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
@@ -36,6 +41,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'connection:write',
     'overview:read',
     'atrisk:read',
+    'prayer:read',
+    'prayer:write',
   ]),
   // quad — full add/edit/allocate within their gender + year bracket
   quad: new Set<Action>([
@@ -46,6 +53,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'connection:write',
     'overview:read',
     'atrisk:read',
+    'prayer:read',
+    'prayer:write',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -58,6 +67,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'overview:read',
     'atrisk:read',
     'import:run',
+    'prayer:read',
+    'prayer:write',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -72,6 +83,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'import:run',
     'connection:import',
     'admin:manage',
+    'prayer:read',
+    'prayer:write',
+    'prayer:import',
   ]),
 };
 
