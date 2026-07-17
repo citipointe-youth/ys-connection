@@ -1607,14 +1607,15 @@ function renderLogin() {
       <div class="login-card">
         <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>${esc(appName())}</h1><p>${esc(ministryName())} · Sign in to continue</p></div>
         <div id="lerr"></div>
-        <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" type="text" placeholder="" autocomplete="username"></div>
-        <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
-        <button class="btn btn-primary btn-full" onclick="doLogin()">Sign In</button>
+        <form id="lform" action="#" onsubmit="return false">
+          <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" name="username" type="text" placeholder="" autocomplete="username"></div>
+          <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+          <button class="btn btn-primary btn-full" type="submit">Sign In</button>
+        </form>
         ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `<p style="text-align:center;font-size:12px;color:var(--ink-faint);margin-top:14px">Install as an app — <a href="/install.html" style="color:var(--accent)">how to add to Home Screen</a></p>` : ''}
       </div>
     </div>`;
-  document.getElementById('lemail')?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
-  document.getElementById('lpw')?.addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+  document.getElementById('lform')?.addEventListener('submit', e => { e.preventDefault(); doLogin(); });
   _positionNprog();
 }
 
