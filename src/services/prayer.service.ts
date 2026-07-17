@@ -7,6 +7,8 @@ import type { PrayerRequest, PrayerWithStudent } from '../core/entities/prayer';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
 import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { buildPrayerCsvRows, parsePrayerRows, planPrayerImport,
+  type PrayerCsvRow, type PrayerImportReport } from './prayer-allocations';
 
 const CreateSchema = z.object({
   studentId: z.string().min(1),
@@ -29,6 +31,8 @@ export interface PrayerService {
   update(actor: Actor, id: string, input: unknown): Promise<PrayerRequest>;
   setStatus(actor: Actor, id: string, input: unknown): Promise<PrayerRequest>;
   remove(actor: Actor, id: string): Promise<void>;
+  exportCsv(actor: Actor): Promise<PrayerCsvRow[]>;
+  importCsv(actor: Actor, rows: unknown): Promise<PrayerImportReport>;
 }
 
 function summary(s: Student): PrayerWithStudent['student'] {
@@ -144,6 +148,35 @@ export function makePrayerService(
       const structure = await structureScope();
       await loadInScope(actor, id, structure);
       await repo.delete(id);
+    },
+
+    async exportCsv(actor) {
+      assertCan(actor, 'prayer:import');
+      const [prayers, students] = await Promise.all([repo.findAll(), studentRepo.findAll()]);
+      return buildPrayerCsvRows(prayers, students);
+    },
+
+    async importCsv(actor, rows) {
+      assertCan(actor, 'prayer:import');
+      const parsed = parsePrayerRows(z.array(z.record(z.unknown())).parse(rows));
+      const [students, existing] = await Promise.all([studentRepo.findAll(), repo.findAll()]);
+      const plan = planPrayerImport(parsed, students, existing);
+      const now = new Date().toISOString();
+      for (const a of plan.toAdd) {
+        await repo.save({
+          id: generateId(),
+          studentId: a.studentId,
+          text: a.text,
+          status: a.status,
+          answerNote: a.answerNote,
+          createdByLabel: a.createdByLabel,
+          createdByRole: actor.role,
+          createdAt: now,
+          updatedAt: now,
+          answeredAt: a.status === 'answered' ? now : null,
+        });
+      }
+      return plan.report;
     },
   };
 }
