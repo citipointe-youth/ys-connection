@@ -1,6 +1,7 @@
 export { SupabaseUserRepository } from './supabase.users';
 export { SupabaseStudentRepository } from './supabase.students';
 export { SupabaseLeaderRepository } from './supabase.leaders';
+export { SupabasePrayerRepository } from './supabase.prayers';
 export { SupabaseConnectionRepository } from './supabase.connections';
 export {
   SupabaseServiceSessionRepository,
