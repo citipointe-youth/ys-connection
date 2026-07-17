@@ -3,6 +3,7 @@ import type { Services } from '../../container';
 import { makeAuthController } from '../controllers/auth.controller';
 import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
+import { makePrayerController } from '../controllers/prayer.controller';
 import { makeConnectionController } from '../controllers/connection.controller';
 import { makeFollowupController } from '../controllers/followup.controller';
 import { makeOverviewController } from '../controllers/overview.controller';
@@ -21,6 +22,7 @@ export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
   const student = makeStudentController({ student: services.student });
   const leader = makeLeaderController({ leader: services.leader });
+  const prayer = makePrayerController({ prayer: services.prayer });
   const connection = makeConnectionController({ connection: services.connection });
   const followup = makeFollowupController({ followup: services.followup });
   const overview = makeOverviewController({ overview: services.overview });
@@ -84,6 +86,16 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'DELETE', path: '/leaders/:id', auth: true, handler: (r) => leader.remove(r) },
     { method: 'PATCH',  path: '/leaders/:id/sms-template', auth: true, handler: (r) => leader.updateSmsTemplate(r) },
     { method: 'PATCH',  path: '/leaders/:id/grades',       auth: true, handler: (r) => leader.updateGrades(r) },
+
+    // ----- Prayers -----
+    { method: 'GET',    path: '/prayers',              auth: true, handler: (r) => prayer.list(r) },
+    { method: 'POST',   path: '/prayers',              auth: true, handler: (r) => prayer.create(r) },
+    { method: 'GET',    path: '/prayers/export',       auth: true, handler: (r) => prayer.exportCsv(r) },
+    { method: 'POST',   path: '/prayers/import',       auth: true, handler: (r) => prayer.importCsv(r) },
+    { method: 'GET',    path: '/prayers/student/:id',  auth: true, handler: (r) => prayer.listByStudent(r) },
+    { method: 'PATCH',  path: '/prayers/:id',          auth: true, handler: (r) => prayer.update(r) },
+    { method: 'PATCH',  path: '/prayers/:id/status',   auth: true, handler: (r) => prayer.setStatus(r) },
+    { method: 'DELETE', path: '/prayers/:id',          auth: true, handler: (r) => prayer.remove(r) },
 
     // ----- Connections -----
     { method: 'GET',    path: '/connections',                          auth: true, handler: (r) => connection.listAll(r) },

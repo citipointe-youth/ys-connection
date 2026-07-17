@@ -6,6 +6,7 @@ import {
   InMemoryUserRepository,
   InMemoryStudentRepository,
   InMemoryLeaderRepository,
+  InMemoryPrayerRepository,
   InMemoryConnectionRepository,
   InMemoryServiceSessionRepository,
   InMemoryServiceAttendanceRepository,
@@ -22,6 +23,7 @@ import {
   SupabaseUserRepository,
   SupabaseStudentRepository,
   SupabaseLeaderRepository,
+  SupabasePrayerRepository,
   SupabaseConnectionRepository,
   SupabaseServiceSessionRepository,
   SupabaseServiceAttendanceRepository,
@@ -39,6 +41,7 @@ import type {
   IUserRepository,
   IStudentRepository,
   ILeaderRepository,
+  IPrayerRepository,
   IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
@@ -54,6 +57,7 @@ import type {
 import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
 import { makeLeaderService, type LeaderService } from './services/leader.service';
+import { makePrayerService, type PrayerService } from './services/prayer.service';
 import { makeConnectionService, type ConnectionService } from './services/connection.service';
 import { makeFollowupService, type FollowupService } from './services/followup.service';
 import { makeOverviewService, type OverviewService } from './services/overview.service';
@@ -70,6 +74,7 @@ export interface Repositories {
   users: IUserRepository;
   students: IStudentRepository;
   leaders: ILeaderRepository;
+  prayers: IPrayerRepository;
   connections: IConnectionRepository;
   serviceSessions: IServiceSessionRepository;
   serviceAttendance: IServiceAttendanceRepository;
@@ -86,6 +91,7 @@ export interface Services {
   auth: AuthService;
   student: StudentService;
   leader: LeaderService;
+  prayer: PrayerService;
   connection: ConnectionService;
   followup: FollowupService;
   overview: OverviewService;
@@ -124,6 +130,9 @@ export async function buildContainer(): Promise<Container> {
   const leaders: ILeaderRepository = useSupabase
     ? new SupabaseLeaderRepository(sql)
     : new InMemoryLeaderRepository(useJson ? makeJson('leaders.json') : undefined);
+  const prayers: IPrayerRepository = useSupabase
+    ? new SupabasePrayerRepository(sql)
+    : new InMemoryPrayerRepository(useJson ? makeJson('prayers.json') : undefined);
   const connections: IConnectionRepository = useSupabase
     ? new SupabaseConnectionRepository(sql)
     : new InMemoryConnectionRepository(useJson ? makeJson('connections.json') : undefined);
@@ -164,6 +173,7 @@ export async function buildContainer(): Promise<Container> {
   if (useSupabase) {
     dedupeReads(students, 'students', ['findAll']);
     dedupeReads(leaders, 'leaders', ['findActive']);
+    dedupeReads(prayers, 'prayers', ['findAll']);
     dedupeReads(connections, 'connections', ['findAll']);
     dedupeReads(serviceSessions, 'serviceSessions', ['findAll']);
     dedupeReads(lifegroups, 'lifegroups', ['findAll']);
@@ -173,7 +183,7 @@ export async function buildContainer(): Promise<Container> {
   }
 
   const repos: Repositories = {
-    users, students, leaders, connections,
+    users, students, leaders, prayers, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
     imports, settings, audit, connectionAudits,
@@ -181,7 +191,7 @@ export async function buildContainer(): Promise<Container> {
 
   // Init all repos
   await Promise.all([
-    users.init(), students.init(), leaders.init(), connections.init(),
+    users.init(), students.init(), leaders.init(), prayers.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
     imports.init(), settings.init(), audit.init(), connectionAudits.init(),
@@ -191,6 +201,7 @@ export async function buildContainer(): Promise<Container> {
   const auth = makeAuthService(users);
   const student = makeStudentService(students, settings, connections);
   const leader = makeLeaderService(leaders);
+  const prayer = makePrayerService(prayers, students, settings);
   const connection = makeConnectionService(connections, students, leaders, settings);
   const followup = makeFollowupService(
     connections, students, leaders,
@@ -213,7 +224,7 @@ export async function buildContainer(): Promise<Container> {
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
 
   const services: Services = {
-    auth, student, leader, connection, followup, overview, atRisk, trends, lifegroupStats,
+    auth, student, leader, prayer, connection, followup, overview, atRisk, trends, lifegroupStats,
     importService, settings: settingsSvc, account, admin, connectionAudit,
     users,
   };
