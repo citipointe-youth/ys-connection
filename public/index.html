@@ -585,6 +585,23 @@ function _positionNprog() {
 }
 window.addEventListener('resize', _positionNprog);
 
+// iOS Safari keyboard-dismiss gap fix (2026-07-18): after typing in a text field
+// (e.g. the Add Prayer modal) and dismissing the keyboard, WebKit can leave the
+// fixed header/bottom nav pinned to a stale, keyboard-open viewport height,
+// exposing a strip of body background below the bottom nav until something forces
+// a relayout. A same-position scroll nudge on the next frame is enough to make
+// WebKit recompute fixed-element layout against the restored viewport. Wired to
+// both visualViewport.resize (fires reliably on keyboard show/hide) and a
+// delegated focusout as a fallback, since the exact trigger is inconsistent
+// across iOS Safari versions.
+function _fixViewportGap() {
+  requestAnimationFrame(() => window.scrollTo(0, window.scrollY));
+}
+if (window.visualViewport) window.visualViewport.addEventListener('resize', _fixViewportGap);
+document.addEventListener('focusout', e => {
+  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(_fixViewportGap, 60);
+});
+
 // ============================================================
 // API ADAPTER
 // ============================================================
