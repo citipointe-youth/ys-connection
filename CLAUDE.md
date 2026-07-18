@@ -1951,6 +1951,31 @@ the server default apply) and removing `_myLeaderLabel()`, which had no other ca
 `ysc-v46` → `ysc-v47`. Existing prayers created before this fix keep whatever label they were
 given — not backfilled, wasn't asked for.
 
+## Phone field encryption at rest (students.mobile / students.parent_phone) — implemented 2026-07-18
+
+Both fields are encrypted at rest with AES-256-GCM (`src/utils/field-crypto.ts`, ported from
+the Youth Camp Platform's field-encryption feature) so raw DB access (incl. Supabase staff/SQL
+editor) reveals only ciphertext, while every service/export still sees plaintext. Design:
+`docs/superpowers/specs/2026-07-18-phone-field-encryption-design.md`; plan:
+`docs/superpowers/plans/2026-07-18-phone-field-encryption.md`.
+
+- **Scope + seam:** the codec is called ONLY inside `supabase.students.ts` (`toStudent`/
+  `save`/`saveMany`, via `encryptPhoneFields()`). Services, `memory`/`json` persistence, and the
+  SPA are all unaware encryption exists. No schema migration — both fields are plain `text`
+  columns, encrypted in place (unlike the camp platform, which needed new `*_enc` columns for
+  its array/jsonb fields).
+- **Envelope:** `v1.<keyId>.<iv>.<tag>.<ct>` — the `v1.` prefix lets reads tolerate a table
+  that's any mix of ciphertext + not-yet-migrated plaintext, and makes the backfill idempotent.
+  Bound via AAD to `"students:<column>:<id>"`.
+- **Key:** `FIELD_ENCRYPTION_KEY` (base64, 32 bytes) in Vercel prod env — a key distinct from the
+  camp platform's. Losing it = losing the two phone fields permanently (the security property,
+  not a bug).
+- **Rollout:** deploy the encryption-aware code → run `scripts/backfill-field-encryption.ts`
+  against prod (idempotent/resumable) → verify no non-null value lacks the `v1.` prefix →
+  `VACUUM FULL students;` to physically purge leftover plaintext row versions from disk.
+- **Manual prod SQL can no longer read/write these two columns** — values are opaque ciphertext
+  after the backfill runs. Edits must go through the app.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,
