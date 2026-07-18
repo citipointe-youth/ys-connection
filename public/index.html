@@ -3424,17 +3424,6 @@ async function _markPrayerAnswered(id) {
   renderPrayers();
 }
 
-// The self-identified leader's display name for "Added by", falling back to the
-// account's own display name — mirrors the callPhone/SMS-template pattern: there's
-// no server-verified Actor→leader binding, so this is a client-side convenience.
-function _myLeaderLabel() {
-  const id = getMyLeaderId();
-  if (id) {
-    const l = (Cache.getStale('/leaders') || []).find(x => x.id === id);
-    if (l) return l.fullName;
-  }
-  return (S.user && S.user.displayName) || '';
-}
 
 // studentId: pre-select + lock the "for" student (e.g. from a student profile).
 // prayerId: edit mode — loads the prayer from the last-rendered list (_prayerCache).
@@ -3544,7 +3533,7 @@ async function submitPrayer(prayerId) {
   if (!prayerId && sid === undefined) { toast('Choose a student, or mark it general'); return; }
   try {
     if (prayerId) await API.patch('/prayers/' + prayerId, { text });
-    else await API.post('/prayers', { studentId: sid, text, createdByLabel: _myLeaderLabel() });
+    else await API.post('/prayers', { studentId: sid, text });
   } catch (e) { toast(e.message || 'Could not save'); return; }
   Cache.del('/prayers');
   closeModal(); renderPrayers();
