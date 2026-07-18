@@ -4528,6 +4528,59 @@ function showImportReport(report) {
   modal(h);
 }
 
+async function exportPrayersCSV() {
+  try {
+    const rows = await API.get('/prayers/export'); // [{firstName,lastName,grade,gender,prayer,status,answerNote,addedBy,date}]
+    const header = ['First Name', 'Last Name', 'Grade', 'Gender', 'Prayer', 'Status', 'Answer Note', 'Added By', 'Date'];
+    const aoa = [header, ...rows.map(r => [r.firstName, r.lastName, r.grade ?? '', r.gender, r.prayer, r.status, r.answerNote, r.addedBy, r.date])];
+    _downloadText('prayers.csv', rowsToCsv(aoa));
+    return true;
+  } catch (e) { toast('Export failed: ' + e.message); return false; }
+}
+function handlePrayerImportFile(input) { const f = input.files[0]; if (f) processPrayerImport(f); }
+function processPrayerImport(file) {
+  const statusEl = document.getElementById('prayer-import-status');
+  const isExcel = /\.xlsx?$/i.test(file.name);
+  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Parsing ${isExcel ? 'Excel' : 'CSV'}…</div>`;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    let rows;
+    try {
+      rows = isExcel ? parseAllocationCSV(rowsToCsv(await readXlsx(e.target.result))) : parseAllocationCSV(e.target.result);
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+    if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
+    statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
+    try {
+      const report = await API.post('/prayers/import', { rows }, 90000);
+      Cache.del('/prayers');
+      statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Imported: ${report.added} added, ${report.skippedDuplicates} duplicate${report.skippedDuplicates === 1 ? '' : 's'} skipped</div>`;
+      showPrayerImportReport(report);
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+  };
+  if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
+}
+// Result modal — counts plus collapsible lists of anything not fully applied (mirrors showAllocationReport).
+function showPrayerImportReport(r) {
+  const sec = (id, title, items, render) => {
+    if (!items.length) return '';
+    return `<div class="card drop" id="${id}" style="margin-bottom:8px;padding:11px">
+      <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${id}')">
+        <span class="drop-chev" style="font-size:12px;color:var(--ink-faint);font-weight:800">›</span>
+        <div style="flex:1;font-size:13px;font-weight:700">${title} (${items.length})</div>
+      </div>
+      <div class="drop-body"><div style="font-size:12px;color:var(--ink-mid);padding-top:6px">${items.map(render).join('')}</div></div>
+    </div>`;
+  };
+  let h = `<div class="mo-title" style="font-size:16px;font-weight:800;margin-bottom:8px">Prayer import result</div>`;
+  h += `<div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">${r.rowsInFile} rows in file · <b>${r.added}</b> added · ${r.skippedDuplicates} duplicate${r.skippedDuplicates === 1 ? '' : 's'} skipped</div>`;
+  h += sec('pr-un', 'Unmatched students', r.unmatched, x => `<div>Row ${x.row}: ${esc(x.name)}</div>`);
+  h += sec('pr-am', 'Ambiguous students', r.ambiguous, x => `<div>Row ${x.row}: ${esc(x.name)}</div>`);
+  const clean = !r.unmatched.length && !r.ambiguous.length;
+  if (clean) h += `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Every row matched cleanly.</div>`;
+  h += `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="closeModal()">Done</button>`;
+  modal(h);
+}
+
 function handleUnifiedDrop(e) { const f = e.dataTransfer.files[0]; if (f) detectAndPreview(f); }
 function handleUnifiedFile(input) { const f = input.files[0]; if (f) detectAndPreview(f); }
 
@@ -4906,6 +4959,15 @@ async function renderAdminView(settings, users, history) {
       </label>
       <div id="alloc-import-status" style="margin-top:8px"></div>
     </div>`;
+    body += `<div class="card">
+      <div class="sh" style="margin-top:0">Prayers</div>
+      <div class="help-text" style="margin-bottom:10px">Export every prayer request as a CSV (one row per prayer), edit it, then re-import. Import matches students by name and reports anything it can't match.</div>
+      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportPrayersCSV()">Export Prayers</button>
+      <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Prayers
+        <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
+      </label>
+      <div id="prayer-import-status" style="margin-top:8px"></div>
+    </div>`;
     // Change 12: Visual separation of destructive actions
     body += `<div class="card" style="display:flex;flex-direction:column;gap:10px">
       <div class="destructive-section">
@@ -4945,8 +5007,8 @@ async function renderAdminView(settings, users, history) {
 // State is deliberately in-memory only (session-based) — re-opening this tab
 // always starts a fresh run; there's no reliable way to know from the server
 // whether a past export was actually saved somewhere by the admin.
-let _wiz = { step1Done: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
-function _wizReset() { _wiz = { step1Done: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
+let _wiz = { step1Done: false, prayersExportDone: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
+function _wizReset() { _wiz = { step1Done: false, prayersExportDone: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
 function renderWizard() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 
 function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
@@ -4973,37 +5035,48 @@ function renderNewYearWizard() {
   </div>`;
 
   b += _wizStepCard(1, 'Export Allocations',
-    "Downloads a CSV of every student–leader allocation (you'll re-import it in step 5).",
+    "Downloads a CSV of every student–leader allocation (you'll re-import it in step 6).",
     `<button class="btn btn-secondary btn-full" onclick="wizStep1()">Export Allocations</button>`,
     _wiz.step1Done, false);
 
-  b += _wizStepCard(2, 'Export Configuration Audit Data',
-    "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 3. You'll re-load it in step 6, once the roster is rebuilt.",
-    caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
-    step2Satisfied, !_wiz.step1Done);
+  // A Full Reset (step 4) cascade-deletes prayers along with the students they're
+  // attached to, so they must be exported before it — same reasoning as allocations.
+  b += _wizStepCard(2, 'Export Prayers',
+    "Downloads a CSV of every prayer request (you'll re-import it in step 6, alongside allocations).",
+    `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>`,
+    _wiz.prayersExportDone, !_wiz.step1Done);
 
-  b += _wizStepCard(3, 'Full Reset',
-    'Permanently deletes all students, leaders, connections, attendance and the Connection Audit. Accounts are kept. This cannot be undone.',
-    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance and the Connection Audit. Accounts are kept. This cannot be undone.',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
+  b += _wizStepCard(3, 'Export Configuration Audit Data',
+    "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 4. You'll re-load it in step 7, once the roster is rebuilt.",
+    caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
+    step2Satisfied, !_wiz.prayersExportDone);
+
+  b += _wizStepCard(4, 'Full Reset',
+    'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
+    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !step2Satisfied);
 
-  b += _wizStepCard(4, "Re-import this year's attendance",
-    'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 5 can match allocations back on.',
+  b += _wizStepCard(5, "Re-import this year's attendance",
+    'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 6 can match allocations back on.',
     _wiz.step4Ack
       ? `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Confirmed</div>`
       : `<button class="btn btn-secondary btn-full" onclick="wizStep4Ack()">I've re-imported this year's attendance</button>`,
     _wiz.step4Ack, !_wiz.step3Done);
 
-  b += _wizStepCard(5, 'Import Allocations',
-    "Re-import the allocations CSV from step 1 to restore every student–leader pairing onto the freshly imported roster.",
+  b += _wizStepCard(6, 'Import Allocations & Prayers',
+    "Re-import the allocations CSV from step 1 to restore every student–leader pairing, and the prayers CSV from step 2 to restore prayer history, onto the freshly imported roster.",
     `<label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="wizHandleAllocationImportFile(this)">
     </label>
-    <div id="alloc-import-status" style="margin-top:8px"></div>`,
+    <div id="alloc-import-status" style="margin-top:8px"></div>
+    <label class="btn btn-secondary btn-full" style="cursor:pointer;margin-top:8px">Import Prayers
+      <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
+    </label>
+    <div id="prayer-import-status" style="margin-top:8px"></div>`,
     _wiz.step5Done, !_wiz.step4Ack);
 
-  b += _wizStepCard(6, 'Re-import Configuration Audit Data',
-    "Re-load the Connection Audit backup from step 2 so past years are available again for comparison.",
+  b += _wizStepCard(7, 'Re-import Configuration Audit Data',
+    "Re-load the Connection Audit backup from step 3 so past years are available again for comparison.",
     caOn ? `<label class="btn btn-secondary btn-full" style="cursor:pointer">Re-import Configuration Audit Data
       <input type="file" accept=".json" style="display:none" onchange="wizHandleAuditImportFile(this)">
     </label>
@@ -5017,6 +5090,13 @@ async function wizStep1() {
   const exportOk = await exportAllocationsCSV();
   if (!exportOk) return;
   _wiz.step1Done = true;
+  renderWizard();
+}
+
+async function wizStepPrayersExport() {
+  const exportOk = await exportPrayersCSV();
+  if (!exportOk) return;
+  _wiz.prayersExportDone = true;
   renderWizard();
 }
 
