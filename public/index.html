@@ -179,7 +179,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .prow .pl1 b{font-weight:800;color:var(--ink)}
 .prow .pl2{font-size:10.5px;color:var(--ink-faint);line-height:1.2;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .pgo{flex-shrink:0;width:26px;height:26px;border-radius:8px;border:1px solid rgba(16,185,129,.35);background:var(--success-light);color:var(--success);display:grid;place-items:center}
-.prow .pans{flex-shrink:0;font-size:9.5px;font-weight:800;color:#15803d;background:var(--success-light);border-radius:20px;padding:3px 8px;text-transform:uppercase;letter-spacing:.03em}
+.prow .pans{flex-shrink:0;display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:800;color:#15803d;background:var(--success-light);border-radius:20px;padding:3px 8px;text-transform:uppercase;letter-spacing:.03em;border:none;cursor:pointer;font-family:inherit}
 .pfab{position:fixed;right:16px;bottom:76px;z-index:90;background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:11px 16px;border-radius:24px;box-shadow:0 8px 20px rgba(26,26,242,.4);display:flex;align-items:center;gap:6px;border:none;cursor:pointer}
 
 /* Chips */
@@ -3158,6 +3158,16 @@ async function renderMyStudents() {
     const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
     if (msLeaderObj) body += _smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl');
 
+    // Best-effort — a per-student prayer summary + quick-add is a nice-to-have,
+    // not core to the screen, so a failed fetch just means no summary line shows.
+    let prayers = [];
+    try { prayers = await API.get('/prayers'); } catch {}
+    const prayersByStudent = {};
+    for (const p of prayers) {
+      if (!p.student) continue;
+      (prayersByStudent[p.student.id] ||= []).push(p);
+    }
+
     body += `<div class="sh">My Students (${students.length})</div>`;
     if (!students.length) {
       body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students connected yet.</div>';
@@ -3166,6 +3176,12 @@ async function renderMyStudents() {
         // Prefer the birthday carried on the summary row; fall back to the scoped
         // /students lookup for any older cached payload.
         const bd = fmtBday(s.dateOfBirth ?? bdayOf[s.id]);
+        const sp = prayersByStudent[s.id] || [];
+        const openCount = sp.filter(p => p.status === 'open').length;
+        const answeredCount = sp.filter(p => p.status === 'answered').length;
+        const prayerBits = [openCount ? `${openCount} open` : '', answeredCount ? `${answeredCount} answered` : ''].filter(Boolean).join(' · ');
+        const prayerSummary = prayerBits
+          ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid);display:flex;align-items:center;gap:4px">${icS('pray')} ${prayerBits}</div>` : '';
         body += `<div class="li" style="align-items:flex-start">
           <div class="li-body">
             <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
@@ -3175,6 +3191,10 @@ async function renderMyStudents() {
             ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
             ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
             ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : ''}</div>` : ''}
+            ${prayerSummary}
+          </div>
+          <div class="li-right">
+            <button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>
           </div>
         </div>`;
       }
@@ -3333,11 +3353,11 @@ async function renderPrayers() {
 }
 function _prayerRow(p) {
   const answered = p.status === 'answered';
-  const who = `${p.student.firstName} ${p.student.lastName || ''}`.trim();
-  const yr = p.student.grade != null ? `Yr${p.student.grade}` : '';
+  const who = p.student ? `${p.student.firstName} ${p.student.lastName || ''}`.trim() : 'General';
+  const yr = p.student && p.student.grade != null ? `Yr${p.student.grade}` : '';
   const meta = [yr, p.createdByLabel, _relTime(p.createdAt)].filter(Boolean).join(' · ');
   const right = answered
-    ? `<span class="pans">${icS('check')} Ans</span>`
+    ? `<button class="pans" onclick="event.stopPropagation();_markPrayerOpen('${p.id}')" aria-label="Move back to open" title="Move back to open"><svg class="ic-xs" viewBox="0 0 24 24">${IC['check']}</svg> Ans</button>`
     : `<button class="pgo" onclick="event.stopPropagation();_markPrayerAnswered('${p.id}')" aria-label="Mark answered">${icS('check')}</button>`;
   return `<div class="prow ${answered ? 'answered' : ''}" onclick="openPrayerModal(null,'${p.id}')">
     <span class="pdot"></span>
@@ -3365,7 +3385,7 @@ function _prayersHtml(list) {
         </div>
         <div class="drop-body"><div class="plist">${archived.map(_prayerRow).join('')}</div></div>
       </div>` : '')
-    : `<div class="empty">${icEmpty('pray')}<div class="empty-title">No prayer requests yet</div><div class="empty-sub">Tap "Add Prayer" to add one against a student.</div></div>`;
+    : `<div class="empty">${icEmpty('pray')}<div class="empty-title">No prayer requests yet</div><div class="empty-sub">Tap "Add Prayer" to add one against a student, or mark it general.</div></div>`;
   return `<div class="ph"><div class="ph-title">Prayers</div><div class="ph-sub">Shared across everyone you lead</div></div>
     ${body}
     <button class="pfab" onclick="openPrayerModal()">${icS('plus')} Add Prayer</button>`;
@@ -3390,21 +3410,37 @@ function _myLeaderLabel() {
 
 // studentId: pre-select + lock the "for" student (e.g. from a student profile).
 // prayerId: edit mode — loads the prayer from the last-rendered list (_prayerCache).
+//
+// window._prayerPickStudentId tri-state: undefined = nothing chosen yet (blocks
+// submit), a student id = that student, null = explicitly "general" (no student).
 function openPrayerModal(studentId, prayerId) {
   const editing = !!prayerId;
   const existing = editing ? (_prayerCache || []).find(p => p.id === prayerId) : null;
   if (editing && !existing) { toast('Prayer not found'); return; }
-  const sid = studentId || (existing && existing.studentId) || null;
+  const sid = studentId || (existing ? existing.studentId : undefined);
   window._prayerPickStudentId = sid;
-  const lockedStudent = existing
-    ? existing.student
-    : (sid ? (Cache.getStale('/students') || []).find(s => s.id === sid) : null);
+  const lockedStudent = !editing && sid
+    ? (Cache.getStale('/students') || []).find(s => s.id === sid)
+    : (existing ? existing.student : null);
+  const isGeneral = editing && existing.studentId == null;
   const lockedName = lockedStudent ? `${lockedStudent.firstName} ${lockedStudent.lastName || ''}`.trim() : '';
 
-  const forHtml = lockedStudent
-    ? `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper)">${esc(lockedName)}${lockedStudent.grade != null ? ` <span style="font-weight:400;color:var(--ink-faint)">· Yr${lockedStudent.grade}</span>` : ''}</div>`
-    : `<input class="fi" id="pr-student-q" placeholder="Search student by name…" oninput="_prayerFilterStudents()" autocomplete="off">
-       <div id="pr-student-results" style="margin-top:6px"></div>`;
+  let forHtml;
+  if (lockedStudent) {
+    forHtml = `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper)">${esc(lockedName)}${lockedStudent.grade != null ? ` <span style="font-weight:400;color:var(--ink-faint)">· Yr${lockedStudent.grade}</span>` : ''}</div>`;
+  } else if (isGeneral) {
+    forHtml = `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper);color:var(--ink-mid)">General — no specific student</div>`;
+  } else {
+    forHtml = `<div id="pr-for-picker">
+        <input class="fi" id="pr-student-q" placeholder="Search student by name…" oninput="_prayerFilterStudents()" autocomplete="off">
+        <div id="pr-student-results" style="margin-top:6px"></div>
+        <button type="button" onclick="_prayerUseGeneral()" style="background:none;border:none;color:var(--accent);font-size:12.5px;font-weight:700;padding:8px 0 0;cursor:pointer">Not about a specific student — mark as general</button>
+      </div>
+      <div id="pr-for-general" style="display:none;padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper);align-items:center;justify-content:space-between;gap:8px">
+        <span style="color:var(--ink-mid)">General — no specific student</span>
+        <button type="button" onclick="_prayerUsePicker()" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer">Change</button>
+      </div>`;
+  }
 
   const deleteBtn = editing
     ? `<button class="btn btn-secondary btn-sm" id="pr-del-btn" style="color:var(--danger)" onclick="_deletePrayerConfirm('${prayerId}')">Delete</button>`
@@ -3423,7 +3459,7 @@ function openPrayerModal(studentId, prayerId) {
       ${archiveBtn}
       <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="submitPrayer('${prayerId || ''}')">${editing ? 'Save' : 'Add Prayer'}</button>
     </div>`);
-  if (!lockedStudent) setTimeout(() => document.getElementById('pr-student-q')?.focus(), 60);
+  if (!lockedStudent && !isGeneral) setTimeout(() => document.getElementById('pr-student-q')?.focus(), 60);
 }
 function _prayerFilterStudents() {
   const q = (document.getElementById('pr-student-q') || {}).value?.trim().toLowerCase() || '';
@@ -3447,11 +3483,29 @@ function _prayerPickStudent(id) {
   const el = document.getElementById('pr-student-results');
   if (el) el.innerHTML = '';
 }
+// "Not about a specific student" toggle — only reachable when the student picker
+// (not a locked chip) is showing, i.e. adding a brand new, not-yet-assigned prayer.
+function _prayerUseGeneral() {
+  window._prayerPickStudentId = null;
+  const picker = document.getElementById('pr-for-picker');
+  const gen = document.getElementById('pr-for-general');
+  if (picker) picker.style.display = 'none';
+  if (gen) gen.style.display = 'flex';
+}
+function _prayerUsePicker() {
+  window._prayerPickStudentId = undefined;
+  const picker = document.getElementById('pr-for-picker');
+  const gen = document.getElementById('pr-for-general');
+  if (gen) gen.style.display = 'none';
+  if (picker) picker.style.display = 'block';
+  const q = document.getElementById('pr-student-q');
+  if (q) { q.value = ''; q.focus(); }
+}
 async function submitPrayer(prayerId) {
   const text = (document.getElementById('pr-text') || {}).value?.trim();
   const sid = window._prayerPickStudentId;
   if (!text) { toast('Enter a prayer request'); return; }
-  if (!prayerId && !sid) { toast('Choose a student'); return; }
+  if (!prayerId && sid === undefined) { toast('Choose a student, or mark it general'); return; }
   try {
     if (prayerId) await API.patch('/prayers/' + prayerId, { text });
     else await API.post('/prayers', { studentId: sid, text, createdByLabel: _myLeaderLabel() });
@@ -3474,6 +3528,11 @@ async function _deletePrayer(id) {
   try { await API.del('/prayers/' + id); }
   catch (e) { toast(e.message || 'Could not delete'); return; }
   Cache.del('/prayers'); closeModal(); renderPrayers();
+}
+async function _markPrayerOpen(id) {
+  await API.patch('/prayers/' + id + '/status', { status: 'open' });
+  Cache.del('/prayers');
+  renderPrayers();
 }
 
 // Sections: Rising / Mixed (one stream up, one down) / Declining / Stopped (neither this term).
