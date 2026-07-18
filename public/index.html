@@ -3376,6 +3376,106 @@ async function _markPrayerAnswered(id) {
   renderPrayers();
 }
 
+// The self-identified leader's display name for "Added by", falling back to the
+// account's own display name — mirrors the callPhone/SMS-template pattern: there's
+// no server-verified Actor→leader binding, so this is a client-side convenience.
+function _myLeaderLabel() {
+  const id = getMyLeaderId();
+  if (id) {
+    const l = (Cache.getStale('/leaders') || []).find(x => x.id === id);
+    if (l) return l.fullName;
+  }
+  return (S.user && S.user.displayName) || '';
+}
+
+// studentId: pre-select + lock the "for" student (e.g. from a student profile).
+// prayerId: edit mode — loads the prayer from the last-rendered list (_prayerCache).
+function openPrayerModal(studentId, prayerId) {
+  const editing = !!prayerId;
+  const existing = editing ? (_prayerCache || []).find(p => p.id === prayerId) : null;
+  if (editing && !existing) { toast('Prayer not found'); return; }
+  const sid = studentId || (existing && existing.studentId) || null;
+  window._prayerPickStudentId = sid;
+  const lockedStudent = existing
+    ? existing.student
+    : (sid ? (Cache.getStale('/students') || []).find(s => s.id === sid) : null);
+  const lockedName = lockedStudent ? `${lockedStudent.firstName} ${lockedStudent.lastName || ''}`.trim() : '';
+
+  const forHtml = lockedStudent
+    ? `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper)">${esc(lockedName)}${lockedStudent.grade != null ? ` <span style="font-weight:400;color:var(--ink-faint)">· Yr${lockedStudent.grade}</span>` : ''}</div>`
+    : `<input class="fi" id="pr-student-q" placeholder="Search student by name…" oninput="_prayerFilterStudents()" autocomplete="off">
+       <div id="pr-student-results" style="margin-top:6px"></div>`;
+
+  const deleteBtn = editing
+    ? `<button class="btn btn-secondary btn-sm" id="pr-del-btn" style="color:var(--danger)" onclick="_deletePrayerConfirm('${prayerId}')">Delete</button>`
+    : '';
+  const archiveBtn = editing && existing.status !== 'archived'
+    ? `<button class="btn btn-secondary btn-sm" onclick="_archivePrayer('${prayerId}')">Archive</button>`
+    : '';
+
+  modal(`
+    <div class="mo-title">${editing ? 'Edit Prayer' : 'Add Prayer'}</div>
+    <div class="fg"><label class="fl">For</label>${forHtml}</div>
+    <div class="fg"><label class="fl">Request</label><textarea class="ft" id="pr-text" rows="3" placeholder="What should we be praying for?">${esc(existing ? existing.text : '')}</textarea></div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button>
+      ${deleteBtn}
+      ${archiveBtn}
+      <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="submitPrayer('${prayerId || ''}')">${editing ? 'Save' : 'Add Prayer'}</button>
+    </div>`);
+  if (!lockedStudent) setTimeout(() => document.getElementById('pr-student-q')?.focus(), 60);
+}
+function _prayerFilterStudents() {
+  const q = (document.getElementById('pr-student-q') || {}).value?.trim().toLowerCase() || '';
+  const el = document.getElementById('pr-student-results');
+  if (!el) return;
+  if (!q) { el.innerHTML = ''; return; }
+  const matches = (Cache.getStale('/students') || [])
+    .filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q))
+    .slice(0, 8);
+  el.innerHTML = matches.length
+    ? matches.map(s => `<button type="button" onclick="_prayerPickStudent('${s.id}')" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:var(--paper);border:1px solid var(--paper-dark);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:14px">
+        <span>${esc(s.firstName)} ${esc(s.lastName || '')}</span><span style="color:var(--ink-faint)">Yr${s.grade != null ? s.grade : '—'}</span>
+      </button>`).join('')
+    : `<div style="padding:8px;color:var(--ink-faint);font-size:13px">No matching student</div>`;
+}
+function _prayerPickStudent(id) {
+  window._prayerPickStudentId = id;
+  const s = (Cache.getStale('/students') || []).find(x => x.id === id);
+  const q = document.getElementById('pr-student-q');
+  if (q && s) q.value = `${s.firstName} ${s.lastName || ''}`.trim();
+  const el = document.getElementById('pr-student-results');
+  if (el) el.innerHTML = '';
+}
+async function submitPrayer(prayerId) {
+  const text = (document.getElementById('pr-text') || {}).value?.trim();
+  const sid = window._prayerPickStudentId;
+  if (!text) { toast('Enter a prayer request'); return; }
+  if (!prayerId && !sid) { toast('Choose a student'); return; }
+  try {
+    if (prayerId) await API.patch('/prayers/' + prayerId, { text });
+    else await API.post('/prayers', { studentId: sid, text, createdByLabel: _myLeaderLabel() });
+  } catch (e) { toast(e.message || 'Could not save'); return; }
+  Cache.del('/prayers');
+  closeModal(); renderPrayers();
+}
+// Two-tap confirm (no native confirm()/window dialogs — matches the rest of the app).
+function _deletePrayerConfirm(id) {
+  const btn = document.getElementById('pr-del-btn');
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Confirm Delete?'; return; }
+  _deletePrayer(id);
+}
+async function _archivePrayer(id) {
+  try { await API.patch('/prayers/' + id + '/status', { status: 'archived' }); }
+  catch (e) { toast(e.message || 'Could not archive'); return; }
+  Cache.del('/prayers'); closeModal(); renderPrayers();
+}
+async function _deletePrayer(id) {
+  try { await API.del('/prayers/' + id); }
+  catch (e) { toast(e.message || 'Could not delete'); return; }
+  Cache.del('/prayers'); closeModal(); renderPrayers();
+}
+
 // Sections: Rising / Mixed (one stream up, one down) / Declining / Stopped (neither this term).
 const AR_SEC = [
   ['rising', 'Rising', '#065f46', 'arru'],
@@ -3745,6 +3845,7 @@ async function showStudentDetail(id) {
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-secondary btn-sm" onclick="openPrayerModal('${s.id}')">${icS('plus')} Prayer</button>
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
   if (canEdit) sdLeaderSearch(id);
