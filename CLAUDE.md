@@ -1779,6 +1779,48 @@ subset.
   reading it.
 - `public/sw.js` cache bumped `ysc-v41` → `ysc-v42` (SPA JS changed).
 
+### Prayers feature + a real deployment incident: the custom domain does NOT auto-alias (2026-07-18)
+
+Shipped a `Prayers` module (`feat/prayers` → `master`): per-student or "general" (no student)
+prayer requests, admin/director CSV export/import, a New Year Refresh wizard step, a nav tab,
+and a per-student summary on My Connections. New table `prayer_requests` (migrations
+`0005`/`0006`; `student_id` nullable — general prayers have none), `PrayerService`/
+`IPrayerRepository`/Supabase impl, `prayer:read`/`prayer:write` RBAC actions (student-resolved
+scoping, same pattern as connections). SW cache `ysc-v42` → `ysc-v44`.
+
+**Deployment incident + the real root cause (not a code bug).** Earlier the same day, pushing
+the unrelated `3a7bbc6` login-form fix to `master` appeared to break production — every route
+failed with a platform-level `EnvFileReadError` loading env vars, before app code even ran. A
+session rolled back to the prior deployment via `vercel rollback` and it looked resolved. But
+re-investigating to re-ship that fix surfaced the ACTUAL mechanism, confirmed by direct testing:
+
+- **This project's custom production domain (`ys-connection.vercel.app`) does NOT
+  automatically re-alias to the newest deployment** — not on `git push` to `master`, and not
+  on a manual `vercel deploy --prod`. Both successfully create a new `Ready` deployment
+  targeted at `production`, but the custom domain keeps pointing at whatever it was last
+  EXPLICITLY aliased to (`vercel alias set <new-deployment-url> ys-connection.vercel.app`).
+  Only the default `<project>-<team>.vercel.app` alias updates automatically. This is a
+  project/domain configuration quirk (most Vercel projects DO auto-promote all production
+  domains) — not something to "fix" in code, just something to always do as a manual step.
+- **So what actually happened**: the login-form deploy went out, someone ran the manual
+  alias step, and THAT promotion is what exposed users to the `EnvFileReadError` — a separate,
+  apparently one-off Vercel platform runtime glitch (build succeeded/`Ready`; the code in
+  `src/config/env.ts` only reads `process.env`, no file I/O, so nothing in this repo could throw
+  that error). Rolling back re-aliased to the prior deployment, which "fixed" it. Redeploying
+  the exact same commit later the same day (fresh build + fresh manual alias) worked fine — 200s
+  on `/`, `/auth/me`, `/manifest.json`, `/settings` all healthy, confirming it was transient.
+- **Practical takeaway for every future deploy to this project**: after `git push origin
+  master` (or `vercel deploy --prod`), don't assume the push alone updates
+  `ys-connection.vercel.app`. Verify with `vercel inspect ys-connection.vercel.app` (check the
+  `id` matches your new deployment) and if not, run `vercel alias set <new-deployment-url>
+  ys-connection.vercel.app` explicitly, then re-verify with a few `curl` health checks
+  (`/`, `/auth/me` should 401 not 500, `/settings` should return real JSON) before trusting it.
+- **Also learned**: `vercel inspect <deployment-id-or-url>` prints an "Aliases" section that
+  lists domains the deployment is *eligible* to hold (production-target + rollback-candidate
+  domains) — it does NOT reliably show which domain is *currently* live on it. Two different
+  deployments can both list the same alias there. To find the deployment TRULY live behind a
+  domain, `vercel inspect <the-domain-itself>` (not a `-xxxxx-` deployment URL) is authoritative.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,
