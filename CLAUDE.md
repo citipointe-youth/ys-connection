@@ -1820,6 +1820,33 @@ re-investigating to re-ship that fix surfaced the ACTUAL mechanism, confirmed by
   domains) — it does NOT reliably show which domain is *currently* live on it. Two different
   deployments can both list the same alias there. To find the deployment TRULY live behind a
   domain, `vercel inspect <the-domain-itself>` (not a `-xxxxx-` deployment URL) is authoritative.
+- **Confirmed again the same day**: every subsequent push to `master` (the docs commit above,
+  then the Prayers UI-polish commit below) each produced its own new deployment, and NEITHER
+  auto-aliased `ys-connection.vercel.app` either — this is a standing characteristic of this
+  project, not a one-off. `vercel alias set <new-deployment-url> ys-connection.vercel.app` is a
+  required manual step after every single deploy to this project, full stop.
+
+### Prayers UI polish (2026-07-18, same day as the feature shipped)
+
+User-requested tweaks to the just-shipped Prayers screen and the leader-identity picker on
+Home/My Students, deployed the same day:
+
+- **Add Prayer FAB raised ~1cm**: `.pfab`'s `bottom` `76px` → `114px` so it sits clear of the
+  bottom nav more comfortably.
+- **Add/Edit Prayer modal's "For" field**: the "Not about a specific student — mark as general"
+  sentence-styled link (and its "Change" counterpart) is gone, replaced by a small `Student` /
+  `General` tab pair above the student search box. Only shown for a brand-new, not-yet-locked
+  prayer (adding one from a student's own profile, or editing an existing prayer, still shows
+  the locked chip/general label with no toggle — unchanged). `_prayerUsePicker()`/
+  `_prayerUseGeneral()` now also swap the two tab buttons' active styling in addition to
+  toggling which body (search box vs. general label) is visible.
+- **Leader-identity "Not you?" control made an obvious button** on both screens it appears —
+  Home's Follow Up card (pre-existing, was `btn-ghost btn-sm` at a tiny `11px`, read as a faint
+  text link) and a new equivalent added to My Students (didn't exist before; sits next to the "I
+  am…" label once a leader is chosen, doing the same `setMyLeaderId(null)` reset). Both now use
+  `btn-secondary btn-sm`, the same visible-button style used elsewhere in the app (e.g. the
+  Cancel button in every modal).
+- SW cache `ysc-v44` → `ysc-v45`.
 
 ## Security notes
 

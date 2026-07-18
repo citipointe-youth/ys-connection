@@ -25,9 +25,16 @@
 >   confirmatory, not a substitute for typecheck/test, and the extension is occasionally flaky
 >   (screenshot timeouts that resolve on retry/new tab — not usually a real app hang; cross-check
 >   with `get_page_text` or `read_console_messages` before assuming a JS bug).
-> - GitHub (`citipointe-youth/connection-made-simple`) is linked to Vercel — **a push to
->   `master` IS the deploy.** No need to poll Vercel or curl prod to confirm it shipped; a
->   `curl .../health` right after push is a reasonable one-off sanity check, not a routine step.
+> - GitHub (`citipointe-youth/ys-connection`) is linked to Vercel and a push to `master`
+>   **does** trigger a new production-targeted build — but **the custom domain
+>   `ys-connection.vercel.app` does NOT auto-alias to it** (confirmed 2026-07-18; neither
+>   `git push` nor `vercel deploy --prod` re-points it — only the default
+>   `<project>-<team>.vercel.app` alias updates automatically). After every push: check
+>   `vercel inspect ys-connection.vercel.app` — if its `id` isn't your new deployment, run
+>   `vercel alias set <new-deployment-url> ys-connection.vercel.app` explicitly, then re-check
+>   with `curl` (`/`, `/auth/me` should 401 not 500, `/settings` should return real JSON). See
+>   CLAUDE.md's "Prayers feature + a real deployment incident" entry for the full story — this
+>   is what caused an apparently-broken deploy earlier the same day.
 > - Before any destructive local testing (Full Reset, admin/reset), use `PERSISTENCE=memory`
 >   locally — never test destructive admin actions against the real Supabase-backed prod data.
 
@@ -141,6 +148,28 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   grade-ascending first, then alphabetically within the grade (`unallocated.sort(...)` in
   `renderConnectView()`, grep the comment above it) — a no-op for grade logins since
   `connectable` there is already one grade.
+
+### Home / My Students — leader identity picker
+
+- **"Not you?" / leader-switch control is barely visible**: both Home's Follow Up card
+  (`renderHomeFollowup()`, `changeBtn`) and My Students (`renderMyStudents()`, `msNotYouBtn`)
+  render this as a `btn btn-secondary btn-sm` button — if it regresses to `btn-ghost`, it's back
+  to reading as a faint text link, the exact thing fixed 2026-07-18. My Students only shows the
+  button once `_msLeader` is already set — it sits next to the "I am…" label, not a hidden-state
+  swap like Home's (which replaces the whole picker with the follow-up card once chosen).
+
+### Prayers screen
+
+- **Add Prayer FAB overlaps the bottom nav / sits too low**: `.pfab` (CSS near the top of
+  `public/index.html`) — `bottom` was raised `76px` → `114px` on 2026-07-18 (~1cm) to clear the
+  nav more comfortably. If it drifts back down, that's the value to check first.
+- **Add/Edit Prayer modal's "For" field has no way to pick between a student and a general
+  (no-student) prayer, or it's back to a sentence-styled link**: `openPrayerModal()`'s `forHtml`
+  branch for a brand-new, not-yet-locked prayer renders a `Student`/`General` tab pair
+  (`#pr-for-tab-student`/`#pr-for-tab-general`), toggled by `_prayerUsePicker()`/
+  `_prayerUseGeneral()` — replaced the old "Not about a specific student — mark as general" link
+  2026-07-18. `window._prayerPickStudentId` stays tri-state (`undefined` = nothing chosen yet,
+  blocks submit; a student id; `null` = general) — don't collapse that back to a boolean.
 
 ### Student profile modal (`showStudentDetail`)
 
