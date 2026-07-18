@@ -8,7 +8,7 @@
   },
   "routes": [
     {
-      "src": "^/(auth|students|leaders|connections|overview|trends|lifegroups|at-risk|import|settings|admin|accounts|push|health|audits|batch)(/.*)?(\\?.*)?$",
+      "src": "^/(auth|students|leaders|connections|overview|trends|lifegroups|at-risk|import|settings|admin|accounts|push|health|audits|batch|prayers)(/.*)?(\\?.*)?$",
       "dest": "/api/index.ts"
     },
     {
