@@ -171,6 +171,20 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   2026-07-18. `window._prayerPickStudentId` stays tri-state (`undefined` = nothing chosen yet,
   blocks submit; a student id; `null` = general) — don't collapse that back to a boolean.
 
+### Mobile viewport / iOS Safari quirks
+
+- **White/grey gap appears below the bottom nav after using the keyboard** (e.g. typing in the
+  Add Prayer modal's text field, then dismissing the keyboard): WebKit can leave the fixed
+  header/bottom nav laid out against the stale keyboard-open viewport height instead of
+  relaying out against the restored one, exposing a strip of body background below `.bot-nav`.
+  Fixed 2026-07-18 with `_fixViewportGap()` (grep it, defined right after `_positionNprog`) — a
+  same-position `window.scrollTo(0, window.scrollY)` nudge on `visualViewport.resize` (plus a
+  delegated `focusout` fallback) forces WebKit to recompute fixed-element layout. If the gap
+  comes back, check those two listeners are still wired, or that a newer iOS Safari needs a
+  different nudge (this was tuned from a bug report + screenshot, not reproduced locally —
+  there's no iOS device in this environment, so if it recurs, get a fresh screenshot + iOS
+  version before assuming the same fix will cover it).
+
 ### Student profile modal (`showStudentDetail`)
 
 - **Leader Assignments (already-connected list) shows a scrollbar / gender+grade**: it

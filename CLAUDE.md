@@ -1848,6 +1848,17 @@ Home/My Students, deployed the same day:
   Cancel button in every modal).
 - SW cache `ysc-v44` → `ysc-v45`.
 
+### iOS keyboard-dismiss viewport gap fix (2026-07-18, same day)
+
+User-reported (with screenshot) from the Prayers screen: after typing in a text field and
+dismissing the keyboard, a strip of body background appeared below the fixed bottom nav —
+WebKit had left it laid out against the stale keyboard-open viewport height. Fixed with
+`_fixViewportGap()` (next to `_positionNprog()`): a same-position `scrollTo` nudge on
+`visualViewport.resize`, with a delegated `focusout` fallback, forces a relayout. Not
+reproduced locally (no iOS device in this environment) — tuned from the report alone, so
+re-verify against a fresh screenshot if it recurs rather than assuming this fully covers it.
+SW cache `ysc-v45` → `ysc-v46`. See debug.md's "Mobile viewport / iOS Safari quirks" entry.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,
