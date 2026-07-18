@@ -4,8 +4,26 @@ import type { IStudentRepository } from '../interfaces/entity-repositories';
 import type { Student } from '../../core/entities/student';
 import type { Quad } from '../../core/types/enums';
 import { chunk } from './bulk';
+import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
 
-function toStudent(row: Record<string, unknown>): Student {
+const aad = (col: string, id: string): string => `students:${col}:${id}`;
+
+/**
+ * Encrypts the two sensitive phone fields for a write. Shared by save() and
+ * saveMany() so both bind ciphertext to the student id the same way.
+ */
+export function encryptPhoneFields(s: Pick<Student, 'id' | 'mobile' | 'parentPhone'>): {
+  mobile: string | null;
+  parent_phone: string | null;
+} {
+  return {
+    mobile: maybeEncrypt(s.mobile, aad('mobile', s.id)),
+    parent_phone: maybeEncrypt(s.parentPhone, aad('parent_phone', s.id)),
+  };
+}
+
+export function toStudent(row: Record<string, unknown>): Student {
+  const id = row['id'] as string;
   const dob = row['date_of_birth'];
   let dateOfBirth: string | null = null;
   if (dob instanceof Date) {
@@ -15,14 +33,14 @@ function toStudent(row: Record<string, unknown>): Student {
   }
 
   return {
-    id: row['id'] as string,
+    id,
     firstName: row['first_name'] as string,
     lastName: row['last_name'] as string,
     gender: row['gender'] as Student['gender'],
     grade: (row['grade'] as number | null) ?? null,
     quad: (row['quad'] as Quad | null) ?? null,
-    mobile: (row['mobile'] as string | null) ?? null,
-    parentPhone: (row['parent_phone'] as string | null) ?? null,
+    mobile: maybeDecrypt(row['mobile'] as string | null, aad('mobile', id)),
+    parentPhone: maybeDecrypt(row['parent_phone'] as string | null, aad('parent_phone', id)),
     dateOfBirth,
     svcAttended: (row['svc_attended'] as number) ?? 0,
     svcTotal: (row['svc_total'] as number) ?? 0,
@@ -90,6 +108,7 @@ export class SupabaseStudentRepository implements IStudentRepository {
   }
 
   async save(student: Student): Promise<Student> {
+    const enc = encryptPhoneFields(student);
     const rows = await this.sql`
       insert into students (
         id, first_name, last_name, gender, grade, quad, mobile, parent_phone, date_of_birth,
@@ -104,8 +123,8 @@ export class SupabaseStudentRepository implements IStudentRepository {
         ${student.gender},
         ${student.grade ?? null},
         ${student.quad ?? null},
-        ${student.mobile ?? null},
-        ${student.parentPhone ?? null},
+        ${enc.mobile},
+        ${enc.parent_phone},
         ${student.dateOfBirth ?? null},
         ${student.svcAttended},
         ${student.svcTotal},
@@ -159,8 +178,7 @@ export class SupabaseStudentRepository implements IStudentRepository {
           gender:            s.gender,
           grade:             s.grade ?? null,
           quad:              s.quad ?? null,
-          mobile:            s.mobile ?? null,
-          parent_phone:      s.parentPhone ?? null,
+          ...encryptPhoneFields(s),
           date_of_birth:     s.dateOfBirth ?? null,
           svc_attended:      s.svcAttended,
           svc_total:         s.svcTotal,
