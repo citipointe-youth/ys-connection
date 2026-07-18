@@ -1939,6 +1939,18 @@ The admin tried to add a prayer and got a generic failure toast. Vercel runtime 
   Consider adding an automated check (e.g. a smoke-test script hitting every `SECTION_OF`/
   route-table entry) rather than relying on someone remembering this by hand a third time.
 
+### "Added by" on a prayer now records the account login, not the self-identified leader (2026-07-18, same day)
+
+Once the routing incident above was fixed, the user tried again and pointed out `submitPrayer()`
+was sending `createdByLabel: _myLeaderLabel()` — the per-device "I am…" leader picker's name
+(the same one Home/My Students use for follow-up scoping), not the actual authenticated
+account. `prayer.service.ts`'s `create()` already defaults `createdByLabel` to the actor's own
+`displayName` when the client omits it — the frontend just needed to stop overriding that with
+the leader identity. Fixed by dropping `createdByLabel` from the POST body entirely (letting
+the server default apply) and removing `_myLeaderLabel()`, which had no other callers. SW cache
+`ysc-v46` → `ysc-v47`. Existing prayers created before this fix keep whatever label they were
+given — not backfilled, wasn't asked for.
+
 ## Security notes
 
 - **XSS:** all user-supplied strings (names, usernames, notification title/message,
