@@ -3424,17 +3424,18 @@ async function renderPrayers() {
   }
   setApp(shell(_prayersHtml(list)));
 }
+// Student name + grade are shown once already, on the enclosing group's header
+// (_prayerGroupHtml) — a row itself only needs the creator + when, folded onto
+// the same line as the request text (one less row than the old name/meta split).
 function _prayerRow(p) {
   const answered = p.status === 'answered';
-  const who = p.student ? `${p.student.firstName} ${p.student.lastName || ''}`.trim() : 'General';
-  const yr = p.student && p.student.grade != null ? `Yr${p.student.grade}` : '';
-  const meta = [yr, p.createdByLabel, _relTime(p.createdAt)].filter(Boolean).join(' · ');
+  const meta = [p.createdByLabel, _relTime(p.createdAt)].filter(Boolean).join(' · ');
   const right = answered
     ? `<button class="pans" onclick="event.stopPropagation();_markPrayerOpen('${p.id}')" aria-label="Move back to open" title="Move back to open"><svg class="ic-xs" viewBox="0 0 24 24">${IC['check']}</svg> Ans</button>`
     : `<button class="pgo" onclick="event.stopPropagation();_markPrayerAnswered('${p.id}')" aria-label="Mark answered">${icS('check')}</button>`;
   return `<div class="prow ${answered ? 'answered' : ''}" onclick="openPrayerModal(null,'${p.id}')">
     <span class="pdot"></span>
-    <div class="pmain"><div class="pl1"><b>${esc(who)}</b> &mdash; ${esc(p.text)}</div><div class="pl2">${esc(meta)}</div></div>
+    <div class="pmain"><div class="pl1">${meta ? `<span style="color:var(--ink-faint);font-weight:600">${esc(meta)}</span> &mdash; ` : ''}${esc(p.text)}</div></div>
     ${right}
   </div>`;
 }
