@@ -2044,3 +2044,49 @@ editor) reveals only ciphertext, while every service/export still sees plaintext
   current DB state; `POST /accounts/me/password` returns it and both frontend call
   sites swap to it via `API.setToken()`. If a similar per-token claim is ever added,
   it needs this same refresh-on-change treatment or it'll reproduce this bug.
+
+### Password-manager save hardening on login + change-password forms (2026-07-24)
+
+Mirrors a fix shipped to the sibling camp app. Goal: get iOS Safari (especially older
+versions) and Chrome/Edge/Android to more reliably offer to **save** a credential after
+login or a password change. SPA-only, no backend/schema change.
+
+- **Safari has no Credential Management API** — the only lever there is a genuine `<form>`
+  submit with correct `autocomplete` tokens and stable field `name`s; this is a hardening
+  pass, not a guaranteed prompt. **Old iOS in particular may still decline to prompt for a
+  brand-new credential** — autofilling an already-saved one is the reliable path there.
+  Chrome/Edge/Android additionally get a programmatic nudge via the feature-detected
+  `navigator.credentials.store(new PasswordCredential(...))` call (new shared helper
+  `_offerSaveCredential(id, password)`, public/index.html) — wrapped in `try/catch` +
+  `.catch()` so it can never block or break a real login/password-change on a browser
+  without the API (i.e. Safari: silent no-op).
+- **Login form** (`renderLogin`/`doLogin`) was already a real `<form id="lform">` with
+  `name="username"`/`name="password"` and the right `autocomplete` tokens — only added
+  `autocapitalize="none" autocorrect="off" spellcheck="false"` to the username field, and
+  the `_offerSaveCredential` call right after a successful login (before `go('home')` tears
+  down the form).
+- **"Set a New Password" forced gate** (`renderMustChangePassword`/`submitMustChangePassword`)
+  was NOT a real form before this — a bare `<div>` block with a keydown listener for Enter.
+  Now wrapped in `<form id="mcpform">` (hidden `username` field carrying `S.user.email`, so
+  the manager associates the new password with the right account, since this form has no
+  visible username input), native `submit` listener instead of the keydown hack, and
+  `_offerSaveCredential(S.user.email, pw1)` after a successful change.
+- **Connect Setup's self-service "Change Your Password" modal**
+  (`showChangeOwnPassword`/`submitChangeOwnPassword`) had no `<form>` and no `autocomplete`
+  attributes at all. Same treatment: `<form id="cpwform">` (hidden username field, real
+  `autocomplete="current-password"`/`"new-password"` tokens), submit listener wired right
+  after `modal(...)` renders it (the `modal()` helper is just an innerHTML swap — no
+  post-render hook of its own, so every modal that needs one wires it itself, same pattern
+  `renderLogin` already used). **Gotcha avoided**: the modal's Cancel button had to get an
+  explicit `type="button"` once it moved inside the `<form>` — a bare `<button>` inside a
+  form defaults to `type="submit"`, so without this, clicking Cancel would have also fired
+  the form's `submit` listener (closing the modal AND calling `submitChangeOwnPassword()`
+  with empty fields, surfacing a spurious "enter your current password" error).
+- `submitSetPassword` (admin resets **another** account's password from Admin → Accounts) was
+  deliberately left untouched — that credential belongs to a different account than the one
+  authenticated in this browser session, so offering to save it here would associate the wrong
+  credential with this device.
+- **SW cache bumped** `ysc-v47` → `ysc-v48` (`public/sw.js`) since the login/change-password
+  HTML changed — the SW's network-first HTML fetch means this isn't strictly required for the
+  shell itself, but the version bump keeps other cached assets consistent with prior
+  convention in this file.

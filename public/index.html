@@ -1660,7 +1660,7 @@ function renderLogin() {
         <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>${esc(appName())}</h1><p>${esc(ministryName())} · Sign in to continue</p></div>
         <div id="lerr"></div>
         <form id="lform" action="#" onsubmit="return false">
-          <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" name="username" type="text" placeholder="" autocomplete="username"></div>
+          <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" name="username" type="text" placeholder="" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
           <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
           <button class="btn btn-primary btn-full" type="submit">Sign In</button>
         </form>
@@ -1671,13 +1671,31 @@ function renderLogin() {
   _positionNprog();
 }
 
+// Chrome/Edge/Android implement the Credential Management API and can be
+// nudged to save/update a credential programmatically. Safari has NO such API
+// (feature-detects false, silently a no-op there) — its save prompt depends
+// entirely on the real <form> submit + autocomplete-token heuristic on the
+// login/change-password forms themselves, which is the only lever available
+// for it. Old iOS in particular may still decline to prompt for a BRAND-NEW
+// credential even with all of that in place; autofilling an already-saved one
+// is the reliable path there — this is a hardening pass, not a guaranteed fix.
+function _offerSaveCredential(id, password) {
+  try {
+    if (window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+      navigator.credentials.store(new PasswordCredential({ id, name: id, password })).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 async function doLogin() {
   const email = document.getElementById('lemail')?.value?.trim();
   const password = document.getElementById('lpw')?.value;
   const errEl = document.getElementById('lerr');
   try {
     const res = await API.post('/auth/login', { email, password });
-    API.setToken(res.token); S.user = res.user; go('home');
+    API.setToken(res.token); S.user = res.user;
+    _offerSaveCredential(email, password);
+    go('home');
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
@@ -1706,14 +1724,17 @@ function renderMustChangePassword() {
       <div class="login-card">
         <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>Set a New Password</h1><p>This account's password must be changed before continuing</p></div>
         <div id="mcperr"></div>
-        <div class="fg"><label class="fl">Current Password</label><input class="fi" id="mcp-cur" type="password" placeholder="Current password" autocomplete="current-password"></div>
-        <div class="fg"><label class="fl">New Password (min 8 chars)</label><input class="fi" id="mcp-new" type="password" placeholder="New password" autocomplete="new-password"></div>
-        <div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="mcp-new2" type="password" placeholder="Confirm new password" autocomplete="new-password"></div>
-        <button class="btn btn-primary btn-full" onclick="submitMustChangePassword()">Set Password &amp; Continue</button>
+        <form id="mcpform">
+          <input type="hidden" name="username" autocomplete="username" value="${esc((S.user && S.user.email) || '')}">
+          <div class="fg"><label class="fl">Current Password</label><input class="fi" id="mcp-cur" name="current-password" type="password" placeholder="Current password" autocomplete="current-password"></div>
+          <div class="fg"><label class="fl">New Password (min 8 chars)</label><input class="fi" id="mcp-new" name="new-password" type="password" placeholder="New password" autocomplete="new-password"></div>
+          <div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="mcp-new2" name="new-password-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></div>
+          <button class="btn btn-primary btn-full" type="submit">Set Password &amp; Continue</button>
+        </form>
         <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="doLogout()">Sign Out</button>
       </div>
     </div>`;
-  document.getElementById('mcp-new2')?.addEventListener('keydown', e => { if (e.key==='Enter') submitMustChangePassword(); });
+  document.getElementById('mcpform')?.addEventListener('submit', e => { e.preventDefault(); submitMustChangePassword(); });
   _positionNprog();
 }
 
@@ -1734,6 +1755,7 @@ async function submitMustChangePassword() {
     const res = await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
     if (res && res.token) API.setToken(res.token);
     S.user.mustChangePassword = false;
+    _offerSaveCredential(S.user.email, pw1);
     toast('Password updated'); render();
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
@@ -6494,13 +6516,17 @@ function showChangeOwnPassword() {
   modal(`
     <div class="mo-title">Change Your Password</div>
     <div id="cpwerr"></div>
-    <div class="fg"><label class="fl">Current Password</label><input class="fi" id="cpw-cur" type="password" placeholder="Current password"></div>
-    <div class="fg"><label class="fl">New Password (min 8 chars)</label><input class="fi" id="cpw-new" type="password" placeholder="New password"></div>
-    <div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="cpw-new2" type="password" placeholder="Confirm new password"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitChangeOwnPassword()">Change Password</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
+    <form id="cpwform">
+      <input type="hidden" name="username" autocomplete="username" value="${esc((S.user && S.user.email) || '')}">
+      <div class="fg"><label class="fl">Current Password</label><input class="fi" id="cpw-cur" name="current-password" type="password" placeholder="Current password" autocomplete="current-password"></div>
+      <div class="fg"><label class="fl">New Password (min 8 chars)</label><input class="fi" id="cpw-new" name="new-password" type="password" placeholder="New password" autocomplete="new-password"></div>
+      <div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="cpw-new2" name="new-password-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" type="submit">Change Password</button>
+        <button class="btn btn-secondary" type="button" onclick="closeModal()">Cancel</button>
+      </div>
+    </form>`);
+  document.getElementById('cpwform')?.addEventListener('submit', e => { e.preventDefault(); submitChangeOwnPassword(); });
 }
 
 async function submitChangeOwnPassword() {
@@ -6514,6 +6540,7 @@ async function submitChangeOwnPassword() {
   try {
     const res = await API.post('/accounts/me/password', { currentPassword: cur, newPassword: pw1 });
     if (res && res.token) API.setToken(res.token);
+    _offerSaveCredential(S.user && S.user.email, pw1);
     closeModal(); toast('Password updated');
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
