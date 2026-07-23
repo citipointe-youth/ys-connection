@@ -122,7 +122,19 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.bot-nav{display:none}}
 
 /* Page */
-.pg{flex:1;padding:14px 16px calc(38px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
+/* Bottom padding must clear the fixed .bot-nav's real rendered height (~57-68px
+   depending on whether a role's bottom-5 includes a 2-line-wrapped label), not
+   just look non-excessive on a short page. 38px (2026-07-09) undershot that by
+   ~20px+ — invisible on short pages that never scroll far enough to reach it,
+   but a real "can't reach the last row" cutoff on tall list screens (Prayers,
+   My Connections, Setup) whose last item is often an actionable button. 76px
+   is the original pre-2026-07-09 value and matches this file's own established
+   clearance for the same nav (#toast bottom:76px, .pfab bottom:114px = 76 + a
+   comfort margin) — restoring it, not inventing a new number. Desktop is
+   unaffected either way: its own media query below replaces this padding
+   entirely (.bot-nav is display:none there).
+*/
+.pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
 
 /* Cards */

@@ -213,6 +213,15 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   different nudge (this was tuned from a bug report + screenshot, not reproduced locally —
   there's no iOS device in this environment, so if it recurs, get a fresh screenshot + iOS
   version before assuming the same fix will cover it).
+- **Can't scroll to the very bottom of a tall screen** (last row/button sits behind the bottom
+  nav, most noticeable on Prayers / My Connections / Connect Setup): `.pg`'s bottom padding (CSS
+  near the top of `public/index.html`, the `/* Page */` rule) — must stay `≥76px` (`+safe-b`) to
+  clear `.bot-nav`'s real rendered height (~57-68px). Fixed 2026-07-24 after it regressed to
+  `38px` on 2026-07-09 from a flawed "matches desktop dead-space" rationale — desktop already
+  zeroes this padding independently via its own media query, so the mobile value only ever
+  needs to clear the mobile nav. If this drifts short again, cross-check against `#toast`
+  (`bottom:76px`) / `.pfab` (`bottom:114px`) — both already encode the real clearance this nav
+  needs and should stay roughly consistent with `.pg`'s padding.
 
 ### Student profile modal (`showStudentDetail`)
 

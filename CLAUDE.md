@@ -2090,3 +2090,26 @@ login or a password change. SPA-only, no backend/schema change.
   HTML changed — the SW's network-first HTML fetch means this isn't strictly required for the
   shell itself, but the version bump keeps other cached assets consistent with prior
   convention in this file.
+
+### Bug: couldn't scroll to the true bottom of Prayers / My Connections / Setup (2026-07-24)
+
+**Root cause**: `.pg`'s bottom padding (the clearance reserved so the fixed `.bot-nav` doesn't
+cover the last bit of scrolled content) was halved `76px` → `38px` on 2026-07-09, reasoned as
+"more than the mobile bottom-nav it exists to clear, and pure dead space on desktop." That
+reasoning was wrong on both counts: (a) `.bot-nav`'s actual rendered height is ~57-68px
+(`6px` top padding + a `~46px` nav-item — `22px` icon + `3px` gap + a ~13px text line + `4px`
+top/bottom padding each — + `6px` bottom padding, taller still if a role's bottom-5 includes a
+2-line-wrapped label like "My Connections") — so 38px undershot the real clearance needed by
+20px+; (b) the desktop dead-space concern was already handled independently by
+`@media(min-width:768px){.pg{padding:20px 24px...}}`, which replaces the padding entirely
+(`.bot-nav` is `display:none` there) — the mobile base value never affected desktop at all, so
+halving it only ever broke mobile without fixing anything on desktop. This app's own `#toast`
+(`bottom:76px`) and `.pfab` (`bottom:114px` = 76 + a comfort margin, per the 2026-07-18 note
+above) already used ~76-114px as the known-working clearance for this same nav, corroborating
+that 38px was the actual regression, not the original 76px being excessive. **Fix**: restored
+`.pg`'s base (mobile) padding-bottom to `76px` (public/index.html, the `/* Page */` rule near
+the top of the `<style>` block) — a revert to the pre-2026-07-09 value, not a new number.
+Every screen was equally affected in principle, but it only became visibly *blocking* on tall,
+list-heavy screens (Prayers, My Connections, Connect Setup) whose last row is often an
+actionable button sitting flush at the true end of the document — shorter screens never scroll
+far enough to expose the same ~20px shortfall.
