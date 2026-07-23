@@ -1554,17 +1554,20 @@ function navItems() {
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
   ];
-  // Admin: Home | Health | Trends | Connect Setup + quick actions
+  // Admin: Home | Health | Prayers | Setup | Admin (2026-07-23: Admin replaced
+  // Trends as the 5th/far-right bottom-nav slot; Trends dropped to a sub-page,
+  // reachable via the Home hero "Trends" pill like it already is for grade —
+  // see quickActionItems' filter below).
   if (u.role === 'admin') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
-    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'leaders',    ic:'arrr',     label:'Setup',              mbl:'Setup' },
+    { id:'admin',      ic:'settings', label:'Admin',             mbl:'Admin' },
+    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
     { id:'import',     ic:'upload',   label:'Import',            mbl:'Import' },
-    { id:'admin',      ic:'settings', label:'Admin Settings',     mbl:'Settings' },
     ...(caOn ? [caItem] : []), /*CA-HOOK*/
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
@@ -2043,7 +2046,7 @@ async function _renderHomeInner(stale) {
     // ── Quick action tiles ABOVE the breakdown ──
     // Grade: Trends now lives in the hero banner (opposite Prev term), so drop it
     // here — leaving just Birthdays, which then gets the full-width single column.
-    const qa = quickActionItems().filter(x => !(u.role === 'grade' && x.id === 'trends'));
+    const qa = quickActionItems().filter(x => !((u.role === 'grade' || u.role === 'admin') && x.id === 'trends'));
     if (qa.length) {
       body += `<div style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
