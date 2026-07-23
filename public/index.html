@@ -3434,10 +3434,75 @@ function _prayerRow(p) {
     ${right}
   </div>`;
 }
-function _prayerSection(title, items) {
+// Groups a (pre-filtered) prayer list for one status section. Student-linked
+// prayers group by studentId; general (no-student) prayers group by
+// createdByLabel — one bucket per creating account, since PrayerRequest has no
+// real creator id (see prayer.ts's comment on createdByLabel). General groups
+// always sort ahead of student groups; within each band, most-recent-activity
+// first (item 2, 2026-07-23 spec).
+function _groupPrayers(items) {
+  const map = new Map();
+  for (const p of items) {
+    const isGeneral = p.studentId == null;
+    const key = isGeneral ? ('general:' + (p.createdByLabel || 'Unknown')) : ('student:' + p.studentId);
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        key,
+        isGeneral,
+        label: isGeneral ? (p.createdByLabel || 'Unknown') : `${p.student.firstName} ${p.student.lastName || ''}`.trim(),
+        grade: isGeneral ? null : p.student.grade,
+        prayers: [],
+      };
+      map.set(key, g);
+    }
+    g.prayers.push(p);
+  }
+  const groups = [...map.values()];
+  for (const g of groups) {
+    g.prayers.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    g.activity = g.prayers.reduce((max, p) => (p.updatedAt > max ? p.updatedAt : max), g.prayers[0].updatedAt);
+  }
+  groups.sort((a, b) => {
+    if (a.isGeneral !== b.isGeneral) return a.isGeneral ? -1 : 1;
+    return b.activity.localeCompare(a.activity);
+  });
+  return groups;
+}
+// One group's card: header (name/creator + count) + up to 3 most-recent rows +
+// a "Show N more" expand (same .drop/_drop() pattern as the outer Archived
+// section) when the group has more than 3.
+function _prayerGroupHtml(sectionKey, group) {
+  const gid = 'pg-' + sectionKey + '-' + group.key.replace(/[^a-zA-Z0-9]/g, '_');
+  const shown = group.prayers.slice(0, 3);
+  const rest = group.prayers.slice(3);
+  const gradeBit = (!group.isGeneral && group.grade != null) ? ` <span style="color:var(--ink-faint);font-weight:400">Yr${group.grade}</span>` : '';
+  const headerLabel = group.isGeneral ? `General &mdash; ${esc(group.label)}` : esc(group.label);
+  let html = `<div style="margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:6px 0 2px;border-top:1px solid var(--paper-dark)">
+      <span style="flex:1">${headerLabel}${gradeBit}</span>
+      <span style="font-size:11px;font-weight:400;color:var(--ink-faint)">${group.prayers.length}</span>
+    </div>
+    <div class="plist">${shown.map(_prayerRow).join('')}</div>`;
+  if (rest.length) {
+    html += `<div class="drop" id="${gid}">
+      <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 0" onclick="_drop('${gid}')">
+        <span class="drop-chev">${icS('chevd')}</span>
+        <div style="flex:1;font-size:12px;color:var(--ink-mid)">Show ${rest.length} more</div>
+      </div>
+      <div class="drop-body"><div class="plist">${rest.map(_prayerRow).join('')}</div></div>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+function _prayerGroupsHtml(sectionKey, items) {
+  return _groupPrayers(items).map(g => _prayerGroupHtml(sectionKey, g)).join('');
+}
+function _prayerSection(sectionKey, title, items) {
   if (!items.length) return '';
   return `<div class="sh">${esc(title)} <span style="color:var(--ink-faint)">${items.length}</span></div>
-    <div class="plist">${items.map(_prayerRow).join('')}</div>`;
+    ${_prayerGroupsHtml(sectionKey, items)}`;
 }
 function _prayersHtml(list) {
   _prayerCache = list || [];
@@ -3459,14 +3524,14 @@ function _prayersHtml(list) {
   if (prGenders.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_prayerFilter.gender ? 'on' : ''}" onclick="setPrayerFilter('gender',null)">All</button></div>`;
 
   const body = _prayerCache.length
-    ? filterHtml + _prayerSection('Open', open) + _prayerSection('Answered', answered) +
+    ? filterHtml + _prayerSection('open', 'Open', open) + _prayerSection('answered', 'Answered', answered) +
       (archived.length ? `<div class="drop" id="draw-arch">
         <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 0;border-top:1px solid var(--paper-dark)" onclick="_drop('draw-arch')">
           <span class="drop-chev">${icS('chevd')}</span>
           <div style="flex:1;font-size:13px;font-weight:700">Archived</div>
           <span style="font-size:12px;color:var(--ink-mid)">${archived.length}</span>
         </div>
-        <div class="drop-body"><div class="plist">${archived.map(_prayerRow).join('')}</div></div>
+        <div class="drop-body">${_prayerGroupsHtml('archived', archived)}</div>
       </div>` : '')
     : `<div class="empty">${icEmpty('pray')}<div class="empty-title">No prayer requests yet</div><div class="empty-sub">Tap "Add Prayer" to add one against a student, or mark it general.</div></div>`;
   return `<div class="ph"><div class="ph-title">Prayers</div><div class="ph-sub">Shared across everyone you lead</div></div>
