@@ -246,6 +246,19 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
 
 ### Accounts / passwords
 
+- **iOS doesn't offer to save a password after login/change-password, or only sometimes**:
+  expected to be imperfect — Safari has no Credential Management API, so `_offerSaveCredential()`
+  (public/index.html, Chrome/Edge/Android only) is a no-op there; Safari's own save prompt
+  depends on the real `<form>`/`autocomplete` hardening on `renderLogin`, `renderMustChangePassword`,
+  and `showChangeOwnPassword` (2026-07-24, see CLAUDE.md's two dated password-manager sections).
+  "Sometimes" specifically on the **login** form pointed at a timing race — `go('home')` used to
+  wipe the login DOM (incl. the just-submitted password field) in the same tick as the response,
+  giving Safari's disappearing-field heuristic no time to fire; now wrapped in
+  `setTimeout(..., 150)`. Confirmed worse on the **installed "Add to Home Screen" app**
+  specifically (standalone `WKWebView`, not a Safari tab) — that's a known, only partially
+  fixable iOS platform limitation, not purely a code bug. If it's still unreliable after this,
+  compare a plain Safari-tab login against the home-screen-installed app on the same device
+  before assuming the timing fix needs more tuning.
 - **Admin's "Reset password" doesn't show the new password afterward**: `submitSetPassword()`
   should open a follow-up modal with a copyable `<input readonly>`, not just a toast — the
   value can never be retrieved again since it's bcrypt-hashed one-way.

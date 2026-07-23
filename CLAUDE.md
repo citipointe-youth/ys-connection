@@ -2113,3 +2113,34 @@ Every screen was equally affected in principle, but it only became visibly *bloc
 list-heavy screens (Prayers, My Connections, Connect Setup) whose last row is often an
 actionable button sitting flush at the true end of the document — shorter screens never scroll
 far enough to expose the same ~20px shortfall.
+
+### Login form hardened further for iOS "Add to Home Screen" standalone mode (2026-07-24)
+
+Follow-up to the password-manager pass above, after a report that the save-password prompt
+still sometimes doesn't appear on iOS specifically when signing into a *different* existing
+account **from the installed home-screen app** (this app sets
+`apple-mobile-web-app-capable=yes`, so "Add to Home Screen" launches it in a standalone
+`WKWebView`, not a regular Safari tab — standalone web apps have a long-documented, less
+reliable password-save experience than Safari tabs, which this pass cannot fully paper over).
+Two small, low-risk changes to `renderLogin()`/`doLogin()` (public/index.html):
+- `<form id="lform">` now has a real `method="post" action="/auth/login"` instead of
+  `action="#" onsubmit="return false"` — the inline `onsubmit` was redundant with the
+  `addEventListener('submit', ...)` listener already doing the real `preventDefault()` +
+  `doLogin()` dispatch, and a genuine-looking action is the more standard "this is a real
+  form" signal for a password manager to key off (the attribute is never actually used to
+  navigate — JS always intercepts the submit — this only matters for the no-JS fallback case
+  and for how seriously AutoFill treats the form).
+- **The intermittent ("sometimes") part of the symptom** is the interesting bit — that phrasing
+  points at a race, not an always-broken path. `doLogin()` used to call `go('home')`
+  synchronously right after `_offerSaveCredential(...)`, which wipes `#app`'s innerHTML
+  (`render()`) — including the just-submitted password field — in the same tick. Safari's
+  save-heuristic partly relies on noticing that field disappear from the DOM shortly *after*
+  submit; giving it zero time to react before the field is gone is a plausible reason it'd work
+  sometimes (whenever the heuristic's own check happened to run first) and not others. Wrapped
+  the navigation in `setTimeout(() => go('home'), 150)` — 150ms is imperceptible to a user but
+  gives WebKit a beat. This is a hardening/timing nudge, not a verified root-cause fix (there's
+  no way to instrument Safari's internal AutoFill heuristic from this codebase to confirm it) —
+  if reports continue after this, the next step is an on-device test comparing a regular Safari
+  tab (should already work reliably) against the installed home-screen app (the harder case) to
+  isolate whether this is inherent to standalone mode regardless of timing.
+- **SW cache bumped** `ysc-v48` → `ysc-v49` (`public/sw.js`) since the login HTML changed again.

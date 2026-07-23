@@ -1671,7 +1671,7 @@ function renderLogin() {
       <div class="login-card">
         <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>${esc(appName())}</h1><p>${esc(ministryName())} · Sign in to continue</p></div>
         <div id="lerr"></div>
-        <form id="lform" action="#" onsubmit="return false">
+        <form id="lform" method="post" action="/auth/login">
           <div class="fg"><label class="fl">Username</label><input class="fi" id="lemail" name="username" type="text" placeholder="" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
           <div class="fg"><label class="fl">Password</label><input class="fi" id="lpw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
           <button class="btn btn-primary btn-full" type="submit">Sign In</button>
@@ -1707,7 +1707,18 @@ async function doLogin() {
     const res = await API.post('/auth/login', { email, password });
     API.setToken(res.token); S.user = res.user;
     _offerSaveCredential(email, password);
-    go('home');
+    // Safari's own save-password heuristic (no Credential Management API to
+    // call directly, see _offerSaveCredential above) partly relies on noticing
+    // the submitted password field disappear from the DOM right after submit.
+    // go('home') wipes #app's innerHTML synchronously via render() — on an
+    // "Add to Home Screen" standalone app (a WKWebView, not a full Safari tab;
+    // this app sets apple-mobile-web-app-capable) that heuristic has less time
+    // and a different UI surface to react in, which lines up with "sometimes
+    // doesn't prompt" being intermittent/timing-dependent rather than never.
+    // A brief delay before the swap gives it a beat to fire first. Cheap and
+    // imperceptible either way; harmless no-op for browsers that already
+    // handled saving via the Credential Management call above.
+    setTimeout(() => go('home'), 150);
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
 }
 
