@@ -3464,7 +3464,7 @@ function openPrayerModal(studentId, prayerId) {
       <div id="pr-for-general" style="display:none;padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper);color:var(--ink-mid)">General — no specific student</div>`;
   }
 
-  const deleteBtn = editing
+  const deleteBtn = editing && existing.status === 'archived'
     ? `<button class="btn btn-secondary btn-sm" id="pr-del-btn" style="color:var(--danger)" onclick="_deletePrayerConfirm('${prayerId}')">Delete</button>`
     : '';
   const archiveBtn = editing && existing.status !== 'archived'
