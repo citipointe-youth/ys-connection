@@ -19,6 +19,8 @@ function toUser(row: Record<string, unknown>): User {
     status: row['status'] as 'active' | 'inactive',
     passwordHash: (row['password_hash'] as string | null) ?? undefined,
     mustChangePassword: (row['must_change_password'] as boolean | null) ?? false,
+    // jsonb column; postgres.js returns it already parsed (array).
+    loginHistory: (row['login_history'] as string[] | null) ?? [],
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -60,8 +62,12 @@ export class SupabaseUserRepository implements IUserRepository {
     const gradesParam = user.grades == null
       ? null
       : this.sql.json(user.grades as unknown as Parameters<typeof this.sql.json>[0]);
+    // login_history is never null (defaults to []) — same sql.json() jsonb-write rule as grades.
+    const loginHistoryParam = this.sql.json(
+      (user.loginHistory ?? []) as unknown as Parameters<typeof this.sql.json>[0],
+    );
     const rows = await this.sql`
-      insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, created_at, updated_at)
+      insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, login_history, created_at, updated_at)
       values (
         ${user.id},
         ${user.displayName},
@@ -75,6 +81,7 @@ export class SupabaseUserRepository implements IUserRepository {
         ${user.status},
         ${user.passwordHash ?? null},
         ${user.mustChangePassword ?? false},
+        ${loginHistoryParam},
         ${user.createdAt},
         ${user.updatedAt}
       )
@@ -90,6 +97,7 @@ export class SupabaseUserRepository implements IUserRepository {
         status       = excluded.status,
         password_hash = excluded.password_hash,
         must_change_password = excluded.must_change_password,
+        login_history = excluded.login_history,
         updated_at   = excluded.updated_at
       returning *
     `;

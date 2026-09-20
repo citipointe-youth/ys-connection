@@ -2,6 +2,7 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { verifyPassword, hashPassword, needsRehash } from '../utils/crypto';
 import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor, User, SafeUser } from '../core/entities/user';
+import { MAX_LOGIN_HISTORY } from '../core/entities/user';
 import type { Grade, Quad } from '../core/types/enums';
 import { UnauthorizedError } from '../core/errors/app-error';
 import { LoginInputSchema } from '../core/validation/auth.schema';
@@ -134,6 +135,18 @@ export function makeAuthService(users: IUserRepository): AuthService {
       if (needsRehash(user.passwordHash)) {
         const newHash = await hashPassword(password);
         await users.save({ ...user, passwordHash: newHash, updatedAt: new Date().toISOString() });
+      }
+
+      // Login activity tracking (ported from the Youth Camp Platform, 2026-09-20): a short
+      // per-account history so the admin can see who hasn't logged in yet. Fail-open — a
+      // write failure here must never block or fail an otherwise-successful login. Uses the
+      // ordinary read-modify-write save() every other account mutation in this file already
+      // uses, not a dedicated atomic method.
+      try {
+        const history = [new Date().toISOString(), ...(user.loginHistory ?? [])].slice(0, MAX_LOGIN_HISTORY);
+        await users.save({ ...user, loginHistory: history });
+      } catch {
+        // Never let a tracking failure block a successful login.
       }
 
       const token = signSession(toActor(user), Date.now() + TOKEN_TTL_MS);

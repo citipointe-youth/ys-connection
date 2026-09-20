@@ -1,6 +1,12 @@
 import type { ID, ISODateString } from '../types/common';
 import type { UserRole, Grade, Quad } from '../types/enums';
 
+/**
+ * How many recent login timestamps are kept per account (newest first). A short activity
+ * trail, not a full audit log — see auth.service.ts's login() for where it's written.
+ */
+export const MAX_LOGIN_HISTORY = 15;
+
 export interface User {
   id: ID;
   displayName: string;
@@ -31,6 +37,13 @@ export interface User {
   // holder is blocked from everything except changing their password until this
   // clears. Only ever set true by seed/migration data today.
   mustChangePassword?: boolean;
+  /**
+   * Recent login timestamps (ISO strings), newest first, capped at {@link MAX_LOGIN_HISTORY}.
+   * Written by `auth.service.ts`'s `login()` on every successful login — never by anything
+   * else. Absent/empty means "never logged in". This is a short activity trail for the admin
+   * (see the Admin → Login Activity tab), not a full audit log.
+   */
+  loginHistory?: string[];
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

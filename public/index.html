@@ -5132,8 +5132,8 @@ async function renderAdmin() {
 
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
-  const tabs = ['import','accounts','data','newyear','youthsetup'];
-  const tabLabels = { import:'Import', accounts:'Accounts', data:'Data', newyear:'New Year Refresh', youthsetup:'Youth Setup' };
+  const tabs = ['import','accounts','loginActivity','data','newyear','youthsetup'];
+  const tabLabels = { import:'Import', accounts:'Accounts', loginActivity:'Login Activity', data:'Data', newyear:'New Year Refresh', youthsetup:'Youth Setup' };
   const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${tabLabels[t]}</button>`).join('');
 
   let body = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>
@@ -5217,6 +5217,10 @@ async function renderAdminView(settings, users, history) {
     }
   }
 
+  if (_adminTab === 'loginActivity') {
+    body += _loginActivityBodyHtml(users);
+  }
+
   if (_adminTab === 'data') {
     body += `<div class="card">
       <div class="sh" style="margin-top:0">Connection Allocations</div>
@@ -5260,6 +5264,55 @@ async function renderAdminView(settings, users, history) {
   }
 
   setApp(shell(body));
+}
+
+// ── Login Activity tab ──
+// Ported from the Youth Camp Platform (2026-09-20): a read-only list of every account's
+// most recent logins, so the admin can see who hasn't logged in yet. Reuses the already-
+// admin-only GET /accounts/users fetch renderAdmin() does for the Accounts tab — loginHistory
+// rides along on SafeUser for free, no new route.
+// "3m ago" / "5h ago" / "2d ago" style relative time. Falls back to the existing fmtDate()
+// absolute-timestamp helper once it's more than 6 days ago.
+function _relTime(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return 'just now';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + 'd ago';
+  return fmtDate(iso);
+}
+function _loginActivityBodyHtml(users) {
+  const lastLoginMs = u => (u.loginHistory && u.loginHistory.length) ? Date.parse(u.loginHistory[0]) : -Infinity;
+  const sorted = [...users].sort((a, b) => {
+    const d = lastLoginMs(a) - lastLoginMs(b);
+    if (d !== 0) return d;
+    return (a.displayName || '').localeCompare(b.displayName || '');
+  });
+  const row = u => {
+    const history = u.loginHistory || [];
+    const last = history.length ? _relTime(history[0]) : 'Never logged in';
+    const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? (QUAD_LABELS[u.quad] || u.quad) : _roleLabel(u.role);
+    const sub = [rl, u.status === 'inactive' ? 'inactive' : ''].filter(Boolean).join(' · ');
+    const dropdown = history.length > 1 ? `<details style="margin-top:4px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:2px 0">History (${history.length})</summary>
+        <div style="padding:4px 0 2px;color:var(--muted);font-size:12px">${history.map(h => esc(fmtDate(h))).join('<br>')}</div>
+      </details>` : '';
+    return `<div class="li" style="cursor:default;margin-bottom:6px">
+        <div class="li-body">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+            <span class="li-title">${esc(u.displayName)}</span>
+            <span style="font-size:12px;color:var(--muted)">${esc(last)}</span>
+          </div>
+          <div class="li-sub">${esc(sub)}</div>
+          ${dropdown}
+        </div>
+      </div>`;
+  };
+  return sorted.length ? sorted.map(row).join('') : `<div class="help-text">No accounts yet.</div>`;
 }
 
 // ── New Year Data Refresh wizard ──
