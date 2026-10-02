@@ -181,6 +181,15 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .li.acct-girls{background:#fdf2f8}
 .li.acct-boys{background:#eff6ff}
 .li-body{flex:1;min-width:0}
+.la-row{border:1px solid var(--paper-dark,#ddd);border-radius:10px;margin-bottom:6px;background:#fff}
+.la-row summary{padding:10px 12px;cursor:pointer;list-style:none;min-height:44px;box-sizing:border-box}
+.la-row summary::-webkit-details-marker{display:none}
+.la-top{display:flex;align-items:baseline;gap:8px}
+.la-name{font-weight:600;font-size:15px;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.la-role{font-size:12px;color:var(--muted);flex:0 0 auto;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.la-meta{font-size:12px;color:var(--ink-mid);margin-top:2px;line-height:1.4}
+.la-never{color:var(--danger,#c0392b);font-weight:600}
+.la-detail{padding:2px 12px 10px;font-size:12px;color:var(--muted);line-height:1.6}
 .li-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
 .li-right{display:flex;align-items:center;gap:4px;flex-shrink:0}
@@ -663,6 +672,7 @@ const API = (() => {
         if (e.code === 'MUST_CHANGE_PASSWORD' && S.user && !S.user.mustChangePassword) {
           S.user.mustChangePassword = true; render();
         }
+        if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
       return res.json();
@@ -1714,7 +1724,7 @@ async function doLogin() {
   const password = document.getElementById('lpw')?.value;
   const errEl = document.getElementById('lerr');
   try {
-    const res = await API.post('/auth/login', { email, password });
+    const res = await API.post('/auth/login', { email, password, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
     API.setToken(res.token); S.user = res.user;
     _offerSaveCredential(email, password);
     // Safari's own save-password heuristic (no Credential Management API to
@@ -1741,6 +1751,10 @@ async function doLogout() {
   _prayerFilter = { grade: null, gender: null };
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
+  try {
+    sessionStorage.removeItem('yap_ar_filter'); sessionStorage.removeItem('yap_prayer_filter'); sessionStorage.removeItem('yap_connect_filters');
+    localStorage.removeItem('yap_leader_id');
+  } catch (e) {}
   render();
 }
 
@@ -3435,7 +3449,7 @@ async function renderAtRisk() {
     <div class="ph">
       <div class="ph-title" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
         <span style="display:flex;align-items:center;gap:7px">${icN('heart')} Health ${helpTip(`Worked out automatically from attendance — nothing to set yourself. Rising / Declining: ${L('service')} or ${L('smallGroup')} attendance has changed a lot since last term. Mixed: up in one, down in the other. Stopped: hasn't been to ${L('service')} or ${L('smallGroup')} this term. Stable: no big change.`)}</span>
-        <input id="ar-name-filter" type="text" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
+        <input id="ar-name-filter" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Find student" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
       </div>
     </div>`;
   if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
@@ -3914,6 +3928,12 @@ async function renderStudents() {
 // Names carrying a leader-role suffix in the attendance export — mirrors the
 // importer's LEADER_RE so "(Leader)" AND "(Assistant leader)" are both hidden.
 const _ROLE_SUFFIX_RE = /\(\s*(?:assistant\s+)?leaders?\s*\)/i;
+function _matchesQuery(name, q) {
+  const tokens = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return true;
+  const n = String(name || '').toLowerCase();
+  return tokens.every(t => n.includes(t));
+}
 function _visStudents() {
   const { students, leaderNames, search, gf, df } = _sS;
   let vis = students.filter(s => {
@@ -3923,7 +3943,7 @@ function _visStudents() {
   });
   if (gf.size) vis = vis.filter(s => gf.has(s.grade));
   if (df.size) vis = vis.filter(s => df.has(s.gender));
-  if (search) { const q = search.toLowerCase(); vis = vis.filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q)); }
+  if (search) vis = vis.filter(s => _matchesQuery(`${s.firstName} ${s.lastName}`, search));
   return vis;
 }
 
@@ -3985,7 +4005,7 @@ function renderStudentView() {
 
   let body = `
     <div class="ph"><div class="ph-title">Student Search</div><div class="ph-sub"><span id="stu-count">${vis.length} of ${totalSearchable}</span></div></div>
-    <div class="sbar"><input id="stu-search" type="text" placeholder="Search by name…" value="${search.replace(/"/g,'&quot;')}" oninput="studSearch(this.value)"></div>`;
+    <div class="sbar"><input id="stu-search" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search students by name" placeholder="Search by name…" value="${search.replace(/"/g,'&quot;')}" oninput="studSearch(this.value)"></div>`;
   if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
   if (ssGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}</div>`;
   body += `<div id="stu-results">${_studentResultsHtml(vis)}</div>`;
@@ -4791,17 +4811,25 @@ function showImportReport(report) {
     </div>`;
   };
   let h = `<div class="mo-title" style="font-size:16px;font-weight:800;margin-bottom:8px">Import report</div>`;
-  h += sec('ir-skip', 'Rows skipped', report.skippedRows, x => `<div>Row ${x.row}: ${esc(x.reason)}</div>`);
+  h += sec('ir-skip', 'Rows skipped', report.skippedRows, x => `<div>Row ${x.row + 2}: ${esc(x.reason)}</div>`);
   h += sec('ir-coll', 'Same-name rows in this file', report.nameCollisions, x => `<div>${esc(x.name)} — ${x.count} rows merged into one student</div>`);
   h += `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="closeModal()">Done</button>`;
   modal(h);
 }
 
+function _prayerExportHeader() {
+  return ['First Name', 'Last Name', 'Grade', 'Gender', 'Prayer', 'Status', 'Answer Note', 'Added By', 'Date',
+    'Created By Grades', 'Created By Gender', 'Created At', 'Answered At'];
+}
+function _prayerExportCells(r) {
+  const v = x => (x === undefined || x === null) ? '' : String(x);
+  return [v(r.firstName), v(r.lastName), v(r.grade), v(r.gender), v(r.prayer), v(r.status), v(r.answerNote), v(r.addedBy), v(r.date),
+    v(r.createdByGrades), v(r.createdByGender), v(r.createdAt), v(r.answeredAt)];
+}
 async function exportPrayersCSV() {
   try {
     const rows = await API.get('/prayers/export'); // [{firstName,lastName,grade,gender,prayer,status,answerNote,addedBy,date}]
-    const header = ['First Name', 'Last Name', 'Grade', 'Gender', 'Prayer', 'Status', 'Answer Note', 'Added By', 'Date'];
-    const aoa = [header, ...rows.map(r => [r.firstName, r.lastName, r.grade ?? '', r.gender, r.prayer, r.status, r.answerNote, r.addedBy, r.date])];
+    const aoa = [_prayerExportHeader(), ...rows.map(_prayerExportCells)];
     _downloadText('prayers.csv', rowsToCsv(aoa));
     return true;
   } catch (e) { toast('Export failed: ' + e.message); return false; }
@@ -4927,49 +4955,51 @@ function previewGroupImport(filename, parsed) {
 // so re-parsing and re-confirming a file mid-upload would otherwise be able to
 // kick off a second concurrent request.
 let _importBusy = false;
+function _setImportStatus(html) {
+  const el = document.getElementById('import-status');
+  if (el) el.innerHTML = html;
+}
 let _lastImportReport = null;
 
 async function uploadServiceImport(filename) {
-  const statusEl = document.getElementById('import-status');
   const rows = window._pendingServiceRows; window._pendingServiceRows = null;
   if (!rows) return;
   if (_importBusy) { toast('An import is already in progress'); return; }
   _importBusy = true;
-  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${rows.length} rows…</div>`;
   try {
+    _setImportStatus(`<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${rows.length} rows…</div>`);
     const result = await API.post('/import/csv', { rows, filename }, 90000);
     Cache.clear();
     const r = result.report;
     const issueCount = r ? r.skippedRows.length + r.nameCollisions.length : 0;
     _lastImportReport = r || null; // read by showImportReport() — avoids inlining report data (names/reasons) into an onclick attribute
-    statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:flex-start;gap:6px;flex-direction:column">
+    _setImportStatus(`<div class="alert al-ok" style="display:flex;align-items:flex-start;gap:6px;flex-direction:column">
       <div style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.studentsAdded} added, ${result.studentsUpdated} updated, ${result.sessionsAdded} sessions</div>
       <div style="font-size:12px;color:var(--ink-mid)">Tip: last-term comparisons refresh on the next service import — re-upload if last term's numbers look off.</div>
       ${issueCount ? `<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="showImportReport(_lastImportReport)">${icS('info')} View import report (${issueCount} item${issueCount === 1 ? '' : 's'})</button>` : ''}
-    </div>`;
-  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+    </div>`);
+  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${err.message}</div>`); }
   finally { _importBusy = false; }
 }
 
 async function uploadGroupImport(filename) {
-  const statusEl = document.getElementById('import-status');
   const parsed = window._pendingGroups; window._pendingGroups = null;
   if (!parsed) return;
   if (_importBusy) { toast('An import is already in progress'); return; }
   _importBusy = true;
-  const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
-  statusEl.innerHTML = `<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${parsed.groups.length} groups, ${totalMembers} members…</div>`;
   try {
+    const totalMembers = parsed.groups.reduce((n, g) => n + g.members.length, 0);
+    _setImportStatus(`<div class="alert al-info"><div class="spin" style="margin-right:8px"></div>Uploading ${parsed.groups.length} groups, ${totalMembers} members…</div>`);
     const result = await API.post('/import/group-csv', { groups: parsed.groups, filename }, 90000);
     Cache.clear();
     const r = result.report;
     const issueCount = r ? r.skippedRows.length + r.nameCollisions.length : 0;
     _lastImportReport = r || null;
-    statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:flex-start;gap:6px;flex-direction:column">
+    _setImportStatus(`<div class="alert al-ok" style="display:flex;align-items:flex-start;gap:6px;flex-direction:column">
       <div style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.groupsAdded} groups created, ${result.studentsAdded} students added, ${result.studentsUpdated} updated, ${result.weeksAdded} weeks</div>
       ${issueCount ? `<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="showImportReport(_lastImportReport)">${icS('info')} View import report (${issueCount} item${issueCount === 1 ? '' : 's'})</button>` : ''}
-    </div>`;
-  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+    </div>`);
+  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${err.message}</div>`); }
   finally { _importBusy = false; }
 }
 
@@ -5267,52 +5297,117 @@ async function renderAdminView(settings, users, history) {
 }
 
 // ── Login Activity tab ──
-// Ported from the Youth Camp Platform (2026-09-20): a read-only list of every account's
-// most recent logins, so the admin can see who hasn't logged in yet. Reuses the already-
-// admin-only GET /accounts/users fetch renderAdmin() does for the Accounts tab — loginHistory
-// rides along on SafeUser for free, no new route.
-// "3m ago" / "5h ago" / "2d ago" style relative time. Falls back to the existing fmtDate()
-// absolute-timestamp helper once it's more than 6 days ago.
-function _relTime(iso) {
+// Read-only, automated: last login, 30-day login count and device count per account.
+// loginHistory (0009) and loginDevices (0010) ride along on SafeUser from the admin-only
+// GET /accounts/users fetch. NAMING: _relTime (Prayers, above) is a different helper -
+// everything here is prefixed _la so the two never shadow each other.
+function _laLastMs(u) {
+  const h = (u && u.loginHistory) || [];
+  const ms = h.length ? Date.parse(h[0]) : NaN;
+  return isNaN(ms) ? -Infinity : ms;
+}
+function _laOrder(users) {
+  return [...users].sort((a, b) => {
+    const x = _laLastMs(a), y = _laLastMs(b);
+    if (x !== y) return x < y ? -1 : 1;
+    return (a.displayName || '').localeCompare(b.displayName || '');
+  });
+}
+function _laFilterUsers(users, mode, nowMs) {
+  if (mode === 'never') return users.filter(u => _laLastMs(u) === -Infinity);
+  if (mode === 'quiet') return users.filter(u => _laLastMs(u) < nowMs - 30 * 86400000);
+  return users;
+}
+function _laLoginsLast30(u, nowMs) {
+  const times = ((u && u.loginHistory) || []).map(x => Date.parse(x)).filter(ms => !isNaN(ms));
+  const n = times.filter(ms => ms >= nowMs - 30 * 86400000 && ms <= nowMs + 60000).length;
+  return { n: n, capped: times.length >= 15 && n >= 15 };
+}
+function _laFmtBrisbane(iso) {
+  const ms = Date.parse(iso);
+  if (isNaN(ms)) return '';
+  const parts = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Brisbane', day: 'numeric', month: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).formatToParts(new Date(ms));
+  const p = {};
+  parts.forEach(x => { p[x.type] = x.value; });
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return Number(p.day) + ' ' + months[Number(p.month) - 1] + ' ' + p.year + ', ' + p.hour + ':' + p.minute + ' ' + String(p.dayPeriod).toLowerCase();
+}
+function _laRelTime(iso) {
   const ms = Date.now() - Date.parse(iso);
-  if (!(ms >= 0)) return 'just now';
+  if (isNaN(ms)) return '';
+  if (ms < 60000) return 'just now';
   const m = Math.floor(ms / 60000);
-  if (m < 1) return 'just now';
   if (m < 60) return m + 'm ago';
   const h = Math.floor(m / 60);
   if (h < 24) return h + 'h ago';
   const d = Math.floor(h / 24);
   if (d < 7) return d + 'd ago';
-  return fmtDate(iso);
+  return _laFmtBrisbane(iso).split(',')[0];
 }
+function _laGroup(users) {
+  const defs = [['admin', 'Admins'], ['grade', 'Grade accounts'], ['quad', 'Quad accounts']];
+  const known = defs.map(d => d[0]);
+  const out = defs.map(d => ({ key: d[0], label: d[1], users: users.filter(u => u.role === d[0]) }));
+  out.push({ key: 'other', label: 'Other', users: users.filter(u => !known.includes(u.role)) });
+  return out.filter(g => g.users.length);
+}
+function _deviceLabel(ua) {
+  ua = String(ua || '');
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Unknown device';
+  const br = /EdgA?\/|Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : '';
+  return br ? os + ' · ' + br : os;
+}
+function _deviceId() {
+  try {
+    let id = localStorage.getItem('yap_device_id');
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+      localStorage.setItem('yap_device_id', id);
+    }
+    return id;
+  } catch (e) { return undefined; }
+}
+let _laMode = 'all';
+function setLaMode(m) { _laMode = m; renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 function _loginActivityBodyHtml(users) {
-  const lastLoginMs = u => (u.loginHistory && u.loginHistory.length) ? Date.parse(u.loginHistory[0]) : -Infinity;
-  const sorted = [...users].sort((a, b) => {
-    const d = lastLoginMs(a) - lastLoginMs(b);
-    if (d !== 0) return d;
-    return (a.displayName || '').localeCompare(b.displayName || '');
-  });
+  const now = Date.now();
+  const never = _laFilterUsers(users, 'never', now).length;
+  const quiet = _laFilterUsers(users, 'quiet', now).length;
+  const shown = _laOrder(_laFilterUsers(users, _laMode, now));
+  const chip = (m, label) => `<button class="btn btn-sm ${_laMode === m ? 'btn-primary' : 'btn-secondary'}" onclick="setLaMode('${m}')">${label}</button>`;
   const row = u => {
     const history = u.loginHistory || [];
-    const last = history.length ? _relTime(history[0]) : 'Never logged in';
+    const devices = u.loginDevices || [];
     const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? (QUAD_LABELS[u.quad] || u.quad) : _roleLabel(u.role);
-    const sub = [rl, u.status === 'inactive' ? 'inactive' : ''].filter(Boolean).join(' · ');
-    const dropdown = history.length > 1 ? `<details style="margin-top:4px">
-        <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:2px 0">History (${history.length})</summary>
-        <div style="padding:4px 0 2px;color:var(--muted);font-size:12px">${history.map(h => esc(fmtDate(h))).join('<br>')}</div>
-      </details>` : '';
-    return `<div class="li" style="cursor:default;margin-bottom:6px">
-        <div class="li-body">
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
-            <span class="li-title">${esc(u.displayName)}</span>
-            <span style="font-size:12px;color:var(--muted)">${esc(last)}</span>
-          </div>
-          <div class="li-sub">${esc(sub)}</div>
-          ${dropdown}
-        </div>
-      </div>`;
+    const inactive = u.status === 'inactive' ? ' · inactive' : '';
+    let meta;
+    if (_laLastMs(u) === -Infinity) {
+      meta = '<span class="la-never">Never logged in</span>';
+    } else {
+      const l30 = _laLoginsLast30(u, now);
+      meta = 'Last login ' + esc(_laFmtBrisbane(history[0])) + ' (' + esc(_laRelTime(history[0])) + ')'
+        + ' · ' + l30.n + (l30.capped ? '+' : '') + ' in 30d'
+        + (devices.length ? ' · ' + devices.length + (devices.length === 1 ? ' device' : ' devices') : '');
+    }
+    const devHtml = devices.length
+      ? devices.map(d => `<div>${esc(d.label || 'Unknown device')} — first ${esc(_laFmtBrisbane(d.first))}, last ${esc(_laFmtBrisbane(d.last))}, ${Number(d.count) || 0} login${d.count === 1 ? '' : 's'}</div>`).join('')
+      : '<div>No device info yet (recorded from the next login).</div>';
+    const times = history.map(h => _laFmtBrisbane(h)).filter(Boolean);
+    const timesHtml = times.length ? times.map(t => `<div>${esc(t)}</div>`).join('') : '<div>No logins recorded</div>';
+    return `<details class="la-row"><summary><div class="la-top"><span class="la-name">${esc(u.displayName)}</span><span class="la-role">${esc(rl)}${inactive}</span></div><div class="la-meta">${meta}</div></summary><div class="la-detail"><b>Devices</b>${devHtml}<b style="display:block;margin-top:8px">Recent logins</b>${timesHtml}</div></details>`;
   };
-  return sorted.length ? sorted.map(row).join('') : `<div class="help-text">No accounts yet.</div>`;
+  const groups = _laGroup(shown);
+  const list = groups.length
+    ? groups.map(g => `<div class="sh" style="margin:14px 0 6px">${esc(g.label)} (${g.users.length})</div>${g.users.map(row).join('')}`).join('')
+    : `<div class="help-text">${_laMode === 'all' ? 'No accounts yet.' : 'No accounts match this filter.'}</div>`;
+  return `<div class="card" style="margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">${never} of ${users.length} accounts never logged in · ${quiet} quiet for 30+ days</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${chip('all', 'All')}${chip('never', 'Never logged in')}${chip('quiet', 'Quiet 30+ days')}</div>
+      <div class="help-text" style="margin-top:8px">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are Brisbane time.</div>
+    </div>${list}`;
 }
 
 // ── New Year Data Refresh wizard ──
@@ -7894,6 +7989,30 @@ return{render,reset,stale,seedOn,dismissWarn,setYear,setTerm,saveAudit,
 window.CA=CA;
 /* ── CA MODULE END ── */
 
+let _authExpiring = false;
+function _isAuthExpired(err) { return !!err && err.status === 401; }
+function _handleAuthExpired() {
+  if (_authExpiring) return;
+  _authExpiring = true;
+  setTimeout(() => { _authExpiring = false; }, 2000);
+  if (_previewStash) {
+    API.setToken(_previewStash.token);
+    S.user = _previewStash.user;
+    _previewStash = null;
+    try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
+    Cache.clear();
+    _shellReady = false;
+    toast('Preview expired, back to your admin session');
+    go('home');
+    return;
+  }
+  API.setToken(null);
+  S.user = null;
+  S.page = 'home';
+  _shellReady = false;
+  toast('Session expired, please log in again');
+  render();
+}
 async function boot() {
   const token = localStorage.getItem('yap_token');
   if (token) {
@@ -7902,7 +8021,7 @@ async function boot() {
       // Mid-preview, mustChangePassword must stay forced false — /auth/me reads the
       // raw DB record, which doesn't know this is a preview session (see enterPreview()).
       S.user = _previewStash ? { ...user, mustChangePassword: false } : user;
-    } catch { API.setToken(null); }
+    } catch (err) { if (_isAuthExpired(err)) API.setToken(null); }
   }
   restoreConnectFilters();
   restoreArFilter();
@@ -7917,10 +8036,18 @@ async function boot() {
 boot();
 
 if ('serviceWorker' in navigator) {
+  let _swReloading = false;
+  const _swHadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!_swHadController || _swReloading) return;
+    _swReloading = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(() => {
-      // When a new SW activates and claims this page, reload to pick up the new HTML
-      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
     }).catch(() => {});
   });
 }
