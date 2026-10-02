@@ -121,7 +121,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Bottom nav */
 .bot-nav{display:flex;background:var(--paper-card);border-top:1px solid var(--line);padding:6px 0 calc(6px + var(--safe-b));position:fixed;left:0;right:0;bottom:0;z-index:100;box-shadow:0 -2px 8px rgba(18,35,59,.06)}
-.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
+.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
 .bot-nav a.on{color:var(--accent)}
 .bot-nav a .ic-n{transition:color .15s}
 @media(min-width:768px){.bot-nav{display:none}}
@@ -331,7 +331,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* Desktop table */
 @media(min-width:768px){
   .dt{width:100%;border-collapse:collapse;font-size:14px}
-  .dt th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--paper-dark);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-faint);font-weight:700}
+  .dt th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--paper-dark);font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-faint);font-weight:700}
   .dt td{padding:10px 12px;border-bottom:1px solid var(--paper-dark);vertical-align:middle}
   .dt tr:hover td{background:var(--paper)}
 }
@@ -429,7 +429,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .picker-item-name{font-size:15px;font-weight:600;color:var(--ink)}
 .picker-item-meta{font-size:12px;color:var(--ink-mid);margin-top:1px}
 .picker-item-right{margin-left:auto;flex-shrink:0}
-.picker-section{font-size:10px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:8px 12px 4px;border-bottom:1px solid var(--paper-dark)}
+.picker-section{font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:8px 12px 4px;border-bottom:1px solid var(--paper-dark)}
 
 /* ── ACCESSIBILITY ── */
 .fc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -463,15 +463,15 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* ── ADMIN ROLE GROUP ── */
 .role-group{margin-bottom:16px}
-.role-group-header{font-size:10px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:6px 0 8px;border-bottom:1px solid var(--paper-dark);margin-bottom:8px}
+.role-group-header{font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:6px 0 8px;border-bottom:1px solid var(--paper-dark);margin-bottom:8px}
 
 /* ── TRENDS ── */
 .cchart{display:flex;align-items:flex-end;gap:3px;height:92px;margin:8px 0}
 .ccol{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
-.ccol-val{font-size:9px;font-weight:700;color:var(--ink-mid);margin-bottom:2px;white-space:nowrap}
+.ccol-val{font-size:10px;font-weight:700;color:var(--ink-mid);margin-bottom:2px;white-space:nowrap}
 .ccol-bar{width:100%;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
 .ccol-bar.lo{background:var(--warn)}.ccol-bar.cr{background:var(--danger)}
-.ccol-lbl{font-size:9px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
+.ccol-lbl{font-size:10px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
 .tbar-wrap{display:flex;flex-direction:column;gap:4px}
 .tbar-row{display:flex;align-items:center;gap:8px}
 .tbar-lbl{width:28px;text-align:right;color:var(--ink-mid);font-weight:700;flex:none;font-size:11px}
@@ -485,8 +485,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .tstat{display:grid;gap:6px;margin-top:10px}
 .tstat-cell{text-align:center;padding:10px 6px;background:var(--paper);border-radius:var(--radius-sm)}
 .tstat-v{font-size:1.5rem;font-weight:800;color:var(--ink);line-height:1}
-.tstat-l{font-size:10px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
-.tstat-p{font-size:10px;color:var(--ink-faint);opacity:.6;margin-top:3px}
+.tstat-l{font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+.tstat-p{font-size:11px;color:var(--ink-faint);opacity:.6;margin-top:3px}
 
 /* ── TWO-LINE NAV LABEL ── */
 .ni-lbl{display:flex;flex-direction:column;align-items:center;line-height:1.15}
@@ -499,6 +499,23 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .htip:hover .htip-pop,.htip.open .htip-pop{opacity:1;visibility:visible}
 .htip.tip-left .htip-pop{left:auto;right:0;transform:none}
 .htip.tip-left .htip-pop::before{left:auto;right:6px;transform:none}
+
+/* ── Phone fixes (2026-10): narrow tiles, landscape nav, tap targets, tab-bar scroll cue ── */
+.bot-nav a{min-width:0;overflow:hidden}
+.btn{overflow-wrap:anywhere}
+@media(max-width:380px){.qa-grid{grid-template-columns:1fr!important}}
+@media(max-height:500px) and (max-width:767px){
+  .bot-nav{padding:2px 0 calc(2px + var(--safe-b))}
+  .bot-nav a{flex-direction:row;justify-content:center;gap:5px;min-height:40px;padding:2px}
+  .pg{padding-bottom:calc(52px + var(--safe-b))}
+}
+@media(pointer:coarse){
+  .btn-sm,.tbbtn,.btn-icon{min-height:40px}
+  .btn-sm,.btn-icon{min-width:40px}
+}
+@media(max-width:767px){
+  .tbbar{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
+}
 
 /* ── CA MODULE CSS START ── */
 :root{--ca-navy:var(--navy);--ca-blue:var(--accent);--ca-teal:#0ea5a4;--ca-amber:#f59e0b;--ca-rose:#e11d48;--ca-green:#16a34a;--ca-paper:var(--paper);--ca-card:var(--paper-card);--ca-ink:var(--ink);--ca-muted:var(--ink-mid);--ca-line:var(--line);--ca-chip:var(--chip);--ca-r:14px;--ca-rs:11px;--ca-sh:0 3px 10px rgba(10,10,46,.06);}
@@ -1367,7 +1384,7 @@ function termRow(label, curA, curT, prevA, prevT, noDanger) {
   const cp = curT > 0 ? Math.round(curA / curT * 100) : null;
   const pp = prevT > 0 ? Math.round(prevA / prevT * 100) : null;
   return `<div style="margin-top:6px">
-    <div style="font-size:10px;color:var(--ink-faint);font-weight:700;text-transform:uppercase">${label}</div>
+    <div style="font-size:11px;color:var(--ink-faint);font-weight:700;text-transform:uppercase">${label}</div>
     <div style="font-size:12px">This term: <b style="color:${cp!==null&&cp<50&&!noDanger?'var(--danger)':'var(--ink)'}">${curT>0?curA+'/'+curT+' ('+cp+'%)':'—'}</b>${prevT>0?` · <span style="color:var(--ink-faint)">Last term: ${prevA}/${prevT} (${pp}%)</span>`:''}</div>
   </div>`;
 }
@@ -1885,7 +1902,7 @@ function _hAttTile(label, studs, avgWk, opts) {
     <div style="text-align:center;background:var(--paper-dark);border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${avgWk}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
   </div>`
     + (opts.hideLifegroupRow ? '' : `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;align-items:center">
-    <div style="font-size:9px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px;opacity:.8">${L('smallGroupPlural')}</div>
+    <div style="font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;width:64px;opacity:.8">${L('smallGroupPlural')}</div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpUniq}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Seen</div></div>
     <div style="text-align:center;background:#eef0fb;border-radius:4px;padding:3px 2px"><div style="font-family:var(--font-display);font-size:16px;font-weight:700;opacity:.85">${grpAvg}</div><div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase">Weekly</div></div>
   </div>`);
@@ -2118,7 +2135,7 @@ async function _renderHomeInner(stale) {
     // here — leaving just Birthdays, which then gets the full-width single column.
     const qa = quickActionItems().filter(x => !((u.role === 'grade' || u.role === 'admin') && x.id === 'trends'));
     if (qa.length) {
-      body += `<div style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
+      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         const wide = x.wide ? ';grid-column:1/-1' : '';
@@ -2148,7 +2165,7 @@ async function _renderHomeInner(stale) {
               <div style="font-size:11px;color:var(--ink-mid);text-align:right">${con}/${tot} (${pct}%)</div></div>`;
           };
           body += '<div class="sh">Connection by Grade ' + helpTip('Only counts students who attended a service or lifegroup this term or last. Students who have never attended are not counted as unconnected.') + '</div><div class="card" style="padding:12px">';
-          body += `<div style="display:flex;align-items:center;gap:12px;padding-bottom:4px;font-size:10px;font-weight:800;color:var(--ink-faint);text-transform:uppercase">
+          body += `<div style="display:flex;align-items:center;gap:12px;padding-bottom:4px;font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase">
             <div style="width:54px"></div><div style="flex:1;text-align:center">♀ Girls</div><div style="flex:1;text-align:center">♂ Boys</div></div>`;
           for (const gr of grades) {
             const girls = sc.filter(s => s.grade === gr && s.gender === 'female');
@@ -3970,7 +3987,7 @@ function _studentResultsHtml(vis) {
   }
   h += '</div>';
   const sh = (key, label) => `<th onclick="sortStud('${key}')" style="cursor:pointer;user-select:none;white-space:nowrap">${label}${_sortArrow(key)}</th>`;
-  h += `<div class="desk"><table class="dt"><thead><tr>${sh('name','Name')}${sh('gr','Gr')}${sh('gender','Gender')}${sh('dob','DOB')}${sh('youth',L('service')+' (this / last)')}${sh('lifegroup',L('smallGroup')+' (this / last)')}${sh('status','Status')}<th></th></tr></thead><tbody>`;
+  h += `<div class="desk" style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table class="dt"><thead><tr>${sh('name','Name')}${sh('gr','Gr')}${sh('gender','Gender')}${sh('dob','DOB')}${sh('youth',L('service')+' (this / last)')}${sh('lifegroup',L('smallGroup')+' (this / last)')}${sh('status','Status')}<th></th></tr></thead><tbody>`;
   for (const s of sorted) {
     const pct = svcPct(s);
     const psvc = s.prevSvcTotal > 0 ? Math.round(s.prevSvcAttended / s.prevSvcTotal * 100) + '%' : '—';

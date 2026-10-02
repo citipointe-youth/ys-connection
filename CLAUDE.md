@@ -108,7 +108,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0009`.
+for it, and don't renumber a new migration to match one — the next migration is `0011` (`0009` = `users.login_history`, `0010` = `users.login_devices`).
 
 ## Role hierarchy
 
@@ -2332,3 +2332,40 @@ is exactly why `install.html` is a separate file too.
 - **SW cache bumped** `ysc-v52` → `ysc-v53` (`public/sw.js`) — `public/index.html` changed.
   The new page rides the normal cache-first static path (it is not an API route, so `API_RE`
   needs no change).
+
+## 2026-10-02 — Term-start fixes (Login Activity automated, devices, phone/SPA hardening)
+
+Plan: `docs/superpowers/plans/2026-10-02-term-start-fixes.md` (Task 3 UI and Task 7 superseded/dropped).
+
+- **Login Activity (Admin tab)** is automated: per account it shows last login (Brisbane time, with
+  year), logins in the last 30 days (`15+` when the 15-entry `loginHistory` cap is full) and the number
+  of distinct devices; expand a row for the device list (label, first/last seen, count) and recent
+  logins. Chips: All / Never logged in / Quiet 30+ days. No manual date input.
+- **Data**: migration `0009` `users.login_history` (jsonb, newest first, capped 15) and `0010`
+  `users.login_devices` (jsonb, newest-first by last use, capped `MAX_LOGIN_DEVICES` = 10).
+  `SupabaseUserRepository.save()` upserts both columns unconditionally — **apply new migrations to prod
+  BEFORE aliasing the new code**, or every user save fails. `AuthService.login` records both inside its
+  fail-open try block (a recording failure never blocks login). The SPA sends `deviceId` (random UUID in
+  localStorage `yap_device_id`, deliberately NOT cleared on logout) and `deviceLabel` (`_deviceLabel(UA)`,
+  e.g. "iPhone · Safari"). Grade/quad accounts are shared, so several devices per account is normal;
+  clearing site data counts as a new device.
+- **Naming rule**: Login Activity helpers are all `_la*`. `_relTime` is the Prayers helper; the two once
+  collided (later declaration wins) — never reuse that name. `src/tests/spa-term-start.test.ts` pins it.
+- **Auth**: `boot()` only clears the token on a 401 (a 503/network blip no longer logs people out). Any
+  401 on an authenticated request calls `_handleAuthExpired()`: mid-preview it restores the admin
+  session from `_previewStash`; otherwise it logs out with a toast. Logout also clears the per-user
+  filter keys (`yap_ar_filter`, `yap_prayer_filter`, `yap_connect_filters`, `yap_leader_id`).
+- **SW registration**: reload on `controllerchange` only if the page already had a controller (not on
+  first install), once only; `reg.update()` on `visibilitychange`. Cache bumped `ysc-v55` → `ysc-v56`.
+- **Other SPA fixes**: Prayers CSV export now includes Created By Grades/Gender, Created At, Answered At
+  (round-trips through the importer); student search matches tokens in any order and the inputs disable
+  autocapitalize/autocorrect; import-report row numbers are `+2` (header + 1-based); `_setImportStatus`
+  is null-safe so a missing `#import-status` can't leave `_importBusy` stuck.
+- **Phone CSS**: quick-link grid goes 1-column ≤380px; landscape (`max-height:500px`) bottom nav is a
+  compact row; `(pointer:coarse)` raises `.btn-sm`/`.tbbtn`/`.btn-icon` to 40px; admin tab bar has a
+  right-edge fade; text floor 11px (chart `.ccol-*` micro-labels 10px). Real-device touch/safe-area
+  behaviour was not tested.
+- **Tooling**: `node scripts/check-spa-syntax.js` parses the inline script (run after every SPA edit);
+  `src/tests/helpers/extract-fn.ts` (`extractFn`/`loadFns`) evaluates real function bodies from the HTML.
+- `npm audit fix` (non-force) moved express 4.22.3, body-parser, qs and a few transitive patch versions.
+  Never run `npm audit fix --force` (it wants @vercel/node 17, a breaking change).
