@@ -212,6 +212,57 @@ is the default, previous is shown as a comparison.
 - **Extensionless imports**: ESM, `moduleResolution: "Bundler"`, no `.js` extensions.
 - **Strict TypeScript**: `strict` + `noUncheckedIndexedAccess` + `noImplicitOverride`.
 
+## OPEN — raise on the next update: the import handlers write to `#import-status` unguarded
+
+Reported 2026-08-16 from Project 11.1 (the Elvanto Sync Console), which drives this app's CSV
+import with Playwright. **No fix has been made here; this is a note, not a change.**
+
+`uploadServiceImport()` / `uploadGroupImport()` in `public/index.html` (~line 4932) do:
+
+```js
+const statusEl = document.getElementById('import-status');
+const rows = window._pendingServiceRows; window._pendingServiceRows = null;
+if (!rows) return;
+if (_importBusy) { toast('An import is already in progress'); return; }
+_importBusy = true;
+statusEl.innerHTML = `...Uploading ${rows.length} rows…`;   // <-- no null check
+try { const result = await API.post('/import/csv', { rows, filename }, 90000); ...
+```
+
+If the import view has been re-rendered away by the time the confirm button is clicked —
+`renderImport()`'s cold branch `setApp(shell(''))` produces a `<main>` with **neither**
+`#csv-file` nor `#import-status` while `S.page` is still `'import'` — then `statusEl` is `null`
+and that first `innerHTML` write throws `Cannot set properties of null`. Three consequences,
+in order of how badly they hurt:
+
+1. **The throw happens BEFORE `API.post`, so no import request is ever sent.** Nothing is
+   imported, and nothing says so.
+2. **The staged rows have already been consumed** (`window._pendingServiceRows = null` runs
+   two lines earlier), so the click cannot simply be repeated — the file must be re-selected.
+3. **`_importBusy` is left `true` forever**, because the throw precedes the `try`/`finally`
+   that would reset it. Every subsequent import attempt in that tab hits
+   `toast('An import is already in progress')` and returns. Only a reload clears it.
+
+From an inline handler this is silent: the exception is swallowed, the UI shows nothing, and a
+human sees a click that did nothing. It was found only because the automation captures
+`page.on('pageerror')`.
+
+Suggested fix when someone is next in this file (all three are small and independent):
+
+- `if (!statusEl) return;` — or better, re-render the import view and retry, since by then the
+  rows are already gone.
+- Move `_importBusy = true` inside the `try`, or reset it in a `catch`, so a throw cannot wedge
+  the page.
+- Don't cold-re-render the import page while `window._pendingServiceRows` is non-null or a
+  modal is open — `_revalidateImport()` is currently guarded only against re-entrancy.
+
+**What is NOT established:** what emptied the `/import/history` cache and triggered the cold
+render mid-flow. Project 11.1's `debug.md` §U has the full evidence, including the DOM snapshots
+either side of the click. Project 11.1 now defends itself against this (it detects the signature,
+re-stages and clicks once more, and only ever does so when it has positive evidence that no POST
+was sent) — so the automation is no longer blocked on it, but the underlying handler is still
+unguarded for human users.
+
 ## Key service + repository names
 
 - `ConnectionService` / `makeConnectionService` — connects students to leaders
