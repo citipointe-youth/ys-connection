@@ -7,6 +7,17 @@ import type { UserRole, Grade, Quad } from '../types/enums';
  */
 export const MAX_LOGIN_HISTORY = 15;
 
+/** How many distinct devices are remembered per account (most recently seen first). */
+export const MAX_LOGIN_DEVICES = 10;
+
+export interface LoginDevice {
+  id: string;
+  label: string;
+  first: ISODateString;
+  last: ISODateString;
+  count: number;
+}
+
 export interface User {
   id: ID;
   displayName: string;
@@ -44,6 +55,8 @@ export interface User {
    * (see the Admin → Login Activity tab), not a full audit log.
    */
   loginHistory?: string[];
+  /** Distinct browsers/phones that have logged in, most recently seen first, capped at {@link MAX_LOGIN_DEVICES}. */
+  loginDevices?: LoginDevice[];
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

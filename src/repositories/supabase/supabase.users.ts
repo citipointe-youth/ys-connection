@@ -1,7 +1,7 @@
 import type { SqlClient } from './client';
 import { toIso } from './client';
 import type { IUserRepository } from '../interfaces/entity-repositories';
-import type { User } from '../../core/entities/user';
+import type { User, LoginDevice } from '../../core/entities/user';
 import type { UserRole, Grade, Quad } from '../../core/types/enums';
 
 function toUser(row: Record<string, unknown>): User {
@@ -21,6 +21,7 @@ function toUser(row: Record<string, unknown>): User {
     mustChangePassword: (row['must_change_password'] as boolean | null) ?? false,
     // jsonb column; postgres.js returns it already parsed (array).
     loginHistory: (row['login_history'] as string[] | null) ?? [],
+    loginDevices: (row['login_devices'] as LoginDevice[] | null) ?? [],
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -66,8 +67,11 @@ export class SupabaseUserRepository implements IUserRepository {
     const loginHistoryParam = this.sql.json(
       (user.loginHistory ?? []) as unknown as Parameters<typeof this.sql.json>[0],
     );
+    const loginDevicesParam = this.sql.json(
+      (user.loginDevices ?? []) as unknown as Parameters<typeof this.sql.json>[0],
+    );
     const rows = await this.sql`
-      insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, login_history, created_at, updated_at)
+      insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash, must_change_password, login_history, login_devices, created_at, updated_at)
       values (
         ${user.id},
         ${user.displayName},
@@ -82,6 +86,7 @@ export class SupabaseUserRepository implements IUserRepository {
         ${user.passwordHash ?? null},
         ${user.mustChangePassword ?? false},
         ${loginHistoryParam},
+        ${loginDevicesParam},
         ${user.createdAt},
         ${user.updatedAt}
       )
@@ -98,6 +103,7 @@ export class SupabaseUserRepository implements IUserRepository {
         password_hash = excluded.password_hash,
         must_change_password = excluded.must_change_password,
         login_history = excluded.login_history,
+        login_devices = excluded.login_devices,
         updated_at   = excluded.updated_at
       returning *
     `;

@@ -2,7 +2,8 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { verifyPassword, hashPassword, needsRehash } from '../utils/crypto';
 import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor, User, SafeUser } from '../core/entities/user';
-import { MAX_LOGIN_HISTORY } from '../core/entities/user';
+import { MAX_LOGIN_HISTORY, MAX_LOGIN_DEVICES } from '../core/entities/user';
+import type { LoginDevice } from '../core/entities/user';
 import type { Grade, Quad } from '../core/types/enums';
 import { UnauthorizedError } from '../core/errors/app-error';
 import { LoginInputSchema } from '../core/validation/auth.schema';
@@ -117,13 +118,29 @@ export interface AuthService {
   issueTokenFor(userId: string, actorOverrides?: Partial<Actor>, ttlMs?: number): Promise<string | null>;
 }
 
+// Upsert one device into an account's device list: bump count/last if the id is known,
+// else add it; most recently seen first; capped. Pure, so it is unit-tested directly.
+export function recordDevice(
+  devices: LoginDevice[] | undefined,
+  id: string,
+  label: string,
+  nowIso: string,
+): LoginDevice[] {
+  const list = devices ?? [];
+  const existing = list.find((d) => d.id === id);
+  const updated: LoginDevice = existing
+    ? { ...existing, label: label || existing.label, last: nowIso, count: existing.count + 1 }
+    : { id, label, first: nowIso, last: nowIso, count: 1 };
+  return [updated, ...list.filter((d) => d.id !== id)].slice(0, MAX_LOGIN_DEVICES);
+}
+
 export function makeAuthService(users: IUserRepository): AuthService {
   return {
     async login(input: unknown) {
       const parsed = LoginInputSchema.safeParse(input);
       if (!parsed.success) throw new UnauthorizedError('Invalid credentials');
 
-      const { email, password } = parsed.data;
+      const { email, password, deviceId, deviceLabel } = parsed.data;
       const user = await users.findByEmail(email);
       if (!user || user.status !== 'active') throw new UnauthorizedError('Invalid credentials');
       if (!user.passwordHash) throw new UnauthorizedError('Account has no password set');
@@ -143,8 +160,10 @@ export function makeAuthService(users: IUserRepository): AuthService {
       // ordinary read-modify-write save() every other account mutation in this file already
       // uses, not a dedicated atomic method.
       try {
-        const history = [new Date().toISOString(), ...(user.loginHistory ?? [])].slice(0, MAX_LOGIN_HISTORY);
-        await users.save({ ...user, loginHistory: history });
+        const nowIso = new Date().toISOString();
+        const history = [nowIso, ...(user.loginHistory ?? [])].slice(0, MAX_LOGIN_HISTORY);
+        const devices = deviceId ? recordDevice(user.loginDevices, deviceId, deviceLabel ?? '', nowIso) : user.loginDevices;
+        await users.save({ ...user, loginHistory: history, loginDevices: devices });
       } catch {
         // Never let a tracking failure block a successful login.
       }

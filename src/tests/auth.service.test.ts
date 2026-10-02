@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { makeAuthService } from '../services/auth.service';
+import { makeAuthService, recordDevice } from '../services/auth.service';
 import { InMemoryUserRepository } from '../repositories/in-memory';
 import { hashPassword } from '../utils/crypto';
-import type { User } from '../core/entities/user';
-import { MAX_LOGIN_HISTORY } from '../core/entities/user';
+import type { User, LoginDevice } from '../core/entities/user';
+import { MAX_LOGIN_HISTORY, MAX_LOGIN_DEVICES } from '../core/entities/user';
 
 async function seedUser(mustChangePassword: boolean) {
   const users = new InMemoryUserRepository();
@@ -126,5 +126,40 @@ describe('AuthService.login — login history tracking', () => {
     expect(result.user.id).toBe('u-1');
     expect(saveCalls).toBe(1);
     users.save = originalSave;
+  });
+});
+
+describe('AuthService.login — device tracking', () => {
+  it('records a new device with count 1, then bumps count (not a duplicate) on the same device', async () => {
+    const { users, auth } = await seedUser(false);
+    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    const saved = await users.findById('u-1');
+    expect(saved?.loginDevices).toHaveLength(1);
+    expect(saved?.loginDevices?.[0]).toMatchObject({ id: 'dev-A', label: 'iPhone', count: 2 });
+  });
+
+  it('tracks a second device separately, most recently seen first', async () => {
+    const { users, auth } = await seedUser(false);
+    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-B', deviceLabel: 'Android' });
+    const saved = await users.findById('u-1');
+    expect(saved?.loginDevices?.map((d) => d.id)).toEqual(['dev-B', 'dev-A']);
+  });
+
+  it('still logs in and records history when no device id is sent (old cached client)', async () => {
+    const { users, auth } = await seedUser(false);
+    await auth.login({ email: 'director', password: 'correcthorse1' });
+    const saved = await users.findById('u-1');
+    expect(saved?.loginHistory).toHaveLength(1);
+    expect(saved?.loginDevices ?? []).toHaveLength(0);
+  });
+
+  it('recordDevice caps the list at MAX_LOGIN_DEVICES, dropping the least recently seen', () => {
+    let list: LoginDevice[] | undefined;
+    for (let i = 0; i < MAX_LOGIN_DEVICES + 2; i++) list = recordDevice(list, `d${i}`, 'x', new Date(1000 * i).toISOString());
+    expect(list).toHaveLength(MAX_LOGIN_DEVICES);
+    expect(list![0]!.id).toBe(`d${MAX_LOGIN_DEVICES + 1}`);
+    expect(list!.some((d) => d.id === 'd0')).toBe(false);
   });
 });

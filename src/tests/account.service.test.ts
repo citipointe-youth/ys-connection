@@ -334,3 +334,17 @@ describe('Account Service — previewAccount()', () => {
     expect(result.role).toBe('quad');
   });
 });
+
+describe('Account Service — list() payload safety', () => {
+  it('returns loginHistory and loginDevices but never passwordHash', async () => {
+    const { svc, users, grade } = await buildService();
+    const device = { id: 'd1', label: 'iPhone', first: '2026-10-01T00:00:00.000Z', last: '2026-10-01T00:00:00.000Z', count: 1 };
+    await users.save({ ...grade, loginHistory: ['2026-10-01T00:00:00.000Z'], loginDevices: [device] });
+    const out = await svc.list(actorFor('u-admin', 'admin'));
+    expect(out.length).toBeGreaterThan(0);
+    for (const u of out) expect((u as any).passwordHash).toBeUndefined();
+    const found = out.find((u) => u.id === grade.id);
+    expect(found?.loginHistory).toEqual(['2026-10-01T00:00:00.000Z']);
+    expect(found?.loginDevices).toEqual([device]);
+  });
+});
