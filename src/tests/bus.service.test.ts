@@ -5,7 +5,7 @@ import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { Leader } from '../core/entities/leader';
-import type { BusRunRider, BusConsent } from '../core/entities/bus';
+import type { BusRunRider, BusConsent, BusGuest } from '../core/entities/bus';
 
 export const actor = (role: string, extra: Partial<Actor> = {}): Actor =>
   ({ id: 'u-' + role, role: role as any, displayName: role.toUpperCase(), grade: null as any, quad: null as any, leaderId: null, ...extra });
@@ -371,5 +371,109 @@ describe('own car write-ordering (I6)', () => {
       .rejects.toThrow('only has 1 seats');
     v = await t.svc.getRun(t.ctx('admin'));
     expect(v.vehicles.find((x) => x.ownerLeaderId === 'L1')).toBeUndefined();
+  });
+});
+
+// M5: listRuns ("Past nights") must only ever return nights strictly before tonight's run.
+describe('listRuns excludes tonight and any future run (M5)', () => {
+  it("excludes tonight's own run, not just a future one", async () => {
+    const t = await withFleet(); // creates the run for FRI_7PM (2026-10-09)
+    const tonight = await t.svc.listRuns(t.ctx('director'));
+    expect(tonight).toHaveLength(0);
+    const nextWeek = await t.svc.listRuns(t.ctx('director', null, '2026-10-16T19:00'));
+    expect(nextWeek).toHaveLength(1); // last Friday's run is now in the past
+  });
+});
+
+describe('linking a walk-in deletes the guest row (I3)', () => {
+  it('linkGuestsAfterImport removes the linked guest so its phone number does not linger', async () => {
+    const t = await setup();
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' } });
+    expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1); // Riley Kim <-> s3
+    expect(await t.bus.getGuest(g.id)).toBeNull();
+  });
+});
+
+describe('linking into a run where the student already has a rider (I4)', () => {
+  it('drops the duplicate walk-in row instead of a raw unique-constraint error', async () => {
+    const t = await setup();
+    const real = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' } });
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '9 D St, Wynnum' } });
+    expect((await t.svc.getRun(t.ctx('admin'))).riders).toHaveLength(2);
+    expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1);
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.riders).toHaveLength(1);
+    expect(v.riders[0]!.id).toBe(real.id);
+    expect(await t.bus.getGuest(g.id)).toBeNull();
+  });
+
+  it('linkGuestsAfterImport continues past a guest whose link fails', async () => {
+    class FlakyBusRepository extends InMemoryBusRepository {
+      override async reassignGuestConsent(guestId: string, studentId: string): Promise<void> {
+        if (guestId === 'bad') throw new Error('boom');
+        return super.reassignGuestConsent(guestId, studentId);
+      }
+    }
+    const bus = new FlakyBusRepository();
+    const students = new InMemoryStudentRepository();
+    const leaders = new InMemoryLeaderRepository();
+    const settings = new InMemorySettingsRepository();
+    await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
+    await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
+      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+    await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
+    await students.save(student('s2', 'Sam', 'Ode', 8, 'male'));
+    const svc = makeBusService(bus, students, leaders, settings);
+    const now = '2026-01-01T00:00:00.000Z';
+    const mkGuest = (id: string, first: string, last: string, grade: number, gender: 'male' | 'female', phone: string): BusGuest =>
+      ({ id, firstName: first, lastName: last, grade, gender, phone, linkedStudentId: null, dismissed: false, createdAt: now, lastRiddenAt: null });
+    await bus.saveGuest(mkGuest('bad', 'Jess', 'Tran', 9, 'female', '0400000000'));
+    await bus.saveGuest(mkGuest('good', 'Sam', 'Ode', 8, 'male', '0400000001'));
+    const result = await svc.linkGuestsAfterImport();
+    expect(result.linked).toBe(1); // 'good' linked despite 'bad' failing
+    expect(await bus.getGuest('good')).toBeNull();
+    expect(await bus.getGuest('bad')).not.toBeNull();
+  });
+});
+
+describe('ensureRun drops inactive/deleted leaders when copying forward (I7)', () => {
+  it('a leader deactivated before next run is dropped from the carry-over; a leader deleted mid-run is dropped from the view', async () => {
+    const t = await setup();
+    const big = await t.svc.saveVehicle(t.ctx('admin'), { name: 'Big Bus', seats: 5, endsAt: 'church' });
+    const v = await t.svc.getRun(t.ctx('admin'));
+    const rvId = v.vehicles.find((x) => x.vehicleId === big.id)!.id;
+    await t.svc.updateRunVehicle(t.ctx('admin'), rvId, { leaderIds: ['L1', 'L2'] });
+
+    const l1 = (await t.leaders.findById('L1'))!;
+    await t.leaders.save({ ...l1, active: false });
+
+    const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
+    const rv = next.vehicles.find((x) => x.vehicleId === big.id)!;
+    expect(rv.leaderIds).toEqual(['L2']);
+    expect(rv.capacity).toBe(4);
+    expect(rv.leaderNames).toEqual(['Sarah']);
+
+    await t.leaders.delete('L2');
+    const after = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
+    const rv2 = after.vehicles.find((x) => x.vehicleId === big.id)!;
+    expect(rv2.leaderIds).toEqual([]);
+    expect(rv2.capacity).toBe(5);
+    expect(rv2.eligibility).toEqual({ female: false, male: false, unknown: true });
+  });
+});
+
+describe('archiving a vehicle unassigns its riders (M2)', () => {
+  it('clears runVehicleId/stopOrder/pinned instead of relying on a DB cascade', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
+    const fleetId = (await t.svc.getRun(t.ctx('admin'))).fleet[0]!.id;
+    await t.svc.saveVehicle(t.ctx('admin'), { id: fleetId, name: 'Big Bus', seats: 3, endsAt: 'church', archived: true });
+    const v = await t.svc.getRun(t.ctx('admin'));
+    const rider = v.riders.find((r) => r.id === t.a.id)!;
+    expect(rider.runVehicleId).toBeNull();
+    expect(rider.stopOrder).toBeNull();
+    expect(rider.pinned).toBe(false);
   });
 });

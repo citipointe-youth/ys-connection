@@ -129,8 +129,13 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const existing = await bus.getRunByDate(date);
     if (existing) return existing;
     const prev = (await bus.listRuns()).find((r) => r.serviceDate < date) ?? null;
+    // I7: a prev run's leaderIds/availablePoolLeaderIds can name a leader who's since been
+    // deactivated (e.g. a New Year reset) — only carry forward leaders still active, or the
+    // new run opens with stale "Leader" chips, wrong capacity and unknown gender.
+    const activeIds = new Set((await leaders.findActive()).map((l) => l.id));
     const { run, created } = await bus.insertRunIfAbsent({
-      id: generateId(), serviceDate: date, version: 0, availablePoolLeaderIds: prev?.availablePoolLeaderIds ?? [],
+      id: generateId(), serviceDate: date, version: 0,
+      availablePoolLeaderIds: (prev?.availablePoolLeaderIds ?? []).filter((id) => activeIds.has(id)),
       lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: nowIso(),
     });
     if (!created) return run;
@@ -139,10 +144,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const fleet = (await bus.listVehicles()).filter((v) => !v.archived);
     for (const [i, v] of fleet.entries()) {
       const before = prevVehicles.find((p) => p.vehicleId === v.id);
+      const leaderIds = (before ? before.leaderIds : prefs.filter((p) => p.fixedVehicleId === v.id).map((p) => p.id))
+        .filter((id) => activeIds.has(id));
       await bus.saveRunVehicle({
         id: generateId(), runId: run.id, vehicleId: v.id, ownerLeaderId: null, name: v.name, seats: v.seats, plate: v.plate,
-        running: before ? before.running : true,
-        leaderIds: before ? before.leaderIds : prefs.filter((p) => p.fixedVehicleId === v.id).map((p) => p.id),
+        running: before ? before.running : true, leaderIds,
         endsAt: v.endsAt, endsAddress: v.endsAddress, endsPlaceId: v.endsPlaceId, colourIndex: i,
       });
     }
@@ -178,12 +184,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   async function vehicleViews(runId: string): Promise<BusRunVehicleView[]> {
     const all = await leaders.findAll();
     const byId = new Map(all.map((l) => [l.id, l]));
-    return (await bus.listRunVehicles(runId)).map((v) => ({
-      ...v,
-      capacity: capacityOf(v.seats, v.leaderIds.length),
-      eligibility: eligibilityOf(v.leaderIds.map((id) => genderOf(byId.get(id)?.gender ?? null))),
-      leaderNames: v.leaderIds.map((id) => byId.get(id)?.fullName ?? 'Leader'),
-    }));
+    // I7: count/name only leaders that still exist — a leader deleted mid-run must not show
+    // as a "Leader" placeholder chip with an unknown-gender eligibility, or be deducted from
+    // capacity at all.
+    return (await bus.listRunVehicles(runId)).map((v) => {
+      const leaderIds = v.leaderIds.filter((id) => byId.has(id));
+      return {
+        ...v, leaderIds,
+        capacity: capacityOf(v.seats, leaderIds.length),
+        eligibility: eligibilityOf(leaderIds.map((id) => genderOf(byId.get(id)?.gender ?? null))),
+        leaderNames: leaderIds.map((id) => byId.get(id)!.fullName),
+      };
+    });
   }
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
@@ -246,12 +258,24 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!(await students.findById(studentId))) throw new NotFoundError('Student not found');
     await bus.reassignGuestAddresses(guestId, studentId);
     await bus.reassignGuestConsent(guestId, studentId);
-    await bus.saveGuest({ ...g, linkedStudentId: studentId });
-    // Rider rows in every run (past and present) move to the student so phones/addresses resolve.
+    // Rider rows in every run (past and present) move to the student so phones/addresses
+    // resolve. I4: if the student already has a rider in that SAME run (two separate people
+    // ended up added once as the walk-in, once as the real student), repointing the guest's
+    // row to the same studentId would collide with the run's unique (run_id, student_id)
+    // index — drop the now-redundant guest row instead of throwing a raw 500, and keep going
+    // for every other run rather than aborting the whole link.
     for (const run of await bus.listRuns()) {
-      for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.guestId === guestId))
-        await bus.saveRunRider({ ...r, studentId, guestId: null });
+      const runRiders = await bus.listRunRiders(run.id);
+      const existing = runRiders.find((r) => r.studentId === studentId);
+      for (const r of runRiders.filter((r) => r.guestId === guestId)) {
+        if (existing) await bus.deleteRunRider(r.id);
+        else await bus.saveRunRider({ ...r, studentId, guestId: null });
+      }
     }
+    // I3 (controller ruling): run history (incl. encrypted addresses) is kept across Full
+    // Reset as a safeguarding record, but a linked walk-in's phone number must not linger —
+    // delete the guest row itself now that its addresses/consent/rider rows have all moved.
+    await bus.deleteGuest(guestId);
   }
 
   const svc: BusService = {
@@ -361,7 +385,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!isPast(run, ctx, c)) {
         const rvs = await bus.listRunVehicles(run.id);
         const rv = rvs.find((x) => x.vehicleId === saved.id);
-        if (rv && saved.archived) await bus.deleteRunVehicle(rv.id);
+        if (rv && saved.archived) {
+          // M2: unassign the car's riders explicitly rather than relying on the DB's FK
+          // ON DELETE SET NULL on run_vehicle_id alone — that only nulls run_vehicle_id,
+          // leaving stop_order/pinned stale (same pattern removeOwnCar already uses).
+          for (const r of (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === rv.id))
+            await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+          await bus.deleteRunVehicle(rv.id);
+        }
         else if (rv) await bus.saveRunVehicle({ ...rv, name: saved.name, seats: saved.seats, plate: saved.plate });
         else if (!saved.archived) await bus.saveRunVehicle({ id: generateId(), runId: run.id, vehicleId: saved.id, ownerLeaderId: null,
           name: saved.name, seats: saved.seats, plate: saved.plate, running: true, leaderIds: [], endsAt: saved.endsAt,
@@ -550,14 +581,22 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       let linked = 0;
       for (const g of (await bus.listGuests()).filter((g) => !g.linkedStudentId)) {
         const matches = all.filter((s) => normName(s.firstName) === normName(g.firstName) && normName(s.lastName) === normName(g.lastName));
-        if (matches.length === 1) { await linkOne(g.id, matches[0]!.id); linked++; }
+        if (matches.length !== 1) continue;
+        // I4: one guest's link failing (unexpected error) must not abort every other
+        // guest's link for the rest of this import.
+        try { await linkOne(g.id, matches[0]!.id); linked++; }
+        catch (err) { console.error(`linkGuestsAfterImport: failed to link guest ${g.id}`, err); }
       }
       return { linked };
     },
     async listRuns(ctx) {
-      await gate(ctx, 'bus:analysis');
+      const c = await gate(ctx, 'bus:analysis');
+      // M5: "Past nights" means strictly before tonight — without this, listRuns also
+      // returned tonight's (and, if one somehow existed, a future) run.
+      const today = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
       const out = [];
       for (const r of await bus.listRuns()) {
+        if (r.serviceDate >= today) continue;
         const [riders, cars] = await Promise.all([bus.listRunRiders(r.id), bus.listRunVehicles(r.id)]);
         out.push({ id: r.id, serviceDate: r.serviceDate, riders: riders.length, cars: cars.filter((v) => v.running).length });
       }

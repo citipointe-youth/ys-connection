@@ -5387,7 +5387,7 @@ async function renderAdminView(settings, users, history) {
             <div class="help-text" style="margin-top:4px">Clears all service + lifegroup attendance; keeps students, connections, leaders &amp; accounts</div>
           </div>
           <div>
-            <button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.',onConfirm:()=>adminAction('/admin/reset','✓ Full reset complete',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Full Reset</button>
+            <button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:()=>adminAction('/admin/reset','✓ Full reset complete',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Full Reset</button>
             <div class="help-text" style="margin-top:4px">Clears students, leaders, connections &amp; all data (keeps accounts)</div>
           </div>
         </div>
@@ -5576,7 +5576,7 @@ function renderNewYearWizard() {
 
   b += _wizStepCard(4, 'Full Reset',
     'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
-    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
+    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !step2Satisfied);
 
   b += _wizStepCard(5, "Re-import this year's attendance",
