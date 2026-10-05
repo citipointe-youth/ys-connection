@@ -108,7 +108,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0011` (`0009` = `users.login_history`, `0010` = `users.login_devices`).
+for it, and don't renumber a new migration to match one — the next migration is `0013` (`0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 ## Role hierarchy
 
@@ -2369,3 +2369,13 @@ Plan: `docs/superpowers/plans/2026-10-02-term-start-fixes.md` (Task 3 UI and Tas
   `src/tests/helpers/extract-fn.ts` (`extractFn`/`loadFns`) evaluates real function bodies from the HTML.
 - `npm audit fix` (non-force) moved express 4.22.3, body-parser, qs and a few transitive patch versions.
   Never run `npm audit fix --force` (it wants @vercel/node 17, a breaking change).
+
+## Bus Ministry (2026-10-05) — optional module, ships OFF
+
+Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-10-05-bus-ministry-design.md`; plans: `…-bus-ministry-r1-core.md`, `…-bus-ministry-r2-r3-google-analysis.md`.
+
+- **Code:** `bus.service.ts` (all rules + RBAC via `bus:*`), pure `bus-logic.ts` / `bus-plan.ts`, `IBusRepository` (in-memory + Supabase; encryption only in `supabase.bus.ts`), `/bus/*` routes, SPA block `/* ── BUS MODULE ── */`. Every `/bus` call carries `?now=YYYY-MM-DDTHH:mm` (+ `&as=<leaderId>`). Module off / `visibility:'admin'` for non-admins → 404.
+- **Routing:** `src/services/routing/` — `RoutingProvider` with `GoogleRoutingProvider` (plain `fetch`, service-account JWT via `node:crypto`) and `FakeRoutingProvider` (straight-line, SVG map). Fake is used when any Google env var is missing or `PERSISTENCE=memory`; set `BUS_ROUTING=google` to test a real key in memory mode. Google gets place IDs + numbers only (tested).
+- **Env (server only):** `GOOGLE_MAPS_API_KEY` (Places API (New), Routes API, Maps Static API — restrict the key to those), `GOOGLE_SA_EMAIL`, `GOOGLE_SA_PRIVATE_KEY` (`\n`-escaped is fine), `GOOGLE_PROJECT_ID` (Route Optimization API; the service account needs the Route Optimization Editor role). Billing account with a budget alert.
+- **Data:** migrations `0011` (tables) + `0012` (consent, drop-off). No coordinates or drive times are stored — only place IDs (encrypted). Generate takes a 30 s lock (`lock_by/lock_until`, conditional update) and saves `undo_snapshot` for 2 min.
+- **Deploy (spec §10):** apply `0011` + `0012` to prod **before** aliasing → set the four Google env vars in Vercel prod → deploy → `vercel alias set <url> ys-connection.vercel.app` → `curl https://ys-connection.vercel.app/bus/run` must return **401 JSON** (not HTML) → enable in Youth Setup → Modules → keep `busMinistry.visibility:'admin'` until the owner is happy, then set it to `all` in Bus settings. Set the church address in Bus settings by picking a suggestion (it needs a place ID).

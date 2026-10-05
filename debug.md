@@ -502,3 +502,12 @@ for "RESOLVED — the actual root cause was the pooler CONNECTION MODE") has the
 investigation, dead ends, and the actual fix (session-mode pooler + per-account rate limiting).
 The mitigation levers (idle_timeout, pool size, `max`) are listed there too — check that section
 before touching `client.ts`'s pool config.
+
+### Bus Ministry
+
+- **Generate / analysis toast "Couldn't reach Google Maps" (502 `ROUTING_FAILED`).** Vercel logs show `[routing] <what> <status>: …` (key redacted). Usual causes: an API not enabled in the Google project (Route Optimization, Places API (New), Routes API, Maps Static API), the service account missing the Route Optimization role, or a `GOOGLE_SA_PRIVATE_KEY` pasted without its `\n` line breaks (`normalisePrivateKey` handles literal `\n`, not a mangled key). Nothing was changed and the lock was released.
+- **Prod quietly gives straight-line "fake" routes.** One of the four Google env vars is missing — look for `[routing] Google env not set` in the logs.
+- **"X is generating routes…" banner won't go away.** The lock auto-expires 30 s after `lock_until`; the next Generate takes it over. If it persists, the clock or the version poll is stuck, not the DB.
+- **Rider shows "No map pin" / Generate says "N need a map pin".** Their saved address has no place ID (added in R1 or typed without picking a suggestion). They're never sent to Google; re-pick the address from the suggestions.
+- **First car / first rider missing after a solve.** Google's proto3 JSON omits zero values (`vehicleIndex`, `shipmentIndex`, skipped `index`, `"0s"`). Parsers must default to 0 — see `parseOptimizeTours`.
+- **Route minutes missing on a car card.** By design — drive times are not stored (Google terms); only the device that last generated shows them. Route analysis always has them.
