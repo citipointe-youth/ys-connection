@@ -8386,6 +8386,7 @@ function busAc(id, q) {
     const st = BUS.ac[id] || (BUS.ac[id] = { text: '', placeId: null, session: _busUuid() });
     const hits = q.trim().length < 3 ? [] : await _busGet('/bus/places/autocomplete',
       'q=' + encodeURIComponent(q.trim()) + '&session=' + encodeURIComponent(st.session)).catch(() => []);
+    const input = document.getElementById(id); if (input && input.value !== q) return; // a newer keystroke owns the list
     BUS.acHits[id] = hits;
     const el = document.getElementById(id + '-ac');
     if (el) el.innerHTML = hits.map((h, i) => `<button type="button" class="li bus-ac-item" onclick="busAcPick('${id}',${i})">${icS('pin')}<span class="li-body">${esc(h.text)}</span></button>`).join('');
