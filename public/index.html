@@ -641,6 +641,17 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .suggest-box{background:var(--accent-light);border-radius:8px;padding:8px 10px;margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .suggest-text{font-size:12px;color:var(--accent-dark);font-weight:600}
 .suggest-actions{display:flex;gap:6px;flex-shrink:0}
+/* ── R2: generate controls, autocomplete, undo toast ── */
+.bus-gen{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.bus-gen .btn-primary{flex:1;min-height:44px}
+.bus-lock{margin-bottom:10px}
+.bus-ac-list{display:flex;flex-direction:column;margin-top:4px;border-radius:8px;overflow:hidden}
+.bus-ac-list:empty{display:none}
+.li.bus-ac-item{width:100%;text-align:left;font-size:13px;gap:8px;min-height:44px}
+.bus-undo{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:12px;
+  background:var(--navy);color:#fff;border-radius:999px;padding:6px 8px 6px 16px;box-shadow:var(--shadow);font-size:13px;max-width:calc(100% - 32px);white-space:nowrap}
+@media(max-height:500px){.bus-undo{bottom:calc(56px + env(safe-area-inset-bottom))}}
+@media(min-width:768px){.bus-undo{bottom:24px}}
 /* ── END BUS MODULE CSS ── */
 </style>
 </head>
@@ -5988,7 +5999,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
   /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
-  /*BUS-HOOK*/ busMinistry: { visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [] },
+  /*BUS-HOOK*/ busMinistry: { visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], regionCode: '' },
 };
 
 // Lazily seed the draft from freshly-fetched settings — only when there isn't
@@ -8109,7 +8120,8 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false };
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+  ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null };
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
 // typing leader by a background repaint — losing focus closes the phone's on-screen keyboard
 // every poll tick (<=10s), e.g. while searching #bus-q. BUS.pendingRepaint defers the repaint
@@ -8175,7 +8187,7 @@ async function busRefresh() {
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
       const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
-      if (gen === BUS.gen) { BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
+      if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
     } finally {
@@ -8291,6 +8303,9 @@ async function renderBus() {
     setApp(''); await busRefresh(); return;
   }
   _busStartPoll();
+  clearTimeout(BUS.undoTimer);
+  const undoMs = BUS.view.run.undoUntil ? Date.parse(BUS.view.run.undoUntil) - Date.now() : 0;
+  if (undoMs > 0) BUS.undoTimer = setTimeout(() => { if (S.page === 'bus' && !_busEditing()) renderBus(); }, undoMs + 500);
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;
   const tabs = [
@@ -8354,19 +8369,53 @@ function _busHitsHtml() {
     <div class="li" onclick="busNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.search.trim())}"</div></div></div></div>`;
 }
 
+// ── Address autocomplete (R2): Google suggestions via our server only; the place ID is kept
+// only while the input still holds the picked suggestion's text.
+function _busUuid() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+function _busAcField(id, value, placeId, placeholder) {
+  BUS.ac[id] = { text: value || '', placeId: placeId || null, session: _busUuid() };
+  return `<div class="bus-ac"><input class="fi" id="${id}" value="${esc(value || '')}" placeholder="${esc(placeholder)}" autocomplete="off"
+      autocapitalize="off" autocorrect="off" spellcheck="false" oninput="busAc('${id}', this.value)">
+    <div class="bus-ac-list" id="${id}-ac"></div></div>`;
+}
+let _busAcT = null;
+function busAc(id, q) {
+  if (id === 'bus-addr-text') { const r = document.querySelector('input[name="bus-addr"][value="new"]'); if (r) r.checked = true; }
+  clearTimeout(_busAcT);
+  _busAcT = setTimeout(async () => {
+    const st = BUS.ac[id] || (BUS.ac[id] = { text: '', placeId: null, session: _busUuid() });
+    const hits = q.trim().length < 3 ? [] : await _busGet('/bus/places/autocomplete',
+      'q=' + encodeURIComponent(q.trim()) + '&session=' + encodeURIComponent(st.session)).catch(() => []);
+    BUS.acHits[id] = hits;
+    const el = document.getElementById(id + '-ac');
+    if (el) el.innerHTML = hits.map((h, i) => `<button type="button" class="li bus-ac-item" onclick="busAcPick('${id}',${i})">${icS('pin')}<span class="li-body">${esc(h.text)}</span></button>`).join('');
+  }, 250);
+}
+function busAcPick(id, i) {
+  const h = (BUS.acHits[id] || [])[i]; if (!h) return;
+  const input = document.getElementById(id); if (input) input.value = h.text;
+  BUS.ac[id] = { text: h.text, placeId: h.placeId, session: _busUuid() }; // a pick ends the billing session
+  BUS.acHits[id] = [];
+  const el = document.getElementById(id + '-ac'); if (el) el.innerHTML = '';
+}
+function _busAcResolve(state, text) { return state && state.text === String(text || '').trim() ? state.placeId : null; }
+function _busAcValue(id) {
+  const el = document.getElementById(id), text = el ? el.value.trim() : '';
+  return { address: text, placeId: _busAcResolve(BUS.ac[id], text) };
+}
 function _busAddressPicker(addresses) {
   const saved = addresses.map((a, i) => `<label class="radio-row"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
       <span>${esc(a.label || 'Saved')} · ${esc(a.suburb || _busSuburb(a.address))}</span></label>`).join('');
   return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
-    <div class="fg"><input class="fi" id="bus-addr-text" placeholder="Street address, suburb" autocomplete="off">
+    <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
 }
 function _busReadAddress() {
   const pick = (document.querySelector('input[name="bus-addr"]:checked') || {}).value;
   if (pick && pick !== 'new') return { addressId: pick };
-  const address = document.getElementById('bus-addr-text').value.trim();
-  if (address.length < 3) { toast('Enter an address'); return null; }
-  return { newAddress: { label: document.getElementById('bus-addr-label').value.trim(), address, placeId: null } };
+  const a = _busAcValue('bus-addr-text');
+  if (a.address.length < 3) { toast('Enter an address'); return null; }
+  return { newAddress: { label: document.getElementById('bus-addr-label').value.trim(), address: a.address, placeId: a.placeId } };
 }
 function busPick(i) {
   const h = BUS.hits[i];
@@ -8449,34 +8498,45 @@ function busSettings() {
   modal(`<div class="mo-title">Bus settings</div>
     <label class="fl">Who can see it</label>
     <select class="fs" id="bs-vis"><option value="admin" ${b.visibility !== 'all' ? 'selected' : ''}>Admin only (testing)</option><option value="all" ${b.visibility === 'all' ? 'selected' : ''}>Everyone</option></select>
-    <label class="fl">Church address</label><input class="fi" id="bs-church" value="${esc(b.churchAddress || '')}" placeholder="Street address, suburb">
+    <label class="fl">Church address</label>${_busAcField('bs-church', b.churchAddress || '', b.churchPlaceId || null, 'Street address, suburb')}
+    ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
+    <label class="fl">Country for address search ${helpTip("Two letters, e.g. au or nz. Leave blank to search everywhere.")}</label>
+    <input class="fi" id="bs-region" maxlength="2" value="${esc(b.regionCode || '')}" placeholder="e.g. au">
     <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
     <button class="btn btn-primary btn-full" onclick="busSaveSettings()">Save</button>`);
 }
 async function busSaveSettings() {
   const coordinatorLeaderIds = [...document.querySelectorAll('.bus-checks input:checked')].map((i) => i.value);
+  const church = _busAcValue('bs-church');
   const patch = { ministryConfig: { busMinistry: { visibility: document.getElementById('bs-vis').value,
-    churchAddress: document.getElementById('bs-church').value.trim(), coordinatorLeaderIds } } };
+    churchAddress: church.address, churchPlaceId: church.placeId || '',
+    regionCode: document.getElementById('bs-region').value.trim().toLowerCase(), coordinatorLeaderIds } } };
   try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
   catch (e) { toast(e.message); }
 }
 
 // ── Car setup / Routes / My car (Task 7) ──
-function _busMapsLinks(stops, church, car) {
+function _busMapsLinks(stops, church, car, churchPlaceId) {
   const enc = encodeURIComponent;
   const end = car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
+  const endPid = car.endsAt === 'address' && car.endsAddress ? (car.endsPlaceId || '') : car.endsAt === 'church' ? (churchPlaceId || '') : '';
   const chunks = [];
   for (let i = 0; i < stops.length; i += 9) chunks.push(stops.slice(i, i + 9));
   return chunks.map((chunk, ci) => {
     const isLast = ci === chunks.length - 1;
-    const origin = ci === 0 ? church : chunks[ci - 1][chunks[ci - 1].length - 1].address;
-    const dest = isLast ? (end || chunk[chunk.length - 1].address) : chunk[chunk.length - 1].address;
-    const wps = (isLast && !end) ? chunk.slice(0, -1) : isLast ? chunk : chunk.slice(0, -1);
+    const prev = ci === 0 ? null : chunks[ci - 1][chunks[ci - 1].length - 1];
+    const lastStop = chunk[chunk.length - 1];
+    const toEnd = isLast && !!end;
+    const origin = prev ? prev.address : church, originPid = prev ? (prev.placeId || '') : (churchPlaceId || '');
+    const dest = toEnd ? end : lastStop.address, destPid = toEnd ? endPid : (lastStop.placeId || '');
+    const wps = toEnd ? chunk : chunk.slice(0, -1);
     let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${enc(origin)}&destination=${enc(dest)}`;
+    if (originPid) url += `&origin_place_id=${enc(originPid)}`;
+    if (destPid) url += `&destination_place_id=${enc(destPid)}`;
     if (wps.length) url += `&waypoints=${enc(wps.map((s) => s.address).join('|'))}`;
     const ids = wps.map((s) => s.placeId || '');
-    if (ids.every(Boolean) && ids.length) url += `&waypoint_place_ids=${enc(ids.join('|'))}`;
+    if (ids.length && ids.every(Boolean)) url += `&waypoint_place_ids=${enc(ids.join('|'))}`;
     const from = ci * 9 + 1, to = ci * 9 + chunk.length;
     return { label: chunks.length === 1 ? 'Start in Google Maps' : `Stops ${from}–${to}`, url };
   });
@@ -8499,13 +8559,13 @@ function busEditPoolSheet() {
 async function busSetInPool(leaderId, inPool) {
   try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { inPool }); busEditPoolSheet(); } catch (e) { toast(e.message); }
 }
-function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly) {
+function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId) {
   return `<label class="fl">Ends at</label>
-    <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-addr').hidden=this.value!=='address'">
+    <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-wrap').hidden=this.value!=='address'">
       <option value="church" ${endsAt === 'church' ? 'selected' : ''}>Church</option>
       <option value="last_drop" ${endsAt === 'last_drop' ? 'selected' : ''}>Last drop</option>
       <option value="address" ${endsAt === 'address' ? 'selected' : ''}>Address</option></select>
-    <input class="fi" id="${prefix}-ends-addr" placeholder="Street address, suburb" value="${esc(endsAddress || '')}" ${endsAt === 'address' ? '' : 'hidden'}>
+    <div id="${prefix}-ends-wrap" ${endsAt === 'address' ? '' : 'hidden'}>${_busAcField(prefix + '-ends-addr', endsAddress || '', endsPlaceId || null, 'Street address, suburb')}</div>
     ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight"> Tonight only</label>`}`;
 }
 function busEditVehicle(vehicleId) {
@@ -8520,13 +8580,14 @@ function busEditVehicle(vehicleId) {
     <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
     <label class="fl">Fixed leaders</label>
     <div class="bus-checks" id="ve-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${l.fixedVehicleId && l.fixedVehicleId === vehicleId ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
-    ${_busEndsAtField('ve', f.endsAt, f.endsAddress, rv ? false : undefined)}
+    ${_busEndsAtField('ve', f.endsAt, f.endsAddress, rv ? false : undefined, f.endsPlaceId)}
     <button class="btn btn-primary btn-full" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 async function busSaveVehicle(vehicleId) {
   const val = (id) => document.getElementById(id).value;
-  const endsAt = val('ve-ends'), endsAddress = endsAt === 'address' ? val('ve-ends-addr').trim() : null;
+  const endsAt = val('ve-ends'), ends = _busAcValue('ve-ends-addr');
+  const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
   const fixed = [...document.querySelectorAll('#ve-leaders input')];
   const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
@@ -8534,7 +8595,7 @@ async function busSaveVehicle(vehicleId) {
     const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
     const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
-      tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress } : { ...base, endsAt, endsAddress });
+      tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId });
     // M4: track which leaders just got UNticked as fixed-to-this-vehicle, so they can be
     // dropped from tonight's car below too — leaving them off the leader-prefs record but
     // still on rv.leaderIds was the bug (a union only ever adds, never removes).
@@ -8549,7 +8610,7 @@ async function busSaveVehicle(vehicleId) {
     const rv = BUS.view.vehicles.find((x) => x.vehicleId === saved.id);
     if (rv) {
       const leaderIds = [...new Set([...rv.leaderIds.filter((id) => !unfixedIds.includes(id)), ...fixed.filter((c) => c.checked).map((c) => c.value)])];
-      await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, tonightOnly ? { endsAt, endsAddress, leaderIds } : { leaderIds });
+      await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, tonightOnly ? { endsAt, endsAddress, endsPlaceId, leaderIds } : { leaderIds });
     }
     closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
@@ -8642,37 +8703,86 @@ async function busMove(riderId, runVehicleId) {
   try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); closeModal(); } catch (e) { toast(e.message); }
 }
 
+function _busFitCount(v) { return v.riders.filter((r) => !r.runVehicleId && !r.pinned && r.placeId).length; }
+function _busLockedBy(v, nowMs, generating) {
+  const until = v.run.lockUntil ? Date.parse(v.run.lockUntil) : 0;
+  return !generating && v.run.lockBy && until > nowMs ? v.run.lockBy : null;
+}
+function _busRoutesHead() {
+  const v = BUS.view;
+  if (v.run.readOnly || !v.riders.length) return '';
+  const lock = _busLockedBy(v, Date.now(), BUS.generating), busy = !!lock || BUS.generating;
+  const fleet = new Set(v.vehicles.filter((x) => x.running && x.vehicleId).map((x) => x.id));
+  const anyPlaced = v.riders.some((r) => r.runVehicleId && fleet.has(r.runVehicleId));
+  const fitN = _busFitCount(v);
+  const label = BUS.generating ? 'Working out routes…' : !anyPlaced ? 'Generate routes' : `Fit in ${fitN} new rider${fitN === 1 ? '' : 's'}`;
+  const primary = (!anyPlaced || fitN || BUS.generating)
+    ? `<button class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="busGenerate('${anyPlaced ? 'fit' : 'all'}')">${icS('route')} ${label}</button>`
+    : '<span style="flex:1"></span>';
+  const kebab = anyPlaced ? `<button class="btn-icon" aria-label="More route options" ${busy ? 'disabled' : ''} onclick="busRoutesMenu()">${icN('kebab')}</button>` : '';
+  return `${lock ? `<div class="alert al-warn bus-lock">${icS('alert')} ${esc(lock)} is generating routes…</div>` : ''}<div class="bus-gen">${primary}${kebab}</div>`;
+}
+function busRoutesMenu() {
+  modal(`<div class="mo-title">Re-generate all routes?</div>
+    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders is re-planned. You can undo for 2 minutes.</div>
+    <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="busGenerate('all')">Re-generate all</button></div>`);
+}
+async function busGenerate(mode) {
+  if (BUS.generating) return;
+  closeModal();
+  BUS.generating = true; renderBus();
+  try {
+    const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 30000);
+    BUS.routeMin = res.routeMin || {};
+    const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : ''].filter(Boolean);
+    toast(notes.length ? notes.join(' · ') : 'Routes ready', 4000);
+  } catch (e) { toast(e.message || 'Could not work out routes', 4000); }
+  finally { BUS.generating = false; await busRefresh(); }
+}
+function _busUndoBar() {
+  const v = BUS.view;
+  if (v.run.readOnly || !v.canCoordinate || !v.run.undoUntil || Date.parse(v.run.undoUntil) <= Date.now()) return '';
+  return `<div class="bus-undo" role="status"><span>Routes updated</span><button class="btn btn-secondary btn-sm" onclick="busUndo()">Undo</button></div>`;
+}
+async function busUndo() { try { await _busSend('POST', '/bus/run/undo'); BUS.routeMin = {}; toast('Undone'); } catch (e) { toast(e.message); } }
+
 function _busRoutesHtml() {
   const v = BUS.view;
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
-    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''}</div><div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
-    ${v.run.readOnly ? '' : `<button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
+    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
+    ${v.run.readOnly ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
+      <button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
   </div>`).join('');
   const unHead = unassigned.length
     ? `<span class="card-title" style="display:flex;align-items:center;gap:6px"><span class="chip c-warn">${icS('alert')} Unassigned (${unassigned.length})</span></span>`
     : `<span class="card-title" style="display:flex;align-items:center;gap:6px;color:#065f46">${icS('check')} Unassigned (0) · All placed</span>`;
   const carCards = v.vehicles.filter((rv) => rv.running).map((rv) => {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
+    const min = BUS.routeMin[rv.id];
+    const warn = !riders.length ? '' : rv.eligibility.unknown ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
+      : riders.some((r) => r.gender && !rv.eligibility[r.gender]) ? `<span class="chip c-warn">${icS('alert')} Gender mismatch</span>` : '';
     const rows = riders.map((r, i) => `<div class="route-row"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`} style="cursor:${v.run.readOnly ? 'default' : 'pointer'}">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
     </div>`).join('');
     return `<div class="card drop open">
       <div class="drop-head">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
-        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}</span>
+        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}</span>
         <span class="drop-chev">${icS('chevd')}</span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
     </div>`;
   }).join('');
-  return `<div class="card drop open">
+  return `${_busRoutesHead()}<div class="card drop open">
     <div class="drop-head">${unHead}<span class="drop-chev">${icS('chevd')}</span></div>
     <div class="drop-body" style="margin-top:8px">${unRows || '<div class="card-sub">All placed — no action needed.</div>'}</div>
   </div>
-  <div class="bus-routes">${carCards}</div>`;
+  <div class="bus-routes">${carCards}</div>${_busUndoBar()}`;
 }
 
 function busOwnCarSheet() {
@@ -8682,7 +8792,7 @@ function busOwnCarSheet() {
     <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
     <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" value="${car.seats}" aria-label="Seats">
       <input class="fi" id="oc-plate" placeholder="Plate" value="${esc(car.plate || '')}"></div>
-    ${_busEndsAtField('oc', car.endsAt, car.endsAddress)}
+    ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
     <div class="bus-checks" id="oc-riders">${unplaced.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address))}</label>`).join('') || '<div class="card-sub">No one waiting for a car.</div>'}</div>
     <div class="card-sub">These riders come off the bus routes.</div>
@@ -8692,7 +8802,8 @@ async function busSaveOwnCar() {
   const val = (id) => document.getElementById(id).value;
   const endsAt = val('oc-ends');
   const body = { car: { name: val('oc-name').trim(), seats: Number(val('oc-seats')), plate: val('oc-plate').trim() || null,
-    endsAt, endsAddress: endsAt === 'address' ? val('oc-ends-addr').trim() : null, endsPlaceId: null },
+    endsAt, endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
+    endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value) };
   try { await _busSend('POST', '/bus/run/own-car', body); closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
 }
@@ -8744,7 +8855,7 @@ function _busMyCarHtml() {
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
-    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv) : [];
+    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv, mc.churchPlaceId) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row" style="align-items:flex-start" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>

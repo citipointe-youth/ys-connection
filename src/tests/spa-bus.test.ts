@@ -262,7 +262,7 @@ describe('busNewPerson resets a stale gender selection (M3)', () => {
 describe('busSaveVehicle drops an unticked fixed leader from tonight (M4)', () => {
   it('the run-vehicle PATCH leaderIds excludes the just-unticked leader', async () => {
     const prelude = `
-      const BUS = { view: { fleet: [], leaders: [{ id: 'L1', fixedVehicleId: 'v1' }], vehicles: [{ id: 'rv1', vehicleId: 'v1', leaderIds: ['L1'] }] } };
+      const BUS = { ac: {}, view: { fleet: [], leaders: [{ id: 'L1', fixedVehicleId: 'v1' }], vehicles: [{ id: 'rv1', vehicleId: 'v1', leaderIds: ['L1'] }] } };
       const __calls = [];
       const __sendCalls = [];
       const document = {
@@ -283,7 +283,7 @@ describe('busSaveVehicle drops an unticked fixed leader from tonight (M4)', () =
       function toast() {}
       function __state() { return { calls: __calls, sendCalls: __sendCalls }; }
     `;
-    const { busSaveVehicle, __state } = loadFns(['busSaveVehicle'], prelude, ['busSaveVehicle', '__state']);
+    const { busSaveVehicle, __state } = loadFns(['busSaveVehicle', '_busAcValue', '_busAcResolve'], prelude, ['busSaveVehicle', '__state']);
     await busSaveVehicle('v1');
     const st = __state();
     const rvPatch = st.sendCalls.find((c: any) => c.path === '/bus/run/vehicles/rv1');
@@ -297,7 +297,45 @@ describe('SPA escaping (final re-review)', () => {
     expect(loadIndexHtml().match(/function esc\(/g)).toHaveLength(1);
   });
   it('_busAddressPicker shows the suburb from /bus/search results', () => {
-    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busSuburb', 'esc']);
+    const prelude = 'const BUS = { ac: {} }; const window = {};';
+    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
     expect(_busAddressPicker([{ id: 'a1', label: 'Home', suburb: 'Carina' }])).toContain('Home · Carina');
+  });
+});
+
+describe('R2 SPA helpers', () => {
+  it('_busAcResolve keeps the place ID only while the text is the picked suggestion', () => {
+    const { _busAcResolve } = loadFns(['_busAcResolve']);
+    const st = { text: '24 Wynnum Rd, Carina', placeId: 'P1' };
+    expect(_busAcResolve(st, ' 24 Wynnum Rd, Carina ')).toBe('P1');
+    expect(_busAcResolve(st, '24 Wynnum Rd, Carina East')).toBeNull();
+    expect(_busAcResolve(undefined, 'x')).toBeNull();
+  });
+  it('_busFitCount counts unplaced, unpinned riders that have a map pin', () => {
+    const { _busFitCount } = loadFns(['_busFitCount']);
+    const v = { riders: [
+      { runVehicleId: null, pinned: false, placeId: 'P' }, { runVehicleId: null, pinned: true, placeId: 'P' },
+      { runVehicleId: null, pinned: false, placeId: null }, { runVehicleId: 'c', pinned: false, placeId: 'P' }] };
+    expect(_busFitCount(v)).toBe(1);
+  });
+  it('_busLockedBy names the holder only while the lock is live and not our own generate', () => {
+    const { _busLockedBy } = loadFns(['_busLockedBy']);
+    const now = Date.parse('2026-10-09T09:00:00.000Z');
+    const v = (until: string | null) => ({ run: { lockBy: 'Sarah', lockUntil: until } });
+    expect(_busLockedBy(v('2026-10-09T09:00:20.000Z'), now, false)).toBe('Sarah');
+    expect(_busLockedBy(v('2026-10-09T08:59:59.000Z'), now, false)).toBeNull();
+    expect(_busLockedBy(v('2026-10-09T09:00:20.000Z'), now, true)).toBeNull();
+    expect(_busLockedBy(v(null), now, false)).toBeNull();
+  });
+  it('Maps links carry origin/destination/waypoint place IDs', () => {
+    const { _busMapsLinks } = loadFns(['_busMapsLinks']);
+    const stops = [{ address: '1 A St', placeId: 'PA' }, { address: '2 B St', placeId: 'PB' }];
+    const u = new URL(_busMapsLinks(stops, '1 Church Rd', { endsAt: 'church' }, 'PC')[0].url);
+    expect([u.searchParams.get('origin_place_id'), u.searchParams.get('destination_place_id'), u.searchParams.get('waypoint_place_ids')])
+      .toEqual(['PC', 'PC', 'PA|PB']);
+    const d = new URL(_busMapsLinks(stops, '1 Church Rd', { endsAt: 'last_drop' }, 'PC')[0].url);
+    expect([d.searchParams.get('destination_place_id'), d.searchParams.get('waypoint_place_ids')]).toEqual(['PB', 'PA']);
+    const e = new URL(_busMapsLinks(stops, '1 Church Rd', { endsAt: 'address', endsAddress: '9 End St', endsPlaceId: 'PE' }, 'PC')[0].url);
+    expect(e.searchParams.get('destination_place_id')).toBe('PE');
   });
 });
