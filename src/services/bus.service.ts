@@ -153,6 +153,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   function consentFor(consents: BusConsent[], r: BusRunRider): BusConsent | null {
     return consents.find((k) => (r.studentId ? k.studentId === r.studentId : k.guestId === r.guestId)) ?? null;
   }
+  // One-off consent lookup for a single write's response (vs. consentFor's in-memory lookup
+  // against a batch already loaded by buildView/myCar).
+  async function consentOf(r: { studentId: string | null; guestId: string | null }): Promise<BusConsent | null> {
+    return bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
+  }
 
   async function vehicleViews(runId: string): Promise<BusRunVehicleView[]> {
     const all = await leaders.findAll();
@@ -285,7 +290,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         }
       }
       await touch(ctx, run);
-      return riderView(rider);
+      return riderView(rider, await consentOf(rider));
     },
     async updateRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -296,7 +301,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const addr = await resolveAddress(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }, v);
       const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: addr.address, snapPlaceId: addr.placeId });
       await touch(ctx, run);
-      return riderView(saved);
+      return riderView(saved, await consentOf(saved));
     },
     async removeRider(ctx, riderId) {
       const c = await gate(ctx, 'bus:roster');
@@ -413,7 +418,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (v.runVehicleId === null) {
         const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: true });
         await touch(ctx, run);
-        return riderView(saved);
+        return riderView(saved, await consentOf(saved));
       }
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
       if (!rv) throw new NotFoundError('Car not found');
@@ -422,7 +427,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const maxStop = Math.max(0, ...inCar.map((x) => x.stopOrder ?? 0));
       const saved = await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
       await touch(ctx, run);
-      return riderView(saved);
+      return riderView(saved, await consentOf(saved));
     },
     async setConsent(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -432,8 +437,21 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
       const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
       const prior = await bus.getConsent(owner);
-      const saved = await bus.saveConsent({ id: prior?.id ?? generateId(), studentId: r.studentId, guestId: r.studentId ? null : r.guestId,
-        given: v.given, note: v.note, recordedBy: await whoLabel(ctx), recordedAt: nowIso() });
+      const who = await whoLabel(ctx);
+      let saved: BusConsent;
+      try {
+        saved = await bus.saveConsent({ id: prior?.id ?? generateId(), studentId: r.studentId, guestId: r.studentId ? null : r.guestId,
+          given: v.given, note: v.note, recordedBy: who, recordedAt: nowIso() });
+      } catch (err) {
+        // First-time consent for the same person, ticked by two leaders at once: the DB's
+        // unique student_id/guest_id index on bus_consents rejects the loser's fresh-id
+        // insert with a Postgres unique-violation. Re-read and save onto the winner's row
+        // instead of surfacing a raw 500 — same pattern addRider uses for the rider race.
+        if ((err as { code?: string }).code !== '23505') throw err;
+        const again = await bus.getConsent(owner);
+        if (!again) throw err;
+        saved = await bus.saveConsent({ ...again, given: v.given, note: v.note, recordedBy: who, recordedAt: nowIso() });
+      }
       await touch(ctx, run);
       return riderView(r, saved);
     },
@@ -450,7 +468,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
-      return riderView(saved, await bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }));
+      return riderView(saved, await consentOf(saved));
     },
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');

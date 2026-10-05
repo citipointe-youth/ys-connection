@@ -5,7 +5,7 @@ import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { Leader } from '../core/entities/leader';
-import type { BusRunRider } from '../core/entities/bus';
+import type { BusRunRider, BusConsent } from '../core/entities/bus';
 
 export const actor = (role: string, extra: Partial<Actor> = {}): Actor =>
   ({ id: 'u-' + role, role: role as any, displayName: role.toUpperCase(), grade: null as any, quad: null as any, leaderId: null, ...extra });
@@ -249,6 +249,41 @@ describe('parent consent', () => {
     await t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'Dad, call 7pm' });
     await t.svc.linkGuestsAfterImport();
     expect((await t.bus.getConsent({ studentId: 's3' }))!.note).toBe('Dad, call 7pm');
+  });
+  it('first-time consent race: two leaders ticking at once merges onto one row, not a raw 500', async () => {
+    // Simulates the DB's unique student_id/guest_id index on bus_consents (migration 0012)
+    // rejecting a NEW consent's insert with a Postgres unique-violation (code 23505) because
+    // another request already inserted the first consent row for the same person a moment
+    // earlier — the same race addRider already defends against for bus_run_riders.
+    class RacyConsentBusRepository extends InMemoryBusRepository {
+      private raced = false;
+      override async saveConsent(c: BusConsent): Promise<BusConsent> {
+        if (!this.raced && c.studentId === 's1') {
+          this.raced = true;
+          // The "other leader"'s concurrent first-time consent silently lands first.
+          await super.saveConsent({ ...c, id: 'c-other', note: 'First leader, 7:05pm' });
+          throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+        }
+        return super.saveConsent(c);
+      }
+    }
+    const bus = new RacyConsentBusRepository();
+    const students = new InMemoryStudentRepository();
+    const leaders = new InMemoryLeaderRepository();
+    const settings = new InMemorySettingsRepository();
+    await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
+    await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
+      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+    await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
+    const svc = makeBusService(bus, students, leaders, settings);
+    const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
+    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+
+    const v = await svc.setConsent(asGrade, r.id, { given: true, note: 'Second leader, 7:06pm' });
+    expect(v.consent).toMatchObject({ given: true, note: 'Second leader, 7:06pm' });
+    const rows = await bus.listConsents();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.note).toBe('Second leader, 7:06pm');
   });
 });
 
