@@ -6,6 +6,7 @@ import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { Leader } from '../core/entities/leader';
 import type { BusRunRider, BusConsent, BusGuest } from '../core/entities/bus';
+import type { RoutingProvider } from '../services/routing/routing-provider';
 
 export const actor = (role: string, extra: Partial<Actor> = {}): Actor =>
   ({ id: 'u-' + role, role: role as any, displayName: role.toUpperCase(), grade: null as any, quad: null as any, leaderId: null, ...extra });
@@ -21,7 +22,7 @@ export const leader = (id: string, name: string, gender: 'male' | 'female' | nul
 });
 export const FRI_7PM = '2026-10-09T19:00';
 
-export async function setup(opts: { moduleOn?: boolean; visibility?: 'admin' | 'all' } = {}) {
+export async function setup(opts: { moduleOn?: boolean; visibility?: 'admin' | 'all'; routing?: RoutingProvider } = {}) {
   const bus = new InMemoryBusRepository(); const students = new InMemoryStudentRepository();
   const leaders = new InMemoryLeaderRepository(); const settings = new InMemorySettingsRepository();
   await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
@@ -34,7 +35,7 @@ export async function setup(opts: { moduleOn?: boolean; visibility?: 'admin' | '
   await students.save(student('s3', 'Riley', 'Kim', 10, 'male'));
   await leaders.save(leader('L1', 'Tom', 'male'));
   await leaders.save(leader('L2', 'Sarah', 'female'));
-  const svc = makeBusService(bus, students, leaders, settings);
+  const svc = makeBusService(bus, students, leaders, settings, opts.routing);
   const ctx = (role: string, asLeaderId: string | null = null, localNow = FRI_7PM): BusCtx => ({ actor: actor(role), asLeaderId, localNow });
   return { svc, bus, students, leaders, settings, ctx };
 }
@@ -475,5 +476,37 @@ describe('archiving a vehicle unassigns its riders (M2)', () => {
     expect(rider.runVehicleId).toBeNull();
     expect(rider.stopOrder).toBeNull();
     expect(rider.pinned).toBe(false);
+  });
+});
+
+// I4 (controller ruling): once the real Google provider is live, a "fake:" place ID — only
+// ever produced by the dev/test fallback provider — must be rejected wherever it's saved, or
+// every future Generate 400s against Google with no clue why.
+describe('I4: a "fake:" place ID is rejected once the Google provider is live', () => {
+  const googleStub: RoutingProvider = {
+    name: 'google',
+    solve: async () => ({ routes: [], skipped: [] }),
+    autocomplete: async () => [],
+    matrix: async () => [],
+    staticMap: async () => ({ contentType: 'image/png', bytes: new Uint8Array() }),
+  };
+  it('rejects a new rider address with a fake: place ID — but the same input is fine against the dev/test fake provider', async () => {
+    const live = await setup({ routing: googleStub });
+    await expect(live.svc.addRider(live.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st:1' } }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    const dev = await setup();
+    await expect(dev.svc.addRider(dev.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st:1' } }))
+      .resolves.toBeTruthy();
+  });
+  it('rejects a fleet vehicle end-address with a fake: place ID', async () => {
+    const t = await setup({ routing: googleStub });
+    await expect(t.svc.saveVehicle(t.ctx('admin'), { name: 'Van', seats: 8, endsAt: 'address', endsAddress: 'X', endsPlaceId: 'fake:x' }))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('rejects an own car end-address with a fake: place ID', async () => {
+    const t = await setup({ routing: googleStub });
+    await expect(t.svc.saveOwnCar(t.ctx('grade', 'L1'),
+      { car: { name: 'My car', seats: 4, plate: null, endsAt: 'address', endsAddress: 'X', endsPlaceId: 'fake:x' }, riderIds: [] }))
+      .rejects.toMatchObject({ statusCode: 400 });
   });
 });

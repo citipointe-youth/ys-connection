@@ -2,7 +2,7 @@ import { makeBusService, type BusCtx } from '../../services/bus.service';
 import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository } from '../../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../../core/ministry-config';
 import { FakeRoutingProvider } from '../../services/routing/fake-routing-provider';
-import type { RoutingProvider, SolveProblem, MapPath, MapMarker } from '../../services/routing/routing-provider';
+import type { RoutingProvider, SolveProblem, MapPath, MapMarker, RoutePoint } from '../../services/routing/routing-provider';
 import type { Actor } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
@@ -13,12 +13,12 @@ const T = '2026-01-01T00:00:00.000Z';
 /** Wraps a provider (default: fake) and records exactly what would be sent to Google. */
 export function recordingRouting(inner: RoutingProvider = new FakeRoutingProvider()) {
   const calls = { solve: [] as SolveProblem[], autocomplete: [] as { input: string; session: string; region: string }[],
-    matrix: 0, map: [] as { paths: MapPath[]; markers: MapMarker[] }[] };
+    matrix: 0, matrixCalls: [] as { from: RoutePoint; to: RoutePoint }[][], map: [] as { paths: MapPath[]; markers: MapMarker[] }[] };
   const provider: RoutingProvider = {
     name: 'fake',
     solve: (p, s) => { calls.solve.push(p); return inner.solve(p, s); },
     autocomplete: (i, t, r, s) => { calls.autocomplete.push({ input: i, session: t, region: r }); return inner.autocomplete(i, t, r, s); },
-    matrix: (pairs, s) => { calls.matrix++; return inner.matrix(pairs, s); },
+    matrix: (pairs, s) => { calls.matrix++; calls.matrixCalls.push(pairs); return inner.matrix(pairs, s); },
     staticMap: (paths, markers, s) => { calls.map.push({ paths, markers }); return inner.staticMap(paths, markers, s); },
   };
   return { provider, calls };

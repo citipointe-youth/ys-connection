@@ -26,6 +26,61 @@ describe('route analysis', () => {
     expect(a).toMatchObject({ detourMin: 10, detourPct: 20, unassigned: 0, longestMin: 30, totalMin: 30 });
   });
 
+  // I5 (controller ruling): one small matrix per car, built from that car's own skip pairs —
+  // not every car's legs mixed into shared 25-pair chunks — and cached alongside the solve.
+  it('I5: one matrix call per car, not one combined call across all cars — and the result is cached per run version', async () => {
+    const rec = recordingRouting();
+    const f = await busFixture({ routing: rec.provider });
+    const vanA = await f.car('Van A', 8, ['L1', 'L2']);
+    const vanB = await f.car('Van B', 8, ['L3', 'L4']);
+    const jess = await f.rider('s1'); const sam = await f.rider('s2');
+    const riley = await f.rider('s3'); const mia = await f.rider('s4');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: vanA });
+    await f.svc.moveRider(f.admin, sam.id, { runVehicleId: vanA });
+    await f.svc.moveRider(f.admin, riley.id, { runVehicleId: vanB });
+    await f.svc.moveRider(f.admin, mia.id, { runVehicleId: vanB });
+    const a = await f.svc.analysis(f.ctx('director'));
+    expect(a.cars).toHaveLength(2);
+    // One call per car (not 1 combined call across both cars' pairs), each scoped to just that
+    // car's own small set of skip pairs — never the whole run mixed together.
+    expect(rec.calls.matrix).toBe(2);
+    for (const pairs of rec.calls.matrixCalls) expect(pairs.length).toBe(2);
+    // Re-opening analysis at the same run version must not pay Google again.
+    rec.calls.matrix = 0; rec.calls.matrixCalls = [];
+    await f.svc.analysis(f.ctx('director'));
+    expect(rec.calls.matrix).toBe(0);
+  });
+
+  // M6: a Bus-settings change (church/leave time/target route length) doesn't bump the run
+  // version, so without them in the cache key a warm instance would keep serving a stale solve.
+  it('M6: a target-route-length change busts the analysis cache even though the run version is unchanged', async () => {
+    const rec = recordingRouting();
+    const f = await busFixture({ routing: rec.provider });
+    await f.car('Van', 8, ['L1', 'L2']);
+    await f.rider('s1'); await f.rider('s2');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    rec.calls.solve.length = 0;
+    const v0 = (await f.svc.getRun(f.admin)).run.version;
+    await f.svc.analysis(f.ctx('director'));
+    expect(rec.calls.solve).toHaveLength(1);
+    const s = await f.settings.getSettings();
+    await f.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
+      busMinistry: { ...s.ministryConfig.busMinistry, targetRouteMin: s.ministryConfig.busMinistry.targetRouteMin + 5 } } });
+    expect((await f.svc.getRun(f.admin)).run.version).toBe(v0); // a settings change alone never touches the run
+    await f.svc.analysis(f.ctx('director'));
+    expect(rec.calls.solve).toHaveLength(2); // re-solved, not served stale from the old key
+  });
+
+  // M5: an empty map (no riders placed yet) always 400s against the real Static Maps API —
+  // fail fast server-side instead of a guaranteed-failing Google call on every open.
+  it('M5: no routes placed yet → 400 before any map call', async () => {
+    const rec = recordingRouting();
+    const f = await busFixture({ routing: rec.provider });
+    await f.car('Van', 8, ['L1', 'L2']); // a running car but no riders placed into it
+    await expect(f.svc.analysisMap(f.ctx('director'))).rejects.toMatchObject({ statusCode: 400 });
+    expect(rec.calls.map).toHaveLength(0);
+  });
+
   it('director/admin only; module off → 404', async () => {
     const f = await busFixture();
     await expect(f.svc.analysis(f.ctx('quad'))).rejects.toMatchObject({ statusCode: 403 });

@@ -16,7 +16,9 @@ describe('generate', () => {
     const res = await f.svc.generate(f.admin, { mode: 'all' });
     expect(res).toMatchObject({ placed: 4, unassigned: 0, noAddressPin: 0 });
     const v = await f.svc.getRun(f.admin);
-    expect(v.run.version).toBe(v0.run.version + 1);
+    // I3: tryLock + releaseLock each bump the version too, not just the write — so this is now
+    // more than +1, just always higher than before the generate.
+    expect(v.run.version).toBeGreaterThan(v0.run.version);
     expect(v.run.lockBy).toBeNull();
     expect(v.run.undoUntil).not.toBeNull();
     for (const car of [a, b]) {
@@ -114,13 +116,34 @@ describe('generate', () => {
     expect((await f.bus.getRun(run.id))!.lockBy).toBeNull();
   });
 
-  it('ticking pool availability during a generate keeps the lock', async () => {
+  // I1 (controller ruling): these three writers feed the solve (car seats/running state,
+  // leader pool/fixed-car prefs) — a mid-solve edit could write riders into a stale car, so
+  // they now throw the same 409 lock error Move/generate already use.
+  it('I1: updateRunVehicle, saveVehicle (tonight part) and setLeaderPrefs are blocked by an active lock', async () => {
+    const f = await busFixture();
+    const rvId = await f.car('Van', 8, ['L1']);
+    const run = (await f.svc.getRun(f.admin)).run;
+    const vehicleId = (await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === rvId)!.vehicleId!;
+    await f.bus.tryLock(run.id, 'Sarah', new Date().toISOString(), future(30_000));
+    await expect(f.svc.updateRunVehicle(f.admin, rvId, { running: false })).rejects.toMatchObject({ statusCode: 409, message: 'Sarah is generating routes…' });
+    await expect(f.svc.saveVehicle(f.admin, { id: vehicleId, name: 'Van', seats: 5, prefGrades: [], endsAt: 'church' }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    await expect(f.svc.setLeaderPrefs(f.admin, 'L2', { inPool: true })).rejects.toMatchObject({ statusCode: 409 });
+    const after = await f.svc.getRun(f.admin);
+    expect(after.run.lockBy).toBe('Sarah'); // untouched by the rejected calls
+    expect(after.vehicles.find((x) => x.id === rvId)).toMatchObject({ running: true, seats: 8 }); // tonight's car unchanged
+  });
+
+  // I1 (controller ruling): setPool now throws the same 409 lock error as Move/generate while
+  // a solve is in flight, instead of the old "write survives, lock untouched" behaviour — the
+  // pool feeds the solve's auto-fill, so changing it mid-solve could feed a since-stale pool.
+  it('I1: ticking pool availability during a generate is blocked (409)', async () => {
     const f = await busFixture();
     await f.car('Van', 8, ['L1']);
     const run = (await f.svc.getRun(f.admin)).run;
     await f.bus.tryLock(run.id, 'Sarah', new Date().toISOString(), future(30_000));
-    await f.svc.setPool(f.admin, { availableLeaderIds: ['L2'] });
-    expect((await f.bus.getRun(run.id))!).toMatchObject({ lockBy: 'Sarah', availablePoolLeaderIds: ['L2'] });
+    await expect(f.svc.setPool(f.admin, { availableLeaderIds: ['L2'] })).rejects.toMatchObject({ statusCode: 409, message: 'Sarah is generating routes…' });
+    expect((await f.bus.getRun(run.id))!).toMatchObject({ lockBy: 'Sarah', availablePoolLeaderIds: [] });
   });
 
   it('Google failure: 502, nothing changes, lock released', async () => {
@@ -130,7 +153,9 @@ describe('generate', () => {
     const before = await f.svc.getRun(f.admin);
     await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 502, code: 'ROUTING_FAILED' });
     const after = await f.svc.getRun(f.admin);
-    expect(after.run.version).toBe(before.run.version);
+    // I3: tryLock + releaseLock each bump the version (the business data below is still
+    // untouched — that's the "nothing changes" this test is really about).
+    expect(after.run.version).toBe(before.run.version + 2);
     expect(after.riders.map((r) => r.runVehicleId)).toEqual(before.riders.map((r) => r.runVehicleId));
     expect(after.run).toMatchObject({ lockBy: null, undoUntil: null });
   });
@@ -192,6 +217,53 @@ describe('undo', () => {
     expect((await f.svc.getRun(f.admin)).riders[0]!.runVehicleId).toBeNull();
     await f.bus.setUndo(r.id, r.undoSnapshot, new Date(Date.now() - 1000).toISOString());
     await expect(f.svc.undo(f.admin)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // I2 (controller ruling): Move, own-car save and rider removal clear the snapshot, so a
+  // later Undo can only ever revert a generate nobody has touched since. The SPA's own
+  // "!v.run.undoUntil" check (the Undo bar/toast) then stops offering Undo on its own.
+  it('I2: Move after a generate clears the snapshot', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1'); await f.rider('s2');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    expect((await f.svc.getRun(f.admin)).run.undoUntil).not.toBeNull();
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: a });
+    expect((await f.svc.getRun(f.admin)).run.undoUntil).toBeNull();
+    await expect(f.svc.undo(f.admin)).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('I2: saving an own car after a generate clears the snapshot', async () => {
+    const f = await busFixture();
+    await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    await f.svc.saveOwnCar(f.ctx('grade', 'L3'),
+      { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'last_drop', endsAddress: null, endsPlaceId: null }, riderIds: [jess.id] });
+    expect((await f.svc.getRun(f.admin)).run.undoUntil).toBeNull();
+    await expect(f.svc.undo(f.admin)).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('I2: removing a rider after a generate clears the snapshot', async () => {
+    const f = await busFixture();
+    await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1'); await f.rider('s2');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    await f.svc.removeRider(f.admin, jess.id);
+    expect((await f.svc.getRun(f.admin)).run.undoUntil).toBeNull();
+    await expect(f.svc.undo(f.admin)).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('I2: Undo never pulls a rider out of an own car, even if a stale snapshot says otherwise', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    const run = (await f.svc.getRun(f.admin)).run;
+    await f.svc.saveOwnCar(f.ctx('grade', 'L3'),
+      { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'last_drop', endsAddress: null, endsPlaceId: null }, riderIds: [jess.id] });
+    const ownCarRvId = (await f.svc.getRun(f.admin)).riders.find((r) => r.id === jess.id)!.runVehicleId!;
+    // Directly re-set a snapshot claiming Jess belongs back on the fleet van — isolates the
+    // undo()-loop's own-car guard from the (already-tested) snapshot-clearing above.
+    await f.bus.setUndo(run.id, [{ riderId: jess.id, runVehicleId: a, stopOrder: 1, pinned: false }], future(120_000));
+    await f.svc.undo(f.admin);
+    expect((await f.svc.getRun(f.admin)).riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(ownCarRvId);
   });
 });
 
