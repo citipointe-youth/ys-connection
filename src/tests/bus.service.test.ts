@@ -5,6 +5,7 @@ import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { Leader } from '../core/entities/leader';
+import type { BusRunRider } from '../core/entities/bus';
 
 export const actor = (role: string, extra: Partial<Actor> = {}): Actor =>
   ({ id: 'u-' + role, role: role as any, displayName: role.toUpperCase(), grade: null as any, quad: null as any, leaderId: null, ...extra });
@@ -105,6 +106,42 @@ describe('roster', () => {
     const { svc, ctx } = await setup();
     const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
     await expect(svc.removeRider(ctx('grade', null, '2026-10-12T10:00'), r.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it('two leaders adding the same student at once: the loser merges onto the winning row instead of a raw DB error', async () => {
+    // Simulates the DB's unique (run_id, student_id)/(run_id, guest_id) index (migration 0011)
+    // rejecting a NEW rider's insert with a Postgres unique-violation (code 23505) because
+    // another request already inserted a row for the same student a moment earlier.
+    class RacyBusRepository extends InMemoryBusRepository {
+      private raced = false;
+      override async saveRunRider(r: BusRunRider): Promise<BusRunRider> {
+        if (!this.raced && r.studentId === 's1') {
+          this.raced = true;
+          // The "other leader"'s concurrent insert silently lands first.
+          await super.saveRunRider({ ...r, id: 'r-other', snapAddress: 'First St, Carina' });
+          throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+        }
+        return super.saveRunRider(r);
+      }
+    }
+    const bus = new RacyBusRepository();
+    const students = new InMemoryStudentRepository();
+    const leaders = new InMemoryLeaderRepository();
+    const settings = new InMemorySettingsRepository();
+    await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
+    await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
+      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+    await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
+    const svc = makeBusService(bus, students, leaders, settings);
+    const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
+    const asAdmin: BusCtx = { actor: actor('admin'), asLeaderId: null, localNow: FRI_7PM };
+
+    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: 'Second St, Bulimba' } });
+    expect(r.address).toBe('Second St, Bulimba');
+
+    const v = await svc.getRun(asAdmin);
+    const mine = v.riders.filter((x) => x.studentId === 's1');
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.address).toBe('Second St, Bulimba');
   });
 });
 

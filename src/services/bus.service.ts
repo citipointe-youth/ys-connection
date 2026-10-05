@@ -201,7 +201,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!(await students.findById(studentId))) throw new NotFoundError('Student not found');
     await bus.reassignGuestAddresses(guestId, studentId);
     await bus.saveGuest({ ...g, linkedStudentId: studentId });
-    // Tonight's (and any future) rider rows move to the student so phones/addresses resolve.
+    // Rider rows in every run (past and present) move to the student so phones/addresses resolve.
     for (const run of await bus.listRuns()) {
       for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.guestId === guestId))
         await bus.saveRunRider({ ...r, studentId, guestId: null });
@@ -252,12 +252,27 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       const addr = await resolveAddress(v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! }, v);
       const existing = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
-      const rider = await bus.saveRunRider({
-        ...(existing ?? { id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null, pinned: false,
-          addedBy: await whoLabel(ctx), addedAt: nowIso() }),
-        studentId: v.studentId ?? null, guestId: v.guestId ?? null, addressId: addr.id,
-        snapName: name, snapGrade: grade, snapGender: gender, snapAddress: addr.address, snapPlaceId: addr.placeId,
-      });
+      const patch = { studentId: v.studentId ?? null, guestId: v.guestId ?? null, addressId: addr.id,
+        snapName: name, snapGrade: grade, snapGender: gender, snapAddress: addr.address, snapPlaceId: addr.placeId };
+      let rider: BusRunRider;
+      if (existing) {
+        rider = await bus.saveRunRider({ ...existing, ...patch });
+      } else {
+        try {
+          rider = await bus.saveRunRider({ id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null,
+            pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), ...patch });
+        } catch (err) {
+          // Two leaders adding the same student/guest at once: the DB's unique
+          // (run_id, student_id)/(run_id, guest_id) index (migration 0011) rejects
+          // the loser's insert with a Postgres unique-violation. Re-read and merge
+          // onto the winner's row instead of surfacing a raw 500 — same outcome as
+          // the sequential "adding the same student twice" path above.
+          if ((err as { code?: string }).code !== '23505') throw err;
+          const again = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
+          if (!again) throw err;
+          rider = await bus.saveRunRider({ ...again, ...patch });
+        }
+      }
       await touch(ctx, run);
       return riderView(rider);
     },
