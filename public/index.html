@@ -508,6 +508,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
   .bot-nav{padding:2px 0 calc(2px + var(--safe-b))}
   .bot-nav a{flex-direction:row;justify-content:center;gap:5px;min-height:40px;padding:2px}
   .pg{padding-bottom:calc(52px + var(--safe-b))}
+  .bus-tile{padding-block:4px} /*BUS-HOOK*/
 }
 @media(pointer:coarse){
   .btn-sm,.tbbtn,.btn-icon{min-height:40px}
@@ -576,6 +577,71 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .ca-warnb .ca-wx{margin-left:auto;color:#b08a2e;font-weight:800;font-size:.7rem;cursor:pointer;padding:0 2px}
 @media(min-width:768px){.ca-warnb{bottom:12px}}
 /* ── CA MODULE CSS END ── */
+
+/* ── BUS MODULE CSS ── */
+.bus-tile{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:16px;cursor:pointer}
+.bus-tile .bt-ic{width:28px;height:28px;border-radius:8px;background:var(--accent-light);color:var(--accent-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.bus-tile .bt-label{font-size:14.5px;font-weight:700;flex:1}
+.bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
+.bus-head-act{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.bus-last{font-size:11.5px;color:var(--ink-mid);margin:-6px 0 12px}
+.bus-sec{margin:4px 2px 8px}
+.bus-foot{text-align:center;font-size:11.5px;color:var(--ink-mid);margin-top:4px}
+.bus-hits{margin-bottom:12px}
+/* The live app's existing .btn-icon is a white circle meant for the dark .hdr gradient
+   header; Bus Ministry's icon buttons (settings gear, trash, edit, kebab) sit on light
+   .pg card backgrounds, so .bus-pg scopes a visible, 44x44 tap-target override instead
+   of reusing the header-only look verbatim (the mockup's own .btn-icon is transparent/
+   ink-coloured — this reconciles the name clash between the two). */
+.bus-pg .btn-icon{background:transparent;color:var(--ink-mid);min-width:44px;min-height:44px;border-radius:8px}
+.bus-pg .btn-icon:hover{background:var(--paper-dark);color:var(--ink)}
+.car-pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap;background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c)}
+.bus-danger{color:var(--danger)}
+.radio-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--paper-dark)}
+.radio-row:last-child{border-bottom:none}
+.cbx-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--paper-dark);cursor:pointer}
+.cbx-row:last-child{border-bottom:none}
+.cbx-row input{width:20px;height:20px;flex-shrink:0}
+.cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bus-gender{display:flex;gap:8px}
+.bus-checks{max-height:220px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
+/* ── Car setup / Routes / My car (Task 7) ── */
+.veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:13px;margin-bottom:12px}
+.veh-card.off{opacity:.55}
+.veh-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.veh-name{font-size:14.5px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.veh-meta{font-size:12px;color:var(--ink-mid);margin-bottom:8px}
+.veh-chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.swtch{width:36px;height:21px;border-radius:12px;background:var(--paper-dark);position:relative;flex-shrink:0;display:inline-block}
+.swtch.on{background:var(--success)}
+.swtch::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
+.swtch.on::after{left:17px}
+.swtch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.car-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.route-row{display:flex;align-items:center;gap:9px;padding:8px 2px;border-bottom:1px solid var(--paper-dark)}
+.route-row:last-child{border-bottom:none}
+.stop-num{width:22px;height:22px;border-radius:50%;background:var(--paper-dark);color:var(--ink-mid);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.route-main{flex:1;min-width:0}
+.route-name{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:5px}
+.route-sub{font-size:11.5px;color:var(--ink-mid)}
+.stop-detail{background:var(--paper);border-radius:8px;padding:7px 10px;margin-top:5px;font-size:11.5px;color:var(--ink-mid);line-height:1.5}
+.bus-routes{display:grid;gap:12px}
+@media(min-width:768px){.bus-routes{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}}
+.li.bus-move{width:100%;text-align:left}
+.li.bus-move:disabled{opacity:.4;cursor:default}
+.mycar-id{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;color:var(--ink-mid)}
+.mycar-id b{color:var(--ink);font-weight:700}
+/* Admin — new people from Bus Ministry */
+.newperson-row{padding:10px 0;border-bottom:1px solid var(--paper-dark)}
+.newperson-row:last-child{border-bottom:none}
+.newperson-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.newperson-name{font-size:13.5px;font-weight:700}
+.newperson-meta{font-size:11.5px;color:var(--ink-mid);margin-top:2px}
+.newperson-added{font-size:10.5px;color:var(--ink-faint);flex-shrink:0;white-space:nowrap}
+.suggest-box{background:var(--accent-light);border-radius:8px;padding:8px 10px;margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.suggest-text{font-size:12px;color:var(--accent-dark);font-weight:600}
+.suggest-actions{display:flex;gap:6px;flex-shrink:0}
+/* ── END BUS MODULE CSS ── */
 </style>
 </head>
 <body>
@@ -746,6 +812,7 @@ const API = (() => {
     post: (p, b, timeoutMs) => r('POST', p, b, timeoutMs),
     patch: (p, b) => r('PATCH', p, b),
     del: (p) => r('DELETE', p),
+    /*BUS-HOOK*/ fresh: (p) => r('GET', p), // uncached GET — Bus Ministry data must never come from the 30s cache
   };
 })();
 
@@ -821,6 +888,7 @@ function applyTheme(cfg) {
 const DEFAULT_LABELS = {
   smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth',
   serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection',
+  /*BUS-HOOK*/ busMinistry: 'Bus Ministry',
 };
 function L(key) {
   const labels = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.labels) || {};
@@ -1542,6 +1610,15 @@ const IC = {
   genderM:  '<circle cx="10" cy="14" r="6"/><line x1="14.5" y1="9.5" x2="20" y2="4"/><polyline points="14 4 20 4 20 10"/>',
   eye:      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  /*BUS-HOOK*/ // ── Bus Ministry icons — copied verbatim from _design/bus-ministry-mockup.html's IC object ──
+  search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  bus:      '<rect x="2" y="6" width="20" height="11" rx="2"/><line x1="2" y1="11" x2="22" y2="11"/><line x1="7" y1="6" x2="7" y2="11"/><line x1="17" y1="6" x2="17" y2="11"/><circle cx="7" cy="19" r="1.8"/><circle cx="17" cy="19" r="1.8"/>',
+  phone:    '<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>',
+  pin:      '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>',
+  map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+  route:    '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h5a4 4 0 004-4V9a4 4 0 00-4-4H8"/>',
+  pinned:   '<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="14" x2="9" y2="21"/>',
+  kebab:    '<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>',
 };
 // 'pray' is the one raster (PNG-masked) icon — see the .ic-png-mask CSS comment — so every
 // helper special-cases it to a masked <span> instead of an inline SVG.
@@ -1680,11 +1757,13 @@ async function render() {
   if (!_shellReady) _initShell();
   _updateNavActive();
   const p = S.page;
+  /*BUS-HOOK*/ if (p !== 'bus') _busStopPoll();
   // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
   // other route home (defence-in-depth; the server also scopes/403s their data).
-  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays'].includes(p)) { go('home'); return; }
+  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus'].includes(p)) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
+  else if (p==='bus') await renderBus(); /*BUS-HOOK*/
   else if (p==='leaders') await renderConnect();
   else if (p==='allocate') go('leaders'); // legacy route — merged into leaders
   else if (p==='my-students') await renderMyStudents();
@@ -1766,6 +1845,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
+  /*BUS-HOOK*/ BUS.view = null; _busStopPoll();
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -2117,6 +2197,8 @@ async function _renderHomeInner(stale) {
     body += `<div style="display:flex;justify-content:flex-end">${trendsPill}</div>`;
   }
   body += `</div>`;
+  /*BUS-HOOK*/ body += _busHomeTile();
+  /*BUS-HOOK*/ body += _busNewPeopleCard();
 
   if (stats) {
     if (stats.unconnectedTotal === 0 && stats.ministryTotal > 0) {
@@ -2272,6 +2354,7 @@ async function _renderHomeInner(stale) {
 async function renderLeaderHome() {
   const u = S.user;
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
+  /*BUS-HOOK*/ body += _busHomeTile();
   const acts = navItems().filter(i => i.id !== 'home');
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
@@ -5891,11 +5974,15 @@ const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, simple: 1
 const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   version: 1, preset: 'large-graded-au',
   branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoImage: null },
-  labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '] },
+  labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto' },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
+  /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
+  /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
+  /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
+  /*BUS-HOOK*/ busMinistry: { visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [] },
 };
 
 // Lazily seed the draft from freshly-fetched settings — only when there isn't
@@ -6109,11 +6196,13 @@ function _youthSetupBody(settings, users) {
         ${['Grade','Year'].map(w=>`<option ${gLabel===w?'selected':''}>${w}</option>`).join('')}
       </select></div>
     <div class="fg"><label class="fl">Group-name prefixes to strip ${helpTip('Text removed from the start of small-group names when shown in the app, one per line, e.g. "Brisbane - YS - ". Used on the Connection Audit lifegroup tab and its slide deck.')}</label>
-      <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>`);
+      <textarea class="fi" rows="2" onchange="_setupSetList('labels.groupNameStrip', this.value)">${esc((lv('groupNameStrip') || []).join('\n'))}</textarea></div>
+    <div class="fg"><label class="fl">Bus Ministry ${helpTip('The name shown for the Bus Ministry module, e.g. on the Home tile and its screens.')}</label><input class="fi" value="${esc(lv('busMinistry'))}" onchange="_setupSet('labels.busMinistry', this.value)"></div>`);
 
   b += _setupCard('modules', 'Modules & Import', `
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -8005,6 +8094,264 @@ return{render,reset,stale,seedOn,dismissWarn,setYear,setTerm,saveAudit,
 })();
 window.CA=CA;
 /* ── CA MODULE END ── */
+
+/* ── BUS MODULE ── */
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null };
+const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];
+function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
+function _busOn() {
+  const mc = (S.settings && S.settings.ministryConfig) || {};
+  const on = !!(mc.modules && mc.modules.busMinistry);
+  const vis = (mc.busMinistry && mc.busMinistry.visibility) || 'admin';
+  return on && (vis === 'all' || (S.user && S.user.role === 'admin'));
+}
+function _busLocalNow(d) {
+  d = d || new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function _busQs(extra) {
+  const as = getMyLeaderId();
+  return `now=${encodeURIComponent(_busLocalNow())}${as ? '&as=' + encodeURIComponent(as) : ''}${extra ? '&' + extra : ''}`;
+}
+function _busSuburb(address) {
+  const parts = String(address || '').split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return String(address || '').trim();
+  return parts[1].replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
+}
+async function _busGet(path, extra) { return API.fresh(path + '?' + _busQs(extra)); }
+async function _busSend(method, path, body) {
+  const url = path + '?' + _busQs();
+  const res = method === 'POST' ? await API.post(url, body || {}) : method === 'PATCH' ? await API.patch(url, body || {}) : await API.del(url);
+  await busRefresh();
+  return res;
+}
+async function busRefresh() {
+  try { BUS.view = await _busGet('/bus/run'); BUS.version = BUS.view.run.version; }
+  catch (e) { toast(e.message || 'Bus Ministry unavailable'); }
+  if (S.page === 'bus') renderBus();
+}
+function _busStartPoll() {
+  _busStopPoll();
+  BUS.pollTimer = setInterval(async () => {
+    if (S.page !== 'bus' || document.hidden || document.getElementById('mo-overlay')) return;
+    try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
+  }, 10000);
+}
+function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.pollTimer = null; }
+
+function _busHomeTile() {
+  if (!_busOn()) return '';
+  const v = BUS.view;
+  const count = v ? `${v.riders.length} riders · ${v.vehicles.filter((x) => x.running).length} cars` : '';
+  if (!v) busRefresh(); // warm in background; re-render of Home not needed
+  return `<div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
+    <div class="bt-ic">${icN('bus')}</div><div class="bt-label">${esc(L('busMinistry'))}</div>
+    <div class="bt-count">${esc(count)}</div></div>`;
+}
+// New-people admin card is defined in the Car setup / Routes / My car section below
+// (it needs BUS.pending, populated lazily) but is called from the Home hooks above.
+function _busNewPeopleCard() {
+  if (!BUS.view || BUS.view.pendingNewPeople == null || BUS.view.pendingNewPeople === 0) return '';
+  if (!BUS.pending) { _busLoadPending(); return ''; }
+  const rows = BUS.pending.map((p) => {
+    const sugg = p.suggestions[0];
+    const added = new Date(p.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const box = sugg
+      ? `<div class="suggest-box"><span class="suggest-text">Is this ${esc(sugg.name)}${sugg.grade ? ` (Y${sugg.grade})` : ''}?</span>
+          <div class="suggest-actions"><button class="btn btn-primary btn-sm" onclick="busLinkGuest('${p.id}','${sugg.studentId}')">Yes</button>
+          <button class="btn btn-secondary btn-sm" onclick="busHideSuggestion('${p.id}')">No</button></div></div>`
+      : `<div class="suggest-box" style="background:var(--paper-dark);align-items:flex-start">
+          <div><span class="chip c-neutral">${icS('alert')} No match found</span>
+          <div style="font-size:11px;color:var(--ink-mid);margin-top:5px">Clears when imported or after 28 days</div></div>
+          <button class="btn btn-secondary btn-sm" style="flex-shrink:0" onclick="busDismissGuest('${p.id}')">Dismiss</button></div>`;
+    return `<div class="newperson-row">
+      <div class="newperson-top"><div><div class="newperson-name">${esc(p.name)}</div>
+      <div class="newperson-meta">${p.grade ? `Y${p.grade}${p.phone ? ' · ' : ''}` : ''}${p.phone ? esc(p.phone) : ''}</div></div>
+      <div class="newperson-added">added ${esc(added)}</div></div>
+      ${box}</div>`;
+  }).join('');
+  return `<div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div>`;
+}
+async function _busLoadPending() {
+  try { BUS.pending = await _busGet('/bus/guests/pending'); } catch { BUS.pending = []; }
+  if (S.page === 'home') renderHome();
+}
+function busHideSuggestion(id) {
+  const p = BUS.pending && BUS.pending.find((x) => x.id === id);
+  if (p) p.suggestions = [];
+  if (S.page === 'home') renderHome();
+}
+async function busLinkGuest(id, studentId) {
+  try { await API.post('/bus/guests/' + id + '/link?' + _busQs(), { studentId }); BUS.pending = (BUS.pending || []).filter((p) => p.id !== id); busRefresh(); }
+  catch (e) { toast(e.message); }
+}
+async function busDismissGuest(id) {
+  try { await API.post('/bus/guests/' + id + '/dismiss?' + _busQs(), {}); BUS.pending = (BUS.pending || []).filter((p) => p.id !== id); busRefresh(); }
+  catch (e) { toast(e.message); }
+}
+
+async function renderBus() {
+  if (!_busOn()) { go('home'); return; }
+  if (!BUS.view) { setApp(''); await busRefresh(); return; }
+  _busStartPoll();
+  const v = BUS.view, u = S.user;
+  const canRoster = u.role !== 'leader' || v.canCoordinate;
+  const tabs = [
+    canRoster && { id: 'roster', label: 'Tonight' },
+    v.canCoordinate && { id: 'cars', label: 'Car setup' },
+    v.canCoordinate && { id: 'routes', label: 'Routes' },
+    { id: 'mycar', label: 'My car' },
+  ].filter(Boolean);
+  if (!tabs.some((t) => t.id === BUS.tab)) BUS.tab = tabs[0].id;
+  const d = new Date(v.run.serviceDate + 'T00:00:00');
+  const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
+  const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml }[BUS.tab]();
+  // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
+  // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
+  setApp(`<div class="pg bus-pg">
+    <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
+      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
+        ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
+    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
+    ${last ? `<div class="bus-last">${last}</div>` : ''}
+    ${body}</div>`);
+}
+
+function _busRosterHtml() {
+  const v = BUS.view;
+  const placed = (r) => v.vehicles.find((x) => x.id === r.runVehicleId);
+  const rows = v.riders.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
+    const car = placed(r);
+    return `<div class="li">
+      <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.gender === 'female' ? icS('genderF') : r.gender === 'male' ? icS('genderM') : ''}</div>
+        <div class="li-sub">${esc(_busSuburb(r.address))}</div></div>
+      ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
+      ${v.run.readOnly ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
+    </div>`;
+  }).join('');
+  const seats = v.vehicles.filter((x) => x.running).reduce((n, x) => n + x.capacity, 0);
+  return `${v.run.readOnly ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
+      <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+        value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
+    <div class="card-title bus-sec">Tonight (${v.riders.length})</div>
+    ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
+    <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>`;
+}
+
+let _busSearchT = null;
+function busSearch(q) {
+  BUS.search = q;
+  clearTimeout(_busSearchT);
+  _busSearchT = setTimeout(async () => {
+    BUS.hits = q.trim().length < 2 ? [] : await _busGet('/bus/search', 'q=' + encodeURIComponent(q)).catch(() => []);
+    const el = document.getElementById('bus-hits'); if (el) el.innerHTML = _busHitsHtml();
+  }, 250);
+}
+function _busHitsHtml() {
+  if (BUS.search.trim().length < 2) return '';
+  const rows = BUS.hits.map((h, i) => `<div class="li" onclick="busPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''}</div></div>${icS('chevr')}</div>`).join('');
+  return `<div class="card bus-hits">${rows}
+    <div class="li" onclick="busNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.search.trim())}"</div></div></div></div>`;
+}
+
+function _busAddressPicker(addresses) {
+  const saved = addresses.map((a, i) => `<label class="radio-row"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
+      <span>${esc(a.label || 'Saved')} · ${esc(_busSuburb(a.address))}</span></label>`).join('');
+  return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
+    <div class="fg"><input class="fi" id="bus-addr-text" placeholder="Street address, suburb" autocomplete="off">
+      <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
+}
+function _busReadAddress() {
+  const pick = (document.querySelector('input[name="bus-addr"]:checked') || {}).value;
+  if (pick && pick !== 'new') return { addressId: pick };
+  const address = document.getElementById('bus-addr-text').value.trim();
+  if (address.length < 3) { toast('Enter an address'); return null; }
+  return { newAddress: { label: document.getElementById('bus-addr-label').value.trim(), address, placeId: null } };
+}
+function busPick(i) {
+  const h = BUS.hits[i];
+  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
+    <button class="btn btn-primary btn-full" onclick="busAdd(${i})">Add</button>`);
+}
+async function busAdd(i) {
+  const h = BUS.hits[i], a = _busReadAddress(); if (!a) return;
+  try {
+    await _busSend('POST', '/bus/riders', { ...(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }), ...a });
+    closeModal(); BUS.search = ''; BUS.hits = []; toast(`${h.name} added`); renderBus();
+  } catch (e) { toast(e.message); }
+}
+function busNewPerson() {
+  const parts = BUS.search.trim().split(/\s+/);
+  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
+  modal(`<div class="mo-title">New Person</div>
+    <div class="fg"><input class="fi" id="np-first" placeholder="First name" value="${esc(parts[0] || '')}"></div>
+    <div class="fg"><input class="fi" id="np-last" placeholder="Last name" value="${esc(parts.slice(1).join(' '))}"></div>
+    <div class="fg"><select class="fs" id="np-grade"><option value="">Grade</option>${grades.map((g) => `<option value="${g}">${esc(_gradeWord())} ${g}</option>`).join('')}</select></div>
+    <div class="fg bus-gender" id="np-gender">
+      <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'female')">${icS('genderF')} Girl</button>
+      <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'male')">${icS('genderM')} Boy</button></div>
+    <div class="fg"><input class="fi" id="np-phone" type="tel" placeholder="Mobile"></div>
+    ${_busAddressPicker([])}
+    <button class="btn btn-primary btn-full" onclick="busSaveNewPerson()">Add</button>`);
+}
+let _busNpGender = null;
+function busPickGender(btn, g) {
+  _busNpGender = g;
+  btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('btn-primary', b === btn));
+}
+async function busSaveNewPerson() {
+  const firstName = document.getElementById('np-first').value.trim(), lastName = document.getElementById('np-last').value.trim();
+  const gradeV = document.getElementById('np-grade').value, phone = document.getElementById('np-phone').value.trim();
+  if (!firstName || !lastName || !_busNpGender || phone.length < 6) { toast('Name, gender and mobile are needed'); return; }
+  const a = _busReadAddress(); if (!a) return;
+  try {
+    const g = await API.post('/bus/guests?' + _busQs(), { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone });
+    await _busSend('POST', '/bus/riders', { guestId: g.id, ...a });
+    _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${firstName} added`); renderBus();
+  } catch (e) { toast(e.message); }
+}
+async function busEditRider(id) {
+  const r = BUS.view.riders.find((x) => x.id === id); if (!r || BUS.view.run.readOnly) return;
+  const hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(r.name)).catch(() => []);
+  const me = hits.find((h) => h.id === (r.studentId || r.guestId));
+  modal(`<div class="mo-title">${esc(r.name)}</div>${_busAddressPicker(me ? me.addresses : [])}
+    <button class="btn btn-primary btn-full" onclick="busSaveRider('${id}')">Save</button>`);
+}
+async function busSaveRider(id) {
+  const a = _busReadAddress(); if (!a) return;
+  try { await _busSend('PATCH', '/bus/riders/' + id, a); closeModal(); } catch (e) { toast(e.message); }
+}
+function busConfirmRemove(id) {
+  const r = BUS.view.riders.find((x) => x.id === id);
+  modal(`<div class="mo-title">Remove ${esc(r.name)} from tonight?</div>
+    <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" onclick="busRemove('${id}')">Remove</button></div>`);
+}
+async function busRemove(id) { try { await _busSend('DELETE', '/bus/riders/' + id); closeModal(); } catch (e) { toast(e.message); } }
+
+function busSettings() {
+  const b = (S.settings.ministryConfig.busMinistry) || {};
+  const leaders = BUS.view.leaders;
+  modal(`<div class="mo-title">Bus settings</div>
+    <label class="fl">Who can see it</label>
+    <select class="fs" id="bs-vis"><option value="admin" ${b.visibility !== 'all' ? 'selected' : ''}>Admin only (testing)</option><option value="all" ${b.visibility === 'all' ? 'selected' : ''}>Everyone</option></select>
+    <label class="fl">Church address</label><input class="fi" id="bs-church" value="${esc(b.churchAddress || '')}" placeholder="Street address, suburb">
+    <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
+    <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
+    <button class="btn btn-primary btn-full" onclick="busSaveSettings()">Save</button>`);
+}
+async function busSaveSettings() {
+  const coordinatorLeaderIds = [...document.querySelectorAll('.bus-checks input:checked')].map((i) => i.value);
+  const patch = { ministryConfig: { busMinistry: { visibility: document.getElementById('bs-vis').value,
+    churchAddress: document.getElementById('bs-church').value.trim(), coordinatorLeaderIds } } };
+  try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
+  catch (e) { toast(e.message); }
+}
+/* ── END BUS MODULE ── */
 
 let _authExpiring = false;
 function _isAuthExpired(err) { return !!err && err.status === 401; }
