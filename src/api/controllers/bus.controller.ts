@@ -24,6 +24,8 @@ export function makeBusController(deps: { bus: BusService }) {
     updateRider: (r: HttpRequest) => b.updateRider(ctxOf(r), p(r, 'id'), r.body),
     removeRider: async (r: HttpRequest) => { await b.removeRider(ctxOf(r), p(r, 'id')); return { ok: true }; },
     moveRider: (r: HttpRequest) => b.moveRider(ctxOf(r), p(r, 'id'), r.body),
+    setConsent: (r: HttpRequest) => b.setConsent(ctxOf(r), p(r, 'id'), r.body),
+    setDropped: (r: HttpRequest) => b.setDropped(ctxOf(r), p(r, 'id'), r.body),
     createGuest: (r: HttpRequest) => b.createGuest(ctxOf(r), r.body),
     pendingGuests: (r: HttpRequest) => b.pendingGuests(ctxOf(r)),
     linkGuest: async (r: HttpRequest) => { await b.linkGuest(ctxOf(r), p(r, 'id'), r.body); return { ok: true }; },

@@ -23,6 +23,7 @@ import type {
   BusRun,
   BusRunVehicle,
   BusRunRider,
+  BusConsent,
 } from '../../core/entities/bus';
 
 export interface IUserRepository extends IRepository<User> {
@@ -149,5 +150,9 @@ export interface IBusRepository {
   getRunRider(id: string): Promise<BusRunRider | null>;
   saveRunRider(r: BusRunRider): Promise<BusRunRider>;
   deleteRunRider(id: string): Promise<void>;
+  listConsents(): Promise<BusConsent[]>;
+  getConsent(owner: { studentId?: string; guestId?: string }): Promise<BusConsent | null>;
+  saveConsent(c: BusConsent): Promise<BusConsent>;
+  reassignGuestConsent(guestId: string, studentId: string): Promise<void>; // only if the student has none; else drop the guest's
 }
 

@@ -42,7 +42,9 @@ export interface BusRunRider {
   runVehicleId: ID | null; stopOrder: number | null; pinned: boolean;
   addedBy: string; addedAt: ISODateString;
   snapName: string; snapGrade: number | null; snapGender: BusGender; snapAddress: string; snapPlaceId: string | null;
+  droppedAt: ISODateString | null; droppedBy: string | null;
 }
+export interface BusConsent { id: ID; studentId: ID | null; guestId: ID | null; given: boolean; note: string; recordedBy: string; recordedAt: ISODateString }
 
 // ---- view types returned by BusService ----
 export interface BusEligibility { female: boolean; male: boolean; unknown: boolean }
@@ -53,6 +55,8 @@ export interface BusRiderView {
   id: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
   runVehicleId: ID | null; stopOrder: number | null; pinned: boolean;
   name: string; grade: number | null; gender: BusGender; address: string; placeId: string | null;
+  consent: { given: boolean; note: string; recordedBy: string; recordedAt: string } | null;
+  droppedAt: string | null; droppedBy: string | null;
 }
 export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null }
 export interface BusRunView {

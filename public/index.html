@@ -8127,6 +8127,9 @@ function _busSuburb(address) {
   if (parts.length < 2) return String(address || '').trim();
   return parts[1].replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
 }
+// Warning-only chip (spec §10a) — never blocks placing, moving or generating.
+function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span class="chip c-warn">${icS('alert')} Consent: not yet</span>`; }
+function _busFmtTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 async function _busGet(path, extra) { return API.fresh(path + '?' + _busQs(extra)); }
 async function _busSend(method, path, body) {
   const url = path + '?' + _busQs();
@@ -8289,7 +8292,7 @@ function _busRosterHtml() {
     const car = placed(r);
     return `<div class="li">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.gender === 'female' ? icS('genderF') : r.gender === 'male' ? icS('genderM') : ''}</div>
-        <div class="li-sub">${esc(_busSuburb(r.address))}</div></div>
+        <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
       ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
       ${v.run.readOnly ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
@@ -8379,12 +8382,25 @@ async function busEditRider(id) {
   const r = BUS.view.riders.find((x) => x.id === id); if (!r || BUS.view.run.readOnly) return;
   const hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(r.name)).catch(() => []);
   const me = hits.find((h) => h.id === (r.studentId || r.guestId));
-  modal(`<div class="mo-title">${esc(r.name)}</div>${_busAddressPicker(me ? me.addresses : [])}
+  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(me ? me.addresses : [])}
     <button class="btn btn-primary btn-full" onclick="busSaveRider('${id}')">Save</button>`);
 }
 async function busSaveRider(id) {
   const a = _busReadAddress(); if (!a) return;
   try { await _busSend('PATCH', '/bus/riders/' + id, a); closeModal(); } catch (e) { toast(e.message); }
+}
+function _busConsentBox(r) {
+  const c = r.consent || { given: false, note: '' };
+  return `<div class="card bus-consent">
+    <label class="cbx-row"><input type="checkbox" id="bc-given" ${c.given ? 'checked' : ''}> Parent consent given</label>
+    <textarea class="fi" id="bc-note" rows="2" maxlength="300" placeholder="When, who, call or text — e.g. Mum (Lisa), 7:10pm, text">${esc(c.note)}</textarea>
+    ${r.consent ? `<div class="card-sub">${esc(r.consent.recordedBy)} · ${esc(new Date(r.consent.recordedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
+    <button class="btn btn-secondary btn-sm" onclick="busSaveConsent('${r.id}')">Save consent</button></div>`;
+}
+async function busSaveConsent(id) {
+  const given = document.getElementById('bc-given').checked, note = document.getElementById('bc-note').value.trim();
+  if (given && !note) { toast('Add when, who, and call or text'); return; }
+  try { await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note }); toast('Consent saved'); closeModal(); } catch (e) { toast(e.message); }
 }
 function busConfirmRemove(id) {
   const r = BUS.view.riders.find((x) => x.id === id);
@@ -8592,7 +8608,7 @@ function _busRoutesHtml() {
   const v = BUS.view;
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
-    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''}</div><div class="route-sub">${esc(_busSuburb(r.address))}</div></div>
+    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''}</div><div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
     ${v.run.readOnly ? '' : `<button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
   </div>`).join('');
   const unHead = unassigned.length
@@ -8603,7 +8619,7 @@ function _busRoutesHtml() {
     const rows = riders.map((r, i) => `<div class="route-row"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`} style="cursor:${v.run.readOnly ? 'default' : 'pointer'}">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))}</div></div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
     </div>`).join('');
     return `<div class="card drop open">
       <div class="drop-head">
@@ -8653,6 +8669,32 @@ function _busToggleStop(i) {
   const el = document.getElementById('stop-detail-' + i);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
+async function busToggleDropped(id, dropped) {
+  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped }); } catch (e) { toast(e.message); }
+}
+function busEditDroppedTime(id) {
+  const s = (BUS.myCar.stops || []).find((x) => x.id === id);
+  if (!s || !s.droppedAt) return;
+  const d = new Date(s.droppedAt), hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0');
+  modal(`<div class="mo-title">Dropped off — ${esc(s.name)}</div>
+    <input class="fi" id="bd-time" type="time" value="${hh}:${mm}">
+    <button class="btn btn-primary btn-full" onclick="busSaveDroppedTime('${id}')">Save</button>`);
+}
+async function busSaveDroppedTime(id) {
+  const hhmm = document.getElementById('bd-time').value;
+  if (!hhmm) { toast('Choose a time'); return; }
+  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped: true, at: _busDropAtIso(hhmm) }); closeModal(); } catch (e) { toast(e.message); }
+}
+// Combines the chosen clock time with tonight's run date. After midnight the
+// drop is really on the NEXT calendar day (a run spans a Friday night into
+// Saturday morning), so a time before 6am rolls onto the day after serviceDate.
+function _busDropAtIso(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(BUS.view.run.serviceDate + 'T00:00:00');
+  if (h < 6) d.setDate(d.getDate() + 1);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
   const mine = getMyLeaderId();
@@ -8669,8 +8711,12 @@ function _busMyCarHtml() {
     const rows = mc.stops.map((s, i) => `<div class="route-row" style="align-items:flex-start" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
-      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))}</div>
+      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div></div>
+      <span onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <label class="cbx-row" style="padding:4px"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
+        ${s.droppedAt ? `<button class="btn btn-ghost btn-sm" onclick="busEditDroppedTime('${s.id}')">${esc(_busFmtTime(s.droppedAt))}</button>` : ''}
+      </span>
       ${s.mobile ? `<span onclick="event.stopPropagation()">${phoneLink(s.mobile, s.name.split(' ')[0])}</span>` : ''}
     </div>`).join('');
     return `${picker}
@@ -8717,7 +8763,7 @@ async function busShowPastRun(id) {
     const cars = v.vehicles.filter((rv) => rv.running).map((rv) => {
       const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
       const rows = riders.map((r, i) => `<div class="route-row"><div class="stop-num">${i + 1}</div>
-        <div class="route-main"><div class="route-name">${esc(r.name)}</div><div class="route-sub">${esc(_busSuburb(r.address))}</div></div></div>`).join('');
+        <div class="route-main"><div class="route-name">${esc(r.name)}</div><div class="route-sub">${esc(_busSuburb(r.address))}${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}</div></div></div>`).join('');
       return `<div class="card">
         <div class="card-title" style="display:flex;align-items:center;gap:6px"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>${esc(rv.name)} · ${riders.length}/${rv.capacity}
         ${rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('')}</div>

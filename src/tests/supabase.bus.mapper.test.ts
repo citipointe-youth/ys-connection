@@ -18,4 +18,8 @@ describe('bus field encryption', () => {
     expect(busCrypt.dec(null, 'x')).toBeNull();
     expect(busCrypt.enc(null, 'x')).toBeNull();
   });
+  it('consent notes use their own AAD', () => {
+    const ct = busCrypt.enc('Mum, text 7pm', 'bus_consents:note:c1');
+    expect(busCrypt.dec(ct, 'bus_consents:note:c1')).toBe('Mum, text 7pm');
+  });
 });

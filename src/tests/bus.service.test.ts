@@ -229,6 +229,43 @@ describe('guest linking', () => {
   });
 });
 
+describe('parent consent', () => {
+  it('starts as not yet, persists to next week, and follows a linked walk-in', async () => {
+    const t = await setup();
+    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent).toBeNull();
+    await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: '' })).rejects.toThrow();
+    const v = await t.svc.setConsent(t.ctx('grade', 'L2'), r.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
+    expect(v.consent).toMatchObject({ given: true, note: 'Mum (Lisa) 7:10pm by text', recordedBy: 'Sarah' });
+    await t.svc.addRider(t.ctx('grade', null, '2026-10-16T19:00'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
+    expect(next.riders[0]!.consent!.given).toBe(true);
+    await expect(t.svc.setConsent(t.ctx('leader'), r.id, { given: false, note: '' })).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("a walk-in's consent moves to the student on link", async () => {
+    const t = await setup();
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    const r = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' } });
+    await t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'Dad, call 7pm' });
+    await t.svc.linkGuestsAfterImport();
+    expect((await t.bus.getConsent({ studentId: 's3' }))!.note).toBe('Dad, call 7pm');
+  });
+});
+
+describe('drop-off record', () => {
+  it('car leaders tick with a time, can edit and clear it; others cannot', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
+    const d = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true });
+    expect(d.droppedAt).not.toBeNull();
+    expect(d.droppedBy).toBe('Tom');
+    const e = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true, at: '2026-10-09T11:42:00.000Z' });
+    expect(e.droppedAt).toBe('2026-10-09T11:42:00.000Z');
+    await expect(t.svc.setDropped(t.ctx('grade', 'L2'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
+    expect((await t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: false })).droppedAt).toBeNull();
+  });
+});
+
 describe('history', () => {
   it('lists past runs for director only and keeps snapshots', async () => {
     const t = await withFleet();

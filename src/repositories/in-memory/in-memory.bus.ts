@@ -1,5 +1,5 @@
 import type { IBusRepository } from '../interfaces/entity-repositories';
-import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider } from '../../core/entities/bus';
+import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent } from '../../core/entities/bus';
 
 const c = <T>(v: T): T => structuredClone(v);
 
@@ -11,6 +11,7 @@ export class InMemoryBusRepository implements IBusRepository {
   private runs = new Map<string, BusRun>();
   private runVehicles = new Map<string, BusRunVehicle>();
   private riders = new Map<string, BusRunRider>();
+  private consents = new Map<string, BusConsent>();
 
   async init(): Promise<void> {}
 
@@ -28,6 +29,7 @@ export class InMemoryBusRepository implements IBusRepository {
   async deleteGuest(id: string) {
     this.guests.delete(id);
     for (const [k, a] of this.addresses) if (a.guestId === id) this.addresses.delete(k);
+    for (const [k, c] of this.consents) if (c.guestId === id) this.consents.delete(k);
   }
 
   async listAddresses(o: { studentId?: string; guestId?: string }) {
@@ -69,4 +71,17 @@ export class InMemoryBusRepository implements IBusRepository {
   async getRunRider(id: string) { const r = this.riders.get(id); return r ? c(r) : null; }
   async saveRunRider(r: BusRunRider) { this.riders.set(r.id, c(r)); return c(r); }
   async deleteRunRider(id: string) { this.riders.delete(id); }
+
+  async listConsents() { return [...this.consents.values()].map(c); }
+  async getConsent(o: { studentId?: string; guestId?: string }) {
+    const x = [...this.consents.values()].find((k) => (o.studentId ? k.studentId === o.studentId : k.guestId === o.guestId));
+    return x ? c(x) : null;
+  }
+  async saveConsent(k: BusConsent) { this.consents.set(k.id, c(k)); return c(k); }
+  async reassignGuestConsent(guestId: string, studentId: string) {
+    const g = [...this.consents.values()].find((k) => k.guestId === guestId);
+    if (!g) return;
+    if ([...this.consents.values()].some((k) => k.studentId === studentId)) { this.consents.delete(g.id); return; }
+    g.guestId = null; g.studentId = studentId;
+  }
 }

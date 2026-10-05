@@ -10,6 +10,11 @@ describe('SPA bus helpers', () => {
     const { _busSuburb } = loadFns(['_busSuburb']);
     expect(_busSuburb('24 Wynnum Rd, Carina QLD 4152, Australia')).toBe('Carina');
   });
+  it('_busDropAtIso rolls a pre-6am time onto the next calendar day', () => {
+    const { _busDropAtIso } = loadFns(['_busDropAtIso'], "const BUS = { view: { run: { serviceDate: '2026-10-09' } } };");
+    expect(new Date(_busDropAtIso('00:30')).getDate()).toBe(10);
+    expect(new Date(_busDropAtIso('21:15')).getDate()).toBe(9);
+  });
   it('module hooks exist and no emoji were introduced', () => {
     const html = loadIndexHtml();
     expect(html).toContain('/* ── BUS MODULE ── */');

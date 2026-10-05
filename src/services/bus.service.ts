@@ -7,7 +7,7 @@ import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRe
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
-  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle } from '../core/entities/bus';
+  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent } from '../core/entities/bus';
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
@@ -26,6 +26,8 @@ export interface BusService {
   saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
   removeOwnCar(ctx: BusCtx): Promise<void>;
   moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
+  setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
+  setDropped(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   myCar(ctx: BusCtx): Promise<MyCarView>;
   pendingGuests(ctx: BusCtx): Promise<PendingGuestView[]>;
   linkGuest(ctx: BusCtx, guestId: string, input: unknown): Promise<void>;
@@ -59,6 +61,9 @@ const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(4
   plate: z.string().max(12).nullable().default(null), ...EndsFields }), riderIds: z.array(z.string()) });
 const MoveIn = z.object({ runVehicleId: z.string().nullable() });
 const LinkIn = z.object({ studentId: z.string().min(1) });
+const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
+  .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
+const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
 
 const nowIso = () => new Date().toISOString();
 const genderOf = (g: string | null | undefined): BusGender => (g === 'male' || g === 'female' ? g : null);
@@ -138,10 +143,15 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     await bus.bumpRun(run.id, await whoLabel(ctx), nowIso());
   }
 
-  function riderView(r: BusRunRider): BusRiderView {
+  function riderView(r: BusRunRider, consent?: BusConsent | null): BusRiderView {
     return { id: r.id, studentId: r.studentId, guestId: r.guestId, addressId: r.addressId, runVehicleId: r.runVehicleId,
       stopOrder: r.stopOrder, pinned: r.pinned, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
-      address: r.snapAddress, placeId: r.snapPlaceId };
+      address: r.snapAddress, placeId: r.snapPlaceId,
+      consent: consent ? { given: consent.given, note: consent.note, recordedBy: consent.recordedBy, recordedAt: consent.recordedAt } : null,
+      droppedAt: r.droppedAt, droppedBy: r.droppedBy };
+  }
+  function consentFor(consents: BusConsent[], r: BusRunRider): BusConsent | null {
+    return consents.find((k) => (r.studentId ? k.studentId === r.studentId : k.guestId === r.guestId)) ?? null;
   }
 
   async function vehicleViews(runId: string): Promise<BusRunVehicleView[]> {
@@ -156,8 +166,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
-    const [vehicles, riders, active, prefs, fleet] = await Promise.all([
-      vehicleViews(run.id), bus.listRunRiders(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(),
+    const [vehicles, riders, active, prefs, fleet, consents] = await Promise.all([
+      vehicleViews(run.id), bus.listRunRiders(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
@@ -166,7 +176,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
         lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: run.lockBy, lockUntil: run.lockUntil, undoUntil: run.undoUntil },
-      vehicles, riders: riders.map(riderView), leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
+      vehicles, riders: riders.map((r) => riderView(r, consentFor(consents, r))), leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: fleet.filter((v) => !v.archived), canCoordinate: allowed(ctx, c, 'bus:coordinate'),
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
     };
@@ -200,6 +210,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!g) throw new NotFoundError('Person not found');
     if (!(await students.findById(studentId))) throw new NotFoundError('Student not found');
     await bus.reassignGuestAddresses(guestId, studentId);
+    await bus.reassignGuestConsent(guestId, studentId);
     await bus.saveGuest({ ...g, linkedStudentId: studentId });
     // Rider rows in every run (past and present) move to the student so phones/addresses resolve.
     for (const run of await bus.listRuns()) {
@@ -260,7 +271,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       } else {
         try {
           rider = await bus.saveRunRider({ id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null,
-            pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), ...patch });
+            pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), droppedAt: null, droppedBy: null, ...patch });
         } catch (err) {
           // Two leaders adding the same student/guest at once: the DB's unique
           // (run_id, student_id)/(run_id, guest_id) index (migration 0011) rejects
@@ -413,6 +424,34 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await touch(ctx, run);
       return riderView(saved);
     },
+    async setConsent(ctx, riderId, input) {
+      const c = await gate(ctx, 'bus:roster');
+      const v = ConsentIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
+      const prior = await bus.getConsent(owner);
+      const saved = await bus.saveConsent({ id: prior?.id ?? generateId(), studentId: r.studentId, guestId: r.studentId ? null : r.guestId,
+        given: v.given, note: v.note, recordedBy: await whoLabel(ctx), recordedAt: nowIso() });
+      await touch(ctx, run);
+      return riderView(r, saved);
+    },
+    async setDropped(ctx, riderId, input) {
+      const c = await gate(ctx, 'bus:use');
+      const v = DroppedIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === r.runVehicleId);
+      const me = selfLeaderId(ctx);
+      const inMyCar = !!rv && !!me && (rv.ownerLeaderId === me || rv.leaderIds.includes(me));
+      if (!inMyCar && !allowed(ctx, c, 'bus:coordinate')) throw new ForbiddenError("Only this car's leaders can mark drop-offs");
+      const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
+        droppedBy: v.dropped ? await whoLabel(ctx) : null });
+      await touch(ctx, run);
+      return riderView(saved, await bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }));
+    },
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
@@ -423,10 +462,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (vehicle) {
         const mine = (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === vehicle.id)
           .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
+        const consents = await bus.listConsents();
         for (const r of mine) {
           const mobile = r.studentId ? (await students.findById(r.studentId))?.mobile ?? null
             : r.guestId ? (await bus.getGuest(r.guestId))?.phone ?? null : null;
-          stops.push({ ...riderView(r), mobile });
+          stops.push({ ...riderView(r, consentFor(consents, r)), mobile });
         }
       }
       let ownCarDraft: MyCarView['ownCarDraft'] = null;

@@ -3,7 +3,7 @@ import { toIso } from './client';
 import { isEncrypted, decryptField, maybeEncrypt } from '../../utils/field-crypto';
 import type { IBusRepository } from '../interfaces/entity-repositories';
 import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider,
-  BusOwnCar, EndsAt, BusGender } from '../../core/entities/bus';
+  BusOwnCar, EndsAt, BusGender, BusConsent } from '../../core/entities/bus';
 
 export const busCrypt = {
   enc: (v: string | null | undefined, aad: string): string | null => maybeEncrypt(v, aad),
@@ -65,7 +65,12 @@ function toRider(r: Record<string, any>): BusRunRider {
     snapName: busCrypt.dec(r.snap_name, `bus_run_riders:snap_name:${r.id}`)!,
     snapGrade: r.snap_grade ?? null, snapGender: (r.snap_gender ?? null) as BusGender,
     snapAddress: busCrypt.dec(r.snap_address, `bus_run_riders:snap_address:${r.id}`)!,
-    snapPlaceId: busCrypt.dec(r.snap_place_id, `bus_run_riders:snap_place_id:${r.id}`) };
+    snapPlaceId: busCrypt.dec(r.snap_place_id, `bus_run_riders:snap_place_id:${r.id}`),
+    droppedAt: iso(r.dropped_at), droppedBy: r.dropped_by ?? null };
+}
+function toConsent(r: Record<string, any>): BusConsent {
+  return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, given: r.given,
+    note: busCrypt.dec(r.note, `bus_consents:note:${r.id}`) ?? '', recordedBy: r.recorded_by, recordedAt: toIso(r.recorded_at) };
 }
 
 export class SupabaseBusRepository implements IBusRepository {
@@ -181,16 +186,38 @@ export class SupabaseBusRepository implements IBusRepository {
   async saveRunRider(x: BusRunRider) {
     const r = await this.sql`
       insert into bus_run_riders (id, run_id, student_id, guest_id, address_id, run_vehicle_id, stop_order, pinned, added_by, added_at,
-        snap_name, snap_grade, snap_gender, snap_address, snap_place_id)
+        snap_name, snap_grade, snap_gender, snap_address, snap_place_id, dropped_at, dropped_by)
       values (${x.id}, ${x.runId}, ${x.studentId}, ${x.guestId}, ${x.addressId}, ${x.runVehicleId}, ${x.stopOrder}, ${x.pinned},
         ${x.addedBy}, ${x.addedAt}, ${busCrypt.enc(x.snapName, `bus_run_riders:snap_name:${x.id}`)}, ${x.snapGrade}, ${x.snapGender},
-        ${busCrypt.enc(x.snapAddress, `bus_run_riders:snap_address:${x.id}`)}, ${busCrypt.enc(x.snapPlaceId, `bus_run_riders:snap_place_id:${x.id}`)})
+        ${busCrypt.enc(x.snapAddress, `bus_run_riders:snap_address:${x.id}`)}, ${busCrypt.enc(x.snapPlaceId, `bus_run_riders:snap_place_id:${x.id}`)},
+        ${x.droppedAt}, ${x.droppedBy})
       on conflict (id) do update set student_id = excluded.student_id, guest_id = excluded.guest_id, address_id = excluded.address_id,
         run_vehicle_id = excluded.run_vehicle_id, stop_order = excluded.stop_order, pinned = excluded.pinned,
         snap_name = excluded.snap_name, snap_grade = excluded.snap_grade, snap_gender = excluded.snap_gender,
-        snap_address = excluded.snap_address, snap_place_id = excluded.snap_place_id
+        snap_address = excluded.snap_address, snap_place_id = excluded.snap_place_id,
+        dropped_at = excluded.dropped_at, dropped_by = excluded.dropped_by
       returning *`;
     return toRider(r[0]!);
   }
   async deleteRunRider(id: string) { await this.sql`delete from bus_run_riders where id = ${id}`; }
+
+  async listConsents() { return (await this.sql`select * from bus_consents`).map(toConsent); }
+  async getConsent(o: { studentId?: string; guestId?: string }) {
+    const r = o.studentId ? await this.sql`select * from bus_consents where student_id = ${o.studentId}`
+      : await this.sql`select * from bus_consents where guest_id = ${o.guestId ?? null}`;
+    return r[0] ? toConsent(r[0]) : null;
+  }
+  async saveConsent(k: BusConsent) {
+    const r = await this.sql`
+      insert into bus_consents (id, student_id, guest_id, given, note, recorded_by, recorded_at)
+      values (${k.id}, ${k.studentId}, ${k.guestId}, ${k.given}, ${busCrypt.enc(k.note, `bus_consents:note:${k.id}`)}, ${k.recordedBy}, ${k.recordedAt})
+      on conflict (id) do update set given = excluded.given, note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at
+      returning *`;
+    return toConsent(r[0]!);
+  }
+  async reassignGuestConsent(guestId: string, studentId: string) {
+    const has = await this.sql`select 1 from bus_consents where student_id = ${studentId}`;
+    if (has.length) await this.sql`delete from bus_consents where guest_id = ${guestId}`;
+    else await this.sql`update bus_consents set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
+  }
 }
