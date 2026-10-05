@@ -220,7 +220,8 @@ export async function buildContainer(): Promise<Container> {
   const atRisk = makeAtRiskService(students, settings, connections);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
-  const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null);
+  const busSvc = makeBusService(bus, students, leaders, settings);
+  const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
   const settingsSvc = makeSettingsService(settings, audit, users);
   const account = makeAccountService(users, settings);
   const admin = makeAdminService(
@@ -230,7 +231,6 @@ export async function buildContainer(): Promise<Container> {
     imports, audit, connectionAudits,
   );
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
-  const busSvc = makeBusService(bus, students, leaders, settings);
 
   const services: Services = {
     auth, student, leader, prayer, connection, followup, overview, atRisk, trends, lifegroupStats,

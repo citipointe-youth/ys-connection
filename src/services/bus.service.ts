@@ -2,12 +2,12 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { can, type Action } from './access-control';
 import { BadRequestError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, PURGE_DAYS } from './bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, PURGE_DAYS } from './bus-logic';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
-import type { BusRun, BusRunRider, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
-  BusLeaderView, BusAddress, BusRunView, PendingGuestView } from '../core/entities/bus';
+import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
+  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle } from '../core/entities/bus';
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
@@ -19,6 +19,20 @@ export interface BusService {
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
   createGuest(ctx: BusCtx, input: unknown): Promise<BusSearchHit>;
+  saveVehicle(ctx: BusCtx, input: unknown): Promise<BusVehicle>;
+  updateRunVehicle(ctx: BusCtx, runVehicleId: string, input: unknown): Promise<BusRunVehicleView>;
+  setPool(ctx: BusCtx, input: unknown): Promise<void>;
+  setLeaderPrefs(ctx: BusCtx, leaderId: string, input: unknown): Promise<void>;
+  saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
+  removeOwnCar(ctx: BusCtx): Promise<void>;
+  moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
+  myCar(ctx: BusCtx): Promise<MyCarView>;
+  pendingGuests(ctx: BusCtx): Promise<PendingGuestView[]>;
+  linkGuest(ctx: BusCtx, guestId: string, input: unknown): Promise<void>;
+  dismissGuest(ctx: BusCtx, guestId: string): Promise<void>;
+  linkGuestsAfterImport(): Promise<{ linked: number }>;
+  listRuns(ctx: BusCtx): Promise<{ id: string; serviceDate: string; riders: number; cars: number }[]>;
+  getPastRun(ctx: BusCtx, runId: string): Promise<BusRunView>;
 }
 
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
@@ -33,6 +47,18 @@ const NewGuest = z.object({
   firstName: z.string().trim().min(1).max(60), lastName: z.string().trim().min(1).max(60),
   grade: z.number().int().nullable(), gender: z.enum(['male', 'female']), phone: z.string().trim().min(6).max(20),
 });
+const EndsFields = { endsAt: z.enum(['church', 'last_drop', 'address']), endsAddress: z.string().max(200).nullable().default(null), endsPlaceId: z.string().max(300).nullable().default(null) };
+const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim().min(1).max(40), plate: z.string().max(12).nullable().default(null),
+  seats: z.number().int().min(1).max(60), prefGrades: z.array(z.number().int()).default([]), ...EndsFields,
+  sort: z.number().int().default(0), archived: z.boolean().default(false) });
+const UpdateRunVehicle = z.object({ running: z.boolean().optional(), leaderIds: z.array(z.string()).optional(),
+  endsAt: EndsFields.endsAt.optional(), endsAddress: z.string().max(200).nullable().optional(), endsPlaceId: z.string().max(300).nullable().optional() });
+const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
+const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(), fixedVehicleId: z.string().nullable().optional() });
+const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(40), seats: z.number().int().min(2).max(15),
+  plate: z.string().max(12).nullable().default(null), ...EndsFields }), riderIds: z.array(z.string()) });
+const MoveIn = z.object({ runVehicleId: z.string().nullable() });
+const LinkIn = z.object({ studentId: z.string().min(1) });
 
 const nowIso = () => new Date().toISOString();
 const genderOf = (g: string | null | undefined): BusGender => (g === 'male' || g === 'female' ? g : null);
@@ -169,6 +195,19 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     }));
   }
 
+  async function linkOne(guestId: string, studentId: string): Promise<void> {
+    const g = await bus.getGuest(guestId);
+    if (!g) throw new NotFoundError('Person not found');
+    if (!(await students.findById(studentId))) throw new NotFoundError('Student not found');
+    await bus.reassignGuestAddresses(guestId, studentId);
+    await bus.saveGuest({ ...g, linkedStudentId: studentId });
+    // Tonight's (and any future) rider rows move to the student so phones/addresses resolve.
+    for (const run of await bus.listRuns()) {
+      for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.guestId === guestId))
+        await bus.saveRunRider({ ...r, studentId, guestId: null });
+    }
+  }
+
   const svc: BusService = {
     async getRun(ctx) {
       const c = await gate(ctx, 'bus:use');
@@ -247,6 +286,183 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const g = await bus.saveGuest({ id: generateId(), firstName: v.firstName, lastName: v.lastName, grade: v.grade,
         gender: v.gender, phone: v.phone, linkedStudentId: null, dismissed: false, createdAt: nowIso(), lastRiddenAt: null });
       return { kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: [] };
+    },
+    async saveVehicle(ctx, input) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const v = SaveVehicle.parse(input);
+      const prior = v.id ? await bus.getVehicle(v.id) : null;
+      if (v.id && !prior) throw new NotFoundError('Vehicle not found');
+      const saved = await bus.saveVehicle({ id: v.id ?? generateId(), name: v.name, plate: v.plate, seats: v.seats,
+        prefGrades: v.prefGrades, endsAt: v.endsAt, endsAddress: v.endsAddress, endsPlaceId: v.endsPlaceId,
+        sort: v.sort, archived: v.archived, createdAt: prior?.createdAt ?? nowIso(), updatedAt: nowIso() });
+      // Keep tonight's run in step with the fleet (not past runs).
+      const run = await ensureRun(ctx, c);
+      if (!isPast(run, ctx, c)) {
+        const rvs = await bus.listRunVehicles(run.id);
+        const rv = rvs.find((x) => x.vehicleId === saved.id);
+        if (rv && saved.archived) await bus.deleteRunVehicle(rv.id);
+        else if (rv) await bus.saveRunVehicle({ ...rv, name: saved.name, seats: saved.seats, plate: saved.plate });
+        else if (!saved.archived) await bus.saveRunVehicle({ id: generateId(), runId: run.id, vehicleId: saved.id, ownerLeaderId: null,
+          name: saved.name, seats: saved.seats, plate: saved.plate, running: true, leaderIds: [], endsAt: saved.endsAt,
+          endsAddress: saved.endsAddress, endsPlaceId: saved.endsPlaceId, colourIndex: rvs.length });
+        await touch(ctx, run);
+      }
+      return saved;
+    },
+    async updateRunVehicle(ctx, id, input) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const v = UpdateRunVehicle.parse(input);
+      const run = await writableRun(ctx, c);
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === id);
+      if (!rv) throw new NotFoundError('Car not found');
+      await bus.saveRunVehicle({ ...rv, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) } as BusRunVehicle);
+      if (v.running === false) {
+        for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === id))
+          await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+      }
+      await touch(ctx, run);
+      return (await vehicleViews(run.id)).find((x) => x.id === id)!;
+    },
+    async setPool(ctx, input) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const v = SetPool.parse(input);
+      const run = await writableRun(ctx, c);
+      await bus.saveRun({ ...run, availablePoolLeaderIds: v.availableLeaderIds });
+      await touch(ctx, run);
+    },
+    async setLeaderPrefs(ctx, leaderId, input) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const v = LeaderPrefsIn.parse(input);
+      if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
+      const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
+      await bus.saveLeaderPrefs({ ...p, ...(v.inPool !== undefined ? { inPool: v.inPool } : {}),
+        ...(v.fixedVehicleId !== undefined ? { fixedVehicleId: v.fixedVehicleId } : {}) });
+      await touch(ctx, await ensureRun(ctx, c));
+    },
+    async saveOwnCar(ctx, input) {
+      const c = await gate(ctx, 'bus:use');
+      const me = selfLeaderId(ctx);
+      if (!me) throw new BadRequestError('Choose who you are first');
+      const v = OwnCarIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const rvs = await bus.listRunVehicles(run.id);
+      const prior = rvs.find((x) => x.ownerLeaderId === me);
+      const leader = await leaders.findById(me);
+      const rv = await bus.saveRunVehicle({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
+        name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
+        endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,
+        colourIndex: prior?.colourIndex ?? rvs.length });
+      if (v.riderIds.length > capacityOf(rv.seats, 1)) throw new BadRequestError(`${rv.name} only has ${capacityOf(rv.seats, 1)} seats`);
+      const riders = await bus.listRunRiders(run.id);
+      for (const r of riders.filter((r) => r.runVehicleId === rv.id && !v.riderIds.includes(r.id)))
+        await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+      for (const [i, id] of v.riderIds.entries()) {
+        const r = riders.find((x) => x.id === id);
+        if (!r) throw new NotFoundError('Rider not found');
+        await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: i + 1, pinned: true });
+      }
+      const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
+      if (leader) await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,
+        lastOwnRiderKeys: riders.filter((r) => v.riderIds.includes(r.id)).map(riderKey) });
+      await touch(ctx, run);
+      return (await vehicleViews(run.id)).find((x) => x.id === rv.id)!;
+    },
+    async removeOwnCar(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      const me = selfLeaderId(ctx);
+      const run = await writableRun(ctx, c);
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
+      if (!rv) return;
+      for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === rv.id))
+        await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+      await bus.deleteRunVehicle(rv.id);
+      await touch(ctx, run);
+    },
+    async moveRider(ctx, riderId, input) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const v = MoveIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (v.runVehicleId === null) {
+        const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: true });
+        await touch(ctx, run);
+        return riderView(saved);
+      }
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
+      if (!rv) throw new NotFoundError('Car not found');
+      const inCar = (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === rv.id && x.id !== r.id);
+      if (inCar.length >= capacityOf(rv.seats, rv.leaderIds.length)) throw new BadRequestError(`${rv.name} is full`);
+      const maxStop = Math.max(0, ...inCar.map((x) => x.stopOrder ?? 0));
+      const saved = await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
+      await touch(ctx, run);
+      return riderView(saved);
+    },
+    async myCar(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      const me = selfLeaderId(ctx);
+      const run = await ensureRun(ctx, c);
+      const views = await vehicleViews(run.id);
+      const vehicle = me ? views.find((v) => v.running && (v.ownerLeaderId === me || v.leaderIds.includes(me))) ?? null : null;
+      const stops: MyCarView['stops'] = [];
+      if (vehicle) {
+        const mine = (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === vehicle.id)
+          .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
+        for (const r of mine) {
+          const mobile = r.studentId ? (await students.findById(r.studentId))?.mobile ?? null
+            : r.guestId ? (await bus.getGuest(r.guestId))?.phone ?? null : null;
+          stops.push({ ...riderView(r), mobile });
+        }
+      }
+      let ownCarDraft: MyCarView['ownCarDraft'] = null;
+      if (me && !vehicle) {
+        const p = await bus.getLeaderPrefs(me);
+        const tonight = await bus.listRunRiders(run.id);
+        ownCarDraft = { car: p?.ownCar ?? null,
+          riderIds: tonight.filter((r) => p?.lastOwnRiderKeys.includes(riderKey(r))).map((r) => r.id) };
+      }
+      return { vehicle, stops, churchAddress: c.busMinistry.churchAddress, ownCarDraft };
+    },
+    async pendingGuests(ctx) {
+      await gate(ctx, 'bus:analysis');
+      return pendingGuestList();
+    },
+    async linkGuest(ctx, guestId, input) {
+      await gate(ctx, 'bus:analysis');
+      const { studentId } = LinkIn.parse(input);
+      await linkOne(guestId, studentId);
+    },
+    async dismissGuest(ctx, guestId) {
+      await gate(ctx, 'bus:analysis');
+      const g = await bus.getGuest(guestId);
+      if (!g) throw new NotFoundError('Person not found');
+      await bus.saveGuest({ ...g, dismissed: true });
+    },
+    async linkGuestsAfterImport() {
+      const c = await cfg();
+      if (!c.modules.busMinistry) return { linked: 0 };
+      const all = await students.findAll();
+      let linked = 0;
+      for (const g of (await bus.listGuests()).filter((g) => !g.linkedStudentId)) {
+        const matches = all.filter((s) => normName(s.firstName) === normName(g.firstName) && normName(s.lastName) === normName(g.lastName));
+        if (matches.length === 1) { await linkOne(g.id, matches[0]!.id); linked++; }
+      }
+      return { linked };
+    },
+    async listRuns(ctx) {
+      await gate(ctx, 'bus:analysis');
+      const out = [];
+      for (const r of await bus.listRuns()) {
+        const [riders, cars] = await Promise.all([bus.listRunRiders(r.id), bus.listRunVehicles(r.id)]);
+        out.push({ id: r.id, serviceDate: r.serviceDate, riders: riders.length, cars: cars.filter((v) => v.running).length });
+      }
+      return out;
+    },
+    async getPastRun(ctx, runId) {
+      const c = await gate(ctx, 'bus:analysis');
+      const run = await bus.getRun(runId);
+      if (!run) throw new NotFoundError('Night not found');
+      return buildView(ctx, c, run);
     },
   };
   return svc;

@@ -119,3 +119,86 @@ describe('walk-ins', () => {
     expect(await bus.getGuest(g.id)).toBeNull();
   });
 });
+
+async function withFleet() {
+  const t = await setup();
+  const big = await t.svc.saveVehicle(t.ctx('admin'), { name: 'Big Bus', seats: 3, endsAt: 'church' });
+  const v = await t.svc.getRun(t.ctx('admin'));
+  const rvId = v.vehicles.find((x) => x.vehicleId === big.id)!.id;
+  await t.svc.updateRunVehicle(t.ctx('admin'), rvId, { leaderIds: ['L1'] });
+  const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+  const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' } });
+  const c = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' } });
+  return { ...t, rvId, a, b, c };
+}
+
+describe('vehicles + move', () => {
+  it('a vehicle created after tonight\'s run exists is added to tonight', async () => {
+    const t = await withFleet();
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.vehicles[0]).toMatchObject({ name: 'Big Bus', capacity: 2, leaderNames: ['Tom'], eligibility: { male: true, female: false, unknown: false } });
+  });
+  it('move pins and appends; full car rejected with a readable message', async () => {
+    const t = await withFleet();
+    const m1 = await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    expect([m1.pinned, m1.stopOrder]).toEqual([true, 1]);
+    const m2 = await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
+    expect(m2.stopOrder).toBe(2);
+    await expect(t.svc.moveRider(t.ctx('quad'), t.c.id, { runVehicleId: t.rvId })).rejects.toThrow('Big Bus is full');
+  });
+  it('grade login cannot move; a self-identified coordinator can', async () => {
+    const t = await withFleet();
+    await expect(t.svc.moveRider(t.ctx('grade'), t.a.id, { runVehicleId: t.rvId })).rejects.toMatchObject({ statusCode: 403 });
+    const s = await t.settings.getSettings();
+    await t.settings.updateSettings({ ministryConfig: { ...s.ministryConfig, busMinistry: { ...s.ministryConfig.busMinistry, coordinatorLeaderIds: ['L2'] } } });
+    await expect(t.svc.moveRider(t.ctx('grade', 'L2'), t.a.id, { runVehicleId: t.rvId })).resolves.toBeTruthy();
+  });
+});
+
+describe('my car', () => {
+  it('shows only my car with student mobiles; a vanished student shows no phone', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
+    await t.svc.moveRider(t.ctx('admin'), t.b.id, { runVehicleId: t.rvId });
+    await t.students.delete('s2');
+    const mine = await t.svc.myCar(t.ctx('grade', 'L1'));
+    expect(mine.stops.map((s) => [s.name, s.mobile])).toEqual([['Jess Tran', '0412345678'], ['Sam Ode', null]]);
+    const notMine = await t.svc.myCar(t.ctx('grade', 'L2'));
+    expect(notMine.vehicle).toBeNull();
+  });
+  it('own car takes riders off the bus and pre-fills next week', async () => {
+    const t = await withFleet();
+    const own = await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'address', endsAddress: '5 Home St, Manly' }, riderIds: [t.c.id] });
+    expect(own.ownerLeaderId).toBe('L2');
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.riders.find((r) => r.id === t.c.id)!.runVehicleId).toBe(own.id);
+    const nextWeek = await t.svc.myCar(t.ctx('grade', 'L2', '2026-10-16T18:00'));
+    expect(nextWeek.ownCarDraft!.car!.name).toBe("Sarah's car");
+  });
+});
+
+describe('guest linking', () => {
+  it('exactly one name match links and moves addresses; ambiguous ones become suggestions', async () => {
+    const t = await setup();
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '3 C St, Wynnum' } });
+    const g2 = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Jessi', lastName: 'Tran', grade: 9, gender: 'female', phone: '0400000001' });
+    await t.students.save(student('s4', 'Jessica', 'Tran', 9, 'female'));
+    expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1);   // Riley Kim ↔ s3
+    expect((await t.bus.listAddresses({ studentId: 's3' }))[0]!.label).toBe('Home');
+    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    expect(pending.map((p) => p.id)).toEqual([g2.id]);
+    expect(pending[0]!.suggestions.map((s) => s.studentId).sort()).toEqual(['s1', 's4']);
+  });
+});
+
+describe('history', () => {
+  it('lists past runs for director only and keeps snapshots', async () => {
+    const t = await withFleet();
+    expect(await t.svc.listRuns(t.ctx('director', null, '2026-10-12T10:00'))).toHaveLength(1);
+    await expect(t.svc.listRuns(t.ctx('quad'))).rejects.toMatchObject({ statusCode: 403 });
+    const past = await t.svc.getPastRun(t.ctx('admin', null, '2026-10-12T10:00'), (await t.svc.getVersion(t.ctx('admin'))).runId);
+    expect(past.run.readOnly).toBe(true);
+    expect(past.riders).toHaveLength(3);
+  });
+});

@@ -224,6 +224,9 @@ export function makeImportService(
   // writeGroupImport below). In-memory/JSON mode has no transaction primitive
   // and doesn't need one (single process, no partial-crash story to model).
   sql: SqlClient | null = null,
+  // Bus Ministry walk-in guest linking (optional — no-op if omitted). Called
+  // after a successful import; a failure here never fails the import itself.
+  onImported?: () => Promise<unknown>,
 ): ImportService {
   return {
     async listHistory(actor) {
@@ -523,6 +526,7 @@ export function makeImportService(
       invalidateTrendsCache();
       invalidateLgStatsCache();
       invalidateOverviewCache();
+      if (onImported) await onImported().catch(() => undefined); // bus walk-in linking; never fails an import
       return { importId, type: 'service', rowCount: rows.length, studentsAdded, studentsUpdated, sessionsAdded: dateKeys.length, report };
     },
 
@@ -790,6 +794,7 @@ export function makeImportService(
       invalidateTrendsCache();
       invalidateLgStatsCache();
       invalidateOverviewCache();
+      if (onImported) await onImported().catch(() => undefined); // bus walk-in linking; never fails an import
       // Group import has no per-row Zod validation step to fail (the payload
       // is pre-structured by the SPA, not raw CSV rows) and a member appearing
       // in more than one group is a legitimate, common case — not a collision
