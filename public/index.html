@@ -8110,7 +8110,16 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0 };
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false };
+// I5: a focused input/textarea/select inside the page must not be ripped out from under a
+// typing leader by a background repaint — losing focus closes the phone's on-screen keyboard
+// every poll tick (<=10s), e.g. while searching #bus-q. BUS.pendingRepaint defers the repaint
+// until it's safe: the next poll tick (once nothing is focused) catches up.
+function _busEditing() {
+  const el = document.activeElement;
+  const main = document.getElementById('page-main');
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && main && main.contains(el));
+}
 const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];
 function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
 function _busOn() {
@@ -8178,7 +8187,9 @@ async function busRefresh() {
     // admin/director New people card) silently sat stale until some LATER, unrelated Home
     // re-render happened to run _busHomeTile() again.
     if (gen === BUS.gen && S.user) {
-      if (S.page === 'bus') renderBus();
+      // I5: skip the repaint while a field inside the page is focused — the data (BUS.view)
+      // is already fresh, only the paint is deferred — and let the next poll tick catch up.
+      if (S.page === 'bus') { if (_busEditing()) BUS.pendingRepaint = true; else { BUS.pendingRepaint = false; renderBus(); } }
       else if (S.page === 'home') renderHome();
     }
   })();
@@ -8188,6 +8199,10 @@ function _busStartPoll() {
   _busStopPoll();
   BUS.pollTimer = setInterval(async () => {
     if (S.page !== 'bus' || document.hidden || document.getElementById('mo-overlay')) return;
+    // I5: catch up on a repaint deferred earlier because a field was focused, without
+    // waiting on a version re-fetch — the data's already current.
+    if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
+    if (_busEditing()) return;
     try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
   }, 10000);
 }
@@ -8263,7 +8278,19 @@ async function busDismissGuest(id) {
 
 async function renderBus() {
   if (!_busOn()) { go('home'); return; }
-  if (!BUS.view) { setApp(''); await busRefresh(); return; }
+  if (!BUS.view) {
+    // C1: busRefresh() calling renderBus() on a failed load, which then re-calls busRefresh()
+    // because BUS.view is still null, is a hot loop (offline, 5xx, 404 when the module is off,
+    // a missing migration) that hammers the DB pooler with a toast every time. Show a retry
+    // card instead and stop — busRefresh() itself never triggers itself recursively.
+    if (BUS.failed) {
+      setApp(`<div class="pg bus-pg"><div class="empty">${icEmpty('bus')}
+        <div>Could not load ${esc(L('busMinistry'))}.</div>
+        <button class="btn btn-primary" style="margin-top:12px" onclick="BUS.failed=false;busRefresh()">Retry</button></div></div>`);
+      return;
+    }
+    setApp(''); await busRefresh(); return;
+  }
   _busStartPoll();
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;

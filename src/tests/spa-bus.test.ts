@@ -58,6 +58,7 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
       function toast(m) { calls.push('toast:' + m); }
       function renderBus() { calls.push('renderBus'); }
       function renderHome() { calls.push('renderHome'); }
+      function _busEditing() { return false; }
       function __state() { return { fetchCalls: __fetchCalls, calls, BUS }; }
     `;
     return loadFns(['busRefresh'], prelude, ['busRefresh', '__state']);
@@ -159,5 +160,79 @@ describe('phoneLink escapes both interpolated values for the onclick attribute (
     // Without esc(), the first literal " in the name closes the attribute early and the
     // captured value is truncated mid-string instead of running to the real closing ".
     expect(attrValue).toBe(`callPhone('0412345678','a&quot;onmouseover=&quot;alert(1)',false)`);
+  });
+});
+
+// C1: on a failing load, busRefresh()'s finally used to clear BUS.loading, call renderBus(),
+// which (seeing !BUS.view) called busRefresh() again — a hot loop hammering the DB pooler with
+// a toast every time. renderBus() must show a retry card instead when BUS.failed is already
+// set, and never call busRefresh() itself from that branch.
+describe('renderBus shows a retry card instead of hot-looping busRefresh on a failing load (C1)', () => {
+  it('a failing load settles once: the retry card renders, and busRefresh is not re-triggered', async () => {
+    const prelude = `
+      let __fetchCalls = 0;
+      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0, pendingRepaint: false };
+      const S = { page: 'bus', user: { id: 'u1' } };
+      const appHtml = [];
+      async function _busGet(path) { __fetchCalls++; await Promise.resolve(); throw new Error('boom'); }
+      function toast(m) {}
+      function setApp(h) { appHtml.push(h); }
+      function _busOn() { return true; }
+      function _busEditing() { return false; }
+      function esc(s) { return String(s); }
+      function L(k) { return k; }
+      function icEmpty(k) { return ''; }
+      function renderHome() {}
+      function __state() { return { fetchCalls: __fetchCalls, appHtml, BUS }; }
+    `;
+    const { renderBus, __state } = loadFns(['renderBus', 'busRefresh'], prelude, ['renderBus', '__state']);
+    await renderBus();
+    const st = __state();
+    expect(st.fetchCalls).toBe(2); // one /bus/run + one /bus/my-car pair — not repeated
+    expect(st.BUS.failed).toBe(true);
+    expect(st.appHtml[st.appHtml.length - 1]).toContain('Retry');
+  });
+});
+
+// I5: a background repaint must not steal focus from (and close the on-screen keyboard for) an
+// input/textarea/select the leader is actively using, e.g. #bus-q — it defers the repaint via
+// BUS.pendingRepaint instead.
+describe('busRefresh skips the repaint while a field inside the page is focused (I5)', () => {
+  const mk = () => {
+    const prelude = `
+      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0, pendingRepaint: false };
+      const S = { page: 'bus', user: { id: 'u1' } };
+      const calls = [];
+      let __active = null;
+      const document = {
+        getElementById: (id) => (id === 'page-main' ? { contains: (el) => el === __active } : null),
+        get activeElement() { return __active; },
+      };
+      async function _busGet(path) { return path === '/bus/run' ? { run: { version: 7 } } : { ok: true }; }
+      function toast(m) {}
+      function renderBus() { calls.push('renderBus'); }
+      function renderHome() { calls.push('renderHome'); }
+      function __setActive(tag) { __active = tag ? { tagName: tag } : null; }
+      function __state() { return { calls, BUS }; }
+    `;
+    return loadFns(['busRefresh', '_busEditing'], prelude, ['busRefresh', '__setActive', '__state']);
+  };
+
+  it('repaints normally when nothing is focused', async () => {
+    const { busRefresh, __state } = mk();
+    await busRefresh();
+    const st = __state();
+    expect(st.calls).toEqual(['renderBus']);
+    expect(st.BUS.pendingRepaint).toBe(false);
+  });
+
+  it('defers the repaint and flags pendingRepaint while an input inside the page is focused', async () => {
+    const { busRefresh, __setActive, __state } = mk();
+    __setActive('INPUT');
+    await busRefresh();
+    const st = __state();
+    expect(st.calls).toEqual([]);
+    expect(st.BUS.pendingRepaint).toBe(true);
+    expect(st.BUS.view).toEqual({ run: { version: 7 } }); // data still refreshed, just not painted
   });
 });

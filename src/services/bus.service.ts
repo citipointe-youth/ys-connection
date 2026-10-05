@@ -406,6 +406,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!me) throw new BadRequestError('Choose who you are first');
       const v = parseIn(OwnCarIn, input);
       const run = await writableRun(ctx, c);
+      // I6: validate BEFORE writing anything — the old order saved the car first and only
+      // then checked capacity/rider ids, leaving a created-or-resized car behind on a 400/404.
+      const riders = await bus.listRunRiders(run.id);
+      const byId = new Map(riders.map((r) => [r.id, r]));
+      for (const id of v.riderIds) if (!byId.has(id)) throw new NotFoundError('Rider not found');
+      if (v.riderIds.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
       const rvs = await bus.listRunVehicles(run.id);
       const prior = rvs.find((x) => x.ownerLeaderId === me);
       const leader = await leaders.findById(me);
@@ -413,14 +419,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
         endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,
         colourIndex: prior?.colourIndex ?? rvs.length });
-      if (v.riderIds.length > capacityOf(rv.seats, 1)) throw new BadRequestError(`${rv.name} only has ${capacityOf(rv.seats, 1)} seats`);
-      const riders = await bus.listRunRiders(run.id);
       for (const r of riders.filter((r) => r.runVehicleId === rv.id && !v.riderIds.includes(r.id)))
         await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
       for (const [i, id] of v.riderIds.entries()) {
-        const r = riders.find((x) => x.id === id);
-        if (!r) throw new NotFoundError('Rider not found');
-        await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: i + 1, pinned: true });
+        await bus.saveRunRider({ ...byId.get(id)!, runVehicleId: rv.id, stopOrder: i + 1, pinned: true });
       }
       const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
       if (leader) await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,

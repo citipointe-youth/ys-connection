@@ -356,3 +356,20 @@ describe('/bus/search returns labels + suburb only, never the full street addres
     expect(Object.keys(hits[0]!.addresses[0]!)).not.toContain('address');
   });
 });
+
+describe('own car write-ordering (I6)', () => {
+  it('rejects unknown riders / over-capacity before writing the car, leaving no orphaned vehicle', async () => {
+    const t = await setup();
+    await expect(t.svc.saveOwnCar(t.ctx('grade', 'L1'), { car: { name: "Tom's car", seats: 2, endsAt: 'church' }, riderIds: ['missing-id'] }))
+      .rejects.toMatchObject({ statusCode: 404 });
+    let v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.vehicles.find((x) => x.ownerLeaderId === 'L1')).toBeUndefined();
+
+    const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' } });
+    await expect(t.svc.saveOwnCar(t.ctx('grade', 'L1'), { car: { name: "Tom's car", seats: 2, endsAt: 'church' }, riderIds: [a.id, b.id] }))
+      .rejects.toThrow('only has 1 seats');
+    v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.vehicles.find((x) => x.ownerLeaderId === 'L1')).toBeUndefined();
+  });
+});
