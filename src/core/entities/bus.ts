@@ -55,7 +55,9 @@ export interface BusRiderView {
   id: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
   runVehicleId: ID | null; stopOrder: number | null; pinned: boolean;
   name: string; grade: number | null; gender: BusGender; address: string; placeId: string | null;
-  consent: { given: boolean; note: string; recordedBy: string; recordedAt: string } | null;
+  // note/recordedBy/recordedAt are omitted for a non-coordinating 'leader' role (spec I1) —
+  // they only ever see { given }.
+  consent: { given: boolean; note?: string; recordedBy?: string; recordedAt?: string } | null;
   droppedAt: string | null; droppedBy: string | null;
 }
 export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null }
@@ -73,7 +75,8 @@ export interface BusRunView {
 }
 export interface BusSearchHit {
   kind: 'student' | 'guest'; id: ID; name: string; grade: number | null; gender: BusGender;
-  addresses: { id: ID; label: string; address: string }[];
+  // Labels + suburb only (spec I2) — never the full saved street address.
+  addresses: { id: ID; label: string; suburb: string }[];
 }
 export interface MyCarView {
   vehicle: BusRunVehicleView | null;

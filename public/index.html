@@ -1364,8 +1364,14 @@ function callPhone(raw, firstName, isParent) {
 }
 function phoneLink(raw, firstName, isParent) {
   if (!raw) return '';
-  const fn = String(firstName || '').replace(/['\\]/g, '');
-  return `<a onclick="callPhone('${String(raw).replace(/['\\]/g, '')}','${fn}',${isParent ? 'true' : 'false'})" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${fmtPhone(raw)}</a>`;
+  // C2: strip ' and \ so the value can't break out of the single-quoted JS string argument,
+  // THEN esc() the result so a literal " (or <, >, &) can't break out of the double-quoted
+  // onclick attribute itself (e.g. a Bus walk-in's name of a"onmouseover="... — esc() alone
+  // isn't enough there since the browser HTML-decodes the attribute before the ' stripping
+  // would matter, so both steps are needed, in this order).
+  const fn = esc(String(firstName || '').replace(/['\\]/g, ''));
+  const num = esc(String(raw).replace(/['\\]/g, ''));
+  return `<a onclick="callPhone('${num}','${fn}',${isParent ? 'true' : 'false'})" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${esc(fmtPhone(raw))}</a>`;
 }
 // A student is "rising" if their service OR lifegroup rate improved by >=20
 // points vs last term (needs data in both terms to judge).

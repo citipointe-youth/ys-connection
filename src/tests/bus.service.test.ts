@@ -311,3 +311,48 @@ describe('history', () => {
     expect(past.riders).toHaveLength(3);
   });
 });
+
+describe('Zod refine messages reach the user (M1)', () => {
+  it('addRider surfaces the refine message, not generic "Validation failed"', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.addRider(ctx('grade'), {})).rejects.toMatchObject({ message: 'Choose a student or a new person' });
+  });
+});
+
+describe('createGuest input validation (C2)', () => {
+  it('rejects a name containing a quote/angle-bracket and a malformed phone', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.createGuest(ctx('grade'), { firstName: 'a"onmouseover="x', lastName: 'Ng', grade: 8, gender: 'female', phone: '0400 111 222' }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    await expect(svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: 'call-me!' }))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('leader role sees "My car only" on the shared run view (I1)', () => {
+  it('a non-coordinating leader gets suburb-only addresses, a bare consent flag, and no leaders/fleet', async () => {
+    const t = await withFleet();
+    await t.svc.setConsent(t.ctx('grade', 'L2'), t.a.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
+    const leaderCtx: BusCtx = { actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM };
+    const v = await t.svc.getRun(leaderCtx);
+    // every rider is address-redacted
+    for (const r of v.riders) {
+      expect(r.studentId).toBeNull();
+      expect(r.address).not.toContain('St');
+    }
+    const ridden = v.riders.find((r) => r.id === t.a.id)!;
+    expect(ridden.consent).toEqual({ given: true });
+    expect(v.leaders).toEqual([]);
+    expect(v.fleet).toEqual([]);
+  });
+});
+
+describe('/bus/search returns labels + suburb only, never the full street address (I2)', () => {
+  it('search hits never carry the saved street address', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '24 Wynnum Rd, Carina QLD 4152, Australia' } });
+    const hits = await svc.search(ctx('grade'), 'tran');
+    expect(hits[0]!.addresses[0]).toEqual({ id: hits[0]!.addresses[0]!.id, label: 'Home', suburb: 'Carina' });
+    expect(Object.keys(hits[0]!.addresses[0]!)).not.toContain('address');
+  });
+});

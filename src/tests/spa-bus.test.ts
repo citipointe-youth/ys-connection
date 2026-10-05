@@ -144,3 +144,20 @@ describe('busRefresh ignores stale results after logout (review fix round 2, fin
     expect(st.calls.filter((c: string) => c === 'renderHome')).toHaveLength(1);
   });
 });
+
+// C2: phoneLink feeds Bus walk-in names/phones (user-typed) into a double-quoted onclick
+// attribute. Only stripping '/\\ (for the JS-string context) left a literal " free to break
+// out of the attribute itself — e.g. a first name of a"onmouseover="... — so esc() must also
+// run on both interpolated values.
+describe('phoneLink escapes both interpolated values for the onclick attribute (C2)', () => {
+  it('a name containing a double quote cannot break out of the onclick attribute', () => {
+    const { phoneLink } = loadFns(['phoneLink', 'esc', 'fmtPhone']);
+    const html = phoneLink('0412345678', 'a"onmouseover="alert(1)');
+    const start = html.indexOf('onclick="') + 'onclick="'.length;
+    const end = html.indexOf('"', start);
+    const attrValue = html.slice(start, end);
+    // Without esc(), the first literal " in the name closes the attribute early and the
+    // captured value is truncated mid-string instead of running to the real closing ".
+    expect(attrValue).toBe(`callPhone('0412345678','a&quot;onmouseover=&quot;alert(1)',false)`);
+  });
+});

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { can, type Action } from './access-control';
 import { BadRequestError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, PURGE_DAYS } from './bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, PURGE_DAYS } from './bus-logic';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
@@ -45,9 +45,13 @@ const AddRider = z.object({
   .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
 const UpdateRider = z.object({ addressId: z.string().min(1).optional(), newAddress: NewAddress.optional() })
   .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
+const NAME_RE = /^[^<>"]+$/; // C2: no raw <, > or " — prevents stored XSS via phoneLink()'s onclick attribute
+const PHONE_RE = /^[0-9 +()-]{6,20}$/;
 const NewGuest = z.object({
-  firstName: z.string().trim().min(1).max(60), lastName: z.string().trim().min(1).max(60),
-  grade: z.number().int().nullable(), gender: z.enum(['male', 'female']), phone: z.string().trim().min(6).max(20),
+  firstName: z.string().trim().min(1).max(60).regex(NAME_RE, 'Invalid name'),
+  lastName: z.string().trim().min(1).max(60).regex(NAME_RE, 'Invalid name'),
+  grade: z.number().int().nullable(), gender: z.enum(['male', 'female']),
+  phone: z.string().trim().min(6).max(20).regex(PHONE_RE, 'Invalid phone number'),
 });
 const EndsFields = { endsAt: z.enum(['church', 'last_drop', 'address']), endsAddress: z.string().max(200).nullable().default(null), endsPlaceId: z.string().max(300).nullable().default(null) };
 const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim().min(1).max(40), plate: z.string().max(12).nullable().default(null),
@@ -67,6 +71,18 @@ const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().opt
 
 const nowIso = () => new Date().toISOString();
 const genderOf = (g: string | null | undefined): BusGender => (g === 'male' || g === 'female' ? g : null);
+
+// M1: a bare schema.parse(input) throws ZodError, which the global error middleware maps to the
+// generic "Validation failed" — unhelpful for a refine() message like "Choose a student or a new
+// person". Bus routes parse through this instead so the caller sees the first real issue.
+function parseIn<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
+  try {
+    return schema.parse(input);
+  } catch (err) {
+    if (err instanceof z.ZodError) throw new BadRequestError(err.issues[0]?.message ?? 'Invalid input');
+    throw err;
+  }
+}
 
 export function makeBusService(bus: IBusRepository, students: IStudentRepository,
   leaders: ILeaderRepository, settingsRepo: ISettingsRepository): BusService {
@@ -178,11 +194,25 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
       inPool: prefBy.get(l.id)?.inPool ?? false, fixedVehicleId: prefBy.get(l.id)?.fixedVehicleId ?? null }));
     const seesPending = can(ctx.actor, 'bus:analysis');
+    const canCoordinate = allowed(ctx, c, 'bus:coordinate');
+    const riderViews = riders.map((r) => riderView(r, consentFor(consents, r)));
+    // I1: a 'leader' login who isn't a self-identified coordinator gets "My car only" per
+    // spec §4 — strip every other rider's full address/consent note/who-recorded-it, and
+    // the leaders/fleet lists, instead of handing out the whole night's roster.
+    const isRedactedLeader = ctx.actor.role === 'leader' && !canCoordinate;
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
         lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: run.lockBy, lockUntil: run.lockUntil, undoUntil: run.undoUntil },
-      vehicles, riders: riders.map((r) => riderView(r, consentFor(consents, r))), leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
-      fleet: fleet.filter((v) => !v.archived), canCoordinate: allowed(ctx, c, 'bus:coordinate'),
+      vehicles,
+      riders: isRedactedLeader ? riderViews.map((r) => ({
+        id: r.id, studentId: null, guestId: null, addressId: null,
+        runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
+        name: r.name, grade: r.grade, gender: r.gender, address: suburbOf(r.address), placeId: null,
+        consent: r.consent ? { given: r.consent.given } : null,
+        droppedAt: r.droppedAt, droppedBy: r.droppedBy,
+      })) : riderViews,
+      leaders: isRedactedLeader ? [] : leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
+      fleet: isRedactedLeader ? [] : fleet.filter((v) => !v.archived), canCoordinate,
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
     };
   }
@@ -242,18 +272,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       for (const s of (await students.findAll()).filter((s) => nameMatches(q, s.firstName, s.lastName)).slice(0, 15)) {
         const addrs = await bus.listAddresses({ studentId: s.id });
         hits.push({ kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender),
-          addresses: addrs.map((a) => ({ id: a.id, label: a.label, address: a.address })) });
+          addresses: addrs.map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address) })) });
       }
       for (const g of (await bus.listGuests()).filter((g) => !g.linkedStudentId && nameMatches(q, g.firstName, g.lastName)).slice(0, 5)) {
         const addrs = await bus.listAddresses({ guestId: g.id });
         hits.push({ kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender,
-          addresses: addrs.map((a) => ({ id: a.id, label: a.label, address: a.address })) });
+          addresses: addrs.map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address) })) });
       }
       return hits;
     },
     async addRider(ctx, input) {
       const c = await gate(ctx, 'bus:roster');
-      const v = AddRider.parse(input);
+      const v = parseIn(AddRider, input);
       const run = await writableRun(ctx, c);
       let name: string, grade: number | null, gender: BusGender;
       if (v.studentId) {
@@ -294,7 +324,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async updateRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
-      const v = UpdateRider.parse(input);
+      const v = parseIn(UpdateRider, input);
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
@@ -313,14 +343,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async createGuest(ctx, input) {
       await gate(ctx, 'bus:roster');
-      const v = NewGuest.parse(input);
+      const v = parseIn(NewGuest, input);
       const g = await bus.saveGuest({ id: generateId(), firstName: v.firstName, lastName: v.lastName, grade: v.grade,
         gender: v.gender, phone: v.phone, linkedStudentId: null, dismissed: false, createdAt: nowIso(), lastRiddenAt: null });
       return { kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: [] };
     },
     async saveVehicle(ctx, input) {
       const c = await gate(ctx, 'bus:coordinate');
-      const v = SaveVehicle.parse(input);
+      const v = parseIn(SaveVehicle, input);
       const prior = v.id ? await bus.getVehicle(v.id) : null;
       if (v.id && !prior) throw new NotFoundError('Vehicle not found');
       const saved = await bus.saveVehicle({ id: v.id ?? generateId(), name: v.name, plate: v.plate, seats: v.seats,
@@ -342,7 +372,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async updateRunVehicle(ctx, id, input) {
       const c = await gate(ctx, 'bus:coordinate');
-      const v = UpdateRunVehicle.parse(input);
+      const v = parseIn(UpdateRunVehicle, input);
       const run = await writableRun(ctx, c);
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === id);
       if (!rv) throw new NotFoundError('Car not found');
@@ -356,14 +386,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async setPool(ctx, input) {
       const c = await gate(ctx, 'bus:coordinate');
-      const v = SetPool.parse(input);
+      const v = parseIn(SetPool, input);
       const run = await writableRun(ctx, c);
       await bus.saveRun({ ...run, availablePoolLeaderIds: v.availableLeaderIds });
       await touch(ctx, run);
     },
     async setLeaderPrefs(ctx, leaderId, input) {
       const c = await gate(ctx, 'bus:coordinate');
-      const v = LeaderPrefsIn.parse(input);
+      const v = parseIn(LeaderPrefsIn, input);
       if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
       const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
       await bus.saveLeaderPrefs({ ...p, ...(v.inPool !== undefined ? { inPool: v.inPool } : {}),
@@ -374,7 +404,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
-      const v = OwnCarIn.parse(input);
+      const v = parseIn(OwnCarIn, input);
       const run = await writableRun(ctx, c);
       const rvs = await bus.listRunVehicles(run.id);
       const prior = rvs.find((x) => x.ownerLeaderId === me);
@@ -411,7 +441,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async moveRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:coordinate');
-      const v = MoveIn.parse(input);
+      const v = parseIn(MoveIn, input);
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
@@ -431,7 +461,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async setConsent(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
-      const v = ConsentIn.parse(input);
+      const v = parseIn(ConsentIn, input);
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
@@ -457,7 +487,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
-      const v = DroppedIn.parse(input);
+      const v = parseIn(DroppedIn, input);
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
@@ -502,7 +532,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async linkGuest(ctx, guestId, input) {
       await gate(ctx, 'bus:analysis');
-      const { studentId } = LinkIn.parse(input);
+      const { studentId } = parseIn(LinkIn, input);
       await linkOne(guestId, studentId);
     },
     async dismissGuest(ctx, guestId) {
