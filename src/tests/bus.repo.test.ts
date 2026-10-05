@@ -43,7 +43,36 @@ describe('run lock + undo (R2)', () => {
     await r.setPoolIds('a', ['L1']);
     expect(await r.getRun('a')).toMatchObject({ lockBy: 'Tom', availablePoolLeaderIds: ['L1'] });
     await r.setUndo('a', [{ riderId: 'x', runVehicleId: null, stopOrder: null, pinned: false }], t30);
-    await r.releaseLock('a');
+    await r.releaseLock('a', 'Tom');
     expect(await r.getRun('a')).toMatchObject({ lockBy: null, lockUntil: null, undoUntil: t30, availablePoolLeaderIds: ['L1'] });
+  });
+
+  // I3 (controller ruling): a successful tryLock and a releaseLock must bump the run version —
+  // otherwise other phones' 10s version poll never notices the lock and the
+  // "<name> is generating routes…" banner only shows if someone happens to reopen the page.
+  it('I3: a successful tryLock and releaseLock each bump the version; a failed tryLock does not', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    await r.insertRunIfAbsent(run('a', '2026-10-09'));
+    const t0 = '2026-10-09T09:00:00.000Z', t30 = '2026-10-09T09:00:30.000Z';
+    expect((await r.getRun('a'))!.version).toBe(0);
+    expect((await r.tryLock('a', 'Sarah', t0, t30))!.version).toBe(1);
+    expect(await r.tryLock('a', 'Tom', '2026-10-09T09:00:10.000Z', '2026-10-09T09:00:40.000Z')).toBeNull();
+    expect((await r.getRun('a'))!.version).toBe(1); // the rejected tryLock changed nothing
+    await r.releaseLock('a', 'Sarah');
+    expect((await r.getRun('a'))!.version).toBe(2);
+  });
+
+  // M1: a generate that overran LOCK_MS must not clear a lock a second, legitimate generate has
+  // since taken over — releaseLock only clears a lock the caller itself still holds.
+  it('M1: releaseLock is a no-op for a caller who no longer holds the lock', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    await r.insertRunIfAbsent(run('a', '2026-10-09'));
+    const t0 = '2026-10-09T09:00:00.000Z', t30 = '2026-10-09T09:00:30.000Z';
+    await r.tryLock('a', 'Sarah', t0, t30); // Sarah's generate overran LOCK_MS…
+    await r.tryLock('a', 'Tom', '2026-10-09T09:01:00.000Z', '2026-10-09T09:01:30.000Z'); // …Tom's legitimately took over
+    await r.releaseLock('a', 'Sarah'); // Sarah's stale finally{} fires last
+    expect(await r.getRun('a')).toMatchObject({ lockBy: 'Tom' }); // Tom's lock survives
+    await r.releaseLock('a', 'Tom');
+    expect((await r.getRun('a'))!.lockBy).toBeNull();
   });
 });

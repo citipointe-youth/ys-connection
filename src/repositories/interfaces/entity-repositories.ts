@@ -157,7 +157,9 @@ export interface IBusRepository {
   reassignGuestConsent(guestId: string, studentId: string): Promise<void>; // only if the student has none; else drop the guest's
   /** Atomic: sets lock_by/lock_until only if the run is unlocked or the lock has expired; null = someone else holds it. */
   tryLock(runId: string, by: string, nowIso: string, untilIso: string): Promise<BusRun | null>;
-  releaseLock(runId: string): Promise<void>;
+  /** M1: only clears the lock if `by` still holds it — a generate that overran LOCK_MS must
+   *  never clear a lock a second generate has since legitimately taken over. */
+  releaseLock(runId: string, by: string): Promise<void>;
   setUndo(runId: string, snapshot: BusUndoEntry[] | null, untilIso: string | null): Promise<void>;
   /** Writes ONLY available_pool_leader_ids (saveRun writes the whole row and would clobber a live lock). */
   setPoolIds(runId: string, ids: string[]): Promise<void>;

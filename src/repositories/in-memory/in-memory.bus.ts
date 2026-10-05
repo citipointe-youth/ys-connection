@@ -88,10 +88,15 @@ export class InMemoryBusRepository implements IBusRepository {
   async tryLock(id: string, by: string, nowIso: string, untilIso: string) {
     const r = this.runs.get(id);
     if (!r || (r.lockUntil && r.lockUntil > nowIso)) return null;
-    r.lockBy = by; r.lockUntil = untilIso;
+    // I3: bump the version so other phones' 10s version poll notices the lock and shows
+    // "<name> is generating routes…" instead of staying on a stale, unlocked-looking view.
+    r.lockBy = by; r.lockUntil = untilIso; r.version += 1;
     return c(r);
   }
-  async releaseLock(id: string) { const r = this.runs.get(id); if (r) { r.lockBy = null; r.lockUntil = null; } }
+  async releaseLock(id: string, by: string) { // I3 (version bump) + M1 (only clear a lock `by` still holds)
+    const r = this.runs.get(id);
+    if (r && r.lockBy === by) { r.lockBy = null; r.lockUntil = null; r.version += 1; }
+  }
   async setUndo(id: string, snap: BusUndoEntry[] | null, until: string | null) {
     const r = this.runs.get(id); if (r) { r.undoSnapshot = snap ? c(snap) : null; r.undoUntil = until; }
   }

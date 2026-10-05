@@ -222,11 +222,15 @@ export class SupabaseBusRepository implements IBusRepository {
   }
 
   async tryLock(id: string, by: string, nowIso: string, untilIso: string) {
-    const r = await this.sql`update bus_runs set lock_by = ${by}, lock_until = ${untilIso}
+    // I3: bump the version so other phones' 10s version poll notices the lock and shows
+    // "<name> is generating routes…" instead of staying on a stale, unlocked-looking view.
+    const r = await this.sql`update bus_runs set lock_by = ${by}, lock_until = ${untilIso}, version = version + 1
       where id = ${id} and (lock_until is null or lock_until <= ${nowIso}) returning *`;
     return r[0] ? toRun(r[0]) : null;
   }
-  async releaseLock(id: string) { await this.sql`update bus_runs set lock_by = null, lock_until = null where id = ${id}`; }
+  async releaseLock(id: string, by: string) { // I3 (version bump) + M1 (only clear a lock `by` still holds)
+    await this.sql`update bus_runs set lock_by = null, lock_until = null, version = version + 1 where id = ${id} and lock_by = ${by}`;
+  }
   async setUndo(id: string, snap: BusUndoEntry[] | null, until: string | null) {
     await this.sql`update bus_runs set undo_snapshot = ${snap ? this.j(snap) : null}, undo_until = ${until} where id = ${id}`;
   }
