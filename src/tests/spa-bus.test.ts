@@ -291,3 +291,13 @@ describe('busSaveVehicle drops an unticked fixed leader from tonight (M4)', () =
     expect(rvPatch.body.leaderIds).not.toContain('L1');
   });
 });
+
+describe('SPA escaping (final re-review)', () => {
+  it('declares esc() exactly once, so the quote-escaping version is the one bound at runtime', () => {
+    expect(loadIndexHtml().match(/function esc\(/g)).toHaveLength(1);
+  });
+  it('_busAddressPicker shows the suburb from /bus/search results', () => {
+    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busSuburb', 'esc']);
+    expect(_busAddressPicker([{ id: 'a1', label: 'Home', suburb: 'Carina' }])).toContain('Home · Carina');
+  });
+});

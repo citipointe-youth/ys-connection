@@ -6956,7 +6956,6 @@ function lgDisplayName(name){
   return n.trim()||String(name||'');
 }
 function fmtD(iso){if(!iso)return'—';const d=new Date(iso);return isNaN(d)?'—':d.getUTCDate()+'/'+(d.getUTCMonth()+1);}
-function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ---------- server audit API ----------
 async function auditList(){ if(AUDIT_SUMMARIES)return AUDIT_SUMMARIES; AUDIT_SUMMARIES=await API.get('/audits').catch(()=>[]); return AUDIT_SUMMARIES||[]; }
@@ -8357,7 +8356,7 @@ function _busHitsHtml() {
 
 function _busAddressPicker(addresses) {
   const saved = addresses.map((a, i) => `<label class="radio-row"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
-      <span>${esc(a.label || 'Saved')} · ${esc(_busSuburb(a.address))}</span></label>`).join('');
+      <span>${esc(a.label || 'Saved')} · ${esc(a.suburb || _busSuburb(a.address))}</span></label>`).join('');
   return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
     <div class="fg"><input class="fi" id="bus-addr-text" placeholder="Street address, suburb" autocomplete="off">
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
