@@ -17,7 +17,11 @@ export type Action =
   | 'admin:manage'            // settings, accounts, year-rollover
   | 'prayer:read'             // view prayer requests in scope
   | 'prayer:write'            // add/edit/mark/delete a prayer in scope
-  | 'prayer:import';          // admin-only: bulk CSV import/export of prayers
+  | 'prayer:import'           // admin-only: bulk CSV import/export of prayers
+  | 'bus:use'                 // open Bus Ministry, My car
+  | 'bus:roster'              // add/edit/remove riders, New Person
+  | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
+  | 'bus:analysis';           // Route analysis, Past nights
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -31,6 +35,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'atrisk:read',
     'prayer:read',
     'prayer:write',
+    'bus:use',
   ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
@@ -43,6 +48,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'atrisk:read',
     'prayer:read',
     'prayer:write',
+    'bus:use',
+    'bus:roster',
   ]),
   // quad — full add/edit/allocate within their gender + year bracket
   quad: new Set<Action>([
@@ -55,6 +62,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'atrisk:read',
     'prayer:read',
     'prayer:write',
+    'bus:use',
+    'bus:roster',
+    'bus:coordinate',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -69,6 +79,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'import:run',
     'prayer:read',
     'prayer:write',
+    'bus:use',
+    'bus:roster',
+    'bus:coordinate',
+    'bus:analysis',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -86,6 +100,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:read',
     'prayer:write',
     'prayer:import',
+    'bus:use',
+    'bus:roster',
+    'bus:coordinate',
+    'bus:analysis',
   ]),
 };
 

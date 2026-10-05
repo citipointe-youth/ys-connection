@@ -54,6 +54,7 @@ export const MinistryConfigSchema = z.object({
       studentTeam: z.string().max(40).default('Student Team'),
       connection: z.string().max(40).default('Connection'),
       groupNameStrip: z.array(z.string()).default(['Brisbane - YS - ']),
+      busMinistry: z.string().max(40).default('Bus Ministry'),
     })
     .default({}),
 
@@ -106,6 +107,7 @@ export const MinistryConfigSchema = z.object({
       connectionAudit: z.boolean().default(true),
       lifegroups: z.boolean().default(true),
       exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
+      busMinistry: z.boolean().default(false),
     })
     .default({}),
 
@@ -113,6 +115,23 @@ export const MinistryConfigSchema = z.object({
     .object({
       dateOrder: z.enum(['DMY', 'MDY']).default('DMY'),
       leaderTag: z.string().max(20).default('leader'),
+    })
+    .default({}),
+
+  // Bus Ministry module settings (spec 2026-10-05). Edited from the Bus
+  // settings sheet (admin) via PATCH /settings. No ministry-specific defaults.
+  busMinistry: z
+    .object({
+      visibility: z.enum(['admin', 'all']).default('admin'),
+      churchAddress: z.string().max(200).default(''),
+      churchPlaceId: z.string().max(300).default(''),
+      leaveTime: z.string().regex(/^\d{2}:\d{2}$/).default('21:00'),
+      targetRouteMin: z.number().int().min(10).max(240).default(45),
+      prefWeightMin: z.number().int().min(0).max(120).default(10),
+      genderWeightMin: z.number().int().min(0).max(600).default(120),
+      detourMin: z.number().int().min(1).max(120).default(10),
+      detourPct: z.number().int().min(1).max(100).default(20),
+      coordinatorLeaderIds: z.array(z.string()).default([]),
     })
     .default({}),
 });
@@ -149,7 +168,7 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
     // Director account is auto-deactivated by the generic role-disable
     // cascade in settings.service.ts, same as quad already was).
     roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
+    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto', busMinistry: false },
   },
 };
 
