@@ -40,8 +40,8 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
   const mk = (page: string, fail = false) => {
     const prelude = `
       let __fetchCalls = 0;
-      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false };
-      const S = { page: ${JSON.stringify(page)} };
+      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0 };
+      const S = { page: ${JSON.stringify(page)}, user: { id: 'u1' } };
       const calls = [];
       async function _busGet(path) {
         __fetchCalls++;
@@ -81,5 +81,61 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
     expect(st.BUS.failed).toBe(true);
     expect(st.BUS.loading).toBeNull();
     expect(st.calls).toContain('renderHome');
+  });
+});
+
+// Review fix round 2, finding 1: a busRefresh() fetch still in flight at logout must not write
+// stale BUS.view/BUS.myCar from the previous session, and must not call renderHome()/renderBus()
+// against the logged-out DOM (renderLogin() has already replaced #app, which has no #page-main —
+// a stale renderHome() there throws). doLogout() bumps BUS.gen and resets S.user/S.page/BUS.view
+// synchronously; busRefresh() captures gen at the start and re-checks it after the fetch settles.
+describe('busRefresh ignores stale results after logout (review fix round 2, finding 1)', () => {
+  const mk = () => {
+    const prelude = `
+      let __resolvers = [];
+      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0 };
+      const S = { page: 'home', user: { id: 'u1' } };
+      const calls = [];
+      function _busGet(path) {
+        return new Promise((resolve) => {
+          __resolvers.push(() => resolve(path === '/bus/run' ? { run: { version: 9 } } : { ok: true }));
+        });
+      }
+      function toast(m) { calls.push('toast:' + m); }
+      function renderBus() { calls.push('renderBus'); }
+      function renderHome() { calls.push('renderHome'); }
+      function __resolveAll() { const rs = __resolvers; __resolvers = []; rs.forEach((r) => r()); }
+      // Mirrors the real doLogout()'s Bus-related lines: bump gen, reset state, log the user out.
+      function __logout() { BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.loading = null; BUS.failed = false; S.user = null; S.page = 'home'; }
+      function __state() { return { calls, BUS, S }; }
+    `;
+    return loadFns(['busRefresh'], prelude, ['busRefresh', '__resolveAll', '__logout', '__state']);
+  };
+
+  it('a fetch still in flight at logout is dropped: no repaint, no stale BUS.view write', async () => {
+    const { busRefresh, __resolveAll, __logout, __state } = mk();
+    const pending = busRefresh(); // starts the fetch; _busGet's promises stay unresolved for now
+    __logout(); // simulate logout happening before the in-flight fetch settles
+    __resolveAll(); // now let the (now-stale) fetch resolve
+    await pending;
+    const st = __state();
+    expect(st.calls).toEqual([]); // neither renderHome() nor renderBus() ran
+    expect(st.BUS.view).toBeNull(); // the stale response did not get written
+    expect(st.BUS.failed).toBe(false);
+  });
+
+  it('a fresh login after logout gets a normal, un-dropped refresh', async () => {
+    const { busRefresh, __resolveAll, __logout, __state } = mk();
+    const stalePending = busRefresh();
+    __logout();
+    __state().S.user = { id: 'u2' }; // simulate logging back in before the stale fetch settles
+    // A new session starts before the stale fetch is resolved — same ordering as a quick
+    // logout/login — and its own busRefresh() must behave completely normally.
+    const freshPending = busRefresh();
+    __resolveAll();
+    await Promise.all([stalePending, freshPending]);
+    const st = __state();
+    expect(st.BUS.view).toEqual({ run: { version: 9 } });
+    expect(st.calls.filter((c: string) => c === 'renderHome')).toHaveLength(1);
   });
 });

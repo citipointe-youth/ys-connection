@@ -1845,7 +1845,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -8100,8 +8100,11 @@ window.CA=CA;
 // so concurrent callers share one fetch instead of each firing their own. failed: set when a
 // busRefresh() attempt errors, cleared on the next success or on logout — _busHomeTile() respects
 // it so a persistently-failing module-off/404/network state doesn't retry on every Home re-render
-// (review fix round 1, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false };
+// (review fix round 1, finding 1). gen: bumped by doLogout() — a fetch started before a logout
+// (and still in flight when it happens) captures the gen at the start and checks it again before
+// writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
+// land after the session that started it has ended (review fix round 2, finding 1).
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0 };
 const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];
 function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
 function _busOn() {
@@ -8136,27 +8139,39 @@ async function _busSend(method, path, body) {
 // the same promise instead of firing its own /bus/run + /bus/my-car pair). The render call lives
 // INSIDE the shared work, not once per caller, so 3 concurrent busRefresh() calls still only
 // repaint once. (Review fix round 1, finding 1.)
+//
+// `gen` is captured before the fetch starts and re-checked after it settles: a logout bumps
+// BUS.gen (and resets S.user/S.page/BUS.loading/BUS.view synchronously), so a fetch that was
+// still in flight at that moment comes back to a mismatched gen and is dropped — it neither
+// writes BUS.view/BUS.myCar/BUS.failed nor calls renderHome()/renderBus(). Without this, a slow
+// request resolving just after logout would call renderHome() against the login screen's DOM
+// (no #page-main — renderLogin() replaced #app entirely) and throw, or worse, write a previous
+// session's Bus data into BUS.view just as a new session starts. The `&& S.user` check is the
+// same guard belt-and-braces: even if gen somehow matched, never repaint while logged out.
+// (Review fix round 2, finding 1.)
 async function busRefresh() {
   if (BUS.loading) return BUS.loading;
+  const gen = BUS.gen;
   BUS.loading = (async () => {
     // My car is fetched alongside the run view (Promise.all, not sequential) so a Bus
     // Ministry load/poll stays one round trip pair instead of two serial ones — same
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
       const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
-      BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false;
+      if (gen === BUS.gen) { BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
-      BUS.failed = true;
-      toast(e.message || 'Bus Ministry unavailable');
+      if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
     } finally {
-      BUS.loading = null;
+      if (gen === BUS.gen) BUS.loading = null;
     }
     // Re-render whichever screen is actually showing Bus data — previously only the Bus
     // Ministry screen itself repainted, so a Home-triggered warm load (the tile count, the
     // admin/director New people card) silently sat stale until some LATER, unrelated Home
     // re-render happened to run _busHomeTile() again.
-    if (S.page === 'bus') renderBus();
-    else if (S.page === 'home') renderHome();
+    if (gen === BUS.gen && S.user) {
+      if (S.page === 'bus') renderBus();
+      else if (S.page === 'home') renderHome();
+    }
   })();
   return BUS.loading;
 }
@@ -8208,19 +8223,25 @@ function _busNewPeopleCard() {
 }
 // Same in-flight-promise sharing as busRefresh() — concurrent callers (e.g. the New people
 // card re-rendering mid-fetch) get the one pending request instead of each firing their own.
+// Same gen/S.user guard as busRefresh() (review fix round 2, finding 1) — a logout bumps
+// BUS.gen, so a pending-guests fetch still in flight at that moment is dropped instead of
+// writing a previous session's data into BUS.pending or calling renderHome() against a torn-
+// down (logged-out) DOM.
 async function _busLoadPending() {
   if (BUS.pendingLoading) return BUS.pendingLoading;
+  const gen = BUS.gen;
   BUS.pendingLoading = (async () => {
-    try { BUS.pending = await _busGet('/bus/guests/pending'); } catch { BUS.pending = []; }
-    BUS.pendingLoading = null;
-    if (S.page === 'home') renderHome();
+    try { const pending = await _busGet('/bus/guests/pending'); if (gen === BUS.gen) BUS.pending = pending; }
+    catch { if (gen === BUS.gen) BUS.pending = []; }
+    if (gen === BUS.gen) BUS.pendingLoading = null;
+    if (gen === BUS.gen && S.user && S.page === 'home') renderHome();
   })();
   return BUS.pendingLoading;
 }
 function busHideSuggestion(id) {
   const p = BUS.pending && BUS.pending.find((x) => x.id === id);
   if (p) p.suggestions = [];
-  if (S.page === 'home') renderHome();
+  if (S.user && S.page === 'home') renderHome();
 }
 async function busLinkGuest(id, studentId) {
   try { await API.post('/bus/guests/' + id + '/link?' + _busQs(), { studentId }); BUS.pending = (BUS.pending || []).filter((p) => p.id !== id); busRefresh(); }
