@@ -13,7 +13,7 @@ describe('bus config defaults', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.busMinistry).toEqual({
       visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00',
       targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120,
-      detourMin: 10, detourPct: 20, coordinatorLeaderIds: [],
+      detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], regionCode: '',
     });
   });
   it('merges a partial busMinistry patch', () => {

@@ -17,3 +17,13 @@ describe('bus routes', () => {
     expect(readFileSync(join(root, 'public', 'sw.js'), 'utf8')).toMatch(/API_RE = .*[|(]bus[|)]/);
   });
 });
+
+describe('R2 routes', () => {
+  it('registers autocomplete, generate and undo (authenticated)', async () => {
+    const { services } = await buildContainer();
+    const routes = buildRoutes(services).filter((r) => r.path.startsWith('/bus'));
+    const keys = routes.map((r) => `${r.method} ${r.path}`);
+    expect(keys).toEqual(expect.arrayContaining(['GET /bus/places/autocomplete', 'POST /bus/run/generate', 'POST /bus/run/undo']));
+    expect(routes.every((r) => r.auth)).toBe(true);
+  });
+});

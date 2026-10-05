@@ -82,9 +82,17 @@ export interface MyCarView {
   vehicle: BusRunVehicleView | null;
   stops: (BusRiderView & { mobile: string | null })[];
   churchAddress: string;
+  churchPlaceId: string;
   ownCarDraft: { car: BusOwnCar | null; riderIds: ID[] } | null;
 }
 export interface PendingGuestView {
   id: ID; name: string; grade: number | null; phone: string | null; createdAt: string;
   suggestions: { studentId: ID; name: string; grade: number | null }[];
+}
+
+export interface BusGenerateResult {
+  placed: number;                     // riders the solver put in a car
+  unassigned: number;                 // riders with no car after this generate (incl. own-car-less, no-pin, pinned-unassigned)
+  noAddressPin: number;               // riders never sent to Google because their address has no place ID
+  routeMin: Record<ID, number>;       // run vehicle id → drive minutes from this solve (not persisted)
 }

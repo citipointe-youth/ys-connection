@@ -1,5 +1,5 @@
 import type { IBusRepository } from '../interfaces/entity-repositories';
-import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent } from '../../core/entities/bus';
+import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent, BusUndoEntry } from '../../core/entities/bus';
 
 const c = <T>(v: T): T => structuredClone(v);
 
@@ -84,4 +84,16 @@ export class InMemoryBusRepository implements IBusRepository {
     if ([...this.consents.values()].some((k) => k.studentId === studentId)) { this.consents.delete(g.id); return; }
     g.guestId = null; g.studentId = studentId;
   }
+
+  async tryLock(id: string, by: string, nowIso: string, untilIso: string) {
+    const r = this.runs.get(id);
+    if (!r || (r.lockUntil && r.lockUntil > nowIso)) return null;
+    r.lockBy = by; r.lockUntil = untilIso;
+    return c(r);
+  }
+  async releaseLock(id: string) { const r = this.runs.get(id); if (r) { r.lockBy = null; r.lockUntil = null; } }
+  async setUndo(id: string, snap: BusUndoEntry[] | null, until: string | null) {
+    const r = this.runs.get(id); if (r) { r.undoSnapshot = snap ? c(snap) : null; r.undoUntil = until; }
+  }
+  async setPoolIds(id: string, ids: string[]) { const r = this.runs.get(id); if (r) r.availablePoolLeaderIds = [...ids]; }
 }

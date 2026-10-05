@@ -132,6 +132,8 @@ export const MinistryConfigSchema = z.object({
       detourMin: z.number().int().min(1).max(120).default(10),
       detourPct: z.number().int().min(1).max(100).default(20),
       coordinatorLeaderIds: z.array(z.string()).default([]),
+      // ISO 3166-1 alpha-2 (e.g. 'au'); '' = search addresses everywhere. Autocomplete includedRegionCodes.
+      regionCode: z.string().regex(/^([A-Za-z]{2})?$/).default(''),
     })
     .default({}),
 });

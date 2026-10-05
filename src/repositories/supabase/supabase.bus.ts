@@ -3,7 +3,7 @@ import { toIso } from './client';
 import { isEncrypted, decryptField, maybeEncrypt } from '../../utils/field-crypto';
 import type { IBusRepository } from '../interfaces/entity-repositories';
 import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider,
-  BusOwnCar, EndsAt, BusGender, BusConsent } from '../../core/entities/bus';
+  BusOwnCar, EndsAt, BusGender, BusConsent, BusUndoEntry } from '../../core/entities/bus';
 
 export const busCrypt = {
   enc: (v: string | null | undefined, aad: string): string | null => maybeEncrypt(v, aad),
@@ -219,5 +219,18 @@ export class SupabaseBusRepository implements IBusRepository {
     const has = await this.sql`select 1 from bus_consents where student_id = ${studentId}`;
     if (has.length) await this.sql`delete from bus_consents where guest_id = ${guestId}`;
     else await this.sql`update bus_consents set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
+  }
+
+  async tryLock(id: string, by: string, nowIso: string, untilIso: string) {
+    const r = await this.sql`update bus_runs set lock_by = ${by}, lock_until = ${untilIso}
+      where id = ${id} and (lock_until is null or lock_until <= ${nowIso}) returning *`;
+    return r[0] ? toRun(r[0]) : null;
+  }
+  async releaseLock(id: string) { await this.sql`update bus_runs set lock_by = null, lock_until = null where id = ${id}`; }
+  async setUndo(id: string, snap: BusUndoEntry[] | null, until: string | null) {
+    await this.sql`update bus_runs set undo_snapshot = ${snap ? this.j(snap) : null}, undo_until = ${until} where id = ${id}`;
+  }
+  async setPoolIds(id: string, ids: string[]) {
+    await this.sql`update bus_runs set available_pool_leader_ids = ${this.j(ids)} where id = ${id}`;
   }
 }

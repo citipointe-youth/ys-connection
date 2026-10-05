@@ -73,6 +73,7 @@ import { makeTrendsService, type TrendsService } from './services/trends.service
 import { makeLifegroupStatsService, type LifegroupStatsService } from './services/lifegroup-stats.service';
 import { makeConnectionAuditService, type ConnectionAuditService } from './services/connection-audit.service';
 import { makeBusService, type BusService } from './services/bus.service';
+import { routingFromEnv } from './services/routing/google-routing-provider';
 
 export interface Repositories {
   users: IUserRepository;
@@ -220,7 +221,7 @@ export async function buildContainer(): Promise<Container> {
   const atRisk = makeAtRiskService(students, settings, connections);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
-  const busSvc = makeBusService(bus, students, leaders, settings);
+  const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv());
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
   const settingsSvc = makeSettingsService(settings, audit, users);
   const account = makeAccountService(users, settings);

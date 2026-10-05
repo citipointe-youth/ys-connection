@@ -31,3 +31,19 @@ describe('InMemoryBusRepository', () => {
     expect(await r.listAddresses({ guestId: 'g2' })).toEqual([]);
   });
 });
+
+describe('run lock + undo (R2)', () => {
+  it('tryLock only succeeds when unlocked or expired; release/setUndo/setPoolIds touch only their own fields', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    await r.insertRunIfAbsent(run('a', '2026-10-09'));
+    const t0 = '2026-10-09T09:00:00.000Z', t30 = '2026-10-09T09:00:30.000Z';
+    expect((await r.tryLock('a', 'Sarah', t0, t30))!.lockBy).toBe('Sarah');
+    expect(await r.tryLock('a', 'Tom', '2026-10-09T09:00:10.000Z', '2026-10-09T09:00:40.000Z')).toBeNull();
+    expect((await r.tryLock('a', 'Tom', '2026-10-09T09:00:31.000Z', '2026-10-09T09:01:01.000Z'))!.lockBy).toBe('Tom');
+    await r.setPoolIds('a', ['L1']);
+    expect(await r.getRun('a')).toMatchObject({ lockBy: 'Tom', availablePoolLeaderIds: ['L1'] });
+    await r.setUndo('a', [{ riderId: 'x', runVehicleId: null, stopOrder: null, pinned: false }], t30);
+    await r.releaseLock('a');
+    expect(await r.getRun('a')).toMatchObject({ lockBy: null, lockUntil: null, undoUntil: t30, availablePoolLeaderIds: ['L1'] });
+  });
+});
