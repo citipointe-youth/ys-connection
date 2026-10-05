@@ -27,3 +27,11 @@ describe('R2 routes', () => {
     expect(routes.every((r) => r.auth)).toBe(true);
   });
 });
+
+describe('R3 routes', () => {
+  it('registers analysis, extra-cars and map', async () => {
+    const { services } = await buildContainer();
+    const keys = buildRoutes(services).map((r) => `${r.method} ${r.path}`);
+    expect(keys).toEqual(expect.arrayContaining(['GET /bus/analysis', 'POST /bus/analysis/extra-cars', 'GET /bus/analysis/map']));
+  });
+});

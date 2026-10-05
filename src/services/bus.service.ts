@@ -2,15 +2,19 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { can, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, PURGE_DAYS } from './bus-logic';
-import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, type FleetCar } from './bus-plan';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
+import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
-import { routingDeadline, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult } from './routing/routing-provider';
+import { routingDeadline, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
+  type MapImage, type MapMarker, type MapPath, type RoutePoint } from './routing/routing-provider';
+import { decodePolyline, thinPolyline } from './routing/polyline';
+import { markerLabel } from './routing/google-requests';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
-  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult } from '../core/entities/bus';
+  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
+  BusAnalysisView, BusExtraCarsView } from '../core/entities/bus';
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
@@ -41,6 +45,9 @@ export interface BusService {
   autocomplete(ctx: BusCtx, q: string, session: string): Promise<PlaceSuggestion[]>;
   generate(ctx: BusCtx, input: unknown): Promise<BusGenerateResult>;
   undo(ctx: BusCtx): Promise<void>;
+  analysis(ctx: BusCtx): Promise<BusAnalysisView>;
+  extraCars(ctx: BusCtx, input: unknown): Promise<BusExtraCarsView>;
+  analysisMap(ctx: BusCtx): Promise<MapImage>;
 }
 
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
@@ -75,12 +82,15 @@ const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300
   .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
 const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
 const GenerateIn = z.object({ mode: z.enum(['all', 'fit']) });
+const ExtraCarsIn = z.object({ count: z.number().int().min(1).max(2), seats: z.number().int().min(3).max(15) });
 const LOCK_MS = 30_000;
 const UNDO_MS = 120_000;
 const SESSION_RE = /^[A-Za-z0-9-]{8,36}$/;
 const NO_CHURCH = 'Set the church address in Bus settings first';
 const GENERATE_FAILED = "Couldn't reach Google Maps — nothing changed. Try again, or move riders by hand.";
 const SEARCH_FAILED = 'Address search is unavailable right now. Type the full address instead.';
+const ANALYSIS_FAILED = "Couldn't reach Google Maps — try again in a minute.";
+const MAP_MAX_POINTS = 120; // per route, keeps the Static Maps URL far under its 16k limit
 
 function routingFailed(err: unknown, message = GENERATE_FAILED): AppError {
   console.error('[bus] routing failed:', err instanceof Error ? err.message : err);
@@ -354,6 +364,32 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       console.error('[bus] reorder skipped:', err instanceof Error ? err.message : err);
     }
   }
+
+  // R3 re-solves tonight's placements (every rider fixed to their car) to get legs + polylines —
+  // nothing is stored (Google terms), so this is cached per run version for the map call that follows.
+  interface AnalysisSolve { key: string; cars: BusRunVehicle[]; riders: BusRunRider[]; problem: SolveProblem; result: SolveResult }
+  let lastAnalysis: AnalysisSolve | null = null;
+  async function analysisSolve(c: MinistryConfig, run: BusRun, signal: AbortSignal): Promise<AnalysisSolve> {
+    const key = `${run.id}:${run.version}`;
+    if (lastAnalysis?.key === key) return lastAnalysis;
+    const b = c.busMinistry;
+    if (!b.churchPlaceId) throw new BadRequestError(NO_CHURCH);
+    const cars = (await bus.listRunVehicles(run.id)).filter((v) => v.running);
+    const riders = (await bus.listRunRiders(run.id)).filter((r) => r.snapPlaceId && r.runVehicleId && cars.some((v) => v.id === r.runVehicleId));
+    const problem: SolveProblem = { startIso: leaveIso(run.serviceDate, b.leaveTime), targetRouteMin: b.targetRouteMin, polylines: true,
+      vehicles: cars.map((v) => {
+        const end = endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId);
+        return { start: { placeId: b.churchPlaceId }, end: end ? { placeId: end } : null, capacity: riders.filter((r) => r.runVehicleId === v.id).length };
+      }),
+      stops: riders.map((r) => ({ point: { placeId: r.snapPlaceId! }, allowedVehicles: [cars.findIndex((v) => v.id === r.runVehicleId)], costs: [], optional: false })) };
+    let result: SolveResult;
+    try { result = problem.stops.length ? await routing.solve(problem, signal) : { routes: [], skipped: [] }; }
+    catch (err) { throw routingFailed(err, ANALYSIS_FAILED); }
+    return (lastAnalysis = { key, cars, riders, problem, result });
+  }
+  const minutes = (r: SolveResult, keep: (vehicle: number) => boolean = () => true) =>
+    r.routes.filter((x) => keep(x.vehicle)).map((x) => Math.round(x.totalSec / 60));
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
   const svc: BusService = {
     async getRun(ctx) {
@@ -757,6 +793,73 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       await bus.setUndo(run.id, null, null);
       await touch(ctx, run);
+    },
+    async analysis(ctx) {
+      const c = await gate(ctx, 'bus:analysis');
+      const b = c.busMinistry;
+      const run = await ensureRun(ctx, c);
+      const signal = routingDeadline();
+      const a = await analysisSolve(c, run, signal);
+      const pairs: { from: RoutePoint; to: RoutePoint }[] = [];
+      const slots = a.result.routes.map((route) =>
+        skipPairs(route.stops.map((s) => a.problem.stops[s]!.point.placeId), b.churchPlaceId, a.problem.vehicles[route.vehicle]!.end?.placeId ?? null)
+          .map((p) => (p ? pairs.push({ from: { placeId: p.from }, to: { placeId: p.to } }) - 1 : null)));
+      let secs: number[];
+      try { secs = pairs.length ? await routing.matrix(pairs, signal) : []; }
+      catch (err) { throw routingFailed(err, ANALYSIS_FAILED); }
+      const cars = a.result.routes.map((route, k) => {
+        const v = a.cars[route.vehicle]!;
+        const d = detours(route.legsSec, slots[k]!.map((x) => (x == null ? 0 : secs[x]!)));
+        const riders = route.stops.map((s, i) => {
+          const detourMin = Math.round(d[i]! / 60), detourPct = route.totalSec ? Math.round((d[i]! / route.totalSec) * 100) : 0;
+          return { riderId: a.riders[s]!.id, name: a.riders[s]!.snapName, stop: i + 1, detourMin, detourPct,
+            flagged: detourMin >= b.detourMin || detourPct >= b.detourPct };
+        }).sort((x, y) => y.detourMin - x.detourMin || y.detourPct - x.detourPct);
+        return { runVehicleId: v.id, name: v.name, colourIndex: v.colourIndex, routeMin: Math.round(route.totalSec / 60), riders };
+      });
+      return { version: run.version, detourMin: b.detourMin, detourPct: b.detourPct, cars,
+        unassigned: (await bus.listRunRiders(run.id)).filter((r) => !r.runVehicleId).length,
+        longestMin: Math.max(0, ...cars.map((x) => x.routeMin)), totalMin: sum(cars.map((x) => x.routeMin)) };
+    },
+    async extraCars(ctx, input) {
+      const c = await gate(ctx, 'bus:analysis');
+      const v = parseIn(ExtraCarsIn, input);
+      if (!c.busMinistry.churchPlaceId) throw new BadRequestError(NO_CHURCH);
+      const run = await ensureRun(ctx, c);
+      const signal = routingDeadline();
+      const prep = await prepareFleet(c, run, 'all');
+      const church = { placeId: c.busMinistry.churchPlaceId };
+      // Virtual cars: two leaders each (mixed, so no gender penalty), back to church. Nothing is saved.
+      const problem: SolveProblem = { ...prep.problem, vehicles: [...prep.problem.vehicles,
+        ...Array.from({ length: v.count }, () => ({ start: church, end: church, capacity: capacityOf(v.seats, 2) }))] };
+      let now: AnalysisSolve, extra: SolveResult;
+      try {
+        [now, extra] = await Promise.all([analysisSolve(c, run, signal),
+          problem.stops.length ? routing.solve(problem, signal) : Promise.resolve<SolveResult>({ routes: [], skipped: [] })]);
+      } catch (err) { if (err instanceof AppError) throw err; throw routingFailed(err, ANALYSIS_FAILED); }
+      const fleetNow = minutes(now.result, (k) => !!now.cars[k]!.vehicleId);
+      const notSent = prep.riders.filter((r) => !r.runVehicleId && (!r.snapPlaceId || r.pinned)).length;
+      return { count: v.count, seats: v.seats,
+        before: { longestMin: Math.max(0, ...fleetNow), totalMin: sum(fleetNow), unassigned: prep.riders.filter((r) => !r.runVehicleId).length },
+        after: { longestMin: Math.max(0, ...minutes(extra)), totalMin: sum(minutes(extra)), unassigned: extra.skipped.length + notSent } };
+    },
+    async analysisMap(ctx) {
+      const c = await gate(ctx, 'bus:analysis');
+      const run = await ensureRun(ctx, c);
+      const signal = routingDeadline();
+      const a = await analysisSolve(c, run, signal);
+      const paths: MapPath[] = [], markers: MapMarker[] = [];
+      for (const route of a.result.routes) {
+        const colour = BUS_CAR_COLOURS[a.cars[route.vehicle]!.colourIndex % BUS_CAR_COLOURS.length]!;
+        if (route.polyline) paths.push({ colour, polyline: thinPolyline(route.polyline, MAP_MAX_POINTS) });
+        route.stops.forEach((_, i) => { // stop i sits at the end of the leg into it
+          const pts = decodePolyline(route.legPolylines[i] ?? '');
+          const at = pts[pts.length - 1];
+          if (at) markers.push({ colour, label: markerLabel(i), lat: at.lat, lng: at.lng });
+        });
+      }
+      try { return await routing.staticMap(paths, markers, signal); }
+      catch (err) { throw routingFailed(err, ANALYSIS_FAILED); }
     },
   };
   return svc;

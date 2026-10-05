@@ -96,3 +96,17 @@ export interface BusGenerateResult {
   noAddressPin: number;               // riders never sent to Google because their address has no place ID
   routeMin: Record<ID, number>;       // run vehicle id → drive minutes from this solve (not persisted)
 }
+
+export interface BusAnalysisRider { riderId: ID; name: string; stop: number; detourMin: number; detourPct: number; flagged: boolean }
+export interface BusAnalysisCar { runVehicleId: ID; name: string; colourIndex: number; routeMin: number; riders: BusAnalysisRider[] } // riders: biggest detour first
+export interface BusAnalysisView {
+  version: number;                 // run version this was worked out for (SPA shows "changed since" when it moves)
+  detourMin: number; detourPct: number;
+  cars: BusAnalysisCar[];
+  unassigned: number; longestMin: number; totalMin: number;
+}
+export interface BusExtraCarsView {
+  count: number; seats: number;
+  before: { longestMin: number; totalMin: number; unassigned: number };
+  after: { longestMin: number; totalMin: number; unassigned: number };
+}

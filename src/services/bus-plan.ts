@@ -74,6 +74,19 @@ export function buildSingleProblem(placeIds: string[], churchPlaceId: string, en
     stops: placeIds.map((p) => ({ point: { placeId: p }, allowedVehicles: null, costs: [], optional: false })) };
 }
 
+/** For each stop in drive order, the leg that would replace it if skipped (prev → next); null for a last drop with no end. */
+export function skipPairs(orderedPlaceIds: string[], start: string, end: string | null): ({ from: string; to: string } | null)[] {
+  return orderedPlaceIds.map((_, i) => {
+    const from = i === 0 ? start : orderedPlaceIds[i - 1]!;
+    const to = i === orderedPlaceIds.length - 1 ? end : orderedPlaceIds[i + 1]!;
+    return to ? { from, to } : null;
+  });
+}
+/** Detour of stop i = t(prev→i) + t(i→next) − t(prev→next) (spec §7). legsSec = [start→s1, …, sN→end?]. */
+export function detours(legsSec: number[], skipSec: number[]): number[] {
+  return skipSec.map((skip, i) => Math.max(0, legsSec[i]! + (legsSec[i + 1] ?? 0) - skip));
+}
+
 export function placementsFrom(result: SolveResult, stopRiderIds: string[], carIds: string[]):
   Map<string, { runVehicleId: string | null; stopOrder: number | null }> {
   const out = new Map<string, { runVehicleId: string | null; stopOrder: number | null }>();

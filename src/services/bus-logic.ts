@@ -48,3 +48,6 @@ export function suburbOf(address: string): string {
   if (parts.length < 2) return address.trim();
   return parts[1]!.replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
 }
+
+/** Same order as the SPA's BUS_CAR_COLOURS (spa-bus.test pins them equal) — the static map paints routes in these. */
+export const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];

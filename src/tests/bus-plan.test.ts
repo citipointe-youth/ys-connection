@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, type FleetCar } from '../services/bus-plan';
+import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, skipPairs, detours, type FleetCar } from '../services/bus-plan';
 
 const W = { targetRouteMin: 45, genderWeightMin: 120, prefWeightMin: 10 };
 const mixed = { female: true, male: true, unknown: false };
@@ -68,5 +68,16 @@ describe('fleet problem', () => {
     expect([endPlaceOf('church', null, 'C'), endPlaceOf('last_drop', 'X', 'C'), endPlaceOf('address', 'X', 'C'), endPlaceOf('address', null, 'C')])
       .toEqual(['C', null, 'X', null]);
     expect(leaveIso('2026-10-09', '21:00')).toBe('2026-10-09T21:00:00.000Z');
+  });
+});
+
+describe('detours', () => {
+  it('skip legs: prev → next, none for the last drop when the route ends there', () => {
+    expect(skipPairs(['a', 'b'], 'C', 'C')).toEqual([{ from: 'C', to: 'b' }, { from: 'a', to: 'C' }]);
+    expect(skipPairs(['a', 'b'], 'C', null)).toEqual([{ from: 'C', to: 'b' }, null]);
+  });
+  it('detour = in + out − skip; the last drop with no end costs its inbound leg', () => {
+    expect(detours([600, 300, 900], [700, 700])).toEqual([200, 500]);
+    expect(detours([600, 300], [700, 0])).toEqual([200, 300]);
   });
 });

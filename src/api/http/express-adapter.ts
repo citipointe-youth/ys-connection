@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { env } from '../../config/env';
-import type { Route, HttpRequest } from './types';
+import { RawResponse, type Route, type HttpRequest } from './types';
 import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
 import { sendError } from '../middleware/error.middleware';
@@ -131,7 +131,8 @@ export function createApp(routes: Route[], authService: AuthService): Express {
         const result = untimed
           ? await route.handler(httpReq)
           : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
-        res.json(result);
+        if (result instanceof RawResponse) res.type(result.contentType).send(Buffer.from(result.body));
+        else res.json(result);
       } catch (err) {
         sendError(res, err);
       }

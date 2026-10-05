@@ -7,6 +7,11 @@ export interface HttpRequest {
   body: unknown;
 }
 
+/** A non-JSON route result (e.g. an image). The adapter sends the bytes as-is; errors stay JSON. */
+export class RawResponse {
+  constructor(readonly contentType: string, readonly body: Uint8Array) {}
+}
+
 export interface Route {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   path: string;

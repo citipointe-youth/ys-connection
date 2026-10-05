@@ -1,4 +1,5 @@
 import type { HttpRequest } from '../http/types';
+import { RawResponse } from '../http/types';
 import type { BusService, BusCtx } from '../../services/bus.service';
 import { UnauthorizedError, BadRequestError } from '../../core/errors/app-error';
 
@@ -43,5 +44,8 @@ export function makeBusController(deps: { bus: BusService }) {
     autocomplete: (r: HttpRequest) => b.autocomplete(ctxOf(r), String(r.query['q'] ?? ''), String(r.query['session'] ?? '')),
     generate: (r: HttpRequest) => b.generate(ctxOf(r), r.body),
     undo: async (r: HttpRequest) => { await b.undo(ctxOf(r)); return { ok: true }; },
+    analysis: (r: HttpRequest) => b.analysis(ctxOf(r)),
+    extraCars: (r: HttpRequest) => b.extraCars(ctxOf(r), r.body),
+    analysisMap: async (r: HttpRequest) => { const img = await b.analysisMap(ctxOf(r)); return new RawResponse(img.contentType, img.bytes); },
   };
 }
