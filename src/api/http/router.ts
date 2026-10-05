@@ -17,6 +17,7 @@ import { makeTrendsController } from '../controllers/trends.controller';
 import { makeLifegroupStatsController } from '../controllers/lifegroup-stats.controller';
 import { makeConnectionAuditController } from '../controllers/connection-audit.controller';
 import { makeBatchController } from '../controllers/batch.controller';
+import { makeBusController } from '../controllers/bus.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -49,6 +50,7 @@ export function buildRoutes(services: Services): Route[] {
     settings: services.settings,
     leader: services.leader,
   });
+  const busCtl = makeBusController({ bus: services.bus });
 
   return [
     // ----- Batch (compose several read endpoints into one request; see batch.controller) -----
@@ -151,5 +153,28 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/audits/import-all', auth: true, handler: (r) => connectionAudit.importAll(r) },
     { method: 'GET',    path: '/audits/:year', auth: true, handler: (r) => connectionAudit.get(r) },
     { method: 'DELETE', path: '/audits/:year', auth: true, handler: (r) => connectionAudit.remove(r) },
+
+    // ----- Bus Ministry -----
+    { method: 'GET',    path: '/bus/run',                  auth: true, handler: (r) => busCtl.run(r) },
+    { method: 'GET',    path: '/bus/run/version',          auth: true, handler: (r) => busCtl.version(r) },
+    { method: 'PATCH',  path: '/bus/run/pool',             auth: true, handler: (r) => busCtl.setPool(r) },
+    { method: 'POST',   path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.saveOwnCar(r) },
+    { method: 'DELETE', path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.removeOwnCar(r) },
+    { method: 'PATCH',  path: '/bus/run/vehicles/:id',     auth: true, handler: (r) => busCtl.updateRunVehicle(r) },
+    { method: 'GET',    path: '/bus/search',               auth: true, handler: (r) => busCtl.search(r) },
+    { method: 'GET',    path: '/bus/my-car',               auth: true, handler: (r) => busCtl.myCar(r) },
+    { method: 'POST',   path: '/bus/riders',               auth: true, handler: (r) => busCtl.addRider(r) },
+    { method: 'PATCH',  path: '/bus/riders/:id',           auth: true, handler: (r) => busCtl.updateRider(r) },
+    { method: 'DELETE', path: '/bus/riders/:id',           auth: true, handler: (r) => busCtl.removeRider(r) },
+    { method: 'POST',   path: '/bus/riders/:id/move',      auth: true, handler: (r) => busCtl.moveRider(r) },
+    { method: 'POST',   path: '/bus/guests',               auth: true, handler: (r) => busCtl.createGuest(r) },
+    { method: 'GET',    path: '/bus/guests/pending',       auth: true, handler: (r) => busCtl.pendingGuests(r) },
+    { method: 'POST',   path: '/bus/guests/:id/link',      auth: true, handler: (r) => busCtl.linkGuest(r) },
+    { method: 'POST',   path: '/bus/guests/:id/dismiss',   auth: true, handler: (r) => busCtl.dismissGuest(r) },
+    { method: 'POST',   path: '/bus/vehicles',             auth: true, handler: (r) => busCtl.saveVehicle(r) },
+    { method: 'PATCH',  path: '/bus/vehicles/:id',         auth: true, handler: (r) => busCtl.updateVehicle(r) },
+    { method: 'PATCH',  path: '/bus/leader-prefs/:leaderId', auth: true, handler: (r) => busCtl.setLeaderPrefs(r) },
+    { method: 'GET',    path: '/bus/runs',                 auth: true, handler: (r) => busCtl.runs(r) },
+    { method: 'GET',    path: '/bus/runs/:id',             auth: true, handler: (r) => busCtl.pastRun(r) },
   ];
 }
