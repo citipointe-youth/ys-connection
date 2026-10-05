@@ -98,4 +98,13 @@ describe('routingFromEnv', () => {
     expect(routingFromEnv({ ...full, PERSISTENCE: 'supabase' }).name).toBe('google');
     warn.mockRestore();
   });
+  // I4: outside memory mode, the fake fallback must not offer "Testville" autocomplete
+  // suggestions — they'd get saved as a real address once the real key is later set.
+  it('I4: the prod fallback (missing env, not memory mode) suggests nothing; memory/test mode still does', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sig2 = new AbortController().signal;
+    expect(await routingFromEnv({ PERSISTENCE: 'supabase' }).autocomplete('24 Wynnum Rd', 's', '', sig2)).toEqual([]);
+    expect(await routingFromEnv({ PERSISTENCE: 'memory' }).autocomplete('24 Wynnum Rd', 's', '', sig2)).not.toEqual([]);
+    warn.mockRestore();
+  });
 });

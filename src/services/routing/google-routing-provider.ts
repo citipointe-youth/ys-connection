@@ -76,7 +76,7 @@ export class GoogleRoutingProvider implements RoutingProvider {
         headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': this.cfg.apiKey,
           'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,condition' },
         body: JSON.stringify(routeMatrixBody(chunk)) }, signal, 'travel times');
-      out.push(...parseRouteMatrix(await res.json(), chunk.length));
+      out.push(...parseRouteMatrix(await res.json(), chunk));
     }
     return out;
   }
@@ -88,15 +88,30 @@ export class GoogleRoutingProvider implements RoutingProvider {
 }
 
 /**
- * Fake when any Google var is missing, or in PERSISTENCE=memory (dev/tests) unless
- * BUS_ROUTING=google — the owner's "memory mode + a real key" check (spec §10).
+ * True exactly when routingFromEnv() just below would return the real Google provider: all
+ * four Google env vars are set, and (PERSISTENCE=memory implies BUS_ROUTING=google — the
+ * owner's "memory mode + a real key" check, spec §10). The one other place that needs this
+ * without constructing a provider (settings.service.ts, saving busMinistry.churchPlaceId) for
+ * I4's "reject a fake: place ID once Google is live" check.
  */
-export function routingFromEnv(e: NodeJS.ProcessEnv = process.env): RoutingProvider {
+export function googleRoutingEnabled(e: NodeJS.ProcessEnv = process.env): boolean {
   const apiKey = e['GOOGLE_MAPS_API_KEY'], saEmail = e['GOOGLE_SA_EMAIL'], key = e['GOOGLE_SA_PRIVATE_KEY'], projectId = e['GOOGLE_PROJECT_ID'];
   const memory = (e['PERSISTENCE'] ?? 'memory') === 'memory';
-  if (!apiKey || !saEmail || !key || !projectId || (memory && e['BUS_ROUTING'] !== 'google')) {
-    if (!memory) console.warn('[routing] Google env not set — Bus Ministry uses straight-line fake routes');
+  return !!(apiKey && saEmail && key && projectId) && (!memory || e['BUS_ROUTING'] === 'google');
+}
+
+export function routingFromEnv(e: NodeJS.ProcessEnv = process.env): RoutingProvider {
+  const memory = (e['PERSISTENCE'] ?? 'memory') === 'memory';
+  if (!googleRoutingEnabled(e)) {
+    // I4: outside memory mode, this is the fallback a prod deploy gets if the four Google env
+    // vars aren't set yet — its autocomplete must not offer "Testville" suggestions that would
+    // get saved as real addresses. Memory/test mode still wants them (suggest defaults true).
+    if (!memory) {
+      console.warn('[routing] Google env not set — Bus Ministry uses straight-line fake routes');
+      return new FakeRoutingProvider({ suggest: false });
+    }
     return new FakeRoutingProvider();
   }
+  const apiKey = e['GOOGLE_MAPS_API_KEY']!, saEmail = e['GOOGLE_SA_EMAIL']!, key = e['GOOGLE_SA_PRIVATE_KEY']!, projectId = e['GOOGLE_PROJECT_ID']!;
   return new GoogleRoutingProvider({ apiKey, saEmail, saPrivateKey: normalisePrivateKey(key), projectId });
 }

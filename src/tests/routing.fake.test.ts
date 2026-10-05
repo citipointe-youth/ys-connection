@@ -49,4 +49,11 @@ describe('FakeRoutingProvider', () => {
     expect(img.contentType).toBe('image/svg+xml');
     expect(new TextDecoder().decode(img.bytes)).toContain('<svg');
   });
+  // I4: the prod fallback (missing Google env, outside memory mode) must not offer
+  // "Testville" suggestions — they'd get saved as a real rider/church address.
+  it('I4: suggest:false turns off autocomplete; default (dev/test) still suggests', async () => {
+    const noSuggest = new FakeRoutingProvider({ suggest: false });
+    expect(await noSuggest.autocomplete('24 Wynnum Rd', 's', '', sig)).toEqual([]);
+    expect(await f.autocomplete('24 Wynnum Rd', 's', '', sig)).not.toEqual([]);
+  });
 });

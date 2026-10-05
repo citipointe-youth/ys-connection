@@ -70,20 +70,29 @@ export function parseAutocomplete(json: unknown): PlaceSuggestion[] {
     .filter((x: PlaceSuggestion) => x.placeId && x.text).slice(0, 5);
 }
 
-export const MATRIX_MAX_PAIRS = 25; // 25 × 25 = 625 elements, the computeRouteMatrix cap
+export const MATRIX_MAX_PAIRS = 25; // safety chunk size — a car's own skip pairs rarely get near this
+// I5: a car's skip-leg pairs chain (stop i's "to" is usually stop i+1's "from"), so building the
+// request from only the DISTINCT origins/destinations `pairs` reference bills far fewer elements
+// than one row/column per pair (which was reading only the diagonal of an N×N matrix).
 export function routeMatrixBody(pairs: { from: RoutePoint; to: RoutePoint }[]) {
-  return { origins: pairs.map((x) => ({ waypoint: wp(x.from) })), destinations: pairs.map((x) => ({ waypoint: wp(x.to) })),
+  const origins = [...new Set(pairs.map((x) => x.from.placeId))];
+  const destinations = [...new Set(pairs.map((x) => x.to.placeId))];
+  return { origins: origins.map((id) => ({ waypoint: wp({ placeId: id }) })), destinations: destinations.map((id) => ({ waypoint: wp({ placeId: id }) })),
     travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' };
 }
-/** Reads only the diagonal (origin i → destination i). */
-export function parseRouteMatrix(json: unknown, n: number): number[] {
-  const out = new Array<number>(n).fill(NaN);
+/** Looks up each pair's duration by its origin/destination place ID — pairs can share a row or
+ *  column after the dedup above, so position no longer lines up with a plain diagonal read. */
+export function parseRouteMatrix(json: unknown, pairs: { from: RoutePoint; to: RoutePoint }[]): number[] {
+  const origins = [...new Set(pairs.map((x) => x.from.placeId))];
+  const destinations = [...new Set(pairs.map((x) => x.to.placeId))];
+  const cell = new Map<string, number>();
   for (const e of (Array.isArray(json) ? json : []) as any[]) {
     const o = e.originIndex ?? 0, d = e.destinationIndex ?? 0;
-    if (o === d && o < n && e.condition === 'ROUTE_EXISTS') out[o] = secOf(e.duration);
+    if (e.condition === 'ROUTE_EXISTS') cell.set(`${o}:${d}`, secOf(e.duration));
   }
-  if (out.some((x) => Number.isNaN(x))) throw new RoutingError('Some trips could not be routed');
-  return out;
+  const out = pairs.map((p) => cell.get(`${origins.indexOf(p.from.placeId)}:${destinations.indexOf(p.to.placeId)}`));
+  if (out.some((x) => x === undefined)) throw new RoutingError('Some trips could not be routed');
+  return out as number[];
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

@@ -26,6 +26,10 @@ export function fakeSeconds(from: RoutePoint, to: RoutePoint): number {
 
 export class FakeRoutingProvider implements RoutingProvider {
   readonly name = 'fake' as const;
+  // I4: in prod, when Google env vars are missing, this provider is the fallback — but its
+  // "Testville" autocomplete suggestions must not be offered there (they'd get saved as real
+  // addresses). Dev/test callers (the default) still want suggestions.
+  constructor(private cfg: { suggest?: boolean } = {}) {}
 
   async solve(p: SolveProblem, _signal?: AbortSignal): Promise<SolveResult> {
     const loads = p.vehicles.map(() => 0);
@@ -63,6 +67,7 @@ export class FakeRoutingProvider implements RoutingProvider {
   }
 
   async autocomplete(input: string, _sessionToken?: string, _regionCode?: string, _signal?: AbortSignal): Promise<PlaceSuggestion[]> {
+    if (this.cfg.suggest === false) return [];
     const q = input.trim();
     if (q.length < 3) return [];
     const slug = q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

@@ -85,7 +85,7 @@ describe('autocomplete', () => {
 });
 
 describe('route matrix', () => {
-  it('builds pairwise origins/destinations and reads the diagonal', () => {
+  it('builds origins/destinations and looks each pair up by place ID', () => {
     const pairs = [{ from: { placeId: 'A' }, to: { placeId: 'B' } }, { from: { placeId: 'C' }, to: { placeId: 'D' } }];
     expect(routeMatrixBody(pairs)).toEqual({
       origins: [{ waypoint: { placeId: 'A' } }, { waypoint: { placeId: 'C' } }],
@@ -96,10 +96,26 @@ describe('route matrix', () => {
       { originIndex: 1, destinationIndex: 1, duration: '50s', condition: 'ROUTE_EXISTS' },
       { originIndex: 0, destinationIndex: 1, duration: '999s', condition: 'ROUTE_EXISTS' },
     ];
-    expect(parseRouteMatrix(json, 2)).toEqual([100, 50]);
+    expect(parseRouteMatrix(json, pairs)).toEqual([100, 50]);
   });
   it('throws a RoutingError when a pair has no route', () => {
-    expect(() => parseRouteMatrix([{ duration: '1s', condition: 'ROUTE_EXISTS' }], 2)).toThrow(RoutingError);
+    const pairs = [{ from: { placeId: 'A' }, to: { placeId: 'B' } }, { from: { placeId: 'C' }, to: { placeId: 'D' } }];
+    const json = [{ duration: '1s', condition: 'ROUTE_EXISTS' }]; // only A→B present; C→D is missing
+    expect(() => parseRouteMatrix(json, pairs)).toThrow(RoutingError);
+  });
+  // I5: a car's skip-leg pairs chain (one stop's "to" is usually the next stop's "from"), and
+  // several cars can also share the same church origin/end — this must bill one row per
+  // DISTINCT place, not one row per pair, or a chunk still bills ~N² elements for N values.
+  it('I5: shares one origin row across pairs with the same origin, instead of one row per pair', () => {
+    const pairs = [{ from: { placeId: 'CHURCH' }, to: { placeId: 'P1' } }, { from: { placeId: 'CHURCH' }, to: { placeId: 'P2' } }];
+    const body = routeMatrixBody(pairs);
+    expect(body.origins).toEqual([{ waypoint: { placeId: 'CHURCH' } }]); // 1 row, not 2 — this is the fix
+    expect(body.destinations).toEqual([{ waypoint: { placeId: 'P1' } }, { waypoint: { placeId: 'P2' } }]);
+    const json = [
+      { originIndex: 0, destinationIndex: 0, duration: '300s', condition: 'ROUTE_EXISTS' },
+      { originIndex: 0, destinationIndex: 1, duration: '400s', condition: 'ROUTE_EXISTS' },
+    ];
+    expect(parseRouteMatrix(json, pairs)).toEqual([300, 400]);
   });
 });
 
