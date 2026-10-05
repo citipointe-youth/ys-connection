@@ -207,6 +207,20 @@ Module off → every route 404 via `ModuleDisabledError`.
 - Deploy: apply `0011` before aliasing; set Google env; `curl /bus/run` → 401 JSON; manual
   `vercel alias set`; enable via Youth Setup → Modules; keep `visibility:'admin'` until happy.
 
+## 10a. Amendment (2026-10-05): parent consent + drop-off record
+
+- **Parent consent** is per person (student or walk-in), not per night, and lasts until revoked.
+  Table `bus_consents` (migration `0012`): student_id → students ON DELETE CASCADE | guest_id →
+  bus_guests ON DELETE CASCADE (unique each), given bool, note enc (free text: when, who, call or
+  text), recorded_by, recorded_at. Moves to the student when a walk-in is linked.
+- Everyone added starts as **"Parent consent: not yet"** — an amber chip on Tonight, Routes and My
+  car. **Warning only**: never blocks placing, moving or generating.
+- Opening a rider on Tonight shows the consent box: tick "Parent consent given" + a required short
+  note when ticked. Unticking revokes. Who: anyone with roster rights (`bus:roster` or coordinator).
+- **Drop-off tick (optional)** on My car: each stop has "Dropped off"; ticking stores the current
+  time + who, tapping the time edits it, unticking clears it. Columns `dropped_at`, `dropped_by` on
+  `bus_run_riders`. Who: that car's leaders or anyone with `bus:coordinate`. Past nights show the times.
+
 ## 11. Out of scope
 
 Pickups before youth, SMS "5 minutes away" automation, live driver GPS, bulk address import,

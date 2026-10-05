@@ -2224,6 +2224,229 @@ async function busSaveOwnCar() {
 
 ---
 
+### Task 8: Parent consent + drop-off record (spec §10a)
+
+**Files:**
+- Create: `supabase/migrations/0012_bus_consent.sql`
+- Modify: `src/core/entities/bus.ts`, `src/repositories/interfaces/entity-repositories.ts`, `src/repositories/in-memory/in-memory.bus.ts`, `src/repositories/supabase/supabase.bus.ts`, `src/services/bus.service.ts`, `src/api/controllers/bus.controller.ts`, `src/api/http/router.ts`, `public/index.html`
+- Test: `src/tests/bus.service.test.ts` (append), `src/tests/supabase.bus.mapper.test.ts` (append)
+
+**Interfaces:**
+- Produces:
+
+```ts
+// bus.ts
+export interface BusConsent { id: ID; studentId: ID | null; guestId: ID | null; given: boolean; note: string; recordedBy: string; recordedAt: ISODateString }
+// BusRunRider gains:   droppedAt: ISODateString | null; droppedBy: string | null;
+// BusRiderView gains:  consent: { given: boolean; note: string; recordedBy: string; recordedAt: string } | null;
+//                      droppedAt: string | null; droppedBy: string | null;
+// IBusRepository gains:
+  listConsents(): Promise<BusConsent[]>;
+  getConsent(owner: { studentId?: string; guestId?: string }): Promise<BusConsent | null>;
+  saveConsent(c: BusConsent): Promise<BusConsent>;
+  reassignGuestConsent(guestId: string, studentId: string): Promise<void>; // only if the student has none; else drop the guest's
+// BusService gains:
+  setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>; // { given: boolean, note: string }
+  setDropped(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>; // { dropped: boolean, at?: ISO string }
+```
+
+- [ ] **Step 1: Failing tests** — append to `src/tests/bus.service.test.ts`:
+
+```ts
+describe('parent consent', () => {
+  it('starts as not yet, persists to next week, and follows a linked walk-in', async () => {
+    const t = await setup();
+    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent).toBeNull();
+    await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: '' })).rejects.toThrow();
+    const v = await t.svc.setConsent(t.ctx('grade', 'L2'), r.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
+    expect(v.consent).toMatchObject({ given: true, note: 'Mum (Lisa) 7:10pm by text', recordedBy: 'Sarah' });
+    await t.svc.addRider(t.ctx('grade', null, '2026-10-16T19:00'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
+    expect(next.riders[0]!.consent!.given).toBe(true);
+    await expect(t.svc.setConsent(t.ctx('leader'), r.id, { given: false, note: '' })).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('a walk-in\'s consent moves to the student on link', async () => {
+    const t = await setup();
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    const r = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' } });
+    await t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'Dad, call 7pm' });
+    await t.svc.linkGuestsAfterImport();
+    expect((await t.bus.getConsent({ studentId: 's3' }))!.note).toBe('Dad, call 7pm');
+  });
+});
+
+describe('drop-off record', () => {
+  it('car leaders tick with a time, can edit and clear it; others cannot', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
+    const d = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true });
+    expect(d.droppedAt).not.toBeNull();
+    expect(d.droppedBy).toBe('Tom');
+    const e = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true, at: '2026-10-09T11:42:00.000Z' });
+    expect(e.droppedAt).toBe('2026-10-09T11:42:00.000Z');
+    await expect(t.svc.setDropped(t.ctx('grade', 'L2'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
+    expect((await t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: false })).droppedAt).toBeNull();
+  });
+});
+```
+
+Append to `src/tests/supabase.bus.mapper.test.ts`:
+
+```ts
+it('consent notes use their own AAD', () => {
+  const ct = busCrypt.enc('Mum, text 7pm', 'bus_consents:note:c1');
+  expect(busCrypt.dec(ct, 'bus_consents:note:c1')).toBe('Mum, text 7pm');
+});
+```
+
+- [ ] **Step 2: Run** `npx vitest run src/tests/bus.service.test.ts` — Expected: FAIL.
+
+- [ ] **Step 3: Migration** — `supabase/migrations/0012_bus_consent.sql`:
+
+```sql
+-- Parent consent is per person and lasts until revoked (spec §10a). Cascades with the
+-- student/guest (a Full Reset therefore clears it, as it does saved addresses).
+create table if not exists bus_consents (
+  id uuid primary key,
+  student_id uuid unique references students(id) on delete cascade,
+  guest_id uuid unique references bus_guests(id) on delete cascade,
+  given boolean not null default false,
+  note text,                  -- encrypted
+  recorded_by text not null default '',
+  recorded_at timestamptz not null default now(),
+  check (student_id is not null or guest_id is not null)
+);
+alter table bus_consents enable row level security;
+alter table bus_run_riders add column if not exists dropped_at timestamptz;
+alter table bus_run_riders add column if not exists dropped_by text;
+```
+
+- [ ] **Step 4: Entities + repos** — add the types above. `BusRunRider` gains `droppedAt`/`droppedBy` (set `null` everywhere a rider is created: `addRider` in the service). In-memory: add `private consents = new Map<string, BusConsent>()` and
+
+```ts
+  async listConsents() { return [...this.consents.values()].map(c); }
+  async getConsent(o: { studentId?: string; guestId?: string }) {
+    const x = [...this.consents.values()].find((k) => (o.studentId ? k.studentId === o.studentId : k.guestId === o.guestId));
+    return x ? c(x) : null;
+  }
+  async saveConsent(k: BusConsent) { this.consents.set(k.id, c(k)); return c(k); }
+  async reassignGuestConsent(guestId: string, studentId: string) {
+    const g = [...this.consents.values()].find((k) => k.guestId === guestId);
+    if (!g) return;
+    if ([...this.consents.values()].some((k) => k.studentId === studentId)) { this.consents.delete(g.id); return; }
+    g.guestId = null; g.studentId = studentId;
+  }
+```
+
+(and `deleteGuest` also deletes that guest's consent). Supabase: `toRider` adds `droppedAt: iso(r.dropped_at), droppedBy: r.dropped_by ?? null`; `saveRunRider` inserts/updates `dropped_at`, `dropped_by`; plus
+
+```ts
+function toConsent(r: Record<string, any>): BusConsent {
+  return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, given: r.given,
+    note: busCrypt.dec(r.note, `bus_consents:note:${r.id}`) ?? '', recordedBy: r.recorded_by, recordedAt: toIso(r.recorded_at) };
+}
+  async listConsents() { return (await this.sql`select * from bus_consents`).map(toConsent); }
+  async getConsent(o: { studentId?: string; guestId?: string }) {
+    const r = o.studentId ? await this.sql`select * from bus_consents where student_id = ${o.studentId}`
+      : await this.sql`select * from bus_consents where guest_id = ${o.guestId ?? null}`;
+    return r[0] ? toConsent(r[0]) : null;
+  }
+  async saveConsent(k: BusConsent) {
+    const r = await this.sql`
+      insert into bus_consents (id, student_id, guest_id, given, note, recorded_by, recorded_at)
+      values (${k.id}, ${k.studentId}, ${k.guestId}, ${k.given}, ${busCrypt.enc(k.note, `bus_consents:note:${k.id}`)}, ${k.recordedBy}, ${k.recordedAt})
+      on conflict (id) do update set given = excluded.given, note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at
+      returning *`;
+    return toConsent(r[0]!);
+  }
+  async reassignGuestConsent(guestId: string, studentId: string) {
+    const has = await this.sql`select 1 from bus_consents where student_id = ${studentId}`;
+    if (has.length) await this.sql`delete from bus_consents where guest_id = ${guestId}`;
+    else await this.sql`update bus_consents set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
+  }
+```
+
+- [ ] **Step 5: Service** — `riderView(r, consent?)` adds `consent: consent ? { given, note, recordedBy, recordedAt } : null, droppedAt: r.droppedAt, droppedBy: r.droppedBy`. In `buildView` and `myCar`, load `bus.listConsents()` once and look up by `studentId`/`guestId`. `linkOne` also calls `bus.reassignGuestConsent(guestId, studentId)`. New methods:
+
+```ts
+const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
+  .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
+const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
+
+    async setConsent(ctx, riderId, input) {
+      const c = await gate(ctx, 'bus:roster');
+      const v = ConsentIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
+      const prior = await bus.getConsent(owner);
+      const saved = await bus.saveConsent({ id: prior?.id ?? generateId(), studentId: r.studentId, guestId: r.studentId ? null : r.guestId,
+        given: v.given, note: v.note, recordedBy: await whoLabel(ctx), recordedAt: nowIso() });
+      await touch(ctx, run);
+      return riderView(r, saved);
+    },
+    async setDropped(ctx, riderId, input) {
+      const c = await gate(ctx, 'bus:use');
+      const v = DroppedIn.parse(input);
+      const run = await writableRun(ctx, c);
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === r.runVehicleId);
+      const me = selfLeaderId(ctx);
+      const inMyCar = !!rv && !!me && (rv.ownerLeaderId === me || rv.leaderIds.includes(me));
+      if (!inMyCar && !allowed(ctx, c, 'bus:coordinate')) throw new ForbiddenError('Only this car\'s leaders can mark drop-offs');
+      const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
+        droppedBy: v.dropped ? await whoLabel(ctx) : null });
+      await touch(ctx, run);
+      return riderView(saved, await bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }));
+    },
+```
+
+- [ ] **Step 6: Routes** — controller: `setConsent: (r) => b.setConsent(ctxOf(r), p(r, 'id'), r.body)`, `setDropped: (r) => b.setDropped(ctxOf(r), p(r, 'id'), r.body)`; router: `POST /bus/riders/:id/consent`, `POST /bus/riders/:id/dropped`.
+
+- [ ] **Step 7: SPA**
+  - Chip helper: `function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span class="chip c-warn">${icS('alert')} Consent: not yet</span>`; }` — render it on Tonight rows, Routes rows and My car stops (inside the `li-sub` line, so rows stay one tap target).
+  - `busEditRider(id)` sheet: above the address picker, a consent box:
+
+```js
+function _busConsentBox(r) {
+  const c = r.consent || { given: false, note: '' };
+  return `<div class="card bus-consent">
+    <label class="cbx-row"><input type="checkbox" id="bc-given" ${c.given ? 'checked' : ''}> Parent consent given</label>
+    <textarea class="fi" id="bc-note" rows="2" maxlength="300" placeholder="When, who, call or text — e.g. Mum (Lisa), 7:10pm, text">${esc(c.note)}</textarea>
+    ${r.consent ? `<div class="card-sub">${esc(r.consent.recordedBy)} · ${esc(new Date(r.consent.recordedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
+    <button class="btn btn-secondary btn-sm" onclick="busSaveConsent('${r.id}')">Save consent</button></div>`;
+}
+async function busSaveConsent(id) {
+  const given = document.getElementById('bc-given').checked, note = document.getElementById('bc-note').value.trim();
+  if (given && !note) { toast('Add when, who, and call or text'); return; }
+  try { await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note }); toast('Consent saved'); closeModal(); } catch (e) { toast(e.message); }
+}
+```
+
+  - My car stop row: right of the name a `Dropped off` checkbox (`cbx-row`, 44px target). Ticked → `POST …/dropped {dropped:true}`; when ticked show the time as a small button (`7:42pm`) that opens a sheet with `<input type="time">` prefilled → save sends `{dropped:true, at}` (combine `BUS.view.run.serviceDate`… careful: after midnight the drop is the next calendar day — build `at` from today's local date if the chosen time is earlier than 06:00, else the run date). Unticking sends `{dropped:false}`.
+
+```js
+function _busDropAtIso(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(BUS.view.run.serviceDate + 'T00:00:00');
+  if (h < 6) d.setDate(d.getDate() + 1);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
+```
+
+  Add a test for `_busDropAtIso` in `spa-bus.test.ts` (`loadFns(['_busDropAtIso'], "const BUS = { view: { run: { serviceDate: '2026-10-09' } } };")` → `'00:30'` gives a date on 2026-10-10 local; `'21:15'` gives 2026-10-09 local — assert via `new Date(iso).getDate()`).
+  - Past nights view: show `dropped 9:42pm` beside each stop when present.
+
+- [ ] **Step 8: Verify** — `node scripts/check-spa-syntax.js && npm run typecheck && npx vitest run`; manual: add a rider → amber chip → open → tick consent without note (blocked) → with note (chip gone) → next week (change `_busLocalNow` in console) still given; My car tick drop-off, edit time, untick.
+
+- [ ] **Step 9: Commit** — `git add -A supabase/migrations/0012_bus_consent.sql src public/index.html && git commit -m "feat(bus): parent consent + drop-off record"`
+
+---
+
 ## Self-review notes (done while writing)
 
 - Spec coverage for Release 1: module toggle/visibility (T1, T3, T6), roster + saved addresses (T3, T6), walk-ins + linking + 28-day purge + dismiss (T3, T4, T7), Car setup incl. fixed leaders, pool availability, Ends at + tonight-only (T4, T7), Move with pins + capacity (T4, T7), My car + own cars + pre-fill (T4, T7), history + Past (T4, T7), version poll + last change (T3, T6), RBAC incl. coordinators (T1, T3), encryption (T2), Full Reset survival (T1 migration comment + no FKs), routing allowlists (T5). Generate/Undo/lock/Places/analysis → Release 2/3 plans.
