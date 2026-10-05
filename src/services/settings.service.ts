@@ -10,6 +10,7 @@ import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { BadRequestError } from '../core/errors/app-error';
+import { googleRoutingEnabled } from './routing/google-routing-provider';
 
 // The optional roles a ministry can switch off in Setup (Admin always exists
 // and isn't toggleable — see ministry-config.ts). User.role values match these
@@ -54,6 +55,14 @@ export function makeSettingsService(
         const logoImage = branding ? branding['logoImage'] : undefined;
         if (logoImage !== undefined && logoImage !== null && !(typeof logoImage === 'string' && logoImage.startsWith('data:image/'))) {
           throw new BadRequestError('branding.logoImage must be null or a data:image/... URI');
+        }
+        // I4: once the real Google provider is live, a "fake:" church place ID (only ever
+        // produced by the dev/test fallback provider) must never be saved — every Generate
+        // would then 400 against Google with no clue why.
+        const busMinistry = ministryConfigPatch['busMinistry'] as Record<string, unknown> | undefined;
+        const churchPlaceId = busMinistry ? busMinistry['churchPlaceId'] : undefined;
+        if (typeof churchPlaceId === 'string' && churchPlaceId.startsWith('fake:') && googleRoutingEnabled()) {
+          throw new BadRequestError('That address needs to be re-picked from the search results');
         }
       }
 

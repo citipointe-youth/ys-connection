@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { makeSettingsService } from '../services/settings.service';
 import { invalidateOverviewCache, makeOverviewService } from '../services/overview.service';
 import { invalidateTrendsCache } from '../services/trends.service';
@@ -83,6 +83,25 @@ describe('SettingsService', () => {
       ministryConfig: { branding: { logoSvg: '<svg onload=alert(1)>' } },
     });
     expect((updated.ministryConfig.branding as Record<string, unknown>)['logoSvg']).toBeUndefined();
+  });
+
+  // I4 (controller ruling): once Google is fully configured, saving a "fake:" church place
+  // ID — only ever produced by the dev/test fallback provider — must be rejected, or every
+  // future Generate 400s against Google with no clue why.
+  it('I4: rejects a fake: churchPlaceId once the Google env is fully configured', async () => {
+    const { service } = await makeService();
+    vi.stubEnv('GOOGLE_MAPS_API_KEY', 'k'); vi.stubEnv('GOOGLE_SA_EMAIL', 'e');
+    vi.stubEnv('GOOGLE_SA_PRIVATE_KEY', 'k'); vi.stubEnv('GOOGLE_PROJECT_ID', 'p');
+    vi.stubEnv('PERSISTENCE', 'supabase');
+    try {
+      await expect(service.update(ADMIN, { ministryConfig: { busMinistry: { churchPlaceId: 'fake:church' } } }))
+        .rejects.toMatchObject({ statusCode: 400 });
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it('I4: allows a fake: churchPlaceId when Google env is not configured (dev/test)', async () => {
+    const { service } = await makeService();
+    const updated = await service.update(ADMIN, { ministryConfig: { busMinistry: { churchPlaceId: 'fake:church' } } });
+    expect(updated.ministryConfig.busMinistry.churchPlaceId).toBe('fake:church');
   });
 
   it('accepts a logoImage data URI patch and stores it verbatim (no server-side re-encoding)', async () => {
