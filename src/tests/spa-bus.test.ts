@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml } from './helpers/extract-fn';
+import { BUS_CAR_COLOURS } from '../services/bus-logic';
 
 describe('SPA bus helpers', () => {
   it('_busLocalNow formats phone local time', () => {
@@ -337,5 +338,23 @@ describe('R2 SPA helpers', () => {
     expect([d.searchParams.get('destination_place_id'), d.searchParams.get('waypoint_place_ids')]).toEqual(['PB', 'PA']);
     const e = new URL(_busMapsLinks(stops, '1 Church Rd', { endsAt: 'address', endsAddress: '9 End St', endsPlaceId: 'PE' }, 'PC')[0].url);
     expect(e.searchParams.get('destination_place_id')).toBe('PE');
+  });
+});
+
+describe('R3 SPA', () => {
+  it('server and SPA car colours match (the static map paints routes in them)', () => {
+    const m = /const BUS_CAR_COLOURS = (\[[^\]]*\]);/.exec(loadIndexHtml())!;
+    expect(JSON.parse(m[1]!.replace(/'/g, '"'))).toEqual(BUS_CAR_COLOURS);
+  });
+  it('_busPickTab keeps Route analysis for director/admin only', () => {
+    const { _busPickTab } = loadFns(['_busPickTab']);
+    expect(_busPickTab(['routes', 'mycar'], 'analysis', true)).toBe('analysis');
+    expect(_busPickTab(['routes', 'mycar'], 'analysis', false)).toBe('routes');
+    expect(_busPickTab(['routes', 'mycar'], 'mycar', false)).toBe('mycar');
+  });
+  it('_busExtraLine reads as a plain sentence with no symbols', () => {
+    const { _busExtraLine } = loadFns(['_busExtraLine']);
+    expect(_busExtraLine({ count: 1, seats: 8, before: { longestMin: 52, totalMin: 150, unassigned: 2 }, after: { longestMin: 38, totalMin: 160, unassigned: 0 } }))
+      .toBe('+1 car, 8 seats: longest route 38 min (now 52) · unassigned 0 (now 2)');
   });
 });

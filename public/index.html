@@ -652,6 +652,23 @@ input,select,textarea{font-family:inherit;font-size:inherit}
   background:var(--navy);color:#fff;border-radius:999px;padding:6px 8px 6px 16px;box-shadow:var(--shadow);font-size:13px;max-width:calc(100% - 32px);white-space:nowrap}
 @media(max-height:500px){.bus-undo{bottom:calc(56px + env(safe-area-inset-bottom))}}
 @media(min-width:768px){.bus-undo{bottom:24px}}
+/* ── R3: Route analysis — map above the list on phones, beside it at ≥768px ── */
+.bus-an{display:grid;gap:12px}
+@media(min-width:768px){.bus-an{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}.an-mapcol{position:sticky;top:12px}}
+.an-map{display:block;width:100%;aspect-ratio:1/1;border-radius:var(--radius);border:1px solid var(--line);background:var(--paper-dark);object-fit:cover}
+.an-map-empty{display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-mid)}
+@media(max-height:500px){.an-map{max-height:70vh;width:auto;max-width:100%;margin:0 auto}}
+.an-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--paper-dark);font-size:12.5px}
+.an-row:last-child{border-bottom:none}
+.an-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.an-bar{height:8px;border-radius:4px;background:var(--paper-dark);overflow:hidden}
+.an-bar span{display:block;height:100%;background:var(--accent)}
+.an-bar span.warn{background:var(--warn)}
+.an-val{display:flex;align-items:center;gap:3px;font-size:11.5px;color:var(--ink-mid);white-space:nowrap}
+.an-val.warn{color:#92400e;font-weight:700}
+.an-try{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.an-try .fi{width:80px}
+.an-line{font-size:12.5px;padding:8px 0 0;margin-top:8px;border-top:1px solid var(--paper-dark)}
 /* ── END BUS MODULE CSS ── */
 </style>
 </head>
@@ -8121,7 +8138,8 @@ window.CA=CA;
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
 const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
-  ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null };
+  ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null,
+  analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false };
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
 // typing leader by a background repaint — losing focus closes the phone's on-screen keyboard
 // every poll tick (<=10s), e.g. while searching #bus-q. BUS.pendingRepaint defers the repaint
@@ -8287,6 +8305,7 @@ async function busDismissGuest(id) {
   catch (e) { toast(e.message); }
 }
 
+function _busPickTab(ids, tab, seesPast) { return ids.includes(tab) || (tab === 'analysis' && seesPast) ? tab : ids[0]; }
 async function renderBus() {
   if (!_busOn()) { go('home'); return; }
   if (!BUS.view) {
@@ -8308,24 +8327,25 @@ async function renderBus() {
   if (undoMs > 0) BUS.undoTimer = setTimeout(() => { if (S.page === 'bus' && !_busEditing()) renderBus(); }, undoMs + 500);
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;
+  const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
   const tabs = [
     canRoster && { id: 'roster', label: 'Tonight' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
     v.canCoordinate && { id: 'routes', label: 'Routes' },
     { id: 'mycar', label: 'My car' },
   ].filter(Boolean);
-  if (!tabs.some((t) => t.id === BUS.tab)) BUS.tab = tabs[0].id;
+  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast);
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, analysis: _busAnalysisHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
-      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
+      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()">${icS('route')} Analysis</button>` : ''}
+        ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
     ${last ? `<div class="bus-last">${last}</div>` : ''}
@@ -8890,6 +8910,70 @@ function _busMyCarHtml() {
     <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Driving your own car?</button>`;
   }
   return `${picker}<div class="card-sub">No car assigned.</div>`;
+}
+
+// ── Route analysis (R3, director/admin) ──
+async function busOpenAnalysis() {
+  BUS.tab = 'analysis'; BUS.analysis = null; BUS.analysisErr = ''; BUS.mapUrl = null;
+  renderBus();
+  try { BUS.analysis = await _busGet('/bus/analysis'); }
+  catch (e) { BUS.analysisErr = e.message || 'Could not work out routes'; }
+  if (S.page === 'bus' && BUS.tab === 'analysis') renderBus();
+  if (BUS.analysis) _busLoadMap();
+}
+// <img> cannot send the bearer token and the CSP allows data: (not blob:), so fetch the bytes
+// and hand the image a data: URL. The Google key never reaches the browser.
+async function _busLoadMap() {
+  try {
+    const res = await fetch('/bus/analysis/map?' + _busQs(), { headers: API.token ? { Authorization: 'Bearer ' + API.token } : {} });
+    if (!res.ok) throw new Error('Map unavailable');
+    const blob = await res.blob();
+    BUS.mapUrl = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(blob); });
+  } catch { BUS.mapUrl = ''; }
+  if (S.page === 'bus' && BUS.tab === 'analysis') renderBus();
+}
+function _busExtraLine(x) {
+  return `+${x.count} car${x.count === 1 ? '' : 's'}, ${x.seats} seats: longest route ${x.after.longestMin} min (now ${x.before.longestMin}) · unassigned ${x.after.unassigned} (now ${x.before.unassigned})`;
+}
+async function busTryCars(count) {
+  const seats = Number((document.getElementById('an-seats') || {}).value) || 8;
+  BUS.extraSeats = seats; BUS.trying = true; renderBus();
+  try {
+    const res = await API.post('/bus/analysis/extra-cars?' + _busQs(), { count, seats }, 30000);
+    BUS.extra = [res, ...(BUS.extra || [])].slice(0, 4);
+  } catch (e) { toast(e.message || 'Could not try that', 4000); }
+  finally { BUS.trying = false; if (S.page === 'bus' && BUS.tab === 'analysis') renderBus(); }
+}
+function _busAnalysisHtml() {
+  if (BUS.analysisErr) return `<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
+  const a = BUS.analysis;
+  if (!a) return `<div class="card-sub">Working out routes…</div>`;
+  const stale = a.version !== BUS.version
+    ? `<div class="alert al-warn bus-lock">${icS('alert')} Routes have changed since this was worked out. <button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()">Refresh</button></div>` : '';
+  const max = Math.max(1, ...a.cars.flatMap((c) => c.riders.map((r) => r.detourMin)));
+  const cars = a.cars.map((c) => `<div class="card">
+    <div class="card-title" style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="car-dot" style="background:${_busCarColour(c.colourIndex)}"></span>${esc(c.name)} · ${c.routeMin} min</div>
+    ${c.riders.map((r) => `<div class="an-row">
+      <div class="an-name">${r.stop}. ${esc(r.name)}</div>
+      <div class="an-bar"><span class="${r.flagged ? 'warn' : ''}" style="width:${Math.round((r.detourMin / max) * 100)}%"></span></div>
+      <div class="an-val${r.flagged ? ' warn' : ''}">${r.flagged ? icS('alert') : ''}+${r.detourMin} min</div></div>`).join('')}
+  </div>`).join('');
+  const map = BUS.mapUrl === null ? `<div class="an-map an-map-empty">Loading map…</div>`
+    : BUS.mapUrl ? `<img class="an-map" src="${esc(BUS.mapUrl)}" alt="Map of tonight's routes">` : `<div class="an-map an-map-empty">Map unavailable</div>`;
+  const tries = (BUS.extra || []).map((x) => `<div class="an-line">${esc(_busExtraLine(x))}</div>`).join('');
+  return `${stale}<div class="bus-an">
+    <div class="an-mapcol">${map}</div>
+    <div>
+      <div class="card-sub" style="margin-bottom:10px">Longest route ${a.longestMin} min · total ${a.totalMin} min${a.unassigned ? ` · ${a.unassigned} unassigned` : ''}.
+        Amber = a detour of ${a.detourMin}+ min or ${a.detourPct}%+ of the car's time.</div>
+      ${cars || '<div class="card-sub">No placed riders yet.</div>'}
+      <div class="card"><div class="card-title">Try more cars</div>
+        <div class="an-try"><label class="fl" for="an-seats" style="margin:0">Seats each</label>
+          <input class="fi" id="an-seats" type="number" min="3" max="15" value="${esc(BUS.extraSeats || 8)}">
+          <button class="btn btn-secondary btn-sm" ${BUS.trying ? 'disabled' : ''} onclick="busTryCars(1)">Try +1 car</button>
+          <button class="btn btn-secondary btn-sm" ${BUS.trying ? 'disabled' : ''} onclick="busTryCars(2)">Try +2 cars</button></div>
+        ${tries}</div>
+    </div></div>`;
 }
 
 async function busPast() {
