@@ -15,6 +15,15 @@ import type {
 import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 import type { ConnectionAudit } from '../../core/entities/connection-audit';
 import type { UserRole } from '../../core/types/enums';
+import type {
+  BusVehicle,
+  BusLeaderPrefs,
+  BusGuest,
+  BusAddress,
+  BusRun,
+  BusRunVehicle,
+  BusRunRider,
+} from '../../core/entities/bus';
 
 export interface IUserRepository extends IRepository<User> {
   findByEmail(email: string): Promise<User | null>;
@@ -109,5 +118,36 @@ export interface IAuditRepository extends IRepository<AdminAuditEntry> {
 
 export interface IConnectionAuditRepository extends IRepository<ConnectionAudit> {
   findByYear(year: number): Promise<ConnectionAudit | null>;
+}
+
+export interface IBusRepository {
+  init(): Promise<void>;
+  listVehicles(): Promise<BusVehicle[]>;
+  getVehicle(id: string): Promise<BusVehicle | null>;
+  saveVehicle(v: BusVehicle): Promise<BusVehicle>;
+  listLeaderPrefs(): Promise<BusLeaderPrefs[]>;
+  getLeaderPrefs(leaderId: string): Promise<BusLeaderPrefs | null>;
+  saveLeaderPrefs(p: BusLeaderPrefs): Promise<BusLeaderPrefs>;
+  listGuests(): Promise<BusGuest[]>;
+  getGuest(id: string): Promise<BusGuest | null>;
+  saveGuest(g: BusGuest): Promise<BusGuest>;
+  deleteGuest(id: string): Promise<void>;           // also deletes the guest's addresses
+  listAddresses(owner: { studentId?: string; guestId?: string }): Promise<BusAddress[]>; // newest lastUsedAt first
+  getAddress(id: string): Promise<BusAddress | null>;
+  saveAddress(a: BusAddress): Promise<BusAddress>;
+  reassignGuestAddresses(guestId: string, studentId: string): Promise<void>;
+  getRunByDate(serviceDate: string): Promise<BusRun | null>;
+  getRun(id: string): Promise<BusRun | null>;
+  listRuns(): Promise<BusRun[]>;                    // newest serviceDate first
+  insertRunIfAbsent(r: BusRun): Promise<{ run: BusRun; created: boolean }>;
+  saveRun(r: BusRun): Promise<BusRun>;
+  bumpRun(runId: string, by: string, atIso: string): Promise<BusRun>; // version+1, lastChange*
+  listRunVehicles(runId: string): Promise<BusRunVehicle[]>;
+  saveRunVehicle(v: BusRunVehicle): Promise<BusRunVehicle>;
+  deleteRunVehicle(id: string): Promise<void>;
+  listRunRiders(runId: string): Promise<BusRunRider[]>;
+  getRunRider(id: string): Promise<BusRunRider | null>;
+  saveRunRider(r: BusRunRider): Promise<BusRunRider>;
+  deleteRunRider(id: string): Promise<void>;
 }
 

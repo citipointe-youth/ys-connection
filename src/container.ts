@@ -17,6 +17,7 @@ import {
   InMemorySettingsRepository,
   InMemoryAuditRepository,
   InMemoryConnectionAuditRepository,
+  InMemoryBusRepository,
 } from './repositories/in-memory';
 import { JsonFilePersistence } from './repositories/persistence';
 import {
@@ -34,6 +35,7 @@ import {
   SupabaseSettingsRepository,
   SupabaseAuditRepository,
   SupabaseConnectionAuditRepository,
+  SupabaseBusRepository,
   getSqlClient,
 } from './repositories/supabase/index';
 
@@ -52,6 +54,7 @@ import type {
   ISettingsRepository,
   IAuditRepository,
   IConnectionAuditRepository,
+  IBusRepository,
 } from './repositories/interfaces';
 
 import { makeAuthService, type AuthService } from './services/auth.service';
@@ -85,6 +88,7 @@ export interface Repositories {
   settings: ISettingsRepository;
   audit: IAuditRepository;
   connectionAudits: IConnectionAuditRepository;
+  bus: IBusRepository;
 }
 
 export interface Services {
@@ -163,6 +167,8 @@ export async function buildContainer(): Promise<Container> {
   const connectionAudits: IConnectionAuditRepository = useSupabase
     ? new SupabaseConnectionAuditRepository(sql)
     : new InMemoryConnectionAuditRepository(useJson ? makeJson('connection-audits.json') : undefined);
+  // No json persistence — memory mode is dev-only.
+  const bus: IBusRepository = useSupabase ? new SupabaseBusRepository(sql) : new InMemoryBusRepository();
 
   // Home/Trends fan out to several endpoints in parallel that each independently
   // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
@@ -186,7 +192,7 @@ export async function buildContainer(): Promise<Container> {
     users, students, leaders, prayers, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, settings, audit, connectionAudits,
+    imports, settings, audit, connectionAudits, bus,
   };
 
   // Init all repos
@@ -194,7 +200,7 @@ export async function buildContainer(): Promise<Container> {
     users.init(), students.init(), leaders.init(), prayers.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
-    imports.init(), settings.init(), audit.init(), connectionAudits.init(),
+    imports.init(), settings.init(), audit.init(), connectionAudits.init(), bus.init(),
   ]);
 
   // ----- Services -----

@@ -17,3 +17,4 @@ export {
 } from './supabase.settings';
 export { getSqlClient } from './client';
 export { SupabaseConnectionAuditRepository } from './supabase.connection-audit';
+export { SupabaseBusRepository } from './supabase.bus';
