@@ -17,3 +17,18 @@ describe('SPA bus helpers', () => {
     expect(/\p{Extended_Pictographic}/u.test(block)).toBe(false);
   });
 });
+
+describe('maps links', () => {
+  it('one link up to 9 stops; split above; ends follow the car', () => {
+    const { _busMapsLinks } = loadFns(['_busMapsLinks']);
+    const stops = Array.from({ length: 11 }, (_, i) => ({ address: `${i + 1} A St, Carina`, placeId: null }));
+    const links = _busMapsLinks(stops, '1 Church Rd, Carindale', { endsAt: 'church' });
+    expect(links.map((l: { label: string }) => l.label)).toEqual(['Stops 1–9', 'Stops 10–11']);
+    expect(links[0].url).toContain('origin=1%20Church%20Rd');
+    expect(links[1].url).toContain('destination=1%20Church%20Rd');
+    const one = _busMapsLinks(stops.slice(0, 3), '1 Church Rd', { endsAt: 'last_drop' });
+    expect(one).toHaveLength(1);
+    expect(one[0].label).toBe('Start in Google Maps');
+    expect(one[0].url).toContain('destination=3%20A%20St');
+  });
+});

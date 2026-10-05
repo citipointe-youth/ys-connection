@@ -8127,8 +8127,13 @@ async function _busSend(method, path, body) {
   return res;
 }
 async function busRefresh() {
-  try { BUS.view = await _busGet('/bus/run'); BUS.version = BUS.view.run.version; }
-  catch (e) { toast(e.message || 'Bus Ministry unavailable'); }
+  // My car is fetched alongside the run view (Promise.all, not sequential) so a Bus
+  // Ministry load/poll stays one round trip pair instead of two serial ones — same
+  // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
+  try {
+    const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
+    BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar;
+  } catch (e) { toast(e.message || 'Bus Ministry unavailable'); }
   if (S.page === 'bus') renderBus();
 }
 function _busStartPoll() {
@@ -8350,6 +8355,321 @@ async function busSaveSettings() {
     churchAddress: document.getElementById('bs-church').value.trim(), coordinatorLeaderIds } } };
   try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
   catch (e) { toast(e.message); }
+}
+
+// ── Car setup / Routes / My car (Task 7) ──
+function _busMapsLinks(stops, church, car) {
+  const enc = encodeURIComponent;
+  const end = car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
+  const chunks = [];
+  for (let i = 0; i < stops.length; i += 9) chunks.push(stops.slice(i, i + 9));
+  return chunks.map((chunk, ci) => {
+    const isLast = ci === chunks.length - 1;
+    const origin = ci === 0 ? church : chunks[ci - 1][chunks[ci - 1].length - 1].address;
+    const dest = isLast ? (end || chunk[chunk.length - 1].address) : chunk[chunk.length - 1].address;
+    const wps = (isLast && !end) ? chunk.slice(0, -1) : isLast ? chunk : chunk.slice(0, -1);
+    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${enc(origin)}&destination=${enc(dest)}`;
+    if (wps.length) url += `&waypoints=${enc(wps.map((s) => s.address).join('|'))}`;
+    const ids = wps.map((s) => s.placeId || '');
+    if (ids.every(Boolean) && ids.length) url += `&waypoint_place_ids=${enc(ids.join('|'))}`;
+    const from = ci * 9 + 1, to = ci * 9 + chunk.length;
+    return { label: chunks.length === 1 ? 'Start in Google Maps' : `Stops ${from}–${to}`, url };
+  });
+}
+
+async function busRunVeh(id, patch) { try { await _busSend('PATCH', '/bus/run/vehicles/' + id, patch); } catch (e) { toast(e.message); } }
+async function busSetPool() {
+  const ids = [...document.querySelectorAll('.bus-pool input:checked')].map((i) => i.value);
+  try { await _busSend('PATCH', '/bus/run/pool', { availableLeaderIds: ids }); } catch (e) { toast(e.message); }
+}
+// "Edit pool" sheet — the standing willing-to-do-drop-homes flag per leader (BusLeaderView.inPool),
+// separate from tonight's availability ticked above (busSetPool/availablePoolLeaderIds).
+function busEditPoolSheet() {
+  const v = BUS.view;
+  modal(`<div class="mo-title">Leader pool</div>
+    <div class="bus-checks">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" ${l.inPool ? 'checked' : ''} onchange="busSetInPool('${l.id}',this.checked)">
+      ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
+    <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>`);
+}
+async function busSetInPool(leaderId, inPool) {
+  try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { inPool }); busEditPoolSheet(); } catch (e) { toast(e.message); }
+}
+function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly) {
+  return `<label class="fl">Ends at</label>
+    <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-addr').hidden=this.value!=='address'">
+      <option value="church" ${endsAt === 'church' ? 'selected' : ''}>Church</option>
+      <option value="last_drop" ${endsAt === 'last_drop' ? 'selected' : ''}>Last drop</option>
+      <option value="address" ${endsAt === 'address' ? 'selected' : ''}>Address</option></select>
+    <input class="fi" id="${prefix}-ends-addr" placeholder="Street address, suburb" value="${esc(endsAddress || '')}" ${endsAt === 'address' ? '' : 'hidden'}>
+    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight"> Tonight only</label>`}`;
+}
+function busEditVehicle(vehicleId) {
+  const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '' };
+  const rv = vehicleId ? v.vehicles.find((x) => x.vehicleId === vehicleId) : null;
+  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
+  modal(`<div class="mo-title">${vehicleId ? 'Edit vehicle' : 'Add vehicle'}</div>
+    <div class="fg"><input class="fi" id="ve-name" placeholder="Name" value="${esc(f.name)}"></div>
+    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="ve-plate" placeholder="Plate" value="${esc(f.plate || '')}">
+      <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}" aria-label="Seats"></div>
+    <label class="fl">Preferred grades</label>
+    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
+    <label class="fl">Fixed leaders</label>
+    <div class="bus-checks" id="ve-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${l.fixedVehicleId && l.fixedVehicleId === vehicleId ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
+    ${_busEndsAtField('ve', f.endsAt, f.endsAddress, rv ? false : undefined)}
+    <button class="btn btn-primary btn-full" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button>
+    ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
+}
+async function busSaveVehicle(vehicleId) {
+  const val = (id) => document.getElementById(id).value;
+  const endsAt = val('ve-ends'), endsAddress = endsAt === 'address' ? val('ve-ends-addr').trim() : null;
+  const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
+  const fixed = [...document.querySelectorAll('#ve-leaders input')];
+  const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
+  try {
+    const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
+    const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades };
+    const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
+      tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress } : { ...base, endsAt, endsAddress });
+    for (const cb of fixed) {
+      const l = BUS.view.leaders.find((x) => x.id === cb.value);
+      const want = cb.checked ? saved.id : (l.fixedVehicleId === saved.id ? null : l.fixedVehicleId);
+      if (want !== l.fixedVehicleId) await API.patch('/bus/leader-prefs/' + l.id + '?' + _busQs(), { fixedVehicleId: want });
+    }
+    await busRefresh();
+    const rv = BUS.view.vehicles.find((x) => x.vehicleId === saved.id);
+    if (rv) {
+      const leaderIds = [...new Set([...rv.leaderIds, ...fixed.filter((c) => c.checked).map((c) => c.value)])];
+      await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, tonightOnly ? { endsAt, endsAddress, leaderIds } : { leaderIds });
+    }
+    closeModal(); toast('Saved');
+  } catch (e) { toast(e.message); }
+}
+async function busArchiveVehicle(id) {
+  const f = BUS.view.fleet.find((x) => x.id === id);
+  try { await API.patch('/bus/vehicles/' + id + '?' + _busQs(), { ...f, archived: true }); closeModal(); busRefresh(); } catch (e) { toast(e.message); }
+}
+// Tonight's leaders on a car (beyond the fleet's fixed leaders) — the car card's leader
+// chips open this checklist sheet; Save writes the run vehicle's leaderIds directly.
+function busEditCarLeaders(runVehicleId) {
+  const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
+  modal(`<div class="mo-title">Leaders on ${esc(rv.name)}</div>
+    <div class="bus-checks" id="rvl-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
+    <button class="btn btn-primary btn-full" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button>`);
+}
+async function busSaveCarLeaders(runVehicleId) {
+  const leaderIds = [...document.querySelectorAll('#rvl-leaders input:checked')].map((i) => i.value);
+  try { await _busSend('PATCH', '/bus/run/vehicles/' + runVehicleId, { leaderIds }); closeModal(); } catch (e) { toast(e.message); }
+}
+
+function _busCarsHtml() {
+  const v = BUS.view;
+  const cards = v.vehicles.filter((rv) => rv.vehicleId).map((rv) => {
+    const f = v.fleet.find((x) => x.id === rv.vehicleId);
+    if (!rv.running) {
+      return `<div class="veh-card off">
+        <div class="veh-top"><label class="swtch"><input type="checkbox" onchange="busRunVeh('${rv.id}',{running:this.checked})"></label>
+          <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
+          <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
+        <div class="veh-meta">Not running tonight</div></div>`;
+    }
+    const elig = rv.eligibility;
+    const eligChip = elig.unknown
+      ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
+      // elig.unknown is exactly !female && !male (bus-logic.ts eligibilityOf), so once
+      // we're past the unknown branch above at least one of female/male is true — Mixed
+      // when both, otherwise whichever one.
+      : `<span class="chip c-accent">${elig.female ? icS('genderF') : ''}${elig.male ? icS('genderM') : ''} ${elig.female && elig.male ? 'Mixed' : elig.female ? 'Girls' : 'Boys'}</span>`;
+    const needsLeader = rv.leaderIds.length < 2;
+    const leaderChips = rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('');
+    const endsText = rv.endsAt === 'church' ? 'Church' : rv.endsAt === 'last_drop' ? 'Last drop' : _busSuburb(rv.endsAddress || '');
+    const tonightOnly = f && (rv.endsAt !== f.endsAt || rv.endsAddress !== f.endsAddress);
+    return `<div class="veh-card">
+      <div class="veh-top"><label class="swtch on"><input type="checkbox" checked onchange="busRunVeh('${rv.id}',{running:this.checked})"></label>
+        <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
+        <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
+      <div class="veh-meta">${rv.seats} seats · ${rv.leaderIds.length} leader${rv.leaderIds.length === 1 ? '' : 's'} · ${rv.capacity} for youth</div>
+      <div class="veh-chiprow">${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs 1 more leader</span>` : ''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
+        <div style="font-size:11px;color:var(--ink-mid)">Ends at: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
+      </div></div>`;
+  }).join('');
+
+  const poolLeaders = v.leaders.filter((l) => l.inPool);
+  const poolRows = poolLeaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${v.availablePoolLeaderIds.includes(l.id) ? 'checked' : ''} onchange="busSetPool()">
+    <span class="cbx-main">${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</span></label>`).join('');
+
+  const ownCars = v.vehicles.filter((rv) => rv.ownerLeaderId);
+  const ownCarRows = ownCars.map((rv) => {
+    const riders = v.riders.filter((r) => r.runVehicleId === rv.id).map((r) => r.name).join(', ');
+    return `<div class="li"><div class="li-body"><div class="li-title">${icS('bus')} ${esc(rv.name)}</div>
+      <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div></div></div>`;
+  }).join('');
+
+  return `${cards}
+    <button class="btn btn-secondary btn-full" onclick="busEditVehicle(null)">${icS('plus')} Add vehicle</button>
+    <div class="card-title bus-sec">Leader pool — available tonight</div>
+    <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
+      <div class="card-sub" style="margin-top:6px">Willing to do drop-homes — fills cars that still need a leader when routes are generated.
+        <a onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
+    ${ownCars.length ? `<div class="card-title bus-sec">Own cars tonight</div>${ownCarRows}` : ''}`;
+}
+
+function busMoveSheet(riderId) {
+  const v = BUS.view, r = v.riders.find((x) => x.id === riderId);
+  const rows = v.vehicles.filter((x) => x.running).map((x) => {
+    const n = v.riders.filter((y) => y.runVehicleId === x.id && y.id !== riderId).length, left = x.capacity - n;
+    const genderOk = !r.gender || x.eligibility[r.gender];
+    const why = left <= 0 ? 'full' : !genderOk ? (r.gender === 'female' ? 'Boys only' : 'Girls only') : `${left} left`;
+    return `<button class="li bus-move" ${left <= 0 ? 'disabled' : ''} onclick="busMove('${riderId}','${x.id}')">
+      <span class="car-dot" style="background:${_busCarColour(x.colourIndex)}"></span><span class="li-body">${esc(x.name)}</span>
+      <span class="chip ${!genderOk && left > 0 ? 'c-warn' : 'c-neutral'}">${why}</span></button>`;
+  }).join('');
+  modal(`<div class="mo-title">Move ${esc(r.name)} to…</div>${rows}
+    <button class="li bus-move" onclick="busMove('${riderId}',null)"><span class="li-body">Unassigned</span></button>`);
+}
+async function busMove(riderId, runVehicleId) {
+  try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); closeModal(); } catch (e) { toast(e.message); }
+}
+
+function _busRoutesHtml() {
+  const v = BUS.view;
+  const unassigned = v.riders.filter((r) => !r.runVehicleId);
+  const unRows = unassigned.map((r) => `<div class="route-row">
+    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''}</div><div class="route-sub">${esc(_busSuburb(r.address))}</div></div>
+    ${v.run.readOnly ? '' : `<button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
+  </div>`).join('');
+  const unHead = unassigned.length
+    ? `<span class="card-title" style="display:flex;align-items:center;gap:6px"><span class="chip c-warn">${icS('alert')} Unassigned (${unassigned.length})</span></span>`
+    : `<span class="card-title" style="display:flex;align-items:center;gap:6px;color:#065f46">${icS('check')} Unassigned (0) · All placed</span>`;
+  const carCards = v.vehicles.filter((rv) => rv.running).map((rv) => {
+    const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
+    const rows = riders.map((r, i) => `<div class="route-row"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`} style="cursor:${v.run.readOnly ? 'default' : 'pointer'}">
+      <div class="stop-num">${i + 1}</div>
+      <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+      <div class="route-sub">${esc(_busSuburb(r.address))}</div></div>
+    </div>`).join('');
+    return `<div class="card drop open">
+      <div class="drop-head">
+        <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
+        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}</span>
+        <span class="drop-chev">${icS('chevd')}</span>
+      </div>
+      <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
+    </div>`;
+  }).join('');
+  return `<div class="card drop open">
+    <div class="drop-head">${unHead}<span class="drop-chev">${icS('chevd')}</span></div>
+    <div class="drop-body" style="margin-top:8px">${unRows || '<div class="card-sub">All placed — no action needed.</div>'}</div>
+  </div>
+  <div class="bus-routes">${carCards}</div>`;
+}
+
+function busOwnCarSheet() {
+  const d = BUS.myCar.ownCarDraft || { car: null, riderIds: [] }, car = d.car || { name: '', seats: 5, plate: '', endsAt: 'address', endsAddress: '' };
+  const unplaced = BUS.view.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id));
+  modal(`<div class="mo-title">Your car</div>
+    <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
+    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" value="${car.seats}" aria-label="Seats">
+      <input class="fi" id="oc-plate" placeholder="Plate" value="${esc(car.plate || '')}"></div>
+    ${_busEndsAtField('oc', car.endsAt, car.endsAddress)}
+    <label class="fl">Who you're taking</label>
+    <div class="bus-checks" id="oc-riders">${unplaced.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address))}</label>`).join('') || '<div class="card-sub">No one waiting for a car.</div>'}</div>
+    <div class="card-sub">These riders come off the bus routes.</div>
+    <button class="btn btn-primary btn-full" onclick="busSaveOwnCar()">Save</button>`);
+}
+async function busSaveOwnCar() {
+  const val = (id) => document.getElementById(id).value;
+  const endsAt = val('oc-ends');
+  const body = { car: { name: val('oc-name').trim(), seats: Number(val('oc-seats')), plate: val('oc-plate').trim() || null,
+    endsAt, endsAddress: endsAt === 'address' ? val('oc-ends-addr').trim() : null, endsPlaceId: null },
+    riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value) };
+  try { await _busSend('POST', '/bus/run/own-car', body); closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
+}
+function busRemoveOwnCar() {
+  modal(`<div class="mo-title">Remove your car tonight?</div>
+    <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" onclick="busRemoveOwnCarConfirmed()">Remove</button></div>`);
+}
+async function busRemoveOwnCarConfirmed() { try { await _busSend('DELETE', '/bus/run/own-car'); closeModal(); } catch (e) { toast(e.message); } }
+
+function _busToggleStop(i) {
+  const el = document.getElementById('stop-detail-' + i);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function _busMyCarHtml() {
+  const v = BUS.view, mc = BUS.myCar;
+  const mine = getMyLeaderId();
+  const picker = mine
+    ? `<div class="mycar-id">I am: <b>${esc((v.leaders.find((l) => l.id === mine) || {}).name || '')}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="setMyLeaderId(null);renderBus()">Not you?</button></div>`
+    : `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);renderBus()"><option value="">— Choose your name —</option>${v.leaders.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>`;
+  if (!mine) return picker;
+  if (!mc) return `${picker}<div class="card-sub">Loading…</div>`;
+  if (mc.vehicle) {
+    const rv = mc.vehicle;
+    const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
+    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv) : [];
+    const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
+    const rows = mc.stops.map((s, i) => `<div class="route-row" style="align-items:flex-start" onclick="_busToggleStop(${i})">
+      <div class="stop-num">${i + 1}</div>
+      <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))}</div>
+      <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div></div>
+      ${s.mobile ? `<span onclick="event.stopPropagation()">${phoneLink(s.mobile, s.name.split(' ')[0])}</span>` : ''}
+    </div>`).join('');
+    return `${picker}
+    <div class="card">
+      <div class="card-title">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
+      ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
+      ${mc.churchAddress ? links.map((l) => `<a class="btn btn-primary btn-full" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('') :
+        `<div class="alert al-warn">Set the church address in Bus settings</div>`}
+    </div>
+    <div class="card-title bus-sec">Stop order</div>
+    ${rows}
+    ${removeOwn}`;
+  }
+  if (mc.ownCarDraft) {
+    return `${picker}
+    <div class="card" style="text-align:center;padding:22px 16px">
+      <div style="color:var(--ink-faint);margin-bottom:8px;display:flex;justify-content:center">${icLg('bus')}</div>
+      <div class="card-title" style="margin-bottom:4px">You're not on a car tonight</div>
+      <div class="card-sub">Giving someone a ride home in your own car? You can still get directions and keep a record of who you drove.</div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Driving your own car?</button>`;
+  }
+  return `${picker}<div class="card-sub">No car assigned.</div>`;
+}
+
+async function busPast() {
+  modal(`<div class="mo-title">Past nights</div><div id="bus-past-list" class="card-sub">Loading…</div>`);
+  try {
+    const runs = await _busGet('/bus/runs');
+    const el = document.getElementById('bus-past-list');
+    if (!el) return;
+    el.outerHTML = runs.length ? runs.map((r) => {
+      const d = new Date(r.serviceDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      return `<div class="li" onclick="busShowPastRun('${r.id}')"><div class="li-body"><div class="li-title">${esc(d)}</div>
+        <div class="li-sub">${r.riders} riders · ${r.cars} cars</div></div>${icS('chevr')}</div>`;
+    }).join('') : '<div class="card-sub">No past nights yet.</div>';
+  } catch (e) { toast(e.message); }
+}
+async function busShowPastRun(id) {
+  modal(`<div class="mo-title">Loading…</div>`);
+  try {
+    const v = await _busGet('/bus/runs/' + id);
+    const d = new Date(v.run.serviceDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const cars = v.vehicles.filter((rv) => rv.running).map((rv) => {
+      const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
+      const rows = riders.map((r, i) => `<div class="route-row"><div class="stop-num">${i + 1}</div>
+        <div class="route-main"><div class="route-name">${esc(r.name)}</div><div class="route-sub">${esc(_busSuburb(r.address))}</div></div></div>`).join('');
+      return `<div class="card">
+        <div class="card-title" style="display:flex;align-items:center;gap:6px"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>${esc(rv.name)} · ${riders.length}/${rv.capacity}
+        ${rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('')}</div>
+        <div style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div></div>`;
+    }).join('');
+    modal(`<div class="mo-title">${esc(d)}</div>${cars || '<div class="card-sub">No cars ran.</div>'}
+      <button class="btn btn-secondary btn-full" onclick="busPast()">Back</button>`);
+  } catch (e) { toast(e.message); }
 }
 /* ── END BUS MODULE ── */
 
