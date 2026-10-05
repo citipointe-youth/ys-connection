@@ -236,3 +236,58 @@ describe('busRefresh skips the repaint while a field inside the page is focused 
     expect(st.BUS.view).toEqual({ run: { version: 7 } }); // data still refreshed, just not painted
   });
 });
+
+// M3: a cancelled New Person sheet must not leave a stale gender pick for the next one.
+describe('busNewPerson resets a stale gender selection (M3)', () => {
+  it('always resets _busNpGender, regardless of what the previous sheet left behind', () => {
+    const prelude = `
+      const BUS = { search: 'Jamie' };
+      let _busNpGender = 'female';
+      function modal(h) {}
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _gradeList() { return [7, 8, 9, 10, 11, 12]; }
+      function _gradeWord() { return 'Year'; }
+      function _busAddressPicker() { return ''; }
+      function __state() { return { _busNpGender }; }
+    `;
+    const { busNewPerson, __state } = loadFns(['busNewPerson'], prelude, ['busNewPerson', '__state']);
+    busNewPerson();
+    expect(__state()._busNpGender).toBeNull();
+  });
+});
+
+// M4: unticking a previously-fixed leader in Edit Vehicle must drop them from TONIGHT's car
+// too, not just from their standing leader-prefs record — a plain union only ever adds.
+describe('busSaveVehicle drops an unticked fixed leader from tonight (M4)', () => {
+  it('the run-vehicle PATCH leaderIds excludes the just-unticked leader', async () => {
+    const prelude = `
+      const BUS = { view: { fleet: [], leaders: [{ id: 'L1', fixedVehicleId: 'v1' }], vehicles: [{ id: 'rv1', vehicleId: 'v1', leaderIds: ['L1'] }] } };
+      const __calls = [];
+      const __sendCalls = [];
+      const document = {
+        getElementById: (id) => ({
+          've-ends': { value: 'church' }, 've-ends-addr': { value: '' }, 've-tonight': null,
+          've-name': { value: 'Big Bus' }, 've-plate': { value: '' }, 've-seats': { value: '5' },
+        }[id] ?? null),
+        querySelectorAll: (sel) => (sel === '#ve-leaders input' ? [{ value: 'L1', checked: false }] : []),
+      };
+      const API = {
+        async patch(url, body) { __calls.push({ url, body }); return { id: 'v1' }; },
+        async post(url, body) { __calls.push({ url, body }); return { id: 'v1' }; },
+      };
+      function _busQs() { return ''; }
+      async function busRefresh() {}
+      async function _busSend(method, path, body) { __sendCalls.push({ method, path, body }); }
+      function closeModal() {}
+      function toast() {}
+      function __state() { return { calls: __calls, sendCalls: __sendCalls }; }
+    `;
+    const { busSaveVehicle, __state } = loadFns(['busSaveVehicle'], prelude, ['busSaveVehicle', '__state']);
+    await busSaveVehicle('v1');
+    const st = __state();
+    const rvPatch = st.sendCalls.find((c: any) => c.path === '/bus/run/vehicles/rv1');
+    expect(rvPatch).toBeTruthy();
+    expect(rvPatch.body.leaderIds).not.toContain('L1');
+  });
+});

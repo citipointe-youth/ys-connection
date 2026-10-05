@@ -8382,6 +8382,7 @@ async function busAdd(i) {
   } catch (e) { toast(e.message); }
 }
 function busNewPerson() {
+  _busNpGender = null; // M3: a cancelled sheet must not leak its gender pick into the next one
   const parts = BUS.search.trim().split(/\s+/);
   const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
   modal(`<div class="mo-title">New Person</div>
@@ -8535,15 +8536,20 @@ async function busSaveVehicle(vehicleId) {
     const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
       tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress } : { ...base, endsAt, endsAddress });
+    // M4: track which leaders just got UNticked as fixed-to-this-vehicle, so they can be
+    // dropped from tonight's car below too — leaving them off the leader-prefs record but
+    // still on rv.leaderIds was the bug (a union only ever adds, never removes).
+    const unfixedIds = [];
     for (const cb of fixed) {
       const l = BUS.view.leaders.find((x) => x.id === cb.value);
       const want = cb.checked ? saved.id : (l.fixedVehicleId === saved.id ? null : l.fixedVehicleId);
       if (want !== l.fixedVehicleId) await API.patch('/bus/leader-prefs/' + l.id + '?' + _busQs(), { fixedVehicleId: want });
+      if (!cb.checked && l.fixedVehicleId === saved.id) unfixedIds.push(l.id);
     }
     await busRefresh();
     const rv = BUS.view.vehicles.find((x) => x.vehicleId === saved.id);
     if (rv) {
-      const leaderIds = [...new Set([...rv.leaderIds, ...fixed.filter((c) => c.checked).map((c) => c.value)])];
+      const leaderIds = [...new Set([...rv.leaderIds.filter((id) => !unfixedIds.includes(id)), ...fixed.filter((c) => c.checked).map((c) => c.value)])];
       await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, tonightOnly ? { endsAt, endsAddress, leaderIds } : { leaderIds });
     }
     closeModal(); toast('Saved');
