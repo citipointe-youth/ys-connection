@@ -1845,7 +1845,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.view = null; _busStopPoll();
+  /*BUS-HOOK*/ BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -8096,7 +8096,12 @@ window.CA=CA;
 /* ── CA MODULE END ── */
 
 /* ── BUS MODULE ── */
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null };
+// loading/pendingLoading: the in-flight promise for busRefresh()/_busLoadPending() respectively,
+// so concurrent callers share one fetch instead of each firing their own. failed: set when a
+// busRefresh() attempt errors, cleared on the next success or on logout — _busHomeTile() respects
+// it so a persistently-failing module-off/404/network state doesn't retry on every Home re-render
+// (review fix round 1, finding 1).
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false };
 const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];
 function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
 function _busOn() {
@@ -8126,15 +8131,34 @@ async function _busSend(method, path, body) {
   await busRefresh();
   return res;
 }
+// Concurrent callers share ONE fetch via BUS.loading (set synchronously before any await, so a
+// second call made in the same tick — or while the first is still pending — sees it and returns
+// the same promise instead of firing its own /bus/run + /bus/my-car pair). The render call lives
+// INSIDE the shared work, not once per caller, so 3 concurrent busRefresh() calls still only
+// repaint once. (Review fix round 1, finding 1.)
 async function busRefresh() {
-  // My car is fetched alongside the run view (Promise.all, not sequential) so a Bus
-  // Ministry load/poll stays one round trip pair instead of two serial ones — same
-  // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
-  try {
-    const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
-    BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar;
-  } catch (e) { toast(e.message || 'Bus Ministry unavailable'); }
-  if (S.page === 'bus') renderBus();
+  if (BUS.loading) return BUS.loading;
+  BUS.loading = (async () => {
+    // My car is fetched alongside the run view (Promise.all, not sequential) so a Bus
+    // Ministry load/poll stays one round trip pair instead of two serial ones — same
+    // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
+    try {
+      const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
+      BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false;
+    } catch (e) {
+      BUS.failed = true;
+      toast(e.message || 'Bus Ministry unavailable');
+    } finally {
+      BUS.loading = null;
+    }
+    // Re-render whichever screen is actually showing Bus data — previously only the Bus
+    // Ministry screen itself repainted, so a Home-triggered warm load (the tile count, the
+    // admin/director New people card) silently sat stale until some LATER, unrelated Home
+    // re-render happened to run _busHomeTile() again.
+    if (S.page === 'bus') renderBus();
+    else if (S.page === 'home') renderHome();
+  })();
+  return BUS.loading;
 }
 function _busStartPoll() {
   _busStopPoll();
@@ -8149,7 +8173,11 @@ function _busHomeTile() {
   if (!_busOn()) return '';
   const v = BUS.view;
   const count = v ? `${v.riders.length} riders · ${v.vehicles.filter((x) => x.running).length} cars` : '';
-  if (!v) busRefresh(); // warm in background; re-render of Home not needed
+  // warm in background; busRefresh() now re-renders Home itself once it resolves (see its own
+  // comment). !BUS.failed stops this from retrying on every Home re-render after a failed
+  // attempt (module off / 404 / network) — busRefresh() clears the flag on its next success,
+  // and doLogout() clears it so a fresh login always gets a clean retry.
+  if (!v && !BUS.failed) busRefresh();
   return `<div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
     <div class="bt-ic">${icN('bus')}</div><div class="bt-label">${esc(L('busMinistry'))}</div>
     <div class="bt-count">${esc(count)}</div></div>`;
@@ -8178,9 +8206,16 @@ function _busNewPeopleCard() {
   }).join('');
   return `<div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div>`;
 }
+// Same in-flight-promise sharing as busRefresh() — concurrent callers (e.g. the New people
+// card re-rendering mid-fetch) get the one pending request instead of each firing their own.
 async function _busLoadPending() {
-  try { BUS.pending = await _busGet('/bus/guests/pending'); } catch { BUS.pending = []; }
-  if (S.page === 'home') renderHome();
+  if (BUS.pendingLoading) return BUS.pendingLoading;
+  BUS.pendingLoading = (async () => {
+    try { BUS.pending = await _busGet('/bus/guests/pending'); } catch { BUS.pending = []; }
+    BUS.pendingLoading = null;
+    if (S.page === 'home') renderHome();
+  })();
+  return BUS.pendingLoading;
 }
 function busHideSuggestion(id) {
   const p = BUS.pending && BUS.pending.find((x) => x.id === id);

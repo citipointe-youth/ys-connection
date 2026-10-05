@@ -32,3 +32,54 @@ describe('maps links', () => {
     expect(one[0].url).toContain('destination=3%20A%20St');
   });
 });
+
+// Review fix round 1, finding 1: busRefresh() must share one in-flight fetch across concurrent
+// callers (not fire a fresh /bus/run + /bus/my-car pair per caller), and must repaint whichever
+// screen is actually showing Bus data exactly once per load, not once per caller.
+describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
+  const mk = (page: string, fail = false) => {
+    const prelude = `
+      let __fetchCalls = 0;
+      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false };
+      const S = { page: ${JSON.stringify(page)} };
+      const calls = [];
+      async function _busGet(path) {
+        __fetchCalls++;
+        await Promise.resolve(); // force a real async gap so concurrency is meaningful
+        if (${fail}) throw new Error('boom');
+        if (path === '/bus/run') return { run: { version: 7 } };
+        return { ok: true };
+      }
+      function toast(m) { calls.push('toast:' + m); }
+      function renderBus() { calls.push('renderBus'); }
+      function renderHome() { calls.push('renderHome'); }
+      function __state() { return { fetchCalls: __fetchCalls, calls, BUS }; }
+    `;
+    return loadFns(['busRefresh'], prelude, ['busRefresh', '__state']);
+  };
+
+  it('3 concurrent calls share one fetch pair and repaint once', async () => {
+    const { busRefresh, __state } = mk('bus');
+    await Promise.all([busRefresh(), busRefresh(), busRefresh()]);
+    const st = __state();
+    expect(st.fetchCalls).toBe(2); // one /bus/run + one /bus/my-car, not 6
+    expect(st.calls.filter((c: string) => c === 'renderBus')).toHaveLength(1);
+    expect(st.BUS.loading).toBeNull(); // cleared once the shared fetch settles
+    expect(st.BUS.version).toBe(7);
+  });
+
+  it('repaints Home (not Bus) when that is the page actually showing', async () => {
+    const { busRefresh, __state } = mk('home');
+    await busRefresh();
+    expect(__state().calls).toEqual(['renderHome']);
+  });
+
+  it('a failed load sets BUS.failed and still clears BUS.loading for the next attempt', async () => {
+    const { busRefresh, __state } = mk('home', true);
+    await busRefresh();
+    const st = __state();
+    expect(st.BUS.failed).toBe(true);
+    expect(st.BUS.loading).toBeNull();
+    expect(st.calls).toContain('renderHome');
+  });
+});
