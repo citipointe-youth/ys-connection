@@ -590,7 +590,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
 .bus-pg .tbbar{margin-bottom:10px}
-.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 10px}
+.bus-pg .tbbar{gap:4px}
+.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 8px}
 .bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .bus-pg .drop-head > :first-child{min-width:0}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
@@ -677,6 +678,10 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .an-try{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
 .an-try .fi{width:80px}
 .an-line{font-size:12.5px;padding:8px 0 0;margin-top:8px;border-top:1px solid var(--paper-dark)}
+.mc-acts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;font-size:13px}
+.mc-acts .cbx-row{border:none;padding:4px 0;font-size:13px}
+/* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
+.mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
 /* ── END BUS MODULE CSS ── */
 </style>
 </head>
@@ -8944,12 +8949,12 @@ function _busMyCarHtml() {
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)}</div>
-      <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div></div>
-      <span onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-        <label class="cbx-row" style="padding:4px"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
+      <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
+      <div class="mc-acts" onclick="event.stopPropagation()">
+        <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
         ${s.droppedAt ? `<button class="btn btn-ghost btn-sm" onclick="busEditDroppedTime('${s.id}')">${esc(_busFmtTime(s.droppedAt))}</button>` : ''}
-      </span>
-      ${s.mobile ? `<span onclick="event.stopPropagation()">${phoneLink(s.mobile, s.name.split(' ')[0])}</span>` : ''}
+        ${s.mobile ? phoneLink(s.mobile, s.name.split(' ')[0]) : ''}
+      </div></div>
     </div>`).join('');
     return `${picker}
     <div class="card">
