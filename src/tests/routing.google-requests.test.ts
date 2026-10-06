@@ -18,7 +18,8 @@ const problem: SolveProblem = {
 };
 
 // Every key Google is ever sent. Anything else (name, phone, grade, gender…) fails the test.
-const ALLOWED_KEYS = new Set(['model', 'globalStartTime', 'globalEndTime', 'shipments', 'label', 'deliveries', 'arrivalWaypoint',
+const ALLOWED_KEYS = new Set(['model', 'globalStartTime', 'globalEndTime', 'globalDurationCostPerHour', 'shipments', 'label',
+  'deliveries', 'arrivalWaypoint',
   'placeId', 'duration', 'loadDemands', 'seats', 'amount', 'allowedVehicleIndices', 'costsPerVehicle', 'costsPerVehicleIndices',
   'penaltyCost', 'vehicles', 'startWaypoint', 'endWaypoint', 'loadLimits', 'maxLoad', 'costPerHour', 'routeDurationLimit',
   'quadraticSoftMaxDuration', 'maxDuration', 'costPerSquareHourAfterQuadraticSoftMax', 'considerRoadTraffic', 'populatePolylines',
@@ -46,6 +47,12 @@ describe('optimizeToursBody', () => {
     expect(body.model.vehicles[1]).not.toHaveProperty('endWaypoint');
     expect(body.model.globalEndTime).toBe('2026-10-10T09:00:00.000Z');
     expect(body.populateTransitionPolylines).toBe(true);
+  });
+  // Owner decision: the solver only minimised total driving minutes, so Generate/"Try +N cars"
+  // never split riders to finish the night earlier. globalDurationCostPerHour makes 1 minute of
+  // makespan (the LATEST car's finish time) cost the same as 1 minute of total driving.
+  it('sets globalDurationCostPerHour so the solver also minimises makespan, not just total driving', () => {
+    expect(body.model.globalDurationCostPerHour).toBe(60);
   });
   it('only ever uses allow-listed keys', () => {
     const bad = keysOf(body).filter((k) => !ALLOWED_KEYS.has(k));

@@ -1892,7 +1892,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -8150,7 +8150,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null,
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false };
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
@@ -8210,9 +8210,16 @@ async function _busSend(method, path, body) {
 // session's Bus data into BUS.view just as a new session starts. The `&& S.user` check is the
 // same guard belt-and-braces: even if gen somehow matched, never repaint while logged out.
 // (Review fix round 2, finding 1.)
+//
+// Task 4: BUS.loading is dispatched under whichever "I am" (getMyLeaderId()) was current at that
+// moment — BUS.loadingAs remembers it. Picking a NEW identity while that load is still in flight
+// must not reattach to it (it would land the OLD identity's car): bump BUS.gen so the stale load's
+// own gen check above drops its write, then fall through and start a fresh one.
 async function busRefresh() {
-  if (BUS.loading) return BUS.loading;
+  const as = getMyLeaderId();
+  if (BUS.loading) { if (BUS.loadingAs === as) return BUS.loading; BUS.gen++; }
   const gen = BUS.gen;
+  BUS.loadingAs = as;
   BUS.loading = (async () => {
     // My car is fetched alongside the run view (Promise.all, not sequential) so a Bus
     // Ministry load/poll stays one round trip pair instead of two serial ones — same
@@ -8223,7 +8230,7 @@ async function busRefresh() {
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
     } finally {
-      if (gen === BUS.gen) BUS.loading = null;
+      if (gen === BUS.gen) { BUS.loading = null; BUS.loadingAs = null; }
     }
     // Re-render whichever screen is actually showing Bus data — previously only the Bus
     // Ministry screen itself repainted, so a Home-triggered warm load (the tile count, the
@@ -8810,7 +8817,7 @@ async function busGenerate(mode) {
   closeModal();
   BUS.generating = true; renderBus();
   try {
-    const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 30000);
+    const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 55000); // matches the server's LOCK_MS worst case
     BUS.routeMin = res.routeMin || {};
     const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : '',
       res.loneGirl ? `${res.loneGirl} kept off a car alone` : ''].filter(Boolean);

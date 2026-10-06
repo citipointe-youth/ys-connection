@@ -46,9 +46,10 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
   const mk = (page: string, fail = false) => {
     const prelude = `
       let __fetchCalls = 0;
-      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0 };
+      const BUS = { view: null, myCar: null, version: -1, loading: null, loadingAs: null, failed: false, gen: 0 };
       const S = { page: ${JSON.stringify(page)}, user: { id: 'u1' } };
       const calls = [];
+      function getMyLeaderId() { return null; }
       async function _busGet(path) {
         __fetchCalls++;
         await Promise.resolve(); // force a real async gap so concurrency is meaningful
@@ -100,9 +101,10 @@ describe('busRefresh ignores stale results after logout (review fix round 2, fin
   const mk = () => {
     const prelude = `
       let __resolvers = [];
-      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0 };
+      const BUS = { view: null, myCar: null, version: -1, loading: null, loadingAs: null, failed: false, gen: 0 };
       const S = { page: 'home', user: { id: 'u1' } };
       const calls = [];
+      function getMyLeaderId() { return null; }
       function _busGet(path) {
         return new Promise((resolve) => {
           __resolvers.push(() => resolve(path === '/bus/run' ? { run: { version: 9 } } : { ok: true }));
@@ -147,6 +149,63 @@ describe('busRefresh ignores stale results after logout (review fix round 2, fin
   });
 });
 
+// Task 4: busRefresh() deduped concurrent callers by returning the in-flight BUS.loading promise
+// — but that promise was dispatched (captured getMyLeaderId() at its first await) under the OLD
+// identity. Picking a new "I am" while a load is still in flight must not reattach to that stale
+// fetch and show the old identity's car.
+describe('busRefresh starts a fresh load when the identity changes mid-flight (Task 4)', () => {
+  const mk = () => {
+    const prelude = `
+      let __resolvers = [];
+      let __resolverCount = 0;
+      let __as = 'L1';
+      const BUS = { view: null, myCar: null, version: -1, loading: null, loadingAs: null, failed: false, gen: 0 };
+      const S = { page: 'bus', user: { id: 'u1' } };
+      const calls = [];
+      function getMyLeaderId() { return __as; }
+      function _busGet(path) {
+        const as = __as; // captured synchronously at dispatch, same as the real _busQs()
+        __resolverCount++;
+        return new Promise((resolve) => {
+          __resolvers.push(() => resolve(path === '/bus/my-car' ? { vehicle: { id: 'car-for-' + as } } : { run: { version: 7 } }));
+        });
+      }
+      function toast(m) { calls.push('toast:' + m); }
+      function renderBus() { calls.push('renderBus'); }
+      function renderHome() { calls.push('renderHome'); }
+      function _busEditing() { return false; }
+      function __setAs(id) { __as = id; }
+      function __resolveAll() { const rs = __resolvers; __resolvers = []; rs.forEach((r) => r()); }
+      function __state() { return { calls, BUS, resolverCount: __resolverCount }; }
+    `;
+    return loadFns(['busRefresh'], prelude, ['busRefresh', '__setAs', '__resolveAll', '__state']);
+  };
+
+  it('a new "I am" chosen mid-load starts a fresh fetch instead of reattaching to the old one', async () => {
+    const { busRefresh, __setAs, __resolveAll, __state } = mk();
+    const staleLoad = busRefresh(); // dispatched while getMyLeaderId() returns 'L1'
+    __setAs('L2'); // picks a new identity before the first load settles
+    __state().BUS.myCar = null; // mirrors the real onchange handler's BUS.myCar = null
+    const freshLoad = busRefresh();
+    __resolveAll();
+    await Promise.all([staleLoad, freshLoad]);
+    // Both busRefresh() calls are async functions, so each returns its OWN promise wrapper
+    // regardless — the real proof the second call didn't just reattach to the stale fetch is a
+    // second /bus/run + /bus/my-car dispatch (4 resolvers total, not 2) landing L2's car.
+    expect(__state().resolverCount).toBe(4);
+    expect(__state().BUS.myCar).toEqual({ vehicle: { id: 'car-for-L2' } }); // L2's car, not the stale L1 fetch's
+  });
+
+  it('two calls under the SAME identity still share one in-flight fetch (no regression)', async () => {
+    const { busRefresh, __resolveAll, __state } = mk();
+    const a = busRefresh(), b = busRefresh();
+    __resolveAll();
+    await Promise.all([a, b]);
+    expect(__state().resolverCount).toBe(2); // one /bus/run + one /bus/my-car, not two pairs
+    expect(__state().BUS.myCar).toEqual({ vehicle: { id: 'car-for-L1' } });
+  });
+});
+
 // C2: phoneLink feeds Bus walk-in names/phones (user-typed) into a double-quoted onclick
 // attribute. Only stripping '/\\ (for the JS-string context) left a literal " free to break
 // out of the attribute itself — e.g. a first name of a"onmouseover="... — so esc() must also
@@ -172,9 +231,10 @@ describe('renderBus shows a retry card instead of hot-looping busRefresh on a fa
   it('a failing load settles once: the retry card renders, and busRefresh is not re-triggered', async () => {
     const prelude = `
       let __fetchCalls = 0;
-      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0, pendingRepaint: false };
+      const BUS = { view: null, myCar: null, version: -1, loading: null, loadingAs: null, failed: false, gen: 0, pendingRepaint: false };
       const S = { page: 'bus', user: { id: 'u1' } };
       const appHtml = [];
+      function getMyLeaderId() { return null; }
       async function _busGet(path) { __fetchCalls++; await Promise.resolve(); throw new Error('boom'); }
       function toast(m) {}
       function setApp(h) { appHtml.push(h); }
@@ -201,9 +261,10 @@ describe('renderBus shows a retry card instead of hot-looping busRefresh on a fa
 describe('busRefresh skips the repaint while a field inside the page is focused (I5)', () => {
   const mk = () => {
     const prelude = `
-      const BUS = { view: null, myCar: null, version: -1, loading: null, failed: false, gen: 0, pendingRepaint: false };
+      const BUS = { view: null, myCar: null, version: -1, loading: null, loadingAs: null, failed: false, gen: 0, pendingRepaint: false };
       const S = { page: 'bus', user: { id: 'u1' } };
       const calls = [];
+      function getMyLeaderId() { return null; }
       let __active = null;
       const document = {
         getElementById: (id) => (id === 'page-main' ? { contains: (el) => el === __active } : null),

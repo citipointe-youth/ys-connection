@@ -323,6 +323,23 @@ describe('moveRider: unpin', () => {
   });
 });
 
+// Task 3: moveRider's capacity check used rv.leaderIds.length raw — vehicleViews/prepareFleet
+// already filter out leaders who no longer exist (the "I7" pattern), so a deleted leader still
+// named in a car's leaderIds made Move reject a genuinely free seat as "full".
+describe('moveRider: capacity ignores a deleted leader (I7 pattern)', () => {
+  it('a deleted leader still listed in leaderIds does not shrink the free-seat count', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 3, ['L1', 'L2']); // 3 seats, 2 leaders -> 1 free seat while both exist
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: a }); // fills the only seat
+    await f.leaders.delete('L2'); // L2 leaves; the car's own leaderIds still names them until edited
+    const sam = await f.rider('s2');
+    // Real capacity is now seats(3) - knownLeaders(1) = 2, with 1 taken -> 1 free. The raw
+    // leaderIds.length(2) would compute capacity 1, already "full", and wrongly reject this.
+    await expect(f.svc.moveRider(f.admin, sam.id, { runVehicleId: a })).resolves.toMatchObject({ runVehicleId: a });
+  });
+});
+
 describe('undo', () => {
   it('restores placements within 2 minutes, then there is nothing to undo', async () => {
     const f = await busFixture();
@@ -440,6 +457,86 @@ describe('leader preferred grades feed the solver', () => {
     await f.svc.generate(f.admin, { mode: 'all' });
     const v = await f.svc.getRun(f.admin);
     expect(v.riders.find((r) => r.id === riley.id)!.runVehicleId).toBe(b);
+  });
+});
+
+// Task 1: generate() can make two Google solves (main + a lone-girl re-solve), each previously
+// getting its own fresh 15s routingDeadline() — together with the per-rider writes between them,
+// that could outlast LOCK_MS. Fixed by sharing one AbortSignal (a ~30s budget) across both solves.
+describe('generate: one shared solve deadline (Task 1)', () => {
+  it('passes the SAME AbortSignal to the main solve and the lone-girl re-solve', async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    let call = 0;
+    const f = await busFixture({ routing: stubRouting({ solve: async (p, s) => {
+      signals.push(s); call++;
+      // Same deterministic lone-girl scenario as the 'lone girl rule' describe block below:
+      // stop order = rider add order: 0=jess, 1=sam, 2=mia.
+      if (call === 1) return { skipped: [], routes: [
+        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },
+        { vehicle: 1, stops: [2], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
+      ] };
+      return { skipped: [], routes: [
+        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
+        { vehicle: 1, stops: [2, 0], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },
+      ] };
+    } }) });
+    await f.car('Van A', 8, ['L1', 'L2']); await f.car('Van B', 8, ['L3', 'L4']);
+    await f.rider('s1'); await f.rider('s2'); await f.rider('s4');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    expect(call).toBe(2); // the lone-girl re-solve really ran
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBe(signals[0]); // not a second, fresh deadline
+  });
+
+  it('the lock window covers the shared solve budget comfortably (LOCK_MS well above ~30s)', async () => {
+    let capturedUntil = '';
+    const f = await busFixture({ routing: stubRouting({ solve: async (p, s) => {
+      capturedUntil = (await f.bus.getRun((await f.svc.getRun(f.admin)).run.id))!.lockUntil!;
+      return new FakeRoutingProvider().solve(p, s);
+    } }) });
+    await f.car('Van', 8, ['L1', 'L2']);
+    await f.rider('s1');
+    const before = Date.now();
+    await f.svc.generate(f.admin, { mode: 'all' });
+    expect(Date.parse(capturedUntil) - before).toBeGreaterThanOrEqual(45_000);
+  });
+});
+
+// Task 2: the real prod bug is the SAME leader generating from two devices (same displayName) —
+// not two different leaders (that's the pre-existing M1 repo test). A stale generate's `finally`
+// must not clear a later generate's lock just because they share a display name.
+describe('generate: lock release is per-call, not per-name (Task 2)', () => {
+  it("a stale generate's release does not clear a later generate's lock held under the same display name", async () => {
+    let resolveA: () => void = () => {}, resolveB: () => void = () => {};
+    const gateA = new Promise<void>((res) => { resolveA = res; });
+    const gateB = new Promise<void>((res) => { resolveB = res; });
+    let calls = 0;
+    const f = await busFixture({ routing: stubRouting({ solve: async (p, s) => {
+      const callIdx = ++calls; // capture now — `calls` keeps moving while this call sits on its own gate below
+      if (callIdx === 1) await gateA;
+      if (callIdx === 2) await gateB;
+      return new FakeRoutingProvider().solve(p, s);
+    } }) });
+    await f.car('Van', 8, ['L1', 'L2']); await f.rider('s1');
+    const run0 = (await f.svc.getRun(f.admin)).run;
+    const pendingA = f.svc.generate(f.admin, { mode: 'all' }); // "device A" — admin account
+    await new Promise((res) => setTimeout(res, 0)); // let A's tryLock land
+    expect((await f.svc.getRun(f.admin)).run.lockBy).toBe('ADMIN'); // display name only — no token leaks through
+    // Device A's generate overran its lock window without finishing (simulated, as the existing
+    // "an expired lock is taken over" test does).
+    (f.bus as unknown as { runs: Map<string, { lockUntil: string | null }> }).runs.get(run0.id)!.lockUntil = new Date(Date.now() - 1000).toISOString();
+    const pendingB = f.svc.generate(f.admin, { mode: 'all' }); // "device B" — same account, same display name
+    await new Promise((res) => setTimeout(res, 0)); // let B's tryLock land
+    const bLockUntil = (await f.bus.getRun(run0.id))!.lockUntil;
+    resolveA(); // device A's stale generate now finishes and runs its (now-stale) release
+    await pendingA;
+    const afterA = await f.bus.getRun(run0.id);
+    expect(afterA!.lockBy).not.toBeNull(); // B's lock must survive A's stale release
+    expect(afterA!.lockUntil).toBe(bLockUntil);
+    expect((await f.svc.getRun(f.admin)).run.lockBy).toBe('ADMIN'); // still shown as the bare display name
+    resolveB(); // device B finishes normally and releases its own lock
+    await pendingB;
+    expect((await f.bus.getRun(run0.id))!.lockBy).toBeNull();
   });
 });
 

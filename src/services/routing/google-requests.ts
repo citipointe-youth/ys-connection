@@ -18,6 +18,10 @@ export function optimizeToursBody(p: SolveProblem) {
     model: {
       globalStartTime: start.toISOString(),
       globalEndTime: new Date(start.getTime() + HORIZON_MS).toISOString(),
+      // Owner decision: without this the solver only minimised total driving minutes, so
+      // "Try +N cars" / Generate never split riders to finish the night earlier — 1 minute of
+      // makespan (the latest car's finish time) now costs the same as 1 minute of total driving.
+      globalDurationCostPerHour: COST_PER_HOUR,
       shipments: p.stops.map((s, i) => ({
         label: `r${i}`,
         deliveries: [{ arrivalWaypoint: wp(s.point), duration: sec(DROP_SEC) }],

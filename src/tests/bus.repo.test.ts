@@ -75,4 +75,21 @@ describe('run lock + undo (R2)', () => {
     await r.releaseLock('a', 'Tom');
     expect((await r.getRun('a'))!.lockBy).toBeNull();
   });
+
+  // Task 2: M1 above uses two different names (Sarah/Tom) — but the real prod bug is the SAME
+  // leader, two devices, so bus.service.ts must never pass the bare display name as `by`. Both
+  // repos already match `by` as an opaque string, so a "<name>#<token>" value (minted once per
+  // generate() call) fixes this with no repo code change and no migration — proven here directly
+  // against the repo, independent of bus.service.ts's own lock-by-token wiring.
+  it('Task 2: a per-call token suffix on lock_by lets a stale same-NAME release miss a newer same-name lock', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    await r.insertRunIfAbsent(run('a', '2026-10-09'));
+    const t0 = '2026-10-09T09:00:00.000Z', t30 = '2026-10-09T09:00:30.000Z';
+    await r.tryLock('a', 'Sarah#tok1', t0, t30); // Sarah's phone A generate
+    await r.tryLock('a', 'Sarah#tok2', '2026-10-09T09:01:00.000Z', '2026-10-09T09:01:30.000Z'); // Sarah's phone B takes over
+    await r.releaseLock('a', 'Sarah#tok1'); // phone A's stale finally{} fires last — SAME display name as phone B
+    expect(await r.getRun('a')).toMatchObject({ lockBy: 'Sarah#tok2' }); // phone B's lock survives
+    await r.releaseLock('a', 'Sarah#tok2');
+    expect((await r.getRun('a'))!.lockBy).toBeNull();
+  });
 });

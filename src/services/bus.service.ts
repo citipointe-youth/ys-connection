@@ -87,7 +87,13 @@ const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300
 const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
 const GenerateIn = z.object({ mode: z.enum(['all', 'fit']) });
 const ExtraCarsIn = z.object({ count: z.number().int().min(1).max(2), seats: z.number().int().min(3).max(15) });
-const LOCK_MS = 30_000;
+// Task 1: generate() can make up to two Google solves (the main solve + a lone-girl re-solve) plus
+// per-rider writes between/after them. GENERATE_SOLVE_BUDGET_MS is ONE shared deadline for every
+// solve a single generate() call makes (previously each got its own fresh 15s routingDeadline(),
+// so the two solves together could outlast LOCK_MS). LOCK_MS sits comfortably above that budget
+// plus the writes — the Vercel function's own maxDuration (vercel.json) is 60s.
+const GENERATE_SOLVE_BUDGET_MS = 30_000;
+const LOCK_MS = 55_000;
 const UNDO_MS = 120_000;
 const SESSION_RE = /^[A-Za-z0-9-]{8,36}$/;
 const NO_CHURCH = 'Set the church address in Bus settings first';
@@ -101,7 +107,14 @@ function routingFailed(err: unknown, message = GENERATE_FAILED): AppError {
   return new AppError('ROUTING_FAILED', message, 502);
 }
 const lockActive = (run: BusRun) => !!run.lockUntil && Date.parse(run.lockUntil) > Date.now();
-const lockConflict = (run: BusRun) => new ConflictError(`${run.lockBy ?? 'Someone'} is generating routes…`);
+// Task 2: lock_by stores "<display name>#<random token>" per generate() call, not the bare
+// display name — so a stale generate's `finally` can only ever release the lock IT took, never a
+// later generate held under the SAME display name (same account, two devices). Both repos already
+// match `by` as an opaque string, so this needs no repo change and no migration — just mint a
+// token here and strip it everywhere the name is shown.
+const lockToken = (name: string) => `${name}#${generateId()}`;
+const lockName = (by: string | null): string | null => (by ? by.split('#')[0]! : null);
+const lockConflict = (run: BusRun) => new ConflictError(`${lockName(run.lockBy) ?? 'Someone'} is generating routes…`);
 
 const nowIso = () => new Date().toISOString();
 const genderOf = (g: string | null | undefined): BusGender => (g === 'male' || g === 'female' ? g : null);
@@ -257,7 +270,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const isRedactedLeader = ctx.actor.role === 'leader' && !canCoordinate;
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
-        lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: run.lockBy, lockUntil: run.lockUntil, undoUntil: run.undoUntil },
+        lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: lockName(run.lockBy), lockUntil: run.lockUntil, undoUntil: run.undoUntil },
       vehicles,
       riders: isRedactedLeader ? riderViews.map((r) => ({
         id: r.id, studentId: null, guestId: null, addressId: null,
@@ -657,7 +670,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
       if (!rv) throw new NotFoundError('Car not found');
       const inCar = (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === rv.id && x.id !== r.id);
-      if (inCar.length >= capacityOf(rv.seats, rv.leaderIds.length)) throw new BadRequestError(`${rv.name} is full`);
+      // I7: a leader removed from the roster can still be named in this car's raw leaderIds —
+      // vehicleViews/prepareFleet already filter them out of capacity/eligibility; Move must too,
+      // or a free seat behind a now-deleted leader gets rejected as "full".
+      const knownLeaders = new Set((await leaders.findAll()).map((l) => l.id));
+      const activeLeaderCount = rv.leaderIds.filter((id) => knownLeaders.has(id)).length;
+      if (inCar.length >= capacityOf(rv.seats, activeLeaderCount)) throw new BadRequestError(`${rv.name} is full`);
       const maxStop = Math.max(0, ...inCar.map((x) => x.stopOrder ?? 0));
       const saved = await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
       await reorderCar(c, run, rv); // R1 appended last; R2 re-orders with a single-car solve (falls back to appended)
@@ -797,13 +815,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       const t0 = Date.now();
       const who = await whoLabel(ctx);
-      if (!(await bus.tryLock(run.id, who, new Date(t0).toISOString(), new Date(t0 + LOCK_MS).toISOString())))
+      const lockBy = lockToken(who); // Task 2: unique per call, even under the same display name
+      if (!(await bus.tryLock(run.id, lockBy, new Date(t0).toISOString(), new Date(t0 + LOCK_MS).toISOString())))
         throw lockConflict((await bus.getRun(run.id)) ?? run);
+      // Task 1: one shared deadline for every Google solve this generate() call makes (the main
+      // solve + the lone-girl re-solve below) — if the re-solve has no time left it throws and is
+      // skipped (the existing catch path already falls back to unassigning the violator).
+      const signal = routingDeadline(GENERATE_SOLVE_BUDGET_MS);
       try {
         const prep = await prepareFleet(c, run, mode);
         if (!prep.problem.vehicles.length) throw new BadRequestError('Turn on at least one car in Car setup');
         let result: SolveResult;
-        try { result = prep.problem.stops.length ? await routing.solve(prep.problem, routingDeadline()) : { routes: [], skipped: [] }; }
+        try { result = prep.problem.stops.length ? await routing.solve(prep.problem, signal) : { routes: [], skipped: [] }; }
         catch (err) { throw routingFailed(err); }
         const carIds = prep.cars.map((v) => v.id);
         const placed = placementsFrom(result, prep.stopRiderIds, carIds);
@@ -857,7 +880,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
             return { ...s, allowedVehicles: carIds.map((_, k) => k).filter((k) => k !== exclude) };
           });
           let result2: SolveResult | null = null;
-          try { result2 = await routing.solve({ ...prep.problem, stops: stops2 }, routingDeadline()); }
+          try { result2 = await routing.solve({ ...prep.problem, stops: stops2 }, signal); }
           catch (err) { console.error('[bus] lone-girl re-solve skipped:', err instanceof Error ? err.message : err); }
           if (result2) {
             lgResult = result2;
@@ -901,7 +924,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           loneGirl,
         };
       } finally {
-        await bus.releaseLock(run.id, who); // M1: only clears the lock if this generate still holds it
+        await bus.releaseLock(run.id, lockBy); // M1: only clears the lock if this generate still holds it
       }
     },
     async undo(ctx) {
