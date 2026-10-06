@@ -35,7 +35,7 @@
   --navy:#0a0a2e;
   --danger:#ef4444;--danger-light:#fee2e2;--warn:#f59e0b;--warn-light:#fef3c7;
   --success:#10b981;--success-light:#d1fae5;
-  --girl-light:#fde2e9;--girl-dark:#9d174d;--boy-light:#dbeafe;--boy-dark:#1e40af;
+  --girl-light:#fce7f3;--girl-dark:#be185d;--boy-light:#dbeafe;--boy-dark:#1d4ed8;
   --ink:#1f2937;--ink-mid:#647488;--ink-faint:#94a3b8;
   --paper:#f4f7fc;--paper-card:#ffffff;--paper-dark:#e8edf4;
   --line:#e8edf4;--chip:#ececff;
@@ -50,10 +50,6 @@
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
-/* This app has no broader dark-mode theming system — these two tokens are scoped
-   just to the Bus Ministry gendered grade chip (_busGradeChip) so it stays readable
-   if a phone forces dark rendering; don't extend this into a full dark-mode pass. */
-@media(prefers-color-scheme:dark){:root{--girl-light:#4a1942;--girl-dark:#fbcfe8;--boy-light:#1e2a4a;--boy-dark:#bfdbfe}}
 /* Top loading bar (#nprog): a thin accent bar that animates whenever a real network
    request is in flight (driven from API's r() via _npStart/_npDone, ported from the
    camp app's #nprog). Cached GETs never reach r(), so instant navigations don't flash
@@ -8616,9 +8612,9 @@ async function busSaveNewPerson() {
 }
 async function busEditRider(id) {
   const r = BUS.view.riders.find((x) => x.id === id); if (!r || BUS.view.run.readOnly) return;
-  const hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(r.name)).catch(() => []);
-  const me = hits.find((h) => h.id === (r.studentId || r.guestId));
-  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(me ? me.addresses : [])}
+  let addrs;
+  try { addrs = await _busGet('/bus/riders/' + id + '/addresses'); } catch (e) { toast(e.message); return; }
+  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(addrs)}
     <button class="btn btn-primary btn-full" onclick="busSaveRider('${id}')">Save</button>`);
 }
 async function busSaveRider(id) {

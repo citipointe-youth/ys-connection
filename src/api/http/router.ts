@@ -165,6 +165,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/bus/my-car',               auth: true, handler: (r) => busCtl.myCar(r) },
     { method: 'POST',   path: '/bus/riders',               auth: true, handler: (r) => busCtl.addRider(r) },
     { method: 'PATCH',  path: '/bus/riders/:id',           auth: true, handler: (r) => busCtl.updateRider(r) },
+    { method: 'GET',    path: '/bus/riders/:id/addresses', auth: true, handler: (r) => busCtl.riderAddresses(r) },
     { method: 'DELETE', path: '/bus/riders/:id',           auth: true, handler: (r) => busCtl.removeRider(r) },
     { method: 'POST',   path: '/bus/riders/:id/move',      auth: true, handler: (r) => busCtl.moveRider(r) },
     { method: 'POST',   path: '/bus/riders/:id/consent',   auth: true, handler: (r) => busCtl.setConsent(r) },

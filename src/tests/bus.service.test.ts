@@ -619,3 +619,14 @@ describe('Task 10: onCarLeaders', () => {
     expect(mine.onCarLeaders).toEqual([{ id: 'L1', name: 'Tom' }]);
   });
 });
+
+describe('riderAddresses — the edit sheet loads by rider, not by name search', () => {
+  it('returns the rider\'s saved addresses with the current one first', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Mum', address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:24-wynnum-rd-carina-qld-' } });
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: '', address: '3 Lindsay Ct, Cornubia QLD 4130, Australia', placeId: 'fake:3-lindsay-ct-cornubia-qld-' } });
+    const addrs = await svc.riderAddresses(ctx('grade'), r.id);
+    expect(addrs.map((a) => a.street)).toEqual(['3 Lindsay Ct', '24 Wynnum Rd']);
+    expect(addrs[0]!.label).toBe('3 Lindsay Ct');
+  });
+});
