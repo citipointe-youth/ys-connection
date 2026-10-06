@@ -324,7 +324,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 }
 
 /* Toast */
-#toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:rgba(17,24,39,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:300;white-space:nowrap;max-width:92vw;text-align:center}
+#toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:rgba(17,24,39,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:300;width:max-content;max-width:calc(100vw - 32px);text-align:center;line-height:1.35}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:768px){#toast{bottom:24px}}
 
@@ -8780,7 +8780,7 @@ async function busGenerate(mode) {
     const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : '',
       res.loneGirl ? `${res.loneGirl} kept off a car alone` : ''].filter(Boolean);
     toast(notes.length ? notes.join(' · ') : 'Routes ready', 4000);
-  } catch (e) { toast(e.message || 'Could not work out routes', 4000); }
+  } catch (e) { toast(e.message || 'Could not work out routes', 6000); }
   finally { BUS.generating = false; await busRefresh(); }
 }
 function _busUndoBar() {

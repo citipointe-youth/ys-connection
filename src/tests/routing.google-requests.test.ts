@@ -21,7 +21,7 @@ const problem: SolveProblem = {
 const ALLOWED_KEYS = new Set(['model', 'globalStartTime', 'globalEndTime', 'shipments', 'label', 'deliveries', 'arrivalWaypoint',
   'placeId', 'duration', 'loadDemands', 'seats', 'amount', 'allowedVehicleIndices', 'costsPerVehicle', 'costsPerVehicleIndices',
   'penaltyCost', 'vehicles', 'startWaypoint', 'endWaypoint', 'loadLimits', 'maxLoad', 'costPerHour', 'routeDurationLimit',
-  'quadraticSoftMaxDuration', 'costPerSquareHourAfterQuadraticSoftMax', 'considerRoadTraffic', 'populatePolylines',
+  'quadraticSoftMaxDuration', 'maxDuration', 'costPerSquareHourAfterQuadraticSoftMax', 'considerRoadTraffic', 'populatePolylines',
   'populateTransitionPolylines', 'input', 'sessionToken', 'includedRegionCodes', 'origins', 'destinations', 'waypoint',
   'travelMode', 'routingPreference']);
 function keysOf(v: unknown, out: string[] = []): string[] {
@@ -42,7 +42,7 @@ describe('optimizeToursBody', () => {
   it('maps vehicles with capacity, minute-based cost and a quadratic soft cap', () => {
     expect(body.model.vehicles[0]).toMatchObject({ label: 'v0', endWaypoint: { placeId: 'P_church' },
       loadLimits: { seats: { maxLoad: '8' } }, costPerHour: 60,
-      routeDurationLimit: { quadraticSoftMaxDuration: '2700s' } });
+      routeDurationLimit: { quadraticSoftMaxDuration: '2700s', maxDuration: '43200s' } }); // prod 400: Google requires maxDuration alongside a quadratic soft max
     expect(body.model.vehicles[1]).not.toHaveProperty('endWaypoint');
     expect(body.model.globalEndTime).toBe('2026-10-10T09:00:00.000Z');
     expect(body.populateTransitionPolylines).toBe(true);

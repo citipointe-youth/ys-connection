@@ -32,7 +32,8 @@ export function optimizeToursBody(p: SolveProblem) {
         ...(v.end ? { endWaypoint: wp(v.end) } : {}),
         loadLimits: { seats: { maxLoad: String(v.capacity) } },
         costPerHour: COST_PER_HOUR,
-        routeDurationLimit: { quadraticSoftMaxDuration: sec(p.targetRouteMin * 60), costPerSquareHourAfterQuadraticSoftMax: QUAD_COST_PER_SQ_HOUR },
+        routeDurationLimit: { quadraticSoftMaxDuration: sec(p.targetRouteMin * 60), costPerSquareHourAfterQuadraticSoftMax: QUAD_COST_PER_SQ_HOUR,
+          maxDuration: sec(HORIZON_MS / 1000) }, // Google 400s a quadratic soft max with no hard max; the horizon never binds
       })),
     },
     considerRoadTraffic: false,
