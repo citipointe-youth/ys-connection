@@ -8320,7 +8320,7 @@ function _busNewPeopleCard() {
     const sugg = p.suggestions[0];
     const added = new Date(p.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
     const box = sugg
-      ? `<div class="suggest-box"><span class="suggest-text">Is this ${esc(sugg.name)}${sugg.grade ? ` (Y${sugg.grade})` : ''}?</span>
+      ? `<div class="suggest-box"><span class="suggest-text">Is this ${esc(sugg.name)}${sugg.grade ? ` (Y${sugg.grade})` : ''}${sugg.byPhone ? ' — same phone' : ''}?</span>
           <div class="suggest-actions"><button class="btn btn-primary btn-sm" onclick="busLinkGuest('${p.id}','${sugg.studentId}')">Yes</button>
           <button class="btn btn-secondary btn-sm" onclick="busHideSuggestion('${p.id}')">No</button></div></div>`
       : `<div class="suggest-box" style="background:var(--paper-dark);align-items:flex-start">
@@ -8405,7 +8405,7 @@ async function renderBus() {
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
-      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
+      <div class="bus-head-act">${seesPast ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
@@ -8415,9 +8415,14 @@ async function renderBus() {
 
 function _busRosterHtml() {
   const v = BUS.view;
-  // Roster writes 409 while a Generate is running (server lock), so add/search/remove are
-  // disabled the same as the existing readOnly (finished run) gate, not just visually inert.
-  const locked = v.run.readOnly || BUS.generating || !!_busLockedBy(v, Date.now(), BUS.generating);
+  const readOnly = v.run.readOnly;
+  // Task 13: a Generate in progress (ours or another device's lock) must still let a leader
+  // search and browse Past riders — only the actual writes 409 server-side, so only THOSE are
+  // blocked (with a toast, in the write functions themselves). readOnly (a finished run) is
+  // the only thing that hides the search UI entirely. Remove stays hidden while blocked too —
+  // simplest, and it was already the behaviour pre-Task 13.
+  const writeBlocked = BUS.generating || !!_busLockedBy(v, Date.now(), BUS.generating);
+  const locked = readOnly || writeBlocked;
   const placed = (r) => v.vehicles.find((x) => x.id === r.runVehicleId);
   const rows = v.riders.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
@@ -8429,13 +8434,13 @@ function _busRosterHtml() {
     </div>`;
   }).join('');
   const seats = v.vehicles.filter((x) => x.running).reduce((n, x) => n + x.capacity, 0);
-  return `${locked ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
+  return `${readOnly ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
       <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
     <div class="card-title bus-sec">Tonight (${v.riders.length})</div>
     ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
-    ${_busPastHtml(locked)}`;
+    ${_busPastHtml(readOnly)}`;
 }
 // Past riders (saved address, not on tonight) — collapsed by default; BUS.pastOpen survives the 10 s re-render.
 function _busPastHtml(locked) {
@@ -8450,6 +8455,7 @@ function _busPastHtml(locked) {
     <div class="drop-body" style="margin-top:8px">${rows}</div></div>`;
 }
 async function busAddPast(i) {
+  if (_busBlockWrite()) return;
   const p = (BUS.view.pastRiders || [])[i];
   if (!p || BUS.addingPast) return;
   BUS.addingPast = true;
@@ -8562,6 +8568,7 @@ function busPick(i) {
     <button class="btn btn-primary btn-full" onclick="busAdd(${i})">Add</button>`);
 }
 async function busAdd(i) {
+  if (_busBlockWrite()) return;
   const h = BUS.hits[i], a = _busReadAddress(); if (!a) return;
   try {
     await _busSend('POST', '/bus/riders', { ...(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }), ...a });
@@ -8579,7 +8586,7 @@ function busNewPerson() {
     <div class="fg bus-gender" id="np-gender">
       <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'female')">${icS('genderF')} <span class="bus-gender-lbl" data-label="Girl">Girl</span></button>
       <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'male')">${icS('genderM')} <span class="bus-gender-lbl" data-label="Boy">Boy</span></button></div>
-    <div class="fg"><input class="fi" id="np-phone" type="tel" placeholder="Mobile"></div>
+    <div class="fg"><input class="fi" id="np-phone" type="tel" placeholder="Mobile (optional)"></div>
     ${_busAddressPicker([])}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveNewPerson()">Add</button></div>`);
@@ -8600,12 +8607,16 @@ function busPickGender(btn, g) {
   });
 }
 async function busSaveNewPerson() {
+  if (_busBlockWrite()) return;
   const firstName = document.getElementById('np-first').value.trim(), lastName = document.getElementById('np-last').value.trim();
   const gradeV = document.getElementById('np-grade').value, phone = document.getElementById('np-phone').value.trim();
-  if (!firstName || !lastName || !_busNpGender || phone.length < 6) { toast('Name, gender and mobile are needed'); return; }
+  if (!firstName || !lastName || !_busNpGender) { toast('Name and gender are needed'); return; }
+  // Task 12: phone is optional now — only validated (digit count, not raw length, so spaces/
+  // dashes don't count against it) when something was actually typed.
+  if (phone && phone.replace(/\D/g, '').length < 8) { toast('Check the phone number'); return; }
   const a = _busReadAddress(); if (!a) return;
   try {
-    const g = await API.post('/bus/guests?' + _busQs(), { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone });
+    const g = await API.post('/bus/guests?' + _busQs(), { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone: phone || null });
     await _busSend('POST', '/bus/riders', { guestId: g.id, ...a });
     _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${firstName} added`); renderBus();
   } catch (e) { toast(e.message); }
@@ -8636,11 +8647,14 @@ async function busSaveConsent(id) {
 }
 function busConfirmRemove(id) {
   const r = BUS.view.riders.find((x) => x.id === id);
-  modal(`<div class="mo-title">Remove ${esc(r.name)} from tonight?</div>
+  // Task 3: a guest with no prior ride is hard-deleted server-side (with their saved address)
+  // once they're off every run — only students are never deleted from Bus.
+  const guestNote = r.guestId ? `<div class="card-sub" style="margin-bottom:10px">This also deletes their saved address and phone if they haven't ridden before — you'd need to add them again as a new person.</div>` : '';
+  modal(`<div class="mo-title">Remove ${esc(r.name)} from tonight?</div>${guestNote}
     <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button class="btn btn-danger" onclick="busRemove('${id}')">Remove</button></div>`);
 }
-async function busRemove(id) { try { await _busSend('DELETE', '/bus/riders/' + id); closeModal(); } catch (e) { toast(e.message); } }
+async function busRemove(id) { if (_busBlockWrite()) return; try { await _busSend('DELETE', '/bus/riders/' + id); closeModal(); } catch (e) { toast(e.message); } }
 
 function busSettings() {
   const b = (S.settings.ministryConfig.busMinistry) || {};
@@ -8698,16 +8712,44 @@ function _busMapsLinks(stops, church, car, churchPlaceId) {
 // fetches /bus/my-car alongside /bus/run), so it's already warm by the time this tab renders.
 function busOpenCarRoute(runVehicleId) {
   const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
-  const church = BUS.myCar && BUS.myCar.churchAddress;
-  if (!rv || !church) { toast('Set the church address in Bus settings'); return; }
+  if (!rv) return;
+  // Task 1: BUS.myCar still being null just means it hasn't loaded yet (busRefresh() always
+  // fetches it alongside /bus/run) — don't tell the leader to go fix a setting that's
+  // actually fine. Only say "set the church address" once it HAS loaded and is genuinely empty.
+  if (!BUS.myCar) { toast('Still loading — try again in a moment'); return; }
+  const church = BUS.myCar.churchAddress;
+  if (!church) { toast('Set the church address in Bus settings'); return; }
   const stops = v.riders.filter((r) => r.runVehicleId === runVehicleId).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
   if (!stops.length) return;
   const links = _busMapsLinks(stops, church, rv, BUS.myCar.churchPlaceId);
   if (links.length === 1) { window.open(links[0].url, '_blank', 'noopener'); return; }
+  // Task 1: a plain wrapper div, not bare siblings of .mo-box — the app-wide sticky rule
+  // `.mo-box > .btn-primary.btn-full` only matches a DIRECT child, so without the wrapper
+  // every link here (>9 stops = 2+ links) stuck to the bottom on top of each other.
   modal(`<div class="mo-title">${esc(rv.name)} route</div>
-    ${links.map((l) => `<a class="btn btn-primary btn-full" style="margin-bottom:8px" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('')}`);
+    <div>${links.map((l) => `<a class="btn btn-primary btn-full" style="margin-bottom:8px" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('')}</div>`);
 }
-async function busRunVeh(id, patch) { try { await _busSend('PATCH', '/bus/run/vehicles/' + id, patch); } catch (e) { toast(e.message); } }
+async function busRunVeh(id, patch) { try { await _busSend('PATCH', '/bus/run/vehicles/' + id, patch); } catch (e) { toast(e.message); busRefresh(); } }
+// Task 2: turning a running car off would otherwise silently bounce its riders back to
+// Unassigned — confirm first when it actually has riders, reusing .mo-actions. Re-checks the
+// checkbox immediately (the modal is about to cover it anyway) so the UI doesn't show "off"
+// while still actually running until the next refresh.
+function _busRidersOnCar(runVehicleId) { return BUS.view.riders.filter((r) => r.runVehicleId === runVehicleId).length; }
+function busToggleVeh(checkbox, runVehicleId, running) {
+  if (!running) {
+    const n = _busRidersOnCar(runVehicleId);
+    if (n > 0) {
+      const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
+      checkbox.checked = true;
+      modal(`<div class="mo-title">Turn off ${esc(rv.name)}?</div>
+        <div class="card-sub" style="margin-bottom:14px">Its ${n} rider${n === 1 ? '' : 's'} go back to Unassigned.</div>
+        <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="closeModal();busRunVeh('${runVehicleId}',{running:false})">Turn off</button></div>`);
+      return;
+    }
+  }
+  busRunVeh(runVehicleId, { running });
+}
 async function busSetPool() {
   const ids = [...document.querySelectorAll('.bus-pool input:checked')].map((i) => i.value);
   try { await _busSend('PATCH', '/bus/run/pool', { availableLeaderIds: ids }); } catch (e) { toast(e.message); }
@@ -8743,18 +8785,25 @@ async function busSetLeaderGrades(leaderId) {
 function _busPrefGradesChip(l) {
   return (l.prefGrades && l.prefGrades.length) ? `<span class="chip c-neutral">${l.prefGrades.map((g) => 'Y' + g).join(',')}</span>` : '';
 }
-function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId) {
+function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, checked) {
   return `<label class="fl">Ends at</label>
     <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-wrap').hidden=this.value!=='address'">
       <option value="church" ${endsAt === 'church' ? 'selected' : ''}>Church</option>
       <option value="last_drop" ${endsAt === 'last_drop' ? 'selected' : ''}>Last drop</option>
       <option value="address" ${endsAt === 'address' ? 'selected' : ''}>Address</option></select>
     <div id="${prefix}-ends-wrap" ${endsAt === 'address' ? '' : 'hidden'}>${_busAcField(prefix + '-ends-addr', endsAddress || '', endsPlaceId || null, 'Street address, suburb')}</div>
-    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight"> Tonight only</label>`}`;
+    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}`;
 }
 function busEditVehicle(vehicleId) {
   const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '' };
   const rv = vehicleId ? v.vehicles.find((x) => x.vehicleId === vehicleId) : null;
+  // Task 7: a run vehicle's endsAt/endsAddress can differ from the fleet default as tonight's
+  // own override (busSaveVehicle's tonightOnly PATCH below) — pre-fill from THAT, not the fleet
+  // default, and start "Tonight only" checked, so opening Edit vehicle doesn't show (and risk
+  // silently dropping) the wrong ends-at.
+  const tonightOverride = !!(rv && (rv.endsAt !== f.endsAt || rv.endsAddress !== f.endsAddress));
+  const endsAt = tonightOverride ? rv.endsAt : f.endsAt, endsAddress = tonightOverride ? rv.endsAddress : f.endsAddress;
+  const endsPlaceId = tonightOverride ? rv.endsPlaceId : f.endsPlaceId;
   const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
   modal(`<div class="mo-title">${vehicleId ? 'Edit vehicle' : 'Add vehicle'}</div>
     <div class="fg"><input class="fi" id="ve-name" placeholder="Name" value="${esc(f.name)}"></div>
@@ -8764,10 +8813,10 @@ function busEditVehicle(vehicleId) {
     <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
     <label class="fl">Fixed leaders</label>
     <div class="bus-checks" id="ve-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${l.fixedVehicleId && l.fixedVehicleId === vehicleId ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
-    ${_busEndsAtField('ve', f.endsAt, f.endsAddress, rv ? false : undefined, f.endsPlaceId)}
+    ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
-    ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
+    ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 async function busSaveVehicle(vehicleId) {
   const val = (id) => document.getElementById(id).value;
@@ -8801,6 +8850,21 @@ async function busSaveVehicle(vehicleId) {
     closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
 }
+// Task 2: archiving a vehicle currently running with riders would bounce them to Unassigned
+// just like turning it off — confirm first when it has riders.
+function busConfirmArchiveVehicle(id) {
+  const f = BUS.view.fleet.find((x) => x.id === id);
+  const rv = BUS.view.vehicles.find((x) => x.vehicleId === id);
+  const n = rv ? _busRidersOnCar(rv.id) : 0;
+  if (n > 0) {
+    modal(`<div class="mo-title">Archive ${esc(f.name)}?</div>
+      <div class="card-sub" style="margin-bottom:14px">Its ${n} rider${n === 1 ? '' : 's'} go back to Unassigned.</div>
+      <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="busArchiveVehicle('${id}')">Archive</button></div>`);
+    return;
+  }
+  busArchiveVehicle(id);
+}
 async function busArchiveVehicle(id) {
   const f = BUS.view.fleet.find((x) => x.id === id);
   try { await API.patch('/bus/vehicles/' + id + '?' + _busQs(), { ...f, archived: true }); closeModal(); busRefresh(); } catch (e) { toast(e.message); }
@@ -8811,7 +8875,8 @@ function busEditCarLeaders(runVehicleId) {
   const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
   modal(`<div class="mo-title">Leaders on ${esc(rv.name)}</div>
     <div class="bus-checks" id="rvl-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
-    <button class="btn btn-primary btn-full" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button>`);
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button></div>`);
 }
 async function busSaveCarLeaders(runVehicleId) {
   const leaderIds = [...document.querySelectorAll('#rvl-leaders input:checked')].map((i) => i.value);
@@ -8820,6 +8885,10 @@ async function busSaveCarLeaders(runVehicleId) {
 
 function _busCarsHtml() {
   const v = BUS.view;
+  // Task 4: reuse the Routes lock alert so Car setup shows the same "<name> is generating
+  // routes…" banner while another device holds the lock.
+  const lock = _busLockedBy(v, Date.now(), BUS.generating);
+  const lockAlert = lock ? `<div class="alert al-warn bus-lock">${icS('alert')} ${esc(lock)} is generating routes…</div>` : '';
   const cards = v.vehicles.filter((rv) => rv.vehicleId).map((rv) => {
     const f = v.fleet.find((x) => x.id === rv.vehicleId);
     if (!rv.running) {
@@ -8837,15 +8906,16 @@ function _busCarsHtml() {
       // when both, otherwise whichever one.
       : `<span class="chip c-accent">${elig.female ? icS('genderF') : ''}${elig.male ? icS('genderM') : ''} ${elig.female && elig.male ? 'Mixed' : elig.female ? 'Girls' : 'Boys'}</span>`;
     const needsLeader = rv.leaderIds.length < 2;
+    const leaderShortfall = Math.max(2 - rv.leaderIds.length, 1); // Task 10: real shortfall to the 2-leader minimum
     const leaderChips = rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('');
     const endsText = rv.endsAt === 'church' ? 'Church' : rv.endsAt === 'last_drop' ? 'Last drop' : _busSuburb(rv.endsAddress || '');
     const tonightOnly = f && (rv.endsAt !== f.endsAt || rv.endsAddress !== f.endsAddress);
     return `<div class="veh-card">
-      <div class="veh-top"><label class="swtch on"><input type="checkbox" checked onchange="busRunVeh('${rv.id}',{running:this.checked})"></label>
+      <div class="veh-top"><label class="swtch on"><input type="checkbox" checked onchange="busToggleVeh(this,'${rv.id}',this.checked)"></label>
         <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
         <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
       <div class="veh-meta">${rv.seats} seats · ${rv.leaderIds.length} leader${rv.leaderIds.length === 1 ? '' : 's'} · ${rv.capacity} for youth</div>
-      <div class="veh-chiprow">${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs 1 more leader</span>` : ''}</div>
+      <div class="veh-chiprow">${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
         <div style="font-size:11px;color:var(--ink-mid)">Ends at: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
@@ -8860,16 +8930,36 @@ function _busCarsHtml() {
   const ownCarRows = ownCars.map((rv) => {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).map((r) => r.name).join(', ');
     return `<div class="li"><div class="li-body"><div class="li-title">${icS('bus')} ${esc(rv.name)}</div>
-      <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div></div></div>`;
+      <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div>
+      <div class="card-sub" style="margin-top:2px">To change it, use My car as that leader.</div></div>
+      <button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button></div>`;
   }).join('');
 
-  return `<div class="bus-routes">${cards}</div>
+  return `${lockAlert}<div class="bus-routes">${cards}</div>
     <button class="btn btn-secondary btn-full" onclick="busEditVehicle(null)">${icS('plus')} Add vehicle</button>
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
       <div class="card-sub" style="margin-top:6px">Willing to do drop-homes — fills cars that still need a leader when routes are generated.
         <a onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
     ${ownCars.length ? `<div class="card-title bus-sec">Own cars tonight</div>${ownCarRows}` : ''}`;
+}
+// Task 11: coordinators can remove someone else's own car from Car setup (the server agent
+// may wire the exact call differently — this is kept as its own small function so the call
+// can be adjusted without touching the confirm UI).
+function busConfirmRemoveOwnCarFor(runVehicleId) {
+  const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
+  if (!rv) return;
+  modal(`<div class="mo-title">Remove ${esc(rv.name)}?</div>
+    <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" onclick="busRemoveOwnCarFor('${runVehicleId}')">Remove</button></div>`);
+}
+async function busRemoveOwnCarFor(runVehicleId) {
+  const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
+  if (!rv || !rv.ownerLeaderId) return;
+  // A coordinator removes another leader's own car by naming them in ?as= (removeOwnCar uses selfLeaderId).
+  const qs = `now=${encodeURIComponent(_busLocalNow())}&as=${encodeURIComponent(rv.ownerLeaderId)}`;
+  try { await API.del('/bus/run/own-car?' + qs); closeModal(); toast('Removed'); busRefresh(); }
+  catch (e) { toast(e.message); }
 }
 
 function busMoveSheet(riderId) {
@@ -8903,6 +8993,10 @@ function _busLockedBy(v, nowMs, generating) {
   const until = v.run.lockUntil ? Date.parse(v.run.lockUntil) : 0;
   return !generating && v.run.lockBy && until > nowMs ? v.run.lockBy : null;
 }
+// Task 13: Generate (ours or another device's lock) blocks WRITES, not the whole screen —
+// search/Past riders stay visible and browsable; only the actual save calls below check this.
+function _busGenLocked() { return !!(BUS.view && (BUS.generating || _busLockedBy(BUS.view, Date.now(), BUS.generating))); }
+function _busBlockWrite() { if (_busGenLocked()) { toast('Routes are being generated — try again in a moment'); return true; } return false; }
 function _busRoutesHead() {
   const v = BUS.view;
   if (v.run.readOnly || !v.riders.length) return '';
@@ -8928,7 +9022,7 @@ async function busGenerate(mode) {
   closeModal();
   BUS.generating = true; renderBus();
   try {
-    const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 55000); // matches the server's LOCK_MS worst case
+    const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 59000); // Vercel maxDuration 60 s
     BUS.routeMin = res.routeMin || {};
     const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : '',
       res.noFemaleLeader ? `${res.noFemaleLeader} ${res.noFemaleLeader === 1 ? 'girl needs' : 'girls need'} a car with a female leader` : ''].filter(Boolean);
@@ -8939,7 +9033,8 @@ async function busGenerate(mode) {
 function _busUndoBar() {
   const v = BUS.view;
   if (v.run.readOnly || !v.canCoordinate || !v.run.undoUntil || Date.parse(v.run.undoUntil) <= Date.now()) return '';
-  return `<div class="bus-undo" role="status"><span>Routes updated</span><button class="btn btn-secondary btn-sm" onclick="busUndo()">Undo</button></div>`;
+  const locked = !!_busLockedBy(v, Date.now(), BUS.generating); // Task 5: disabled while another device holds the lock
+  return `<div class="bus-undo" role="status"><span>Routes updated</span><button class="btn btn-secondary btn-sm" ${locked ? 'disabled' : ''} onclick="busUndo()">Undo</button></div>`;
 }
 async function busUndo() { try { await _busSend('POST', '/bus/run/undo'); BUS.routeMin = {}; toast('Undone'); } catch (e) { toast(e.message); } }
 
@@ -8974,7 +9069,7 @@ function _busRoutesHtml() {
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
-        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${needsFemaleLeaderChip}</span>
+        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min drive` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${needsFemaleLeaderChip}</span>
         <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${routeBtn}<span class="drop-chev">${icS('chevr')}</span></span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
@@ -9087,7 +9182,9 @@ function _busMyCarHtml() {
       ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
       ${rv.needsFemaleLeader ? `<div class="chip c-warn" style="margin-bottom:8px">${icS('alert')} No female leader</div>` : ''}
       ${mc.churchAddress ? links.map((l) => `<a class="btn btn-primary btn-full" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('') :
-        `<div class="alert al-warn">Set the church address in Bus settings</div>`}
+        // Task 15: only admin/coordinator logins can actually reach Bus settings to fix this —
+        // a plain leader just needs to be told who to ask.
+        `<div class="alert al-warn">${(S.user && S.user.role === 'admin') || v.canCoordinate ? 'Set the church address in Bus settings' : 'Ask a coordinator to set the church address'}</div>`}
     </div>
     <div class="card-title bus-sec">Stop order</div>
     ${rows}
@@ -9127,16 +9224,16 @@ async function _busLoadMap() {
   if (S.page === 'bus' && BUS.tab === 'analysis') renderBus();
 }
 function _busExtraLine(x) {
-  return `+${x.count} car${x.count === 1 ? '' : 's'}, ${x.seats} seats: longest route ${x.after.longestMin} min (now ${x.before.longestMin}) · unassigned ${x.after.unassigned} (now ${x.before.unassigned})`;
+  return `+${x.count} car${x.count === 1 ? '' : 's'}, ${x.seats} seats: longest drive ${x.after.longestMin} min (now ${x.before.longestMin}) · unassigned ${x.after.unassigned} (now ${x.before.unassigned})`;
 }
 // `cars` is new on the extra-cars response — handle it missing gracefully (older server).
 function _busExtraCarsHtml(x) {
   if (!x.cars || !x.cars.length) return '';
   const rows = x.cars.map((c) => `<details class="an-extra-car">
-    <summary>${esc(c.label)}${c.extra ? ' <span class="chip c-accent">Extra</span>' : ''} · ${c.riders} rider${c.riders === 1 ? '' : 's'} · ${c.driveMinutes} min · finish ${esc(c.finishAt)}</summary>
+    <summary>${esc(c.label)}${c.extra ? ' <span class="chip c-accent">Extra</span>' : ''} · ${c.riders} rider${c.riders === 1 ? '' : 's'} · ${c.driveMinutes} min drive · finish ~${esc(c.finishAt)} (drive time)</summary>
     ${c.stops.map((s, i) => `<div class="an-row"><div class="an-name">${i + 1}. ${esc(s.name)}</div><div class="an-val">${esc(s.suburb)}</div><div class="an-val">${esc(s.arriveAt)}</div></div>`).join('')}
   </details>`).join('');
-  return `${rows}<div class="card-sub" style="margin-top:4px">Extra cars assume a female leader.</div>`;
+  return `${rows}<div class="card-sub" style="margin-top:4px">Extra cars assume a female leader. Times are drive time only — allow about 1 min per drop-off.</div>`;
 }
 async function busTryCars(count) {
   const seats = Number((document.getElementById('an-seats') || {}).value) || 8;
@@ -9148,14 +9245,16 @@ async function busTryCars(count) {
   finally { BUS.trying = false; if (S.page === 'bus' && BUS.tab === 'analysis') renderBus(); }
 }
 function _busAnalysisHtml() {
-  if (BUS.analysisErr) return `<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
+  // Task 8: a quick way back to Routes without using the tab bar.
+  const back = `<div style="margin-bottom:10px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Routes</a></div>`;
+  if (BUS.analysisErr) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
   const a = BUS.analysis;
-  if (!a) return `<div class="card-sub">Working out routes…</div>`;
+  if (!a) return `${back}<div class="card-sub">Working out routes…</div>`;
   const stale = a.version !== BUS.version
     ? `<div class="alert al-warn bus-lock">${icS('alert')} Routes have changed since this was worked out. <button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()">Refresh</button></div>` : '';
   const max = Math.max(1, ...a.cars.flatMap((c) => c.riders.map((r) => r.detourMin)));
   const cars = a.cars.map((c) => `<div class="card">
-    <div class="card-title" style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="car-dot" style="background:${_busCarColour(c.colourIndex)}"></span>${esc(c.name)} · ${c.routeMin} min</div>
+    <div class="card-title" style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="car-dot" style="background:${_busCarColour(c.colourIndex)}"></span>${esc(c.name)} · ${c.routeMin} min drive</div>
     ${c.riders.map((r) => `<div class="an-row">
       <div class="an-name">${r.stop}. ${esc(r.name)}</div>
       <div class="an-bar"><span class="${r.flagged ? 'warn' : ''}" style="width:${Math.round((r.detourMin / max) * 100)}%"></span></div>
@@ -9164,10 +9263,10 @@ function _busAnalysisHtml() {
   const map = BUS.mapUrl === null ? `<div class="an-map an-map-empty">Loading map…</div>`
     : BUS.mapUrl ? `<img class="an-map" src="${esc(BUS.mapUrl)}" alt="Map of tonight's routes">` : `<div class="an-map an-map-empty">Map unavailable</div>`;
   const tries = (BUS.extra || []).map((x) => `<div class="an-line">${esc(_busExtraLine(x))}${_busExtraCarsHtml(x)}</div>`).join('');
-  return `${stale}<div class="bus-an">
+  return `${back}${stale}<div class="bus-an">
     <div class="an-mapcol">${map}</div>
     <div>
-      <div class="card-sub" style="margin-bottom:10px">Longest route ${a.longestMin} min · total ${a.totalMin} min${a.unassigned ? ` · ${a.unassigned} unassigned` : ''}.
+      <div class="card-sub" style="margin-bottom:10px">Longest drive ${a.longestMin} min · total drive ${a.totalMin} min${a.unassigned ? ` · ${a.unassigned} unassigned` : ''}.
         Amber = a detour of ${a.detourMin}+ min or ${a.detourPct}%+ of the car's time.</div>
       ${cars || '<div class="card-sub">No placed riders yet.</div>'}
       <div class="card"><div class="card-title">Try more cars</div>

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey } from '../services/bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches } from '../services/bus-logic';
 
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
@@ -59,4 +59,17 @@ describe('names + suburb', () => {
     expect(suburbOf('12 Smith St')).toBe('12 Smith St');
   });
   it('rider key', () => expect(riderKey({ studentId: null, guestId: 'g1' })).toBe('g:g1'));
+});
+describe('phone matching (Task 2: guest↔student suggestions)', () => {
+  it('leading 0 / 61 / +61 all normalise to the same key', () => {
+    expect(phoneKey('0412 345 678')).toBe('412345678');
+    expect(phoneKey('61412345678')).toBe('412345678');
+    expect(phoneKey('+61 412 345 678')).toBe('412345678');
+  });
+  it('matches across formats, ignores short/garbage numbers', () => {
+    expect(phoneMatches('0412345678', '+61 412 345 678')).toBe(true);
+    expect(phoneMatches('0412345678', '0498765432')).toBe(false);
+    expect(phoneMatches(null, null)).toBe(false);
+    expect(phoneMatches('12345', '12345')).toBe(false); // too short to be real
+  });
 });

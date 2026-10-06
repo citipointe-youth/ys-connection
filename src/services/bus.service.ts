@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { can, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, streetOf, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
 import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
@@ -60,12 +60,18 @@ const AddRider = z.object({
 const UpdateRider = z.object({ addressId: z.string().min(1).optional(), newAddress: NewAddress.optional() })
   .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
 const NAME_RE = /^[^<>"]+$/; // C2: no raw <, > or " — prevents stored XSS via phoneLink()'s onclick attribute
-const PHONE_RE = /^[0-9 +()-]{6,20}$/;
+const PHONE_CHARS_RE = /^[0-9 +()-]*$/;
+// Task 5 (owner): phone is now optional on a New Person — an omitted/blank value stores as
+// null (no phone at all is a real case: a walk-in with no number given). If one IS given, it
+// must still look like a phone (digits/space/+/()/- only) and have >=8 digits once those
+// separators are stripped, or the add is rejected with "Check the phone number".
 const NewGuest = z.object({
   firstName: z.string().trim().min(1).max(60).regex(NAME_RE, 'Invalid name'),
   lastName: z.string().trim().min(1).max(60).regex(NAME_RE, 'Invalid name'),
   grade: z.number().int().nullable(), gender: z.enum(['male', 'female']),
-  phone: z.string().trim().min(6).max(20).regex(PHONE_RE, 'Invalid phone number'),
+  phone: z.string().trim().max(20).nullable().optional()
+    .transform((v) => (v && v.length > 0 ? v : null))
+    .refine((v) => v === null || (PHONE_CHARS_RE.test(v) && v.replace(/[\s+()-]/g, '').length >= 8), 'Check the phone number'),
 });
 const EndsFields = { endsAt: z.enum(['church', 'last_drop', 'address']), endsAddress: z.string().max(200).nullable().default(null), endsPlaceId: z.string().max(300).nullable().default(null) };
 const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim().min(1).max(40), plate: z.string().max(12).nullable().default(null),
@@ -358,12 +364,22 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
 
   async function pendingGuestList(): Promise<PendingGuestView[]> {
     const all = await students.findAll();
-    return (await bus.listGuests()).filter((g) => !g.linkedStudentId && !g.dismissed).map((g) => ({
-      id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, phone: g.phone, createdAt: g.createdAt,
-      suggestions: all.filter((s) => normName(s.lastName) === normName(g.lastName)
-          && (normName(s.firstName).startsWith(normName(g.firstName)) || normName(g.firstName).startsWith(normName(s.firstName))))
-        .map((s) => ({ studentId: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade })),
-    }));
+    return (await bus.listGuests()).filter((g) => !g.linkedStudentId && !g.dismissed).map((g) => {
+      // Task 2 (owner): also suggest a student whose OWN mobile or parent phone matches the
+      // guest's phone — ranked first (a phone match is stronger evidence than a name match),
+      // deduped against the name-based matches below.
+      const byPhone = all.filter((s) => phoneMatches(g.phone, s.mobile) || phoneMatches(g.phone, s.parentPhone));
+      const phoneIds = new Set(byPhone.map((s) => s.id));
+      const byName = all.filter((s) => !phoneIds.has(s.id) && normName(s.lastName) === normName(g.lastName)
+          && (normName(s.firstName).startsWith(normName(g.firstName)) || normName(g.firstName).startsWith(normName(s.firstName))));
+      return {
+        id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, phone: g.phone, createdAt: g.createdAt,
+        suggestions: [
+          ...byPhone.map((s) => ({ studentId: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, byPhone: true })),
+          ...byName.map((s) => ({ studentId: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, byPhone: false })),
+        ],
+      };
+    });
   }
 
   // Owner request: people with a saved address (student or not-yet-purged guest) who are NOT
@@ -504,13 +520,20 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   // nothing is stored (Google terms), so this is cached per run version for the map call that follows.
   interface AnalysisSolve { key: string; cars: BusRunVehicle[]; riders: BusRunRider[]; problem: SolveProblem; result: SolveResult;
     secsByRoute?: number[][] } // I5: the per-car skip-leg matrix, cached alongside the solve itself (same run version)
-  let lastAnalysis: AnalysisSolve | null = null;
+  // Task 4: was a single module-level slot (lastAnalysis), which thrashed when two different
+  // runs (or two settings-driven keys for the same run) were analysed concurrently — the second
+  // request's cache write clobbered the first's, so re-opening analysis for the first run paid
+  // Google again every time. A small capped Map keeps the last few keys instead; same key
+  // semantics as before (see M6's comment), just no longer limited to exactly one.
+  const ANALYSIS_CACHE_MAX = 5;
+  const analysisCache = new Map<string, AnalysisSolve>();
   async function analysisSolve(c: MinistryConfig, run: BusRun, signal: AbortSignal): Promise<AnalysisSolve> {
     const b = c.busMinistry;
     // M6: a Bus-settings change (church, leave time, target route length) doesn't bump the run
     // version, so without these in the key a warm instance would keep serving the old solve/map.
     const key = `${run.id}:${run.version}:${b.churchPlaceId}:${b.leaveTime}:${b.targetRouteMin}`;
-    if (lastAnalysis?.key === key) return lastAnalysis;
+    const cached = analysisCache.get(key);
+    if (cached) return cached;
     if (!b.churchPlaceId) throw new BadRequestError(NO_CHURCH);
     const cars = (await bus.listRunVehicles(run.id)).filter((v) => v.running);
     const riders = (await bus.listRunRiders(run.id)).filter((r) => r.snapPlaceId && r.runVehicleId && cars.some((v) => v.id === r.runVehicleId));
@@ -524,7 +547,13 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const badPlaceCtx: BadPlaceContext = { riders, cars: cars.map((v) => ({ name: v.name, endPlaceId: endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId) })), churchPlaceId: b.churchPlaceId };
     try { result = problem.stops.length ? await routing.solve(problem, signal) : { routes: [], skipped: [] }; }
     catch (err) { throw routingFailedFor(err, ANALYSIS_FAILED, badPlaceCtx); }
-    return (lastAnalysis = { key, cars, riders, problem, result });
+    const entry: AnalysisSolve = { key, cars, riders, problem, result };
+    analysisCache.set(key, entry);
+    if (analysisCache.size > ANALYSIS_CACHE_MAX) {
+      const oldest = analysisCache.keys().next().value;
+      if (oldest !== undefined) analysisCache.delete(oldest);
+    }
+    return entry;
   }
   const minutes = (r: SolveResult, keep: (vehicle: number) => boolean = () => true) =>
     r.routes.filter((x) => keep(x.vehicle)).map((x) => Math.round(x.totalSec / 60));
@@ -810,6 +839,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:roster');
       const v = parseIn(ConsentIn, input);
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // Task 3: same rider-write guard as addRider/updateRider/removeRider
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
       const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
@@ -1101,6 +1131,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           churchPlaceId: c.busMinistry.churchPlaceId });
       }
       const fleetNow = minutes(now.result, (k) => !!now.cars[k]!.vehicleId);
+      // Task 1 (bug): mirror fleetNow's own-car exclusion on the "after" side. prep.cars /
+      // prep.problem.vehicles only ever hold real fleet vehicles today (prepareFleet filters
+      // on vehicleId), so this is currently a no-op — but "after" must never silently start
+      // counting an own car's drive time just because a future prepareFleet change stops
+      // filtering it out upstream. A virtual "Extra car" (index >= prep.cars.length) always counts.
+      const fleetAfter = minutes(extra, (k) => k >= prep.cars.length || !!prep.cars[k]!.vehicleId);
       const notSent = prep.riders.filter((r) => !r.runVehicleId && !r.snapPlaceId).length;
       // Task 8 (owner): per-car breakdown of the "after" (with extra cars) solve — existing cars
       // keep their own name, hypothetical ones are "Extra car N". All from data this solve
@@ -1120,7 +1156,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       });
       return { count: v.count, seats: v.seats,
         before: { longestMin: Math.max(0, ...fleetNow), totalMin: sum(fleetNow), unassigned: prep.riders.filter((r) => !r.runVehicleId).length },
-        after: { longestMin: Math.max(0, ...minutes(extra)), totalMin: sum(minutes(extra)), unassigned: extra.skipped.length + notSent },
+        after: { longestMin: Math.max(0, ...fleetAfter), totalMin: sum(fleetAfter), unassigned: extra.skipped.length + notSent },
         cars };
     },
     async analysisMap(ctx) {

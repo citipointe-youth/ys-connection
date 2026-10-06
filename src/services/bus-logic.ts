@@ -42,6 +42,19 @@ export function riderKey(r: { studentId: string | null; guestId: string | null }
   return r.studentId ? `s:${r.studentId}` : `g:${r.guestId}`;
 }
 
+/** Digits-only key for phone matching, comparing just the last 9 digits so a leading country
+ *  code ('61') and a leading trunk '0' are equivalent (0412345678 / 61412345678 / +61412345678
+ *  all → '412345678'). Returns null for anything too short to be a real number — a short/garbage
+ *  value must never match. */
+export function phoneKey(phone: string | null | undefined): string | null {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return digits.length >= 9 ? digits.slice(-9) : null;
+}
+export function phoneMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ka = phoneKey(a);
+  return !!ka && ka === phoneKey(b);
+}
+
 /** "24 Wynnum Rd, Carina QLD 4152, Australia" → "Carina". Falls back to the input. */
 export function suburbOf(address: string): string {
   const parts = address.split(',').map((p) => p.trim()).filter(Boolean);

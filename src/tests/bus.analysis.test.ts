@@ -81,6 +81,51 @@ describe('route analysis', () => {
     expect(rec.calls.map).toHaveLength(0);
   });
 
+  // Task 4: analysisSolve used to keep exactly one cached solve (module-level `lastAnalysis`),
+  // so analysing a SECOND run (or the same run under a different settings-driven key) evicted
+  // the first — re-opening it then paid Google again even though nothing about it had changed.
+  it('Task 4: analysing two different runs in sequence does not evict either from the cache', async () => {
+    const rec = recordingRouting();
+    const f = await busFixture({ routing: rec.provider });
+    const bigId = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: bigId });
+
+    const week2 = { ...f.admin, localNow: '2026-10-16T19:00' };
+    const sam = await f.svc.addRider(week2, { studentId: 's2', newAddress: { label: 'Home', address: 's2 Test St, Testville', placeId: 'fake:s2' } });
+    const vanWeek2 = (await f.svc.getRun(week2)).vehicles.find((v) => v.name === 'Van')!.id;
+    await f.svc.moveRider(week2, sam.id, { runVehicleId: vanWeek2 });
+
+    await f.svc.analysis(f.ctx('director'));                                 // week 1 → solve #1
+    await f.svc.analysis({ ...f.ctx('director'), localNow: week2.localNow }); // week 2 → solve #2
+    expect(rec.calls.solve).toHaveLength(2);
+    await f.svc.analysis(f.ctx('director')); // re-open week 1 — must be served from cache
+    expect(rec.calls.solve).toHaveLength(2);
+    await f.svc.analysis({ ...f.ctx('director'), localNow: week2.localNow }); // and week 2 again
+    expect(rec.calls.solve).toHaveLength(2);
+  });
+
+  // Task 1 (bug): fleetNow already excluded an own car's drive time from "before" (filtering on
+  // now.cars[k].vehicleId); "after" must exclude it the same way — own-car riders are never part
+  // of the "Try +N cars" reshuffle question, on either side of the comparison.
+  it("Task 1: before/after both exclude a leader's own car from drive-time totals", async () => {
+    const f = await busFixture();
+    const bigId = await f.car('Big', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: bigId });
+    const riley = await f.rider('s3'); const mia = await f.rider('s4');
+    await f.svc.saveOwnCar(f.ctx('quad', 'L3'), { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'church', endsAddress: null, endsPlaceId: null },
+      riderIds: [riley.id, mia.id] });
+    const x = await f.svc.extraCars(f.admin, { count: 1, seats: 6 });
+    // Only Jess (the one fleet rider) counts on either side — Amy's own car's drive time never
+    // shows up in before OR after, and no extra/own-car entry appears in the per-car breakdown.
+    expect(x.before).toMatchObject({ unassigned: 0 });
+    expect(x.after).toMatchObject({ unassigned: 0 });
+    expect(x.before.totalMin).toBe(x.after.totalMin);
+    expect(x.before.longestMin).toBe(x.after.longestMin);
+    expect(x.cars.map((c) => c.label)).toEqual(['Big']);
+  });
+
   it('director/admin only; module off → 404', async () => {
     const f = await busFixture();
     await expect(f.svc.analysis(f.ctx('quad'))).rejects.toMatchObject({ statusCode: 403 });

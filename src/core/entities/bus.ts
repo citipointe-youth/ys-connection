@@ -105,7 +105,9 @@ export interface MyCarView {
 }
 export interface PendingGuestView {
   id: ID; name: string; grade: number | null; phone: string | null; createdAt: string;
-  suggestions: { studentId: ID; name: string; grade: number | null }[];
+  // byPhone: true when the match came from the guest's phone matching the student's own mobile
+  // or parent phone (ranked first, deduped against the name-based matches below).
+  suggestions: { studentId: ID; name: string; grade: number | null; byPhone: boolean }[];
 }
 
 export interface BusGenerateResult {

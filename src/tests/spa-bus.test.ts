@@ -421,7 +421,7 @@ describe('R3 SPA', () => {
   it('_busExtraLine reads as a plain sentence with no symbols', () => {
     const { _busExtraLine } = loadFns(['_busExtraLine']);
     expect(_busExtraLine({ count: 1, seats: 8, before: { longestMin: 52, totalMin: 150, unassigned: 2 }, after: { longestMin: 38, totalMin: 160, unassigned: 0 } }))
-      .toBe('+1 car, 8 seats: longest route 38 min (now 52) · unassigned 0 (now 2)');
+      .toBe('+1 car, 8 seats: longest drive 38 min (now 52) · unassigned 0 (now 2)');
   });
 });
 
@@ -553,32 +553,66 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
   });
 });
 
-describe('_busRosterHtml locks add/search/remove while Generate is running or a coordinator holds the lock', () => {
+// Task 13: Generate (ours or another device's lock) must not hide the whole search UI —
+// only readOnly (a finished run) does. Remove stays hidden while a write would be blocked
+// (simplest call, and matches the prior pre-Task-13 behaviour for that one button).
+describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; }`;
-  const run = (generating: boolean, lockBy: string | null, lockUntil: string | null) => {
+  const run = (readOnly: boolean, generating: boolean, lockBy: string | null, lockUntil: string | null) => {
     const prelude = `${stubs}
       const BUS = { search: '', generating: ${generating},
-        view: { run: { readOnly: false, lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} },
+        view: { run: { readOnly: ${readOnly}, lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} },
           riders: [{ id: 'r1', name: 'Amy' }], vehicles: [] } };`;
     const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy', '_busGradeChip'], prelude, ['_busRosterHtml']);
     return _busRosterHtml();
   };
   it('shows the search bar and remove button when nothing is blocking', () => {
-    const html = run(false, null, null);
+    const html = run(false, false, null, null);
     expect(html).toContain('bus-q');
     expect(html).toContain('busConfirmRemove');
   });
-  it('hides them while BUS.generating is true', () => {
-    const html = run(true, null, null);
+  it('keeps the search bar visible while BUS.generating is true, but hides Remove', () => {
+    const html = run(false, true, null, null);
+    expect(html).toContain('bus-q');
+    expect(html).not.toContain('busConfirmRemove');
+  });
+  it('keeps the search bar visible while another coordinator holds a live lock, but hides Remove', () => {
+    const html = run(false, false, 'Sarah', '2099-01-01T00:00:00.000Z');
+    expect(html).toContain('bus-q');
+    expect(html).not.toContain('busConfirmRemove');
+  });
+  it('hides the search bar entirely once the run is readOnly (finished)', () => {
+    const html = run(true, false, null, null);
     expect(html).not.toContain('bus-q');
     expect(html).not.toContain('busConfirmRemove');
   });
-  it('hides them while another coordinator holds a live lock', () => {
-    const html = run(false, 'Sarah', '2099-01-01T00:00:00.000Z');
-    expect(html).not.toContain('bus-q');
-    expect(html).not.toContain('busConfirmRemove');
+});
+
+describe('_busBlockWrite toasts and blocks only while Generate/lock is active (Task 13)', () => {
+  const mk = (generating: boolean, lockBy: string | null, lockUntil: string | null) => {
+    const prelude = `
+      const BUS = { generating: ${generating}, view: { run: { lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} } } };
+      let __msg = null;
+      function toast(m) { __msg = m; }
+      function __state() { return { msg: __msg }; }
+    `;
+    return loadFns(['_busBlockWrite', '_busGenLocked', '_busLockedBy'], prelude, ['_busBlockWrite', '__state']);
+  };
+  it('blocks and toasts while BUS.generating is true', () => {
+    const { _busBlockWrite, __state } = mk(true, null, null);
+    expect(_busBlockWrite()).toBe(true);
+    expect(__state().msg).toBe('Routes are being generated — try again in a moment');
+  });
+  it('blocks while another device holds a live lock', () => {
+    const { _busBlockWrite } = mk(false, 'Sarah', '2099-01-01T00:00:00.000Z');
+    expect(_busBlockWrite()).toBe(true);
+  });
+  it('does not block when nothing is generating/locked', () => {
+    const { _busBlockWrite, __state } = mk(false, null, null);
+    expect(_busBlockWrite()).toBe(false);
+    expect(__state().msg).toBeNull();
   });
 });
 
@@ -676,19 +710,51 @@ describe('busOpenCarRoute', () => {
     expect(__state().opened).toContain('google.com/maps/dir');
     expect(__state().modalHtml).toBeNull();
   });
-  it('offers a small sheet of links for more than 9 stops', () => {
+  it('offers a small sheet of links for more than 9 stops, wrapped in a plain div (Task 1 bug fix)', () => {
     const riders = Array.from({ length: 11 }, (_, i) => ({ id: 'r' + i, runVehicleId: 'rv1', stopOrder: i + 1, address: `${i} A St`, placeId: 'P' + i }));
     const { busOpenCarRoute, __state } = mk(riders);
     busOpenCarRoute('rv1');
     expect(__state().opened).toBeNull();
     expect(__state().modalHtml).toContain('Van A route');
     expect((__state().modalHtml.match(/btn-primary btn-full/g) ?? []).length).toBe(2);
+    // The links must not be direct children of .mo-box — the app-wide sticky rule
+    // `.mo-box > .btn-primary.btn-full` would stack every one of them on top of the other.
+    expect(__state().modalHtml).toMatch(/<div>\s*<a class="btn btn-primary btn-full"/);
   });
   it('does nothing for a car with no riders', () => {
     const { busOpenCarRoute, __state } = mk([]);
     busOpenCarRoute('rv1');
     expect(__state().opened).toBeNull();
     expect(__state().modalHtml).toBeNull();
+  });
+});
+
+// Task 1: BUS.myCar being null just means it hasn't loaded yet — don't send the leader to a
+// setting that's actually fine. Only the genuinely-empty case says to fix Bus settings.
+describe('busOpenCarRoute toast wording distinguishes "still loading" from "really not set" (Task 1)', () => {
+  const mkToast = (myCar: unknown) => {
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Van A', endsAt: 'church' }], riders: [{ id: 'r1', runVehicleId: 'rv1', stopOrder: 1, address: '1 A St', placeId: 'PA' }] },
+        myCar: ${JSON.stringify(myCar)} };
+      let __msg = null;
+      function esc(s) { return String(s); }
+      function icS() { return ''; }
+      function toast(m) { __msg = m; }
+      function modal() {}
+      const window = { open: () => {} };
+      function __state() { return { msg: __msg }; }
+    `;
+    return loadFns(['busOpenCarRoute', '_busMapsLinks'], prelude, ['busOpenCarRoute', '__state']);
+  };
+  it('says "still loading" when BUS.myCar has not loaded yet', () => {
+    const { busOpenCarRoute, __state } = mkToast(null);
+    busOpenCarRoute('rv1');
+    expect(__state().msg).toBe('Still loading — try again in a moment');
+  });
+  it('says to set the church address once loaded and genuinely empty', () => {
+    const { busOpenCarRoute, __state } = mkToast({ churchAddress: '' });
+    busOpenCarRoute('rv1');
+    expect(__state().msg).toBe('Set the church address in Bus settings');
   });
 });
 
@@ -732,10 +798,392 @@ describe('Past riders (Tonight tab)', () => {
   it('one tap posts the saved addressId', async () => {
     const sent: unknown[] = [];
     const { busAddPast } = loadFns(['busAddPast'], `const BUS = { view: { pastRiders: ${JSON.stringify(past)} } };
+      function _busBlockWrite() { return false; }
       async function _busSend(m, url, body) { globalThis.__sent.push([m, url, body]); }
       function toast() {} function renderBus() {}`);
     (globalThis as any).__sent = sent;
     await busAddPast(0);
     expect(sent).toEqual([['POST', '/bus/riders', { studentId: 's1', addressId: 'a1' }]]);
+  });
+  // Task 13: a Generate/lock in progress must block the write itself, with a toast, even
+  // though the Past riders list stays visible and tappable.
+  it('is blocked (with a toast, no POST) while Generate/lock is active', async () => {
+    const sent: unknown[] = [];
+    const { busAddPast } = loadFns(['busAddPast'], `const BUS = { view: { pastRiders: ${JSON.stringify(past)} } };
+      let __msg = null;
+      function _busBlockWrite() { __msg = 'Routes are being generated — try again in a moment'; return true; }
+      async function _busSend(m, url, body) { globalThis.__sent.push([m, url, body]); }
+      function toast() {} function renderBus() {}
+      function __state() { return { msg: __msg }; }`, ['busAddPast', '__state']);
+    (globalThis as any).__sent = sent;
+    await busAddPast(0);
+    expect(sent).toEqual([]);
+  });
+});
+
+// Task 3: a guest with no prior ride is hard-deleted server-side along with their saved
+// address once removed — students are never deleted. The confirm sheet should say so, but
+// only for a guest.
+describe('busConfirmRemove warns about guest deletion only for a guest rider (Task 3)', () => {
+  const mk = (riders: unknown[]) => {
+    const prelude = `
+      const BUS = { view: { riders: ${JSON.stringify(riders)} } };
+      function esc(s) { return String(s); }
+      let __modal = null;
+      function modal(h) { __modal = h; }
+      function __state() { return { modalHtml: __modal }; }
+    `;
+    return loadFns(['busConfirmRemove'], prelude, ['busConfirmRemove', '__state']);
+  };
+  it('adds the guest-deletion note for a guest', () => {
+    const { busConfirmRemove, __state } = mk([{ id: 'r1', name: 'Jess', guestId: 'g1' }]);
+    busConfirmRemove('r1');
+    expect(__state().modalHtml).toContain("This also deletes their saved address and phone");
+  });
+  it('omits it for a student (never deleted)', () => {
+    const { busConfirmRemove, __state } = mk([{ id: 'r1', name: 'Jess', guestId: null }]);
+    busConfirmRemove('r1');
+    expect(__state().modalHtml).not.toContain('also deletes');
+  });
+});
+
+// Task 2: turning off (or archiving) a car that currently has riders would bounce them to
+// Unassigned — confirm first; skip the confirm when the car is already empty.
+describe('busToggleVeh confirms turning off a car only when it has riders (Task 2)', () => {
+  const mk = (riderCount: number) => {
+    const riders = Array.from({ length: riderCount }, (_, i) => ({ id: 'r' + i, runVehicleId: 'rv1' }));
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Van A' }], riders: ${JSON.stringify(riders)} } };
+      function esc(s) { return String(s); }
+      let __modal = null, __sent = [];
+      function modal(h) { __modal = h; }
+      function closeModal() {}
+      function toast() {}
+      async function _busSend(m, p, b) { __sent.push([m, p, b]); }
+      function __state() { return { modalHtml: __modal, sent: __sent }; }
+    `;
+    return loadFns(['busToggleVeh', 'busRunVeh', '_busRidersOnCar'], prelude, ['busToggleVeh', '__state']);
+  };
+  it('shows a confirm (and re-checks the box) when the car has riders', () => {
+    const { busToggleVeh, __state } = mk(3);
+    const checkbox = { checked: false };
+    busToggleVeh(checkbox, 'rv1', false);
+    expect(checkbox.checked).toBe(true);
+    expect(__state().modalHtml).toContain('Turn off Van A?');
+    expect(__state().modalHtml).toContain('Its 3 riders go back to Unassigned.');
+    expect(__state().sent).toEqual([]); // not sent yet — waiting on confirm
+  });
+  it('turns off immediately with no confirm when the car is empty', async () => {
+    const { busToggleVeh, __state } = mk(0);
+    await busToggleVeh({ checked: false }, 'rv1', false);
+    expect(__state().modalHtml).toBeNull();
+    expect(__state().sent).toEqual([['PATCH', '/bus/run/vehicles/rv1', { running: false }]]);
+  });
+  it('never confirms turning a car ON', async () => {
+    const { busToggleVeh, __state } = mk(3);
+    await busToggleVeh({ checked: true }, 'rv1', true);
+    expect(__state().modalHtml).toBeNull();
+    expect(__state().sent).toEqual([['PATCH', '/bus/run/vehicles/rv1', { running: true }]]);
+  });
+});
+
+describe('busConfirmArchiveVehicle confirms only when the car has riders (Task 2)', () => {
+  const mk = (riderCount: number) => {
+    const riders = Array.from({ length: riderCount }, (_, i) => ({ id: 'r' + i, runVehicleId: 'rv1' }));
+    const prelude = `
+      const BUS = { view: { fleet: [{ id: 'v1', name: 'Van A' }], vehicles: [{ id: 'rv1', vehicleId: 'v1' }], riders: ${JSON.stringify(riders)} } };
+      function esc(s) { return String(s); }
+      let __modal = null, __patched = null;
+      function modal(h) { __modal = h; }
+      function closeModal() {}
+      function toast() {}
+      function _busQs() { return ''; }
+      async function busRefresh() {}
+      const API = { patch: async (url, body) => { __patched = { url, body }; } };
+      function __state() { return { modalHtml: __modal, patched: __patched }; }
+    `;
+    return loadFns(['busConfirmArchiveVehicle', 'busArchiveVehicle', '_busRidersOnCar'], prelude, ['busConfirmArchiveVehicle', '__state']);
+  };
+  it('confirms when the car has riders, and does not archive yet', () => {
+    const { busConfirmArchiveVehicle, __state } = mk(2);
+    busConfirmArchiveVehicle('v1');
+    expect(__state().modalHtml).toContain('Archive Van A?');
+    expect(__state().modalHtml).toContain('Its 2 riders go back to Unassigned.');
+    expect(__state().patched).toBeNull();
+  });
+  it('archives immediately when the car is empty', async () => {
+    const { busConfirmArchiveVehicle, __state } = mk(0);
+    await busConfirmArchiveVehicle('v1');
+    expect(__state().modalHtml).toBeNull();
+    expect(__state().patched?.url).toContain('/bus/vehicles/v1');
+    expect(__state().patched?.body.archived).toBe(true);
+  });
+});
+
+// Task 10: the "Needs N more leader(s)" chip must show the REAL shortfall to the 2-leader
+// minimum, not always "1 more".
+describe('_busCarsHtml computes the real leader shortfall (Task 10)', () => {
+  const mk = (leaderIds: string[]) => {
+    const rv = { id: 'rv1', vehicleId: 'v1', running: true, name: 'Van A', plate: '', seats: 8, capacity: 8,
+      eligibility: { unknown: false, female: true, male: true }, leaderIds, leaderNames: leaderIds, endsAt: 'church', endsAddress: '' };
+    const prelude = `
+      const BUS = { generating: false, view: { run: { lockBy: null, lockUntil: null }, fleet: [], vehicles: [${JSON.stringify(rv)}],
+        leaders: [], riders: [], availablePoolLeaderIds: [] } };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _busSuburb(a) { return a; }
+      function _busPrefGradesChip() { return ''; }
+    `;
+    return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
+  };
+  it('needs 2 more with no leaders', () => {
+    expect(mk([])).toContain('Needs 2 more leaders');
+  });
+  it('needs 1 more (singular) with exactly 1 leader', () => {
+    expect(mk(['L1'])).toContain('Needs 1 more leader<');
+  });
+  it('shows no chip once the car has 2+ leaders', () => {
+    const html = mk(['L1', 'L2']);
+    expect(html).not.toContain('more leader');
+  });
+});
+
+// Task 11: coordinators can remove someone else's own car from Car setup.
+describe('busRemoveOwnCarFor removes the car with an ?as=<ownerLeaderId> override (Task 11)', () => {
+  it('deletes using the car owner\'s leader id, not the caller\'s own', async () => {
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Josh\\'s car', ownerLeaderId: 'L9' }] } };
+      function esc(s) { return String(s); }
+      function _busLocalNow() { return '2026-10-09T19:00'; }
+      let __deleted = null;
+      function closeModal() {}
+      function toast() {}
+      async function busRefresh() {}
+      const API = { del: async (url) => { __deleted = url; } };
+      function __state() { return { deleted: __deleted }; }
+    `;
+    const { busRemoveOwnCarFor, __state } = loadFns(['busRemoveOwnCarFor'], prelude, ['busRemoveOwnCarFor', '__state']);
+    await busRemoveOwnCarFor('rv1');
+    expect(__state().deleted).toContain('/bus/run/own-car?');
+    expect(__state().deleted).toContain('as=L9');
+  });
+  it('does nothing for a car with no owner', async () => {
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', ownerLeaderId: null }] } };
+      let __deleted = null;
+      const API = { del: async (url) => { __deleted = url; } };
+      function closeModal() {}
+      function toast() {}
+      async function busRefresh() {}
+      function __state() { return { deleted: __deleted }; }
+    `;
+    const { busRemoveOwnCarFor, __state } = loadFns(['busRemoveOwnCarFor'], prelude, ['busRemoveOwnCarFor', '__state']);
+    await busRemoveOwnCarFor('rv1');
+    expect(__state().deleted).toBeNull();
+  });
+});
+
+// Task 12: phone is optional on New Person; when entered it must have >=8 digits (spaces/
+// dashes don't count against it).
+describe('busSaveNewPerson: phone is optional, validated by digit count when present (Task 12)', () => {
+  const mk = (phone: string) => {
+    const fields: Record<string, { value: string }> = {
+      'np-first': { value: 'Jess' }, 'np-last': { value: 'Tran' }, 'np-grade': { value: '9' }, 'np-phone': { value: phone },
+    };
+    const prelude = `
+      const BUS = { search: '' };
+      let _busNpGender = 'female';
+      const document = { getElementById: (id) => (${JSON.stringify(fields)})[id] };
+      function _busBlockWrite() { return false; }
+      function _busReadAddress() { return { addressId: 'a1' }; }
+      function _busQs() { return ''; }
+      let __posted = null, __sent = [];
+      const API = { post: async (url, body) => { __posted = body; return { id: 'g1' }; } };
+      async function _busSend(m, p, b) { __sent.push([m, p, b]); }
+      function closeModal() {}
+      function toast(m) { globalThis.__toast = m; }
+      function renderBus() {}
+      function __state() { return { posted: __posted, sent: __sent, toastMsg: globalThis.__toast }; }
+    `;
+    return loadFns(['busSaveNewPerson'], prelude, ['busSaveNewPerson', '__state']);
+  };
+  it('saves fine with no phone at all', async () => {
+    const { busSaveNewPerson, __state } = mk('');
+    await busSaveNewPerson();
+    expect(__state().posted.phone).toBeNull();
+    expect(__state().sent).toHaveLength(1);
+  });
+  it('rejects a phone with fewer than 8 digits', async () => {
+    const { busSaveNewPerson, __state } = mk('1234');
+    await busSaveNewPerson();
+    expect(__state().toastMsg).toBe('Check the phone number');
+    expect(__state().sent).toHaveLength(0);
+  });
+  it('accepts a formatted phone with 8+ digits', async () => {
+    const { busSaveNewPerson, __state } = mk('0412 345 678');
+    await busSaveNewPerson();
+    expect(__state().posted.phone).toBe('0412 345 678');
+    expect(__state().sent).toHaveLength(1);
+  });
+});
+
+// Task 14: the server ranks phone matches first and flags them with byPhone — the suggestion
+// prompt should call that out.
+describe('_busNewPeopleCard shows "same phone" for a byPhone suggestion (Task 14)', () => {
+  const mk = (byPhone: boolean) => {
+    const prelude = `
+      const BUS = { view: { pendingNewPeople: 1 }, pending: [{ id: 'p1', name: 'New Kid', grade: 9, phone: '0412345678',
+        createdAt: '2026-10-01T00:00:00.000Z', suggestions: [{ name: 'Jess Tran', grade: 9, studentId: 's1', byPhone: ${byPhone} }] }] };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function L(k) { return k; }
+    `;
+    return loadFns(['_busNewPeopleCard'], prelude)._busNewPeopleCard();
+  };
+  it('adds "— same phone" when the match is by phone', () => {
+    expect(mk(true)).toContain('Is this Jess Tran (Y9) — same phone?');
+  });
+  it('omits it for a plain name/grade match', () => {
+    expect(mk(false)).toContain('Is this Jess Tran (Y9)?');
+    expect(mk(false)).not.toContain('same phone');
+  });
+});
+
+// Task 15: a plain leader can't reach Bus settings — tell them who to ask instead of sending
+// them to a page they have no button for.
+describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 15)', () => {
+  const mk = (role: string, canCoordinate: boolean) => {
+    const prelude = `
+      const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }], canCoordinate: ${canCoordinate} },
+        myCar: { vehicle: { id: 'rv1', name: 'Van A', leaderIds: ['L1'], leaderNames: ['Amy'], ownerLeaderId: null, needsFemaleLeader: false },
+          churchAddress: '', stops: [] } };
+      const S = { user: { role: ${JSON.stringify(role)} } };
+      function getMyLeaderId() { return 'L1'; }
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _busMapsLinks() { return []; }
+      function _busSuburb(a) { return a; }
+      function _busConsentChip() { return ''; }
+      function _busPinnedIcon() { return ''; }
+      function _busFmtTime() { return ''; }
+    `;
+    return loadFns(['_busMyCarHtml'], prelude)._busMyCarHtml();
+  };
+  it('tells a plain leader to ask a coordinator', () => {
+    expect(mk('leader', false)).toContain('Ask a coordinator to set the church address');
+  });
+  it('still points a coordinator leader at Bus settings', () => {
+    expect(mk('leader', true)).toContain('Set the church address in Bus settings');
+  });
+  it('still points an admin at Bus settings', () => {
+    expect(mk('admin', false)).toContain('Set the church address in Bus settings');
+  });
+});
+
+// Task 9: Leaders-on-car sheet should use the same sticky Cancel+Save row as Edit vehicle.
+describe('busEditCarLeaders uses the .bus-sheet-actions Cancel+Save row (Task 9)', () => {
+  it('renders Cancel and Save inside .bus-sheet-actions', () => {
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Van A', leaderIds: [] }], leaders: [{ id: 'L1', name: 'Amy', gender: 'female' }] } };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      let __modal = null;
+      function modal(h) { __modal = h; }
+      function __state() { return { modalHtml: __modal }; }
+    `;
+    const { busEditCarLeaders, __state } = loadFns(['busEditCarLeaders'], prelude, ['busEditCarLeaders', '__state']);
+    busEditCarLeaders('rv1');
+    const html = __state().modalHtml;
+    expect(html).toContain('class="bus-sheet-actions"');
+    expect(html).toContain('onclick="closeModal()"');
+    expect(html).toContain("busSaveCarLeaders('rv1')");
+  });
+});
+
+// Task 5: the Undo button must not be usable while another device holds the lock.
+describe('_busUndoBar disables Undo while another device holds the lock (Task 5)', () => {
+  const mk = (lockBy: string | null, lockUntil: string | null) => {
+    const prelude = `
+      const BUS = { generating: false, view: { run: { readOnly: false, canCoordinate: true, undoUntil: '2099-01-01T00:00:00.000Z',
+        lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} }, canCoordinate: true } };
+    `;
+    return loadFns(['_busUndoBar', '_busLockedBy'], prelude, ['_busUndoBar'])._busUndoBar();
+  };
+  it('is enabled with no live lock', () => {
+    expect(mk(null, null)).not.toContain('disabled');
+  });
+  it('is disabled while another device holds a live lock', () => {
+    expect(mk('Sarah', '2099-01-01T00:00:00.000Z')).toContain('disabled');
+  });
+});
+
+// Task 5: a failed toggle (Turn off / Fit in, etc. via busRunVeh) must snap the UI back
+// instead of leaving a checkbox showing a state the server rejected.
+describe('busRunVeh calls busRefresh() on failure so a rejected toggle snaps back (Task 5)', () => {
+  it('toasts the error and still refreshes', async () => {
+    const calls: string[] = [];
+    const prelude = `
+      async function _busSend() { throw new Error('boom'); }
+      function toast(m) { globalThis.__calls.push('toast:' + m); }
+      async function busRefresh() { globalThis.__calls.push('busRefresh'); }
+    `;
+    const { busRunVeh } = loadFns(['busRunVeh'], prelude);
+    (globalThis as any).__calls = calls;
+    await busRunVeh('rv1', { running: false });
+    expect(calls).toEqual(['toast:boom', 'busRefresh']);
+  });
+});
+
+// Task 7: a run vehicle's endsAt/endsAddress can differ from the fleet default as a
+// tonight-only override — Edit vehicle must pre-fill from THAT, not silently show (and risk
+// reverting) the fleet default, and start the checkbox checked.
+describe('busEditVehicle pre-fills from the run vehicle when it has a tonight-only override (Task 7)', () => {
+  const mk = (rv: unknown) => {
+    const prelude = `
+      const BUS = { ac: {}, view: { fleet: [{ id: 'v1', name: 'Van A', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '' }],
+        vehicles: [${JSON.stringify(rv)}], leaders: [] } };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _gradeWord() { return 'Year'; }
+      const window = {};
+      let __modal = null;
+      function modal(h) { __modal = h; }
+      function __state() { return { modalHtml: __modal }; }
+    `;
+    return loadFns(['busEditVehicle', '_busEndsAtField', '_busAcField', '_busUuid'], prelude, ['busEditVehicle', '__state']);
+  };
+  it('pre-fills the override address and checks "Tonight only" when rv differs from the fleet default', () => {
+    const { busEditVehicle, __state } = mk({ id: 'rv1', vehicleId: 'v1', endsAt: 'address', endsAddress: '9 Temp St', endsPlaceId: 'PT' });
+    busEditVehicle('v1');
+    const html = __state().modalHtml;
+    expect(html).toContain('value="9 Temp St"');
+    expect(html).toMatch(/id="ve-tonight" checked/);
+  });
+  it('shows the fleet default unchecked when there is no override', () => {
+    const { busEditVehicle, __state } = mk({ id: 'rv1', vehicleId: 'v1', endsAt: 'church', endsAddress: '' });
+    busEditVehicle('v1');
+    const html = __state().modalHtml;
+    expect(html).not.toContain('value="9 Temp St"');
+    expect(html).not.toMatch(/id="ve-tonight" checked/);
+  });
+});
+
+// Task 8: the header Analysis button gets an active/pressed style, and the analysis body
+// gets a quick way back to Routes.
+describe('Analysis active indicator and back link (Task 8)', () => {
+  it('_busAnalysisHtml puts a "Back to Routes" link at the top, even on error', () => {
+    const prelude = `
+      const BUS = { analysisErr: 'boom', tab: 'analysis' };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+    `;
+    const html = loadFns(['_busAnalysisHtml'], prelude)._busAnalysisHtml();
+    expect(html).toContain('Back to Routes');
+    expect(html.indexOf('Back to Routes')).toBeLessThan(html.indexOf('boom'));
+  });
+  it('the header Analysis button is index.html-sourced and switches class with BUS.tab', () => {
+    const html = loadIndexHtml();
+    const block = html.slice(html.indexOf('/* ── BUS MODULE ── */'), html.indexOf('/* ── END BUS MODULE ── */'));
+    expect(block).toContain("BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'");
   });
 });

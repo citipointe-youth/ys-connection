@@ -213,6 +213,21 @@ describe('my car', () => {
     const nextWeek = await t.svc.myCar(t.ctx('grade', 'L2', '2026-10-16T18:00'));
     expect(nextWeek.ownCarDraft!.car!.name).toBe("Sarah's car");
   });
+  // Task 6: confirmed this already works — self-identification via `as=` is spoofable by
+  // design (spec §4), and a bus:coordinate login (quad/director/admin) already has `bus:use`
+  // outright via ROLE_PERMISSIONS, so `removeOwnCar` resolves `me` to whatever `as=` names and
+  // finds/deletes THAT leader's own car. The SPA call is simply
+  // `DELETE /bus/run/own-car?now=<local>&as=<ownerLeaderId>` from the coordinator's own session
+  // (no leader login/record needed) — no new route was added.
+  it('Task 6: a quad coordinator can remove another leader\'s own car via as=', async () => {
+    const t = await withFleet();
+    await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'church' }, riderIds: [t.c.id] });
+    expect((await t.svc.getRun(t.ctx('admin'))).vehicles.find((v) => v.ownerLeaderId === 'L2')).toBeTruthy();
+    await t.svc.removeOwnCar(t.ctx('quad', 'L2')); // a different account, self-identifying AS Sarah
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.vehicles.find((x) => x.ownerLeaderId === 'L2')).toBeUndefined();
+    expect(v.riders.find((r) => r.id === t.c.id)!.runVehicleId).toBeNull(); // rider freed, not orphaned
+  });
 });
 
 describe('guest linking', () => {
@@ -228,9 +243,41 @@ describe('guest linking', () => {
     expect(pending.map((p) => p.id)).toEqual([g2.id]);
     expect(pending[0]!.suggestions.map((s) => s.studentId).sort()).toEqual(['s1', 's4']);
   });
+
+  // Task 2 (owner): "New people from Bus Ministry" must also suggest a student whose OWN mobile
+  // or parent phone matches the guest's phone — not just a last-name/first-name-prefix match.
+  it('Task 2: matches by phone (mobile), even with no name overlap at all', async () => {
+    const t = await setup(); // s1 'Jess Tran' seeded with mobile '0412345678'
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Random', lastName: 'Walker', grade: 9, gender: 'female', phone: '+61 412 345 678' });
+    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's1', name: 'Jess Tran', grade: 9, byPhone: true }]);
+  });
+  it('Task 2: matches by parent phone too, leading 0/61 normalised the same way', async () => {
+    const t = await setup();
+    await t.students.save({ ...(await t.students.findById('s2'))!, parentPhone: '0433222111' });
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Random', lastName: 'Other', grade: 8, gender: 'male', phone: '61433222111' });
+    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's2', name: 'Sam Ode', grade: 8, byPhone: true }]);
+  });
+  it('Task 2: a student matching both by phone and by name is listed once, flagged byPhone', async () => {
+    const t = await setup();
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Jess', lastName: 'Tran', grade: 9, gender: 'female', phone: '0412345678' });
+    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's1', name: 'Jess Tran', grade: 9, byPhone: true }]);
+  });
 });
 
 describe('parent consent', () => {
+  // Task 3 (bug): setConsent didn't check the Generate lock, unlike every other rider write
+  // (addRider/updateRider/removeRider/moveRider) — a consent tick mid-solve could race Generate's
+  // own writes to the same rider row.
+  it('Task 3: setConsent is blocked while the Generate lock is active, like other rider writes', async () => {
+    const t = await setup();
+    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    const runId = (await t.svc.getRun(t.ctx('admin'))).run.id;
+    await t.bus.tryLock(runId, 'someone#tok', new Date().toISOString(), new Date(Date.now() + 60_000).toISOString());
+    await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'x' })).rejects.toMatchObject({ statusCode: 409 });
+  });
   it('starts as not yet, persists to next week, and follows a linked walk-in', async () => {
     const t = await setup();
     const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
@@ -327,6 +374,19 @@ describe('createGuest input validation (C2)', () => {
       .rejects.toMatchObject({ statusCode: 400 });
     await expect(svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: 'call-me!' }))
       .rejects.toMatchObject({ statusCode: 400 });
+  });
+  // Task 5 (owner): phone is now optional — blank/omitted stores as null; a given value still
+  // needs >=8 digits once separators are stripped, or it's rejected.
+  it('Task 5: blank or omitted phone stores as null; a too-short phone is rejected; a valid one is kept', async () => {
+    const { svc, bus, ctx } = await setup();
+    const g1 = await svc.createGuest(ctx('grade'), { firstName: 'Noor', lastName: 'Ali', grade: 8, gender: 'female', phone: '' });
+    expect((await bus.getGuest(g1.id))!.phone).toBeNull();
+    const g2 = await svc.createGuest(ctx('grade'), { firstName: 'Sam', lastName: 'Lee', grade: 8, gender: 'male' });
+    expect((await bus.getGuest(g2.id))!.phone).toBeNull();
+    await expect(svc.createGuest(ctx('grade'), { firstName: 'Joy', lastName: 'Park', grade: 8, gender: 'female', phone: '12345' }))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Check the phone number' });
+    const g3 = await svc.createGuest(ctx('grade'), { firstName: 'Lee', lastName: 'Park', grade: 8, gender: 'male', phone: '+61 412 345 678' });
+    expect((await bus.getGuest(g3.id))!.phone).toBe('+61 412 345 678');
   });
 });
 
