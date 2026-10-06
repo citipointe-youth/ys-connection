@@ -426,6 +426,23 @@ describe('Move re-orders the car', () => {
   });
 });
 
+// Leader preferred grades: a car's effective prefGrades unions its vehicle's own with the
+// prefGrades of whichever leaders end up in it. Both fleet vehicles start at the same church
+// placeId, so FakeRoutingProvider's score() (cost*60 + fakeSeconds) is driven entirely by the
+// prefWeightMin cost difference below — deterministic regardless of the fake distance.
+describe('leader preferred grades feed the solver', () => {
+  it('a Y10 rider lands in the car whose leader prefers Y10, not a car that excludes it', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van A', 8, ['L1', 'L2'], { prefGrades: [8] }); // vehicle itself excludes Y10
+    const b = await f.car('Van B', 8, ['L3', 'L4']); // no vehicle prefGrades at all
+    await f.svc.setLeaderPrefs(f.admin, 'L3', { prefGrades: [10] }); // only L3's own prefs name Y10
+    const riley = await f.rider('s3'); // Riley Kim, Y10
+    await f.svc.generate(f.admin, { mode: 'all' });
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === riley.id)!.runVehicleId).toBe(b);
+  });
+});
+
 describe('autocomplete', () => {
   it('short input returns [] without calling Google; region code and session are passed through', async () => {
     const rec = recordingRouting();

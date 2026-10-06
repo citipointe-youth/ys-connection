@@ -73,7 +73,10 @@ const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim(
 const UpdateRunVehicle = z.object({ running: z.boolean().optional(), leaderIds: z.array(z.string()).optional(),
   endsAt: EndsFields.endsAt.optional(), endsAddress: z.string().max(200).nullable().optional(), endsPlaceId: z.string().max(300).nullable().optional() });
 const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
-const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(), fixedVehicleId: z.string().nullable().optional() });
+// prefGrades matches the vehicle's own SaveVehicle.prefGrades shape above — plain ints, no
+// min/max (the grade range itself is ministry-config-driven, not a fixed Zod bound).
+const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(), fixedVehicleId: z.string().nullable().optional(),
+  prefGrades: z.array(z.number().int()).optional() });
 const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(40), seats: z.number().int().min(2).max(15),
   plate: z.string().max(12).nullable().default(null), ...EndsFields }), riderIds: z.array(z.string()) });
 const MoveIn = z.object({ runVehicleId: z.string().nullable().optional(), unpin: z.boolean().optional() })
@@ -243,7 +246,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
-      inPool: prefBy.get(l.id)?.inPool ?? false, fixedVehicleId: prefBy.get(l.id)?.fixedVehicleId ?? null }));
+      inPool: prefBy.get(l.id)?.inPool ?? false, fixedVehicleId: prefBy.get(l.id)?.fixedVehicleId ?? null,
+      prefGrades: prefBy.get(l.id)?.prefGrades ?? [] }));
     const seesPending = can(ctx.actor, 'bus:analysis');
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
     const riderViews = riders.map((r) => riderView(r, consentFor(consents, r)));
@@ -328,8 +332,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** Builds the fleet solve for Generate / Fit in (and R3's "Try +N cars"). Reads only. */
   async function prepareFleet(c: MinistryConfig, run: BusRun, mode: 'all' | 'fit'): Promise<FleetPrep> {
     const b = c.busMinistry;
-    const [rvs, riders, all, fleet] = await Promise.all([bus.listRunVehicles(run.id), bus.listRunRiders(run.id), leaders.findAll(), bus.listVehicles()]);
+    const [rvs, riders, all, fleet, prefs] = await Promise.all([bus.listRunVehicles(run.id), bus.listRunRiders(run.id), leaders.findAll(), bus.listVehicles(), bus.listLeaderPrefs()]);
     const genderBy = new Map(all.map((l) => [l.id, genderOf(l.gender)]));
+    const prefGradesBy = new Map(prefs.map((p) => [p.id, p.prefGrades]));
     const known = (ids: string[]) => ids.filter((id) => genderBy.has(id));
     const cars = rvs.filter((v) => v.running && v.vehicleId);
     const ownCarIds = new Set(rvs.filter((v) => v.ownerLeaderId).map((v) => v.id));
@@ -352,10 +357,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const solvable = fleetRiders.filter((r) => r.snapPlaceId && !(mode === 'fit' && r.pinned && !r.runVehicleId));
     const fleetCars: FleetCar[] = cars.map((v) => {
       const ids = filled.get(v.id) ?? known(v.leaderIds);
+      // Task: a car's effective prefGrades is its vehicle's own ∪ the prefGrades of whichever
+      // leaders end up in it tonight (fixed + pool auto-fill — `ids` already reflects both).
+      const vehiclePrefGrades = fleet.find((f) => f.id === v.vehicleId)?.prefGrades ?? [];
+      const leaderPrefGrades = ids.flatMap((id) => prefGradesBy.get(id) ?? []);
       return { id: v.id,
         capacity: Math.max(0, capacityOf(v.seats, ids.length) - untouched.filter((r) => r.runVehicleId === v.id).length),
         eligibility: eligibilityOf(ids.map((id) => genderBy.get(id) ?? null)),
-        prefGrades: fleet.find((f) => f.id === v.vehicleId)?.prefGrades ?? [],
+        prefGrades: [...new Set([...vehiclePrefGrades, ...leaderPrefGrades])],
         endPlaceId: endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId) };
     });
     const { problem, stopRiderIds } = buildFleetProblem(mode, fleetCars,
@@ -573,9 +582,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
       const run = await ensureRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // I1: fixedVehicleId/inPool feed the solve's auto-fill
-      const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
+      const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
       await bus.saveLeaderPrefs({ ...p, ...(v.inPool !== undefined ? { inPool: v.inPool } : {}),
-        ...(v.fixedVehicleId !== undefined ? { fixedVehicleId: v.fixedVehicleId } : {}) });
+        ...(v.fixedVehicleId !== undefined ? { fixedVehicleId: v.fixedVehicleId } : {}),
+        ...(v.prefGrades !== undefined ? { prefGrades: v.prefGrades } : {}) });
       await touch(ctx, run);
     },
     async saveOwnCar(ctx, input) {
@@ -605,7 +615,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         await bus.saveRunRider({ ...byId.get(id)!, runVehicleId: rv.id, stopOrder: i + 1, pinned: true });
       }
       await reorderCar(c, run, rv);
-      const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [] };
+      const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
       if (leader) await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,
         lastOwnRiderKeys: riders.filter((r) => v.riderIds.includes(r.id)).map(riderKey) });
       await bus.setUndo(run.id, null, null); // I2: these riders just moved into an own car — a later Undo must not pull them back out

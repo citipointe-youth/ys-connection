@@ -454,6 +454,14 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
     const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
     expect(_busRoutesHtml()).not.toContain('Only 1 girl');
   });
+  it('shows the per-car Route button only for a car with riders', () => {
+    const v = { run: { readOnly: false }, riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'male', placeId: 'P1' }],
+      vehicles: [car(), { ...car(), id: 'rv2' }] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    const html = _busRoutesHtml();
+    expect(html).toContain("busOpenCarRoute('rv1')");
+    expect(html).not.toContain("busOpenCarRoute('rv2')");
+  });
 });
 
 describe('busGenerate toast mentions riders kept off a car alone', () => {
@@ -517,6 +525,116 @@ describe('_busRosterHtml locks add/search/remove while Generate is running or a 
     const html = run(false, 'Sarah', '2099-01-01T00:00:00.000Z');
     expect(html).not.toContain('bus-q');
     expect(html).not.toContain('busConfirmRemove');
+  });
+});
+
+// Bug fix (2026-10-06 follow-up): My car's picker used to re-render off the stale BUS.myCar
+// fetched before any identity was chosen ("No car assigned."). Both onchange/onclick handlers
+// must clear BUS.myCar and go through busRefresh() (which re-fetches /bus/my-car with the new
+// ?as= leader and repaints), not call renderBus() directly off stale data.
+describe('_busMyCarHtml identity picker refreshes BUS.myCar, not a bare renderBus (bug fix)', () => {
+  it('choosing a name clears BUS.myCar and calls busRefresh', () => {
+    const prelude = `
+      const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
+      function getMyLeaderId() { return null; }
+      function esc(s) { return String(s); }
+    `;
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
+    const html = _busMyCarHtml();
+    expect(html).toContain('setMyLeaderId(this.value);BUS.myCar=null;busRefresh()');
+    expect(html).not.toContain('renderBus()');
+  });
+  it('"Not you?" also clears BUS.myCar and calls busRefresh', () => {
+    const prelude = `
+      const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
+      function getMyLeaderId() { return 'L1'; }
+      function esc(s) { return String(s); }
+    `;
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
+    const html = _busMyCarHtml();
+    expect(html).toContain('setMyLeaderId(null);BUS.myCar=null;busRefresh()');
+    expect(html).not.toContain('renderBus()');
+  });
+});
+
+// Leader preferred grades (Task 2): Edit Pool sheet gets a per-leader grade checkbox block
+// (same #ve-grades pattern busEditVehicle uses), and the pool list shows a compact chip.
+describe('leader preferred grades UI', () => {
+  it('busEditPoolSheet renders a checked box for each of a leader\'s prefGrades, scoped by leader id', () => {
+    const prelude = `
+      const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy', gender: 'female', inPool: true, prefGrades: [9, 10] }] } };
+      function esc(s) { return String(s); }
+      function icS() { return ''; }
+      function _gradeList() { return [7, 8, 9, 10, 11, 12]; }
+      function _gradeWord() { return 'Year'; }
+      let __captured = '';
+      function modal(h) { __captured = h; }
+      function __state() { return { captured: __captured }; }
+    `;
+    const { busEditPoolSheet, __state } = loadFns(['busEditPoolSheet'], prelude, ['busEditPoolSheet', '__state']);
+    busEditPoolSheet();
+    const html = __state().captured;
+    expect(html).toContain('id="pg-L1"');
+    expect(html).toMatch(/value="9"[^>]*checked/);
+    expect(html).toMatch(/value="10"[^>]*checked/);
+    expect(html).not.toMatch(/value="7"[^>]*checked/);
+  });
+  it('busSetLeaderGrades reads only the checked boxes inside this leader\'s own block', async () => {
+    const prelude = `
+      const __calls = [];
+      const document = { querySelectorAll: (sel) => (sel === '#pg-L1 input:checked' ? [{ value: '9' }, { value: '11' }] : []) };
+      async function _busSend(method, path, body) { __calls.push({ method, path, body }); }
+      function busEditPoolSheet() {}
+      function toast() {}
+      function __state() { return { calls: __calls }; }
+    `;
+    const { busSetLeaderGrades, __state } = loadFns(['busSetLeaderGrades'], prelude, ['busSetLeaderGrades', '__state']);
+    await busSetLeaderGrades('L1');
+    expect(__state().calls[0]).toEqual({ method: 'PATCH', path: '/bus/leader-prefs/L1', body: { prefGrades: [9, 11] } });
+  });
+  it('_busPrefGradesChip is compact and empty when there are no preferred grades', () => {
+    const { _busPrefGradesChip } = loadFns(['_busPrefGradesChip']);
+    expect(_busPrefGradesChip({ prefGrades: [9, 10] })).toContain('Y9,Y10');
+    expect(_busPrefGradesChip({ prefGrades: [] })).toBe('');
+  });
+});
+
+// Route preview per car (Task 3): reuses My car's own _busMapsLinks helper; hidden for an
+// empty car; opens directly for a single link, offers a small sheet for several.
+describe('busOpenCarRoute', () => {
+  const mk = (riders: unknown[]) => {
+    const prelude = `
+      const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Van A', endsAt: 'church' }], riders: ${JSON.stringify(riders)} },
+        myCar: { churchAddress: '1 Church Rd', churchPlaceId: 'PC' } };
+      let __opened = null, __modal = null;
+      const window = { open: (url) => { __opened = url; } };
+      function esc(s) { return String(s); }
+      function icS() { return ''; }
+      function toast() {}
+      function modal(h) { __modal = h; }
+      function __state() { return { opened: __opened, modalHtml: __modal }; }
+    `;
+    return loadFns(['busOpenCarRoute', '_busMapsLinks'], prelude, ['busOpenCarRoute', '__state']);
+  };
+  it('opens Google Maps directly for a car with a single link (<=9 stops)', () => {
+    const { busOpenCarRoute, __state } = mk([{ id: 'r1', runVehicleId: 'rv1', stopOrder: 1, address: '1 A St', placeId: 'PA' }]);
+    busOpenCarRoute('rv1');
+    expect(__state().opened).toContain('google.com/maps/dir');
+    expect(__state().modalHtml).toBeNull();
+  });
+  it('offers a small sheet of links for more than 9 stops', () => {
+    const riders = Array.from({ length: 11 }, (_, i) => ({ id: 'r' + i, runVehicleId: 'rv1', stopOrder: i + 1, address: `${i} A St`, placeId: 'P' + i }));
+    const { busOpenCarRoute, __state } = mk(riders);
+    busOpenCarRoute('rv1');
+    expect(__state().opened).toBeNull();
+    expect(__state().modalHtml).toContain('Van A route');
+    expect((__state().modalHtml.match(/btn-primary btn-full/g) ?? []).length).toBe(2);
+  });
+  it('does nothing for a car with no riders', () => {
+    const { busOpenCarRoute, __state } = mk([]);
+    busOpenCarRoute('rv1');
+    expect(__state().opened).toBeNull();
+    expect(__state().modalHtml).toBeNull();
   });
 });
 

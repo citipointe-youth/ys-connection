@@ -8575,22 +8575,52 @@ function _busMapsLinks(stops, church, car, churchPlaceId) {
   });
 }
 
+// Routes page: per-car route preview, reusing My car's own _busMapsLinks helper. The Routes
+// view itself has no churchAddress/churchPlaceId — BUS.myCar carries it (busRefresh() always
+// fetches /bus/my-car alongside /bus/run), so it's already warm by the time this tab renders.
+function busOpenCarRoute(runVehicleId) {
+  const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
+  const church = BUS.myCar && BUS.myCar.churchAddress;
+  if (!rv || !church) { toast('Set the church address in Bus settings'); return; }
+  const stops = v.riders.filter((r) => r.runVehicleId === runVehicleId).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
+  if (!stops.length) return;
+  const links = _busMapsLinks(stops, church, rv, BUS.myCar.churchPlaceId);
+  if (links.length === 1) { window.open(links[0].url, '_blank', 'noopener'); return; }
+  modal(`<div class="mo-title">${esc(rv.name)} route</div>
+    ${links.map((l) => `<a class="btn btn-primary btn-full" style="margin-bottom:8px" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('')}`);
+}
 async function busRunVeh(id, patch) { try { await _busSend('PATCH', '/bus/run/vehicles/' + id, patch); } catch (e) { toast(e.message); } }
 async function busSetPool() {
   const ids = [...document.querySelectorAll('.bus-pool input:checked')].map((i) => i.value);
   try { await _busSend('PATCH', '/bus/run/pool', { availableLeaderIds: ids }); } catch (e) { toast(e.message); }
 }
 // "Edit pool" sheet — the standing willing-to-do-drop-homes flag per leader (BusLeaderView.inPool),
-// separate from tonight's availability ticked above (busSetPool/availablePoolLeaderIds).
+// separate from tonight's availability ticked above (busSetPool/availablePoolLeaderIds). Also
+// where a leader's own preferred grades are set — same checkbox pattern busEditVehicle uses for
+// a vehicle's prefGrades (#ve-grades) — which the solver unions onto whichever car they end up in.
 function busEditPoolSheet() {
   const v = BUS.view;
+  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
+  const row = (l) => `<div class="cbx-row" style="display:block">
+      <label style="display:flex;align-items:center;gap:10px"><input type="checkbox" ${l.inPool ? 'checked' : ''} onchange="busSetInPool('${l.id}',this.checked)">
+      ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>
+      <div id="pg-${l.id}" style="padding-left:30px;font-size:12px;color:var(--ink-mid)">Prefers:
+        ${grades.map((g) => `<label style="display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0"><input type="checkbox" value="${g}" ${l.prefGrades.includes(g) ? 'checked' : ''} onchange="busSetLeaderGrades('${l.id}')" style="width:14px;height:14px"> ${esc(_gradeWord())} ${g}</label>`).join('')}
+      </div></div>`;
   modal(`<div class="mo-title">Leader pool</div>
-    <div class="bus-checks">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" ${l.inPool ? 'checked' : ''} onchange="busSetInPool('${l.id}',this.checked)">
-      ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
+    <div class="bus-checks">${v.leaders.map(row).join('')}</div>
     <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>`);
 }
 async function busSetInPool(leaderId, inPool) {
   try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { inPool }); busEditPoolSheet(); } catch (e) { toast(e.message); }
+}
+async function busSetLeaderGrades(leaderId) {
+  const prefGrades = [...document.querySelectorAll('#pg-' + leaderId + ' input:checked')].map((i) => Number(i.value));
+  try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { prefGrades }); busEditPoolSheet(); } catch (e) { toast(e.message); }
+}
+// Compact "where pool leaders are listed" display (_busCarsHtml's pool list).
+function _busPrefGradesChip(l) {
+  return (l.prefGrades && l.prefGrades.length) ? `<span class="chip c-neutral">${l.prefGrades.map((g) => 'Y' + g).join(',')}</span>` : '';
 }
 function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId) {
   return `<label class="fl">Ends at</label>
@@ -8701,7 +8731,7 @@ function _busCarsHtml() {
 
   const poolLeaders = v.leaders.filter((l) => l.inPool);
   const poolRows = poolLeaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${v.availablePoolLeaderIds.includes(l.id) ? 'checked' : ''} onchange="busSetPool()">
-    <span class="cbx-main">${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</span></label>`).join('');
+    <span class="cbx-main">${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)} ${_busPrefGradesChip(l)}</span></label>`).join('');
 
   const ownCars = v.vehicles.filter((rv) => rv.ownerLeaderId);
   const ownCarRows = ownCars.map((rv) => {
@@ -8817,11 +8847,13 @@ function _busRoutesHtml() {
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
     </div>`).join('');
+    // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
+    const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
         <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${loneGirlChip}</span>
-        <span class="drop-chev">${icS('chevr')}</span>
+        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${routeBtn}<span class="drop-chev">${icS('chevr')}</span></span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
     </div>`;
@@ -8895,9 +8927,12 @@ function _busDropAtIso(hhmm) {
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
   const mine = getMyLeaderId();
+  // Bug fix: BUS.myCar was fetched (as part of busRefresh()) BEFORE an identity was chosen,
+  // so just re-rendering off the stale BUS.myCar showed "No car assigned." — clear it and go
+  // through busRefresh(), which re-fetches /bus/my-car with the new ?as= and repaints.
   const picker = mine
-    ? `<div class="mycar-id">I am: <b>${esc((v.leaders.find((l) => l.id === mine) || {}).name || '')}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="setMyLeaderId(null);renderBus()">Not you?</button></div>`
-    : `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);renderBus()"><option value="">— Choose your name —</option>${v.leaders.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>`;
+    ? `<div class="mycar-id">I am: <b>${esc((v.leaders.find((l) => l.id === mine) || {}).name || '')}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="setMyLeaderId(null);BUS.myCar=null;busRefresh()">Not you?</button></div>`
+    : `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);BUS.myCar=null;busRefresh()"><option value="">— Choose your name —</option>${v.leaders.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>`;
   if (!mine) return picker;
   if (!mc) return `${picker}<div class="card-sub">Loading…</div>`;
   if (mc.vehicle) {

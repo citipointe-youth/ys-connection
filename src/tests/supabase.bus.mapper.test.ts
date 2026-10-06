@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { busCrypt } from '../repositories/supabase/supabase.bus';
+import { busCrypt, toPrefs } from '../repositories/supabase/supabase.bus';
 
 beforeAll(() => {
   process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(32, 2).toString('base64');
@@ -21,5 +21,16 @@ describe('bus field encryption', () => {
   it('consent notes use their own AAD', () => {
     const ct = busCrypt.enc('Mum, text 7pm', 'bus_consents:note:c1');
     expect(busCrypt.dec(ct, 'bus_consents:note:c1')).toBe('Mum, text 7pm');
+  });
+});
+
+describe('leader prefs prefGrades (int[] column, not encrypted)', () => {
+  it('maps pref_grades onto prefGrades', () => {
+    const row = { leader_id: 'L1', in_pool: true, fixed_vehicle_id: null, own_car: null, last_own_rider_keys: [], pref_grades: [9, 10] };
+    expect(toPrefs(row).prefGrades).toEqual([9, 10]);
+  });
+  it('defaults to [] when the column is absent (pre-migration row)', () => {
+    const row = { leader_id: 'L1', in_pool: false, fixed_vehicle_id: null, own_car: null, last_own_rider_keys: [] };
+    expect(toPrefs(row).prefGrades).toEqual([]);
   });
 });

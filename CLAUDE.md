@@ -108,7 +108,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0013` (`0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0014` (`0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 ## Role hierarchy
 

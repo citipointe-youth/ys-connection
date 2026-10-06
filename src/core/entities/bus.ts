@@ -14,7 +14,7 @@ export interface BusOwnCar {
 }
 /** id === leaderId. riderKeys are 's:<studentId>' | 'g:<guestId>'. */
 export interface BusLeaderPrefs {
-  id: ID; inPool: boolean; fixedVehicleId: ID | null; ownCar: BusOwnCar | null; lastOwnRiderKeys: string[];
+  id: ID; inPool: boolean; fixedVehicleId: ID | null; ownCar: BusOwnCar | null; lastOwnRiderKeys: string[]; prefGrades: number[];
 }
 export interface BusGuest {
   id: ID; firstName: string; lastName: string; grade: number | null; gender: BusGender;
@@ -60,7 +60,7 @@ export interface BusRiderView {
   consent: { given: boolean; note?: string; recordedBy?: string; recordedAt?: string } | null;
   droppedAt: string | null; droppedBy: string | null;
 }
-export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null }
+export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null; prefGrades: number[] }
 export interface BusRunView {
   run: { id: ID; serviceDate: string; version: number; readOnly: boolean;
          lastChangeBy: string | null; lastChangeAt: string | null;
