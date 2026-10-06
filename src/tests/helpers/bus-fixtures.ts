@@ -1,4 +1,5 @@
 import { makeBusService, type BusCtx } from '../../services/bus.service';
+import { generateId } from '../../utils/id';
 import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository } from '../../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../../core/ministry-config';
 import { FakeRoutingProvider } from '../../services/routing/fake-routing-provider';
@@ -76,6 +77,14 @@ export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceI
     return rv.id;
   }
   async function rider(studentId: string, placeId: string | null = `fake:${studentId}`) {
+    // Task 2 (owner): a brand-new address now requires a real placeId — a null placeId here
+    // means "simulate a saved address with no map pin" (the noAddressPin feature, for data that
+    // predates that requirement), so save it directly via the repo and reuse it by addressId.
+    if (placeId === null) {
+      const addr = await bus.saveAddress({ id: generateId(), studentId, guestId: null, label: 'Home',
+        address: `${studentId} Test St, Testville`, placeId: null, lastUsedAt: T, createdAt: T });
+      return svc.addRider(admin, { studentId, addressId: addr.id });
+    }
     return svc.addRider(admin, { studentId, newAddress: { label: 'Home', address: `${studentId} Test St, Testville`, placeId } });
   }
   return { svc, bus, students, leaders, settings, ctx, admin, car, rider };

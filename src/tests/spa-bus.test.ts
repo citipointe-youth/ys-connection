@@ -360,8 +360,13 @@ describe('SPA escaping (final re-review)', () => {
   });
   it('_busAddressPicker shows the suburb from /bus/search results', () => {
     const prelude = 'const BUS = { ac: {} }; const window = {};';
-    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
+    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busAddrLabel', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
     expect(_busAddressPicker([{ id: 'a1', label: 'Home', suburb: 'Carina' }])).toContain('Home · Carina');
+  });
+  it('_busAddressPicker falls back to the street when the saved address has no label', () => {
+    const prelude = 'const BUS = { ac: {} }; const window = {};';
+    const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busAddrLabel', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
+    expect(_busAddressPicker([{ id: 'a1', label: '', street: '3 Lindsay Court', suburb: 'Cornubia' }])).toContain('3 Lindsay Court · Cornubia');
   });
 });
 
@@ -489,44 +494,32 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
   `;
   const car = (over: any = {}) => ({ id: 'rv1', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
     eligibility: { female: true, male: true, unknown: false }, ...over });
-  it('shows "Only 1 girl" when she shares no placeId with anyone else in the car', () => {
-    const BUS = { run: undefined, routeMin: {} };
-    const v = { run: { readOnly: false }, riders: [
-      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
-      { id: 'r2', runVehicleId: 'rv1', gender: 'male', placeId: 'P2' },
-    ], vehicles: [car()] };
-    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
-    expect(_busRoutesHtml()).toContain('Only 1 girl');
-    void BUS;
+  it('shows "No female leader" when the server flags the car', () => {
+    const v = { run: { readOnly: false }, riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' }],
+      vehicles: [car({ needsFemaleLeader: true })] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml', '_busGradeChip'], `${mkStubs}
+const BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    expect(_busRoutesHtml()).toContain('No female leader');
   });
-  it('does not flag her when she shares a placeId with another rider in the car', () => {
-    const v = { run: { readOnly: false }, riders: [
-      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
-      { id: 'r2', runVehicleId: 'rv1', gender: 'male', placeId: 'P1' },
-    ], vehicles: [car()] };
-    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
-    expect(_busRoutesHtml()).not.toContain('Only 1 girl');
-  });
-  it('does not flag a car with two or more girls', () => {
-    const v = { run: { readOnly: false }, riders: [
-      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
-      { id: 'r2', runVehicleId: 'rv1', gender: 'female', placeId: 'P2' },
-    ], vehicles: [car()] };
-    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
-    expect(_busRoutesHtml()).not.toContain('Only 1 girl');
+  it('does not show it when the car is not flagged', () => {
+    const v = { run: { readOnly: false }, riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' }],
+      vehicles: [car({ needsFemaleLeader: false })] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml', '_busGradeChip'], `${mkStubs}
+const BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    expect(_busRoutesHtml()).not.toContain('No female leader');
   });
   it('shows the per-car Route button only for a car with riders', () => {
     const v = { run: { readOnly: false }, riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'male', placeId: 'P1' }],
       vehicles: [car(), { ...car(), id: 'rv2' }] };
-    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml', '_busGradeChip'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
     const html = _busRoutesHtml();
     expect(html).toContain("busOpenCarRoute('rv1')");
     expect(html).not.toContain("busOpenCarRoute('rv2')");
   });
 });
 
-describe('busGenerate toast mentions riders kept off a car alone', () => {
-  it('includes the loneGirl count when > 0', async () => {
+describe('busGenerate toast mentions girls needing a female leader', () => {
+  it('includes the noFemaleLeader count when > 0', async () => {
     const prelude = `
       const BUS = { generating: false };
       function closeModal() {}
@@ -535,14 +528,14 @@ describe('busGenerate toast mentions riders kept off a car alone', () => {
       function toast(m) { __msg = m; }
       function _busQs() { return ''; }
       async function busRefresh() {}
-      const API = { post: async () => ({ loneGirl: 2, unassigned: 0, noAddressPin: 0 }) };
+      const API = { post: async () => ({ noFemaleLeader: 2, unassigned: 0, noAddressPin: 0 }) };
       function __state() { return { msg: __msg }; }
     `;
     const { busGenerate, __state } = loadFns(['busGenerate'], prelude, ['busGenerate', '__state']);
     await busGenerate('all');
-    expect(__state().msg).toContain('2 kept off a car alone');
+    expect(__state().msg).toContain('2 girls need a car with a female leader');
   });
-  it('omits the note when loneGirl is 0', async () => {
+  it('omits the note when noFemaleLeader is 0', async () => {
     const prelude = `
       const BUS = { generating: false };
       function closeModal() {}
@@ -551,7 +544,7 @@ describe('busGenerate toast mentions riders kept off a car alone', () => {
       function toast(m) { __msg = m; }
       function _busQs() { return ''; }
       async function busRefresh() {}
-      const API = { post: async () => ({ loneGirl: 0, unassigned: 0, noAddressPin: 0 }) };
+      const API = { post: async () => ({ noFemaleLeader: 0, unassigned: 0, noAddressPin: 0 }) };
       function __state() { return { msg: __msg }; }
     `;
     const { busGenerate, __state } = loadFns(['busGenerate'], prelude, ['busGenerate', '__state']);
@@ -569,7 +562,7 @@ describe('_busRosterHtml locks add/search/remove while Generate is running or a 
       const BUS = { search: '', generating: ${generating},
         view: { run: { readOnly: false, lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} },
           riders: [{ id: 'r1', name: 'Amy' }], vehicles: [] } };`;
-    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude, ['_busRosterHtml']);
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy', '_busGradeChip'], prelude, ['_busRosterHtml']);
     return _busRosterHtml();
   };
   it('shows the search bar and remove button when nothing is blocking', () => {

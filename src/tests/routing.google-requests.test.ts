@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { SolveProblem } from '../services/routing/routing-provider';
 import { RoutingError } from '../services/routing/routing-provider';
 import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
-  staticMapUrl, markerLabel, SKIP_PENALTY } from '../services/routing/google-requests';
+  staticMapUrl, markerLabel, SKIP_PENALTY, type ResolvedPlaces } from '../services/routing/google-requests';
 import { encodePolyline, decodePolyline, thinPolyline } from '../services/routing/polyline';
 
 const problem: SolveProblem = {
@@ -23,8 +23,10 @@ const ALLOWED_KEYS = new Set(['model', 'globalStartTime', 'globalEndTime', 'glob
   'placeId', 'duration', 'loadDemands', 'seats', 'amount', 'allowedVehicleIndices', 'costsPerVehicle', 'costsPerVehicleIndices',
   'penaltyCost', 'vehicles', 'startWaypoint', 'endWaypoint', 'loadLimits', 'maxLoad', 'costPerHour', 'routeDurationLimit',
   'quadraticSoftMaxDuration', 'maxDuration', 'costPerSquareHourAfterQuadraticSoftMax', 'considerRoadTraffic', 'populatePolylines',
-  'populateTransitionPolylines', 'input', 'sessionToken', 'includedRegionCodes', 'origins', 'destinations', 'waypoint',
-  'travelMode', 'routingPreference']);
+  'populateTransitionPolylines', 'input', 'sessionToken', 'includedRegionCodes', 'includedPrimaryTypes', 'origins', 'destinations',
+  'waypoint', 'travelMode', 'routingPreference',
+  // Task 4 (owner): a placeId Google rejected gets resent as a lat/lng waypoint instead.
+  'location', 'latLng', 'latitude', 'longitude']);
 function keysOf(v: unknown, out: string[] = []): string[] {
   if (Array.isArray(v)) v.forEach((x) => keysOf(x, out));
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { out.push(k); keysOf(x, out); }
@@ -58,6 +60,17 @@ describe('optimizeToursBody', () => {
     const bad = keysOf(body).filter((k) => !ALLOWED_KEYS.has(k));
     expect(bad).toEqual([]);
   });
+  // Task 4 (owner): a Google-rejected placeId is resent as a lat/lng waypoint — only the
+  // substituted stop/vehicle changes; everything else keeps sending a plain placeId.
+  it('resolved placeIds are sent as a lat/lng waypoint instead of placeId', () => {
+    const resolved: ResolvedPlaces = new Map([['P_a', { lat: -27.5, lng: 153.1 }]]);
+    const withLoc = optimizeToursBody(problem, resolved);
+    expect(withLoc.model.shipments[0]!.deliveries[0]!.arrivalWaypoint).toEqual({ location: { latLng: { latitude: -27.5, longitude: 153.1 } } });
+    expect(withLoc.model.shipments[1]!.deliveries[0]!.arrivalWaypoint).toEqual({ placeId: 'P_b' }); // unresolved stop unaffected
+    expect(withLoc.model.vehicles[0]!.startWaypoint).toEqual({ placeId: 'P_church' }); // unresolved vehicle unaffected
+    const bad = keysOf(withLoc).filter((k) => !ALLOWED_KEYS.has(k));
+    expect(bad).toEqual([]);
+  });
 });
 
 describe('parseOptimizeTours tolerates omitted zero fields (proto3 JSON)', () => {
@@ -78,9 +91,13 @@ describe('parseOptimizeTours tolerates omitted zero fields (proto3 JSON)', () =>
 });
 
 describe('autocomplete', () => {
-  it('sends only the text, session token and (when set) region', () => {
-    expect(autocompleteBody('24 Wynnum', 'sess-1', '')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1' });
-    expect(autocompleteBody('24 Wynnum', 'sess-1', 'AU')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1', includedRegionCodes: ['au'] });
+  // Task 1 (owner): restrict to real, selectable addresses — street-level ('route') and exact —
+  // so suburbs/businesses never show up as a pick, but a street itself still can.
+  it('sends the text, session token, includedPrimaryTypes and (when set) region', () => {
+    expect(autocompleteBody('24 Wynnum', 'sess-1', '')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1',
+      includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route'] });
+    expect(autocompleteBody('24 Wynnum', 'sess-1', 'AU')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1',
+      includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route'], includedRegionCodes: ['au'] });
   });
   it('keeps place predictions only', () => {
     const json = { suggestions: [
@@ -109,6 +126,15 @@ describe('route matrix', () => {
     const pairs = [{ from: { placeId: 'A' }, to: { placeId: 'B' } }, { from: { placeId: 'C' }, to: { placeId: 'D' } }];
     const json = [{ duration: '1s', condition: 'ROUTE_EXISTS' }]; // only A→B present; C→D is missing
     expect(() => parseRouteMatrix(json, pairs)).toThrow(RoutingError);
+  });
+  // Task 4 (owner): same lat/lng substitution as optimizeToursBody, for whichever origin/
+  // destination placeId Google rejected.
+  it('a resolved placeId is sent as a lat/lng waypoint instead of placeId', () => {
+    const pairs = [{ from: { placeId: 'A' }, to: { placeId: 'B' } }];
+    const resolved: ResolvedPlaces = new Map([['B', { lat: 1.5, lng: 2.5 }]]);
+    const body = routeMatrixBody(pairs, resolved);
+    expect(body.origins).toEqual([{ waypoint: { placeId: 'A' } }]);
+    expect(body.destinations).toEqual([{ waypoint: { location: { latLng: { latitude: 1.5, longitude: 2.5 } } } }]);
   });
   // I5: a car's skip-leg pairs chain (one stop's "to" is usually the next stop's "from"), and
   // several cars can also share the same church origin/end — this must bill one row per

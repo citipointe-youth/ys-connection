@@ -75,21 +75,21 @@ describe('run lifecycle', () => {
 describe('roster', () => {
   it('grade login can add; leader login cannot', async () => {
     const { svc, ctx } = await setup();
-    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '24 Wynnum Rd, Carina QLD 4152, Australia' } });
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '24 Wynnum Rd, Carina QLD 4152, Australia' , placeId: 'fake:24-wynnum-rd-carina-qld-' } });
     expect(r.name).toBe('Jess Tran');
-    await expect(svc.addRider(ctx('leader'), { studentId: 's2', newAddress: { address: '1 A St, Bulimba' } })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(svc.addRider(ctx('leader'), { studentId: 's2', newAddress: { address: '1 A St, Bulimba' , placeId: 'fake:1-a-st-bulimba' } })).rejects.toMatchObject({ statusCode: 403 });
   });
   it('adding the same student twice updates instead of duplicating', async () => {
     const { svc, ctx } = await setup();
-    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina' } });
-    await svc.addRider(ctx('quad'), { studentId: 's1', newAddress: { label: "Dad's", address: '9 B St, Cannon Hill' } });
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
+    await svc.addRider(ctx('quad'), { studentId: 's1', newAddress: { label: "Dad's", address: '9 B St, Cannon Hill' , placeId: 'fake:9-b-st-cannon-hill' } });
     const v = await svc.getRun(ctx('admin'));
     expect(v.riders).toHaveLength(1);
     expect(v.riders[0]!.address).toBe('9 B St, Cannon Hill');
   });
   it('search returns minimal fields and saved address labels, newest first', async () => {
     const { svc, ctx } = await setup();
-    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina' } });
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
     const hits = await svc.search(ctx('grade'), 'tran');
     expect(hits[0]).toMatchObject({ kind: 'student', id: 's1', name: 'Jess Tran', grade: 9, gender: 'female' });
     expect(hits[0]!.addresses[0]!.label).toBe('Home');
@@ -98,14 +98,14 @@ describe('roster', () => {
   it('every write bumps the version and records who', async () => {
     const { svc, ctx } = await setup();
     const before = (await svc.getVersion(ctx('admin'))).version;
-    await svc.addRider(ctx('grade', 'L2'), { studentId: 's2', newAddress: { address: '1 A St, Bulimba' } });
+    await svc.addRider(ctx('grade', 'L2'), { studentId: 's2', newAddress: { address: '1 A St, Bulimba' , placeId: 'fake:1-a-st-bulimba' } });
     const v = await svc.getRun(ctx('admin'));
     expect(v.run.version).toBe(before + 1);
     expect(v.run.lastChangeBy).toBe('Sarah');
   });
   it('riders from a finished night cannot be changed', async () => {
     const { svc, ctx } = await setup();
-    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
     await expect(svc.removeRider(ctx('grade', null, '2026-10-12T10:00'), r.id)).rejects.toMatchObject({ statusCode: 404 });
   });
   it('two leaders adding the same student at once: the loser merges onto the winning row instead of a raw DB error', async () => {
@@ -136,7 +136,7 @@ describe('roster', () => {
     const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
     const asAdmin: BusCtx = { actor: actor('admin'), asLeaderId: null, localNow: FRI_7PM };
 
-    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: 'Second St, Bulimba' } });
+    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: 'Second St, Bulimba' , placeId: 'fake:second-st-bulimba' } });
     expect(r.address).toBe('Second St, Bulimba');
 
     const v = await svc.getRun(asAdmin);
@@ -164,9 +164,9 @@ async function withFleet() {
   const v = await t.svc.getRun(t.ctx('admin'));
   const rvId = v.vehicles.find((x) => x.vehicleId === big.id)!.id;
   await t.svc.updateRunVehicle(t.ctx('admin'), rvId, { leaderIds: ['L1'] });
-  const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
-  const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' } });
-  const c = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' } });
+  const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
+  const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' , placeId: 'fake:2-b-st-bulimba' } });
+  const c = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
   return { ...t, rvId, a, b, c };
 }
 
@@ -206,7 +206,7 @@ describe('my car', () => {
   });
   it('own car takes riders off the bus and pre-fills next week', async () => {
     const t = await withFleet();
-    const own = await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'address', endsAddress: '5 Home St, Manly' }, riderIds: [t.c.id] });
+    const own = await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'address', endsAddress: '5 Home St, Manly', endsPlaceId: 'fake:5-home-st' }, riderIds: [t.c.id] });
     expect(own.ownerLeaderId).toBe('L2');
     const v = await t.svc.getRun(t.ctx('admin'));
     expect(v.riders.find((r) => r.id === t.c.id)!.runVehicleId).toBe(own.id);
@@ -219,7 +219,7 @@ describe('guest linking', () => {
   it('exactly one name match links and moves addresses; ambiguous ones become suggestions', async () => {
     const t = await setup();
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
-    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '3 C St, Wynnum' } });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
     const g2 = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Jessi', lastName: 'Tran', grade: 9, gender: 'female', phone: '0400000001' });
     await t.students.save(student('s4', 'Jessica', 'Tran', 9, 'female'));
     expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1);   // Riley Kim ↔ s3
@@ -233,12 +233,12 @@ describe('guest linking', () => {
 describe('parent consent', () => {
   it('starts as not yet, persists to next week, and follows a linked walk-in', async () => {
     const t = await setup();
-    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
     expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent).toBeNull();
     await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: '' })).rejects.toThrow();
     const v = await t.svc.setConsent(t.ctx('grade', 'L2'), r.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
     expect(v.consent).toMatchObject({ given: true, note: 'Mum (Lisa) 7:10pm by text', recordedBy: 'Sarah' });
-    await t.svc.addRider(t.ctx('grade', null, '2026-10-16T19:00'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    await t.svc.addRider(t.ctx('grade', null, '2026-10-16T19:00'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
     const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
     expect(next.riders[0]!.consent!.given).toBe(true);
     await expect(t.svc.setConsent(t.ctx('leader'), r.id, { given: false, note: '' })).rejects.toMatchObject({ statusCode: 403 });
@@ -246,7 +246,7 @@ describe('parent consent', () => {
   it("a walk-in's consent moves to the student on link", async () => {
     const t = await setup();
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
-    const r = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' } });
+    const r = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
     await t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'Dad, call 7pm' });
     await t.svc.linkGuestsAfterImport();
     expect((await t.bus.getConsent({ studentId: 's3' }))!.note).toBe('Dad, call 7pm');
@@ -278,7 +278,7 @@ describe('parent consent', () => {
     await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
     const svc = makeBusService(bus, students, leaders, settings);
     const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
-    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
+    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
 
     const v = await svc.setConsent(asGrade, r.id, { given: true, note: 'Second leader, 7:06pm' });
     expect(v.consent).toMatchObject({ given: true, note: 'Second leader, 7:06pm' });
@@ -351,9 +351,11 @@ describe('leader role sees "My car only" on the shared run view (I1)', () => {
 describe('/bus/search returns labels + suburb only, never the full street address (I2)', () => {
   it('search hits never carry the saved street address', async () => {
     const { svc, ctx } = await setup();
-    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '24 Wynnum Rd, Carina QLD 4152, Australia' } });
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '24 Wynnum Rd, Carina QLD 4152, Australia' , placeId: 'fake:24-wynnum-rd-carina-qld-' } });
     const hits = await svc.search(ctx('grade'), 'tran');
-    expect(hits[0]!.addresses[0]).toEqual({ id: hits[0]!.addresses[0]!.id, label: 'Home', suburb: 'Carina' });
+    // Task 3 (owner): `street` is a new, deliberate fallback field (the decrypted address's
+    // street part) — the raw, full stored `address` (incl. suburb/postcode) is still never sent.
+    expect(hits[0]!.addresses[0]).toEqual({ id: hits[0]!.addresses[0]!.id, label: 'Home', suburb: 'Carina', street: '24 Wynnum Rd' });
     expect(Object.keys(hits[0]!.addresses[0]!)).not.toContain('address');
   });
 });
@@ -366,8 +368,8 @@ describe('own car write-ordering (I6)', () => {
     let v = await t.svc.getRun(t.ctx('admin'));
     expect(v.vehicles.find((x) => x.ownerLeaderId === 'L1')).toBeUndefined();
 
-    const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' } });
-    const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' } });
+    const a = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
+    const b = await t.svc.addRider(t.ctx('grade'), { studentId: 's2', newAddress: { address: '2 B St, Bulimba' , placeId: 'fake:2-b-st-bulimba' } });
     await expect(t.svc.saveOwnCar(t.ctx('grade', 'L1'), { car: { name: "Tom's car", seats: 2, endsAt: 'church' }, riderIds: [a.id, b.id] }))
       .rejects.toThrow('only has 1 seats');
     v = await t.svc.getRun(t.ctx('admin'));
@@ -390,7 +392,7 @@ describe('linking a walk-in deletes the guest row (I3)', () => {
   it('linkGuestsAfterImport removes the linked guest so its phone number does not linger', async () => {
     const t = await setup();
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
-    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' } });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
     expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1); // Riley Kim <-> s3
     expect(await t.bus.getGuest(g.id)).toBeNull();
   });
@@ -399,9 +401,9 @@ describe('linking a walk-in deletes the guest row (I3)', () => {
 describe('linking into a run where the student already has a rider (I4)', () => {
   it('drops the duplicate walk-in row instead of a raw unique-constraint error', async () => {
     const t = await setup();
-    const real = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' } });
+    const real = await t.svc.addRider(t.ctx('grade'), { studentId: 's3', newAddress: { address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
-    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '9 D St, Wynnum' } });
+    await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { label: 'Home', address: '9 D St, Wynnum' , placeId: 'fake:9-d-st-wynnum' } });
     expect((await t.svc.getRun(t.ctx('admin'))).riders).toHaveLength(2);
     expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1);
     const v = await t.svc.getRun(t.ctx('admin'));
@@ -508,5 +510,112 @@ describe('I4: a "fake:" place ID is rejected once the Google provider is live', 
     await expect(t.svc.saveOwnCar(t.ctx('grade', 'L1'),
       { car: { name: 'My car', seats: 4, plate: null, endsAt: 'address', endsAddress: 'X', endsPlaceId: 'fake:x' }, riderIds: [] }))
       .rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+// Task 2 (owner): a brand-new address must come from a real suggestion — a null/missing placeId
+// is rejected with a clear message, for every "new address" path. An existing saved address
+// (by addressId) is untouched by this check.
+describe('Task 2: new-address paths reject a missing placeId', () => {
+  it('a new rider address with no placeId is rejected; the same address with a placeId works', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: null } }))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
+    await expect(svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st' } }))
+      .resolves.toBeTruthy();
+  });
+  it('an existing saved address (by addressId) still works with no re-pick required', async () => {
+    const { svc, ctx } = await setup();
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st' } });
+    await expect(svc.updateRider(ctx('grade'), r.id, { addressId: r.addressId! })).resolves.toBeTruthy();
+  });
+  it('a fleet vehicle set to end at an address with no placeId is rejected; other end modes need none', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.saveVehicle(ctx('admin'), { name: 'Van', seats: 8, endsAt: 'address', endsAddress: 'X', endsPlaceId: null }))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
+    await expect(svc.saveVehicle(ctx('admin'), { name: 'Van', seats: 8, endsAt: 'church' })).resolves.toBeTruthy();
+  });
+  it('an own car set to end at an address with no placeId is rejected', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.saveOwnCar(ctx('grade', 'L1'),
+      { car: { name: 'My car', seats: 4, plate: null, endsAt: 'address', endsAddress: 'X', endsPlaceId: null }, riderIds: [] }))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
+  });
+  it('PERSISTENCE=memory / fake-provider suggestions still carry a real placeId, so a normal add keeps working', async () => {
+    const { svc, ctx } = await setup();
+    const suggestions = await svc.autocomplete(ctx('admin'), '24 Wynnum Rd', 'sess-12345678');
+    expect(suggestions[0]!.placeId).toBeTruthy();
+    await expect(svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: suggestions[0]!.text, placeId: suggestions[0]!.placeId } }))
+      .resolves.toBeTruthy();
+  });
+});
+
+// Task 3 (owner): a blank label defaults to the street part (not the suburb) of the address, so
+// it's useful when the address is later offered back for selection.
+describe('Task 3: default label is the street part', () => {
+  it('a new address saved with a blank label gets the street part as its label', async () => {
+    const { svc, ctx } = await setup();
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:1' } });
+    const hits = await svc.search(ctx('grade'), 'tran');
+    expect(hits[0]!.addresses.find((a) => a.id === r.addressId)!.label).toBe('24 Wynnum Rd');
+  });
+  it('an explicit label is kept as-is, not overridden by the street default', async () => {
+    const { svc, ctx } = await setup();
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Mum\'s place', address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:1' } });
+    const hits = await svc.search(ctx('grade'), 'tran');
+    expect(hits[0]!.addresses.find((a) => a.id === r.addressId)!.label).toBe("Mum's place");
+  });
+});
+
+// Task 5 (owner): deleting a "New Person" (a guest) from tonight fully removes them — including
+// their saved addresses — once they have no bus_run_riders row left in any run and were never
+// linked to a real student. Students are never deleted by this path.
+describe('Task 5: removing a rider fully deletes an orphaned guest', () => {
+  it('a guest with no other run rows is deleted entirely, including their saved address', async () => {
+    const { svc, bus, ctx } = await setup();
+    const g = await svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: '0400 111 222' });
+    const r = await svc.addRider(ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum', placeId: 'fake:3-c-st' } });
+    expect(await bus.listAddresses({ guestId: g.id })).toHaveLength(1);
+    await svc.removeRider(ctx('grade'), r.id);
+    expect(await bus.getGuest(g.id)).toBeNull();
+    expect(await bus.listAddresses({ guestId: g.id })).toHaveLength(0);
+    const pending = await svc.pendingGuests(ctx('director'));
+    expect(pending.map((p) => p.id)).not.toContain(g.id); // pending-new-people count drops too
+  });
+  it('a guest still riding on a past run is NOT deleted when removed from tonight', async () => {
+    const { svc, bus, ctx } = await setup();
+    const g = await svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: '0400 111 222' });
+    await svc.addRider(ctx('grade', null, '2026-10-09T19:00'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum', placeId: 'fake:3-c-st' } });
+    const r2 = await svc.addRider(ctx('grade', null, '2026-10-16T19:00'), { guestId: g.id, addressId: (await bus.listAddresses({ guestId: g.id }))[0]!.id });
+    await svc.removeRider(ctx('grade', null, '2026-10-16T19:00'), r2.id); // only removes this week's row
+    expect(await bus.getGuest(g.id)).not.toBeNull(); // last week's row still references them
+  });
+  it('a linked guest (now a real student rider) is never deleted by removeRider', async () => {
+    const { svc, bus, ctx } = await setup();
+    const g = await svc.createGuest(ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
+    const r = await svc.addRider(ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum', placeId: 'fake:3-c-st' } });
+    await svc.linkGuestsAfterImport(); // links g -> s3, deletes the guest row via the existing linking path (I3)
+    expect(await bus.getGuest(g.id)).toBeNull(); // already gone from linking, not from removeRider
+    const linkedRider = (await svc.getRun(ctx('admin'))).riders.find((x) => x.studentId === 's3')!;
+    await svc.removeRider(ctx('grade'), linkedRider.id); // removing the now-student rider must not throw on a missing guest
+    expect((await svc.getRun(ctx('admin'))).riders.find((x) => x.studentId === 's3')).toBeUndefined();
+    void r;
+  });
+});
+
+// Task 10 (owner): the "who are you" self-identifier must offer every leader on a car THIS
+// week — any running run-vehicle's leaderIds plus an own-car's ownerLeaderId — even one outside
+// the login's own grade/quad scope. Names + ids only.
+describe('Task 10: onCarLeaders', () => {
+  it('lists leaders on a running car (fleet + own car), sorted by name, excluding leaders not on a car', async () => {
+    const t = await withFleet(); // Big Bus, leaders: ['L1'] (Tom)
+    await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [] });
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.onCarLeaders).toEqual([{ id: 'L2', name: 'Sarah' }, { id: 'L1', name: 'Tom' }]); // sorted by name
+  });
+  it('myCar() exposes the same onCarLeaders list', async () => {
+    const t = await withFleet();
+    const mine = await t.svc.myCar(t.ctx('admin'));
+    expect(mine.onCarLeaders).toEqual([{ id: 'L1', name: 'Tom' }]);
   });
 });

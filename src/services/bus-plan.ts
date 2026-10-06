@@ -8,7 +8,8 @@ export interface Weights { targetRouteMin: number; genderWeightMin: number; pref
  * pool leaders, picking the gender that is shortest of seats for tonight's roster split. Returns
  * new leaderIds only for cars that changed. Pure — the caller decides whether to save.
  */
-export function autoFillPool(cars: { id: string; seats: number; leaderIds: string[]; fixedRiders?: number }[], pool: { id: string; gender: BusGender }[],
+export function autoFillPool(cars: { id: string; seats: number; leaderIds: string[]; fixedRiders?: number; endsAt?: EndsAt }[],
+  pool: { id: string; gender: BusGender }[],
   genderOf: (leaderId: string) => BusGender, need: { female: number; male: number }): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const left = [...pool];
@@ -18,6 +19,9 @@ export function autoFillPool(cars: { id: string; seats: number; leaderIds: strin
     return ids.some((id) => genderOf(id) === g) ? n + Math.max(0, c.seats - ids.length) : n;
   }, 0);
   for (const c of cars) {
+    // Task 9 (owner): a car ending at a drop-off address sends its driver home — don't maroon a
+    // pool leader with no ride back. Leaders already on the car by hand (fixed/tonight) stay.
+    if (c.endsAt === 'address') continue;
     const ids = lead.get(c.id)!;
     // Known follow-up (2026-10-06): a 2nd leader must not drop capacity below the riders
     // already fixed to this car (pinned, or any already-placed rider under Fit in) — that
@@ -57,10 +61,17 @@ export interface FleetRider { id: string; placeId: string; gender: BusGender; gr
 export function buildFleetProblem(mode: 'all' | 'fit', cars: FleetCar[], riders: FleetRider[], churchPlaceId: string, startIso: string,
   w: Weights): { problem: SolveProblem; stopRiderIds: string[] } {
   const idx = new Map(cars.map((c, i) => [c.id, i]));
+  // Task 7 (owner, replaces the old lone-girl rule): a girl may only be PLACED by the solver in
+  // a car that currently has >=1 female leader — a hard constraint via allowedVehicles, not a
+  // soft cost. A girl with no eligible car is left unassigned (optional:true + no allowed
+  // vehicle => Google skips her). Leaders' own gender is unaffected; a pinned/fixed girl keeps
+  // her car regardless (hand placement isn't enforced — spec's existing rule).
+  const femaleCars = cars.map((_, i) => i).filter((i) => cars[i]!.eligibility.female);
   const stops: SolveStop[] = riders.map((r) => {
     const own = r.runVehicleId != null ? idx.get(r.runVehicleId) : undefined;
     const fixed = own !== undefined && (r.pinned || mode === 'fit');
-    return { point: { placeId: r.placeId }, allowedVehicles: fixed ? [own] : null, optional: true,
+    const allowedVehicles = fixed ? [own] : r.gender === 'female' ? femaleCars : null;
+    return { point: { placeId: r.placeId }, allowedVehicles, optional: true,
       costs: cars.map((c, k) => ({ vehicle: k, cost: riderCost(r, c.eligibility, c.prefGrades, w) })).filter((c) => c.cost > 0) };
   });
   return {
@@ -88,26 +99,6 @@ export function skipPairs(orderedPlaceIds: string[], start: string, end: string 
 /** Detour of stop i = t(prev→i) + t(i→next) − t(prev→next) (spec §7). legsSec = [start→s1, …, sN→end?]. */
 export function detours(legsSec: number[], skipSec: number[]): number[] {
   return skipSec.map((skip, i) => Math.max(0, legsSec[i]! + (legsSec[i + 1] ?? 0) - skip));
-}
-
-export interface LoneGirlRider { id: string; gender: BusGender; placeId: string | null }
-/**
- * Hard rule: never exactly one girl among the riders in a fleet car — unless she shares a drop
- * address (sibling) with another rider in it. Leaders don't count. A car with only one rider at
- * all (no one to be "alone with") is out of scope — this is about gender mix, not solo riding.
- * Pure — returns the violating rider ids.
- */
-export function loneGirls(cars: LoneGirlRider[][]): string[] {
-  const out: string[] = [];
-  for (const riders of cars) {
-    if (riders.length < 2) continue;
-    const girls = riders.filter((r) => r.gender === 'female');
-    if (girls.length !== 1) continue;
-    const girl = girls[0]!;
-    if (riders.some((r) => r.id !== girl.id && girl.placeId && r.placeId === girl.placeId)) continue;
-    out.push(girl.id);
-  }
-  return out;
 }
 
 export function placementsFrom(result: SolveResult, stopRiderIds: string[], carIds: string[]):

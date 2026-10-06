@@ -7,12 +7,19 @@ const QUAD_COST_PER_SQ_HOUR = 240;        // quadratic soft cap past targetRoute
 const DROP_SEC = 60;                      // time spent at each stop
 const HORIZON_MS = 12 * 3_600_000;
 
-const wp = (p: RoutePoint) => ({ placeId: p.placeId });
+/** Task 4 (owner): a placeId Google rejected ("No LatLng location...") but Place Details could
+ *  locate is resent as a lat/lng waypoint instead — `resolved` is request-scoped only, never
+ *  persisted (the caller builds it fresh per solve/matrix call). */
+export type ResolvedPlaces = Map<string, { lat: number; lng: number }>;
+const wp = (p: RoutePoint, resolved?: ResolvedPlaces) => {
+  const loc = resolved?.get(p.placeId);
+  return loc ? { location: { latLng: { latitude: loc.lat, longitude: loc.lng } } } : { placeId: p.placeId };
+};
 const sec = (n: number) => `${Math.round(n)}s`;
 // proto3 JSON omits zero values: a missing duration is "0s", a missing index is 0.
 const secOf = (d: unknown) => (typeof d === 'string' ? parseFloat(d) : 0);
 
-export function optimizeToursBody(p: SolveProblem) {
+export function optimizeToursBody(p: SolveProblem, resolved?: ResolvedPlaces) {
   const start = new Date(p.startIso);
   return {
     model: {
@@ -24,7 +31,7 @@ export function optimizeToursBody(p: SolveProblem) {
       globalDurationCostPerHour: COST_PER_HOUR,
       shipments: p.stops.map((s, i) => ({
         label: `r${i}`,
-        deliveries: [{ arrivalWaypoint: wp(s.point), duration: sec(DROP_SEC) }],
+        deliveries: [{ arrivalWaypoint: wp(s.point, resolved), duration: sec(DROP_SEC) }],
         loadDemands: { seats: { amount: '1' } },
         ...(s.allowedVehicles ? { allowedVehicleIndices: s.allowedVehicles } : {}),
         ...(s.costs.length ? { costsPerVehicle: s.costs.map((c) => c.cost), costsPerVehicleIndices: s.costs.map((c) => c.vehicle) } : {}),
@@ -32,8 +39,8 @@ export function optimizeToursBody(p: SolveProblem) {
       })),
       vehicles: p.vehicles.map((v, i) => ({
         label: `v${i}`,
-        startWaypoint: wp(v.start),
-        ...(v.end ? { endWaypoint: wp(v.end) } : {}),
+        startWaypoint: wp(v.start, resolved),
+        ...(v.end ? { endWaypoint: wp(v.end, resolved) } : {}),
         loadLimits: { seats: { maxLoad: String(v.capacity) } },
         costPerHour: COST_PER_HOUR,
         routeDurationLimit: { quadraticSoftMaxDuration: sec(p.targetRouteMin * 60), costPerSquareHourAfterQuadraticSoftMax: QUAD_COST_PER_SQ_HOUR,
@@ -65,8 +72,13 @@ export function parseOptimizeTours(json: unknown, p: SolveProblem): SolveResult 
   return { routes, skipped: (j.skippedShipments ?? []).map((s: any) => s.index ?? 0) };
 }
 
+// Task 1 (owner): restrict Places API (New) autocomplete to real, selectable addresses — street-
+// level ('route', e.g. "St Andrews Dr") and exact ones — so suburbs/businesses/regions never show
+// up as a pick, but a street itself still can. Max 5 types allowed; 4 used.
+const ADDRESS_TYPES = ['street_address', 'premise', 'subpremise', 'route'];
 export function autocompleteBody(input: string, sessionToken: string, regionCode: string) {
-  return { input, sessionToken, ...(regionCode ? { includedRegionCodes: [regionCode.toLowerCase()] } : {}) };
+  return { input, sessionToken, includedPrimaryTypes: ADDRESS_TYPES,
+    ...(regionCode ? { includedRegionCodes: [regionCode.toLowerCase()] } : {}) };
 }
 export function parseAutocomplete(json: unknown): PlaceSuggestion[] {
   const j = (json ?? {}) as any;
@@ -79,10 +91,11 @@ export const MATRIX_MAX_PAIRS = 25; // safety chunk size — a car's own skip pa
 // I5: a car's skip-leg pairs chain (stop i's "to" is usually stop i+1's "from"), so building the
 // request from only the DISTINCT origins/destinations `pairs` reference bills far fewer elements
 // than one row/column per pair (which was reading only the diagonal of an N×N matrix).
-export function routeMatrixBody(pairs: { from: RoutePoint; to: RoutePoint }[]) {
+export function routeMatrixBody(pairs: { from: RoutePoint; to: RoutePoint }[], resolved?: ResolvedPlaces) {
   const origins = [...new Set(pairs.map((x) => x.from.placeId))];
   const destinations = [...new Set(pairs.map((x) => x.to.placeId))];
-  return { origins: origins.map((id) => ({ waypoint: wp({ placeId: id }) })), destinations: destinations.map((id) => ({ waypoint: wp({ placeId: id }) })),
+  return { origins: origins.map((id) => ({ waypoint: wp({ placeId: id }, resolved) })),
+    destinations: destinations.map((id) => ({ waypoint: wp({ placeId: id }, resolved) })),
     travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' };
 }
 /** Looks up each pair's duration by its origin/destination place ID — pairs can share a row or

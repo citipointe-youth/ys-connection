@@ -66,6 +66,18 @@ describe('GoogleRoutingProvider', () => {
     expect((opt.init.headers as Record<string, string>)['Authorization']).toBe('Bearer tok');
     expect(String(calls[0]!.init.body)).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
   });
+  it('never sends a stop with an empty allowedVehicles list (Google reads [] as "any car") — it comes back skipped', async () => {
+    const { fn, calls } = stubFetch({
+      'https://oauth2.googleapis.com/token': () => json({ access_token: 'tok', expires_in: 3600 }),
+      'https://routeoptimization.googleapis.com/': () => json({ routes: [{ visits: [{}], transitions: [{ travelDuration: '60s' }, {}] }] }),
+    });
+    const p: SolveProblem = { ...problem, stops: [{ point: { placeId: 'G' }, allowedVehicles: [], costs: [], optional: true }, problem.stops[0]!] };
+    const r = await new GoogleRoutingProvider(cfg, fn).solve(p, sig());
+    const body = String(calls.find((c) => c.url.includes('routeoptimization'))!.init.body);
+    expect(body).not.toContain('"G"');
+    expect(r.routes[0]!.stops).toEqual([1]);
+    expect(r.skipped).toEqual([0]);
+  });
   // Task 7: a signJwt failure must log enough to diagnose a bad key — but never the key itself.
   it('a signJwt failure logs key shape, never key material', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -105,6 +117,60 @@ describe('GoogleRoutingProvider', () => {
       init.signal!.addEventListener('abort', () => reject(new Error('aborted')))) });
     await expect(new GoogleRoutingProvider(cfg, fn).autocomplete('24 Wynnum', 's-12345678', '', AbortSignal.timeout(20)))
       .rejects.toThrow(/timed out/);
+  });
+  // Task 4 (owner): Route Optimization rejects a street-level placeId with "No LatLng location
+  // for placeId X" — fetch its location via Place Details and resend as a lat/lng waypoint.
+  describe('bad placeId retry via Place Details', () => {
+    const noLatLng = (id: string) => new Response(JSON.stringify({ error: { message: `No LatLng location for placeId "${id}" available` } }), { status: 400 });
+    it('resolves the bad placeId via Place Details and retries the solve with a lat/lng waypoint', async () => {
+      let solveCalls = 0;
+      const { fn, calls } = stubFetch({
+        'https://oauth2.googleapis.com/token': () => json({ access_token: 'tok', expires_in: 3600 }),
+        'https://places.googleapis.com/v1/places/': () => json({ location: { latitude: -27.5, longitude: 153.1 } }),
+        'https://routeoptimization.googleapis.com/': () => {
+          solveCalls++;
+          if (solveCalls === 1) return noLatLng('A');
+          return json({ routes: [{ visits: [{}], transitions: [{ travelDuration: '60s' }, {}] }] });
+        },
+      });
+      const r = await new GoogleRoutingProvider(cfg, fn).solve(problem, sig());
+      expect(solveCalls).toBe(2);
+      expect(r.routes[0]).toMatchObject({ vehicle: 0, stops: [0] });
+      const retryBody = JSON.parse(String(calls.filter((c) => c.url.includes('routeoptimization'))[1]!.init.body));
+      expect(retryBody.model.shipments[0].deliveries[0].arrivalWaypoint).toEqual({ location: { latLng: { latitude: -27.5, longitude: 153.1 } } });
+      const details = calls.find((c) => c.url.includes('places.googleapis.com/v1/places/'))!;
+      expect(details.url).toContain('/v1/places/A');
+      expect((details.init.headers as Record<string, string>)['X-Goog-FieldMask']).toBe('location');
+    });
+    it('Place Details also has no location → rethrows the original RoutingError carrying the placeId', async () => {
+      const { fn } = stubFetch({
+        'https://oauth2.googleapis.com/token': () => json({ access_token: 'tok', expires_in: 3600 }),
+        'https://places.googleapis.com/v1/places/': () => json({}), // no `location` field
+        'https://routeoptimization.googleapis.com/': () => noLatLng('A'),
+      });
+      await expect(new GoogleRoutingProvider(cfg, fn).solve(problem, sig())).rejects.toMatchObject({ name: 'RoutingError', badPlaceId: 'A' });
+    });
+    it('matrix() retries a chunk with the bad placeId resolved, resolving one Place Details lookup for both pairs that reference it', async () => {
+      let detailsCalls = 0, matrixCalls = 0;
+      const { fn } = stubFetch({
+        'https://places.googleapis.com/v1/places/': () => { detailsCalls++; return json({ location: { latitude: 1, longitude: 2 } }); },
+        'https://routes.googleapis.com/': (init) => {
+          matrixCalls++;
+          const body = JSON.parse(String(init.body));
+          const hasBad = body.origins.some((o: any) => o.waypoint.placeId === 'BAD') || body.destinations.some((d: any) => d.waypoint.placeId === 'BAD');
+          if (hasBad) return noLatLng('BAD');
+          return json(body.origins.flatMap((_: unknown, oi: number) =>
+            body.destinations.map((__: unknown, di: number) => ({ originIndex: oi, destinationIndex: di, duration: '5s', condition: 'ROUTE_EXISTS' }))));
+        },
+      });
+      // routeMatrixBody dedups destinations, so both pairs sharing "BAD" only ever put it in the
+      // request body once — this pins that ONE Place Details call covers both pairs' result.
+      const pairs = [{ from: { placeId: 'A' }, to: { placeId: 'BAD' } }, { from: { placeId: 'C' }, to: { placeId: 'BAD' } }];
+      const out = await new GoogleRoutingProvider(cfg, fn).matrix(pairs, sig());
+      expect(out).toHaveLength(2);
+      expect(detailsCalls).toBe(1);
+      expect(matrixCalls).toBe(2); // first attempt (400) + the retry
+    });
   });
   it('a failed map call never echoes the key', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});

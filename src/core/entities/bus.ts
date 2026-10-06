@@ -50,6 +50,10 @@ export interface BusConsent { id: ID; studentId: ID | null; guestId: ID | null; 
 export interface BusEligibility { female: boolean; male: boolean; unknown: boolean }
 export interface BusRunVehicleView extends BusRunVehicle {
   capacity: number; eligibility: BusEligibility; leaderNames: string[];
+  // Task 7 (owner): true when this car holds >=1 girl rider but has no female leader among its
+  // leaderIds — replaces the old "Only 1 girl" chip (that rule is gone; this is its hand-placement
+  // equivalent, since Move/Fit-in don't enforce the hard female-leader constraint).
+  needsFemaleLeader: boolean;
 }
 export interface BusRiderView {
   id: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
@@ -79,11 +83,17 @@ export interface BusRunView {
   canCoordinate: boolean;
   pendingNewPeople: number | null;   // null unless director/admin
   pastRiders: BusPastRiderView[];    // [] unless bus:roster; capped ~50, most recent first
+  // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car
+  // ownerLeaderId), names+ids only, unscoped by grade/quad — feeds the "who are you" picker so
+  // it can offer a leader outside the login's own scope. Sorted by name.
+  onCarLeaders: { id: ID; name: string }[];
 }
 export interface BusSearchHit {
   kind: 'student' | 'guest'; id: ID; name: string; grade: number | null; gender: BusGender;
-  // Labels + suburb only (spec I2) — never the full saved street address.
-  addresses: { id: ID; label: string; suburb: string }[];
+  // Labels + suburb only (spec I2) — never the full saved street address. `street` (Task 3) is
+  // the decrypted address's street part, always populated so the SPA can fall back to it when
+  // `label` is blank on an address saved before the default-label fix.
+  addresses: { id: ID; label: string; suburb: string; street: string }[];
 }
 export interface MyCarView {
   vehicle: BusRunVehicleView | null;
@@ -91,6 +101,7 @@ export interface MyCarView {
   churchAddress: string;
   churchPlaceId: string;
   ownCarDraft: { car: BusOwnCar | null; riderIds: ID[] } | null;
+  onCarLeaders: { id: ID; name: string }[]; // Task 10 — same list as BusRunView, for a picker rendered from myCar()
 }
 export interface PendingGuestView {
   id: ID; name: string; grade: number | null; phone: string | null; createdAt: string;
@@ -102,7 +113,9 @@ export interface BusGenerateResult {
   unassigned: number;                 // riders with no car after this generate (incl. own-car-less, no-pin, pinned-unassigned)
   noAddressPin: number;               // riders never sent to Google because their address has no place ID
   routeMin: Record<ID, number>;       // run vehicle id → drive minutes from this solve (not persisted)
-  loneGirl: number;                   // non-pinned riders left Unassigned by the "never exactly one girl in a car" rule
+  // Task 7 (owner, replaces the old "lone girl" rule): non-pinned girl riders left Unassigned
+  // because no running car currently has a female leader.
+  noFemaleLeader: number;
 }
 
 export interface BusAnalysisRider { riderId: ID; name: string; stop: number; detourMin: number; detourPct: number; flagged: boolean }
@@ -113,8 +126,14 @@ export interface BusAnalysisView {
   cars: BusAnalysisCar[];
   unassigned: number; longestMin: number; totalMin: number;
 }
+export interface BusExtraCarsStop { name: string; suburb: string; arriveAt: string } // arriveAt = 'HH:mm' local
+export interface BusExtraCarsCar {
+  label: string; extra: boolean; riders: number; driveMinutes: number; finishAt: string; // finishAt = 'HH:mm' local
+  stops: BusExtraCarsStop[];
+}
 export interface BusExtraCarsView {
   count: number; seats: number;
   before: { longestMin: number; totalMin: number; unassigned: number };
   after: { longestMin: number; totalMin: number; unassigned: number };
+  cars: BusExtraCarsCar[]; // Task 8: existing cars by name, hypothetical ones as "Extra car N" — the "after" solve's full breakdown
 }

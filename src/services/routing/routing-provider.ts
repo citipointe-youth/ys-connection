@@ -44,7 +44,10 @@ export interface RoutingProvider {
 
 /** Thrown by providers. The message never contains the API key or a URL. */
 export class RoutingError extends Error {
-  constructor(message: string) { super(message); this.name = 'RoutingError'; }
+  // Task 4 (owner): when Google rejects a specific placeId ("No LatLng location for placeId
+  // X"), the provider parses it out and carries it here — a street-level placeId Place Details
+  // also couldn't locate. Undefined for any other failure (network/5xx/timeout).
+  constructor(message: string, public readonly badPlaceId?: string) { super(message); this.name = 'RoutingError'; }
 }
 
 export const GOOGLE_TIMEOUT_MS = 15_000;

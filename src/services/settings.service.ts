@@ -64,6 +64,17 @@ export function makeSettingsService(
         if (typeof churchPlaceId === 'string' && churchPlaceId.startsWith('fake:') && googleRoutingEnabled()) {
           throw new BadRequestError('That address needs to be re-picked from the search results');
         }
+        // Task 2 (owner): the church address is a "new address" path too — a non-blank
+        // churchAddress saved without a real churchPlaceId means it was typed, not picked from
+        // a suggestion. Only checked when this call actually touches churchAddress (an unrelated
+        // busMinistry field patch, e.g. leaveTime, must not require re-saving the address).
+        if (busMinistry && 'churchAddress' in busMinistry) {
+          const addr = busMinistry['churchAddress'];
+          const placeId = busMinistry['churchPlaceId'];
+          if (typeof addr === 'string' && addr.trim() !== '' && (typeof placeId !== 'string' || placeId.trim() === '')) {
+            throw new BadRequestError('Pick the address from the suggestions list');
+          }
+        }
       }
 
       const { ministryConfig: _omit, ...scalarPatch } = patch;

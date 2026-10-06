@@ -49,5 +49,14 @@ export function suburbOf(address: string): string {
   return parts[1]!.replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
 }
 
+/** Task 3: "24 Wynnum Rd, Carina QLD 4152, Australia" → "24 Wynnum Rd" — the street part, used
+ *  both as the default label for a new address saved with a blank label, and as a display
+ *  fallback for an existing address whose label is still blank. Max 40 chars (NewAddress.label's
+ *  own cap) so a default label never trips that schema limit. */
+export function streetOf(address: string): string {
+  const street = address.split(',')[0]?.trim() || address.trim();
+  return street.slice(0, 40);
+}
+
 /** Same order as the SPA's BUS_CAR_COLOURS (spa-bus.test pins them equal) — the static map paints routes in these. */
 export const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];

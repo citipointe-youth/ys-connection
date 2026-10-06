@@ -104,6 +104,32 @@ describe('SettingsService', () => {
     expect(updated.ministryConfig.busMinistry.churchPlaceId).toBe('fake:church');
   });
 
+  // Task 2 (owner): the church address is a "new address" path too — a non-blank churchAddress
+  // saved without a real churchPlaceId means it was typed, not picked from a suggestion.
+  describe('Task 2: church address requires a real placeId', () => {
+    it('rejects a non-blank churchAddress saved with no (or blank) churchPlaceId', async () => {
+      const { service } = await makeService();
+      await expect(service.update(ADMIN, { ministryConfig: { busMinistry: { churchAddress: '1 Church St, Testville', churchPlaceId: '' } } }))
+        .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
+    });
+    it('a churchAddress with a real churchPlaceId saves fine', async () => {
+      const { service } = await makeService();
+      const updated = await service.update(ADMIN, { ministryConfig: { busMinistry: { churchAddress: '1 Church St, Testville', churchPlaceId: 'fake:church' } } });
+      expect(updated.ministryConfig.busMinistry.churchAddress).toBe('1 Church St, Testville');
+    });
+    it('a patch that does not touch churchAddress at all is unaffected (e.g. leaveTime alone)', async () => {
+      const { service } = await makeService();
+      const updated = await service.update(ADMIN, { ministryConfig: { busMinistry: { leaveTime: '20:30' } } });
+      expect(updated.ministryConfig.busMinistry.leaveTime).toBe('20:30');
+    });
+    it('clearing the church address (both blank together) is allowed', async () => {
+      const { service } = await makeService();
+      await service.update(ADMIN, { ministryConfig: { busMinistry: { churchAddress: '1 Church St, Testville', churchPlaceId: 'fake:church' } } });
+      const cleared = await service.update(ADMIN, { ministryConfig: { busMinistry: { churchAddress: '', churchPlaceId: '' } } });
+      expect(cleared.ministryConfig.busMinistry.churchAddress).toBe('');
+    });
+  });
+
   it('accepts a logoImage data URI patch and stores it verbatim (no server-side re-encoding)', async () => {
     const { service } = await makeService();
     const dataUri = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';

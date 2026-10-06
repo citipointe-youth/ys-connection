@@ -2,7 +2,7 @@ import { createSign } from 'node:crypto';
 import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult, type PlaceSuggestion, type RoutePoint,
   type MapPath, type MapMarker, type MapImage } from './routing-provider';
 import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
-  staticMapUrl, MATRIX_MAX_PAIRS } from './google-requests';
+  staticMapUrl, MATRIX_MAX_PAIRS, type ResolvedPlaces } from './google-requests';
 import { FakeRoutingProvider } from './fake-routing-provider';
 
 export interface GoogleConfig { apiKey: string; saEmail: string; saPrivateKey: string; projectId: string }
@@ -10,6 +10,11 @@ export interface GoogleConfig { apiKey: string; saEmail: string; saPrivateKey: s
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
+// Google's exact wording, e.g.: No LatLng location for placeId "EiZTdCBBbmRyZXdz..." available
+const NO_LATLNG_RE = /No LatLng location for placeId "([^"]+)"/;
+// Task 4 (owner): at most this many distinct bad placeIds get a Place Details lookup + retry
+// per solve()/matrix() call, all inside the caller's existing deadline.
+const MAX_BAD_PLACE_RETRIES = 5;
 
 /**
  * Rebuilds a clean PEM from however the key was pasted into the Vercel dashboard: literal "\n"
@@ -61,9 +66,41 @@ export class GoogleRoutingProvider implements RoutingProvider {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.error(`[routing] ${what} ${res.status}: ${body.slice(0, 300).split(this.cfg.apiKey).join('***')}`);
-      throw new RoutingError(`Google ${what} failed (${res.status})`);
+      // Task 4: pull the placeId out of the FULL body (not the 300-char log slice, which can
+      // truncate the (long, base64) placeId before its closing quote) — never log the address
+      // itself, just the opaque id, which withBadPlaceIdRetry() may resolve via Place Details.
+      // Google's error body is itself JSON, so the message's own quotes around the placeId
+      // arrive backslash-escaped on the wire (`\"A\"`) — unescape before matching.
+      throw new RoutingError(`Google ${what} failed (${res.status})`, NO_LATLNG_RE.exec(body.replace(/\\"/g, '"'))?.[1]);
     }
     return res;
+  }
+
+  /** Task 4: Place Details (New) gives a street-level placeId's midpoint — the fallback location
+   *  when Route Optimization/Route Matrix reject that placeId outright. Returns null (never
+   *  throws) on any failure, so the caller just re-throws the original RoutingError. */
+  private async placeLocation(placeId: string, signal: AbortSignal): Promise<{ lat: number; lng: number } | null> {
+    try {
+      const res = await this.call(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, { method: 'GET',
+        headers: { 'X-Goog-Api-Key': this.cfg.apiKey, 'X-Goog-FieldMask': 'location' } }, signal, 'place details');
+      const j = (await res.json()) as { location?: { latitude: number; longitude: number } };
+      return j.location ? { lat: j.location.latitude, lng: j.location.longitude } : null;
+    } catch { return null; }
+  }
+
+  /** Retries `attempt` after swapping a Google-rejected placeId for its Place Details lat/lng
+   *  (via the `resolved` map `attempt` must read when building its request body) — up to
+   *  MAX_BAD_PLACE_RETRIES distinct bad places. `resolved` is caller-scoped and never persisted. */
+  private async withBadPlaceIdRetry<T>(signal: AbortSignal, resolved: ResolvedPlaces, attempt: () => Promise<T>): Promise<T> {
+    for (;;) {
+      try { return await attempt(); }
+      catch (err) {
+        if (!(err instanceof RoutingError) || !err.badPlaceId || resolved.has(err.badPlaceId) || resolved.size >= MAX_BAD_PLACE_RETRIES) throw err;
+        const loc = await this.placeLocation(err.badPlaceId, signal);
+        if (!loc) throw err; // Place Details couldn't locate it either — let the caller map it to a friendly name
+        resolved.set(err.badPlaceId, loc);
+      }
+    }
   }
 
   private async accessToken(signal: AbortSignal): Promise<string> {
@@ -82,11 +119,22 @@ export class GoogleRoutingProvider implements RoutingProvider {
   }
 
   async solve(p: SolveProblem, signal: AbortSignal): Promise<SolveResult> {
+    // Google reads an EMPTY allowedVehicleIndices as "any vehicle" — so a stop with no allowed car
+    // (a girl when no car has a female leader) is left out of the request and reported skipped.
+    const keep = p.stops.map((_, i) => i).filter((i) => p.stops[i]!.allowedVehicles?.length !== 0);
+    if (keep.length < p.stops.length) {
+      const sub = keep.length ? await this.solve({ ...p, stops: keep.map((i) => p.stops[i]!) }, signal) : { routes: [], skipped: [] };
+      return { routes: sub.routes.map((r) => ({ ...r, stops: r.stops.map((s) => keep[s]!) })),
+        skipped: [...sub.skipped.map((s) => keep[s]!), ...p.stops.map((_, i) => i).filter((i) => !keep.includes(i))] };
+    }
     const token = await this.accessToken(signal);
-    const res = await this.call(`https://routeoptimization.googleapis.com/v1/projects/${encodeURIComponent(this.cfg.projectId)}:optimizeTours`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(optimizeToursBody(p)) },
-      signal, 'route optimisation');
-    return parseOptimizeTours(await res.json(), p);
+    const resolved: ResolvedPlaces = new Map();
+    return this.withBadPlaceIdRetry(signal, resolved, async () => {
+      const res = await this.call(`https://routeoptimization.googleapis.com/v1/projects/${encodeURIComponent(this.cfg.projectId)}:optimizeTours`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(optimizeToursBody(p, resolved)) },
+        signal, 'route optimisation');
+      return parseOptimizeTours(await res.json(), p);
+    });
   }
 
   async autocomplete(input: string, sessionToken: string, regionCode: string, signal: AbortSignal): Promise<PlaceSuggestion[]> {
@@ -99,13 +147,20 @@ export class GoogleRoutingProvider implements RoutingProvider {
 
   async matrix(pairs: { from: RoutePoint; to: RoutePoint }[], signal: AbortSignal): Promise<number[]> {
     const out: number[] = [];
+    // Task 4: one `resolved` map shared across every chunk of this call — a bad placeId that
+    // shows up in two chunks (likely, since cars often share an origin) only costs one Place
+    // Details lookup, and the MAX_BAD_PLACE_RETRIES budget is shared too, not per-chunk.
+    const resolved: ResolvedPlaces = new Map();
     for (let i = 0; i < pairs.length; i += MATRIX_MAX_PAIRS) {
       const chunk = pairs.slice(i, i + MATRIX_MAX_PAIRS);
-      const res = await this.call('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', { method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': this.cfg.apiKey,
-          'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,condition' },
-        body: JSON.stringify(routeMatrixBody(chunk)) }, signal, 'travel times');
-      out.push(...parseRouteMatrix(await res.json(), chunk));
+      const secs = await this.withBadPlaceIdRetry(signal, resolved, async () => {
+        const res = await this.call('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': this.cfg.apiKey,
+            'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,condition' },
+          body: JSON.stringify(routeMatrixBody(chunk, resolved)) }, signal, 'travel times');
+        return parseRouteMatrix(await res.json(), chunk);
+      });
+      out.push(...secs);
     }
     return out;
   }

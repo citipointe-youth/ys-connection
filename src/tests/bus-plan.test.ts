@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, skipPairs, detours, loneGirls, type FleetCar } from '../services/bus-plan';
+import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, skipPairs, detours, type FleetCar } from '../services/bus-plan';
 
 const W = { targetRouteMin: 45, genderWeightMin: 120, prefWeightMin: 10 };
 const mixed = { female: true, male: true, unknown: false };
@@ -29,20 +29,21 @@ describe('autoFillPool', () => {
       [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
     expect(ok.get('A')).toEqual(['M1', 'F1']);
   });
-});
-
-describe('loneGirls', () => {
-  const r = (id: string, gender: 'male' | 'female', placeId: string | null = null) => ({ id, gender, placeId });
-  it('flags a lone girl riding with boys', () => {
-    expect(loneGirls([[r('g1', 'female'), r('b1', 'male')]])).toEqual(['g1']);
-  });
-  it('does not flag two girls in the same car, or a car with only one rider at all', () => {
-    expect(loneGirls([[r('g1', 'female'), r('g2', 'female')]])).toEqual([]);
-    expect(loneGirls([[r('g1', 'female')]])).toEqual([]);
-  });
-  it('a sibling at the same address is exempt', () => {
-    expect(loneGirls([[r('g1', 'female', 'P1'), r('b1', 'male', 'P1')]])).toEqual([]);
-    expect(loneGirls([[r('g1', 'female', 'P1'), r('b1', 'male', 'P2')]])).toEqual(['g1']);
+  // Task 9 (owner): a car ending at a drop-off address sends its driver home — a pool leader
+  // added there would be stranded. Leaders already fixed to it (hand-assigned) are untouched.
+  it('never adds a pool leader to a car ending at an address; a church/last_drop car still fills', () => {
+    const endsAtAddress = autoFillPool(
+      [{ id: 'A', seats: 8, leaderIds: ['M1'], endsAt: 'address' }],
+      [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
+    expect(endsAtAddress.size).toBe(0);
+    const endsAtChurch = autoFillPool(
+      [{ id: 'A', seats: 8, leaderIds: ['M1'], endsAt: 'church' }],
+      [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
+    expect(endsAtChurch.get('A')).toEqual(['M1', 'F1']);
+    // endsAt omitted entirely (older callers) behaves like 'church'/'last_drop' — still fills.
+    const noEndsAt = autoFillPool([{ id: 'A', seats: 8, leaderIds: ['M1'] }],
+      [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
+    expect(noEndsAt.get('A')).toEqual(['M1', 'F1']);
   });
 });
 
@@ -71,12 +72,36 @@ describe('fleet problem', () => {
       [r('1'), r('2', { runVehicleId: 'B', pinned: true }), r('3', { runVehicleId: 'A' })], 'C', '2026-10-09T21:00:00.000Z', W);
     expect(stopRiderIds).toEqual(['1', '2', '3']);
     expect(problem.vehicles).toEqual([{ start: { placeId: 'C' }, end: { placeId: 'C' }, capacity: 5 }, { start: { placeId: 'C' }, end: null, capacity: 3 }]);
-    expect(problem.stops[0]).toEqual({ point: { placeId: 'P1' }, allowedVehicles: null,
+    // Task 7 (owner): all riders here are girls (r()'s default gender) and only car B (mixed)
+    // has a female leader, so a non-fixed girl's allowedVehicles is hard-restricted to [1] —
+    // not null — even though 'all' mode would otherwise leave her free.
+    expect(problem.stops[0]).toEqual({ point: { placeId: 'P1' }, allowedVehicles: [1],
       costs: [{ vehicle: 0, cost: 120 }, { vehicle: 1, cost: 10 }], optional: true });
-    expect(problem.stops[1]!.allowedVehicles).toEqual([1]);   // pinned → its car
-    expect(problem.stops[2]!.allowedVehicles).toBeNull();     // placed but not pinned → free in 'all'
+    expect(problem.stops[1]!.allowedVehicles).toEqual([1]);   // pinned → its car (fixed wins over the gender rule)
+    expect(problem.stops[2]!.allowedVehicles).toEqual([1]);   // placed but not pinned → still hard-restricted to female-eligible cars
     const fit = buildFleetProblem('fit', cars, [r('3', { runVehicleId: 'A' })], 'C', '2026-10-09T21:00:00.000Z', W);
-    expect(fit.problem.stops[0]!.allowedVehicles).toEqual([0]); // placed → fixed in 'fit'
+    expect(fit.problem.stops[0]!.allowedVehicles).toEqual([0]); // placed → fixed in 'fit' (fixed wins over the gender rule too)
+  });
+  // Task 7 (owner, replaces the old lone-girl rule): a non-fixed girl may only be placed in a
+  // car that currently has >=1 female leader — a hard constraint, not a soft cost.
+  describe('female-leader hard constraint', () => {
+    it('a free girl is restricted to female-eligible cars; a free boy is unrestricted', () => {
+      const girl = buildFleetProblem('all', cars, [r('1', { gender: 'female' })], 'C', '2026-10-09T21:00:00.000Z', W);
+      expect(girl.problem.stops[0]!.allowedVehicles).toEqual([1]); // only car B (mixed) has a female leader
+      const boy = buildFleetProblem('all', cars, [r('1', { gender: 'male' })], 'C', '2026-10-09T21:00:00.000Z', W);
+      expect(boy.problem.stops[0]!.allowedVehicles).toBeNull();
+    });
+    it('a girl is left unassignable (empty allowedVehicles) when no car has a female leader', () => {
+      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, prefGrades: [], endPlaceId: 'C' }];
+      const { problem } = buildFleetProblem('all', allBoysCars, [r('1', { gender: 'female' })], 'C', '2026-10-09T21:00:00.000Z', W);
+      expect(problem.stops[0]!.allowedVehicles).toEqual([]);
+      expect(problem.stops[0]!.optional).toBe(true); // Google skips her rather than erroring
+    });
+    it('a pinned/fixed girl keeps her car even if it has no female leader (hand placement is not enforced)', () => {
+      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, prefGrades: [], endPlaceId: 'C' }];
+      const { problem } = buildFleetProblem('all', allBoysCars, [r('1', { gender: 'female', runVehicleId: 'A', pinned: true })], 'C', '2026-10-09T21:00:00.000Z', W);
+      expect(problem.stops[0]!.allowedVehicles).toEqual([0]);
+    });
   });
   it('single-car problem must place every stop', () => {
     const p = buildSingleProblem(['a', 'b'], 'C', null, '2026-10-09T21:00:00.000Z', 45);

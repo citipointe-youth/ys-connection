@@ -103,7 +103,7 @@ describe('generate', () => {
     await f.rider('s1'); await f.rider('s2');
     await f.svc.generate(f.admin, { mode: 'all' });
     await f.svc.autocomplete(f.admin, '24 Wynnum Rd', 'sess-12345678');
-    const sent = JSON.stringify([...rec.calls.solve.map(optimizeToursBody),
+    const sent = JSON.stringify([...rec.calls.solve.map((p) => optimizeToursBody(p)),
       ...rec.calls.autocomplete.map((c) => autocompleteBody(c.input, c.session, c.region))]);
     // Deviation from the brief: a plain substring check on 'Tran' false-positives against
     // optimizeToursBody's own "populateTransitionPolylines" key (Task 1 code, unrelated to the
@@ -189,6 +189,51 @@ describe('generate', () => {
     expect(after.run).toMatchObject({ lockBy: null, undoUntil: null });
   });
 
+  // Task 4 (owner): when Google names a SPECIFIC placeId it (and Place Details) couldn't
+  // locate, generate() maps it back to the rider/car/church it belongs to for a fixable
+  // message — a genuine network/5xx failure (tested just above) still gets the generic one.
+  describe('Task 4: a Google-rejected placeId maps to a fixable name, not the generic failure', () => {
+    it("names the rider whose address Google couldn't locate", async () => {
+      const f = await busFixture({ routing: stubRouting({ solve: async () => {
+        throw new RoutingError('Google route optimisation failed (400)', 'fake:s1');
+      } }) });
+      await f.car('Van', 8, ['L1', 'L2']);
+      await f.rider('s1');
+      await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 422, code: 'ROUTING_BAD_ADDRESS',
+        message: "Google can't locate Jess Tran's address — re-pick it from the suggestions (Fix address)." });
+    });
+    it('names the car whose end address Google could not locate', async () => {
+      const f = await busFixture({ routing: stubRouting({ solve: async () => {
+        throw new RoutingError('Google route optimisation failed (400)', 'fake:van-end');
+      } }) });
+      await f.car('Van', 8, ['L1', 'L2']); // default endsAt: 'church'
+      const run = await f.svc.getRun(f.admin);
+      const rv = run.vehicles[0]!;
+      // endsAt and endsPlaceId must be set together — a real placeId is required once endsAt is 'address' (Task 2)
+      await f.svc.updateRunVehicle(f.admin, rv.id, { endsAt: 'address', endsPlaceId: 'fake:van-end', endsAddress: 'X' });
+      await f.rider('s1');
+      await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 422, code: 'ROUTING_BAD_ADDRESS',
+        message: "Google can't locate Van end address — re-pick it from the suggestions (Fix address)." });
+    });
+    it('names the church when the church address could not be located', async () => {
+      const f = await busFixture({ routing: stubRouting({ solve: async () => {
+        throw new RoutingError('Google route optimisation failed (400)', 'fake:church');
+      } }) });
+      await f.car('Van', 8, ['L1', 'L2']);
+      await f.rider('s1');
+      await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 422, code: 'ROUTING_BAD_ADDRESS',
+        message: "Google can't locate the church address — re-pick it from the suggestions (Fix address)." });
+    });
+    it('an unrecognised placeId (Place Details resolved it, then something else failed) falls back to the generic message', async () => {
+      const f = await busFixture({ routing: stubRouting({ solve: async () => {
+        throw new RoutingError('Google route optimisation failed (400)', 'fake:totally-unknown');
+      } }) });
+      await f.car('Van', 8, ['L1', 'L2']);
+      await f.rider('s1');
+      await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 502, code: 'ROUTING_FAILED' });
+    });
+  });
+
   it('a rider removed while Google is solving is not re-created', async () => {
     const fake = new FakeRoutingProvider();
     let victim = '';
@@ -225,75 +270,52 @@ describe('generate', () => {
   });
 });
 
-// Task 4: never exactly one girl among a fleet car's riders (siblings at the same address
-// excepted). Leaders don't matter; a car with only one rider at all is out of scope (nothing
-// to be "alone with"). Stub routing fully controls placement so the scenarios are deterministic.
-describe('lone girl rule', () => {
-  it('a lone girl moves to a car with another girl when the re-solve allows it', async () => {
-    let call = 0;
-    const f = await busFixture({ routing: stubRouting({ solve: async (p) => {
-      call++;
-      // stop order = rider add order: 0=jess, 1=sam, 2=mia
-      if (call === 1) return { skipped: [], routes: [
-        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> car A
-        { vehicle: 1, stops: [2], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },        // mia -> car B
-      ] };
-      return { skipped: [], routes: [ // the lone-girl re-solve: jess moves to join mia
-        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },        // sam -> car A
-        { vehicle: 1, stops: [2, 0], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },  // mia, jess -> car B
-      ] };
-    } }) });
-    const carA = await f.car('Van A', 8, ['L1', 'L2']);
-    const carB = await f.car('Van B', 8, ['L3', 'L4']);
-    const jess = await f.rider('s1'); const sam = await f.rider('s2'); const mia = await f.rider('s4');
+// Task 7 (owner, replaces the old lone-girl rule): a girl may only be PLACED by Generate/Fit in
+// in a car with >=1 female leader (hard constraint, via buildFleetProblem's allowedVehicles).
+// Real FakeRoutingProvider (not a stub) is enough here — it already honours allowedVehicles.
+describe('female-leader rule', () => {
+  it('a girl is placed in the car with a female leader, never the all-male car', async () => {
+    const f = await busFixture();
+    const carMale = await f.car('Van A', 8, ['L1', 'L4']);   // Tom, Ben — no female leader
+    const carFemale = await f.car('Van B', 8, ['L2', 'L3']); // Sarah, Amy — female leader
+    const jess = await f.rider('s1'); // girl
     const res = await f.svc.generate(f.admin, { mode: 'all' });
-    expect(call).toBe(2);
+    expect(res.noFemaleLeader).toBe(0);
     const v = await f.svc.getRun(f.admin);
-    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carB);
-    expect(v.riders.find((r) => r.id === mia.id)!.runVehicleId).toBe(carB);
-    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
-    expect(res.loneGirl).toBe(0);
+    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carFemale);
+    expect(v.vehicles.find((x) => x.id === carMale)!.needsFemaleLeader).toBe(false); // she never landed there
   });
 
-  it('a lone girl with no alternative car ends Unassigned, loneGirl:1', async () => {
-    let call = 0;
-    const f = await busFixture({ routing: stubRouting({ solve: async () => {
-      call++;
-      if (call === 1) return { skipped: [], routes: [
-        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> the only car
-      ] };
-      return { skipped: [0], routes: [ // jess excluded from her only car -> skipped
-        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
-      ] };
-    } }) });
-    const carA = await f.car('Van', 8, ['L1', 'L2']);
-    const jess = await f.rider('s1'); const sam = await f.rider('s2');
+  it('a girl with no eligible car ends Unassigned, noFemaleLeader:1', async () => {
+    const f = await busFixture();
+    await f.car('Van', 8, ['L1', 'L4']); // Tom, Ben — no female leader anywhere tonight
+    const jess = await f.rider('s1');
     const res = await f.svc.generate(f.admin, { mode: 'all' });
-    expect(call).toBe(2);
+    expect(res).toMatchObject({ placed: 0, unassigned: 1, noFemaleLeader: 1 });
     const v = await f.svc.getRun(f.admin);
     expect(v.riders.find((r) => r.id === jess.id)).toMatchObject({ runVehicleId: null, stopOrder: null, pinned: false });
-    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
-    expect(res).toMatchObject({ placed: 1, unassigned: 1, loneGirl: 1 });
   });
 
-  it('two riders at the same address (girl + brother) are allowed — no re-solve', async () => {
-    let call = 0;
-    const f = await busFixture({ routing: stubRouting({ solve: async () => {
-      call++;
-      return { skipped: [], routes: [
-        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> the only car
-      ] };
-    } }) });
-    const carA = await f.car('Van', 8, ['L1', 'L2']);
-    // give Sam the same placeId as Jess so the sibling exception applies
-    const jess = await f.svc.addRider(f.admin, { studentId: 's1', newAddress: { label: 'Home', address: 'Shared St', placeId: 'fake:shared' } });
-    const sam = await f.svc.addRider(f.admin, { studentId: 's2', newAddress: { label: 'Home', address: 'Shared St', placeId: 'fake:shared' } });
+  it('a hand-pinned girl keeps her all-male car; Generate does not move her, and the car is flagged needsFemaleLeader', async () => {
+    const f = await busFixture();
+    const carMale = await f.car('Van', 8, ['L1', 'L4']); // Tom, Ben
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: carMale }); // hand placement — pins her
     const res = await f.svc.generate(f.admin, { mode: 'all' });
-    expect(call).toBe(1); // no lone-girl re-solve needed
+    expect(res.noFemaleLeader).toBe(0); // fixed/pinned riders are excluded from the count
     const v = await f.svc.getRun(f.admin);
-    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carA);
-    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
-    expect(res.loneGirl).toBe(0);
+    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carMale);
+    expect(v.vehicles.find((x) => x.id === carMale)!.needsFemaleLeader).toBe(true);
+  });
+
+  it('boys are never restricted by the female-leader rule', async () => {
+    const f = await busFixture();
+    const carFemale = await f.car('Van', 8, ['L2', 'L3']); // Sarah, Amy — no male leader
+    const sam = await f.rider('s2'); // boy
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(res).toMatchObject({ placed: 1, unassigned: 0, noFemaleLeader: 0 });
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carFemale);
   });
 });
 
@@ -464,28 +486,21 @@ describe('leader preferred grades feed the solver', () => {
 // getting its own fresh 15s routingDeadline() — together with the per-rider writes between them,
 // that could outlast LOCK_MS. Fixed by sharing one AbortSignal (a ~30s budget) across both solves.
 describe('generate: one shared solve deadline (Task 1)', () => {
-  it('passes the SAME AbortSignal to the main solve and the lone-girl re-solve', async () => {
+  // Task 7 note: this used to also check a 2nd ("lone-girl re-solve") call shared the same
+  // signal — that machinery is gone (replaced by a hard constraint in buildFleetProblem, so
+  // there's only ever one solve per generate() call now). Still worth pinning that the solve
+  // gets a real AbortSignal from the shared GENERATE_SOLVE_BUDGET_MS deadline.
+  it('passes a real AbortSignal to the solve', async () => {
     const signals: (AbortSignal | undefined)[] = [];
-    let call = 0;
     const f = await busFixture({ routing: stubRouting({ solve: async (p, s) => {
-      signals.push(s); call++;
-      // Same deterministic lone-girl scenario as the 'lone girl rule' describe block below:
-      // stop order = rider add order: 0=jess, 1=sam, 2=mia.
-      if (call === 1) return { skipped: [], routes: [
-        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },
-        { vehicle: 1, stops: [2], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
-      ] };
-      return { skipped: [], routes: [
-        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
-        { vehicle: 1, stops: [2, 0], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },
-      ] };
+      signals.push(s);
+      return new FakeRoutingProvider().solve(p, s);
     } }) });
     await f.car('Van A', 8, ['L1', 'L2']); await f.car('Van B', 8, ['L3', 'L4']);
     await f.rider('s1'); await f.rider('s2'); await f.rider('s4');
     await f.svc.generate(f.admin, { mode: 'all' });
-    expect(call).toBe(2); // the lone-girl re-solve really ran
+    expect(signals).toHaveLength(1);
     expect(signals[0]).toBeInstanceOf(AbortSignal);
-    expect(signals[1]).toBe(signals[0]); // not a second, fresh deadline
   });
 
   it('the lock window covers the shared solve budget comfortably (LOCK_MS well above ~30s)', async () => {

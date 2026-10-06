@@ -103,6 +103,20 @@ describe('route analysis', () => {
     expect(after.run.version).toBe(before.run.version);
     expect(after.riders.map((r) => r.runVehicleId)).toEqual(before.riders.map((r) => r.runVehicleId));
     await expect(f.svc.extraCars(f.admin, { count: 3, seats: 6 })).rejects.toMatchObject({ statusCode: 400 });
+    // Task 8 (owner): per-car breakdown, built from the same solve — existing car keeps its
+    // name, the hypothetical one is "Extra car N"; every rider is placed across the two.
+    expect(x.cars.map((c) => c.label).sort()).toEqual(['Extra car 1', 'Small']);
+    expect(x.cars.reduce((n, c) => n + c.riders, 0)).toBe(4);
+    for (const c of x.cars) {
+      expect(c.extra).toBe(c.label === 'Extra car 1');
+      expect(c.stops).toHaveLength(c.riders);
+      for (const s of c.stops) {
+        expect(s.name).toBeTruthy();
+        expect(s.arriveAt).toMatch(/^\d{2}:\d{2}$/);
+      }
+      expect(c.finishAt).toMatch(/^\d{2}:\d{2}$/);
+      expect(c.driveMinutes).toBeGreaterThanOrEqual(0);
+    }
   });
 
   it('static map: numbered markers in car colours, no names sent, solve reused from analysis', async () => {
