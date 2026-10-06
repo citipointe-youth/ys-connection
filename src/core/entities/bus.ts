@@ -61,6 +61,12 @@ export interface BusRiderView {
   droppedAt: string | null; droppedBy: string | null;
 }
 export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null; prefGrades: number[] }
+// Owner request: "Past riders" on the Tonight tab — people with a saved address who aren't on
+// tonight's roster. addressId lets the SPA one-tap add them via the existing addRider path
+// without re-entering the address; only the suburb is ever shown here (spec I2's rule).
+export interface BusPastRiderView {
+  studentId: ID | null; guestId: ID | null; addressId: ID; name: string; grade: number | null; suburb: string;
+}
 export interface BusRunView {
   run: { id: ID; serviceDate: string; version: number; readOnly: boolean;
          lastChangeBy: string | null; lastChangeAt: string | null;
@@ -72,6 +78,7 @@ export interface BusRunView {
   fleet: BusVehicle[];
   canCoordinate: boolean;
   pendingNewPeople: number | null;   // null unless director/admin
+  pastRiders: BusPastRiderView[];    // [] unless bus:roster; capped ~50, most recent first
 }
 export interface BusSearchHit {
   kind: 'student' | 'guest'; id: ID; name: string; grade: number | null; gender: BusGender;

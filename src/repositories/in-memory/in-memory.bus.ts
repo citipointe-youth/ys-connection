@@ -37,6 +37,7 @@ export class InMemoryBusRepository implements IBusRepository {
       .filter((a) => (o.studentId ? a.studentId === o.studentId : a.guestId === o.guestId))
       .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt)).map(c);
   }
+  async listAllAddresses() { return [...this.addresses.values()].map(c); }
   async getAddress(id: string) { const a = this.addresses.get(id); return a ? c(a) : null; }
   async saveAddress(a: BusAddress) { this.addresses.set(a.id, c(a)); return c(a); }
   async reassignGuestAddresses(guestId: string, studentId: string) {

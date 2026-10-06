@@ -135,6 +135,7 @@ export interface IBusRepository {
   saveGuest(g: BusGuest): Promise<BusGuest>;
   deleteGuest(id: string): Promise<void>;           // also deletes the guest's addresses
   listAddresses(owner: { studentId?: string; guestId?: string }): Promise<BusAddress[]>; // newest lastUsedAt first
+  listAllAddresses(): Promise<BusAddress[]>; // every saved address, any order — "Past riders" groups these by owner
   getAddress(id: string): Promise<BusAddress | null>;
   saveAddress(a: BusAddress): Promise<BusAddress>;
   reassignGuestAddresses(guestId: string, studentId: string): Promise<void>;

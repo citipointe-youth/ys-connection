@@ -127,6 +127,7 @@ export class SupabaseBusRepository implements IBusRepository {
       : await this.sql`select * from bus_addresses where guest_id = ${o.guestId ?? null} order by last_used_at desc`;
     return r.map(toAddress);
   }
+  async listAllAddresses() { return (await this.sql`select * from bus_addresses`).map(toAddress); }
   async getAddress(id: string) { const r = await this.sql`select * from bus_addresses where id = ${id}`; return r[0] ? toAddress(r[0]) : null; }
   async saveAddress(a: BusAddress) {
     const r = await this.sql`

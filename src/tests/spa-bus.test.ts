@@ -563,7 +563,7 @@ describe('busGenerate toast mentions riders kept off a car alone', () => {
 describe('_busRosterHtml locks add/search/remove while Generate is running or a coordinator holds the lock', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busCarColour() { return '#000'; }
-     function _busHitsHtml() { return ''; }`;
+     function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; }`;
   const run = (generating: boolean, lockBy: string | null, lockUntil: string | null) => {
     const prelude = `${stubs}
       const BUS = { search: '', generating: ${generating},
@@ -719,5 +719,30 @@ describe('_busLoadMap times out and handles an expired session (2026-10-06)', ()
     expect(st.handled).toBe(true);
     expect(st.fetchOpts.signal).toBeInstanceOf(AbortSignal);
     expect(st.BUS.mapUrl).toBe('');
+  });
+});
+
+describe('Past riders (Tonight tab)', () => {
+  const stubs = `function esc(s) { return String(s); }\nfunction icS(k) { return k; }`;
+  const past = [{ studentId: 's1', guestId: null, addressId: 'a1', name: 'Jess Tran', grade: 9, suburb: 'Carina' }];
+  it('renders collapsed by default with a count, and nothing when locked or empty', () => {
+    const load = (pastRiders: unknown[], open = false) => loadFns(['_busPastHtml'],
+      `${stubs}\nconst BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: ${open} };`)._busPastHtml;
+    const html = load(past)(false);
+    expect(html).toContain('Past riders (1)');
+    expect(html).toContain('class="card drop"');
+    expect(html).toContain('busAddPast(0)');
+    expect(load(past, true)(false)).toContain('class="card drop open"');
+    expect(load(past)(true)).toBe('');
+    expect(load([])(false)).toBe('');
+  });
+  it('one tap posts the saved addressId', async () => {
+    const sent: unknown[] = [];
+    const { busAddPast } = loadFns(['busAddPast'], `const BUS = { view: { pastRiders: ${JSON.stringify(past)} } };
+      async function _busSend(m, url, body) { globalThis.__sent.push([m, url, body]); }
+      function toast() {} function renderBus() {}`);
+    (globalThis as any).__sent = sent;
+    await busAddPast(0);
+    expect(sent).toEqual([['POST', '/bus/riders', { studentId: 's1', addressId: 'a1' }]]);
   });
 });

@@ -590,8 +590,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
 .bus-pg .tbbar{margin-bottom:10px}
-.bus-pg .tbbar{gap:4px}
-.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 8px}
+@media(max-width:767px){.bus-pg .tbbar{gap:4px}.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 8px}}
 .bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .bus-pg .drop-head > :first-child{min-width:0}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
@@ -655,6 +654,10 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* ── R2: generate controls, autocomplete, undo toast ── */
 .bus-gen{display:flex;gap:8px;align-items:center;margin-bottom:12px}
 .bus-gen .btn-primary{flex:1;min-height:44px}
+@media(min-width:768px){.bus-gen .btn-primary{flex:0 0 auto;min-width:240px}}
+.bus-routes > .veh-card{margin-bottom:0}
+.route-row.clickable{cursor:pointer;border-radius:6px}
+.route-row.clickable:hover{background:var(--paper)}
 .bus-lock{margin-bottom:10px}
 .bus-ac-list{display:flex;flex-direction:column;margin-top:4px;border-radius:8px;overflow:hidden}
 .bus-ac-list:empty{display:none}
@@ -8394,7 +8397,30 @@ function _busRosterHtml() {
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
     <div class="card-title bus-sec">Tonight (${v.riders.length})</div>
     ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
-    <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>`;
+    <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
+    ${_busPastHtml(locked)}`;
+}
+// Past riders (saved address, not on tonight) — collapsed by default; BUS.pastOpen survives the 10 s re-render.
+function _busPastHtml(locked) {
+  const past = locked ? [] : (BUS.view.pastRiders || []);
+  if (!past.length) return '';
+  const rows = past.map((p, i) => `<div class="route-row clickable" onclick="busAddPast(${i})">
+      <div class="route-main"><div class="route-name">${esc(p.name)} ${p.grade ? `<span class="chip c-neutral">Y${p.grade}</span>` : ''}</div>
+      <div class="route-sub">${esc(p.suburb)}</div></div>
+      <span style="color:var(--accent-dark);display:flex" aria-label="Add ${esc(p.name)}">${icS('plus')}</span></div>`).join('');
+  return `<div class="card drop${BUS.pastOpen ? ' open' : ''}" style="margin-top:12px">
+    <div class="drop-head" onclick="BUS.pastOpen=!BUS.pastOpen;this.parentElement.classList.toggle('open')"><span class="card-title">Past riders (${past.length})</span><span class="drop-chev">${icS('chevr')}</span></div>
+    <div class="drop-body" style="margin-top:8px">${rows}</div></div>`;
+}
+async function busAddPast(i) {
+  const p = (BUS.view.pastRiders || [])[i];
+  if (!p || BUS.addingPast) return;
+  BUS.addingPast = true;
+  try {
+    await _busSend('POST', '/bus/riders', { ...(p.studentId ? { studentId: p.studentId } : { guestId: p.guestId }), addressId: p.addressId });
+    toast(`${p.name} added`); renderBus();
+  } catch (e) { toast(e.message); }
+  finally { BUS.addingPast = false; }
 }
 
 let _busSearchT = null;
@@ -8752,7 +8778,7 @@ function _busCarsHtml() {
       <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div></div></div>`;
   }).join('');
 
-  return `${cards}
+  return `<div class="bus-routes">${cards}</div>
     <button class="btn btn-secondary btn-full" onclick="busEditVehicle(null)">${icS('plus')} Add vehicle</button>
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
@@ -8854,7 +8880,7 @@ function _busRoutesHtml() {
     const girls = riders.filter((r) => r.gender === 'female');
     const loneGirl = riders.length > 1 && girls.length === 1 && !riders.some((r) => r !== girls[0] && r.placeId && r.placeId === girls[0].placeId);
     const loneGirlChip = loneGirl ? `<span class="chip c-warn">${icS('alert')} Only 1 girl</span>` : '';
-    const rows = riders.map((r, i) => `<div class="route-row"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`} style="cursor:${v.run.readOnly ? 'default' : 'pointer'}">
+    const rows = riders.map((r, i) => `<div class="route-row${v.run.readOnly ? '' : ' clickable'}"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
@@ -8952,7 +8978,7 @@ function _busMyCarHtml() {
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
     const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv, mc.churchPlaceId) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
-    const rows = mc.stops.map((s, i) => `<div class="route-row" style="align-items:flex-start" onclick="_busToggleStop(${i})">
+    const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)}</div>

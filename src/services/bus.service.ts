@@ -14,7 +14,7 @@ import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
-  BusAnalysisView, BusExtraCarsView } from '../core/entities/bus';
+  BusAnalysisView, BusExtraCarsView, BusPastRiderView } from '../core/entities/bus';
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
@@ -101,6 +101,7 @@ const GENERATE_FAILED = "Couldn't reach Google Maps — nothing changed. Try aga
 const SEARCH_FAILED = 'Address search is unavailable right now. Type the full address instead.';
 const ANALYSIS_FAILED = "Couldn't reach Google Maps — try again in a minute.";
 const MAP_MAX_POINTS = 120; // per route, keeps the Static Maps URL far under its 16k limit
+const PAST_RIDERS_CAP = 50;
 
 function routingFailed(err: unknown, message = GENERATE_FAILED): AppError {
   console.error('[bus] routing failed:', err instanceof Error ? err.message : err);
@@ -282,6 +283,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       leaders: isRedactedLeader ? [] : leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: isRedactedLeader ? [] : fleet.filter((v) => !v.archived), canCoordinate,
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
+      pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
     };
   }
 
@@ -307,6 +309,43 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           && (normName(s.firstName).startsWith(normName(g.firstName)) || normName(g.firstName).startsWith(normName(s.firstName))))
         .map((s) => ({ studentId: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade })),
     }));
+  }
+
+  // Owner request: people with a saved address (student or not-yet-purged guest) who are NOT
+  // on tonight's roster, most recent rider first. True "latest bus_run_riders.added_at" would
+  // mean scanning every past run's riders — not cheap once a few terms of history pile up — so
+  // this uses the address's lastUsedAt instead: resolveAddress() already bumps it to "now"
+  // every time that address is used to add/update a rider, so in practice it tracks the same
+  // moment. Ties (never-ridden-again addresses created at the same time) break on name.
+  async function pastRidersList(ctx: BusCtx, c: MinistryConfig, riders: BusRunRider[]): Promise<BusPastRiderView[]> {
+    if (!allowed(ctx, c, 'bus:roster')) return [];
+    const onRun = new Set(riders.map(riderKey));
+    const [addresses, guests, allStudents] = await Promise.all([bus.listAllAddresses(), bus.listGuests(), students.findAll()]);
+    const guestById = new Map(guests.map((g) => [g.id, g]));
+    const studentById = new Map(allStudents.map((s) => [s.id, s]));
+    const latest = new Map<string, BusAddress>(); // owner key → their most-recently-used address
+    for (const a of addresses) {
+      const key = riderKey(a);
+      const cur = latest.get(key);
+      if (!cur || a.lastUsedAt > cur.lastUsedAt) latest.set(key, a);
+    }
+    const out: (BusPastRiderView & { lastUsedAt: string })[] = [];
+    for (const [key, addr] of latest) {
+      if (onRun.has(key)) continue;
+      if (addr.studentId) {
+        const s = studentById.get(addr.studentId);
+        if (!s) continue;
+        out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
+          grade: s.grade, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+      } else if (addr.guestId) {
+        const g = guestById.get(addr.guestId);
+        if (!g) continue; // purged, or never existed
+        out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
+          grade: g.grade, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+      }
+    }
+    out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
+    return out.slice(0, PAST_RIDERS_CAP).map(({ lastUsedAt, ...rest }) => rest);
   }
 
   async function linkOne(guestId: string, studentId: string): Promise<void> {
