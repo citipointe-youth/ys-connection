@@ -11,8 +11,19 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
-/** Vercel env vars usually hold the PEM with literal "\n" sequences. */
-export function normalisePrivateKey(k: string): string { return k.replace(/\\n/g, '\n').trim(); }
+/**
+ * Rebuilds a clean PEM from however the key was pasted into the Vercel dashboard: literal "\n"
+ * (single or double escaped), CRLF, newlines flattened to spaces, wrapping quotes, or the whole
+ * service-account JSON file. A mangled PEM fails in createSign with "DECODER routines::unsupported".
+ */
+export function normalisePrivateKey(k: string): string {
+  let s = k.trim();
+  if (s.startsWith('{')) { try { s = String(JSON.parse(s).private_key ?? s); } catch { /* not JSON — use as-is */ } }
+  const m = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(s);
+  if (!m) return s.replace(/\\n/g, '\n').trim();
+  const body = m[2]!.replace(/\\+[rn]/g, '').replace(/[^A-Za-z0-9+/=]/g, '');
+  return [`-----BEGIN ${m[1]}-----`, ...(body.match(/.{1,64}/g) ?? []), `-----END ${m[1]}-----`].join('\n');
+}
 
 export function signJwt(email: string, privateKey: string, nowSec: number): string {
   const head = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -44,7 +55,9 @@ export class GoogleRoutingProvider implements RoutingProvider {
 
   private async accessToken(signal: AbortSignal): Promise<string> {
     if (this.token && this.token.expiresAt > this.now() + 60_000) return this.token.value;
-    const assertion = signJwt(this.cfg.saEmail, this.cfg.saPrivateKey, Math.floor(this.now() / 1000));
+    let assertion: string;
+    try { assertion = signJwt(this.cfg.saEmail, this.cfg.saPrivateKey, Math.floor(this.now() / 1000)); }
+    catch { throw new RoutingError('GOOGLE_SA_PRIVATE_KEY is not a readable private key — paste the private_key value from the service-account JSON'); }
     const res = await this.call(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString() }, signal, 'sign-in');
     const j = (await res.json()) as { access_token: string; expires_in: number };

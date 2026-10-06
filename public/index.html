@@ -583,7 +583,17 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-tile .bt-ic{width:28px;height:28px;border-radius:8px;background:var(--accent-light);color:var(--accent-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .bus-tile .bt-label{font-size:14.5px;font-weight:700;flex:1}
 .bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
-.bus-head-act{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
+/* Phone-tight layout: narrower gutters/cards, one-line title, tabs share the row instead of scrolling off. */
+@media(max-width:767px){.bus-pg{padding-left:12px;padding-right:12px}.bus-pg .card{padding:12px}.bus-wide{display:none}}
+.bus-wide{margin-left:2px}
+.bus-pg .ph-title{white-space:nowrap}
+.bus-pg .ph{margin-bottom:12px}
+.bus-pg .tbbar{margin-bottom:10px}
+.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 10px}
+.bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
+.bus-pg .drop-head > :first-child{min-width:0}
+.bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
 .bus-last{font-size:11.5px;color:var(--ink-mid);margin:-6px 0 12px}
 .bus-sec{margin:4px 2px 8px}
 .bus-foot{text-align:center;font-size:11.5px;color:var(--ink-mid);margin-top:4px}
@@ -648,10 +658,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-ac-list{display:flex;flex-direction:column;margin-top:4px;border-radius:8px;overflow:hidden}
 .bus-ac-list:empty{display:none}
 .li.bus-ac-item{width:100%;text-align:left;font-size:13px;gap:8px;min-height:44px}
-.bus-undo{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:12px;
-  background:var(--navy);color:#fff;border-radius:999px;padding:6px 8px 6px 16px;box-shadow:var(--shadow);font-size:13px;max-width:calc(100% - 32px);white-space:nowrap}
-@media(max-height:500px){.bus-undo{bottom:calc(56px + env(safe-area-inset-bottom))}}
-@media(min-width:768px){.bus-undo{bottom:24px}}
+.bus-undo{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;
+  background:var(--navy);color:#fff;border-radius:var(--radius-sm);padding:6px 6px 6px 14px;font-size:13px}
 /* ── R3: Route analysis — map above the list on phones, beside it at ≥768px ── */
 .bus-an{display:grid;gap:12px}
 @media(min-width:768px){.bus-an{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}.an-mapcol{position:sticky;top:12px}}
@@ -8344,7 +8352,7 @@ async function renderBus() {
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
-      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()">${icS('route')} Analysis</button>` : ''}
+      <div class="bus-head-act">${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
@@ -8791,19 +8799,19 @@ function _busRoutesHtml() {
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
     </div>`).join('');
     return `<div class="card drop open">
-      <div class="drop-head">
+      <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
         <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}</span>
-        <span class="drop-chev">${icS('chevd')}</span>
+        <span class="drop-chev">${icS('chevr')}</span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
     </div>`;
   }).join('');
-  return `${_busRoutesHead()}<div class="card drop open">
-    <div class="drop-head">${unHead}<span class="drop-chev">${icS('chevd')}</span></div>
+  return `${_busRoutesHead()}${_busUndoBar()}<div class="card drop open">
+    <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">${unHead}<span class="drop-chev">${icS('chevr')}</span></div>
     <div class="drop-body" style="margin-top:8px">${unRows || '<div class="card-sub">All placed — no action needed.</div>'}</div>
   </div>
-  <div class="bus-routes">${carCards}</div>${_busUndoBar()}`;
+  <div class="bus-routes">${carCards}</div>`;
 }
 
 function busOwnCarSheet() {

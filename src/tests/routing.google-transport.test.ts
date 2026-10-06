@@ -36,6 +36,16 @@ describe('service-account JWT', () => {
   it('accepts a \\n-escaped private key from an env var', () => {
     expect(normalisePrivateKey('-----BEGIN X-----\\nabc\\n-----END X-----\\n')).toBe('-----BEGIN X-----\nabc\n-----END X-----');
   });
+  // Prod 2026-10-06: "error:1E08010C:DECODER routines::unsupported" — the pasted env value wasn't a clean PEM.
+  it.each([
+    ['wrapped in quotes', `"${privateKey.replace(/\n/g, '\\n')}"`],
+    ['the whole service-account JSON file', JSON.stringify({ type: 'service_account', private_key: privateKey, client_email: 'x' })],
+    ['newlines flattened to spaces', privateKey.replace(/\n/g, ' ')],
+    ['CRLF line endings', privateKey.replace(/\n/g, '\r\n')],
+    ['double-escaped \\\\n', privateKey.replace(/\n/g, '\\\\n')],
+  ])('signs with a private key pasted as %s', (_, pasted) => {
+    expect(() => signJwt(cfg.saEmail, normalisePrivateKey(pasted), 1_700_000_000)).not.toThrow();
+  });
 });
 
 describe('GoogleRoutingProvider', () => {

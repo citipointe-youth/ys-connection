@@ -46,6 +46,17 @@ describe('generate', () => {
     expect(byName('Riley Kim').runVehicleId).not.toBeNull();
   });
 
+  // Prod 2026-10-06: riders moved to Unassigned by hand were silently skipped, so Generate "worked" but placed no one.
+  it('Generate all re-places riders moved to Unassigned by hand; Fit in leaves them', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van A', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: null });
+    expect(await f.svc.generate(f.admin, { mode: 'fit' })).toMatchObject({ placed: 0, unassigned: 1 });
+    expect(await f.svc.generate(f.admin, { mode: 'all' })).toMatchObject({ placed: 1, unassigned: 0 });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: a, pinned: false });
+  });
+
   it('not enough seats: leftovers stay Unassigned', async () => {
     const f = await busFixture();
     await f.car('Small', 3, ['L1', 'L2']); // 1 youth seat

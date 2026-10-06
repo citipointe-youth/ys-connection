@@ -338,8 +338,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const need = { female: fleetRiders.filter((r) => r.snapGender === 'female').length, male: fleetRiders.filter((r) => r.snapGender === 'male').length };
     const filled = autoFillPool(cars.map((v) => ({ id: v.id, seats: v.seats, leaderIds: known(v.leaderIds) })), pool, (id) => genderBy.get(id) ?? null, need);
     const untouched = fleetRiders.filter((r) => !r.snapPlaceId);
-    // A rider moved to Unassigned by hand (pinned, no car) stays unassigned.
-    const solvable = fleetRiders.filter((r) => r.snapPlaceId && !(r.pinned && !r.runVehicleId));
+    // A rider moved to Unassigned by hand (pinned, no car) stays unassigned under Fit in; Generate all re-places them.
+    const solvable = fleetRiders.filter((r) => r.snapPlaceId && !(mode === 'fit' && r.pinned && !r.runVehicleId));
     const fleetCars: FleetCar[] = cars.map((v) => {
       const ids = filled.get(v.id) ?? known(v.leaderIds);
       return { id: v.id,
@@ -784,7 +784,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         for (const r of current) {
           const p = placed.get(r.id);
           if (!p || !unchanged(r)) continue;
-          await bus.saveRunRider({ ...r, runVehicleId: p.runVehicleId, stopOrder: p.stopOrder, pinned: p.runVehicleId ? r.pinned : false });
+          await bus.saveRunRider({ ...r, runVehicleId: p.runVehicleId, stopOrder: p.stopOrder, pinned: p.runVehicleId && r.runVehicleId ? r.pinned : false });
         }
         // Riders with no map pin keep their seat, after the solved stops.
         for (const id of carIds) {
@@ -877,7 +877,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           problem.stops.length ? routing.solve(problem, signal) : Promise.resolve<SolveResult>({ routes: [], skipped: [] })]);
       } catch (err) { if (err instanceof AppError) throw err; throw routingFailed(err, ANALYSIS_FAILED); }
       const fleetNow = minutes(now.result, (k) => !!now.cars[k]!.vehicleId);
-      const notSent = prep.riders.filter((r) => !r.runVehicleId && (!r.snapPlaceId || r.pinned)).length;
+      const notSent = prep.riders.filter((r) => !r.runVehicleId && !r.snapPlaceId).length;
       return { count: v.count, seats: v.seats,
         before: { longestMin: Math.max(0, ...fleetNow), totalMin: sum(fleetNow), unassigned: prep.riders.filter((r) => !r.runVehicleId).length },
         after: { longestMin: Math.max(0, ...minutes(extra)), totalMin: sum(minutes(extra)), unassigned: extra.skipped.length + notSent } };
