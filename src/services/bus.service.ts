@@ -638,7 +638,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         return riderView(saved, await consentOf(saved));
       }
       if (v.runVehicleId === null) {
-        const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: true });
+        // Owner 2026-10-06: Unassigned is never pinned — the next Generate / Fit in places them again.
+        const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
         await touch(ctx, run);
         return riderView(saved, await consentOf(saved));

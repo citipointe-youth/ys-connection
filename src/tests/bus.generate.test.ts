@@ -47,13 +47,13 @@ describe('generate', () => {
   });
 
   // Prod 2026-10-06: riders moved to Unassigned by hand were silently skipped, so Generate "worked" but placed no one.
-  it('Generate all re-places riders moved to Unassigned by hand; Fit in leaves them', async () => {
+  // Owner 2026-10-06: moving someone to Unassigned unpins them, so the next Generate / Fit in places them again.
+  it('a rider moved to Unassigned by hand is unpinned and re-placed by Fit in', async () => {
     const f = await busFixture();
     const a = await f.car('Van A', 8, ['L1', 'L2']);
     const jess = await f.rider('s1');
-    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: null });
-    expect(await f.svc.generate(f.admin, { mode: 'fit' })).toMatchObject({ placed: 0, unassigned: 1 });
-    expect(await f.svc.generate(f.admin, { mode: 'all' })).toMatchObject({ placed: 1, unassigned: 0 });
+    expect(await f.svc.moveRider(f.admin, jess.id, { runVehicleId: null })).toMatchObject({ runVehicleId: null, pinned: false });
+    expect(await f.svc.generate(f.admin, { mode: 'fit' })).toMatchObject({ placed: 1, unassigned: 0 });
     expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: a, pinned: false });
   });
 
@@ -314,7 +314,7 @@ describe('moveRider: unpin', () => {
   it('unpins a rider sitting in Unassigned; blocked by an active lock', async () => {
     const f = await busFixture();
     const jess = await f.rider('s1');
-    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: null }); // pinned, no car
+    await f.bus.saveRunRider({ ...(await f.bus.getRunRider(jess.id))!, pinned: true }); // legacy pinned-in-Unassigned row
     const res = await f.svc.moveRider(f.admin, jess.id, { unpin: true });
     expect(res).toMatchObject({ runVehicleId: null, pinned: false });
     const run = (await f.svc.getRun(f.admin)).run;

@@ -20,7 +20,12 @@ export function normalisePrivateKey(k: string): string {
   let s = k.trim();
   if (s.startsWith('{')) { try { s = String(JSON.parse(s).private_key ?? s); } catch { /* not JSON — use as-is */ } }
   const m = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(s);
-  if (!m) return s.replace(/\\n/g, '\n').trim();
+  if (!m) {
+    // Just the base64 body (BEGIN/END lines left off) — a service-account key is PKCS#8 "PRIVATE KEY".
+    const bare = s.replace(/\\+[rn]/g, '').replace(/[\s"]/g, '');
+    if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(bare)) return normalisePrivateKey(`-----BEGIN PRIVATE KEY-----${bare}-----END PRIVATE KEY-----`);
+    return s.replace(/\\n/g, '\n').trim();
+  }
   const body = m[2]!.replace(/\\+[rn]/g, '').replace(/[^A-Za-z0-9+/=]/g, '');
   return [`-----BEGIN ${m[1]}-----`, ...(body.match(/.{1,64}/g) ?? []), `-----END ${m[1]}-----`].join('\n');
 }

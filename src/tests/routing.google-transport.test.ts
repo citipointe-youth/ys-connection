@@ -43,6 +43,8 @@ describe('service-account JWT', () => {
     ['newlines flattened to spaces', privateKey.replace(/\n/g, ' ')],
     ['CRLF line endings', privateKey.replace(/\n/g, '\r\n')],
     ['double-escaped \\\\n', privateKey.replace(/\n/g, '\\\\n')],
+    // Prod 2026-10-06 shape log: length=1649 hasBegin=false hasEnd=false — only the base64 body was pasted.
+    ['just the base64 body (no BEGIN/END lines)', privateKey.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').trim()],
   ])('signs with a private key pasted as %s', (_, pasted) => {
     expect(() => signJwt(cfg.saEmail, normalisePrivateKey(pasted), 1_700_000_000)).not.toThrow();
   });
