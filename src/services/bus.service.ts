@@ -3,9 +3,9 @@ import { generateId } from '../utils/id';
 import { can, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
 import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
-import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
+import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, loneGirls, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
-import { routingDeadline, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
+import { routingDeadline, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult, type SolveStop,
   type MapImage, type MapMarker, type MapPath } from './routing/routing-provider';
 import { decodePolyline, thinPolyline } from './routing/polyline';
 import { markerLabel } from './routing/google-requests';
@@ -76,7 +76,8 @@ const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
 const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(), fixedVehicleId: z.string().nullable().optional() });
 const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(40), seats: z.number().int().min(2).max(15),
   plate: z.string().max(12).nullable().default(null), ...EndsFields }), riderIds: z.array(z.string()) });
-const MoveIn = z.object({ runVehicleId: z.string().nullable() });
+const MoveIn = z.object({ runVehicleId: z.string().nullable().optional(), unpin: z.boolean().optional() })
+  .refine((v) => v.unpin === true || v.runVehicleId !== undefined, 'runVehicleId required');
 const LinkIn = z.object({ studentId: z.string().min(1) });
 const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
   .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
@@ -336,7 +337,16 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const busy = new Set(rvs.filter((v) => v.running).flatMap((v) => [...v.leaderIds, ...(v.ownerLeaderId ? [v.ownerLeaderId] : [])]));
     const pool = run.availablePoolLeaderIds.filter((id) => genderBy.has(id) && !busy.has(id)).map((id) => ({ id, gender: genderBy.get(id) ?? null }));
     const need = { female: fleetRiders.filter((r) => r.snapGender === 'female').length, male: fleetRiders.filter((r) => r.snapGender === 'male').length };
-    const filled = autoFillPool(cars.map((v) => ({ id: v.id, seats: v.seats, leaderIds: known(v.leaderIds) })), pool, (id) => genderBy.get(id) ?? null, need);
+    // Known follow-up (2026-10-06): riders already fixed to a car (pinned, under Fit in, or with
+    // no map pin at all — none of those are ever moved by this solve) must keep their seats —
+    // auto-fill must not add a 2nd leader if that would drop capacity below how many of them there are.
+    const fixedCount = new Map<string, number>();
+    for (const r of fleetRiders) {
+      if (r.runVehicleId && (r.pinned || mode === 'fit' || !r.snapPlaceId))
+        fixedCount.set(r.runVehicleId, (fixedCount.get(r.runVehicleId) ?? 0) + 1);
+    }
+    const filled = autoFillPool(cars.map((v) => ({ id: v.id, seats: v.seats, leaderIds: known(v.leaderIds), fixedRiders: fixedCount.get(v.id) ?? 0 })),
+      pool, (id) => genderBy.get(id) ?? null, need);
     const untouched = fleetRiders.filter((r) => !r.snapPlaceId);
     // A rider moved to Unassigned by hand (pinned, no car) stays unassigned under Fit in; Generate all re-places them.
     const solvable = fleetRiders.filter((r) => r.snapPlaceId && !(mode === 'fit' && r.pinned && !r.runVehicleId));
@@ -433,6 +443,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:roster');
       const v = parseIn(AddRider, input);
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       let name: string, grade: number | null, gender: BusGender;
       if (v.studentId) {
         const s = await students.findById(v.studentId);
@@ -474,6 +485,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:roster');
       const v = parseIn(UpdateRider, input);
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is using this rider's current address/pin
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
       const addr = await resolveAddress(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }, v);
@@ -484,6 +496,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async removeRider(ctx, riderId) {
       const c = await gate(ctx, 'bus:roster');
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
       await bus.deleteRunRider(riderId);
@@ -572,6 +585,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(OwnCarIn, input);
       assertRealPlaceId(v.car.endsPlaceId);
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       // I6: validate BEFORE writing anything — the old order saved the car first and only
       // then checked capacity/rider ids, leaving a created-or-resized car behind on a 400/404.
       const riders = await bus.listRunRiders(run.id);
@@ -602,6 +616,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
       const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
       if (!rv) return;
       for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === rv.id))
@@ -616,6 +631,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
+        const saved = await bus.saveRunRider({ ...r, pinned: false });
+        await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
+        await touch(ctx, run);
+        return riderView(saved, await consentOf(saved));
+      }
       if (v.runVehicleId === null) {
         const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: true });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
@@ -793,12 +814,80 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         }
         const live = new Map((await bus.listRunVehicles(run.id)).map((v) => [v.id, v]));
         for (const [id, leaderIds] of prep.filled) { const v = live.get(id); if (v) await bus.saveRunVehicle({ ...v, leaderIds }); }
+
+        // Task 4: never leave exactly one girl among a fleet car's riders (siblings at the same
+        // address excepted). Try once to re-solve movable (non-pinned, non fit-fixed) violators
+        // into a car where they're not the odd one out; anyone still violating after that —
+        // including one Google couldn't be asked about — goes to Unassigned.
+        const carsOf = async () => {
+          const rs = await bus.listRunRiders(run.id);
+          const byCar = new Map<string, { id: string; gender: BusGender; placeId: string | null }[]>();
+          for (const r of rs) {
+            if (!r.runVehicleId || !carIds.includes(r.runVehicleId)) continue;
+            (byCar.get(r.runVehicleId) ?? byCar.set(r.runVehicleId, []).get(r.runVehicleId)!)
+              .push({ id: r.id, gender: r.snapGender, placeId: r.snapPlaceId });
+          }
+          return { rs, violators: loneGirls([...byCar.values()]) };
+        };
+        const stopIdx = new Map(prep.stopRiderIds.map((id, i) => [id, i]));
+        const isFixed = (r: BusRunRider) => r.pinned || (stopIdx.has(r.id) && prep.problem.stops[stopIdx.get(r.id)!]!.allowedVehicles !== null);
+
+        let { rs: lgRiders, violators: lgViolators } = await carsOf();
+        let lgById = new Map(lgRiders.map((r) => [r.id, r]));
+        const nonFixedViolators = lgViolators.filter((id) => !isFixed(lgById.get(id)!));
+        const reSolvable = nonFixedViolators.filter((id) => stopIdx.has(id));
+        let lgResult: SolveResult | null = null; // the re-solve's routes, when it ran — routeMin must match what was saved
+        if (reSolvable.length) {
+          const carIdx = new Map(carIds.map((id, i) => [id, i]));
+          const stops2: SolveStop[] = prep.problem.stops.map((s, i) => {
+            const rid = prep.stopRiderIds[i]!;
+            if (!reSolvable.includes(rid)) return s;
+            const exclude = carIdx.get(lgById.get(rid)!.runVehicleId!)!;
+            return { ...s, allowedVehicles: carIds.map((_, k) => k).filter((k) => k !== exclude) };
+          });
+          let result2: SolveResult | null = null;
+          try { result2 = await routing.solve({ ...prep.problem, stops: stops2 }, routingDeadline()); }
+          catch (err) { console.error('[bus] lone-girl re-solve skipped:', err instanceof Error ? err.message : err); }
+          if (result2) {
+            lgResult = result2;
+            const placed2 = placementsFrom(result2, prep.stopRiderIds, carIds);
+            const before2 = lgById;
+            const unchanged2 = (r: BusRunRider) => { const b0 = before2.get(r.id); return !!b0 && b0.runVehicleId === r.runVehicleId && b0.pinned === r.pinned; };
+            for (const r of await bus.listRunRiders(run.id)) {
+              const p = placed2.get(r.id);
+              if (!p || !unchanged2(r)) continue;
+              await bus.saveRunRider({ ...r, runVehicleId: p.runVehicleId, stopOrder: p.stopOrder, pinned: p.runVehicleId && r.runVehicleId ? r.pinned : false });
+            }
+          }
+        }
+        ({ rs: lgRiders, violators: lgViolators } = await carsOf());
+        lgById = new Map(lgRiders.map((r) => [r.id, r]));
+        const touchedCars = new Set<string>();
+        for (const id of lgViolators) {
+          const r = lgById.get(id);
+          if (!r || isFixed(r)) continue;
+          if (r.runVehicleId) touchedCars.add(r.runVehicleId);
+          await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+        }
+        for (const carId of touchedCars) {
+          const left = (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === carId).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
+          for (const [i, r] of left.entries()) if (r.stopOrder !== i + 1) await bus.saveRunRider({ ...r, stopOrder: i + 1 });
+        }
+        const afterLoneGirl = new Map((await bus.listRunRiders(run.id)).map((r) => [r.id, r]));
+        const loneGirl = nonFixedViolators.filter((id) => !afterLoneGirl.get(id)?.runVehicleId).length;
+
         await touch(ctx, run);
+        // Task 1: count what was actually written, not the solver's optimistic plan — a rider
+        // removed mid-solve (or bumped Unassigned by the lone-girl rule above) must not count as placed.
+        const finalRiders = await bus.listRunRiders(run.id);
+        const stopIdSet = new Set(prep.stopRiderIds);
         return {
-          placed: [...placed.values()].filter((p) => p.runVehicleId).length,
-          unassigned: (await bus.listRunRiders(run.id)).filter((r) => !r.runVehicleId).length,
+          placed: finalRiders.filter((r) => stopIdSet.has(r.id) && r.runVehicleId).length,
+          unassigned: finalRiders.filter((r) => !r.runVehicleId).length,
           noAddressPin: prep.untouched.length,
-          routeMin: Object.fromEntries(result.routes.map((rt) => [carIds[rt.vehicle]!, Math.round(rt.totalSec / 60)])),
+          routeMin: Object.fromEntries((lgResult ?? result).routes.map((rt) => [carIds[rt.vehicle]!, Math.round(rt.totalSec / 60)])
+            .filter(([id]) => !touchedCars.has(String(id)))),
+          loneGirl,
         };
       } finally {
         await bus.releaseLock(run.id, who); // M1: only clears the lock if this generate still holds it

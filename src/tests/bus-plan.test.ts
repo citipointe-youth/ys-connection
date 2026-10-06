@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, skipPairs, detours, type FleetCar } from '../services/bus-plan';
+import { autoFillPool, riderCost, endPlaceOf, leaveIso, buildFleetProblem, buildSingleProblem, placementsFrom, skipPairs, detours, loneGirls, type FleetCar } from '../services/bus-plan';
 
 const W = { targetRouteMin: 45, genderWeightMin: 120, prefWeightMin: 10 };
 const mixed = { female: true, male: true, unknown: false };
@@ -19,6 +19,30 @@ describe('autoFillPool', () => {
   it('leaves cars with 2 leaders alone and does nothing with an empty pool', () => {
     expect(autoFillPool([{ id: 'A', seats: 8, leaderIds: ['M1', 'F1'] }], [{ id: 'F3', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 1 }).size).toBe(0);
     expect(autoFillPool([{ id: 'A', seats: 8, leaderIds: [] }], [], () => null, { female: 1, male: 1 }).size).toBe(0);
+  });
+  // Known follow-up (2026-10-06): a 2nd leader must not bump a rider already fixed to the car.
+  it('does not add a 2nd leader if it would drop capacity below the riders already fixed to the car', () => {
+    const blocked = autoFillPool([{ id: 'A', seats: 4, leaderIds: ['M1'], fixedRiders: 3 }],
+      [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
+    expect(blocked.size).toBe(0);
+    const ok = autoFillPool([{ id: 'A', seats: 4, leaderIds: ['M1'], fixedRiders: 2 }],
+      [{ id: 'F1', gender: 'female' }], (id) => g[id] ?? null, { female: 1, male: 0 });
+    expect(ok.get('A')).toEqual(['M1', 'F1']);
+  });
+});
+
+describe('loneGirls', () => {
+  const r = (id: string, gender: 'male' | 'female', placeId: string | null = null) => ({ id, gender, placeId });
+  it('flags a lone girl riding with boys', () => {
+    expect(loneGirls([[r('g1', 'female'), r('b1', 'male')]])).toEqual(['g1']);
+  });
+  it('does not flag two girls in the same car, or a car with only one rider at all', () => {
+    expect(loneGirls([[r('g1', 'female'), r('g2', 'female')]])).toEqual([]);
+    expect(loneGirls([[r('g1', 'female')]])).toEqual([]);
+  });
+  it('a sibling at the same address is exempt', () => {
+    expect(loneGirls([[r('g1', 'female', 'P1'), r('b1', 'male', 'P1')]])).toEqual([]);
+    expect(loneGirls([[r('g1', 'female', 'P1'), r('b1', 'male', 'P2')]])).toEqual(['g1']);
   });
 });
 

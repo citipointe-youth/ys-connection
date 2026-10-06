@@ -153,14 +153,6 @@ export class SupabaseBusRepository implements IBusRepository {
     if (ins[0]) return { run: toRun(ins[0]), created: true };
     return { run: (await this.getRunByDate(run.serviceDate))!, created: false };
   }
-  async saveRun(x: BusRun) {
-    const r = await this.sql`
-      update bus_runs set version = ${x.version}, available_pool_leader_ids = ${this.j(x.availablePoolLeaderIds)},
-        lock_by = ${x.lockBy}, lock_until = ${x.lockUntil}, last_change_by = ${x.lastChangeBy}, last_change_at = ${x.lastChangeAt},
-        undo_snapshot = ${x.undoSnapshot ? this.j(x.undoSnapshot) : null}, undo_until = ${x.undoUntil}
-      where id = ${x.id} returning *`;
-    return toRun(r[0]!);
-  }
   async bumpRun(id: string, by: string, at: string) {
     const r = await this.sql`update bus_runs set version = version + 1, last_change_by = ${by}, last_change_at = ${at} where id = ${id} returning *`;
     return toRun(r[0]!);

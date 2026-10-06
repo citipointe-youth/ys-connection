@@ -109,7 +109,10 @@ describe('route analysis', () => {
     const rec = recordingRouting();
     const f = await busFixture({ routing: rec.provider });
     await f.car('Van', 8, ['L1', 'L2']);
-    await f.rider('s1'); await f.rider('s2');
+    // Task 4: two riders of the same gender — a mixed pair in the one car would trigger the
+    // "never exactly one girl" rule (no alternative car here) and bump one to Unassigned,
+    // which isn't what this test is about.
+    await f.rider('s2'); await f.rider('s3');
     await f.svc.generate(f.admin, { mode: 'all' });
     rec.calls.solve.length = 0;
     await f.svc.analysis(f.admin);

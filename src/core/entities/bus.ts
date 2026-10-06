@@ -95,6 +95,7 @@ export interface BusGenerateResult {
   unassigned: number;                 // riders with no car after this generate (incl. own-car-less, no-pin, pinned-unassigned)
   noAddressPin: number;               // riders never sent to Google because their address has no place ID
   routeMin: Record<ID, number>;       // run vehicle id → drive minutes from this solve (not persisted)
+  loneGirl: number;                   // non-pinned riders left Unassigned by the "never exactly one girl in a car" rule
 }
 
 export interface BusAnalysisRider { riderId: ID; name: string; stop: number; detourMin: number; detourPct: number; flagged: boolean }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { GoogleRoutingProvider, signJwt, normalisePrivateKey, routingFromEnv } from '../services/routing/google-routing-provider';
+import { GoogleRoutingProvider, signJwt, normalisePrivateKey, describeKeyShape, routingFromEnv } from '../services/routing/google-routing-provider';
 import { RoutingError, type SolveProblem } from '../services/routing/routing-provider';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048,
@@ -63,6 +63,25 @@ describe('GoogleRoutingProvider', () => {
     expect(opt.url).toBe('https://routeoptimization.googleapis.com/v1/projects/my-proj:optimizeTours');
     expect((opt.init.headers as Record<string, string>)['Authorization']).toBe('Bearer tok');
     expect(String(calls[0]!.init.body)).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
+  });
+  // Task 7: a signJwt failure must log enough to diagnose a bad key — but never the key itself.
+  it('a signJwt failure logs key shape, never key material', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const badKey = 'not-a-real-key-SECRETVALUE123';
+    const badCfg = { ...cfg, saPrivateKey: badKey };
+    const g = new GoogleRoutingProvider(badCfg, stubFetch({}).fn);
+    await expect(g.solve(problem, sig())).rejects.toThrow(/not a readable private key/);
+    const logged = JSON.stringify(err.mock.calls);
+    expect(logged).not.toContain(badKey);
+    expect(logged).not.toContain('SECRETVALUE123');
+    expect(logged).toMatch(/hasBegin=false/);
+    expect(logged).toMatch(/length=\d+/);
+    err.mockRestore();
+  });
+  it('describeKeyShape never echoes the key content', () => {
+    expect(describeKeyShape('-----BEGIN PRIVATE KEY-----\nSECRETBASE64\n-----END PRIVATE KEY-----\n'))
+      .toBe('length=67 hasBegin=true hasEnd=true base64BodyLen=12 startsWithBrace=false');
+    expect(describeKeyShape('{"private_key":"x"}')).toMatch(/startsWithBrace=true/);
   });
   it('autocomplete sends the key as a header, never in the body', async () => {
     const { fn, calls } = stubFetch({ 'https://places.googleapis.com/v1/places:autocomplete': () => json({ suggestions: [] }) });

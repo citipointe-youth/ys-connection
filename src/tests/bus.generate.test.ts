@@ -121,8 +121,9 @@ describe('generate', () => {
     await f.bus.tryLock(run.id, 'Sarah', new Date().toISOString(), future(30_000));
     await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 409, message: 'Sarah is generating routes…' });
     await expect(f.svc.moveRider(f.admin, jess.id, { runVehicleId: a })).rejects.toMatchObject({ statusCode: 409 });
-    const r = (await f.bus.getRun(run.id))!;
-    await f.bus.saveRun({ ...r, lockUntil: new Date(Date.now() - 1000).toISOString() });
+    // saveRun was removed (dead code — this stale-lock setup was its only caller); poke the
+    // in-memory store's run map directly instead.
+    (f.bus as unknown as { runs: Map<string, { lockUntil: string | null }> }).runs.get(run.id)!.lockUntil = new Date(Date.now() - 1000).toISOString();
     await expect(f.svc.generate(f.admin, { mode: 'all' })).resolves.toMatchObject({ placed: 1 });
     expect((await f.bus.getRun(run.id))!.lockBy).toBeNull();
   });
@@ -157,6 +158,23 @@ describe('generate', () => {
     expect((await f.bus.getRun(run.id))!).toMatchObject({ lockBy: 'Sarah', availablePoolLeaderIds: [] });
   });
 
+  // Task 2: roster writes feed the solve same as the car/pool writers above — a mid-solve
+  // addRider/removeRider/saveOwnCar/etc. could write into a stale or now-gone car.
+  it('addRider, removeRider and saveOwnCar are blocked by an active lock', async () => {
+    const f = await busFixture();
+    await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    const run = (await f.svc.getRun(f.admin)).run;
+    await f.bus.tryLock(run.id, 'Sarah', new Date().toISOString(), future(30_000));
+    await expect(f.svc.addRider(f.admin, { studentId: 's2', newAddress: { address: 'Second St', placeId: 'fake:s2' } }))
+      .rejects.toMatchObject({ statusCode: 409, message: 'Sarah is generating routes…' });
+    await expect(f.svc.removeRider(f.admin, jess.id)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(f.svc.saveOwnCar(f.ctx('grade', 'L3'),
+      { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'last_drop', endsAddress: null, endsPlaceId: null }, riderIds: [jess.id] }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect((await f.svc.getRun(f.admin)).riders).toHaveLength(1); // untouched by the rejected calls
+  });
+
   it('Google failure: 502, nothing changes, lock released', async () => {
     const f = await busFixture({ routing: stubRouting({ solve: async () => { throw new RoutingError('Google route optimisation timed out'); } }) });
     await f.car('Van', 8, ['L1', 'L2']);
@@ -179,7 +197,11 @@ describe('generate', () => {
     f = await busFixture({ routing: stubRouting({ solve: async (p, s) => { if (victim) await f.bus.deleteRunRider(victim); return fake.solve(p, s); } }) });
     await f.car('Van', 8, ['L1', 'L2']);
     victim = (await f.rider('s1')).id; await f.rider('s2');
-    await f.svc.generate(f.admin, { mode: 'all' });
+    // Task 1: placed/unassigned must reflect who was actually written, not the solver's plan —
+    // the solver placed both riders, but the victim was deleted before the write and must not
+    // count as placed.
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(res).toMatchObject({ placed: 1, unassigned: 0 });
     expect((await f.svc.getRun(f.admin)).riders.map((r) => r.name)).toEqual(['Sam Ode']);
   });
 
@@ -200,6 +222,104 @@ describe('generate', () => {
     await f.settings.updateSettings({ ministryConfig: mergeMinistryConfig(s.ministryConfig, { busMinistry: { coordinatorLeaderIds: ['L1'] } }) });
     await f.car('Van', 8, ['L1', 'L2']); await f.rider('s1');
     await expect(f.svc.generate(f.ctx('grade', 'L1'), { mode: 'all' })).resolves.toMatchObject({ placed: 1 });
+  });
+});
+
+// Task 4: never exactly one girl among a fleet car's riders (siblings at the same address
+// excepted). Leaders don't matter; a car with only one rider at all is out of scope (nothing
+// to be "alone with"). Stub routing fully controls placement so the scenarios are deterministic.
+describe('lone girl rule', () => {
+  it('a lone girl moves to a car with another girl when the re-solve allows it', async () => {
+    let call = 0;
+    const f = await busFixture({ routing: stubRouting({ solve: async (p) => {
+      call++;
+      // stop order = rider add order: 0=jess, 1=sam, 2=mia
+      if (call === 1) return { skipped: [], routes: [
+        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> car A
+        { vehicle: 1, stops: [2], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },        // mia -> car B
+      ] };
+      return { skipped: [], routes: [ // the lone-girl re-solve: jess moves to join mia
+        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },        // sam -> car A
+        { vehicle: 1, stops: [2, 0], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] },  // mia, jess -> car B
+      ] };
+    } }) });
+    const carA = await f.car('Van A', 8, ['L1', 'L2']);
+    const carB = await f.car('Van B', 8, ['L3', 'L4']);
+    const jess = await f.rider('s1'); const sam = await f.rider('s2'); const mia = await f.rider('s4');
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(call).toBe(2);
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carB);
+    expect(v.riders.find((r) => r.id === mia.id)!.runVehicleId).toBe(carB);
+    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
+    expect(res.loneGirl).toBe(0);
+  });
+
+  it('a lone girl with no alternative car ends Unassigned, loneGirl:1', async () => {
+    let call = 0;
+    const f = await busFixture({ routing: stubRouting({ solve: async () => {
+      call++;
+      if (call === 1) return { skipped: [], routes: [
+        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> the only car
+      ] };
+      return { skipped: [0], routes: [ // jess excluded from her only car -> skipped
+        { vehicle: 0, stops: [1], legsSec: [0], totalSec: 0, polyline: null, legPolylines: [] },
+      ] };
+    } }) });
+    const carA = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1'); const sam = await f.rider('s2');
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(call).toBe(2);
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === jess.id)).toMatchObject({ runVehicleId: null, stopOrder: null, pinned: false });
+    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
+    expect(res).toMatchObject({ placed: 1, unassigned: 1, loneGirl: 1 });
+  });
+
+  it('two riders at the same address (girl + brother) are allowed — no re-solve', async () => {
+    let call = 0;
+    const f = await busFixture({ routing: stubRouting({ solve: async () => {
+      call++;
+      return { skipped: [], routes: [
+        { vehicle: 0, stops: [0, 1], legsSec: [0, 0], totalSec: 0, polyline: null, legPolylines: [] }, // jess, sam -> the only car
+      ] };
+    } }) });
+    const carA = await f.car('Van', 8, ['L1', 'L2']);
+    // give Sam the same placeId as Jess so the sibling exception applies
+    const jess = await f.svc.addRider(f.admin, { studentId: 's1', newAddress: { label: 'Home', address: 'Shared St', placeId: 'fake:shared' } });
+    const sam = await f.svc.addRider(f.admin, { studentId: 's2', newAddress: { label: 'Home', address: 'Shared St', placeId: 'fake:shared' } });
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(call).toBe(1); // no lone-girl re-solve needed
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === jess.id)!.runVehicleId).toBe(carA);
+    expect(v.riders.find((r) => r.id === sam.id)!.runVehicleId).toBe(carA);
+    expect(res.loneGirl).toBe(0);
+  });
+});
+
+describe('moveRider: unpin', () => {
+  it('unpins a rider without changing their car or stop order', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: a });
+    const before = (await f.svc.getRun(f.admin)).riders.find((r) => r.id === jess.id)!;
+    expect(before.pinned).toBe(true);
+    const res = await f.svc.moveRider(f.admin, jess.id, { unpin: true });
+    expect(res).toMatchObject({ runVehicleId: a, stopOrder: before.stopOrder, pinned: false });
+    expect((await f.svc.getRun(f.admin)).riders.find((r) => r.id === jess.id))
+      .toMatchObject({ runVehicleId: a, stopOrder: before.stopOrder, pinned: false });
+  });
+
+  it('unpins a rider sitting in Unassigned; blocked by an active lock', async () => {
+    const f = await busFixture();
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: null }); // pinned, no car
+    const res = await f.svc.moveRider(f.admin, jess.id, { unpin: true });
+    expect(res).toMatchObject({ runVehicleId: null, pinned: false });
+    const run = (await f.svc.getRun(f.admin)).run;
+    await f.bus.tryLock(run.id, 'Sarah', new Date().toISOString(), future(30_000));
+    await expect(f.svc.moveRider(f.admin, jess.id, { unpin: true })).rejects.toMatchObject({ statusCode: 409 });
   });
 });
 

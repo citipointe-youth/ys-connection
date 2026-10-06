@@ -25,6 +25,14 @@ export function normalisePrivateKey(k: string): string {
   return [`-----BEGIN ${m[1]}-----`, ...(body.match(/.{1,64}/g) ?? []), `-----END ${m[1]}-----`].join('\n');
 }
 
+/** Shape-only description of a private key for error logs — NEVER any of the key's own characters. */
+export function describeKeyShape(k: string): string {
+  const hasBegin = k.includes('BEGIN PRIVATE KEY'), hasEnd = k.includes('END PRIVATE KEY');
+  const m = /-----BEGIN [A-Z ]+-----([\s\S]*?)-----END [A-Z ]+-----/.exec(k);
+  const base64BodyLen = (m ? m[1]! : k).replace(/[\r\n\s]/g, '').length;
+  return `length=${k.length} hasBegin=${hasBegin} hasEnd=${hasEnd} base64BodyLen=${base64BodyLen} startsWithBrace=${k.trim().startsWith('{')}`;
+}
+
 export function signJwt(email: string, privateKey: string, nowSec: number): string {
   const head = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claims = b64url(JSON.stringify({ iss: email, scope: SCOPE, aud: TOKEN_URL, iat: nowSec, exp: nowSec + 3600 }));
@@ -57,7 +65,10 @@ export class GoogleRoutingProvider implements RoutingProvider {
     if (this.token && this.token.expiresAt > this.now() + 60_000) return this.token.value;
     let assertion: string;
     try { assertion = signJwt(this.cfg.saEmail, this.cfg.saPrivateKey, Math.floor(this.now() / 1000)); }
-    catch { throw new RoutingError('GOOGLE_SA_PRIVATE_KEY is not a readable private key — paste the private_key value from the service-account JSON'); }
+    catch {
+      console.error(`[routing] signJwt failed — key shape: ${describeKeyShape(this.cfg.saPrivateKey)}`);
+      throw new RoutingError('GOOGLE_SA_PRIVATE_KEY is not a readable private key — paste the private_key value from the service-account JSON');
+    }
     const res = await this.call(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString() }, signal, 'sign-in');
     const j = (await res.json()) as { access_token: string; expires_in: number };

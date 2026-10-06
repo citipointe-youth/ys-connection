@@ -52,7 +52,6 @@ export class InMemoryBusRepository implements IBusRepository {
     this.runs.set(r.id, c(r));
     return { run: c(r), created: true };
   }
-  async saveRun(r: BusRun) { this.runs.set(r.id, c(r)); return c(r); }
   async bumpRun(id: string, by: string, at: string) {
     const r = this.runs.get(id);
     if (!r) throw new Error('run not found');

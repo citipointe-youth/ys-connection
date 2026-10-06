@@ -8,7 +8,7 @@ export interface Weights { targetRouteMin: number; genderWeightMin: number; pref
  * pool leaders, picking the gender that is shortest of seats for tonight's roster split. Returns
  * new leaderIds only for cars that changed. Pure — the caller decides whether to save.
  */
-export function autoFillPool(cars: { id: string; seats: number; leaderIds: string[] }[], pool: { id: string; gender: BusGender }[],
+export function autoFillPool(cars: { id: string; seats: number; leaderIds: string[]; fixedRiders?: number }[], pool: { id: string; gender: BusGender }[],
   genderOf: (leaderId: string) => BusGender, need: { female: number; male: number }): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const left = [...pool];
@@ -19,7 +19,10 @@ export function autoFillPool(cars: { id: string; seats: number; leaderIds: strin
   }, 0);
   for (const c of cars) {
     const ids = lead.get(c.id)!;
-    while (ids.length < 2 && left.length) {
+    // Known follow-up (2026-10-06): a 2nd leader must not drop capacity below the riders
+    // already fixed to this car (pinned, or any already-placed rider under Fit in) — that
+    // silently bumped one of them to Unassigned.
+    while (ids.length < 2 && left.length && c.seats - (ids.length + 1) >= (c.fixedRiders ?? 0)) {
       const gapF = need.female - seatsFor('female'), gapM = need.male - seatsFor('male');
       const hasF = ids.some((id) => genderOf(id) === 'female');
       const want: BusGender = gapF > gapM ? 'female' : gapM > gapF ? 'male' : !hasF ? 'female' : 'male';
@@ -85,6 +88,26 @@ export function skipPairs(orderedPlaceIds: string[], start: string, end: string 
 /** Detour of stop i = t(prev→i) + t(i→next) − t(prev→next) (spec §7). legsSec = [start→s1, …, sN→end?]. */
 export function detours(legsSec: number[], skipSec: number[]): number[] {
   return skipSec.map((skip, i) => Math.max(0, legsSec[i]! + (legsSec[i + 1] ?? 0) - skip));
+}
+
+export interface LoneGirlRider { id: string; gender: BusGender; placeId: string | null }
+/**
+ * Hard rule: never exactly one girl among the riders in a fleet car — unless she shares a drop
+ * address (sibling) with another rider in it. Leaders don't count. A car with only one rider at
+ * all (no one to be "alone with") is out of scope — this is about gender mix, not solo riding.
+ * Pure — returns the violating rider ids.
+ */
+export function loneGirls(cars: LoneGirlRider[][]): string[] {
+  const out: string[] = [];
+  for (const riders of cars) {
+    if (riders.length < 2) continue;
+    const girls = riders.filter((r) => r.gender === 'female');
+    if (girls.length !== 1) continue;
+    const girl = girls[0]!;
+    if (riders.some((r) => r.id !== girl.id && girl.placeId && r.placeId === girl.placeId)) continue;
+    out.push(girl.id);
+  }
+  return out;
 }
 
 export function placementsFrom(result: SolveResult, stopRiderIds: string[], carIds: string[]):

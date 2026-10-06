@@ -358,3 +358,187 @@ describe('R3 SPA', () => {
       .toBe('+1 car, 8 seats: longest route 38 min (now 52) · unassigned 0 (now 2)');
   });
 });
+
+// 2026-10-06 round-2 fixes: unpin, lone-girl warning, stale routeMin after a move, locked
+// roster edits while Generate is running, and a timed-out/401-aware map load.
+describe('busMoveSheet offers Unpin only for a pinned rider', () => {
+  const mk = (pinned: boolean) => {
+    const prelude = `
+      const BUS = { view: { riders: [{ id: 'r1', name: 'Amy', gender: 'female', pinned: ${pinned} }], vehicles: [] } };
+      function esc(s) { return String(s); }
+      function _busCarColour(i) { return '#000'; }
+      let __captured = '';
+      function modal(h) { __captured = h; }
+      function __state() { return { captured: __captured }; }
+    `;
+    return loadFns(['busMoveSheet'], prelude, ['busMoveSheet', '__state']);
+  };
+  it('shows the Unpin row for a pinned rider', () => {
+    const { busMoveSheet, __state } = mk(true);
+    busMoveSheet('r1');
+    expect(__state().captured).toContain('Unpin — let Generate place them');
+    expect(__state().captured).toContain("busUnpin('r1')");
+  });
+  it('omits the Unpin row for an unpinned rider', () => {
+    const { busMoveSheet, __state } = mk(false);
+    busMoveSheet('r1');
+    expect(__state().captured).not.toContain('Unpin');
+  });
+});
+
+describe('busMove / busUnpin clear stale routeMin entries for the affected cars', () => {
+  const mk = () => {
+    const prelude = `
+      const BUS = { view: { riders: [{ id: 'r1', runVehicleId: 'carA' }] }, routeMin: { carA: 10, carB: 20 } };
+      const __calls = [];
+      async function _busSend(method, path, body) { __calls.push({ method, path, body }); }
+      function closeModal() {}
+      function toast() {}
+      function __state() { return { BUS, calls: __calls }; }
+    `;
+    return loadFns(['busMove', 'busUnpin', '_busClearRouteMin'], prelude, ['busMove', 'busUnpin', '__state']);
+  };
+  it('busMove clears routeMin for both the old and the new car', async () => {
+    const { busMove, __state } = mk();
+    await busMove('r1', 'carB');
+    const st = __state();
+    expect(st.BUS.routeMin.carA).toBeUndefined();
+    expect(st.BUS.routeMin.carB).toBeUndefined();
+    expect(st.calls[0]).toEqual({ method: 'POST', path: '/bus/riders/r1/move', body: { runVehicleId: 'carB' } });
+  });
+  it('busUnpin sends { unpin: true } and clears routeMin for the rider\'s current car', async () => {
+    const { busUnpin, __state } = mk();
+    await busUnpin('r1');
+    const st = __state();
+    expect(st.BUS.routeMin.carA).toBeUndefined();
+    expect(st.calls[0]).toEqual({ method: 'POST', path: '/bus/riders/r1/move', body: { unpin: true } });
+  });
+});
+
+describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () => {
+  const mkStubs = `
+    function esc(s) { return String(s); }
+    function icS(k) { return k; }
+    function _busSuburb(a) { return a; }
+    function _busConsentChip() { return ''; }
+    function _busCarColour() { return '#000'; }
+    function _busPinnedIcon() { return ''; }
+    function _busRoutesHead() { return ''; }
+    function _busUndoBar() { return ''; }
+  `;
+  const car = (over: any = {}) => ({ id: 'rv1', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
+    eligibility: { female: true, male: true, unknown: false }, ...over });
+  it('shows "Only 1 girl" when she shares no placeId with anyone else in the car', () => {
+    const BUS = { run: undefined, routeMin: {} };
+    const v = { run: { readOnly: false }, riders: [
+      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
+      { id: 'r2', runVehicleId: 'rv1', gender: 'male', placeId: 'P2' },
+    ], vehicles: [car()] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    expect(_busRoutesHtml()).toContain('Only 1 girl');
+    void BUS;
+  });
+  it('does not flag her when she shares a placeId with another rider in the car', () => {
+    const v = { run: { readOnly: false }, riders: [
+      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
+      { id: 'r2', runVehicleId: 'rv1', gender: 'male', placeId: 'P1' },
+    ], vehicles: [car()] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    expect(_busRoutesHtml()).not.toContain('Only 1 girl');
+  });
+  it('does not flag a car with two or more girls', () => {
+    const v = { run: { readOnly: false }, riders: [
+      { id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' },
+      { id: 'r2', runVehicleId: 'rv1', gender: 'female', placeId: 'P2' },
+    ], vehicles: [car()] };
+    const { _busRoutesHtml } = loadFns(['_busRoutesHtml'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`);
+    expect(_busRoutesHtml()).not.toContain('Only 1 girl');
+  });
+});
+
+describe('busGenerate toast mentions riders kept off a car alone', () => {
+  it('includes the loneGirl count when > 0', async () => {
+    const prelude = `
+      const BUS = { generating: false };
+      function closeModal() {}
+      function renderBus() {}
+      let __msg = null;
+      function toast(m) { __msg = m; }
+      function _busQs() { return ''; }
+      async function busRefresh() {}
+      const API = { post: async () => ({ loneGirl: 2, unassigned: 0, noAddressPin: 0 }) };
+      function __state() { return { msg: __msg }; }
+    `;
+    const { busGenerate, __state } = loadFns(['busGenerate'], prelude, ['busGenerate', '__state']);
+    await busGenerate('all');
+    expect(__state().msg).toContain('2 kept off a car alone');
+  });
+  it('omits the note when loneGirl is 0', async () => {
+    const prelude = `
+      const BUS = { generating: false };
+      function closeModal() {}
+      function renderBus() {}
+      let __msg = null;
+      function toast(m) { __msg = m; }
+      function _busQs() { return ''; }
+      async function busRefresh() {}
+      const API = { post: async () => ({ loneGirl: 0, unassigned: 0, noAddressPin: 0 }) };
+      function __state() { return { msg: __msg }; }
+    `;
+    const { busGenerate, __state } = loadFns(['busGenerate'], prelude, ['busGenerate', '__state']);
+    await busGenerate('all');
+    expect(__state().msg).toBe('Routes ready');
+  });
+});
+
+describe('_busRosterHtml locks add/search/remove while Generate is running or a coordinator holds the lock', () => {
+  const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
+     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busHitsHtml() { return ''; }`;
+  const run = (generating: boolean, lockBy: string | null, lockUntil: string | null) => {
+    const prelude = `${stubs}
+      const BUS = { search: '', generating: ${generating},
+        view: { run: { readOnly: false, lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} },
+          riders: [{ id: 'r1', name: 'Amy' }], vehicles: [] } };`;
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude, ['_busRosterHtml']);
+    return _busRosterHtml();
+  };
+  it('shows the search bar and remove button when nothing is blocking', () => {
+    const html = run(false, null, null);
+    expect(html).toContain('bus-q');
+    expect(html).toContain('busConfirmRemove');
+  });
+  it('hides them while BUS.generating is true', () => {
+    const html = run(true, null, null);
+    expect(html).not.toContain('bus-q');
+    expect(html).not.toContain('busConfirmRemove');
+  });
+  it('hides them while another coordinator holds a live lock', () => {
+    const html = run(false, 'Sarah', '2099-01-01T00:00:00.000Z');
+    expect(html).not.toContain('bus-q');
+    expect(html).not.toContain('busConfirmRemove');
+  });
+});
+
+describe('_busLoadMap times out and handles an expired session (2026-10-06)', () => {
+  it('passes an AbortSignal and calls _handleAuthExpired on a 401', async () => {
+    const prelude = `
+      function _busQs() { return ''; }
+      const API = { token: 'tok' };
+      let __handled = false;
+      function _handleAuthExpired() { __handled = true; }
+      const BUS = { version: 1, tab: 'analysis', mapUrl: null };
+      const S = { page: 'bus' };
+      function renderBus() {}
+      let __fetchOpts = null;
+      async function fetch(url, opts) { __fetchOpts = opts; return { status: 401, ok: false }; }
+      function __state() { return { handled: __handled, fetchOpts: __fetchOpts, BUS }; }
+    `;
+    const { _busLoadMap, __state } = loadFns(['_busLoadMap'], prelude, ['_busLoadMap', '__state']);
+    await _busLoadMap();
+    const st = __state();
+    expect(st.handled).toBe(true);
+    expect(st.fetchOpts.signal).toBeInstanceOf(AbortSignal);
+    expect(st.BUS.mapUrl).toBe('');
+  });
+});

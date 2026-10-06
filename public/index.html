@@ -8181,6 +8181,7 @@ function _busSuburb(address) {
 }
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
 function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span class="chip c-warn">${icS('alert')} Consent: not yet</span>`; }
+function _busPinnedIcon() { return `<span style="color:var(--accent-dark)" title="Pinned — Generate won't move them" aria-label="Pinned — Generate won't move them">${icS('pinned')}</span>`; }
 function _busFmtTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 async function _busGet(path, extra) { return API.fresh(path + '?' + _busQs(extra)); }
 async function _busSend(method, path, body) {
@@ -8362,6 +8363,9 @@ async function renderBus() {
 
 function _busRosterHtml() {
   const v = BUS.view;
+  // Roster writes 409 while a Generate is running (server lock), so add/search/remove are
+  // disabled the same as the existing readOnly (finished run) gate, not just visually inert.
+  const locked = v.run.readOnly || BUS.generating || !!_busLockedBy(v, Date.now(), BUS.generating);
   const placed = (r) => v.vehicles.find((x) => x.id === r.runVehicleId);
   const rows = v.riders.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
@@ -8369,11 +8373,11 @@ function _busRosterHtml() {
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.gender === 'female' ? icS('genderF') : r.gender === 'male' ? icS('genderM') : ''}</div>
         <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
       ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
-      ${v.run.readOnly ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
+      ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');
   const seats = v.vehicles.filter((x) => x.running).reduce((n, x) => n + x.capacity, 0);
-  return `${v.run.readOnly ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
+  return `${locked ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
       <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
     <div class="card-title bus-sec">Tonight (${v.riders.length})</div>
@@ -8726,10 +8730,19 @@ function busMoveSheet(riderId) {
       <span class="chip ${!genderOk && left > 0 ? 'c-warn' : 'c-neutral'}">${why}</span></button>`;
   }).join('');
   modal(`<div class="mo-title">Move ${esc(r.name)} to…</div>${rows}
-    <button class="li bus-move" onclick="busMove('${riderId}',null)"><span class="li-body">Unassigned</span></button>`);
+    <button class="li bus-move" onclick="busMove('${riderId}',null)"><span class="li-body">Unassigned</span></button>
+    ${r.pinned ? `<button class="li bus-move" onclick="busUnpin('${riderId}')"><span class="li-body">Unpin — let Generate place them</span></button>` : ''}`);
 }
+// Clears any now-stale route minutes (the server doesn't re-time a car just because one
+// rider moved) for both the car the rider left and the car they landed in.
+function _busClearRouteMin(oldId, newId) { delete BUS.routeMin[oldId]; delete BUS.routeMin[newId]; }
 async function busMove(riderId, runVehicleId) {
-  try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); closeModal(); } catch (e) { toast(e.message); }
+  const oldId = (BUS.view.riders.find((x) => x.id === riderId) || {}).runVehicleId;
+  try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); _busClearRouteMin(oldId, runVehicleId); closeModal(); } catch (e) { toast(e.message); }
+}
+async function busUnpin(riderId) {
+  const carId = (BUS.view.riders.find((x) => x.id === riderId) || {}).runVehicleId;
+  try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { unpin: true }); _busClearRouteMin(carId, carId); closeModal(); } catch (e) { toast(e.message); }
 }
 
 function _busFitCount(v) { return v.riders.filter((r) => !r.runVehicleId && !r.pinned && r.placeId).length; }
@@ -8764,7 +8777,8 @@ async function busGenerate(mode) {
   try {
     const res = await API.post('/bus/run/generate?' + _busQs(), { mode }, 30000);
     BUS.routeMin = res.routeMin || {};
-    const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : ''].filter(Boolean);
+    const notes = [res.unassigned ? `${res.unassigned} still unassigned` : '', res.noAddressPin ? `${res.noAddressPin} need a map pin` : '',
+      res.loneGirl ? `${res.loneGirl} kept off a car alone` : ''].filter(Boolean);
     toast(notes.length ? notes.join(' · ') : 'Routes ready', 4000);
   } catch (e) { toast(e.message || 'Could not work out routes', 4000); }
   finally { BUS.generating = false; await busRefresh(); }
@@ -8780,7 +8794,7 @@ function _busRoutesHtml() {
   const v = BUS.view;
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
-    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+    <div class="route-main"><div class="route-name">${esc(r.name)} ${r.grade ? `<span class="chip c-neutral">Y${r.grade}</span>` : ''} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
     ${v.run.readOnly ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
       <button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
@@ -8793,15 +8807,20 @@ function _busRoutesHtml() {
     const min = BUS.routeMin[rv.id];
     const warn = !riders.length ? '' : rv.eligibility.unknown ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
       : riders.some((r) => r.gender && !rv.eligibility[r.gender]) ? `<span class="chip c-warn">${icS('alert')} Gender mismatch</span>` : '';
+    // A car with exactly one girl, who isn't co-located (same placeId) with anyone else in
+    // the car, gets flagged the same way Generate itself flags it in the toast (loneGirl).
+    const girls = riders.filter((r) => r.gender === 'female');
+    const loneGirl = riders.length > 1 && girls.length === 1 && !riders.some((r) => r !== girls[0] && r.placeId && r.placeId === girls[0].placeId);
+    const loneGirlChip = loneGirl ? `<span class="chip c-warn">${icS('alert')} Only 1 girl</span>` : '';
     const rows = riders.map((r, i) => `<div class="route-row"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`} style="cursor:${v.run.readOnly ? 'default' : 'pointer'}">
       <div class="stop-num">${i + 1}</div>
-      <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+      <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
     </div>`).join('');
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
-        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}</span>
+        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${loneGirlChip}</span>
         <span class="drop-chev">${icS('chevr')}</span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
@@ -8888,7 +8907,7 @@ function _busMyCarHtml() {
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row" style="align-items:flex-start" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
-      <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? `<span style="color:var(--accent-dark)">${icS('pinned')}</span>` : ''}</div>
+      <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div></div>
       <span onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
@@ -8933,7 +8952,8 @@ async function busOpenAnalysis() {
 // and hand the image a data: URL. The Google key never reaches the browser.
 async function _busLoadMap() {
   try {
-    const res = await fetch('/bus/analysis/map?' + _busQs(), { headers: API.token ? { Authorization: 'Bearer ' + API.token } : {} });
+    const res = await fetch('/bus/analysis/map?' + _busQs(), { headers: API.token ? { Authorization: 'Bearer ' + API.token } : {}, signal: AbortSignal.timeout(20000) });
+    if (res.status === 401) { _handleAuthExpired(); throw new Error('Session expired'); }
     if (!res.ok) throw new Error('Map unavailable');
     const blob = await res.blob();
     BUS.mapUrl = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(blob); });

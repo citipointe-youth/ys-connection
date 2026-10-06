@@ -142,7 +142,6 @@ export interface IBusRepository {
   getRun(id: string): Promise<BusRun | null>;
   listRuns(): Promise<BusRun[]>;                    // newest serviceDate first
   insertRunIfAbsent(r: BusRun): Promise<{ run: BusRun; created: boolean }>;
-  saveRun(r: BusRun): Promise<BusRun>;
   bumpRun(runId: string, by: string, atIso: string): Promise<BusRun>; // version+1, lastChange*
   listRunVehicles(runId: string): Promise<BusRunVehicle[]>;
   saveRunVehicle(v: BusRunVehicle): Promise<BusRunVehicle>;
@@ -161,7 +160,7 @@ export interface IBusRepository {
    *  never clear a lock a second generate has since legitimately taken over. */
   releaseLock(runId: string, by: string): Promise<void>;
   setUndo(runId: string, snapshot: BusUndoEntry[] | null, untilIso: string | null): Promise<void>;
-  /** Writes ONLY available_pool_leader_ids (saveRun writes the whole row and would clobber a live lock). */
+  /** Writes ONLY available_pool_leader_ids — must not clobber a live lock or other run fields. */
   setPoolIds(runId: string, ids: string[]): Promise<void>;
 }
 
