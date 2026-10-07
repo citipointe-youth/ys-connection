@@ -40,6 +40,7 @@ export class InMemoryBusRepository implements IBusRepository {
   async listAllAddresses() { return [...this.addresses.values()].map(c); }
   async getAddress(id: string) { const a = this.addresses.get(id); return a ? c(a) : null; }
   async saveAddress(a: BusAddress) { this.addresses.set(a.id, c(a)); return c(a); }
+  async deleteAddress(id: string) { this.addresses.delete(id); }
   async reassignGuestAddresses(guestId: string, studentId: string) {
     for (const a of this.addresses.values()) if (a.guestId === guestId) { a.guestId = null; a.studentId = studentId; }
   }

@@ -138,6 +138,7 @@ export interface IBusRepository {
   listAllAddresses(): Promise<BusAddress[]>; // every saved address, any order — "Past riders" groups these by owner
   getAddress(id: string): Promise<BusAddress | null>;
   saveAddress(a: BusAddress): Promise<BusAddress>;
+  deleteAddress(id: string): Promise<void>;
   reassignGuestAddresses(guestId: string, studentId: string): Promise<void>;
   getRunByDate(serviceDate: string): Promise<BusRun | null>;
   getRun(id: string): Promise<BusRun | null>;

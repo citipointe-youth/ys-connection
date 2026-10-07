@@ -691,6 +691,19 @@ describe('riderAddresses — the edit sheet loads by rider, not by name search',
   });
 });
 
+describe('deleteRiderAddress — edit sheet forgets a saved address', () => {
+  it('deletes a non-current address; refuses the current one and unknown ones', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Mum', address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:24-wynnum-rd-carina-qld-' } });
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: '', address: '3 Lindsay Ct, Cornubia QLD 4130, Australia', placeId: 'fake:3-lindsay-ct-cornubia-qld-' } });
+    const [current, old] = await svc.riderAddresses(ctx('grade'), r.id);
+    await expect(svc.deleteRiderAddress(ctx('grade'), r.id, current!.id)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(svc.deleteRiderAddress(ctx('grade'), r.id, 'nope')).rejects.toMatchObject({ statusCode: 404 });
+    await svc.deleteRiderAddress(ctx('grade'), r.id, old!.id);
+    expect((await svc.riderAddresses(ctx('grade'), r.id)).map((a) => a.id)).toEqual([current!.id]);
+  });
+});
+
 describe('personAddresses — Past riders confirm sheet', () => {
   it('lists a student\'s saved addresses, most recently used first; needs exactly one id', async () => {
     const { svc, ctx } = await setup();

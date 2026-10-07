@@ -139,6 +139,7 @@ export class SupabaseBusRepository implements IBusRepository {
       returning *`;
     return toAddress(r[0]!);
   }
+  async deleteAddress(id: string) { await this.sql`delete from bus_addresses where id = ${id}`; }
   async reassignGuestAddresses(guestId: string, studentId: string) {
     await this.sql`update bus_addresses set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
   }

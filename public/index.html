@@ -275,7 +275,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .eg-dots{display:flex;gap:6px}
 .eg-dots i{width:8px;height:8px;border-radius:999px;background:var(--paper-dark);display:block;transition:.15s}
 .eg-dots i.on{background:var(--accent);width:20px}
-.mo-box{background:var(--paper-card);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:94vh;overflow-y:auto;padding:18px 18px max(18px,env(safe-area-inset-bottom));animation:rise .2s}
+.mo-box{background:var(--paper-card);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:94%;overflow-y:auto;padding:18px 18px max(18px,env(safe-area-inset-bottom));animation:rise .2s}
 @media(min-width:768px){.mo-box{border-radius:var(--radius)}}
 .mo-handle{width:40px;height:4px;background:var(--paper-dark);border-radius:2px;margin:0 auto 16px}
 .mo-title{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px}
@@ -1187,7 +1187,17 @@ function modal(html, onClose, opts) {
   r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
   r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') closeModal(); });
+  _moFitViewport();
 }
+// iOS Safari: the keyboard covers a position:fixed sheet instead of shrinking it, so fields and
+// address suggestions in the bottom half of a long sheet (e.g. Bus "Your car") were unreachable.
+// Pin the overlay to the visual viewport so the sheet sits — and scrolls — above the keyboard.
+function _moFitViewport() {
+  const vv = window.visualViewport, mo = document.getElementById('mo-overlay');
+  if (!vv || !mo) return;
+  mo.style.top = vv.offsetTop + 'px'; mo.style.height = vv.height + 'px'; mo.style.bottom = 'auto';
+}
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
 function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
 
 // Irreversible bulk actions: require typing a word to arm the confirm button
@@ -8186,7 +8196,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false };
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
@@ -8394,10 +8404,10 @@ async function renderBus() {
   const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
   const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
   const tabs = [
-    canRoster && { id: 'roster', label: 'Tonight' },
     { id: 'mycar', label: 'My car' },
+    canRoster && { id: 'roster', label: 'Students' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
-    v.canCoordinate && { id: 'routes', label: 'Routes' },
+    v.canCoordinate && { id: 'routes', label: 'Assign' },
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesAnalysis);
   const d = new Date(v.run.serviceDate + 'T00:00:00');
@@ -8409,7 +8419,7 @@ async function renderBus() {
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
-      <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
+      <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
@@ -8541,6 +8551,7 @@ function busAc(id, q) {
     if (err) { el.innerHTML = _busAcStatusHtml(esc(err)); return; }
     if (q.trim().length >= 3 && !hits.length) { el.innerHTML = _busAcStatusHtml('No matches — try adding the suburb'); return; }
     el.innerHTML = hits.map((h, i) => `<button type="button" class="li bus-ac-item" onclick="busAcPick('${id}',${i})">${icS('pin')}<span class="li-body">${esc(h.text)}</span></button>`).join('');
+    if (hits.length) el.scrollIntoView({ block: 'nearest' }); // near the bottom of a sheet the list was off-screen
   }, 250);
 }
 function busAcPick(id, i) {
@@ -8558,14 +8569,16 @@ function _busAcValue(id) {
 // A blank label shouldn't hide/blank-render a saved address — fall back to the street
 // part, then the suburb, before the generic "Saved" (server will default label to the
 // street part going forward; this just covers rows saved before that).
+// A custom label ("Mum's") never hides the number/street (owner, 2026-10-07).
 function _busAddrLabel(a) {
-  const main = a.label || a.street || a.suburb || _busSuburb(a.address) || 'Saved';
   const sub = a.suburb || _busSuburb(a.address);
-  return sub && sub !== main ? `${esc(main)} · ${esc(sub)}` : esc(main);
+  const parts = [...new Set([a.label, a.street, sub].filter(Boolean))];
+  return parts.length ? parts.map(esc).join(' · ') : 'Saved';
 }
-function _busAddressPicker(addresses) {
-  const saved = addresses.map((a, i) => `<label class="radio-row"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
-      <span>${_busAddrLabel(a)}</span></label>`).join('');
+// del = { riderId, currentId }: the edit-rider sheet can forget saved addresses other than tonight's.
+function _busAddressPicker(addresses, del) {
+  const saved = addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
+      <span style="flex:1">${_busAddrLabel(a)}</span>${del && a.id !== del.currentId ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
   return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
@@ -8643,8 +8656,18 @@ async function busEditRider(id) {
   const r = BUS.view.riders.find((x) => x.id === id); if (!r || BUS.view.run.readOnly) return;
   let addrs;
   try { addrs = await _busGet('/bus/riders/' + id + '/addresses'); } catch (e) { toast(e.message); return; }
-  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(addrs)}
+  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(addrs, { riderId: id, currentId: r.addressId })}
     <button class="btn btn-primary btn-full" onclick="busSaveRider('${id}')">Save</button>`);
+}
+// Two-tap confirm (no native confirm() — matches the rest of the app).
+async function busDeleteAddress(riderId, addressId) {
+  const btn = document.querySelector('#bus-addr-row-' + addressId + ' .bus-danger');
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }
+  try {
+    await _busSend('DELETE', '/bus/riders/' + riderId + '/addresses/' + addressId);
+    document.getElementById('bus-addr-row-' + addressId)?.remove();
+    toast('Address deleted');
+  } catch (e) { toast(e.message); }
 }
 async function busSaveRider(id) {
   const a = _busReadAddress(); if (!a) return;
@@ -9271,7 +9294,7 @@ async function busTryCars(count) {
 }
 function _busAnalysisHtml() {
   // Task 8: a quick way back to Routes without using the tab bar.
-  const back = `<div style="margin-bottom:10px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Routes</a></div>`;
+  const back = `<div style="margin-bottom:10px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a></div>`;
   if (BUS.analysisErr) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
   const a = BUS.analysis;
   if (!a) return `${back}<div class="card-sub">Working out routes…</div>`;

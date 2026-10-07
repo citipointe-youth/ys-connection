@@ -24,6 +24,7 @@ export interface BusService {
   search(ctx: BusCtx, q: string): Promise<BusSearchHit[]>;
   riderAddresses(ctx: BusCtx, riderId: string): Promise<BusSearchHit['addresses']>;
   personAddresses(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<BusSearchHit['addresses']>;
+  deleteRiderAddress(ctx: BusCtx, riderId: string, addressId: string): Promise<void>;
   addRider(ctx: BusCtx, input: unknown): Promise<BusRiderView>;
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
@@ -580,6 +581,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const addrs = await bus.listAddresses(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
       return addrs.sort((a, b) => Number(b.id === r.addressId) - Number(a.id === r.addressId))
         .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
+    },
+    // Edit-rider sheet: forget one of the rider's saved addresses (owner, 2026-10-07). Not the
+    // one they're using tonight — riders snapshot their address, but deleting it would leave the
+    // sheet with nothing selected.
+    async deleteRiderAddress(ctx, riderId, addressId) {
+      await gate(ctx, 'bus:roster');
+      const r = await bus.getRunRider(riderId);
+      if (!r) throw new NotFoundError('Rider not found');
+      const a = await bus.getAddress(addressId);
+      if (!a || (r.studentId ? a.studentId !== r.studentId : a.guestId !== r.guestId)) throw new NotFoundError('Address not found');
+      if (r.addressId === addressId) throw new BadRequestError("That's tonight's address — pick another one first");
+      await bus.deleteAddress(addressId);
     },
     // Past riders' "confirm address" sheet — a person's saved addresses, most recently used first.
     async personAddresses(ctx, who) {
