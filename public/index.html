@@ -251,7 +251,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .empty-sub{font-size:13px;color:var(--ink-faint);margin-top:6px}
 
 /* Modal */
-.mo{position:fixed;inset:0;background:rgba(8,14,25,.55);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.mo{position:fixed;inset:0;background:rgba(8,14,25,.55);z-index:200;display:flex;align-items:flex-end;justify-content:center;padding-top:calc(env(safe-area-inset-top) + 24px)}
 @media(min-width:768px){.mo{align-items:center;padding:24px}}
 /* Elvanto export guide — full-screen step viewer (Import screen + Connection Audit data tab) */
 .eg-wrap{position:fixed;inset:0;background:rgba(8,14,25,.62);z-index:210;display:none;align-items:center;justify-content:center;padding:12px}
@@ -275,7 +275,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .eg-dots{display:flex;gap:6px}
 .eg-dots i{width:8px;height:8px;border-radius:999px;background:var(--paper-dark);display:block;transition:.15s}
 .eg-dots i.on{background:var(--accent);width:20px}
-.mo-box{background:var(--paper-card);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:94%;overflow-y:auto;padding:18px 18px max(18px,env(safe-area-inset-bottom));animation:rise .2s}
+.mo-box{background:var(--paper-card);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:100%;overflow-y:auto;padding:18px 18px max(18px,env(safe-area-inset-bottom));animation:rise .2s}
 @media(min-width:768px){.mo-box{border-radius:var(--radius)}}
 .mo-handle{width:40px;height:4px;background:var(--paper-dark);border-radius:2px;margin:0 auto 16px}
 .mo-title{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px}
@@ -702,6 +702,11 @@ input,select,textarea{font-family:inherit;font-size:inherit}
    Save alone spanning the full width. */
 .mo-box > .bus-sheet-actions{position:sticky;bottom:0;z-index:2;display:flex;gap:8px;background:var(--paper-card);box-shadow:0 -14px 10px -4px var(--paper-card);padding-top:2px}
 .mo-box > .bus-sheet-actions > .btn{flex:1;min-width:0}
+/* Typing (keyboard up): the floating Save/Cancel drops back into the flow so it doesn't cover the
+   few lines still visible above the keyboard (owner, 2026-10-08). */
+.mo-box:has(.fi:focus, textarea:focus) > .bus-sheet-actions, .mo-box:has(.fi:focus, textarea:focus) > .btn-primary.btn-full,
+.mo-box:has(.sbar input:focus) > .bus-sheet-actions{position:static;box-shadow:none}
+.mo-box > .bus-sheet-actions{margin-top:12px}
 /* ── END BUS MODULE CSS ── */
 </style>
 </head>
@@ -1195,7 +1200,9 @@ function modal(html, onClose, opts) {
 function _moFitViewport() {
   const vv = window.visualViewport, mo = document.getElementById('mo-overlay');
   if (!vv || !mo) return;
-  mo.style.top = vv.offsetTop + 'px'; mo.style.height = vv.height + 'px'; mo.style.bottom = 'auto';
+  // Only while the keyboard is up — a stale size after it closed pushed the sheet off the top.
+  const kb = window.innerHeight - vv.height > 120;
+  mo.style.top = kb ? vv.offsetTop + 'px' : ''; mo.style.height = kb ? vv.height + 'px' : ''; mo.style.bottom = kb ? 'auto' : '';
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
 function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
@@ -9149,7 +9156,8 @@ function busOwnCarSheet(keep) {
     <label class="fl" style="margin-top:12px">Or pick from students still waiting for a car</label>
     <div class="bus-checks" id="oc-riders">${unplaced.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address))}</label>`).join('') || '<div class="card-sub">No one waiting for a car.</div>'}</div>
     <div class="card-sub">These riders come off the bus routes.</div>
-    <button class="btn btn-primary btn-full" onclick="busSaveOwnCar()">Save</button>`);
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="BUS.ocDraft = null; closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busSaveOwnCar()">Save</button></div>`);
 }
 // Reads the sheet's current field values back into the in-progress draft before navigating away
 // to the address picker or New Person sheet (both replace this modal) — busOwnCarSheet() reopens
