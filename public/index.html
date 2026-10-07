@@ -8198,7 +8198,10 @@ window.CA=CA;
 // land after the session that started it has ended (review fix round 2, finding 1).
 const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
-  analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false };
+  analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
+  // Own-car "add someone" search (Your car sheet) — kept separate from search/hits above (the
+  // Students tab) so opening one never clobbers the other's in-progress query.
+  ocSearch: '', ocHits: [], ocSearching: false, ocSearchErr: null, ocDraft: null };
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
 // typing leader by a background repaint — losing focus closes the phone's on-screen keyboard
 // every poll tick (<=10s), e.g. while searching #bus-q. BUS.pendingRepaint defers the repaint
@@ -8451,7 +8454,7 @@ function _busRosterHtml() {
   return `${readOnly ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
       <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
-    <div class="card-title bus-sec">Tonight (${v.riders.length})</div>
+    <div class="card-title bus-sec">Students who need a lift home tonight (${v.riders.length})</div>
     ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
     ${_busPastHtml(readOnly)}`;
@@ -9123,28 +9126,134 @@ function _busRoutesHtml() {
   <div class="bus-routes">${carCards}</div>`;
 }
 
-function busOwnCarSheet() {
-  const d = BUS.myCar.ownCarDraft || { car: null, riderIds: [] }, car = d.car || { name: '', seats: 5, plate: '', endsAt: 'address', endsAddress: '' };
+// The sheet's in-progress draft lives in BUS.ocDraft, not BUS.myCar (a background refresh replaces
+// BUS.myCar, which would drop queued riders while the address picker is open). keep=true when
+// returning from the address picker / New Person sheet; otherwise start from the server's draft.
+function busOwnCarSheet(keep) {
+  if (!keep || !BUS.ocDraft) { const s = BUS.ocDraft || { car: null, riderIds: [] }; BUS.ocDraft = { car: s.car, riderIds: [...s.riderIds], newRiders: [] }; BUS.ocSearch = ''; BUS.ocHits = []; }
+  const d = BUS.ocDraft;
+  const car = d.car || { name: '', seats: '', plate: '', endsAt: 'address', endsAddress: '' };
   const unplaced = BUS.view.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id));
+  const newRows = d.newRiders.map((n, i) => `<label class="cbx-row"><input type="checkbox" checked disabled> ${esc(n.name)} · ${esc(n.addrLabel || '')}
+      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" style="margin-left:auto" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
   modal(`<div class="mo-title">Your car</div>
     <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
-    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" value="${car.seats}" aria-label="Seats">
+    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" placeholder="# seats" value="${esc(car.seats || '')}" aria-label="Seats">
       <input class="fi" id="oc-plate" placeholder="Plate" value="${esc(car.plate || '')}"></div>
     ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
+    <div class="sbar"><span class="si">${icS('search')}</span>
+      <input id="oc-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+        value="${esc(BUS.ocSearch || '')}" oninput="busOcSearch(this.value)"></div><div id="oc-hits">${_busOcHitsHtml()}</div>
+    ${newRows ? `<div class="bus-checks" id="oc-new-riders" style="margin-top:8px">${newRows}</div>` : ''}
+    <label class="fl" style="margin-top:12px">Or pick from students still waiting for a car</label>
     <div class="bus-checks" id="oc-riders">${unplaced.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address))}</label>`).join('') || '<div class="card-sub">No one waiting for a car.</div>'}</div>
     <div class="card-sub">These riders come off the bus routes.</div>
     <button class="btn btn-primary btn-full" onclick="busSaveOwnCar()">Save</button>`);
+}
+// Reads the sheet's current field values back into the in-progress draft before navigating away
+// to the address picker or New Person sheet (both replace this modal) — busOwnCarSheet() reopens
+// on top of it afterwards, so nothing the leader already typed is lost.
+function _busOcSyncDraft() {
+  const d = BUS.ocDraft || (BUS.ocDraft = { car: null, riderIds: [], newRiders: [] });
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const endsAt = val('oc-ends') || 'address';
+  d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: val('oc-plate'), endsAt,
+    endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
+    endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null };
+  d.riderIds = [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value);
+  if (!d.newRiders) d.newRiders = [];
+}
+let _busOcSearchT = null;
+function busOcSearch(q) {
+  BUS.ocSearch = q;
+  clearTimeout(_busOcSearchT);
+  const active = q.trim().length >= 2;
+  BUS.ocSearching = active; BUS.ocSearchErr = null;
+  const el0 = document.getElementById('oc-hits'); if (el0) el0.innerHTML = _busOcHitsHtml();
+  if (!active) { BUS.ocHits = []; return; }
+  _busOcSearchT = setTimeout(async () => {
+    try { BUS.ocHits = await _busGet('/bus/search', 'q=' + encodeURIComponent(q)); }
+    catch (e) { BUS.ocHits = []; BUS.ocSearchErr = e.message || "Can't reach the server — check your internet"; }
+    BUS.ocSearching = false;
+    const el = document.getElementById('oc-hits'); if (el) el.innerHTML = _busOcHitsHtml();
+  }, 250);
+}
+function _busOcHitsHtml() {
+  if ((BUS.ocSearch || '').trim().length < 2) return '';
+  const status = BUS.ocSearching
+    ? `<div class="li"><div class="spin" style="margin-right:8px"></div><div class="li-body"><div class="li-title">Searching…</div></div></div>`
+    : BUS.ocSearchErr ? `<div class="li"><div class="li-body"><div class="li-title">${esc(BUS.ocSearchErr)}</div></div></div>` : '';
+  const rows = (BUS.ocHits || []).map((h, i) => `<div class="li" onclick="busOcPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''}</div></div>${icS('chevr')}</div>`).join('');
+  return `<div class="card bus-hits">${status}${rows}
+    <div class="li" onclick="busOcNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.ocSearch.trim())}"</div></div></div></div>`;
+}
+function busOcPick(i) {
+  const h = (BUS.ocHits || [])[i]; if (!h) return;
+  _busOcSyncDraft();
+  BUS._ocPick = { kind: h.kind, id: h.id, name: h.name, addresses: h.addresses };
+  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
+    <button class="btn btn-primary" onclick="busOcConfirmPick()">Add</button></div>`);
+}
+function busOcConfirmPick() {
+  const a = _busReadAddress(); if (!a) return;
+  const p = BUS._ocPick;
+  const addrLabel = a.addressId ? _busAddrLabel((p.addresses || []).find((x) => x.id === a.addressId) || {}) : (a.newAddress.label || a.newAddress.address);
+  const d = BUS.ocDraft;
+  d.newRiders.push({ ...(p.kind === 'student' ? { studentId: p.id } : { guestId: p.id }), name: p.name, addrLabel, ...a });
+  BUS.ocSearch = ''; BUS.ocHits = [];
+  busOwnCarSheet(true);
+}
+function busOcNewPerson() {
+  _busOcSyncDraft();
+  _busNpGender = null; // M3: a cancelled sheet must not leak its gender pick into the next one
+  const parts = (BUS.ocSearch || '').trim().split(/\s+/);
+  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
+  modal(`<div class="mo-title">New Person</div>
+    <div class="fg"><input class="fi" id="np-first" placeholder="First name" value="${esc(parts[0] || '')}"></div>
+    <div class="fg"><input class="fi" id="np-last" placeholder="Last name" value="${esc(parts.slice(1).join(' '))}"></div>
+    <div class="fg"><select class="fs" id="np-grade"><option value="">Grade</option>${grades.map((g) => `<option value="${g}">${esc(_gradeWord())} ${g}</option>`).join('')}</select></div>
+    <div class="fg bus-gender" id="np-gender">
+      <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'female')">${icS('genderF')} <span class="bus-gender-lbl" data-label="Girl">Girl</span></button>
+      <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'male')">${icS('genderM')} <span class="bus-gender-lbl" data-label="Boy">Boy</span></button></div>
+    <div class="fg"><input class="fi" id="np-phone" type="tel" placeholder="Mobile (optional)"></div>
+    ${_busAddressPicker([])}
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
+      <button class="btn btn-primary" onclick="busOcSaveNewPerson()">Add</button></div>`);
+}
+function busOcSaveNewPerson() {
+  const firstName = document.getElementById('np-first').value.trim(), lastName = document.getElementById('np-last').value.trim();
+  const gradeV = document.getElementById('np-grade').value, phone = document.getElementById('np-phone').value.trim();
+  if (!firstName || !lastName || !_busNpGender) { toast('Name and gender are needed'); return; }
+  if (phone && phone.replace(/\D/g, '').length < 8) { toast('Check the phone number'); return; }
+  const a = _busReadAddress(); if (!a) return;
+  const addrLabel = a.newAddress ? (a.newAddress.label || a.newAddress.address) : '';
+  const d = BUS.ocDraft;
+  d.newRiders.push({ newPerson: { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone: phone || null },
+    name: `${firstName} ${lastName}`, addrLabel, ...a });
+  _busNpGender = null;
+  BUS.ocSearch = ''; BUS.ocHits = [];
+  busOwnCarSheet(true);
+}
+function busOcRemoveNew(i) {
+  const d = BUS.ocDraft;
+  if (d && d.newRiders) d.newRiders.splice(i, 1);
+  busOwnCarSheet(true);
 }
 async function busSaveOwnCar() {
   const val = (id) => document.getElementById(id).value;
   const endsAt = val('oc-ends');
   if (endsAt === 'address' && !_busAcValue('oc-ends-addr').placeId) { toast('Pick the address from the suggestions list'); return; }
-  const body = { car: { name: val('oc-name').trim(), seats: Number(val('oc-seats')), plate: val('oc-plate').trim() || null,
+  const seatsRaw = val('oc-seats').trim();
+  if (!seatsRaw) { toast('Enter the number of seats'); return; }
+  const d = BUS.ocDraft || { newRiders: [] };
+  const body = { car: { name: val('oc-name').trim(), seats: Number(seatsRaw), plate: val('oc-plate').trim() || null,
     endsAt, endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
-    riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value) };
-  try { await _busSend('POST', '/bus/run/own-car', body); closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
+    riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
+    newRiders: (d.newRiders || []).map(({ name, addrLabel, ...n }) => n) };
+  try { await _busSend('POST', '/bus/run/own-car', body); BUS.ocDraft = null; closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
 }
 function busRemoveOwnCar() {
   modal(`<div class="mo-title">Remove your car tonight?</div>

@@ -230,6 +230,53 @@ describe('my car', () => {
   });
 });
 
+// Owner (2026-10-07): a junior `leader` login has bus:use but not bus:roster — the Students tab
+// is hidden from them in the SPA, but "Your car" now lets them search and add someone new
+// straight into their OWN car via the same bus:use-gated saveOwnCar call (newRiders).
+describe('own-car newRiders (junior leader, bus:use only, 2026-10-07)', () => {
+  const juniorLeaderCtx = (): BusCtx => ({ actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM });
+  it('search is reachable with bus:use alone (no bus:roster)', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    const hits = await svc.search(juniorLeaderCtx(), 'tran');
+    expect(hits[0]?.kind).toBe('student');
+  });
+  it('a student + new address adds the rider to tonight and places them in the leader\'s own car', async () => {
+    const { svc, ctx } = await setup();
+    const own = await svc.saveOwnCar(juniorLeaderCtx(), { car: { name: "Tom's car", seats: 4, endsAt: 'church' }, riderIds: [],
+      newRiders: [{ studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } }] });
+    const v = await svc.getRun(ctx('admin'));
+    const r = v.riders.find((x) => x.studentId === 's1');
+    expect(r).toBeTruthy();
+    expect(r!.runVehicleId).toBe(own.id);
+  });
+  it('a newPerson entry creates a guest and places them in the car', async () => {
+    const { svc, bus, ctx } = await setup();
+    const own = await svc.saveOwnCar(juniorLeaderCtx(), { car: { name: "Tom's car", seats: 4, endsAt: 'church' }, riderIds: [],
+      newRiders: [{ newPerson: { firstName: 'Casey', lastName: 'Walker', grade: 8, gender: 'male', phone: null },
+        newAddress: { label: 'Home', address: '7 New St, Bulimba', placeId: 'fake:7-new-st-bulimba' } }] });
+    const guests = await bus.listGuests();
+    expect(guests.some((g) => g.firstName === 'Casey' && g.lastName === 'Walker')).toBe(true);
+    const v = await svc.getRun(ctx('admin'));
+    const r = v.riders.find((x) => x.name === 'Casey Walker');
+    expect(r?.runVehicleId).toBe(own.id);
+  });
+  it('someone already on tonight is not duplicated, just placed in the car', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    const before = await svc.getRun(ctx('admin'));
+    expect(before.riders).toHaveLength(1);
+    const originalAddress = before.riders[0]!.address;
+    const own = await svc.saveOwnCar(juniorLeaderCtx(), { car: { name: "Tom's car", seats: 4, endsAt: 'church' }, riderIds: [],
+      // a bogus address — proves the already-on-tonight path never touches placeRider/resolveAddress
+      newRiders: [{ studentId: 's1', newAddress: { label: 'Wrong', address: '99 Wrong St, Nowhere', placeId: 'fake:99-wrong-st' } }] });
+    const after = await svc.getRun(ctx('admin'));
+    expect(after.riders).toHaveLength(1); // not duplicated
+    expect(after.riders[0]!.runVehicleId).toBe(own.id);
+    expect(after.riders[0]!.address).toBe(originalAddress); // untouched by the skipped add
+  });
+});
+
 describe('guest linking', () => {
   it('exactly one name match links and moves addresses; ambiguous ones become suggestions', async () => {
     const t = await setup();
