@@ -139,6 +139,9 @@ export interface IBusRepository {
   getAddress(id: string): Promise<BusAddress | null>;
   saveAddress(a: BusAddress): Promise<BusAddress>;
   deleteAddress(id: string): Promise<void>;
+  // Task C (owner, 2026-10-08): "delete" on a Past riders row — every saved address for this
+  // person, student or guest. Never called while they're on tonight's run (service checks first).
+  deleteAddressesOf(owner: { studentId?: string; guestId?: string }): Promise<void>;
   reassignGuestAddresses(guestId: string, studentId: string): Promise<void>;
   getRunByDate(serviceDate: string): Promise<BusRun | null>;
   getRun(id: string): Promise<BusRun | null>;

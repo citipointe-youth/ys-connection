@@ -96,6 +96,23 @@ describe('generate', () => {
     expect(res).toMatchObject({ placed: 1, noAddressPin: 1, unassigned: 1 });
   });
 
+  // Task D (owner, 2026-10-08): deleting a rider's current address (now allowed) leaves them with
+  // no place — Generate must skip them (noAddressPin), same as the no-map-pin case above, and
+  // must never auto-assign them even though they're still on tonight's run.
+  it('a rider whose current address was deleted stays unassigned through Generate', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']);
+    const jess = await f.rider('s1');
+    await f.svc.moveRider(f.admin, jess.id, { runVehicleId: a });
+    const current = (await f.svc.riderAddresses(f.admin, jess.id))[0]!;
+    await f.svc.deleteRiderAddress(f.admin, jess.id, current.id);
+    await f.rider('s2');
+    const res = await f.svc.generate(f.admin, { mode: 'all' });
+    expect(res).toMatchObject({ placed: 1, noAddressPin: 1 }); // only s2 placed
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === jess.id)).toMatchObject({ runVehicleId: null, address: '', placeId: null });
+  });
+
   it('no names, phones or grades in anything sent to Google', async () => {
     const rec = recordingRouting();
     const f = await busFixture({ routing: rec.provider });

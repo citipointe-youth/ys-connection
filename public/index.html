@@ -8242,6 +8242,14 @@ function _busSuburb(address) {
 }
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
 function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span class="chip c-warn">${icS('alert')} Consent: not yet</span>`; }
+// Task D (owner, 2026-10-08): no saved address at all (addressId null) vs a saved address Google
+// can't locate (addressId set, placeId null, the pre-existing "No map pin" case) — both leave the
+// rider out of Generate, but only the first one needs a brand-new address, not a re-pick.
+function _busPinChip(r) {
+  if (!r.addressId) return `<span class="chip c-warn">${icS('alert')} No address</span>`;
+  if (!r.placeId) return `<span class="chip c-warn">${icS('pin')} No map pin</span>`;
+  return '';
+}
 // Grade chip shaded by gender (soft pink/blue, neutral if unknown) — replaces the
 // separate gender icon next to a grade chip on Tonight/Routes.
 function _busGradeChip(grade, gender) {
@@ -8252,8 +8260,8 @@ function _busGradeChip(grade, gender) {
 function _busPinnedIcon() { return `<span style="color:var(--accent-dark)" title="Pinned — Generate won't move them" aria-label="Pinned — Generate won't move them">${icS('pinned')}</span>`; }
 function _busFmtTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 async function _busGet(path, extra) { return API.fresh(path + '?' + _busQs(extra)); }
-async function _busSend(method, path, body) {
-  const url = path + '?' + _busQs();
+async function _busSend(method, path, body, extra) {
+  const url = path + '?' + _busQs(extra);
   const res = method === 'POST' ? await API.post(url, body || {}) : method === 'PATCH' ? await API.patch(url, body || {}) : await API.del(url);
   await busRefresh();
   return res;
@@ -8452,7 +8460,7 @@ function _busRosterHtml() {
     const car = placed(r);
     return `<div class="li">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)}</div></div>
+        <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
@@ -8473,10 +8481,20 @@ function _busPastHtml(locked) {
   const rows = past.map((p, i) => `<div class="route-row clickable" onclick="busAddPast(${i})">
       <div class="route-main"><div class="route-name">${esc(p.name)} ${p.grade ? `<span class="chip c-neutral">Y${p.grade}</span>` : ''}</div>
       <div class="route-sub">${esc(p.suburb)}</div></div>
+      <button type="button" class="btn-icon bus-danger" aria-label="Delete ${esc(p.name)}" onclick="event.stopPropagation();event.preventDefault();busDeletePastRider(this,${i})">${icS('trash')}</button>
       <span style="color:var(--accent-dark);display:flex" aria-label="Add ${esc(p.name)}">${icS('plus')}</span></div>`).join('');
   return `<div class="card drop${BUS.pastOpen ? ' open' : ''}" style="margin-top:12px">
     <div class="drop-head" onclick="BUS.pastOpen=!BUS.pastOpen;this.parentElement.classList.toggle('open')"><span class="card-title">Past riders (${past.length})</span><span class="drop-chev">${icS('chevr')}</span></div>
     <div class="drop-body" style="margin-top:8px">${rows}</div></div>`;
+}
+// Task C (owner, 2026-10-08): two-tap trash on a Past riders row — forgets their saved
+// addresses (and the guest record, if unlinked) server-side. stopPropagation keeps this from
+// also triggering the row's own tap (busAddPast).
+async function busDeletePastRider(btn, i) {
+  if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }
+  const p = (BUS.view.pastRiders || [])[i]; if (!p) return;
+  const qs = p.studentId ? 'studentId=' + encodeURIComponent(p.studentId) : 'guestId=' + encodeURIComponent(p.guestId);
+  try { await _busSend('DELETE', '/bus/past-riders', null, qs); toast('Removed'); } catch (e) { toast(e.message); }
 }
 // Past rider tap → confirm where they're going tonight: their saved addresses (last used
 // first, pre-selected) or a new one, then add them.
@@ -8585,10 +8603,12 @@ function _busAddrLabel(a) {
   const parts = [...new Set([a.label, a.street, sub].filter(Boolean))];
   return parts.length ? parts.map(esc).join(' · ') : 'Saved';
 }
-// del = { riderId, currentId }: the edit-rider sheet can forget saved addresses other than tonight's.
+// del = { riderId, currentId }: the edit-rider sheet can forget any saved address, including
+// tonight's current one (Task D, owner 2026-10-08) — deleting that one unassigns the rider
+// server-side, and busDeleteAddress reopens this sheet so it stays consistent.
 function _busAddressPicker(addresses, del) {
   const saved = addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
-      <span style="flex:1">${_busAddrLabel(a)}</span>${del && a.id !== del.currentId ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
+      <span style="flex:1">${_busAddrLabel(a)}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
   return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
@@ -8673,10 +8693,15 @@ async function busEditRider(id) {
 async function busDeleteAddress(riderId, addressId) {
   const btn = document.querySelector('#bus-addr-row-' + addressId + ' .bus-danger');
   if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }
+  // Task D (owner, 2026-10-08): deleting the CURRENT address unassigns the rider server-side —
+  // reopen the edit sheet afterwards (_busSend already refreshed BUS.view) so it reflects that,
+  // instead of just removing the row as if nothing else changed.
+  const wasCurrent = (BUS.view.riders.find((x) => x.id === riderId) || {}).addressId === addressId;
   try {
     await _busSend('DELETE', '/bus/riders/' + riderId + '/addresses/' + addressId);
-    document.getElementById('bus-addr-row-' + addressId)?.remove();
     toast('Address deleted');
+    if (wasCurrent) busEditRider(riderId);
+    else document.getElementById('bus-addr-row-' + addressId)?.remove();
   } catch (e) { toast(e.message); }
 }
 async function busSaveRider(id) {
@@ -8735,8 +8760,14 @@ async function busSaveSettings() {
 // ── Car setup / Routes / My car (Task 7) ──
 function _busMapsLinks(stops, church, car, churchPlaceId) {
   const enc = encodeURIComponent;
+  // Task D (owner, 2026-10-08): a rider with no address at all (empty snapAddress, not just a
+  // missing placeId — that's the separate, pre-existing "no map pin" case this still handles via
+  // the address-text fallback below) can still be hand-moved into a car — skip them here, or
+  // they'd break the link with a blank destination.
+  stops = stops.filter((s) => s.address);
   const end = car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
   const endPid = car.endsAt === 'address' && car.endsAddress ? (car.endsPlaceId || '') : car.endsAt === 'church' ? (churchPlaceId || '') : '';
+  if (!stops.length) return [];
   const chunks = [];
   for (let i = 0; i < stops.length; i += 9) chunks.push(stops.slice(i, i + 9));
   return chunks.map((chunk, ci) => {
@@ -9094,7 +9125,7 @@ function _busRoutesHtml() {
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
     <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)} ${r.pinned ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
     ${v.run.readOnly ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
       <button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
   </div>`).join('');
@@ -9113,7 +9144,7 @@ function _busRoutesHtml() {
     const rows = riders.map((r, i) => `<div class="route-row${v.run.readOnly ? '' : ' clickable'}"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${r.placeId ? '' : `<span class="chip c-warn">${icS('pin')} No map pin</span>`}</div></div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
@@ -9300,6 +9331,14 @@ function _busDropAtIso(hhmm) {
   d.setHours(h, m, 0, 0);
   return d.toISOString();
 }
+// Task B (owner, 2026-10-08): changing "who you are" on My car now does a full page reload
+// (previously BUS.myCar=null;busRefresh() — the owner wants a clean reload instead) — the
+// yap_bus_reload flag is read once in boot() so the app lands back on Bus → My car afterwards.
+function _busIdentityChanged(id) {
+  setMyLeaderId(id || null);
+  try { localStorage.setItem('yap_bus_reload', '1'); } catch {}
+  location.reload();
+}
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
   const mine = getMyLeaderId();
@@ -9317,9 +9356,9 @@ function _busMyCarHtml() {
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="setMyLeaderId(null);BUS.myCar=null;busRefresh()">Not you?</button></div>`
+    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_busIdentityChanged(null)">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);BUS.myCar=null;busRefresh()"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id">I am: <select class="fs" onchange="_busIdentityChanged(this.value)"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
@@ -9351,7 +9390,8 @@ function _busMyCarHtml() {
         // a plain leader just needs to be told who to ask.
         `<div class="alert al-warn">${(S.user && S.user.role === 'admin') || v.canCoordinate ? 'Set the church address in Bus settings' : 'Ask a coordinator to set the church address'}</div>`}
     </div>
-    <div class="card-title bus-sec">Stop order</div>
+    <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
+      <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
     ${rows}
     ${removeOwn}`;
   }
@@ -9365,6 +9405,71 @@ function _busMyCarHtml() {
     <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Driving your own car?</button>`;
   }
   return `${picker}<div class="card-sub">No car assigned.</div>`;
+}
+
+// Task A (owner, 2026-10-08): "Edit my car" — reorder (↑/↓) or remove (two-tap) stops on the car
+// the acting leader is on (fleet car OR their own manually added car). BUS._emcOrder is the
+// working order of rider ids staying in the car; removed ones move to BUS._emcRemoved (kept out
+// of the list, not sent to the server) until Save. For the leader's OWN car there's also a "Car
+// details" button that reopens the existing own-car sheet, pre-filled.
+function busEditMyCarSheet() {
+  const mc = BUS.myCar;
+  if (!mc || !mc.vehicle) return;
+  BUS._emcOrder = mc.stops.map((s) => s.id);
+  BUS._emcRemoved = [];
+  _busRenderEditMyCar();
+}
+function _busRenderEditMyCar() {
+  const mc = BUS.myCar, rv = mc.vehicle, mine = getMyLeaderId();
+  const byId = new Map(mc.stops.map((s) => [s.id, s]));
+  const rows = BUS._emcOrder.map((id, i) => {
+    const s = byId.get(id);
+    if (!s) return '';
+    return `<div class="li">
+      <div class="li-body"><div class="li-title">${i + 1}. ${esc(s.name)}</div><div class="li-sub">${esc(_busSuburb(s.address))}</div></div>
+      <div style="display:flex;gap:2px;flex-shrink:0">
+        <button type="button" class="btn-icon" aria-label="Move up" ${i === 0 ? 'disabled' : ''} onclick="_busEmcMove(${i},-1)">${icS('arru')}</button>
+        <button type="button" class="btn-icon" aria-label="Move down" ${i === BUS._emcOrder.length - 1 ? 'disabled' : ''} onclick="_busEmcMove(${i},1)">${icS('arrd')}</button>
+        <button type="button" class="btn-icon bus-danger" aria-label="No lift needed for ${esc(s.name)}" onclick="_busEmcRemove(this,'${id}')">${icS('trash')}</button>
+      </div></div>`;
+  }).join('');
+  const carDetailsBtn = rv.ownerLeaderId === mine
+    ? `<button type="button" class="btn btn-secondary btn-full" onclick="_busEmcCarDetails()">Car details</button>` : '';
+  modal(`<div class="mo-title">Edit my car</div>
+    ${rows || '<div class="card-sub">No stops left — everyone was removed.</div>'}
+    ${carDetailsBtn}
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busSaveMyCarStops()">Save</button></div>`);
+}
+function _busEmcMove(i, dir) {
+  const o = BUS._emcOrder, j = i + dir;
+  if (j < 0 || j >= o.length) return;
+  [o[i], o[j]] = [o[j], o[i]];
+  _busRenderEditMyCar();
+}
+function _busEmcRemove(btn, id) {
+  if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Remove?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }
+  const idx = BUS._emcOrder.indexOf(id);
+  if (idx === -1) return;
+  BUS._emcOrder.splice(idx, 1);
+  BUS._emcRemoved.push(id);
+  _busRenderEditMyCar();
+}
+async function busSaveMyCarStops() {
+  try {
+    await _busSend('POST', '/bus/run/my-car/stops', { riderIds: BUS._emcOrder, removeIds: BUS._emcRemoved });
+    closeModal(); toast('Saved');
+  } catch (e) { toast(e.message); }
+}
+// "Car details" (own car only) hands off to the existing own-car sheet, pre-filled from the
+// current car and the riders still in the in-progress Edit-my-car list — see busOwnCarSheet/
+// BUS.ocDraft. keep=true so it uses this seeded draft instead of re-reading the server's.
+function _busEmcCarDetails() {
+  const rv = BUS.myCar.vehicle;
+  BUS.ocDraft = { car: { name: rv.name, seats: rv.seats, plate: rv.plate, endsAt: rv.endsAt, endsAddress: rv.endsAddress, endsPlaceId: rv.endsPlaceId },
+    riderIds: BUS._emcOrder.slice(), newRiders: [] };
+  BUS.ocSearch = ''; BUS.ocHits = [];
+  busOwnCarSheet(true);
 }
 
 // ── Route analysis (R3, director/admin) ──
@@ -9517,6 +9622,14 @@ async function boot() {
   // pre-auth too — fetch it regardless of login state, not just once signed in.
   try { S.settings = await API.get('/settings'); } catch { S.settings = {}; }
   if (S.settings && S.settings.ministryConfig) applyTheme(S.settings.ministryConfig);
+  // Task B (owner, 2026-10-08): a Bus identity change reloads the page (_busIdentityChanged) —
+  // land back on Bus → My car instead of Home. BUS.tab already defaults to 'mycar' on a fresh
+  // load, so only S.page needs restoring here.
+  if (S.user) {
+    let wantBus = false;
+    try { wantBus = localStorage.getItem('yap_bus_reload') === '1'; } catch {}
+    if (wantBus) { try { localStorage.removeItem('yap_bus_reload'); } catch {} S.page = 'bus'; }
+  }
   render();
 }
 

@@ -24,6 +24,11 @@ export function makeBusController(deps: { bus: BusService }) {
     riderAddresses: (r: HttpRequest) => b.riderAddresses(ctxOf(r), p(r, 'id')),
     deleteRiderAddress: async (r: HttpRequest) => { await b.deleteRiderAddress(ctxOf(r), p(r, 'id'), p(r, 'addressId')); return { ok: true }; },
     personAddresses: (r: HttpRequest) => b.personAddresses(ctxOf(r), { studentId: r.query['studentId'] ? String(r.query['studentId']) : undefined, guestId: r.query['guestId'] ? String(r.query['guestId']) : undefined }),
+    deletePastRider: async (r: HttpRequest) => {
+      await b.deletePastRider(ctxOf(r), { studentId: r.query['studentId'] ? String(r.query['studentId']) : undefined, guestId: r.query['guestId'] ? String(r.query['guestId']) : undefined });
+      return { ok: true };
+    },
+    saveMyCarStops: (r: HttpRequest) => b.saveMyCarStops(ctxOf(r), r.body),
     addRider: (r: HttpRequest) => b.addRider(ctxOf(r), r.body),
     updateRider: (r: HttpRequest) => b.updateRider(ctxOf(r), p(r, 'id'), r.body),
     removeRider: async (r: HttpRequest) => { await b.removeRider(ctxOf(r), p(r, 'id')); return { ok: true }; },

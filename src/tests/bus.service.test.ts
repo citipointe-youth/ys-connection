@@ -739,15 +739,124 @@ describe('riderAddresses — the edit sheet loads by rider, not by name search',
 });
 
 describe('deleteRiderAddress — edit sheet forgets a saved address', () => {
-  it('deletes a non-current address; refuses the current one and unknown ones', async () => {
+  it('deletes a non-current address; an unknown one 404s', async () => {
     const { svc, ctx } = await setup();
     await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Mum', address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:24-wynnum-rd-carina-qld-' } });
     const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: '', address: '3 Lindsay Ct, Cornubia QLD 4130, Australia', placeId: 'fake:3-lindsay-ct-cornubia-qld-' } });
     const [current, old] = await svc.riderAddresses(ctx('grade'), r.id);
-    await expect(svc.deleteRiderAddress(ctx('grade'), r.id, current!.id)).rejects.toMatchObject({ statusCode: 400 });
     await expect(svc.deleteRiderAddress(ctx('grade'), r.id, 'nope')).rejects.toMatchObject({ statusCode: 404 });
     await svc.deleteRiderAddress(ctx('grade'), r.id, old!.id);
     expect((await svc.riderAddresses(ctx('grade'), r.id)).map((a) => a.id)).toEqual([current!.id]);
+  });
+  // Task D (owner, 2026-10-08): deleting the CURRENT address is now allowed — the rider stays on
+  // tonight's run but with no place at all, and is taken out of any car. A later Generate must
+  // leave them unassigned (never auto-placed with no map pin) — see bus.generate.test.ts.
+  it('deleting the current address clears the rider\'s place and car, leaving them on the run', async () => {
+    const t = await withFleet();
+    const moved = await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    expect(moved.runVehicleId).toBe(t.rvId);
+    const current = (await t.svc.riderAddresses(t.ctx('grade'), t.a.id))[0]!;
+    await t.svc.deleteRiderAddress(t.ctx('grade'), t.a.id, current.id);
+    const v = await t.svc.getRun(t.ctx('admin'));
+    const after = v.riders.find((r) => r.id === t.a.id)!;
+    expect(after).toMatchObject({ addressId: null, placeId: null, address: '', runVehicleId: null, stopOrder: null, pinned: false });
+    expect(await t.bus.getAddress(current.id)).toBeNull();
+  });
+  it('is blocked by an active lock, like other rider writes', async () => {
+    const { svc, bus, ctx } = await setup();
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    const runId = (await svc.getRun(ctx('admin'))).run.id;
+    await bus.tryLock(runId, 'someone#tok', new Date().toISOString(), new Date(Date.now() + 60_000).toISOString());
+    await expect(svc.deleteRiderAddress(ctx('grade'), r.id, r.addressId!)).rejects.toMatchObject({ statusCode: 409 });
+  });
+});
+
+describe('Task A: saveMyCarStops — "Edit my car" reorder/remove', () => {
+  // withFleet's "Big Bus" has 1 leader and 3 seats = 2 youth seats — the ctx() helper's asLeaderId
+  // is ignored for role 'leader' (selfLeaderId reads actor.leaderId instead, by design: a junior
+  // leader login is locked to its own record), so these use the same actor('leader', { leaderId })
+  // pattern the existing "My car only" test (line ~444) already uses.
+  const leaderCtx = (id: string): BusCtx => ({ actor: actor('leader', { leaderId: id }), asLeaderId: null, localNow: FRI_7PM });
+  it('reorders a fleet car\'s stops in exactly the order given', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
+    const rv = await t.svc.saveMyCarStops(leaderCtx('L1'), { riderIds: [t.b.id, t.a.id], removeIds: [] });
+    expect(rv.id).toBe(t.rvId);
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.riders.find((r) => r.id === t.b.id)).toMatchObject({ stopOrder: 1, pinned: true, runVehicleId: t.rvId });
+    expect(v.riders.find((r) => r.id === t.a.id)).toMatchObject({ stopOrder: 2, pinned: true, runVehicleId: t.rvId });
+  });
+  it('removes a rider from the car; an unlinked guest removed this way is not deleted and reappears in Past riders', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: null });
+    const gr = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '9 G St, Bulimba', placeId: 'fake:9-g-st' } });
+    await t.svc.moveRider(t.ctx('quad'), gr.id, { runVehicleId: t.rvId });
+    await t.svc.saveMyCarStops(leaderCtx('L1'), { riderIds: [t.a.id], removeIds: [gr.id] });
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.riders.find((r) => r.id === gr.id)).toBeUndefined(); // off tonight's run
+    expect(await t.bus.getGuest(g.id)).not.toBeNull(); // not hard-deleted, unlike removeRider's orphan path
+    expect(v.pastRiders.map((p) => p.guestId)).toContain(g.id); // reappears in Students tab Past riders
+  });
+  it('also works for the leader\'s own (manually added) car', async () => {
+    const t = await setup();
+    const own = await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'church' },
+      riderIds: [], newRiders: [{ studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } },
+        { studentId: 's2', newAddress: { address: '2 B St, Bulimba', placeId: 'fake:2-b-st-bulimba' } }] });
+    const before = (await t.svc.getRun(t.ctx('admin'))).riders;
+    const r1 = before.find((r) => r.studentId === 's1')!, r2 = before.find((r) => r.studentId === 's2')!;
+    await t.svc.saveMyCarStops(t.ctx('grade', 'L2'), { riderIds: [r2.id, r1.id], removeIds: [] });
+    const v = await t.svc.getRun(t.ctx('admin'));
+    expect(v.riders.find((r) => r.id === r2.id)).toMatchObject({ stopOrder: 1, runVehicleId: own.id });
+    expect(v.riders.find((r) => r.id === r1.id)).toMatchObject({ stopOrder: 2, runVehicleId: own.id });
+  });
+  it('404s for a leader not on any car', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    await expect(t.svc.saveMyCarStops(leaderCtx('L2'), { riderIds: [t.a.id], removeIds: [] })).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it('a mismatched id set (car changed under them) is rejected with 409', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
+    await expect(t.svc.saveMyCarStops(leaderCtx('L1'), { riderIds: [t.a.id], removeIds: [] })).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it('is blocked by an active lock', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    const runId = (await t.svc.getRun(t.ctx('admin'))).run.id;
+    await t.bus.tryLock(runId, 'someone#tok', new Date().toISOString(), new Date(Date.now() + 60_000).toISOString());
+    await expect(t.svc.saveMyCarStops(leaderCtx('L1'), { riderIds: [t.a.id], removeIds: [] })).rejects.toMatchObject({ statusCode: 409 });
+  });
+});
+
+describe('Task C: deletePastRider — trash a Past riders row', () => {
+  it('deletes a student\'s saved addresses, dropping them out of Past riders', async () => {
+    const { svc, bus, ctx } = await setup();
+    const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    await svc.removeRider(ctx('grade'), r.id);
+    expect((await svc.getRun(ctx('admin'))).pastRiders.map((p) => p.studentId)).toEqual(['s1']);
+    await svc.deletePastRider(ctx('grade'), { studentId: 's1' });
+    expect((await svc.getRun(ctx('admin'))).pastRiders).toEqual([]);
+    expect(await bus.listAddresses({ studentId: 's1' })).toHaveLength(0);
+  });
+  it('also deletes an unlinked guest no longer on tonight; a linked one is kept', async () => {
+    const { svc, bus, ctx } = await setup();
+    const g = await svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: null });
+    const r = await svc.addRider(ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum', placeId: 'fake:3-c-st' } });
+    await svc.removeRider(ctx('grade'), r.id);
+    await svc.deletePastRider(ctx('grade'), { guestId: g.id });
+    expect(await bus.getGuest(g.id)).toBeNull();
+  });
+  it('refuses (400) when the person is on tonight\'s run', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    await expect(svc.deletePastRider(ctx('grade'), { studentId: 's1' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('needs exactly one of studentId/guestId', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.deletePastRider(ctx('grade'), {})).rejects.toMatchObject({ statusCode: 400 });
   });
 });
 

@@ -160,6 +160,8 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'PATCH',  path: '/bus/run/pool',             auth: true, handler: (r) => busCtl.setPool(r) },
     { method: 'POST',   path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.saveOwnCar(r) },
     { method: 'DELETE', path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.removeOwnCar(r) },
+    { method: 'POST',   path: '/bus/run/my-car/stops',     auth: true, handler: (r) => busCtl.saveMyCarStops(r) },
+    { method: 'DELETE', path: '/bus/past-riders',          auth: true, handler: (r) => busCtl.deletePastRider(r) },
     { method: 'PATCH',  path: '/bus/run/vehicles/:id',     auth: true, handler: (r) => busCtl.updateRunVehicle(r) },
     { method: 'GET',    path: '/bus/search',               auth: true, handler: (r) => busCtl.search(r) },
     { method: 'GET',    path: '/bus/my-car',               auth: true, handler: (r) => busCtl.myCar(r) },

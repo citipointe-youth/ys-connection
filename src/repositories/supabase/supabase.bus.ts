@@ -1,6 +1,6 @@
 import type { SqlClient } from './client';
 import { toIso } from './client';
-import { isEncrypted, decryptField, maybeEncrypt } from '../../utils/field-crypto';
+import { isEncrypted, decryptField, maybeEncrypt, encryptField } from '../../utils/field-crypto';
 import type { IBusRepository } from '../interfaces/entity-repositories';
 import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider,
   BusOwnCar, EndsAt, BusGender, BusConsent, BusUndoEntry } from '../../core/entities/bus';
@@ -10,6 +10,19 @@ export const busCrypt = {
   dec: (v: unknown, aad: string): string | null => (v == null ? null : isEncrypted(v) ? decryptField(v, aad) : String(v)),
 };
 const iso = (v: unknown) => (v == null ? null : toIso(v));
+// Task D (owner, 2026-10-08): bus_run_riders.snap_address is `text not null`, and
+// maybeEncrypt('') short-circuits to null (field-crypto's deliberate "never store ciphertext of
+// nothing" rule) — which would violate that NOT NULL constraint for a rider whose current address
+// was just deleted (snapAddress: ''). Rather than a migration, encrypt a one-space sentinel for
+// that one case and decrypt it back to '' here — invisible outside this file.
+const EMPTY_SNAP_ADDRESS = ' ';
+export function encSnapAddress(v: string, id: string): string {
+  return v === '' ? encryptField(EMPTY_SNAP_ADDRESS, `bus_run_riders:snap_address:${id}`) : busCrypt.enc(v, `bus_run_riders:snap_address:${id}`)!;
+}
+export function decSnapAddress(v: unknown, id: string): string {
+  const d = busCrypt.dec(v, `bus_run_riders:snap_address:${id}`)!;
+  return d === EMPTY_SNAP_ADDRESS ? '' : d;
+}
 
 function toVehicle(r: Record<string, any>): BusVehicle {
   return { id: r.id, name: r.name, plate: r.plate ?? null, seats: r.seats, prefGrades: r.pref_grades ?? [],
@@ -64,7 +77,7 @@ function toRider(r: Record<string, any>): BusRunRider {
     pinned: r.pinned, addedBy: r.added_by, addedAt: toIso(r.added_at),
     snapName: busCrypt.dec(r.snap_name, `bus_run_riders:snap_name:${r.id}`)!,
     snapGrade: r.snap_grade ?? null, snapGender: (r.snap_gender ?? null) as BusGender,
-    snapAddress: busCrypt.dec(r.snap_address, `bus_run_riders:snap_address:${r.id}`)!,
+    snapAddress: decSnapAddress(r.snap_address, r.id),
     snapPlaceId: busCrypt.dec(r.snap_place_id, `bus_run_riders:snap_place_id:${r.id}`),
     droppedAt: iso(r.dropped_at), droppedBy: r.dropped_by ?? null };
 }
@@ -140,6 +153,10 @@ export class SupabaseBusRepository implements IBusRepository {
     return toAddress(r[0]!);
   }
   async deleteAddress(id: string) { await this.sql`delete from bus_addresses where id = ${id}`; }
+  async deleteAddressesOf(o: { studentId?: string; guestId?: string }) {
+    if (o.studentId) await this.sql`delete from bus_addresses where student_id = ${o.studentId}`;
+    else await this.sql`delete from bus_addresses where guest_id = ${o.guestId ?? null}`;
+  }
   async reassignGuestAddresses(guestId: string, studentId: string) {
     await this.sql`update bus_addresses set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
   }
@@ -183,7 +200,7 @@ export class SupabaseBusRepository implements IBusRepository {
         snap_name, snap_grade, snap_gender, snap_address, snap_place_id, dropped_at, dropped_by)
       values (${x.id}, ${x.runId}, ${x.studentId}, ${x.guestId}, ${x.addressId}, ${x.runVehicleId}, ${x.stopOrder}, ${x.pinned},
         ${x.addedBy}, ${x.addedAt}, ${busCrypt.enc(x.snapName, `bus_run_riders:snap_name:${x.id}`)}, ${x.snapGrade}, ${x.snapGender},
-        ${busCrypt.enc(x.snapAddress, `bus_run_riders:snap_address:${x.id}`)}, ${busCrypt.enc(x.snapPlaceId, `bus_run_riders:snap_place_id:${x.id}`)},
+        ${encSnapAddress(x.snapAddress, x.id)}, ${busCrypt.enc(x.snapPlaceId, `bus_run_riders:snap_place_id:${x.id}`)},
         ${x.droppedAt}, ${x.droppedBy})
       on conflict (id) do update set student_id = excluded.student_id, guest_id = excluded.guest_id, address_id = excluded.address_id,
         run_vehicle_id = excluded.run_vehicle_id, stop_order = excluded.stop_order, pinned = excluded.pinned,

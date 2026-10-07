@@ -25,6 +25,8 @@ export interface BusService {
   riderAddresses(ctx: BusCtx, riderId: string): Promise<BusSearchHit['addresses']>;
   personAddresses(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<BusSearchHit['addresses']>;
   deleteRiderAddress(ctx: BusCtx, riderId: string, addressId: string): Promise<void>;
+  deletePastRider(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<void>;
+  saveMyCarStops(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
   addRider(ctx: BusCtx, input: unknown): Promise<BusRiderView>;
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
@@ -99,6 +101,10 @@ const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(4
   newRiders: z.array(OwnCarNewRider).default([]) });
 const MoveIn = z.object({ runVehicleId: z.string().nullable().optional(), unpin: z.boolean().optional() })
   .refine((v) => v.unpin === true || v.runVehicleId !== undefined, 'runVehicleId required');
+// Task A (owner, 2026-10-08): "Edit my car" reorder/remove — riderIds is the NEW order of
+// everyone staying, removeIds is who's coming off (their union must equal the car's current
+// riders exactly, checked in the handler, not here).
+const MyCarStopsIn = z.object({ riderIds: z.array(z.string()), removeIds: z.array(z.string()) });
 const LinkIn = z.object({ studentId: z.string().min(1) });
 const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
   .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
@@ -626,17 +632,41 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return addrs.sort((a, b) => Number(b.id === r.addressId) - Number(a.id === r.addressId))
         .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
     },
-    // Edit-rider sheet: forget one of the rider's saved addresses (owner, 2026-10-07). Not the
-    // one they're using tonight — riders snapshot their address, but deleting it would leave the
-    // sheet with nothing selected.
+    // Edit-rider sheet: forget one of the rider's saved addresses (owner, 2026-10-07). Task D
+    // (owner, 2026-10-08): the current one can be deleted too — the rider stays on tonight's run
+    // but with no place at all: no address, no map pin, taken out of any car (never
+    // auto-assigned again — Generate/Fit in/Try +N cars all skip a rider with no snapPlaceId,
+    // same as the existing "no map pin" case). A past run's rider has no live state to update.
     async deleteRiderAddress(ctx, riderId, addressId) {
-      await gate(ctx, 'bus:roster');
+      const c = await gate(ctx, 'bus:roster');
       const r = await bus.getRunRider(riderId);
       if (!r) throw new NotFoundError('Rider not found');
       const a = await bus.getAddress(addressId);
       if (!a || (r.studentId ? a.studentId !== r.studentId : a.guestId !== r.guestId)) throw new NotFoundError('Address not found');
-      if (r.addressId === addressId) throw new BadRequestError("That's tonight's address — pick another one first");
+      if (r.addressId !== addressId) { await bus.deleteAddress(addressId); return; }
+      const run = await writableRun(ctx, c);
+      if (r.runId !== run.id) { await bus.deleteAddress(addressId); return; }
+      if (lockActive(run)) throw lockConflict(run); // a solve in flight is using this rider's current pin
       await bus.deleteAddress(addressId);
+      await bus.saveRunRider({ ...r, addressId: null, snapPlaceId: null, snapAddress: '', runVehicleId: null, stopOrder: null, pinned: false });
+      await bus.setUndo(run.id, null, null); // I2: this rider just left their car — a later Undo must not pull them back
+      await touch(ctx, run);
+    },
+    // Task C (owner, 2026-10-08): trash a "Past riders" row — forgets every saved address for
+    // this person (so they drop out of the list) and, if they're an unlinked guest, deletes the
+    // guest too (same reasoning removeRider uses for an orphaned walk-in). Refused if they're on
+    // tonight's run — that's not what this button is for.
+    async deletePastRider(ctx, who) {
+      const c = await gate(ctx, 'bus:roster');
+      if (!who.studentId === !who.guestId) throw new BadRequestError('Give a studentId or a guestId');
+      const run = await ensureRun(ctx, c);
+      const onTonight = (await bus.listRunRiders(run.id)).some((r) => (who.studentId ? r.studentId === who.studentId : r.guestId === who.guestId));
+      if (onTonight) throw new BadRequestError("They're on tonight's run — remove them from there first");
+      await bus.deleteAddressesOf(who);
+      if (who.guestId) {
+        const g = await bus.getGuest(who.guestId);
+        if (g && !g.linkedStudentId) await bus.deleteGuest(who.guestId);
+      }
     },
     // Past riders' "confirm address" sheet — a person's saved addresses, most recently used first.
     async personAddresses(ctx, who) {
@@ -861,6 +891,36 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
       await bus.deleteRunVehicle(rv.id);
       await touch(ctx, run);
+    },
+    // Task A (owner, 2026-10-08): "Edit my car" on the My car tab — the acting leader (fleet
+    // leader or own-car owner) reorders/removes stops on THEIR car by hand. Unlike removeRider,
+    // an unlinked guest taken off here is never hard-deleted — they're meant to reappear in the
+    // Students tab's Past riders, same as anyone else taken off a car (their saved address is
+    // untouched). Order is exactly what's given — no re-solve — so it sticks until the rider's
+    // car/pin changes some other way (a later Generate/Fit in can still re-sequence a pinned
+    // rider's stop within their fixed car, same as Move already allows).
+    async saveMyCarStops(ctx, input) {
+      const c = await gate(ctx, 'bus:use');
+      const me = selfLeaderId(ctx);
+      if (!me) throw new BadRequestError('Choose who you are first');
+      const v = parseIn(MyCarStopsIn, input);
+      const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run);
+      const views = await vehicleViews(run.id);
+      const vehicle = views.find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
+      if (!vehicle) throw new NotFoundError('Car not found');
+      const inCar = (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === vehicle.id);
+      const currentIds = new Set(inCar.map((r) => r.id));
+      const given = [...v.riderIds, ...v.removeIds];
+      const givenSet = new Set(given);
+      if (givenSet.size !== given.length || givenSet.size !== currentIds.size || [...givenSet].some((id) => !currentIds.has(id)))
+        throw new ConflictError('Your car changed — refresh');
+      const byId = new Map(inCar.map((r) => [r.id, r]));
+      for (const [i, id] of v.riderIds.entries()) await bus.saveRunRider({ ...byId.get(id)!, stopOrder: i + 1, pinned: true });
+      for (const id of v.removeIds) await bus.deleteRunRider(id); // never hard-deletes a guest — see comment above
+      await bus.setUndo(run.id, null, null);
+      await touch(ctx, run);
+      return (await vehicleViews(run.id)).find((x) => x.id === vehicle.id)!;
     },
     async moveRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:coordinate');

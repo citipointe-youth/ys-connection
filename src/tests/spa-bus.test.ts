@@ -487,6 +487,7 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
     function icS(k) { return k; }
     function _busSuburb(a) { return a; }
     function _busConsentChip() { return ''; }
+    function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
     function _busPinnedIcon() { return ''; }
     function _busRoutesHead() { return ''; }
@@ -558,7 +559,7 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
 // (simplest call, and matches the prior pre-Task-13 behaviour for that one button).
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; }`;
   const run = (readOnly: boolean, generating: boolean, lockBy: string | null, lockUntil: string | null) => {
     const prelude = `${stubs}
@@ -617,11 +618,11 @@ describe('_busBlockWrite toasts and blocks only while Generate/lock is active (T
 });
 
 // Bug fix (2026-10-06 follow-up): My car's picker used to re-render off the stale BUS.myCar
-// fetched before any identity was chosen ("No car assigned."). Both onchange/onclick handlers
-// must clear BUS.myCar and go through busRefresh() (which re-fetches /bus/my-car with the new
-// ?as= leader and repaints), not call renderBus() directly off stale data.
-describe('_busMyCarHtml identity picker refreshes BUS.myCar, not a bare renderBus (bug fix)', () => {
-  it('choosing a name clears BUS.myCar and calls busRefresh', () => {
+// fetched before any identity was chosen ("No car assigned."). Task B (owner, 2026-10-08):
+// changing identity now does a full page reload (_busIdentityChanged) instead of a bare
+// busRefresh()/renderBus(), so the app reopens on Bus → My car with the fresh identity.
+describe('_busMyCarHtml identity picker goes through a full reload (Task B)', () => {
+  it('choosing a name calls _busIdentityChanged with the picked value', () => {
     const prelude = `
       const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
       function getMyLeaderId() { return null; }
@@ -629,10 +630,11 @@ describe('_busMyCarHtml identity picker refreshes BUS.myCar, not a bare renderBu
     `;
     const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
     const html = _busMyCarHtml();
-    expect(html).toContain('setMyLeaderId(this.value);BUS.myCar=null;busRefresh()');
+    expect(html).toContain('_busIdentityChanged(this.value)');
     expect(html).not.toContain('renderBus()');
+    expect(html).not.toContain('busRefresh()');
   });
-  it('"Not you?" also clears BUS.myCar and calls busRefresh', () => {
+  it('"Not you?" calls _busIdentityChanged(null)', () => {
     const prelude = `
       const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
       function getMyLeaderId() { return 'L1'; }
@@ -640,8 +642,45 @@ describe('_busMyCarHtml identity picker refreshes BUS.myCar, not a bare renderBu
     `;
     const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
     const html = _busMyCarHtml();
-    expect(html).toContain('setMyLeaderId(null);BUS.myCar=null;busRefresh()');
+    expect(html).toContain('_busIdentityChanged(null)');
     expect(html).not.toContain('renderBus()');
+    expect(html).not.toContain('busRefresh()');
+  });
+});
+
+// Task B (owner, 2026-10-08): _busIdentityChanged persists the new leader id, flags a one-shot
+// "land back on Bus" marker for boot(), and reloads — never calls busRefresh/renderBus itself
+// (the reload re-runs the whole app).
+describe('_busIdentityChanged (Task B)', () => {
+  it('persists the id, sets the reload flag, and reloads', () => {
+    const prelude = `
+      const __store = {};
+      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
+      let __reloaded = false;
+      const location = { reload: () => { __reloaded = true; } };
+      let __setId = null;
+      function setMyLeaderId(id) { __setId = id; }
+      function __state() { return { store: __store, reloaded: __reloaded, setId: __setId }; }
+    `;
+    const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
+    _busIdentityChanged('L2');
+    const st = __state();
+    expect(st.setId).toBe('L2');
+    expect(st.store['yap_bus_reload']).toBe('1');
+    expect(st.reloaded).toBe(true);
+  });
+  it('a null id clears the leader (passed through to setMyLeaderId as null)', () => {
+    const prelude = `
+      const __store = {};
+      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
+      const location = { reload: () => {} };
+      let __setId = 'unset';
+      function setMyLeaderId(id) { __setId = id; }
+      function __state() { return { setId: __setId }; }
+    `;
+    const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
+    _busIdentityChanged(null);
+    expect(__state().setId).toBeNull();
   });
 });
 
@@ -1195,5 +1234,154 @@ describe('Analysis active indicator and back link (Task 8)', () => {
     const html = loadIndexHtml();
     const block = html.slice(html.indexOf('/* ── BUS MODULE ── */'), html.indexOf('/* ── END BUS MODULE ── */'));
     expect(block).toContain("BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'");
+  });
+});
+
+// Task D (owner, 2026-10-08): "No address" (addressId missing) vs the pre-existing "No map pin"
+// (an address Google can't locate) — both leave a rider out of Generate, but only the chip text
+// differs, and "No address" takes priority since placeId is also null in that case.
+describe('_busPinChip (Task D)', () => {
+  const load = () => loadFns(['_busPinChip'], `function icS(k){return k;}`);
+  it('shows "No address" when there is no saved address at all', () => {
+    expect(load()._busPinChip({ addressId: null, placeId: null })).toContain('No address');
+  });
+  it('shows "No map pin" for a saved address Google could not locate', () => {
+    expect(load()._busPinChip({ addressId: 'a1', placeId: null })).toContain('No map pin');
+  });
+  it('is blank when both are present', () => {
+    expect(load()._busPinChip({ addressId: 'a1', placeId: 'P1' })).toBe('');
+  });
+});
+
+// Task A (owner, 2026-10-08): "Edit my car" — reorder (↑/↓) and two-tap remove, saved via
+// POST /bus/run/my-car/stops.
+describe('Task A: Edit my car sheet', () => {
+  const mk = (ownerLeaderId: string | null = null) => {
+    const prelude = `
+      const BUS = { myCar: { vehicle: { id: 'rv1', name: 'Van', ownerLeaderId: ${JSON.stringify(ownerLeaderId)}, leaderIds: ['L1'],
+          seats: 5, plate: null, endsAt: 'church', endsAddress: null, endsPlaceId: null },
+        stops: [{ id: 'r1', name: 'Jess', address: '1 A St, Carina' }, { id: 'r2', name: 'Sam', address: '2 B St, Bulimba' }] } };
+      function getMyLeaderId() { return 'L1'; }
+      function esc(s) { return String(s); }
+      function icS(k) { return k; }
+      function _busSuburb(a) { return a; }
+      let __modal = null;
+      function modal(h) { __modal = h; }
+      function closeModal() { __modal = null; }
+      let __sent = null;
+      function toast() {}
+      async function _busSend(m, p, b) { __sent = [m, p, b]; }
+      function busOwnCarSheet() {}
+      function __state() { return { modalHtml: __modal, sent: __sent, order: BUS._emcOrder, removed: BUS._emcRemoved }; }
+    `;
+    return loadFns(['busEditMyCarSheet', '_busRenderEditMyCar', '_busEmcMove', '_busEmcRemove', 'busSaveMyCarStops', '_busEmcCarDetails'],
+      prelude, ['busEditMyCarSheet', '_busEmcMove', '_busEmcRemove', 'busSaveMyCarStops', '__state']);
+  };
+  it('opens with both stops in server order', () => {
+    const { busEditMyCarSheet, __state } = mk();
+    busEditMyCarSheet();
+    expect(__state().order).toEqual(['r1', 'r2']);
+    expect(__state().modalHtml).toContain('1. Jess');
+    expect(__state().modalHtml).toContain('2. Sam');
+  });
+  it('moving the second stop up reorders the working list', () => {
+    const { busEditMyCarSheet, _busEmcMove, __state } = mk();
+    busEditMyCarSheet();
+    _busEmcMove(1, -1);
+    expect(__state().order).toEqual(['r2', 'r1']);
+  });
+  it('removing a stop is two-tap: first arms, second moves it to the removed list', () => {
+    const { busEditMyCarSheet, _busEmcRemove, __state } = mk();
+    busEditMyCarSheet();
+    const btn: any = { dataset: {}, textContent: '', style: {} };
+    _busEmcRemove(btn, 'r1');
+    expect(btn.dataset.armed).toBe('1');
+    expect(__state().order).toEqual(['r1', 'r2']); // not removed yet
+    _busEmcRemove(btn, 'r1');
+    expect(__state().order).toEqual(['r2']);
+    expect(__state().removed).toEqual(['r1']);
+  });
+  it('Save posts the current order and removed ids, then closes', async () => {
+    const { busEditMyCarSheet, _busEmcRemove, busSaveMyCarStops, __state } = mk();
+    busEditMyCarSheet();
+    const btn: any = { dataset: {}, textContent: '', style: {} };
+    _busEmcRemove(btn, 'r1'); _busEmcRemove(btn, 'r1');
+    await busSaveMyCarStops();
+    expect(__state().sent).toEqual(['POST', '/bus/run/my-car/stops', { riderIds: ['r2'], removeIds: ['r1'] }]);
+    expect(__state().modalHtml).toBeNull();
+  });
+  it('shows "Car details" only for the leader\'s own (manually added) car', () => {
+    const notOwn = mk(null);
+    notOwn.busEditMyCarSheet();
+    expect(notOwn.__state().modalHtml).not.toContain('Car details');
+    const own = mk('L1');
+    own.busEditMyCarSheet();
+    expect(own.__state().modalHtml).toContain('Car details');
+  });
+});
+
+// Task C (owner, 2026-10-08): two-tap trash on a "Past riders" row.
+describe('Task C: busDeletePastRider (two-tap)', () => {
+  const mk = () => {
+    const prelude = `
+      const BUS = { view: { pastRiders: [{ studentId: 's1', guestId: null, name: 'Jess' }, { studentId: null, guestId: 'g1', name: 'Harper' }] } };
+      let __sent = null;
+      async function _busSend(method, path, body, extra) { __sent = [method, path, extra]; }
+      function toast() {}
+      function __state() { return { sent: __sent }; }
+    `;
+    return loadFns(['busDeletePastRider'], prelude, ['busDeletePastRider', '__state']);
+  };
+  it('first tap arms the button without calling the server', async () => {
+    const { busDeletePastRider, __state } = mk();
+    const btn: any = { dataset: {}, textContent: '', style: {} };
+    await busDeletePastRider(btn, 0);
+    expect(btn.dataset.armed).toBe('1');
+    expect(__state().sent).toBeNull();
+  });
+  it('second tap deletes by studentId, through _busSend (so now=/as= are carried)', async () => {
+    const { busDeletePastRider, __state } = mk();
+    const btn: any = { dataset: {}, textContent: '', style: {} };
+    await busDeletePastRider(btn, 0); await busDeletePastRider(btn, 0);
+    expect(__state().sent).toEqual(['DELETE', '/bus/past-riders', 'studentId=s1']);
+  });
+  it('deletes by guestId when the row has no studentId', async () => {
+    const { busDeletePastRider, __state } = mk();
+    const btn: any = { dataset: {}, textContent: '', style: {} };
+    await busDeletePastRider(btn, 1); await busDeletePastRider(btn, 1);
+    expect(__state().sent).toEqual(['DELETE', '/bus/past-riders', 'guestId=g1']);
+  });
+});
+
+// Task D (owner, 2026-10-08): deleting the CURRENT address reopens the edit sheet (the server
+// unassigned the rider); a non-current delete just removes its row, as before.
+describe('Task D: busDeleteAddress reopens the sheet for the current address', () => {
+  it('reopens busEditRider when the deleted address was the rider\'s current one', async () => {
+    const prelude = `
+      const BUS = { view: { riders: [{ id: 'r1', addressId: 'a1' }] } };
+      const document = { querySelector: () => null, getElementById: () => null };
+      async function _busSend() {}
+      let __reopened = null;
+      function busEditRider(id) { __reopened = id; }
+      function toast() {}
+      function __state() { return { reopened: __reopened }; }
+    `;
+    const { busDeleteAddress, __state } = loadFns(['busDeleteAddress'], prelude, ['busDeleteAddress', '__state']);
+    await busDeleteAddress('r1', 'a1');
+    expect(__state().reopened).toBe('r1');
+  });
+  it('just removes the row for a non-current address, without reopening', async () => {
+    const prelude = `
+      const BUS = { view: { riders: [{ id: 'r1', addressId: 'a1' }] } };
+      let __removed = false;
+      const document = { querySelector: () => null, getElementById: () => ({ remove: () => { __removed = true; } }) };
+      async function _busSend() {}
+      function busEditRider() { throw new Error('must not reopen'); }
+      function toast() {}
+      function __state() { return { removed: __removed }; }
+    `;
+    const { busDeleteAddress, __state } = loadFns(['busDeleteAddress'], prelude, ['busDeleteAddress', '__state']);
+    await busDeleteAddress('r1', 'old');
+    expect(__state().removed).toBe(true);
   });
 });

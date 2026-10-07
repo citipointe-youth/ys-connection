@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { busCrypt, toPrefs } from '../repositories/supabase/supabase.bus';
+import { busCrypt, toPrefs, encSnapAddress, decSnapAddress } from '../repositories/supabase/supabase.bus';
 
 beforeAll(() => {
   process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(32, 2).toString('base64');
@@ -21,6 +21,16 @@ describe('bus field encryption', () => {
   it('consent notes use their own AAD', () => {
     const ct = busCrypt.enc('Mum, text 7pm', 'bus_consents:note:c1');
     expect(busCrypt.dec(ct, 'bus_consents:note:c1')).toBe('Mum, text 7pm');
+  });
+  // Task D (owner, 2026-10-08): bus_run_riders.snap_address is `text not null`; busCrypt.enc('')
+  // short-circuits to null (would violate that constraint), so an address-less rider's '' snap
+  // address is encrypted via a one-space sentinel instead and must decrypt back to ''.
+  it('snap_address round-trips an empty string via the one-space sentinel, never writing null', () => {
+    const ct = encSnapAddress('', 'r1');
+    expect(ct).not.toBeNull();
+    expect(decSnapAddress(ct, 'r1')).toBe('');
+    const normalCt = encSnapAddress('24 Wynnum Rd, Carina', 'r1');
+    expect(decSnapAddress(normalCt, 'r1')).toBe('24 Wynnum Rd, Carina');
   });
 });
 
