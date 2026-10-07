@@ -1054,7 +1054,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await touch(ctx, run);
     },
     async analysis(ctx) {
-      const c = await gate(ctx, 'bus:analysis');
+      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
       const b = c.busMinistry;
       const run = await ensureRun(ctx, c);
       const signal = routingDeadline();
@@ -1094,7 +1094,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         longestMin: Math.max(0, ...cars.map((x) => x.routeMin)), totalMin: sum(cars.map((x) => x.routeMin)) };
     },
     async extraCars(ctx, input) {
-      const c = await gate(ctx, 'bus:analysis');
+      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
       const v = parseIn(ExtraCarsIn, input);
       if (!c.busMinistry.churchPlaceId) throw new BadRequestError(NO_CHURCH);
       const run = await ensureRun(ctx, c);
@@ -1160,7 +1160,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         cars };
     },
     async analysisMap(ctx) {
-      const c = await gate(ctx, 'bus:analysis');
+      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
       const run = await ensureRun(ctx, c);
       const signal = routingDeadline();
       const a = await analysisSolve(c, run, signal);

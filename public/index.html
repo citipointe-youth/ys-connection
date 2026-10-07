@@ -8389,13 +8389,14 @@ async function renderBus() {
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;
   const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
+  const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
   const tabs = [
     canRoster && { id: 'roster', label: 'Tonight' },
     { id: 'mycar', label: 'My car' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
     v.canCoordinate && { id: 'routes', label: 'Routes' },
   ].filter(Boolean);
-  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast);
+  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesAnalysis);
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
@@ -8405,7 +8406,7 @@ async function renderBus() {
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
-      <div class="bus-head-act">${seesPast ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
+      <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Analysis">${icS('route')}<span class="bus-wide">Analysis</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>

@@ -21,7 +21,7 @@ export type Action =
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
-  | 'bus:analysis';           // Route analysis, Past nights
+  | 'bus:analysis';           // Past nights, new-people linking (route analysis is bus:coordinate)
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
