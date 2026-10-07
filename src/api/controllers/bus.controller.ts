@@ -22,6 +22,7 @@ export function makeBusController(deps: { bus: BusService }) {
     version: (r: HttpRequest) => b.getVersion(ctxOf(r)),
     search: (r: HttpRequest) => b.search(ctxOf(r), String(r.query['q'] ?? '')),
     riderAddresses: (r: HttpRequest) => b.riderAddresses(ctxOf(r), p(r, 'id')),
+    personAddresses: (r: HttpRequest) => b.personAddresses(ctxOf(r), { studentId: r.query['studentId'] ? String(r.query['studentId']) : undefined, guestId: r.query['guestId'] ? String(r.query['guestId']) : undefined }),
     addRider: (r: HttpRequest) => b.addRider(ctxOf(r), r.body),
     updateRider: (r: HttpRequest) => b.updateRider(ctxOf(r), p(r, 'id'), r.body),
     removeRider: async (r: HttpRequest) => { await b.removeRider(ctxOf(r), p(r, 'id')); return { ok: true }; },

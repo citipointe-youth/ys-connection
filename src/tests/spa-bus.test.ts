@@ -795,15 +795,25 @@ describe('Past riders (Tonight tab)', () => {
     expect(load(past)(true)).toBe('');
     expect(load([])(false)).toBe('');
   });
-  it('one tap posts the saved addressId', async () => {
+  it('a tap opens a confirm sheet with last-used address first; Add posts the chosen address', async () => {
     const sent: unknown[] = [];
-    const { busAddPast } = loadFns(['busAddPast'], `const BUS = { view: { pastRiders: ${JSON.stringify(past)} } };
+    const { busAddPast, busSavePast, __html } = loadFns(['busAddPast', 'busSavePast'], `const BUS = { view: { pastRiders: ${JSON.stringify(past)} } };
+      let __m = '';
       function _busBlockWrite() { return false; }
+      async function _busGet(path, q) { globalThis.__sent.push(['GET', path, q]); return [{ id: 'a2', label: 'Dad' }, { id: 'a1', label: 'Mum' }]; }
+      function _busAddressPicker(addrs) { return addrs.map((a) => a.id).join(','); }
+      function _busReadAddress() { return { addressId: 'a1' }; }
+      function esc(s) { return String(s); }
+      function modal(h) { __m = h; } function closeModal() {}
       async function _busSend(m, url, body) { globalThis.__sent.push([m, url, body]); }
-      function toast() {} function renderBus() {}`);
+      function toast() {} function renderBus() {}
+      function __html() { return __m; }`, ['busAddPast', 'busSavePast', '__html']);
     (globalThis as any).__sent = sent;
     await busAddPast(0);
-    expect(sent).toEqual([['POST', '/bus/riders', { studentId: 's1', addressId: 'a1' }]]);
+    expect(sent).toEqual([['GET', '/bus/addresses', 'studentId=s1']]);
+    expect(__html()).toContain('a1,a2'); // the address they used last time is pre-selected (first)
+    await busSavePast(0);
+    expect(sent[1]).toEqual(['POST', '/bus/riders', { studentId: 's1', addressId: 'a1' }]);
   });
   // Task 13: a Generate/lock in progress must block the write itself, with a toast, even
   // though the Past riders list stays visible and tappable.

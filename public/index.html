@@ -8455,14 +8455,28 @@ function _busPastHtml(locked) {
     <div class="drop-head" onclick="BUS.pastOpen=!BUS.pastOpen;this.parentElement.classList.toggle('open')"><span class="card-title">Past riders (${past.length})</span><span class="drop-chev">${icS('chevr')}</span></div>
     <div class="drop-body" style="margin-top:8px">${rows}</div></div>`;
 }
+// Past rider tap → confirm where they're going tonight: their saved addresses (last used
+// first, pre-selected) or a new one, then add them.
 async function busAddPast(i) {
   if (_busBlockWrite()) return;
   const p = (BUS.view.pastRiders || [])[i];
-  if (!p || BUS.addingPast) return;
+  if (!p) return;
+  let addrs;
+  try { addrs = await _busGet('/bus/addresses', (p.studentId ? 'studentId=' + p.studentId : 'guestId=' + p.guestId)); } catch (e) { toast(e.message); return; }
+  addrs.sort((a, b) => Number(b.id === p.addressId) - Number(a.id === p.addressId));
+  modal(`<div class="mo-title">Add ${esc(p.name)}</div>
+    <div class="card-sub" style="margin-bottom:8px">Confirm where they're going tonight</div>${_busAddressPicker(addrs)}
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busSavePast(${i})">Add</button></div>`);
+}
+async function busSavePast(i) {
+  if (_busBlockWrite()) return;
+  const p = (BUS.view.pastRiders || [])[i];
+  const a = _busReadAddress(); if (!p || !a || BUS.addingPast) return;
   BUS.addingPast = true;
   try {
-    await _busSend('POST', '/bus/riders', { ...(p.studentId ? { studentId: p.studentId } : { guestId: p.guestId }), addressId: p.addressId });
-    toast(`${p.name} added`); renderBus();
+    await _busSend('POST', '/bus/riders', { ...(p.studentId ? { studentId: p.studentId } : { guestId: p.guestId }), ...a });
+    closeModal(); toast(`${p.name} added`); renderBus();
   } catch (e) { toast(e.message); }
   finally { BUS.addingPast = false; }
 }
@@ -9152,13 +9166,20 @@ function _busMyCarHtml() {
   // "Which leader are you" must list leaders actually on a car this week, including ones
   // outside this login's own RBAC scope — v.leaders (scoped) can't do that. Server-provided
   // onCarLeaders covers it; fall back to v.leaders only if an older server hasn't shipped it.
-  const pickerLeaders = v.onCarLeaders || v.leaders;
+  // A leader not on a car yet must still be able to pick themselves (to add their own car
+  // tonight) — on-car leaders first, then everyone else this login can see.
+  const onCar = v.onCarLeaders || [];
+  const others = v.leaders.filter((l) => !onCar.some((o) => o.id === l.id)).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const pickerLeaders = [...onCar, ...others];
+  const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
     ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="setMyLeaderId(null);BUS.myCar=null;busRefresh()">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);BUS.myCar=null;busRefresh()"><option value="">— Choose your name —</option>${pickerLeaders.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>`
-      : `<div class="card-sub">No leaders are on a car yet — set up cars first.</div>`;
+      ? `<div class="mycar-id">I am: <select class="fs" onchange="setMyLeaderId(this.value);BUS.myCar=null;busRefresh()"><option value="">— Choose your name —</option>${onCar.length && others.length
+        ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
+        : pickerLeaders.map(opt).join('')}</select></div>`
+      : `<div class="card-sub">No leaders found.</div>`;
   if (!mine) return picker;
   if (!mc) return `${picker}<div class="card-sub">Loading…</div>`;
   if (mc.vehicle) {

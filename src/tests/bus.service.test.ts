@@ -690,3 +690,14 @@ describe('riderAddresses — the edit sheet loads by rider, not by name search',
     expect(addrs[0]!.label).toBe('3 Lindsay Ct');
   });
 });
+
+describe('personAddresses — Past riders confirm sheet', () => {
+  it('lists a student\'s saved addresses, most recently used first; needs exactly one id', async () => {
+    const { svc, ctx } = await setup();
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Mum', address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:24-wynnum-rd-carina-qld-' } });
+    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Dad', address: '3 Lindsay Ct, Cornubia QLD 4130, Australia', placeId: 'fake:3-lindsay-ct-cornubia-qld-' } });
+    const addrs = await svc.personAddresses(ctx('grade'), { studentId: 's1' });
+    expect(addrs.map((a) => a.label).sort()).toEqual(['Dad', 'Mum']);
+    await expect(svc.personAddresses(ctx('grade'), {})).rejects.toMatchObject({ statusCode: 400 });
+  });
+});

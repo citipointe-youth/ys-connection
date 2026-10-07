@@ -23,6 +23,7 @@ export interface BusService {
   getVersion(ctx: BusCtx): Promise<{ runId: string; version: number }>;
   search(ctx: BusCtx, q: string): Promise<BusSearchHit[]>;
   riderAddresses(ctx: BusCtx, riderId: string): Promise<BusSearchHit['addresses']>;
+  personAddresses(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<BusSearchHit['addresses']>;
   addRider(ctx: BusCtx, input: unknown): Promise<BusRiderView>;
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
@@ -578,6 +579,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!r) throw new NotFoundError('Rider not found');
       const addrs = await bus.listAddresses(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
       return addrs.sort((a, b) => Number(b.id === r.addressId) - Number(a.id === r.addressId))
+        .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
+    },
+    // Past riders' "confirm address" sheet — a person's saved addresses, most recently used first.
+    async personAddresses(ctx, who) {
+      await gate(ctx, 'bus:roster');
+      if (!who.studentId === !who.guestId) throw new BadRequestError('Give a studentId or a guestId');
+      const addrs = await bus.listAddresses(who.studentId ? { studentId: who.studentId } : { guestId: who.guestId! });
+      return addrs.sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? ''))
         .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
     },
     async search(ctx, q) {
