@@ -2320,7 +2320,10 @@ async function _renderHomeInner(stale) {
         // Director/admin: each grade row split into girls (left) and boys (right).
         const grades = _gradeList().filter(gr => sc.some(s => s.grade === gr));
         if (grades.length) {
-          const half = (list) => {
+          const half = (all) => {
+            // Same rule as the help tip and Connect Setup: only students who attended this
+            // term or last count (was counting everyone — Gr 12 boys showed 57/66 vs 55/55).
+            const list = all.filter(_hasAttended);
             const tot = list.length, con = list.filter(s => _connSet.has(s.id)).length;
             const pct = tot ? Math.round(con / tot * 100) : 0;
             return `<div style="flex:1"><div class="pb"><div class="pb-f ${pct >= 80 ? 'fill-g' : pct >= 50 ? 'fill-a' : 'fill-r'}" style="width:${pct}%"></div></div>
