@@ -36,6 +36,9 @@ describe('maps links', () => {
     expect(one).toHaveLength(1);
     expect(one[0].label).toBe('Start in Google Maps');
     expect(one[0].url).toContain('destination=3%20A%20St');
+    // My car (fromHere): no origin, so Google Maps starts from the phone and shows Start.
+    const here = _busMapsLinks(stops.slice(0, 3), '1 Church Rd', { endsAt: 'church' }, 'PC', true);
+    expect(here[0].url).not.toContain('origin');
   });
 });
 
@@ -1274,8 +1277,8 @@ describe('Task A: Edit my car sheet', () => {
       function busOwnCarSheet() {}
       function __state() { return { modalHtml: __modal, sent: __sent, order: BUS._emcOrder, removed: BUS._emcRemoved }; }
     `;
-    return loadFns(['busEditMyCarSheet', '_busRenderEditMyCar', '_busEmcMove', '_busEmcRemove', 'busSaveMyCarStops', '_busEmcCarDetails'],
-      prelude, ['busEditMyCarSheet', '_busEmcMove', '_busEmcRemove', 'busSaveMyCarStops', '__state']);
+    return loadFns(['busEditMyCarSheet', '_busRenderEditMyCar', '_busEmcRemove', 'busSaveMyCarStops', '_busEmcCarDetails'],
+      prelude, ['busEditMyCarSheet', '_busEmcRemove', 'busSaveMyCarStops', '__state']);
   };
   it('opens with both stops in server order', () => {
     const { busEditMyCarSheet, __state } = mk();
@@ -1283,12 +1286,6 @@ describe('Task A: Edit my car sheet', () => {
     expect(__state().order).toEqual(['r1', 'r2']);
     expect(__state().modalHtml).toContain('1. Jess');
     expect(__state().modalHtml).toContain('2. Sam');
-  });
-  it('moving the second stop up reorders the working list', () => {
-    const { busEditMyCarSheet, _busEmcMove, __state } = mk();
-    busEditMyCarSheet();
-    _busEmcMove(1, -1);
-    expect(__state().order).toEqual(['r2', 'r1']);
   });
   it('removing a stop is two-tap: first arms, second moves it to the removed list', () => {
     const { busEditMyCarSheet, _busEmcRemove, __state } = mk();

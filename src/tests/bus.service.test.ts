@@ -787,6 +787,15 @@ describe('Task A: saveMyCarStops — "Edit my car" reorder/remove', () => {
     expect(v.riders.find((r) => r.id === t.b.id)).toMatchObject({ stopOrder: 1, pinned: true, runVehicleId: t.rvId });
     expect(v.riders.find((r) => r.id === t.a.id)).toMatchObject({ stopOrder: 2, pinned: true, runVehicleId: t.rvId });
   });
+  it('optimiseMyCar re-solves the acting leader car; 404 for a leader not on a car', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
+    expect((await t.svc.optimiseMyCar(leaderCtx('L1'))).id).toBe(t.rvId);
+    const orders = (await t.svc.getRun(t.ctx('admin'))).riders.filter((r) => r.runVehicleId === t.rvId).map((r) => r.stopOrder).sort();
+    expect(orders).toEqual([1, 2]);
+    await expect(t.svc.optimiseMyCar(leaderCtx('nobody'))).rejects.toMatchObject({ statusCode: 404 });
+  });
   it('removes a rider from the car; an unlinked guest removed this way is not deleted and reappears in Past riders', async () => {
     const t = await withFleet();
     await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });

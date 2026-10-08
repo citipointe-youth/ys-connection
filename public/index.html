@@ -696,6 +696,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .an-extra-car[open] summary{margin-bottom:6px}
 .mc-acts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;font-size:13px}
 .mc-acts .cbx-row{border:none;padding:4px 0;font-size:13px}
+.stop-arrows{display:flex;flex-direction:column;gap:2px;flex-shrink:0;margin-left:auto}
+.stop-arrows button{width:30px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--paper-dark);border-radius:6px;background:var(--paper-card);color:var(--ink-mid);cursor:pointer}
+.stop-arrows button:disabled{opacity:.3;cursor:default}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
 /* New Person / add+edit car: same sticky floor, but Cancel sits beside Save instead of
@@ -8758,7 +8761,9 @@ async function busSaveSettings() {
 }
 
 // ── Car setup / Routes / My car (Task 7) ──
-function _busMapsLinks(stops, church, car, churchPlaceId) {
+// fromHere (My car): no origin, so Google starts from the phone's location and shows Start —
+// an explicit origin opens a preview with no Start button (owner, 2026-10-08).
+function _busMapsLinks(stops, church, car, churchPlaceId, fromHere) {
   const enc = encodeURIComponent;
   // Task D (owner, 2026-10-08): a rider with no address at all (empty snapAddress, not just a
   // missing placeId — that's the separate, pre-existing "no map pin" case this still handles via
@@ -8778,8 +8783,8 @@ function _busMapsLinks(stops, church, car, churchPlaceId) {
     const origin = prev ? prev.address : church, originPid = prev ? (prev.placeId || '') : (churchPlaceId || '');
     const dest = toEnd ? end : lastStop.address, destPid = toEnd ? endPid : (lastStop.placeId || '');
     const wps = toEnd ? chunk : chunk.slice(0, -1);
-    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${enc(origin)}&destination=${enc(dest)}`;
-    if (originPid) url += `&origin_place_id=${enc(originPid)}`;
+    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${enc(dest)}`;
+    if (!fromHere) url += `&origin=${enc(origin)}${originPid ? `&origin_place_id=${enc(originPid)}` : ''}`;
     if (destPid) url += `&destination_place_id=${enc(destPid)}`;
     if (wps.length) url += `&waypoints=${enc(wps.map((s) => s.address).join('|'))}`;
     const ids = wps.map((s) => s.placeId || '');
@@ -9367,7 +9372,7 @@ function _busMyCarHtml() {
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
-    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv, mc.churchPlaceId) : [];
+    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv, mc.churchPlaceId, true) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
@@ -9379,6 +9384,9 @@ function _busMyCarHtml() {
         ${s.droppedAt ? `<button class="btn btn-ghost btn-sm" onclick="busEditDroppedTime('${s.id}')">${esc(_busFmtTime(s.droppedAt))}</button>` : ''}
         ${s.mobile ? phoneLink(s.mobile, s.name.split(' ')[0]) : ''}
       </div></div>
+      <div class="stop-arrows" onclick="event.stopPropagation()">
+        <button type="button" aria-label="Move ${esc(s.name)} up" ${i === 0 ? 'disabled' : ''} onclick="busMoveStop(${i},-1)">${icS('arru')}</button>
+        <button type="button" aria-label="Move ${esc(s.name)} down" ${i === mc.stops.length - 1 ? 'disabled' : ''} onclick="busMoveStop(${i},1)">${icS('arrd')}</button></div>
     </div>`).join('');
     return `${picker}
     <div class="card">
@@ -9392,6 +9400,7 @@ function _busMyCarHtml() {
     </div>
     <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
       <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
+    ${mc.stops.length > 1 ? `<button class="btn btn-ghost btn-sm" style="margin-bottom:6px" onclick="busOptimiseMyCar()">${icS('route')} Reset to optimal order</button>` : ''}
     ${rows}
     ${removeOwn}`;
   }
@@ -9428,8 +9437,6 @@ function _busRenderEditMyCar() {
     return `<div class="li">
       <div class="li-body"><div class="li-title">${i + 1}. ${esc(s.name)}</div><div class="li-sub">${esc(_busSuburb(s.address))}</div></div>
       <div style="display:flex;gap:2px;flex-shrink:0">
-        <button type="button" class="btn-icon" aria-label="Move up" ${i === 0 ? 'disabled' : ''} onclick="_busEmcMove(${i},-1)">${icS('arru')}</button>
-        <button type="button" class="btn-icon" aria-label="Move down" ${i === BUS._emcOrder.length - 1 ? 'disabled' : ''} onclick="_busEmcMove(${i},1)">${icS('arrd')}</button>
         <button type="button" class="btn-icon bus-danger" aria-label="No lift needed for ${esc(s.name)}" onclick="_busEmcRemove(this,'${id}')">${icS('trash')}</button>
       </div></div>`;
   }).join('');
@@ -9441,11 +9448,15 @@ function _busRenderEditMyCar() {
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveMyCarStops()">Save</button></div>`);
 }
-function _busEmcMove(i, dir) {
-  const o = BUS._emcOrder, j = i + dir;
+// Stop order arrows sit on the My car list itself and save straight away (owner, 2026-10-08).
+async function busMoveStop(i, dir) {
+  const o = BUS.myCar.stops.map((s) => s.id), j = i + dir;
   if (j < 0 || j >= o.length) return;
   [o[i], o[j]] = [o[j], o[i]];
-  _busRenderEditMyCar();
+  try { await _busSend('POST', '/bus/run/my-car/stops', { riderIds: o, removeIds: [] }); } catch (e) { toast(e.message); }
+}
+async function busOptimiseMyCar() {
+  try { await _busSend('POST', '/bus/run/my-car/optimise'); toast('Reset to the optimal order'); } catch (e) { toast(e.message); }
 }
 function _busEmcRemove(btn, id) {
   if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Remove?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }

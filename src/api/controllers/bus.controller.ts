@@ -29,6 +29,7 @@ export function makeBusController(deps: { bus: BusService }) {
       return { ok: true };
     },
     saveMyCarStops: (r: HttpRequest) => b.saveMyCarStops(ctxOf(r), r.body),
+    optimiseMyCar: (r: HttpRequest) => b.optimiseMyCar(ctxOf(r)),
     addRider: (r: HttpRequest) => b.addRider(ctxOf(r), r.body),
     updateRider: (r: HttpRequest) => b.updateRider(ctxOf(r), p(r, 'id'), r.body),
     removeRider: async (r: HttpRequest) => { await b.removeRider(ctxOf(r), p(r, 'id')); return { ok: true }; },

@@ -161,6 +161,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.saveOwnCar(r) },
     { method: 'DELETE', path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.removeOwnCar(r) },
     { method: 'POST',   path: '/bus/run/my-car/stops',     auth: true, handler: (r) => busCtl.saveMyCarStops(r) },
+    { method: 'POST',   path: '/bus/run/my-car/optimise',  auth: true, handler: (r) => busCtl.optimiseMyCar(r) },
     { method: 'DELETE', path: '/bus/past-riders',          auth: true, handler: (r) => busCtl.deletePastRider(r) },
     { method: 'PATCH',  path: '/bus/run/vehicles/:id',     auth: true, handler: (r) => busCtl.updateRunVehicle(r) },
     { method: 'GET',    path: '/bus/search',               auth: true, handler: (r) => busCtl.search(r) },

@@ -27,6 +27,7 @@ export interface BusService {
   deleteRiderAddress(ctx: BusCtx, riderId: string, addressId: string): Promise<void>;
   deletePastRider(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<void>;
   saveMyCarStops(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
+  optimiseMyCar(ctx: BusCtx): Promise<BusRunVehicleView>;
   addRider(ctx: BusCtx, input: unknown): Promise<BusRiderView>;
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
@@ -921,6 +922,19 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await bus.setUndo(run.id, null, null);
       await touch(ctx, run);
       return (await vehicleViews(run.id)).find((x) => x.id === vehicle.id)!;
+    },
+    // My car "Reset to optimal order": re-solve the stop order of the acting leader's car.
+    async optimiseMyCar(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      const me = selfLeaderId(ctx);
+      if (!me) throw new BadRequestError('Choose who you are first');
+      const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run);
+      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
+      if (!rv) throw new NotFoundError('Car not found');
+      await reorderCar(c, run, rv);
+      await touch(ctx, run);
+      return (await vehicleViews(run.id)).find((x) => x.id === rv.id)!;
     },
     async moveRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:coordinate');
