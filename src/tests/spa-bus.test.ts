@@ -39,6 +39,9 @@ describe('maps links', () => {
     // My car (fromHere): no origin, so Google Maps starts from the phone and shows Start.
     const here = _busMapsLinks(stops.slice(0, 3), '1 Church Rd', { endsAt: 'church' }, 'PC', true);
     expect(here[0].url).not.toContain('origin');
+    // Two kids at the same house → one stop.
+    const sib = _busMapsLinks([{ address: '1 A St', placeId: 'PA' }, { address: '1 A St', placeId: 'PA' }, { address: '2 B St', placeId: 'PB' }], '1 Church Rd', { endsAt: 'church' }, 'PC', true);
+    expect(new URL(sib[0].url).searchParams.get('waypoint_place_ids')).toBe('PA|PB');
   });
 });
 

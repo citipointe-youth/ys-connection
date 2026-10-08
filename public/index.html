@@ -8770,6 +8770,10 @@ function _busMapsLinks(stops, church, car, churchPlaceId, fromHere) {
   // the address-text fallback below) can still be hand-moved into a car — skip them here, or
   // they'd break the link with a blank destination.
   stops = stops.filter((s) => s.address);
+  // Siblings at the same house are one stop for Google Maps — repeating the same waypoint broke
+  // the link (owner, 2026-10-09). Only back-to-back repeats; the route visits them together.
+  const key = (s) => s.placeId || s.address.trim().toLowerCase();
+  stops = stops.filter((s, i) => i === 0 || key(s) !== key(stops[i - 1]));
   const end = car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
   const endPid = car.endsAt === 'address' && car.endsAddress ? (car.endsPlaceId || '') : car.endsAt === 'church' ? (churchPlaceId || '') : '';
   if (!stops.length) return [];
