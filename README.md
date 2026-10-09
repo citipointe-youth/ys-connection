@@ -23,7 +23,8 @@ npm run test         # vitest
 ```
 
 Default persistence is in-memory with seed data (`PERSISTENCE=memory`) — no
-database needed for local development. Seed accounts (password `demo1234`):
+database needed for local development. Seed accounts (local demo only,
+`PERSISTENCE=memory`; password `demo1234`):
 
 | Username | Role |
 |-------|------|
@@ -34,9 +35,10 @@ database needed for local development. Seed accounts (password `demo1234`):
 
 ## Deploying your own copy
 
-See **[docs/DEPLOYING.md](docs/DEPLOYING.md)** for the full path: Supabase
-project → migrations → Vercel project + env vars → first login → Youth
-Ministry Setup.
+See **[docs/DEPLOYING.md](docs/DEPLOYING.md)** for the full path: GitHub fork →
+Supabase → Vercel → setup screen and first admin → Youth Ministry Setup. The
+database updates itself in the Vercel build. For Bus Ministry, see
+[docs/GOOGLE-SETUP.md](docs/GOOGLE-SETUP.md).
 
 ## Architecture
 

@@ -63,6 +63,7 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 | Lifegroup stats | `GET /lifegroups/stats` (per-lifegroup/grade/quad/overall, current + previous term + weekly series) |
 | Import | `POST /import/csv`, `GET /import/history`, `DELETE /import/history` (clear log), `DELETE /import/history/:id` (remove one) |
 | Settings | `GET/PATCH /settings` |
+| Setup | `GET /setup/status` (public while no admin exists, else admin only), `POST /setup/admin` (first admin, needs `SETUP_CODE`; rate-limited) |
 | Admin | `POST /admin/reset` (clears students+leaders+connections+attendance **and connection_audits** — see below), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
 | Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed; returns `{ ok, token }` — a freshly-issued session token, since `mustChangePassword` is baked into the token at login and this is the one write that needs the caller's own token refreshed — see "Forced password change" gotcha below), `POST /accounts/cohort-layout/preview` / `POST /accounts/cohort-layout/apply` (admin-only "Apply account layout" dry-run/apply pair — see "Admin bug/improvement batch" below) |
@@ -108,7 +109,9 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0015` (`0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0016` (`0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+
+**Migrations now apply automatically in the Vercel production build** (`scripts/migrate.ts`, `npm run migrate`, `vercel-build`): it records versions in `schema_migrations`, baselines `<= 0014` once for a database that already has `users` + `bus_run_edits` (Citipointe), holds an advisory lock, and prints `Database up to date — N of N changes applied (K new).` Rules: files stay additive; no `create index concurrently`; never edit a shipped file (`0003` was the one exception, now an empty comment); bump `LATEST_MIGRATION` in `src/core/schema-version.ts` with every new file (a test enforces it).
 
 ## Role hierarchy
 
@@ -281,8 +284,10 @@ unguarded for human users.
 | `b1012` | quad | Boys Yr 10–12 |
 | `grade7` … `grade12` | grade | one per grade (the in-code seed has one account per grade) |
 
+**This table describes `PERSISTENCE=memory` only.** `0003_seed_accounts.sql` is now an empty comment (2026-10-10): a new Supabase database has no accounts and the first `admin` is created on the setup screen with `SETUP_CODE` (see "Multi-location rollout" below).
+
 Local `PERSISTENCE=memory` dev/demo mode: password `demo1234` for all of the above,
-same as before. **Supabase/production accounts are different:** every account
+same as before. **Historical (databases that ran the old `0003`):** every account
 inserted by `0003_seed_accounts.sql` (`supabase/migrations/` — the pre-2026-07
 history of this seed data, back when it used fake `@youth.ministry` emails, lives
 archived in `supabase/migrations_archive/002_seed_admin.sql` /
@@ -309,13 +314,16 @@ needs it to tell a still-default account name from a customised one).
 
 ```
 PORT=4300
-NODE_ENV=production
+NODE_ENV=production      # LOCAL/other hosts only. Do NOT set NODE_ENV in Vercel: it makes Vercel skip devDependencies, so `tsx` is missing in the build.
 PERSISTENCE=supabase     # production; use "memory" for local dev with seed data
 DATABASE_URL=<supabase-connection-string>
 DATA_DIR=./data          # only used for PERSISTENCE=json
 CORS_ORIGINS=*
 APP_ORIGIN=https://<your-deployment>.vercel.app   # CORS fallback when CORS_ORIGINS is unset
 SESSION_SECRET=<random>  # REQUIRED in production, or session tokens can be forged
+SETUP_CODE=<16+ chars>   # first-run admin creation (setup screen); ignored once an admin exists
+GOOGLE_SA_JSON=<key file as one line>   # Bus; replaces the three GOOGLE_SA_* vars (they still work; JSON wins if both set)
+GOOGLE_MAPS_API_KEY=<key>               # Bus; always required
 
 # Required whenever PERSISTENCE=supabase — read directly from process.env by
 # src/utils/field-crypto.ts, NOT via src/config/env.ts. Encrypts students.mobile and
@@ -343,6 +351,8 @@ pooler intermittently handed back dead connections (queries dispatched, no respo
 timeout → 503) under this app's serverless + burst pattern — the root cause of the 2026-07
 outage. Session mode fixed it; see the "✅ RESOLVED" note in the incident history below for
 the full evidence and the connection-ceiling mitigation levers.
+
+The `0015` migration now carries the role `statement_timeout = '15s'` (wrapped so it can never fail a deploy); the manual `ALTER ROLE` step in the incident notes below is no longer needed for a new database.
 
 ## Frontend
 
@@ -2370,6 +2380,16 @@ Plan: `docs/superpowers/plans/2026-10-02-term-start-fixes.md` (Task 3 UI and Tas
 - `npm audit fix` (non-force) moved express 4.22.3, body-parser, qs and a few transitive patch versions.
   Never run `npm audit fix --force` (it wants @vercel/node 17, a breaking change).
 
+### Multi-location rollout (2026-10-10)
+
+Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other locations run their own fork + Supabase + Vercel + Google project; guides are `docs/DEPLOYING.md` and `docs/GOOGLE-SETUP.md` (ASD-STE100; `node scripts/check-guide-style.js` checks them).
+- **Setup**: no `SESSION_SECRET`/admin no longer kills the app. `GET /setup/status` drives a first-run checklist in the SPA (Generate + Copy for `SESSION_SECRET`, `FIELD_ENCRYPTION_KEY`, `SETUP_CODE`), then `POST /setup/admin` creates the user `admin`. Admin has a **System check** tab with the same checklist.
+- **403 text changed**: "The setup code is wrong. In Vercel, open Settings > Environment Variables. Copy SETUP_CODE again." (generated values live only in browser memory).
+- **Google**: `GOOGLE_SA_JSON` (+ `GOOGLE_MAPS_API_KEY`); Bus settings has **Test Google connection** (`POST /bus/google-check`, 5 rows). `scripts/google-setup.sh` runs in Cloud Shell; the guide pastes it pinned to a commit SHA (`COMMIT_SHA` placeholder until pushed).
+- **`/health`** reports `db` and `schema {current, expected}`.
+- **Settings file**: Youth Setup "Use this setup at another location" (Download/Load settings file) replaces the old in-app deploy-guide card.
+- `/setup` is in `router.ts`, the `vercel.json` regex and `sw.js` `API_RE`.
+
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 
 Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-10-05-bus-ministry-design.md`; plans: `…-bus-ministry-r1-core.md`, `…-bus-ministry-r2-r3-google-analysis.md`.
@@ -2379,7 +2399,7 @@ Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-1
 - **2026-10-09:** `dcd4422` (settings fields removed, Students "Add several" tick-list sheet) and `b91a337` (Past page: `GET /bus/history`, logged past edits `PATCH /bus/runs/:id/riders/:riderId` + `bus_run_edits`, removed riders kept as `notRiding`, `leader_snap`, `was_guest`, 3-sheet xlsx export with full addresses; spec `docs/superpowers/specs/2026-10-09-bus-past-history.md`). Owner to promote `b91a337` **after** the 2026-10-09 run. Neither visually verified by Claude.
 - **2026-10-09 pre-launch six-hat (`ad15899`, sw `ysc-v84`):** checkbox focus no longer pauses repaint; Dropped off failure reverts + 6 s toast; Maps/Reset skip dropped stops (dropped kept first; `optimiseMyCar` returns `optimised`); Edit-rider Save also saves consent; My car No address chip; Move needs 2 taps for a girl into a car with no female leader; Leaders sheet shows "on <car>". Still open (after tonight): `as=` reaches Past/xlsx full addresses (decision), lone-adult cars (decision), leader on two cars not blocked server-side, Generate/Fit in/Unassign all ignore `droppedAt`, no plan-changed banner/offline My car, fixed 12 h session.
 - **2026-10-09 reload gap (sw `ysc-v85`):** after the Bus identity `location.reload()` the installed iOS app showed the bottom nav 62pt high until a drag. `_reloadViewportFix()` (end of `boot()`, standalone + reload only) toggles `viewport-fit=cover` to force WebKit to resend viewport geometry. Not verified on a phone — see debug.md "Mobile viewport / iOS Safari quirks".
-- **Deploying:** pushing `master` builds a prod deployment but does **NOT** move `ys-connection.vercel.app` — the **owner promotes** it in the Vercel dashboard (Claude's alias/promote is blocked by the auto-mode classifier; local `vercel` CLI is logged out). Always tell the owner which commit to promote. Apply any migration to prod (Supabase MCP `apply_migration`) **before** they promote.
+- **Deploying:** pushing `master` builds a prod deployment but does **NOT** move `ys-connection.vercel.app` — the **owner promotes** it in the Vercel dashboard (Claude's alias/promote is blocked by the auto-mode classifier; local `vercel` CLI is logged out). Always tell the owner which commit to promote. Migrations apply in the build. After a push, read the build-log line `Database up to date — …` and tell the owner before they promote. Never apply migrations with the Supabase MCP.
 - **Migrations on prod:** `0011` tables, `0012` consent/drop-off, `0013` `bus_leader_prefs.pref_grades`, `0014` bus history (applied 2026-10-09). Next is `0015`.
 - **Google:** working end-to-end as of 2026-10-06 (Generate succeeds). The prod `GOOGLE_SA_PRIVATE_KEY` is stored as the bare base64 body (no BEGIN/END lines) — `normalisePrivateKey` rewraps it; don't "fix" that path away. Debug Google failures from Vercel runtime logs (scope `get_runtime_logs` to the deployment id; query `routing`).
 - **Open items before/after Friday** (owner asked for these as the pre-launch review list):
