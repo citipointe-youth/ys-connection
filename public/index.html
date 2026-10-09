@@ -786,6 +786,24 @@ document.addEventListener('focusout', e => {
   if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(_fixViewportGap, 60);
 });
 
+// iOS home-screen reload gap fix (2026-10-09): after location.reload() (Bus "I am"/"Not you?",
+// SW update) the fixed bottom nav came up exactly the status-bar height (62pt) above the screen
+// bottom until the user dragged. WebKit drops pre-reload viewport updates and fakes the
+// fixed-position rect until a fresh one arrives; a same-position scrollTo at the top is a no-op,
+// but a viewport-meta change forces one. Drop viewport-fit=cover and restore it two frames later
+// (tophatch/swift-pwa#285, verified on iOS 27). Installed app + reloads only.
+function _reloadViewportFix() {
+  const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+  if (!navigator.standalone || !nav || nav.type !== 'reload') return;
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  const content = meta.content;
+  setTimeout(() => {
+    meta.content = content.replace(/,\s*viewport-fit=cover/, '');
+    requestAnimationFrame(() => requestAnimationFrame(() => { meta.content = content; }));
+  }, 150);
+}
+
 // ============================================================
 // API ADAPTER
 // ============================================================
@@ -9947,6 +9965,7 @@ async function boot() {
     if (wantBus) { try { localStorage.removeItem('yap_bus_reload'); } catch {} S.page = 'bus'; }
   }
   render();
+  _reloadViewportFix();
 }
 
 boot();

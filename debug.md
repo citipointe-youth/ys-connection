@@ -239,6 +239,28 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   different nudge (this was tuned from a bug report + screenshot, not reproduced locally —
   there's no iOS device in this environment, so if it recurs, get a fresh screenshot + iOS
   version before assuming the same fix will cover it).
+  **Caveat found 2026-10-09 (WebKit source):** `LocalDOMWindow::scrollTo` returns early when
+  the target is the current origin, so this nudge does nothing while the page is scrolled to
+  the top.
+- **Gap below the bottom nav right after a page reload, until the screen is dragged**
+  (2026-10-09, installed home-screen app, iPhone 16/17 Pro). Measured from screenshots: the nav
+  sat exactly **62pt** (the status-bar height) above the screen bottom; its own height and
+  safe-area padding were unchanged. Trigger: `location.reload()` (Bus "I am" / "Not you?" since
+  `33fc583`, and the SW `controllerchange` reload). Mechanism (WebKit source, not reproduced on
+  a device here): after a new document commits, `WebPage` drops visible-content-rect updates
+  from before the commit and builds its own fixed-position rect until a fresh update arrives;
+  a user scroll sends one. Fixed with `_reloadViewportFix()` (called at the end of `boot()`):
+  only in `navigator.standalone` and on a `reload` navigation, it drops `viewport-fit=cover`
+  from the meta viewport 150 ms after render and restores it two frames later, which makes
+  WebKit send a fresh update (same workaround as tophatch/swift-pwa#285, measured on an iOS 27
+  device for the related bug where a navigation leaves the next page's safe-area insets stale).
+  Expect a one-frame shift. **If it doesn't fix it or the shift is visible**, the WebKit-source
+  alternative is toggling `, interactive-widget=resizes-content` the same way. It doesn't touch
+  inset behaviour, but may not be enabled in shipping iOS.
+  Related: in the same screenshots the status-bar strip is light, not our blue header, so
+  `env(safe-area-inset-top)` is 0 on that device. That is WebKit bug 301994 ("Status bar
+  remains visible in fullscreen", home-screen apps, reopened for iOS 26.5 / 27 beta), not our
+  CSS. Tests: `src/tests/reload-viewport-fix.test.ts`.
 - **Can't scroll to the very bottom of a tall screen** (last row/button sits behind the bottom
   nav, most noticeable on Prayers / My Connections / Connect Setup): `.pg`'s bottom padding (CSS
   near the top of `public/index.html`, the `/* Page */` rule) — must stay `≥76px` (`+safe-b`) to

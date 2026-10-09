@@ -161,7 +161,7 @@ describe('boot keeps the token on transient failures', () => {
       const API = { setToken: t => calls.push('token:' + t), get: async p => { if (p === '/auth/me') throw ERR; return {}; } };
       const S = { user: null, settings: null };
       let _previewStash = null;
-      const restoreConnectFilters = () => {}, restoreArFilter = () => {}, restorePrayerFilter = () => {}, applyTheme = () => {}, render = () => {};
+      const restoreConnectFilters = () => {}, restoreArFilter = () => {}, restorePrayerFilter = () => {}, applyTheme = () => {}, render = () => {}, _reloadViewportFix = () => {};
       function _isAuthExpired(e) { return !!e && e.status === 401; }
       function __calls() { return calls; }
     `;
