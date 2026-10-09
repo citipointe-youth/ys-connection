@@ -108,7 +108,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0014` (`0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0015` (`0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 ## Role hierarchy
 
@@ -2375,9 +2375,10 @@ Plan: `docs/superpowers/plans/2026-10-02-term-start-fixes.md` (Task 3 UI and Tas
 Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-10-05-bus-ministry-design.md`; plans: `…-bus-ministry-r1-core.md`, `…-bus-ministry-r2-r3-google-analysis.md`.
 
 ### ▶ Resume here (state as of 2026-10-06 late, owner bug-list batch — see History)
-- **Live on prod, admin-only** (`busMinistry.visibility:'admin'`). First real use planned **Fri 2026-10-09**, coordinator only, with a paper list in parallel. Widen to `all` only after a clean Friday + safeguarding sign-off.
+- **Visible to every login since 2026-10-09** (owner decision; `visibility`/`regionCode` settings removed, address search always `au`). `ctxOf` rejects a `?now=` >36 h from the server clock. First real use Fri 2026-10-09.
+- **2026-10-09:** `dcd4422` (settings fields removed, Students "Add several" tick-list sheet) and `b91a337` (Past page: `GET /bus/history`, logged past edits `PATCH /bus/runs/:id/riders/:riderId` + `bus_run_edits`, removed riders kept as `notRiding`, `leader_snap`, `was_guest`, 3-sheet xlsx export with full addresses; spec `docs/superpowers/specs/2026-10-09-bus-past-history.md`). Owner to promote `b91a337` **after** the 2026-10-09 run. Neither visually verified by Claude.
 - **Deploying:** pushing `master` builds a prod deployment but does **NOT** move `ys-connection.vercel.app` — the **owner promotes** it in the Vercel dashboard (Claude's alias/promote is blocked by the auto-mode classifier; local `vercel` CLI is logged out). Always tell the owner which commit to promote. Apply any migration to prod (Supabase MCP `apply_migration`) **before** they promote.
-- **Migrations on prod:** `0011` tables, `0012` consent/drop-off, `0013` `bus_leader_prefs.pref_grades`. Next is `0014`.
+- **Migrations on prod:** `0011` tables, `0012` consent/drop-off, `0013` `bus_leader_prefs.pref_grades`, `0014` bus history (applied 2026-10-09). Next is `0015`.
 - **Google:** working end-to-end as of 2026-10-06 (Generate succeeds). The prod `GOOGLE_SA_PRIVATE_KEY` is stored as the bare base64 body (no BEGIN/END lines) — `normalisePrivateKey` rewraps it; don't "fix" that path away. Debug Google failures from Vercel runtime logs (scope `get_runtime_logs` to the deployment id; query `routing`).
 - **Open items before/after Friday** (owner asked for these as the pre-launch review list):
   1. Dress rehearsal on prod (3–4 phones, ~15 riders with staff addresses, full flow incl. two simultaneous Generates, Move/Unpin, Fit in, My car → Maps, Dropped off, Undo, "Try +N cars").
@@ -2385,7 +2386,7 @@ Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-1
   3. `/security-review` (not yet run). Confirm API-key restrictions + a billing budget alert in Google project `ys-bus`.
   4. Owner to check on a real phone/laptop: commits `ce7eaff` (floating Save, My car stop row) and `4c4a9e1` (Past riders, laptop grid/hover) — never visually verified by Claude.
   5. Remaining known follow-ups (six-hat reviews 2026-10-06 all actioned — see History): Fix-address picker pre-checks the unpinned address; `FakeRoutingProvider` doesn't model the makespan cost (only real Google does); leftover `.git/worktrees/bus-review-wt` (OneDrive-locked, harmless — delete when convenient).
-- **Working style the owner asked for:** use Sonnet subagents for implementation/review batches (brief them fully; they don't commit — Claude reviews, runs `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`, commits, pushes). Bump `public/sw.js` `CACHE` on SPA changes (now `ysc-v78`).
+- **Working style the owner asked for:** use Sonnet subagents for implementation/review batches (brief them fully; they don't commit — Claude reviews, runs `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`, commits, pushes). Bump `public/sw.js` `CACHE` on SPA changes (now `ysc-v80`).
 
 ### Owner rules (decided 2026-10-06 — not bugs)
 - Gender = strong soft preference (cost), **except** hard rule (replaced the old lone-girl rule 2026-10-06): a non-fixed **girl may only be placed in a car with ≥1 female leader** — `buildFleetProblem` sets her `allowedVehicles` to the female-eligible cars. None eligible → Unassigned, counted as `noFemaleLeader`. **Google reads an empty `allowedVehicleIndices` as "any vehicle"**, so `GoogleRoutingProvider.solve` drops stops with `allowedVehicles: []` from the request and reports them skipped — don't remove that. Hand-placed → run view `needsFemaleLeader` → "No female leader" chip only.
