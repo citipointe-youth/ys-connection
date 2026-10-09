@@ -45,10 +45,9 @@ describe('gate', () => {
     const { svc, ctx } = await setup({ moduleOn: false });
     await expect(svc.getRun(ctx('admin'))).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
   });
-  it("visibility 'admin' hides it from non-admins only", async () => {
+  it("a stored visibility 'admin' no longer hides it (setting removed 2026-10-09)", async () => {
     const { svc, ctx } = await setup({ visibility: 'admin' });
-    await expect(svc.getRun(ctx('director'))).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
-    await expect(svc.getRun(ctx('admin'))).resolves.toBeTruthy();
+    await expect(svc.getRun(ctx('director'))).resolves.toBeTruthy();
   });
 });
 

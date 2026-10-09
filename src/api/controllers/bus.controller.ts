@@ -10,6 +10,10 @@ function ctxOf(req: HttpRequest): BusCtx {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const now = String(req.query['now'] ?? body['now'] ?? '');
   if (!NOW_RE.test(now)) throw new BadRequestError('Missing local time');
+  // The browser's local time picks "tonight". Reject anything far from the server clock so a
+  // crafted ?now= can't write to a past night (36 h covers every timezone + a slow phone clock).
+  const skew = Math.abs(Date.parse(now.slice(0, 16) + 'Z') - Date.now());
+  if (!(skew < 36 * 3600_000)) throw new BadRequestError('Your phone clock looks wrong — check the date and time');
   const as = (req.query['as'] ?? body['as'] ?? null) as string | null;
   return { actor: req.ctx, asLeaderId: as || null, localNow: now.slice(0, 16) };
 }

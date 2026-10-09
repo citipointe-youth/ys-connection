@@ -201,11 +201,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (required && !placeId) throw new BadRequestError('Pick the address from the suggestions list');
   }
 
-  /** Module/visibility gate + coordinator elevation. Returns the effective permission check. */
+  /** Module gate (no visibility setting since 2026-10-09 — every login sees Bus) + coordinator elevation. Returns the effective permission check. */
   async function gate(ctx: BusCtx, action: Action): Promise<MinistryConfig> {
     const c = await cfg();
     if (!c.modules.busMinistry) throw new ModuleDisabledError('Bus Ministry');
-    if (c.busMinistry.visibility === 'admin' && ctx.actor.role !== 'admin') throw new ModuleDisabledError('Bus Ministry');
     if (!allowed(ctx, c, action)) throw new ForbiddenError(`Role '${ctx.actor.role}' cannot perform '${action}'`);
     return c;
   }
@@ -1100,7 +1099,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const input = q.trim();
       if (input.length < 3 || input.length > 120) return [];
       const token = SESSION_RE.test(session) ? session : generateId();
-      try { return await routing.autocomplete(input, token, c.busMinistry.regionCode, routingDeadline()); }
+      try { return await routing.autocomplete(input, token, 'au', routingDeadline()); }
       catch (err) { throw routingFailed(err, SEARCH_FAILED); }
     },
     async generate(ctx, input) {

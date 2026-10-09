@@ -599,6 +599,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-sec{margin:4px 2px 8px}
 .bus-foot{text-align:center;font-size:11.5px;color:var(--ink-mid);margin-top:4px}
 .bus-hits{margin-bottom:12px}
+.bus-qrow{display:flex;gap:8px;align-items:flex-start}.bus-qrow .sbar{flex:1}.bus-bulk-btn{flex:none;height:42px;gap:6px}
+@media(max-width:420px){.bus-bulk-btn span{display:none}}
 /* The live app's existing .btn-icon is a white circle meant for the dark .hdr gradient
    header; Bus Ministry's icon buttons (settings gear, trash, edit, kebab) sit on light
    .pg card backgrounds, so .bus-pg scopes a visible, 44x44 tap-target override instead
@@ -8225,9 +8227,7 @@ const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', 
 function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
 function _busOn() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
-  const on = !!(mc.modules && mc.modules.busMinistry);
-  const vis = (mc.busMinistry && mc.busMinistry.visibility) || 'admin';
-  return on && (vis === 'all' || (S.user && S.user.role === 'admin'));
+  return !!(mc.modules && mc.modules.busMinistry); // visible to every login, AU addresses only (owner, 2026-10-09)
 }
 function _busLocalNow(d) {
   d = d || new Date();
@@ -8469,9 +8469,11 @@ function _busRosterHtml() {
     </div>`;
   }).join('');
   const seats = v.vehicles.filter((x) => x.running).reduce((n, x) => n + x.capacity, 0);
-  return `${readOnly ? '' : `<div class="sbar"><span class="si">${icS('search')}</span>
+  return `${readOnly ? '' : `<div class="bus-qrow"><div class="sbar"><span class="si">${icS('search')}</span>
       <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-        value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div><div id="bus-hits">${_busHitsHtml()}</div>`}
+        value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div>
+      <button type="button" class="btn btn-secondary bus-bulk-btn" onclick="busBulk()" aria-label="Add several students">${icS('users')}<span>Add several</span></button></div>
+      <div id="bus-hits">${_busHitsHtml()}</div>`}
     <div class="card-title bus-sec">Students who need a lift home tonight (${v.riders.length})</div>
     ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
@@ -8639,6 +8641,84 @@ async function busAdd(i) {
     closeModal(); BUS.search = ''; BUS.hits = []; toast(`${h.name} added`); renderBus();
   } catch (e) { toast(e.message); }
 }
+// ── Add several (owner, 2026-10-09): tick regulars (their last-used address) and/or add others
+// by name + address at the bottom, then one "Add N". Posts each rider in turn, refreshes once.
+function busBulk() {
+  if (_busBlockWrite()) return;
+  BUS.bulk = (BUS.view.pastRiders || []).map((p) => ({ studentId: p.studentId || null, guestId: p.guestId || null,
+    name: p.name, grade: p.grade, sub: p.suburb, addr: { addressId: p.addressId }, on: false }));
+  BUS.bulkHits = []; BUS.bulkPick = null;
+  modal(`<div class="mo-title">Add several</div>
+    <div class="card-sub" style="margin-bottom:4px">Tick who needs a lift tonight</div>
+    <div id="bus-bulk-list">${_busBulkListHtml()}</div>
+    <div class="card-title bus-sec">Someone else</div>
+    <div class="bus-ac"><input class="fi" id="bus-bulk-q" placeholder="Name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="busBulkSearch(this.value)">
+      <div class="bus-ac-list" id="bus-bulk-hits"></div></div>
+    <div style="margin-top:8px">${_busAcField('bus-bulk-addr', '', null, 'Address search (blank = their saved address)')}</div>
+    <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="busBulkAddOther()">${icS('plus')} Add to list</button>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="bus-bulk-go" onclick="busBulkSave()">Add 0</button></div>`);
+}
+function _busBulkListHtml() {
+  if (!BUS.bulk.length) return '<div class="card-sub">No past riders yet. Add people below.</div>';
+  return BUS.bulk.map((b, i) => `<label class="cbx-row"><input type="checkbox" ${b.on ? 'checked' : ''} onchange="BUS.bulk[${i}].on=this.checked;_busBulkCount()">
+    <span style="flex:1">${esc(b.name)} ${b.grade ? `<span class="chip c-neutral">Y${b.grade}</span>` : ''}</span><span class="card-sub">${esc(b.sub || '')}</span></label>`).join('');
+}
+function _busBulkCount() { const el = document.getElementById('bus-bulk-go'); if (el) el.textContent = `Add ${BUS.bulk.filter((b) => b.on).length}`; }
+let _busBulkT = null;
+function busBulkSearch(q) {
+  BUS.bulkPick = null; clearTimeout(_busBulkT);
+  const box0 = document.getElementById('bus-bulk-hits');
+  if (q.trim().length < 2) { if (box0) box0.innerHTML = ''; return; }
+  if (box0) box0.innerHTML = _busAcStatusHtml('<div class="spin" style="margin-right:8px"></div>Searching…');
+  _busBulkT = setTimeout(async () => {
+    let hits = [], err = null;
+    try { hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(q.trim())); } catch (e) { err = e.message || "Can't reach the server — check your internet"; }
+    const input = document.getElementById('bus-bulk-q'), box = document.getElementById('bus-bulk-hits');
+    if (!input || input.value !== q || !box) return; // a newer keystroke owns the list
+    BUS.bulkHits = hits;
+    box.innerHTML = err ? _busAcStatusHtml(esc(err)) : hits.length
+      ? hits.map((h, i) => `<button type="button" class="li bus-ac-item" onclick="busBulkPick(${i})"><span class="li-body">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</span></button>`).join('')
+      : _busAcStatusHtml('No match. Use New Person in the main search.');
+  }, 250);
+}
+function busBulkPick(i) {
+  const h = BUS.bulkHits[i]; if (!h) return;
+  BUS.bulkPick = h;
+  document.getElementById('bus-bulk-q').value = h.name;
+  document.getElementById('bus-bulk-hits').innerHTML = '';
+}
+function busBulkAddOther() {
+  const h = BUS.bulkPick; if (!h) { toast('Pick a name from the list'); return; }
+  const a = _busAcValue('bus-bulk-addr');
+  let addr, sub;
+  if (a.address) {
+    if (!a.placeId) { toast('Pick the address from the suggestions list'); return; }
+    addr = { newAddress: { label: '', address: a.address, placeId: a.placeId } }; sub = _busSuburb(a.address);
+  } else if (h.addresses && h.addresses.length) {
+    addr = { addressId: h.addresses[0].id }; sub = h.addresses[0].suburb;
+  } else { toast('No saved address. Search one'); return; }
+  const item = { studentId: h.kind === 'student' ? h.id : null, guestId: h.kind === 'student' ? null : h.id, name: h.name, grade: h.grade, sub, addr, on: true };
+  BUS.bulk = [item, ...BUS.bulk.filter((x) => (x.studentId || x.guestId) !== h.id)];
+  BUS.bulkPick = null;
+  document.getElementById('bus-bulk-q').value = '';
+  document.getElementById('bus-bulk-addr').value = '';
+  document.getElementById('bus-bulk-list').innerHTML = _busBulkListHtml(); _busBulkCount();
+}
+async function busBulkSave() {
+  if (_busBlockWrite() || BUS.bulkBusy) return;
+  const picks = BUS.bulk.filter((b) => b.on); if (!picks.length) { toast('Tick someone first'); return; }
+  BUS.bulkBusy = true; _busBulkCount();
+  const btn = document.getElementById('bus-bulk-go'); if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  const failed = [];
+  for (const b of picks) {
+    try { await API.post('/bus/riders?' + _busQs(), { ...(b.studentId ? { studentId: b.studentId } : { guestId: b.guestId }), ...b.addr }); }
+    catch (e) { failed.push(`${b.name} (${e.message})`); }
+  }
+  BUS.bulkBusy = false; closeModal();
+  toast(failed.length ? `Added ${picks.length - failed.length}. Not added: ${failed.join(', ')}` : `${picks.length} added`);
+  await busRefresh();
+}
 function busNewPerson() {
   _busNpGender = null; // M3: a cancelled sheet must not leak its gender pick into the next one
   const parts = BUS.search.trim().split(/\s+/);
@@ -8739,12 +8819,8 @@ function busSettings() {
   const b = (S.settings.ministryConfig.busMinistry) || {};
   const leaders = BUS.view.leaders;
   modal(`<div class="mo-title">Bus settings</div>
-    <label class="fl">Who can see it</label>
-    <select class="fs" id="bs-vis"><option value="admin" ${b.visibility !== 'all' ? 'selected' : ''}>Admin only (testing)</option><option value="all" ${b.visibility === 'all' ? 'selected' : ''}>Everyone</option></select>
     <label class="fl">Church address</label>${_busAcField('bs-church', b.churchAddress || '', b.churchPlaceId || null, 'Street address, suburb')}
     ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
-    <label class="fl">Country for address search ${helpTip("Two letters, e.g. au or nz. Leave blank to search everywhere.")}</label>
-    <input class="fi" id="bs-region" maxlength="2" value="${esc(b.regionCode || '')}" placeholder="e.g. au">
     <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
     <button class="btn btn-primary btn-full" onclick="busSaveSettings()">Save</button>`);
@@ -8753,9 +8829,7 @@ async function busSaveSettings() {
   const coordinatorLeaderIds = [...document.querySelectorAll('.bus-checks input:checked')].map((i) => i.value);
   const church = _busAcValue('bs-church');
   if (church.address && !church.placeId) { toast('Pick the address from the suggestions list'); return; }
-  const patch = { ministryConfig: { busMinistry: { visibility: document.getElementById('bs-vis').value,
-    churchAddress: church.address, churchPlaceId: church.placeId || '',
-    regionCode: document.getElementById('bs-region').value.trim().toLowerCase(), coordinatorLeaderIds } } };
+  const patch = { ministryConfig: { busMinistry: { churchAddress: church.address, churchPlaceId: church.placeId || '', coordinatorLeaderIds } } };
   try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
   catch (e) { toast(e.message); }
 }

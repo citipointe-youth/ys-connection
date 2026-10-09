@@ -122,7 +122,7 @@ export const MinistryConfigSchema = z.object({
   // settings sheet (admin) via PATCH /settings. No ministry-specific defaults.
   busMinistry: z
     .object({
-      visibility: z.enum(['admin', 'all']).default('admin'),
+      visibility: z.enum(['admin', 'all']).default('admin'), // unused since 2026-10-09 (Bus is visible to all); kept so stored configs still parse
       churchAddress: z.string().max(200).default(''),
       churchPlaceId: z.string().max(300).default(''),
       leaveTime: z.string().regex(/^\d{2}:\d{2}$/).default('21:00'),
@@ -132,7 +132,7 @@ export const MinistryConfigSchema = z.object({
       detourMin: z.number().int().min(1).max(120).default(10),
       detourPct: z.number().int().min(1).max(100).default(20),
       coordinatorLeaderIds: z.array(z.string()).default([]),
-      // ISO 3166-1 alpha-2 (e.g. 'au'); '' = search addresses everywhere. Autocomplete includedRegionCodes.
+      // Unused since 2026-10-09: address search is always 'au'. Kept so stored configs still parse.
       regionCode: z.string().regex(/^([A-Za-z]{2})?$/).default(''),
     })
     .default({}),
