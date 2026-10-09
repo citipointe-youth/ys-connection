@@ -114,7 +114,8 @@ contacting the owner. Updates after that need one click ("Sync fork").
   - Errors (plain text, §6.3):
     - 409 — "An admin already exists. Log in."
     - 400 — "SETUP_CODE is missing or too short. In Vercel, add a SETUP_CODE of 16 or more characters. Then redeploy."
-    - 403 — "The setup code is wrong. Copy it again from the checklist."
+    - 403 — "The setup code is wrong. In Vercel, open Settings > Environment Variables. Copy SETUP_CODE again."
+      (Changed at plan time: generated values live only in browser memory and are gone after the Redeploy reload.)
     - password errors — the existing messages.
   - Code compare: `crypto.timingSafeEqual` on SHA-256 digests of both strings.
   - Rate limit: add `/setup/admin` to the existing login rate-limiter block in
