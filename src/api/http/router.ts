@@ -18,6 +18,7 @@ import { makeLifegroupStatsController } from '../controllers/lifegroup-stats.con
 import { makeConnectionAuditController } from '../controllers/connection-audit.controller';
 import { makeBatchController } from '../controllers/batch.controller';
 import { makeBusController } from '../controllers/bus.controller';
+import { makeSetupController } from '../controllers/setup.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -33,7 +34,7 @@ export function buildRoutes(services: Services): Route[] {
     student: services.student,
   });
   const importCtrl = makeImportController({ importService: services.importService });
-  const settings = makeSettingsController({ settings: services.settings });
+  const settings = makeSettingsController({ settings: services.settings, setup: services.setup });
   const manifest = makeManifestController({ settings: services.settings });
   const account = makeAccountController({ account: services.account, auth: services.auth });
   const admin = makeAdminController({ admin: services.admin });
@@ -51,10 +52,16 @@ export function buildRoutes(services: Services): Route[] {
     leader: services.leader,
   });
   const busCtl = makeBusController({ bus: services.bus });
+  const setupCtl = makeSetupController({ setup: services.setup });
 
   return [
     // ----- Batch (compose several read endpoints into one request; see batch.controller) -----
     { method: 'GET', path: '/batch', auth: true, handler: (r) => batch.get(r) },
+
+    // ----- Setup -----
+    { method: 'GET',  path: '/setup/status', auth: false, handler: (r) => setupCtl.status(r) },
+    { method: 'POST', path: '/setup/admin',  auth: false, handler: (r) => setupCtl.createAdmin(r) },
+    { method: 'POST', path: '/bus/google-check', auth: true, handler: (r) => setupCtl.googleCheck(r) },
 
     // ----- Auth -----
     { method: 'POST', path: '/auth/login',  auth: false, handler: (r) => auth.login(r) },

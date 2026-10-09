@@ -1,4 +1,4 @@
-import { createAppInstance } from '../src/app';
+import type { Express } from 'express';
 
 process.on('unhandledRejection', (reason: unknown) => {
   console.error('[CMS] unhandledRejection:', reason);
@@ -7,11 +7,12 @@ process.on('uncaughtException', (err: Error) => {
   console.error('[CMS] uncaughtException:', err.message, err.stack);
 });
 
-let appPromise: ReturnType<typeof createAppInstance> | null = null;
+let appPromise: Promise<Express> | null = null;
 
-function getApp(): ReturnType<typeof createAppInstance> {
+function getApp(): Promise<Express> {
   if (!appPromise) {
-    appPromise = createAppInstance().catch((err: unknown) => {
+    // Dynamic import so an error thrown while LOADING the app (not just building it) is caught here.
+    appPromise = import('../src/app').then((m) => m.createAppInstance()).catch((err: unknown) => {
       console.error('[CMS] createAppInstance failed:', err);
       appPromise = null;
       throw err;
@@ -20,16 +21,21 @@ function getApp(): ReturnType<typeof createAppInstance> {
   return appPromise;
 }
 
+function startHint(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/DATABASE_URL/.test(msg)) return 'In Vercel, add DATABASE_URL. Then redeploy.';
+  const m = /Missing required env var: (\w+)/.exec(msg);
+  if (m) return `In Vercel, add ${m[1]}. Then redeploy.`;
+  return 'Open Vercel. Open the newest deployment. Copy the last 20 lines of the logs to the developer.';
+}
+
 function handler(req: any, res: any): void {
   getApp().then(
     (app) => { app(req, res); },
     (err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? err.stack : undefined;
-      console.error('[CMS] handler error:', msg);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: msg, stack }));
-    }
+      res.end(JSON.stringify({ error: 'The app cannot start.', hint: startHint(err) }));
+    },
   );
 }
 

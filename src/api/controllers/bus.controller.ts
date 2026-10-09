@@ -2,6 +2,7 @@ import type { HttpRequest } from '../http/types';
 import { RawResponse } from '../http/types';
 import type { BusService, BusCtx } from '../../services/bus.service';
 import { UnauthorizedError, BadRequestError } from '../../core/errors/app-error';
+import { googleConfigStatus, googleStatusText } from '../../services/routing/google-config';
 
 const NOW_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
@@ -22,7 +23,12 @@ export function makeBusController(deps: { bus: BusService }) {
   const b = deps.bus;
   const p = (req: HttpRequest, k: string) => req.params[k]!;
   return {
-    run: (r: HttpRequest) => b.getRun(ctxOf(r)),
+    run: async (r: HttpRequest) => {
+      const v = await b.getRun(ctxOf(r));
+      if (r.ctx?.role !== 'admin') return v;
+      const s = googleConfigStatus();
+      return { ...v, google: { ...s, text: googleStatusText(s) } };
+    },
     version: (r: HttpRequest) => b.getVersion(ctxOf(r)),
     search: (r: HttpRequest) => b.search(ctxOf(r), String(r.query['q'] ?? '')),
     riderAddresses: (r: HttpRequest) => b.riderAddresses(ctxOf(r), p(r, 'id')),

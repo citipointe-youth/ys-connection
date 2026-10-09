@@ -41,7 +41,7 @@ export const UNTIMED_ROUTES = new Set([
   'POST /bus/run/generate',
 ]);
 
-export function createApp(routes: Route[], authService: AuthService): Express {
+export function createApp(routes: Route[], authService: AuthService, health?: () => Promise<Record<string, unknown>>): Express {
   const app = express();
   app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
 
@@ -83,8 +83,9 @@ export function createApp(routes: Route[], authService: AuthService): Express {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', ts: new Date().toISOString() });
+  app.get('/health', async (_req: Request, res: Response) => {
+    const extra = health ? await health().catch(() => ({ db: 'down' })) : {};
+    res.json({ status: 'ok', ts: new Date().toISOString(), ...extra });
   });
 
   app.use(express.static('public'));
@@ -105,15 +106,19 @@ export function createApp(routes: Route[], authService: AuthService): Express {
         // Throttle login attempts per account, keyed by IP+email (not raw IP) so a
         // whole youth team behind one shared NAT/public IP isn't collectively capped.
         // Falls back to IP-only if the email is missing (malformed request).
-        if (route.path === '/auth/login' && route.method === 'POST') {
+        if ((route.path === '/auth/login' || route.path === '/setup/admin') && route.method === 'POST') {
           const ip = req.ip ?? req.headers['x-forwarded-for']?.toString() ?? 'unknown';
-          const email = typeof (req.body as { email?: unknown })?.email === 'string'
+          const isSetup = route.path === '/setup/admin';
+          const email = !isSetup && typeof (req.body as { email?: unknown })?.email === 'string'
             ? (req.body as { email: string }).email.toLowerCase().trim()
             : '';
-          const rlKey = email ? `${ip}:${email}` : ip;
+          const rlKey = isSetup ? `setup:${ip}` : email ? `${ip}:${email}` : ip;
           if (loginRateLimiter.isBlocked(rlKey)) {
             res.status(429).setHeader('Retry-After', String(loginRateLimiter.retryAfterSeconds(rlKey)));
-            res.json({ code: 'RATE_LIMITED', message: 'Too many login attempts. Try again later.' });
+            res.json({
+              code: 'RATE_LIMITED',
+              message: isSetup ? 'Too many attempts. Wait 15 minutes. Then try again.' : 'Too many login attempts. Try again later.',
+            });
             return;
           }
         }
@@ -127,6 +132,7 @@ export function createApp(routes: Route[], authService: AuthService): Express {
           params: req.params as Record<string, string>,
           query: req.query as Record<string, string | undefined>,
           body: req.body,
+          origin: `${req.protocol}://${req.get('x-forwarded-host') ?? req.get('host') ?? ''}`,
         };
 
         const untimed = UNTIMED_ROUTES.has(routeLabel);

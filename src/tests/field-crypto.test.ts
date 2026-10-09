@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import {
-  isEncrypted, encryptField, decryptField, maybeEncrypt, maybeDecrypt,
+  isEncrypted, encryptField, decryptField, maybeEncrypt, maybeDecrypt, isEncryptionKeyValid,
 } from '../utils/field-crypto';
 
 const KEY = Buffer.alloc(32, 1).toString('base64');
@@ -60,5 +60,20 @@ describe('field-crypto', () => {
     process.env['FIELD_ENCRYPTION_KEY_ID'] = 'k1';
     delete process.env['FIELD_ENCRYPTION_KEY_PREV'];
     delete process.env['FIELD_ENCRYPTION_KEY_PREV_ID'];
+  });
+});
+
+describe('isEncryptionKeyValid', () => {
+  let saved: string | undefined;
+  beforeEach(() => { saved = process.env['FIELD_ENCRYPTION_KEY']; });
+  afterEach(() => { if (saved === undefined) delete process.env['FIELD_ENCRYPTION_KEY']; else process.env['FIELD_ENCRYPTION_KEY'] = saved; });
+  it('true for base64 of 32 bytes', () => { process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(32, 7).toString('base64'); expect(isEncryptionKeyValid()).toBe(true); });
+  it('false when missing, short, or garbage - never throws', () => {
+    delete process.env['FIELD_ENCRYPTION_KEY']; expect(isEncryptionKeyValid()).toBe(false);
+    process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(16).toString('base64'); expect(isEncryptionKeyValid()).toBe(false);
+    process.env['FIELD_ENCRYPTION_KEY'] = '%%%not base64%%%'; expect(isEncryptionKeyValid()).toBe(false);
+  });
+  it('accepts an explicit env object', () => {
+    expect(isEncryptionKeyValid({ FIELD_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') })).toBe(true);
   });
 });

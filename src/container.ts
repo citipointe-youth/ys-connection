@@ -73,6 +73,9 @@ import { makeTrendsService, type TrendsService } from './services/trends.service
 import { makeLifegroupStatsService, type LifegroupStatsService } from './services/lifegroup-stats.service';
 import { makeConnectionAuditService, type ConnectionAuditService } from './services/connection-audit.service';
 import { makeBusService, type BusService } from './services/bus.service';
+import { makeSetupService, type SetupService } from './services/setup.service';
+import { cachedProbe } from './utils/cached-probe';
+import { LATEST_MIGRATION } from './core/schema-version';
 import { routingFromEnv } from './services/routing/google-routing-provider';
 
 export interface Repositories {
@@ -111,6 +114,9 @@ export interface Services {
   connectionAudit: ConnectionAuditService;
   bus: BusService;
   users: IUserRepository;
+  setup: SetupService;
+  /** Cached (30 s) db + schema probe for GET /health. */
+  health: () => Promise<Record<string, unknown>>;
 }
 
 export interface Container {
@@ -233,11 +239,31 @@ export async function buildContainer(): Promise<Container> {
   );
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
 
+  const probeDb = async (): Promise<boolean> => {
+    if (!useSupabase) return true;
+    try {
+      await Promise.race([sql`select 1`, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))]);
+      return true;
+    } catch { return false; }
+  };
+  const schemaVersion = async (): Promise<string | null> => {
+    if (!useSupabase) return LATEST_MIGRATION;
+    try { const [r] = await sql<{ v: string | null }[]>`select max(version) as v from schema_migrations`; return r?.v ?? null; }
+    catch { return null; }
+  };
+  const setup = makeSetupService({ users, auth, env: process.env, probeDb, schemaVersion });
+  const health = cachedProbe(async (): Promise<Record<string, unknown>> => {
+    const [db, current] = await Promise.all([probeDb(), schemaVersion()]);
+    return { db: db ? 'ok' : 'down', schema: { current, expected: LATEST_MIGRATION } };
+  }, 30_000);
+
   const services: Services = {
     auth, student, leader, prayer, connection, followup, overview, atRisk, trends, lifegroupStats,
     importService, settings: settingsSvc, account, admin, connectionAudit,
     bus: busSvc,
     users,
+    setup,
+    health,
   };
 
   return { repos, services };

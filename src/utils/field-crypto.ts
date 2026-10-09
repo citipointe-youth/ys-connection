@@ -22,6 +22,13 @@ function decodeKey(b64: string, id: string): Buffer {
   return key;
 }
 
+/** Pure check for the setup checklist: FIELD_ENCRYPTION_KEY is base64 that decodes to 32 bytes. Never throws. */
+export function isEncryptionKeyValid(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env['FIELD_ENCRYPTION_KEY'];
+  if (!v || !/^[A-Za-z0-9+/]+={0,2}$/.test(v.trim())) return false;
+  try { return Buffer.from(v.trim(), 'base64').length === KEY_LEN; } catch { return false; }
+}
+
 function activeKeyId(): string {
   return process.env['FIELD_ENCRYPTION_KEY_ID'] || 'k1';
 }

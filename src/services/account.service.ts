@@ -12,7 +12,7 @@ import { planCohortAccountLayout, type CohortLayoutPlan } from './cohort-account
 
 const CohortModelSchema = z.enum(['grades-quads', 'none']);
 
-const CreateUserSchema = z.object({
+export const CreateUserSchema = z.object({
   displayName: z.string().min(1),
   email: z.string().min(1),
   password: z.string().min(8),

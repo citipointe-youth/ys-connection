@@ -110,6 +110,33 @@ export class SupabaseUserRepository implements IUserRepository {
     return toUser(rows[0]!);
   }
 
+  async countActiveAdmins(): Promise<number> {
+    const [r] = await this.sql<{ n: number }[]>`select count(*)::int as n from users where role = 'admin' and status = 'active'`;
+    return r?.n ?? 0;
+  }
+
+  async createFirstAdmin(user: User): Promise<User | null> {
+    // Same sql.json() jsonb-write rule as save() - never JSON.stringify(x)::jsonb.
+    const emptyJson = () => this.sql.json([] as unknown as Parameters<typeof this.sql.json>[0]);
+    try {
+      const rows = await this.sql.begin(async (tx) => {
+        await tx`select pg_advisory_xact_lock(7201010002)`;
+        return tx`
+          insert into users (id, display_name, email, role, grade, grades, gender, quad, leader_id, status, password_hash,
+                             must_change_password, login_history, login_devices, created_at, updated_at)
+          select ${user.id}, ${user.displayName}, ${user.email}, 'admin', null, null, null, null, null, 'active', ${user.passwordHash ?? null},
+                 false, ${emptyJson()}, ${emptyJson()}, ${user.createdAt}, ${user.updatedAt}
+          where not exists (select 1 from users where role = 'admin' and status = 'active')
+          returning *`;
+      });
+      return rows[0] ? toUser(rows[0]) : null;
+    } catch (err) {
+      // users.email is unique: an inactive 'admin' row also means "an admin exists".
+      if ((err as { code?: string }).code === '23505') return null;
+      throw err;
+    }
+  }
+
   async delete(id: string): Promise<boolean> {
     const rows = await this.sql`delete from users where id = ${id} returning id`;
     return rows.length > 0;

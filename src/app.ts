@@ -8,7 +8,9 @@ import { env } from './config/env';
 export async function createAppInstance(): Promise<Express> {
   const container = await buildContainer();
 
-  if (env.PERSISTENCE === 'memory') {
+  // Never seed the public demo logins on a production deployment that forgot PERSISTENCE:
+  // it would expose admin/demo1234. With no users, the setup screen takes over instead.
+  if (env.PERSISTENCE === 'memory' && process.env['VERCEL_ENV'] !== 'production') {
     await seedDemoData(container.repos);
   }
 
@@ -18,7 +20,7 @@ export async function createAppInstance(): Promise<Express> {
   // timeout in express-adapter is the outer safety net. No destroy-on-timeout hook —
   // an incident-era escalation that caused cross-request CONNECTION_DESTROYED
   // failures; see the incident resolution notes in CLAUDE.md.
-  const app = createApp(routes, container.services.auth);
+  const app = createApp(routes, container.services.auth, container.services.health);
 
   return app;
 }

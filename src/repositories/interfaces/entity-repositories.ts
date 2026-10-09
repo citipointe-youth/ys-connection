@@ -31,6 +31,10 @@ import type {
 export interface IUserRepository extends IRepository<User> {
   findByEmail(email: string): Promise<User | null>;
   findByRole(role: UserRole): Promise<User[]>;
+  /** Active users with role admin. */
+  countActiveAdmins(): Promise<number>;
+  /** Inserts `user` only if no active admin exists (race-safe). Returns null when one already exists. */
+  createFirstAdmin(user: User): Promise<User | null>;
 }
 
 export interface IStudentRepository extends IRepository<Student> {

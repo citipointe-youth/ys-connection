@@ -58,6 +58,18 @@ export class InMemoryUserRepository
       .filter((u) => u.role === role)
       .map((u) => this.clone(u));
   }
+
+  async countActiveAdmins(): Promise<number> {
+    return Array.from(this.store.values()).filter((u) => u.role === 'admin' && u.status === 'active').length;
+  }
+
+  // Synchronous check-and-insert: save() writes the store before its first await, so two
+  // concurrent calls cannot both pass the check.
+  async createFirstAdmin(user: User): Promise<User | null> {
+    const exists = Array.from(this.store.values()).some((u) => (u.role === 'admin' && u.status === 'active') || u.email.toLowerCase() === user.email.toLowerCase());
+    if (exists) return null;
+    return this.save(user);
+  }
 }
 
 // ---------------------------------------------------------------------------

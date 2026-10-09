@@ -5,6 +5,8 @@ export interface HttpRequest {
   params: Record<string, string>;
   query: Record<string, string | undefined>;
   body: unknown;
+  /** Request origin (scheme://host), from X-Forwarded-Host when present. */
+  origin?: string;
 }
 
 /** A non-JSON route result (e.g. an image). The adapter sends the bytes as-is; errors stay JSON. */

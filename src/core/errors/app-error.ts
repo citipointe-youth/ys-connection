@@ -53,3 +53,16 @@ export class ModuleDisabledError extends AppError {
     super('MODULE_DISABLED', `${module} is disabled for this deployment`, 404);
   }
 }
+
+// The deployment is missing something the owner must add in Vercel (e.g. SESSION_SECRET).
+export class SetupIncompleteError extends AppError {
+  constructor(message = 'Setup is not finished') {
+    super('SETUP_INCOMPLETE', message, 503);
+  }
+}
+
+export class TooManyRequestsError extends AppError {
+  constructor(message = 'Too many requests') {
+    super('RATE_LIMITED', message, 429);
+  }
+}
