@@ -597,6 +597,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
 .bus-last{font-size:11.5px;color:var(--ink-mid);margin:-6px 0 12px}
 .bus-sec{margin:4px 2px 8px}
+.bus-sec-row{display:flex;align-items:center;gap:6px}.bus-sec-row .card-title{flex:1;min-width:0}
+.bus-flt{width:auto;flex:none;padding:3px 22px 3px 8px;font-size:16px;background-position:right 7px center;border-radius:8px}
+.bus-rrow{padding:7px 10px;margin-bottom:5px;gap:8px}.bus-rrow .li-sub{margin-top:0}
 .bus-foot{text-align:center;font-size:11.5px;color:var(--ink-mid);margin-top:4px}
 .bus-hits{margin-bottom:12px}
 .bus-qrow{display:flex;gap:8px;align-items:flex-start}.bus-qrow .sbar{flex:1}.bus-bulk-btn{flex:none;height:42px;gap:6px}
@@ -8461,9 +8464,17 @@ function _busRosterHtml() {
   const writeBlocked = BUS.generating || !!_busLockedBy(v, Date.now(), BUS.generating);
   const locked = readOnly || writeBlocked;
   const placed = (r) => v.vehicles.find((x) => x.id === r.runVehicleId);
-  const rows = v.riders.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
+  // Owner 2026-10-09: narrow gender + grade filters on the list (BUS.fGender/fGrade survive re-renders).
+  const fG = BUS.fGender || '', fY = BUS.fGrade || '';
+  const shown = v.riders.filter((r) => (!fG || r.gender === fG) && (!fY || String(r.grade) === fY));
+  const grades = [...new Set(v.riders.map((r) => r.grade).filter((g) => g != null))].sort((a, b) => a - b);
+  const filters = `<select class="fs bus-flt" aria-label="Filter by gender" onchange="BUS.fGender=this.value;renderBus()">
+      <option value="">All</option><option value="female"${fG === 'female' ? ' selected' : ''}>Girls</option><option value="male"${fG === 'male' ? ' selected' : ''}>Boys</option></select>
+    <select class="fs bus-flt" aria-label="Filter by grade" onchange="BUS.fGrade=this.value;renderBus()">
+      <option value="">Yr</option>${grades.map((g) => `<option value="${g}"${String(g) === fY ? ' selected' : ''}>Y${g}</option>`).join('')}</select>`;
+  const rows = shown.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
-    return `<div class="li">
+    return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
         <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
@@ -8472,12 +8483,12 @@ function _busRosterHtml() {
   }).join('');
   const seats = v.vehicles.filter((x) => x.running).reduce((n, x) => n + x.capacity, 0);
   return `${readOnly ? '' : `<div class="bus-qrow"><div class="sbar"><span class="si">${icS('search')}</span>
-      <input id="bus-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+      <input id="bus-q" placeholder="Add any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div>
       <button type="button" class="btn btn-secondary bus-bulk-btn" onclick="busBulk()" aria-label="Add several students">${icS('users')}<span>Add several</span></button></div>
       <div id="bus-hits">${_busHitsHtml()}</div>`}
-    <div class="card-title bus-sec">Students who need a lift home tonight (${v.riders.length})</div>
-    ${rows || `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`}
+    <div class="bus-sec bus-sec-row"><span class="card-title">Students who need a lift home tonight (${shown.length === v.riders.length ? v.riders.length : `${shown.length} of ${v.riders.length}`})</span>${v.riders.length ? filters : ''}</div>
+    ${rows || (v.riders.length ? '<div class="card-sub">No one matches the filter.</div>' : `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`)}
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
     ${_busPastHtml(readOnly)}`;
 }
