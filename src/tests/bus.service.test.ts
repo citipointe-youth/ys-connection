@@ -807,10 +807,23 @@ describe('Task A: saveMyCarStops — "Edit my car" reorder/remove', () => {
     const t = await withFleet();
     await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
     await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
-    expect((await t.svc.optimiseMyCar(leaderCtx('L1'))).id).toBe(t.rvId);
+    const opt = await t.svc.optimiseMyCar(leaderCtx('L1'));
+    expect(opt.id).toBe(t.rvId);
+    expect(typeof opt.optimised).toBe('boolean');
     const orders = (await t.svc.getRun(t.ctx('admin'))).riders.filter((r) => r.runVehicleId === t.rvId).map((r) => r.stopOrder).sort();
     expect(orders).toEqual([1, 2]);
     await expect(t.svc.optimiseMyCar(leaderCtx('nobody'))).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it('optimiseMyCar keeps dropped-off riders first and does not re-sequence them', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('quad'), t.a.id, { runVehicleId: t.rvId });
+    await t.svc.moveRider(t.ctx('quad'), t.b.id, { runVehicleId: t.rvId });
+    await t.svc.saveMyCarStops(leaderCtx('L1'), { riderIds: [t.b.id, t.a.id], removeIds: [] });
+    await t.svc.setDropped(t.ctx('quad'), t.b.id, { dropped: true });
+    await t.svc.optimiseMyCar(leaderCtx('L1'));
+    const riders = (await t.svc.getRun(t.ctx('admin'))).riders;
+    expect(riders.find((r) => r.id === t.b.id)!.stopOrder).toBe(1);
+    expect(riders.find((r) => r.id === t.a.id)!.stopOrder).toBe(2);
   });
   it('removes a rider from the car; an unlinked guest removed this way is not deleted and reappears in Past riders', async () => {
     const t = await withFleet();

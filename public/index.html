@@ -8227,7 +8227,7 @@ const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar',
 function _busEditing() {
   const el = document.activeElement;
   const main = document.getElementById('page-main');
-  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && main && main.contains(el));
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.type !== 'checkbox' && el.type !== 'radio' && main && main.contains(el));
 }
 const BUS_CAR_COLOURS = ['#2563eb', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0891b2', '#ca8a04', '#be123c'];
 function _busCarColour(i) { return BUS_CAR_COLOURS[(i || 0) % BUS_CAR_COLOURS.length]; }
@@ -8803,7 +8803,15 @@ async function busDeleteAddress(riderId, addressId) {
 }
 async function busSaveRider(id) {
   const a = _busReadAddress(); if (!a) return;
-  try { await _busSend('PATCH', '/bus/riders/' + id, a); closeModal(); } catch (e) { toast(e.message); }
+  // The consent box lives in the same sheet: if it was changed, save it too (never lose either).
+  const r = BUS.view.riders.find((x) => x.id === id) || {}, c = r.consent || { given: false, note: '' };
+  const given = document.getElementById('bc-given').checked, note = document.getElementById('bc-note').value.trim();
+  const consentChanged = given !== !!c.given || note !== (c.note || '').trim();
+  if (consentChanged && given && !note) { toast('Add when, who, and call or text'); return; }
+  try {
+    if (consentChanged) await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note });
+    await _busSend('PATCH', '/bus/riders/' + id, a); closeModal();
+  } catch (e) { toast(e.message); }
 }
 function _busConsentBox(r) {
   const c = r.consent || { given: false, note: '' };
@@ -9053,7 +9061,10 @@ async function busArchiveVehicle(id) {
 function busEditCarLeaders(runVehicleId) {
   const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
   modal(`<div class="mo-title">Leaders on ${esc(rv.name)}</div>
-    <div class="bus-checks" id="rvl-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
+    <div class="bus-checks" id="rvl-leaders">${v.leaders.map((l) => {
+      const other = v.vehicles.find((x) => x.running && x.id !== rv.id && x.leaderIds.includes(l.id));
+      return `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}${other ? ` <span class="card-sub">on ${esc(other.name)}</span>` : ''}</label>`;
+    }).join('')}</div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button></div>`);
 }
@@ -9147,7 +9158,9 @@ function busMoveSheet(riderId) {
     const n = v.riders.filter((y) => y.runVehicleId === x.id && y.id !== riderId).length, left = x.capacity - n;
     const genderOk = !r.gender || x.eligibility[r.gender];
     const why = left <= 0 ? 'full' : !genderOk ? (r.gender === 'female' ? 'Boys only' : 'Girls only') : `${left} left`;
-    return `<button class="li bus-move" ${left <= 0 ? 'disabled' : ''} onclick="busMove('${riderId}','${x.id}')">
+    // Girl into a car with no female leader: first tap arms (warning only, placement still allowed).
+    const warn = r.gender === 'female' && !x.eligibility.female && left > 0;
+    return `<button class="li bus-move" ${left <= 0 ? 'disabled' : ''} onclick="${warn ? `busMoveArm(this,'${riderId}','${x.id}')` : `busMove('${riderId}','${x.id}')`}">
       <span class="car-dot" style="background:${_busCarColour(x.colourIndex)}"></span><span class="li-body">${esc(x.name)}</span>
       <span class="chip ${!genderOk && left > 0 ? 'c-warn' : 'c-neutral'}">${why}</span></button>`;
   }).join('');
@@ -9158,6 +9171,11 @@ function busMoveSheet(riderId) {
 // Clears any now-stale route minutes (the server doesn't re-time a car just because one
 // rider moved) for both the car the rider left and the car they landed in.
 function _busClearRouteMin(oldId, newId) { delete BUS.routeMin[oldId]; delete BUS.routeMin[newId]; }
+function busMoveArm(btn, riderId, runVehicleId) {
+  if (btn.dataset.armed === '1') return busMove(riderId, runVehicleId);
+  btn.dataset.armed = '1';
+  btn.querySelector('.chip').textContent = 'No female leader — tap again to place anyway';
+}
 async function busMove(riderId, runVehicleId) {
   const oldId = (BUS.view.riders.find((x) => x.id === riderId) || {}).runVehicleId;
   try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); _busClearRouteMin(oldId, runVehicleId); closeModal(); } catch (e) { toast(e.message); }
@@ -9416,7 +9434,12 @@ function _busToggleStop(i) {
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 async function busToggleDropped(id, dropped) {
-  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped }); } catch (e) { toast(e.message); }
+  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped }); }
+  catch (e) {
+    toast('Dropped off not saved — ' + e.message, 6000);
+    try { await busRefresh(); } catch {} // repaint from server state so the checkbox reverts
+    renderBus();
+  }
 }
 function busEditDroppedTime(id) {
   const s = (BUS.myCar.stops || []).find((x) => x.id === id);
@@ -9477,12 +9500,12 @@ function _busMyCarHtml() {
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
-    const links = mc.churchAddress ? _busMapsLinks(mc.stops, mc.churchAddress, rv, mc.churchPlaceId, true) : [];
+    const links = mc.churchAddress ? _busMapsLinks(mc.stops.filter((s) => !s.droppedAt), mc.churchAddress, rv, mc.churchPlaceId, true) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
-    const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start" onclick="_busToggleStop(${i})">
+    const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)}</div>
+      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">
         <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
@@ -9561,7 +9584,10 @@ async function busMoveStop(i, dir) {
   try { await _busSend('POST', '/bus/run/my-car/stops', { riderIds: o, removeIds: [] }); } catch (e) { toast(e.message); }
 }
 async function busOptimiseMyCar() {
-  try { await _busSend('POST', '/bus/run/my-car/optimise'); toast('Reset to the optimal order'); } catch (e) { toast(e.message); }
+  try {
+    const res = await _busSend('POST', '/bus/run/my-car/optimise');
+    toast(res && res.optimised === false ? "Couldn't reach Google — order unchanged" : 'Reset to the optimal order');
+  } catch (e) { toast(e.message); }
 }
 function _busEmcRemove(btn, id) {
   if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Remove?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }

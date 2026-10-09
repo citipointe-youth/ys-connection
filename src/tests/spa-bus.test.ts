@@ -280,7 +280,7 @@ describe('busRefresh skips the repaint while a field inside the page is focused 
       function toast(m) {}
       function renderBus() { calls.push('renderBus'); }
       function renderHome() { calls.push('renderHome'); }
-      function __setActive(tag) { __active = tag ? { tagName: tag } : null; }
+      function __setActive(tag, type) { __active = tag ? { tagName: tag, type: type || '' } : null; }
       function __state() { return { calls, BUS }; }
     `;
     return loadFns(['busRefresh', '_busEditing'], prelude, ['busRefresh', '__setActive', '__state']);
@@ -302,6 +302,15 @@ describe('busRefresh skips the repaint while a field inside the page is focused 
     expect(st.calls).toEqual([]);
     expect(st.BUS.pendingRepaint).toBe(true);
     expect(st.BUS.view).toEqual({ run: { version: 7 } }); // data still refreshed, just not painted
+  });
+
+  it('a focused checkbox or radio does not count as editing', async () => {
+    for (const type of ['checkbox', 'radio']) {
+      const { busRefresh, __setActive, __state } = mk();
+      __setActive('INPUT', type);
+      await busRefresh();
+      expect(__state().calls).toEqual(['renderBus']);
+    }
   });
 });
 

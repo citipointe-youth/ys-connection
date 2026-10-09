@@ -27,7 +27,7 @@ export interface BusService {
   deleteRiderAddress(ctx: BusCtx, riderId: string, addressId: string): Promise<void>;
   deletePastRider(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<void>;
   saveMyCarStops(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
-  optimiseMyCar(ctx: BusCtx): Promise<BusRunVehicleView>;
+  optimiseMyCar(ctx: BusCtx): Promise<BusRunVehicleView & { optimised: boolean }>;
   addRider(ctx: BusCtx, input: unknown): Promise<BusRiderView>;
   updateRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   removeRider(ctx: BusCtx, riderId: string): Promise<void>;
@@ -132,7 +132,7 @@ const UNDO_MS = 120_000;
 const SESSION_RE = /^[A-Za-z0-9-]{8,36}$/;
 const NO_CHURCH = 'Set the church address in Bus settings first';
 const GENERATE_FAILED = "Couldn't reach Google Maps — nothing changed. Try again, or move riders by hand.";
-const SEARCH_FAILED = 'Address search is unavailable right now. Type the full address instead.';
+const SEARCH_FAILED = 'Address search is unavailable right now — try again in a minute.';
 const ANALYSIS_FAILED = "Couldn't reach Google Maps — try again in a minute.";
 const MAP_MAX_POINTS = 120; // per route, keeps the Static Maps URL far under its 16k limit
 const PAST_RIDERS_CAP = 50;
@@ -591,21 +591,27 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
 
   /** Single-car solve for one car's stop order (Move, own car). No church pin / Google down → keep the current order. */
-  async function reorderCar(c: MinistryConfig, run: BusRun, rv: BusRunVehicle): Promise<void> {
+  async function reorderCar(c: MinistryConfig, run: BusRun, rv: BusRunVehicle): Promise<boolean> {
     const b = c.busMinistry;
-    const inCar = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id)
+    const all = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id)
       .sort((x, y) => (x.stopOrder ?? 999) - (y.stopOrder ?? 999));
+    // Riders already dropped off stay first, in their existing order — only the rest are re-sequenced.
+    const dropped = all.filter((x) => x.droppedAt);
+    const inCar = all.filter((x) => !x.droppedAt);
     const mapped = inCar.filter((x) => x.snapPlaceId);
-    if (!b.churchPlaceId || mapped.length < 2) return;
+    if (!b.churchPlaceId) return false;
+    if (mapped.length < 2) return true; // nothing to re-order
     try {
       const res = await routing.solve(buildSingleProblem(mapped.map((x) => x.snapPlaceId!), b.churchPlaceId,
         endPlaceOf(rv.endsAt, rv.endsPlaceId, b.churchPlaceId), leaveIso(run.serviceDate, b.leaveTime), b.targetRouteMin), routingDeadline());
       const order = res.routes[0]?.stops ?? [];
-      if (order.length !== mapped.length) return;
-      const next = [...order.map((i) => mapped[i]!), ...inCar.filter((x) => !x.snapPlaceId)];
+      if (order.length !== mapped.length) return false;
+      const next = [...dropped, ...order.map((i) => mapped[i]!), ...inCar.filter((x) => !x.snapPlaceId)];
       for (const [i, x] of next.entries()) if (x.stopOrder !== i + 1) await bus.saveRunRider({ ...x, stopOrder: i + 1 });
+      return true;
     } catch (err) {
       console.error('[bus] reorder skipped:', err instanceof Error ? err.message : err);
+      return false;
     }
   }
 
@@ -975,9 +981,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run);
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
       if (!rv) throw new NotFoundError('Car not found');
-      await reorderCar(c, run, rv);
+      const optimised = await reorderCar(c, run, rv);
       await touch(ctx, run);
-      return (await vehicleViews(run.id)).find((x) => x.id === rv.id)!;
+      return { ...(await vehicleViews(run.id)).find((x) => x.id === rv.id)!, optimised };
     },
     async moveRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:coordinate');
