@@ -81,7 +81,7 @@ export async function checkGoogleConnection(cfg: GoogleConfig, fetchFn: typeof f
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString() });
       if (res.ok) { token = ((await res.json()) as { access_token: string }).access_token; signin = row('signin', true); }
-      else signin = row('signin', false, 'Google did not accept the key. Make a new key with the setup command.');
+      else signin = row('signin', false, 'Google did not accept the key. Run the setup command again. Paste the new GOOGLE_SA_JSON in Vercel. Then redeploy.');
     } catch { signin = row('signin', false, 'Google did not answer. Try again later.'); }
   }
 

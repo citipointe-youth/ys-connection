@@ -1960,7 +1960,7 @@ async function renderSetup() {
   const ready = st && st.needsAdmin && required.every((c) => c.state === 'ok');
   setApp(`<div class="pg" style="max-width:560px;margin:0 auto">
     <h2>Set up the app</h2>
-    <div class="help-text">Do each step in the list. Then select <b>Check again</b>.</div>
+    <div class="help-text">Fix each row that shows a warning sign. Then select <b>Check again</b>.</div>
     ${SETUP.error ? `<div class="alert al-warn">${esc(SETUP.error)}${SETUP.hint ? `<br>${esc(SETUP.hint)}` : ''}</div>
       <a href="#" onclick="SETUP.error=null;S.page='home';renderLogin();return false">Go to sign in</a>` : ''}
     ${st ? _setupChecklistHtml(st, { generate: true }) : ''}

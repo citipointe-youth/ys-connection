@@ -26,7 +26,7 @@ PROJECT="$(gcloud config get-value project 2>/dev/null)"
 if [ -z "$PROJECT" ] || [ "$PROJECT" = "(unset)" ]; then
   say "No project is selected. These are your projects:"
   gcloud projects list --format="value(projectId)"
-  read -r -p "Type the Project ID and send it with the Return key: " PROJECT
+  read -r -p "Paste the Project ID. Then use the Enter key: " PROJECT
   [ -z "$PROJECT" ] && stop "No Project ID was typed. Run this command again."
   gcloud config set project "$PROJECT" >/dev/null 2>&1 || stop "Cannot use that project. Check the Project ID. Then run this command again."
 fi
@@ -35,9 +35,9 @@ say "Project: $PROJECT"
 # 2. Billing
 BILLING="$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null)"
 if [ $? -ne 0 ] || [ -z "$BILLING" ]; then
-  say "Cannot check billing. Confirm it at console.cloud.google.com/billing/linkedaccounts."
+  say "Cannot check billing. Confirm it at https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT"
 elif [ "$BILLING" != "True" ]; then
-  stop "Billing is off. Open https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT. Turn on billing. Then run this command again."
+  { say "Billing is off. Turn on billing at the link below. Then run this command again."; say "https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT"; exit 1; }
 fi
 
 # 3. APIs
@@ -84,4 +84,4 @@ say ""
 say "GOOGLE_MAPS_API_KEY"
 say "$API_KEY"
 say "================ COPY TO HERE ================"
-say "Copy the two values between the lines. Paste them in Vercel. Then close this tab."
+say "Copy the two values between the lines. Save them in your password manager. Then paste them in Vercel."
