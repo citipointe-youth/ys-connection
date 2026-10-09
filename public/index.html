@@ -624,12 +624,13 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .bus-gender{display:flex;gap:8px}
 .bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
 /* ── Car setup / Routes / My car (Task 7) ── */
-.veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:13px;margin-bottom:12px}
-.veh-card.off{opacity:.55}
-.veh-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:6px 10px 8px;margin-bottom:6px}
+.veh-card.off{opacity:.55;padding-bottom:6px}
+.veh-top{display:flex;align-items:center;gap:8px}
 .veh-name{font-size:14.5px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.veh-meta{font-size:12px;color:var(--ink-mid);margin-bottom:8px}
-.veh-chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.veh-off{font-size:12px;color:var(--ink-mid);flex:none}
+.veh-meta{font-size:12px;color:var(--ink-mid)}
+.veh-chiprow{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:4px}
 .swtch{width:36px;height:21px;border-radius:12px;background:var(--paper-dark);position:relative;flex-shrink:0;display:inline-block}
 .swtch.on{background:var(--success)}
 .swtch::after{content:'';position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
@@ -9067,14 +9068,15 @@ function _busCarsHtml() {
   // routes…" banner while another device holds the lock.
   const lock = _busLockedBy(v, Date.now(), BUS.generating);
   const lockAlert = lock ? `<div class="alert al-warn bus-lock">${icS('alert')} ${esc(lock)} is generating routes…</div>` : '';
-  const cards = v.vehicles.filter((rv) => rv.vehicleId).map((rv) => {
+  // Owner 2026-10-09: running cars first (stable sort keeps the existing order within each group).
+  const cards = v.vehicles.filter((rv) => rv.vehicleId).sort((a, b) => Number(b.running) - Number(a.running)).map((rv) => {
     const f = v.fleet.find((x) => x.id === rv.vehicleId);
     if (!rv.running) {
       return `<div class="veh-card off">
         <div class="veh-top"><label class="swtch"><input type="checkbox" onchange="busRunVeh('${rv.id}',{running:this.checked})"></label>
           <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
-          <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
-        <div class="veh-meta">Not running tonight</div></div>`;
+          <span class="veh-off">Off tonight</span>
+          <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div></div>`;
     }
     const elig = rv.eligibility;
     const eligChip = elig.unknown
@@ -9092,8 +9094,7 @@ function _busCarsHtml() {
       <div class="veh-top"><label class="swtch on"><input type="checkbox" checked onchange="busToggleVeh(this,'${rv.id}',this.checked)"></label>
         <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
         <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
-      <div class="veh-meta">${rv.seats} seats · ${rv.leaderIds.length} leader${rv.leaderIds.length === 1 ? '' : 's'} · ${rv.capacity} for youth</div>
-      <div class="veh-chiprow">${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
+      <div class="veh-chiprow"><span class="veh-meta">${rv.seats} seats · ${rv.capacity} for youth</span>${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
         <div style="font-size:11px;color:var(--ink-mid)">Ends at: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
