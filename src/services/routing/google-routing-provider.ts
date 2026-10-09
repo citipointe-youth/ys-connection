@@ -188,6 +188,9 @@ export function routingFromEnv(e: NodeJS.ProcessEnv = process.env): RoutingProvi
   const memory = (e['PERSISTENCE'] ?? 'memory') === 'memory';
   const cfg = googleRoutingEnabled(e) ? googleConfigFromEnv(e) : null;
   if (!cfg) {
+    // I4: outside memory mode, this is the fallback a prod deploy gets if the Google env vars aren't set yet -
+    // its autocomplete must not offer "Testville" suggestions that would get saved as real addresses.
+    // Memory/test mode still wants them (suggest defaults true).
     if (!memory) {
       console.warn('[routing] Google env not set — Bus Ministry uses straight-line fake routes');
       return new FakeRoutingProvider({ suggest: false });

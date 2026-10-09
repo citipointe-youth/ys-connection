@@ -72,9 +72,11 @@ if [ -z "$KEY_ID" ]; then
   KEY_ID="$(gcloud services api-keys list --project "$PROJECT" --filter="displayName=$KEY_NAME" --format='value(name)' | head -n1)"
 fi
 API_KEY="$(gcloud services api-keys get-key-string "$KEY_ID" --format='value(keyString)')"
+[ -n "$API_KEY" ] || { shred -u "$KEYFILE"; stop "Cannot read the API key. Run this command again."; }
 
 # 7. Output
 SA_JSON="$(python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin),separators=(",",":")))' < "$KEYFILE")"
+[ -n "$SA_JSON" ] || { shred -u "$KEYFILE"; stop "Cannot read the key file. Run this command again."; }
 shred -u "$KEYFILE"
 say ""
 say "=============== COPY FROM HERE ==============="

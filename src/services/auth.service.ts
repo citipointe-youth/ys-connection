@@ -1,3 +1,4 @@
+import { isProductionEnv } from '../config/is-production';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { verifyPassword, hashPassword, needsRehash } from '../utils/crypto';
 import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
@@ -48,7 +49,7 @@ function rawSecret(): string { return process.env['SESSION_SECRET'] ?? INSECURE_
  *  setup checklist row, never here - a shorter existing secret must not lock out a live deployment. */
 export function sessionSecretConfigured(env: Record<string, string | undefined> = process.env): boolean {
   const s = env['SESSION_SECRET'];
-  if (!s || s === INSECURE_FALLBACK) return env['NODE_ENV'] !== 'production';
+  if (!s || s === INSECURE_FALLBACK) return !isProductionEnv(env);
   return true;
 }
 

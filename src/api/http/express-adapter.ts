@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { env } from '../../config/env';
+import { isProductionEnv } from '../../config/is-production';
 import { RawResponse, type Route, type HttpRequest } from './types';
 import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
@@ -45,7 +46,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
   const app = express();
   app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
 
-  if (env.NODE_ENV === 'production' && env.CORS_ORIGINS.includes('*')) {
+  if (isProductionEnv() && env.CORS_ORIGINS.includes('*')) {
     logger.warn('CORS_ORIGINS is set to * in production — lock it to your domain for security');
   }
 
@@ -62,7 +63,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     // HSTS: enforce HTTPS for a long window. Prod-only (localhost dev is plain HTTP); browsers
     // ignore it over HTTP anyway, but gating on NODE_ENV keeps the header honest.
-    if (env.NODE_ENV === 'production') {
+    if (isProductionEnv()) {
       res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
     }
     next();

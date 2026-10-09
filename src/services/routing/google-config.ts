@@ -26,7 +26,10 @@ export function googleConfigFromEnv(e: NodeJS.ProcessEnv = process.env): GoogleC
 }
 
 export function googleConfigStatus(e: NodeJS.ProcessEnv = process.env): GoogleConfigStatus {
-  if (googleConfigFromEnv(e)) return { state: 'on', missing: [] };
+  // A GOOGLE_SA_JSON that is present but invalid is never 'on', even if the old three vars still work
+  // (routing keeps using them as a fallback, so an existing deployment does not break).
+  const jsonBad = !!e['GOOGLE_SA_JSON']?.trim() && !parseKeyFile(e['GOOGLE_SA_JSON']);
+  if (!jsonBad && googleConfigFromEnv(e)) return { state: 'on', missing: [] };
   const hasJson = !!e['GOOGLE_SA_JSON']?.trim();
   const oldSet = OLD.filter((k) => !!e[k]);
   const hasKey = !!e['GOOGLE_MAPS_API_KEY'];

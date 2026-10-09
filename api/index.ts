@@ -1,10 +1,11 @@
 import type { Express } from 'express';
+import { safeErrorText } from '../src/utils/redact';
 
 process.on('unhandledRejection', (reason: unknown) => {
-  console.error('[CMS] unhandledRejection:', reason);
+  console.error('[CMS] unhandledRejection:', safeErrorText(reason));
 });
 process.on('uncaughtException', (err: Error) => {
-  console.error('[CMS] uncaughtException:', err.message, err.stack);
+  console.error('[CMS] uncaughtException:', safeErrorText(err));
 });
 
 let appPromise: Promise<Express> | null = null;
@@ -13,7 +14,7 @@ function getApp(): Promise<Express> {
   if (!appPromise) {
     // Dynamic import so an error thrown while LOADING the app (not just building it) is caught here.
     appPromise = import('../src/app').then((m) => m.createAppInstance()).catch((err: unknown) => {
-      console.error('[CMS] createAppInstance failed:', err);
+      console.error('[CMS] createAppInstance failed:', safeErrorText(err));
       appPromise = null;
       throw err;
     });

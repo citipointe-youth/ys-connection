@@ -75,7 +75,7 @@ export function makeSetupService(deps: {
           fix('database', 'Database connection', 'The app cannot reach the database. Copy the Session pooler connection string from Supabase again. Paste it as DATABASE_URL in Vercel. Then redeploy.'),
         port === '5432' ? ok('databasePort', 'Database port') :
           fix('databasePort', 'Database port', 'The connection string must use port 5432. Copy the Session pooler string. Do not use the Transaction pooler string (port 6543). Then redeploy.'),
-        version === LATEST_MIGRATION ? ok('schema', 'Database version') :
+        version !== null && version >= LATEST_MIGRATION ? ok('schema', 'Database version') :
           fix('schema', 'Database version', 'The database is not up to date. In Vercel, open Deployments. Select Redeploy on the top row.'),
         secretOk() && (env['SESSION_SECRET'] ?? '').length >= 32 ? ok('sessionSecret', 'SESSION_SECRET') :
           fix('sessionSecret', 'SESSION_SECRET', 'Select Generate. Select Copy. In Vercel, add the value as SESSION_SECRET. Then redeploy.', 'hex32'),
@@ -85,7 +85,7 @@ export function makeSetupService(deps: {
           fix('appOrigin', 'APP_ORIGIN', `In Vercel, set APP_ORIGIN to ${normOrigin(origin) || 'the address of this page'}. Then redeploy.`),
       ];
       if (needs) {
-        checks.push((env['SETUP_CODE'] ?? '').length >= 16 ? ok('setupCode', 'SETUP_CODE') :
+        checks.push(norm(env['SETUP_CODE'] ?? '').length >= 16 ? ok('setupCode', 'SETUP_CODE') :
           fix('setupCode', 'SETUP_CODE', 'Select Generate. Select Copy. In Vercel, add the value as SETUP_CODE. Then redeploy.', 'setupCode'));
       }
       checks.push({ id: 'google', label: googleStatusText(googleConfigStatus(env as NodeJS.ProcessEnv)), state: 'optional', link: GUIDE_GOOGLE });

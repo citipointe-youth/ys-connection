@@ -58,7 +58,7 @@ Supabase stores your data.
 1. Make an account at [supabase.com](https://supabase.com).
 2. Select **New project**.
 3. Type a name for the project.
-4. Create a database password. Copy it to your password manager now.
+4. Create a database password. Use only letters and numbers. Do not use symbols such as `#`, `/`, `?` or `@`. Copy it to your password manager now.
 5. Select the region closest to your church.
 6. Select **Create new project**.
 
@@ -216,10 +216,15 @@ Replace the files in `public/icons/` in your fork. Commit the change on GitHub. 
 | The page says "The app cannot start" | Read the page text. It names the missing setting. Add it in Vercel. Then redeploy. |
 | A row in the checklist shows a fix | Do what the text says. Then select **Check again**. |
 | The **Database connection** row shows a fix | Copy the Session pooler string from Supabase again. Paste it as `DATABASE_URL`. Then redeploy. |
-| The **Database connection** row still shows a fix after you copied a new string | You used the Direct connection string. Use the Session pooler string. |
+| The **Database connection** row still shows a fix after you copied a new string | Check the password in `DATABASE_URL`. Check that the string is the Session pooler string. |
 | The **Storage** row shows a fix | `PERSISTENCE` is missing or wrong. In Vercel, set `PERSISTENCE` to `supabase`. Then redeploy. |
 | The **Database port** row shows a fix | The string uses port `6543`. That is the Transaction pooler. It drops connections under load. Use the Session pooler string with port `5432`. |
 | The **Database version** row shows a fix | Open **Deployments** in Vercel. Select **Redeploy** on the top row. |
+| The Build Logs say `password authentication failed` | The password in `DATABASE_URL` is wrong, or still reads `[YOUR-PASSWORD]`. Type the database password in `DATABASE_URL` again, without the brackets. Then redeploy. |
+| The Build Logs say `ENETUNREACH`, `ENOTFOUND`, `ETIMEDOUT` or `Tenant or user not found` | You used the Direct connection string, or a wrong one. Copy the Session pooler string from Supabase. Paste it as `DATABASE_URL`. Then redeploy. |
+| The Build Logs say `DATABASE_URL is not a valid connection string` | The database password has symbols. In Supabase, reset the database password to letters and numbers only. Copy the Session pooler string again. Then redeploy. |
+| The Build Logs say `canceling statement due to lock timeout` | Another build was changing the database. Wait 2 minutes. Then redeploy. |
+| The Build Logs say `uses port 6543` | You used the Transaction pooler string. Copy the Session pooler string, which uses port `5432`. Then redeploy. |
 | The build fails | Copy the last 20 lines of the **Build Logs**. Send them to the developer (see section 0). |
 | The build fails and the log names `tsx` | You set `NODE_ENV`. Delete it in Vercel. Then redeploy. |
 | Sign-in says "Can't reach the server", and your internet works | `APP_ORIGIN` is wrong or missing. The app then uses the YS Brisbane address. Set `APP_ORIGIN` to your domain. Then redeploy. |

@@ -1,3 +1,4 @@
+import { isProductionEnv } from './is-production';
 function getEnv(key: string, fallback?: string): string {
   const val = process.env[key] ?? fallback;
   if (val === undefined) throw new Error(`Missing required env var: ${key}`);
@@ -11,7 +12,7 @@ const NODE_ENV = getEnv('NODE_ENV', 'development');
 // domain), then to the original YS Brisbane URL so that existing deployment
 // needs zero env changes. Dev keeps '*' for convenience.
 const PROD_DEFAULT_ORIGIN = 'https://ys-connection.vercel.app';
-const corsDefault = NODE_ENV === 'production' ? (process.env['APP_ORIGIN'] ?? PROD_DEFAULT_ORIGIN) : '*';
+const corsDefault = isProductionEnv(process.env) ? (process.env['APP_ORIGIN'] ?? PROD_DEFAULT_ORIGIN) : '*';
 
 // FIELD_ENCRYPTION_KEY (base64, 32 bytes) / FIELD_ENCRYPTION_KEY_ID / FIELD_ENCRYPTION_KEY_PREV /
 // FIELD_ENCRYPTION_KEY_PREV_ID are read directly from process.env by src/utils/field-crypto.ts

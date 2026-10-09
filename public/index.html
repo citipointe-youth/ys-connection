@@ -6692,6 +6692,7 @@ function loadSettingsFile(input) {
     const cur = _setupDraft || {};
     const next = { ...cur };
     for (const k of Object.keys(r.ministryConfig)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
       const v = r.ministryConfig[k];
       const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
       next[k] = isObj(v) && isObj(cur[k]) ? { ...cur[k], ...v } : v;

@@ -145,3 +145,21 @@ describe('status', () => {
     expect(byId(r.checks, 'google')).toMatchObject({ state: 'optional', label: 'Google: not set up. Bus uses test routes.' });
   });
 });
+
+describe('status: review fixes', () => {
+  const byId = (checks: { id: string; state: string }[], id: string) => checks.find((c) => c.id === id)!;
+  it('schema row is ok when the database is newer than the code (after a rollback)', async () => {
+    const { s } = svc(good, { schemaVersion: async () => '0099' });
+    expect(byId((await s.status(null, 'https://church.vercel.app')).checks, 'schema').state).toBe('ok');
+  });
+  it('schema row needs a fix when the database is older', async () => {
+    const { s } = svc(good, { schemaVersion: async () => '0014' });
+    expect(byId((await s.status(null, 'https://church.vercel.app')).checks, 'schema').state).toBe('fix');
+  });
+  it('setupCode row uses the normalised length (same rule as the endpoint)', async () => {
+    const short = svc({ ...good, SETUP_CODE: 'ABCD-EFGH-JKMN-PQ' }).s;   // 17 raw, 14 normalised
+    expect(byId((await short.status(null, 'https://church.vercel.app')).checks, 'setupCode').state).toBe('fix');
+    const ok = svc({ ...good, SETUP_CODE: 'ABCD-EFGH-JKMN-PQRS' }).s;    // 16 normalised
+    expect(byId((await ok.status(null, 'https://church.vercel.app')).checks, 'setupCode').state).toBe('ok');
+  });
+});

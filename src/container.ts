@@ -248,7 +248,11 @@ export async function buildContainer(): Promise<Container> {
   };
   const schemaVersion = async (): Promise<string | null> => {
     if (!useSupabase) return LATEST_MIGRATION;
-    try { const [r] = await sql<{ v: string | null }[]>`select max(version) as v from schema_migrations`; return r?.v ?? null; }
+    try {
+      const q = sql<{ v: string | null }[]>`select max(version) as v from schema_migrations`;
+      const [r] = await Promise.race([q, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))]);
+      return r?.v ?? null;
+    }
     catch { return null; }
   };
   const setup = makeSetupService({ users, auth, env: process.env, probeDb, schemaVersion });

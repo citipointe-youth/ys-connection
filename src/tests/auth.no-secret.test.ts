@@ -21,4 +21,15 @@ describe('auth without SESSION_SECRET in production', () => {
     const { sessionSecretConfigured } = await import('../services/auth.service');
     expect(sessionSecretConfigured()).toBe(true);
   });
+  it('VERCEL_ENV=preview or VERCEL=1 with no secret is NOT configured, even without NODE_ENV', async () => {
+    const { sessionSecretConfigured } = await import('../services/auth.service');
+    expect(sessionSecretConfigured({ VERCEL_ENV: 'preview' })).toBe(false);
+    expect(sessionSecretConfigured({ VERCEL: '1' })).toBe(false);
+    expect(sessionSecretConfigured({ VERCEL_ENV: 'production', SESSION_SECRET: 'cms-dev-secret-change-in-production' })).toBe(false);
+    expect(sessionSecretConfigured({ VERCEL_ENV: 'preview', SESSION_SECRET: 'x'.repeat(32) })).toBe(true);
+  });
+  it('a local run with nothing set is configured (dev fallback)', async () => {
+    const { sessionSecretConfigured } = await import('../services/auth.service');
+    expect(sessionSecretConfigured({})).toBe(true);
+  });
 });

@@ -43,6 +43,11 @@ describe('googleConfigStatus', () => {
     expect(googleConfigStatus({ GOOGLE_SA_JSON: '{bad', GOOGLE_MAPS_API_KEY: 'k' })).toEqual({
       state: 'partial', missing: ['GOOGLE_SA_JSON (not a valid key file. Paste the whole key file again.)'] });
   });
+  it('partial: bad JSON is reported even when the old three vars are set (routing still falls back to them)', () => {
+    const e = { GOOGLE_SA_JSON: '{bad', GOOGLE_MAPS_API_KEY: 'k', GOOGLE_SA_EMAIL: 'a@b.c', GOOGLE_SA_PRIVATE_KEY: 'pk', GOOGLE_PROJECT_ID: 'p' };
+    expect(googleConfigStatus(e)).toEqual({ state: 'partial', missing: ['GOOGLE_SA_JSON (not a valid key file. Paste the whole key file again.)'] });
+    expect(googleConfigFromEnv(e)).not.toBeNull();
+  });
   it('partial: key file present, API key missing', () => {
     expect(googleConfigStatus({ GOOGLE_SA_JSON: json })).toEqual({ state: 'partial', missing: ['GOOGLE_MAPS_API_KEY'] });
   });
