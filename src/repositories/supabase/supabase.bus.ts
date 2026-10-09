@@ -3,7 +3,7 @@ import { toIso } from './client';
 import { isEncrypted, decryptField, maybeEncrypt, encryptField } from '../../utils/field-crypto';
 import type { IBusRepository } from '../interfaces/entity-repositories';
 import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider,
-  BusOwnCar, EndsAt, BusGender, BusConsent, BusUndoEntry } from '../../core/entities/bus';
+  BusOwnCar, EndsAt, BusGender, BusConsent, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
 
 export const busCrypt = {
   enc: (v: string | null | undefined, aad: string): string | null => maybeEncrypt(v, aad),
@@ -69,7 +69,7 @@ function toRunVehicle(r: Record<string, any>): BusRunVehicle {
     endsAt: r.ends_at as EndsAt,
     endsAddress: busCrypt.dec(r.ends_address, `bus_run_vehicles:ends_address:${r.id}`),
     endsPlaceId: busCrypt.dec(r.ends_place_id, `bus_run_vehicles:ends_place_id:${r.id}`),
-    colourIndex: r.colour_index };
+    colourIndex: r.colour_index, leaderSnap: r.leader_snap ?? [] };
 }
 function toRider(r: Record<string, any>): BusRunRider {
   return { id: r.id, runId: r.run_id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null,
@@ -79,7 +79,12 @@ function toRider(r: Record<string, any>): BusRunRider {
     snapGrade: r.snap_grade ?? null, snapGender: (r.snap_gender ?? null) as BusGender,
     snapAddress: decSnapAddress(r.snap_address, r.id),
     snapPlaceId: busCrypt.dec(r.snap_place_id, `bus_run_riders:snap_place_id:${r.id}`),
-    droppedAt: iso(r.dropped_at), droppedBy: r.dropped_by ?? null };
+    droppedAt: iso(r.dropped_at), droppedBy: r.dropped_by ?? null,
+    notRiding: r.not_riding ?? false, noShow: r.no_show ?? false, wasGuest: r.was_guest ?? false,
+    note: busCrypt.dec(r.note, `bus_run_riders:note:${r.id}`) };
+}
+function toEdit(r: Record<string, any>): BusRunEdit {
+  return { id: r.id, runId: r.run_id, at: toIso(r.at), by: r.by, detail: busCrypt.dec(r.detail, `bus_run_edits:detail:${r.id}`) ?? '' };
 }
 function toConsent(r: Record<string, any>): BusConsent {
   return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, given: r.given,
@@ -180,13 +185,13 @@ export class SupabaseBusRepository implements IBusRepository {
   async listRunVehicles(runId: string) { return (await this.sql`select * from bus_run_vehicles where run_id = ${runId} order by colour_index`).map(toRunVehicle); }
   async saveRunVehicle(v: BusRunVehicle) {
     const r = await this.sql`
-      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index)
+      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index, leader_snap)
       values (${v.id}, ${v.runId}, ${v.vehicleId}, ${v.ownerLeaderId}, ${v.name}, ${v.seats}, ${v.plate}, ${v.running}, ${this.j(v.leaderIds)},
         ${v.endsAt}, ${busCrypt.enc(v.endsAddress, `bus_run_vehicles:ends_address:${v.id}`)},
-        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex})
+        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex}, ${this.j(v.leaderSnap)})
       on conflict (id) do update set name = excluded.name, seats = excluded.seats, plate = excluded.plate, running = excluded.running,
         leader_ids = excluded.leader_ids, ends_at = excluded.ends_at, ends_address = excluded.ends_address,
-        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index
+        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index, leader_snap = excluded.leader_snap
       returning *`;
     return toRunVehicle(r[0]!);
   }
@@ -197,20 +202,35 @@ export class SupabaseBusRepository implements IBusRepository {
   async saveRunRider(x: BusRunRider) {
     const r = await this.sql`
       insert into bus_run_riders (id, run_id, student_id, guest_id, address_id, run_vehicle_id, stop_order, pinned, added_by, added_at,
-        snap_name, snap_grade, snap_gender, snap_address, snap_place_id, dropped_at, dropped_by)
+        snap_name, snap_grade, snap_gender, snap_address, snap_place_id, dropped_at, dropped_by,
+        not_riding, no_show, note, was_guest)
       values (${x.id}, ${x.runId}, ${x.studentId}, ${x.guestId}, ${x.addressId}, ${x.runVehicleId}, ${x.stopOrder}, ${x.pinned},
         ${x.addedBy}, ${x.addedAt}, ${busCrypt.enc(x.snapName, `bus_run_riders:snap_name:${x.id}`)}, ${x.snapGrade}, ${x.snapGender},
         ${encSnapAddress(x.snapAddress, x.id)}, ${busCrypt.enc(x.snapPlaceId, `bus_run_riders:snap_place_id:${x.id}`)},
-        ${x.droppedAt}, ${x.droppedBy})
+        ${x.droppedAt}, ${x.droppedBy}, ${x.notRiding}, ${x.noShow}, ${busCrypt.enc(x.note, `bus_run_riders:note:${x.id}`)}, ${x.wasGuest})
       on conflict (id) do update set student_id = excluded.student_id, guest_id = excluded.guest_id, address_id = excluded.address_id,
         run_vehicle_id = excluded.run_vehicle_id, stop_order = excluded.stop_order, pinned = excluded.pinned,
         snap_name = excluded.snap_name, snap_grade = excluded.snap_grade, snap_gender = excluded.snap_gender,
         snap_address = excluded.snap_address, snap_place_id = excluded.snap_place_id,
-        dropped_at = excluded.dropped_at, dropped_by = excluded.dropped_by
+        dropped_at = excluded.dropped_at, dropped_by = excluded.dropped_by,
+        not_riding = excluded.not_riding, no_show = excluded.no_show, note = excluded.note, was_guest = excluded.was_guest
       returning *`;
     return toRider(r[0]!);
   }
   async deleteRunRider(id: string) { await this.sql`delete from bus_run_riders where id = ${id}`; }
+  async listRunRidersOf(ids: string[]) {
+    return ids.length ? (await this.sql`select * from bus_run_riders where run_id = any(${ids}::uuid[]) order by added_at`).map(toRider) : [];
+  }
+  async listRunVehiclesOf(ids: string[]) {
+    return ids.length ? (await this.sql`select * from bus_run_vehicles where run_id = any(${ids}::uuid[]) order by colour_index`).map(toRunVehicle) : [];
+  }
+  async listRunEdits(ids: string[]) {
+    return ids.length ? (await this.sql`select * from bus_run_edits where run_id = any(${ids}::uuid[]) order by at desc`).map(toEdit) : [];
+  }
+  async insertRunEdit(e: BusRunEdit) {
+    await this.sql`insert into bus_run_edits (id, run_id, at, by, detail)
+      values (${e.id}, ${e.runId}, ${e.at}, ${e.by}, ${busCrypt.enc(e.detail, `bus_run_edits:detail:${e.id}`)})`;
+  }
 
   async listConsents() { return (await this.sql`select * from bus_consents`).map(toConsent); }
   async getConsent(o: { studentId?: string; guestId?: string }) {

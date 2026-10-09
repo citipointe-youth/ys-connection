@@ -4348,13 +4348,14 @@ async function showStudentDetail(id) {
 // ============================================================
 // TRENDS
 // ============================================================
-function colChart(sessions, maxH) {
+function colChart(sessions, maxH, opts) {
   const max = Math.max(1, ...sessions.map(s => s.pct));
   return '<div class="cchart">' + sessions.map(s => {
     const h = s.pct ? Math.round(s.pct / max * (maxH || 56)) + 4 : 4;
-    const cls = s.pct >= 70 ? '' : s.pct < 40 ? 'cr' : 'lo';
+    const cls = opts && opts.neutral ? '' : s.pct >= 70 ? '' : s.pct < 40 ? 'cr' : 'lo';
+    const click = opts && opts.click ? ` onclick="${opts.click(s)}" style="cursor:pointer"` : '';
     const val = (s.att != null) ? s.att : '';
-    return `<div class="ccol"><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
+    return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
 function hbarTr(label, pct, disp) {
@@ -8210,6 +8211,7 @@ window.CA=CA;
 // land after the session that started it has ended (review fix round 2, finding 1).
 const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
+  hist: null, histErr: '', histSub: 'nights', histPeople: [],
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
   // Own-car "add someone" search (Your car sheet) — kept separate from search/hits above (the
   // Students tab) so opening one never clobbers the other's in-progress query.
@@ -8400,7 +8402,7 @@ async function busDismissGuest(id) {
   catch (e) { toast(e.message); }
 }
 
-function _busPickTab(ids, tab, seesPast) { return ids.includes(tab) || (tab === 'analysis' && seesPast) ? tab : ids[0]; }
+function _busPickTab(ids, tab, seesPast) { return ids.includes(tab) || ((tab === 'analysis' || tab === 'past') && seesPast) ? tab : ids[0]; }
 async function renderBus() {
   if (!_busOn()) { go('home'); return; }
   if (!BUS.view) {
@@ -8434,14 +8436,14 @@ async function renderBus() {
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, analysis: _busAnalysisHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
-        ${seesPast ? `<button class="btn btn-secondary btn-sm" onclick="busPast()">Past</button>` : ''}
+        ${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
     ${last ? `<div class="bus-last">${last}</div>` : ''}
@@ -9637,36 +9639,210 @@ function _busAnalysisHtml() {
     </div></div>`;
 }
 
-async function busPast() {
-  modal(`<div class="mo-title">Past nights</div><div id="bus-past-list" class="card-sub">Loading…</div>`);
+// ── Past nights (history page, 2026-10-09) ──
+// GET /bus/history: { canEdit, nights, rides }. Cached in BUS.hist; refetched when the page opens and after an edit.
+function _busHDate(iso, long) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: 'numeric', month: 'short' });
+}
+function _busByRun(rides) {
+  const m = {};
+  for (const r of rides) (m[r.runId] = m[r.runId] || []).push(r);
+  return m;
+}
+// Placed on a car, not a no-show, but nobody tapped Dropped off.
+function _busNotLogged(rs) { return rs.filter((r) => !r.notRiding && !r.noShow && r.runVehicleId && !r.droppedAt).length; }
+// One row per person (studentId or guestId). Regular = rode on >=50% of the window's nights; New = first ride <=28 days ago.
+function _busPeople(rides, nightCount, today) {
+  const m = {};
+  for (const r of rides) {
+    if (r.notRiding) continue;
+    const k = r.studentId || r.guestId;
+    if (!k) continue;
+    const p = m[k] || (m[k] = { key: k, name: r.name, rides: 0, first: r.date, last: r.date, guest: false, list: [] });
+    p.rides++; p.list.push(r);
+    if (r.date < p.first) p.first = r.date;
+    if (r.date > p.last) p.last = r.date;
+    if (r.kind === 'guest') p.guest = true;
+  }
+  const t = Date.parse(today + 'T00:00:00');
+  return Object.values(m).map((p) => {
+    p.regular = nightCount > 0 && p.rides / nightCount >= 0.5;
+    p.isNew = (t - Date.parse(p.first + 'T00:00:00')) / 86400000 <= 28;
+    p.list.sort((a, b) => (a.date < b.date ? 1 : -1));
+    return p;
+  }).sort((a, b) => b.rides - a.rides || a.name.localeCompare(b.name));
+}
+// Night date + HH:MM -> ISO (local time). Before 6am counts as after midnight, like _busDropAtIso. Blank = null.
+function _busPastIso(date, hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(date + 'T00:00:00');
+  if (h < 6) d.setDate(d.getDate() + 1);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
+function _busHHMM(iso) {
+  if (!iso) return '';
+  const d = new Date(iso), p = (n) => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+async function busLoadHist() {
+  try { BUS.hist = await _busGet('/bus/history'); BUS.histErr = ''; BUS.histPeople = _busPeople(BUS.hist.rides, BUS.hist.nights.length, _busLocalNow().slice(0, 10)); }
+  catch (e) { BUS.histErr = e.message || 'Could not load past nights'; }
+}
+async function busOpenPast() {
+  BUS.tab = 'past'; BUS.histErr = '';
+  renderBus();
+  await busLoadHist();
+  if (S.page === 'bus' && BUS.tab === 'past') renderBus();
+}
+function _busHistHtml() {
+  const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
+    ${BUS.hist && BUS.hist.nights.length ? `<button class="btn btn-secondary btn-sm" onclick="busExportHist()">Export</button>` : ''}</div>`;
+  if (BUS.histErr && !BUS.hist) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>`;
+  const h = BUS.hist;
+  if (!h) return `${back}<div class="card-sub">Loading…</div>`;
+  if (!h.nights.length) return `${back}<div class="empty">${icEmpty('bus')}<div>No past nights yet.</div></div>`;
+  const people = BUS.histPeople || [];
+  const byRun = _busByRun(h.rides);
+  const avg = Math.round(h.nights.reduce((n, x) => n + x.riders, 0) / h.nights.length);
+  const recent = h.nights.slice(0, 12).reverse().map((n) => ({ id: n.id, date: n.date, pct: n.riders, att: n.riders }));
+  const sub = BUS.histSub === 'people' ? 'people' : 'nights';
+  let list;
+  if (sub === 'people') {
+    list = people.map((p, i) => `<div class="li" onclick="busPastPerson(${i})"><div class="li-body"><div class="li-title">${esc(p.name)}
+        ${p.regular ? '<span class="chip c-neutral">Regular</span>' : ''}${p.isNew ? '<span class="chip c-accent">New</span>' : ''}${p.guest ? '<span class="chip c-neutral">Guest</span>' : ''}</div>
+        <div class="li-sub">${p.rides}/${h.nights.length} nights · last ${esc(_busHDate(p.last))}</div></div>${icS('chevr')}</div>`).join('');
+  } else {
+    list = h.nights.map((n) => {
+      const nl = _busNotLogged(byRun[n.id] || []);
+      return `<div class="li" onclick="busPastNight('${esc(n.id)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(n.date))}</div>
+        <div class="li-sub">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'}
+        ${nl ? `<span class="chip c-warn">${nl} not logged</span>` : ''}${n.unassigned ? `<span class="chip c-warn">${n.unassigned} unassigned</span>` : ''}</div></div>${icS('chevr')}</div>`;
+    }).join('');
+  }
+  return `${back}${BUS.histErr ? `<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>` : ''}
+    ${statCard([h.nights.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New'])}
+    <div class="card"><div class="card-title">Riders per night</div>${colChart(recent, 56, { neutral: true, click: (s) => `busPastNight('${s.id}')` })}</div>
+    <div class="tbbar"><button class="tbbtn ${sub === 'nights' ? 'on' : ''}" onclick="BUS.histSub='nights';renderBus()">Nights</button>
+      <button class="tbbtn ${sub === 'people' ? 'on' : ''}" onclick="BUS.histSub='people';renderBus()">People</button></div>
+    ${list}`;
+}
+function _busRideRow(r, canEdit, num) {
+  const flags = `${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}`;
+  const warn = !r.notRiding && !r.noShow && r.runVehicleId && !r.droppedAt ? `<span class="chip c-warn">${icS('alert')} not logged</span>` : '';
+  return `<div class="route-row${canEdit ? ' clickable' : ''}"${canEdit ? ` onclick="busPastEdit('${esc(r.runId)}','${esc(r.riderId)}')"` : ''}>
+    ${num ? `<div class="stop-num">${num}</div>` : ''}
+    <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}${r.kind === 'guest' ? ' <span class="chip c-neutral">Guest</span>' : ''}${r.noShow ? ' <span class="chip c-neutral">No-show</span>' : ''}</div>
+      <div class="route-sub">${esc(r.suburb || _busSuburb(r.address))}${flags} ${warn}${r.note ? ` · ${esc(r.note)}` : ''}</div></div></div>`;
+}
+function busPastNight(id) {
+  const h = BUS.hist; if (!h) return;
+  const n = h.nights.find((x) => x.id === id); if (!n) return;
+  const rs = h.rides.filter((r) => r.runId === id);
+  const live = rs.filter((r) => !r.notRiding);
+  const cars = [];
+  for (const r of live) if (r.runVehicleId && !cars.some((c) => c.id === r.runVehicleId)) cars.push({ id: r.runVehicleId, name: r.car, colour: r.carColour, leaders: r.leaders || [] });
+  cars.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const nl = _busNotLogged(rs);
+  const carHtml = cars.map((c) => {
+    const rows = live.filter((r) => r.runVehicleId === c.id).sort((a, b) => (a.stop ?? 99) - (b.stop ?? 99));
+    return `<div class="card"><div class="card-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(c.colour)}"></span>${esc(c.name)} · ${rows.length}
+      ${c.leaders.map((l) => `<span class="chip c-neutral">${esc(l)}</span>`).join('')}</div>
+      <div style="margin-top:8px">${rows.map((r, i) => _busRideRow(r, h.canEdit, i + 1)).join('')}</div></div>`;
+  }).join('');
+  const un = live.filter((r) => !r.runVehicleId);
+  const nr = rs.filter((r) => r.notRiding);
+  const edits = h.canEdit && n.edits && n.edits.length
+    ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
+  modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}</div>
+    <div class="card-sub" style="margin-bottom:8px">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
+    ${nl ? `<div class="alert al-warn" style="margin-bottom:8px">${icS('alert')} ${nl} drop-off${nl === 1 ? '' : 's'} not logged</div>` : ''}
+    ${carHtml || '<div class="card-sub">No cars ran.</div>'}
+    ${un.length ? `<div class="card"><div class="card-title">Unassigned (${un.length})</div>${un.map((r) => _busRideRow(r, h.canEdit)).join('')}</div>` : ''}
+    ${nr.length ? `<div class="card"><div class="card-title">Not riding (${nr.length})</div>${nr.map((r) => _busRideRow(r, h.canEdit)).join('')}</div>` : ''}
+    ${edits}
+    ${h.canEdit ? '<div class="card-sub" style="margin-bottom:8px">Tap a rider to edit. Every change is logged.</div>' : ''}
+    <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
+}
+function busPastPerson(i) {
+  const p = (BUS.histPeople || [])[i]; if (!p) return;
+  modal(`<div class="mo-title">${esc(p.name)}</div>
+    <div class="card-sub" style="margin-bottom:8px">${p.rides} ride${p.rides === 1 ? '' : 's'} · first ${esc(_busHDate(p.first))}</div>
+    ${p.list.map((r) => `<div class="li" onclick="busPastNight('${esc(r.runId)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(r.date))} ${r.car ? `<span class="chip c-neutral">${esc(r.car)}</span>` : ''}${r.noShow ? ' <span class="chip c-neutral">No-show</span>' : ''}</div>
+      <div class="li-sub">${esc(r.suburb || _busSuburb(r.address))}${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}</div></div>${icS('chevr')}</div>`).join('')}
+    <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
+}
+function busPastEdit(runId, riderId) {
+  const h = BUS.hist; if (!h || !h.canEdit) return;
+  const r = h.rides.find((x) => x.runId === runId && x.riderId === riderId); if (!r) return;
+  const cars = [];
+  for (const x of h.rides) if (x.runId === runId && x.runVehicleId && !cars.some((c) => c.id === x.runVehicleId)) cars.push({ id: x.runVehicleId, name: x.car });
+  cars.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  modal(`<div class="mo-title">${esc(r.name)}</div>
+    <div class="card-sub" style="margin-bottom:8px">${esc(_busHDate(r.date, true))}</div>
+    <div class="fg"><label class="fl" for="bpe-car">Car</label><select class="fs" id="bpe-car">
+      <option value="">Unassigned</option>${cars.map((c) => `<option value="${esc(c.id)}"${c.id === r.runVehicleId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl" for="bpe-time">Dropped off (blank = not logged)</label><input class="fi" id="bpe-time" type="time" value="${esc(_busHHMM(r.droppedAt))}"></div>
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><input type="checkbox" id="bpe-noshow"${r.noShow ? ' checked' : ''}> No-show</label>
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><input type="checkbox" id="bpe-notriding"${r.notRiding ? ' checked' : ''}> Not riding</label>
+    <div class="fg"><label class="fl" for="bpe-note">Note</label><textarea class="fi" id="bpe-note" rows="2" maxlength="300">${esc(r.note || '')}</textarea></div>
+    <div class="fg"><label class="fl" for="bpe-reason">Reason for change</label><input class="fi" id="bpe-reason" maxlength="200" placeholder="Optional"></div>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busPastNight('${esc(runId)}')">Cancel</button>
+      <button class="btn btn-primary" onclick="busPastSave('${esc(runId)}','${esc(riderId)}')">Save</button></div>`);
+}
+async function busPastSave(runId, riderId) {
+  const r = BUS.hist.rides.find((x) => x.runId === runId && x.riderId === riderId); if (!r) return;
+  const v = (id) => document.getElementById(id);
+  const body = {};
+  const car = v('bpe-car').value || null;
+  if (car !== (r.runVehicleId || null)) body.runVehicleId = car;
+  const t = v('bpe-time').value;
+  if (t !== _busHHMM(r.droppedAt)) body.droppedAt = _busPastIso(r.date, t);
+  if (v('bpe-noshow').checked !== !!r.noShow) body.noShow = v('bpe-noshow').checked;
+  if (v('bpe-notriding').checked !== !!r.notRiding) body.notRiding = v('bpe-notriding').checked;
+  const note = v('bpe-note').value.trim();
+  if (note !== (r.note || '')) body.note = note || null;
+  if (!Object.keys(body).length) { busPastNight(runId); return; }
+  body.reason = v('bpe-reason').value.trim();
   try {
-    const runs = await _busGet('/bus/runs');
-    const el = document.getElementById('bus-past-list');
-    if (!el) return;
-    el.outerHTML = runs.length ? runs.map((r) => {
-      const d = new Date(r.serviceDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-      return `<div class="li" onclick="busShowPastRun('${r.id}')"><div class="li-body"><div class="li-title">${esc(d)}</div>
-        <div class="li-sub">${r.riders} riders · ${r.cars} cars</div></div>${icS('chevr')}</div>`;
-    }).join('') : '<div class="card-sub">No past nights yet.</div>';
+    await API.patch(`/bus/runs/${encodeURIComponent(runId)}/riders/${encodeURIComponent(riderId)}?` + _busQs(), body);
+    await busLoadHist();
+    if (S.page === 'bus' && BUS.tab === 'past') renderBus();
+    busPastNight(runId);
+    toast('Saved');
   } catch (e) { toast(e.message); }
 }
-async function busShowPastRun(id) {
-  modal(`<div class="mo-title">Loading…</div>`);
+async function busExportHist() {
+  const h = BUS.hist; if (!h) return;
   try {
-    const v = await _busGet('/bus/runs/' + id);
-    const d = new Date(v.run.serviceDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-    const cars = v.vehicles.filter((rv) => rv.running).map((rv) => {
-      const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
-      const rows = riders.map((r, i) => `<div class="route-row"><div class="stop-num">${i + 1}</div>
-        <div class="route-main"><div class="route-name">${esc(r.name)}</div><div class="route-sub">${esc(_busSuburb(r.address))}${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}</div></div></div>`).join('');
-      return `<div class="card">
-        <div class="card-title" style="display:flex;align-items:center;gap:6px"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>${esc(rv.name)} · ${riders.length}/${rv.capacity}
-        ${rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('')}</div>
-        <div style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div></div>`;
-    }).join('');
-    modal(`<div class="mo-title">${esc(d)}</div>${cars || '<div class="card-sub">No cars ran.</div>'}
-      <button class="btn btn-secondary btn-full" onclick="busPast()">Back</button>`);
-  } catch (e) { toast(e.message); }
+    await _ensureXlsx();
+    const byRun = _busByRun(h.rides);
+    const yn = (b) => (b ? 'Yes' : '');
+    const sheet = (aoa, wch) => {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = wch.map((w) => ({ wch: w }));
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const a = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (ws[a]) ws[a].s = { font: { bold: true }, fill: { fgColor: { rgb: 'DDDDDD' } } };
+      }
+      return ws;
+    };
+    const nights = [['Date', 'Riders', 'Cars', 'Dropped', 'Not logged', 'Unassigned', 'Not riding', 'No-show', 'Leaders']]
+      .concat(h.nights.map((n) => [n.date, n.riders, n.cars, n.dropped, _busNotLogged(byRun[n.id] || []), n.unassigned, n.notRiding, n.noShow, (n.leaders || []).join(', ')]));
+    const rides = [['Date', 'Name', 'Grade', 'Student/Guest', 'Car', 'Leaders', 'Stop', 'Address', 'Dropped at', 'Dropped by', 'No-show', 'Not riding', 'Note']]
+      .concat(h.rides.map((r) => [r.date, r.name, r.grade ?? '', r.kind === 'guest' ? 'Guest' : 'Student', r.car || '', (r.leaders || []).join(', '), r.stop ?? '', r.address || '',
+        r.droppedAt ? _busFmtTime(r.droppedAt) : '', r.droppedBy || '', yn(r.noShow), yn(r.notRiding), r.note || '']));
+    const people = [['Name', 'Rides', 'First ride', 'Last ride', 'Regular']]
+      .concat((BUS.histPeople || []).map((p) => [p.name, p.rides, p.first, p.last, yn(p.regular)]));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet(nights, [12, 8, 6, 9, 10, 11, 10, 9, 30]), 'Nights');
+    XLSX.utils.book_append_sheet(wb, sheet(rides, [12, 22, 7, 13, 12, 24, 6, 40, 11, 16, 9, 10, 30]), 'Rides');
+    XLSX.utils.book_append_sheet(wb, sheet(people, [22, 7, 12, 12, 9]), 'People');
+    XLSX.writeFile(wb, `bus-history-${_busLocalNow().slice(0, 10)}.xlsx`);
+    toast(`Exported ${h.rides.length} rides`);
+  } catch (e) { toast('Export failed: ' + e.message); }
 }
 /* ── END BUS MODULE ── */
 

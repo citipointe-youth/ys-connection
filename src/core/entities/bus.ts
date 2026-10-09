@@ -36,6 +36,8 @@ export interface BusRunVehicle {
   id: ID; runId: ID; vehicleId: ID | null; ownerLeaderId: ID | null;
   name: string; seats: number; plate: string | null; running: boolean; leaderIds: ID[];
   endsAt: EndsAt; endsAddress: string | null; endsPlaceId: string | null; colourIndex: number;
+  // Who was on the car, copied whenever leaderIds is saved — survives a leader being deleted (Full Reset).
+  leaderSnap: { id: ID; name: string; gender: BusGender }[];
 }
 export interface BusRunRider {
   id: ID; runId: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
@@ -43,7 +45,10 @@ export interface BusRunRider {
   addedBy: string; addedAt: ISODateString;
   snapName: string; snapGrade: number | null; snapGender: BusGender; snapAddress: string; snapPlaceId: string | null;
   droppedAt: ISODateString | null; droppedBy: string | null;
+  // "Not riding" = soft-removed: the row stays for history but every tonight read ignores it.
+  notRiding: boolean; noShow: boolean; note: string | null; wasGuest: boolean;
 }
+export interface BusRunEdit { id: ID; runId: ID; at: ISODateString; by: string; detail: string }
 export interface BusConsent { id: ID; studentId: ID | null; guestId: ID | null; given: boolean; note: string; recordedBy: string; recordedAt: ISODateString }
 
 // ---- view types returned by BusService ----
@@ -139,3 +144,16 @@ export interface BusExtraCarsView {
   after: { longestMin: number; totalMin: number; unassigned: number };
   cars: BusExtraCarsCar[]; // Task 8: existing cars by name, hypothetical ones as "Extra car N" — the "after" solve's full breakdown
 }
+
+export interface BusHistoryNight {
+  id: ID; date: string; riders: number; placed: number; unassigned: number; dropped: number; notRiding: number; noShow: number;
+  cars: number; seats: number; leaders: string[]; guests: number; firstTime: number;
+  edits?: { at: string; by: string; detail: string }[];
+}
+export interface BusHistoryRide {
+  runId: ID; date: string; riderId: ID; studentId: ID | null; guestId: ID | null; kind: 'student' | 'guest'; wasGuest: boolean;
+  name: string; grade: number | null; gender: BusGender; car: string | null; carColour: number | null; runVehicleId: ID | null;
+  leaders: string[]; stop: number | null; address: string; suburb: string;
+  droppedAt: string | null; droppedBy: string | null; addedBy: string; notRiding: boolean; noShow: boolean; note: string | null;
+}
+export interface BusHistoryView { canEdit: boolean; nights: BusHistoryNight[]; rides: BusHistoryRide[] }

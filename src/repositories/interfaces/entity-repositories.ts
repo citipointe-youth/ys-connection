@@ -23,6 +23,7 @@ import type {
   BusRun,
   BusRunVehicle,
   BusRunRider,
+  BusRunEdit,
   BusConsent,
   BusUndoEntry,
 } from '../../core/entities/bus';
@@ -155,6 +156,11 @@ export interface IBusRepository {
   getRunRider(id: string): Promise<BusRunRider | null>;
   saveRunRider(r: BusRunRider): Promise<BusRunRider>;
   deleteRunRider(id: string): Promise<void>;
+  /** Batch reads for history (one query, not one per night). Empty ids → []. */
+  listRunRidersOf(runIds: string[]): Promise<BusRunRider[]>;
+  listRunVehiclesOf(runIds: string[]): Promise<BusRunVehicle[]>;
+  listRunEdits(runIds: string[]): Promise<BusRunEdit[]>;   // newest first
+  insertRunEdit(e: BusRunEdit): Promise<void>;
   listConsents(): Promise<BusConsent[]>;
   getConsent(owner: { studentId?: string; guestId?: string }): Promise<BusConsent | null>;
   saveConsent(c: BusConsent): Promise<BusConsent>;

@@ -184,6 +184,8 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'PATCH',  path: '/bus/leader-prefs/:leaderId', auth: true, handler: (r) => busCtl.setLeaderPrefs(r) },
     { method: 'GET',    path: '/bus/runs',                 auth: true, handler: (r) => busCtl.runs(r) },
     { method: 'GET',    path: '/bus/runs/:id',             auth: true, handler: (r) => busCtl.pastRun(r) },
+    { method: 'PATCH',  path: '/bus/runs/:id/riders/:riderId', auth: true, handler: (r) => busCtl.editPastRider(r) },
+    { method: 'GET',    path: '/bus/history',              auth: true, handler: (r) => busCtl.history(r) },
     { method: 'GET',    path: '/bus/places/autocomplete', auth: true, handler: (r) => busCtl.autocomplete(r) },
     { method: 'POST',   path: '/bus/run/generate',        auth: true, handler: (r) => busCtl.generate(r) },
     { method: 'POST',   path: '/bus/run/undo',            auth: true, handler: (r) => busCtl.undo(r) },

@@ -1,5 +1,5 @@
 import type { IBusRepository } from '../interfaces/entity-repositories';
-import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent, BusUndoEntry } from '../../core/entities/bus';
+import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
 
 const c = <T>(v: T): T => structuredClone(v);
 
@@ -12,6 +12,7 @@ export class InMemoryBusRepository implements IBusRepository {
   private runVehicles = new Map<string, BusRunVehicle>();
   private riders = new Map<string, BusRunRider>();
   private consents = new Map<string, BusConsent>();
+  private edits = new Map<string, BusRunEdit>();
 
   async init(): Promise<void> {}
 
@@ -75,6 +76,10 @@ export class InMemoryBusRepository implements IBusRepository {
   async getRunRider(id: string) { const r = this.riders.get(id); return r ? c(r) : null; }
   async saveRunRider(r: BusRunRider) { this.riders.set(r.id, c(r)); return c(r); }
   async deleteRunRider(id: string) { this.riders.delete(id); }
+  async listRunRidersOf(ids: string[]) { return [...this.riders.values()].filter((r) => ids.includes(r.runId)).map(c); }
+  async listRunVehiclesOf(ids: string[]) { return [...this.runVehicles.values()].filter((v) => ids.includes(v.runId)).map(c); }
+  async listRunEdits(ids: string[]) { return [...this.edits.values()].filter((e) => ids.includes(e.runId)).sort((a, b) => b.at.localeCompare(a.at)).map(c); }
+  async insertRunEdit(e: BusRunEdit) { this.edits.set(e.id, c(e)); }
 
   async listConsents() { return [...this.consents.values()].map(c); }
   async getConsent(o: { studentId?: string; guestId?: string }) {

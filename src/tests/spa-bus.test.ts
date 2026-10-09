@@ -1385,3 +1385,30 @@ describe('Task D: busDeleteAddress reopens the sheet for the current address', (
     expect(__state().removed).toBe(true);
   });
 });
+
+describe('past history helpers', () => {
+  it('_busPeople aggregates per person, skips not-riding, flags regular/new/guest', () => {
+    const { _busPeople } = loadFns(['_busPeople']);
+    const r = (date: string, studentId: string | null, guestId: string | null, extra = {}) =>
+      ({ date, studentId, guestId, name: studentId ?? guestId, kind: studentId ? 'student' : 'guest', notRiding: false, ...extra });
+    const rides = [r('2026-10-02', 's1', null), r('2026-09-25', 's1', null), r('2026-10-02', null, 'g1'),
+      r('2026-09-25', 's2', null, { notRiding: true }), r('2026-06-01', 's3', null)];
+    const p = _busPeople(rides, 2, '2026-10-09');
+    expect(p.map((x: any) => x.key)).toEqual(['s1', 'g1', 's3']);
+    expect(p[0]).toMatchObject({ rides: 2, first: '2026-09-25', last: '2026-10-02', regular: true, isNew: true });
+    expect(p[1].guest).toBe(true);
+    expect(p[2].isNew).toBe(false);
+  });
+  it('_busPastIso combines night date and time, blank is null, pre-6am rolls over', () => {
+    const { _busPastIso } = loadFns(['_busPastIso']);
+    expect(_busPastIso('2026-10-02', '')).toBeNull();
+    const d = new Date(_busPastIso('2026-10-02', '21:15'));
+    expect([d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2, 21, 15]);
+    expect(new Date(_busPastIso('2026-10-02', '00:30')).getDate()).toBe(3);
+  });
+  it('_busPickTab accepts past for Past viewers only', () => {
+    const { _busPickTab } = loadFns(['_busPickTab']);
+    expect(_busPickTab(['mycar'], 'past', true)).toBe('past');
+    expect(_busPickTab(['mycar'], 'past', false)).toBe('mycar');
+  });
+});

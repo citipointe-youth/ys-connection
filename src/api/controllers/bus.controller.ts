@@ -54,6 +54,8 @@ export function makeBusController(deps: { bus: BusService }) {
     myCar: (r: HttpRequest) => b.myCar(ctxOf(r)),
     runs: (r: HttpRequest) => b.listRuns(ctxOf(r)),
     pastRun: (r: HttpRequest) => b.getPastRun(ctxOf(r), p(r, 'id')),
+    history: (r: HttpRequest) => b.history(ctxOf(r), r.query['from'] ? String(r.query['from']) : undefined),
+    editPastRider: (r: HttpRequest) => b.editPastRider(ctxOf(r), p(r, 'id'), p(r, 'riderId'), r.body),
     autocomplete: (r: HttpRequest) => b.autocomplete(ctxOf(r), String(r.query['q'] ?? ''), String(r.query['session'] ?? '')),
     generate: (r: HttpRequest) => b.generate(ctxOf(r), r.body),
     undo: async (r: HttpRequest) => { await b.undo(ctxOf(r)); return { ok: true }; },

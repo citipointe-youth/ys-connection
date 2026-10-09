@@ -14,7 +14,7 @@ import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
-  BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView } from '../core/entities/bus';
+  BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide } from '../core/entities/bus';
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
@@ -48,6 +48,8 @@ export interface BusService {
   linkGuestsAfterImport(): Promise<{ linked: number }>;
   listRuns(ctx: BusCtx): Promise<{ id: string; serviceDate: string; riders: number; cars: number }[]>;
   getPastRun(ctx: BusCtx, runId: string): Promise<BusRunView>;
+  history(ctx: BusCtx, from?: string): Promise<BusHistoryView>;
+  editPastRider(ctx: BusCtx, runId: string, riderId: string, input: unknown): Promise<{ ok: true }>;
   autocomplete(ctx: BusCtx, q: string, session: string): Promise<PlaceSuggestion[]>;
   generate(ctx: BusCtx, input: unknown): Promise<BusGenerateResult>;
   undo(ctx: BusCtx): Promise<void>;
@@ -110,6 +112,12 @@ const LinkIn = z.object({ studentId: z.string().min(1) });
 const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
   .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
 const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
+// Past-night correction (director/admin): every field optional; only what actually changes is logged.
+const EditPastIn = z.object({
+  runVehicleId: z.string().min(1).nullable().optional(), droppedAt: z.string().datetime().nullable().optional(),
+  noShow: z.boolean().optional(), notRiding: z.boolean().optional(),
+  note: z.string().trim().max(300).nullable().optional(), reason: z.string().trim().max(200).default(''),
+});
 const GenerateIn = z.object({ mode: z.enum(['all', 'fit']) });
 const ExtraCarsIn = z.object({ count: z.number().int().min(1).max(2), seats: z.number().int().min(3).max(15) });
 // Task 1: generate() can make up to two Google solves (the main solve + a lone-girl re-solve) plus
@@ -168,6 +176,14 @@ const lockConflict = (run: BusRun) => new ConflictError(`${lockName(run.lockBy) 
 
 const nowIso = () => new Date().toISOString();
 const genderOf = (g: string | null | undefined): BusGender => (g === 'male' || g === 'female' ? g : null);
+// Names of a car's leaders: the snapshot first (survives a deleted leader), live name as fallback.
+const leaderNamesOf = (v: BusRunVehicle, live: Map<string, string>): string[] => {
+  const snap = new Map(v.leaderSnap.map((l) => [l.id, l.name]));
+  return v.leaderIds.map((id) => snap.get(id) ?? live.get(id)).filter((n): n is string => !!n);
+};
+const clockAt = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: 'numeric', minute: '2-digit', hour12: true });
+// A soft-removed ("not riding") rider keeps the row but loses any car/stop.
+const OFF_CAR = { runVehicleId: null, stopOrder: null, pinned: false } as const;
 // Task 8: startIso labels local leave time as literal UTC (see leaveIso in bus-plan.ts) — read
 // the clock back the same way (UTC getters), or this would double-shift by the server's TZ.
 const hhmmAt = (startIso: string, addSec: number): string => new Date(Date.parse(startIso) + addSec * 1000).toISOString().slice(11, 16);
@@ -225,6 +241,24 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return ctx.actor.displayName;
   }
 
+  /** Every tonight read goes through this: "not riding" rows are history only, never roster. */
+  async function ridingOf(runId: string): Promise<BusRunRider[]> {
+    return (await bus.listRunRiders(runId)).filter((r) => !r.notRiding);
+  }
+
+  /** Saves a run car and refreshes its leaderSnap (leaders that no longer exist keep their old snapshot entry). */
+  async function saveRV(v: Omit<BusRunVehicle, 'leaderSnap'> & { leaderSnap?: BusRunVehicle['leaderSnap'] }, pool?: { id: string; fullName: string; gender: string | null }[]): Promise<BusRunVehicle> {
+    const live = new Map((pool ?? await leaders.findAll()).map((l) => [l.id, l]));
+    const old = new Map((v.leaderSnap ?? []).map((l) => [l.id, l]));
+    const leaderSnap = v.leaderIds.flatMap((id) => {
+      const l = live.get(id);
+      if (l) return [{ id, name: l.fullName, gender: genderOf(l.gender) }];
+      const o = old.get(id);
+      return o ? [o] : [];
+    });
+    return bus.saveRunVehicle({ ...v, leaderSnap });
+  }
+
   async function purgeGuests(): Promise<void> {
     const cutoff = Date.now() - PURGE_DAYS * 86_400_000;
     for (const g of await bus.listGuests()) {
@@ -243,7 +277,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // I7: a prev run's leaderIds/availablePoolLeaderIds can name a leader who's since been
     // deactivated (e.g. a New Year reset) — only carry forward leaders still active, or the
     // new run opens with stale "Leader" chips, wrong capacity and unknown gender.
-    const activeIds = new Set((await leaders.findActive()).map((l) => l.id));
+    const activeList = await leaders.findActive();
+    const activeIds = new Set(activeList.map((l) => l.id));
     const { run, created } = await bus.insertRunIfAbsent({
       id: generateId(), serviceDate: date, version: 0,
       availablePoolLeaderIds: (prev?.availablePoolLeaderIds ?? []).filter((id) => activeIds.has(id)),
@@ -257,11 +292,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const before = prevVehicles.find((p) => p.vehicleId === v.id);
       const leaderIds = (before ? before.leaderIds : prefs.filter((p) => p.fixedVehicleId === v.id).map((p) => p.id))
         .filter((id) => activeIds.has(id));
-      await bus.saveRunVehicle({
+      await saveRV({
         id: generateId(), runId: run.id, vehicleId: v.id, ownerLeaderId: null, name: v.name, seats: v.seats, plate: v.plate,
         running: before ? before.running : true, leaderIds,
         endsAt: v.endsAt, endsAddress: v.endsAddress, endsPlaceId: v.endsPlaceId, colourIndex: i,
-      });
+      }, activeList);
     }
     return run;
   }
@@ -292,8 +327,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
   }
 
-  async function vehicleViews(runId: string): Promise<BusRunVehicleView[]> {
-    const [all, riders] = await Promise.all([leaders.findAll(), bus.listRunRiders(runId)]);
+  async function vehicleViews(runId: string, past = false): Promise<BusRunVehicleView[]> {
+    const [all, riders] = await Promise.all([leaders.findAll(), ridingOf(runId)]);
     const byId = new Map(all.map((l) => [l.id, l]));
     // I7: count/name only leaders that still exist — a leader deleted mid-run must not show
     // as a "Leader" placeholder chip with an unknown-gender eligibility, or be deducted from
@@ -307,7 +342,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const hasGirl = riders.some((r) => r.runVehicleId === v.id && r.snapGender === 'female');
       return {
         ...v, leaderIds, capacity: capacityOf(v.seats, leaderIds.length), eligibility,
-        leaderNames: leaderIds.map((id) => byId.get(id)!.fullName),
+        // A finished night names who drove from the snapshot, so a since-deleted leader still shows.
+        leaderNames: past ? leaderNamesOf(v, new Map(all.map((l) => [l.id, l.fullName]))) : leaderIds.map((id) => byId.get(id)!.fullName),
         needsFemaleLeader: hasGirl && !eligibility.female,
       };
     });
@@ -315,7 +351,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
     const [vehicles, riders, active, prefs, fleet, consents] = await Promise.all([
-      vehicleViews(run.id), bus.listRunRiders(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
+      vehicleViews(run.id, isPast(run, ctx, c)), ridingOf(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
@@ -398,19 +434,23 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     }
     const addr = await resolveAddress(v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! }, v);
     const existing = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
+    // Re-adding someone who was taken off tonight revives their "not riding" row (unique per run+person).
+    const revive = async (r: BusRunRider) => (r.notRiding
+      ? { ...OFF_CAR, notRiding: false, noShow: false, droppedAt: null, droppedBy: null, addedBy: await whoLabel(ctx), addedAt: nowIso() } : {});
     const patch = { studentId: v.studentId ?? null, guestId: v.guestId ?? null, addressId: addr.id,
       snapName: name, snapGrade: grade, snapGender: gender, snapAddress: addr.address, snapPlaceId: addr.placeId };
-    if (existing) return bus.saveRunRider({ ...existing, ...patch });
+    if (existing) return bus.saveRunRider({ ...existing, ...patch, ...(await revive(existing)) });
     try {
       return await bus.saveRunRider({ id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null,
-        pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), droppedAt: null, droppedBy: null, ...patch });
+        pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), droppedAt: null, droppedBy: null,
+        notRiding: false, noShow: false, note: null, wasGuest: false, ...patch });
     } catch (err) {
       // Two leaders adding the same student/guest at once — see addRider's original comment
       // (same race, same fix): re-read and merge onto the winner's row.
       if ((err as { code?: string }).code !== '23505') throw err;
       const again = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
       if (!again) throw err;
-      return bus.saveRunRider({ ...again, ...patch });
+      return bus.saveRunRider({ ...again, ...patch, ...(await revive(again)) });
     }
   }
 
@@ -488,7 +528,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const existing = runRiders.find((r) => r.studentId === studentId);
       for (const r of runRiders.filter((r) => r.guestId === guestId)) {
         if (existing) await bus.deleteRunRider(r.id);
-        else await bus.saveRunRider({ ...r, studentId, guestId: null });
+        else await bus.saveRunRider({ ...r, studentId, guestId: null, wasGuest: true });
       }
     }
     // I3 (controller ruling): run history (incl. encrypted addresses) is kept across Full
@@ -507,7 +547,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** Builds the fleet solve for Generate / Fit in (and R3's "Try +N cars"). Reads only. */
   async function prepareFleet(c: MinistryConfig, run: BusRun, mode: 'all' | 'fit'): Promise<FleetPrep> {
     const b = c.busMinistry;
-    const [rvs, riders, all, fleet, prefs] = await Promise.all([bus.listRunVehicles(run.id), bus.listRunRiders(run.id), leaders.findAll(), bus.listVehicles(), bus.listLeaderPrefs()]);
+    const [rvs, riders, all, fleet, prefs] = await Promise.all([bus.listRunVehicles(run.id), ridingOf(run.id), leaders.findAll(), bus.listVehicles(), bus.listLeaderPrefs()]);
     const genderBy = new Map(all.map((l) => [l.id, genderOf(l.gender)]));
     const prefGradesBy = new Map(prefs.map((p) => [p.id, p.prefGrades]));
     const known = (ids: string[]) => ids.filter((id) => genderBy.has(id));
@@ -552,7 +592,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** Single-car solve for one car's stop order (Move, own car). No church pin / Google down → keep the current order. */
   async function reorderCar(c: MinistryConfig, run: BusRun, rv: BusRunVehicle): Promise<void> {
     const b = c.busMinistry;
-    const inCar = (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === rv.id)
+    const inCar = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id)
       .sort((x, y) => (x.stopOrder ?? 999) - (y.stopOrder ?? 999));
     const mapped = inCar.filter((x) => x.snapPlaceId);
     if (!b.churchPlaceId || mapped.length < 2) return;
@@ -588,7 +628,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (cached) return cached;
     if (!b.churchPlaceId) throw new BadRequestError(NO_CHURCH);
     const cars = (await bus.listRunVehicles(run.id)).filter((v) => v.running);
-    const riders = (await bus.listRunRiders(run.id)).filter((r) => r.snapPlaceId && r.runVehicleId && cars.some((v) => v.id === r.runVehicleId));
+    const riders = (await ridingOf(run.id)).filter((r) => r.snapPlaceId && r.runVehicleId && cars.some((v) => v.id === r.runVehicleId));
     const problem: SolveProblem = { startIso: leaveIso(run.serviceDate, b.leaveTime), targetRouteMin: b.targetRouteMin, polylines: true,
       vehicles: cars.map((v) => {
         const end = endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId);
@@ -661,7 +701,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:roster');
       if (!who.studentId === !who.guestId) throw new BadRequestError('Give a studentId or a guestId');
       const run = await ensureRun(ctx, c);
-      const onTonight = (await bus.listRunRiders(run.id)).some((r) => (who.studentId ? r.studentId === who.studentId : r.guestId === who.guestId));
+      const onTonight = (await ridingOf(run.id)).some((r) => (who.studentId ? r.studentId === who.studentId : r.guestId === who.guestId));
       if (onTonight) throw new BadRequestError("They're on tonight's run — remove them from there first");
       await bus.deleteAddressesOf(who);
       if (who.guestId) {
@@ -720,7 +760,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is using this rider's current address/pin
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       const addr = await resolveAddress(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }, v);
       const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: addr.address, snapPlaceId: addr.placeId });
       await touch(ctx, run);
@@ -731,23 +771,22 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
-      await bus.deleteRunRider(riderId);
-      await bus.setUndo(run.id, null, null); // I2: a since-removed rider makes the pre-generate snapshot stale
-      // Task 5 (owner): "New Person" is a guest, not a platform student. If this was their last
-      // bus_run_riders row in ANY run (and they were never linked to a real student), fully
-      // delete the guest + their saved addresses so "Pending new people" drops accordingly —
-      // students are never deleted here, only guests nobody will ever add back.
+      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
+      // Task 5 (owner): "New Person" is a guest, not a platform student. If this is their only
+      // bus_run_riders row in ANY run (and they were never linked to a real student) it was a
+      // mistaken entry: fully delete the row, the guest and their saved addresses so "Pending new
+      // people" drops accordingly. Anyone else is kept as a "not riding" row (history), never deleted.
+      let mistaken = false;
       if (r.guestId) {
         const g = await bus.getGuest(r.guestId);
         if (g && !g.linkedStudentId) {
-          let stillRides = false;
-          for (const other of await bus.listRuns()) {
-            if ((await bus.listRunRiders(other.id)).some((x) => x.guestId === r.guestId)) { stillRides = true; break; }
-          }
-          if (!stillRides) await bus.deleteGuest(r.guestId);
+          const rows = await bus.listRunRidersOf((await bus.listRuns()).map((x) => x.id));
+          mistaken = !rows.some((x) => x.guestId === r.guestId && x.id !== r.id);
         }
       }
+      if (mistaken) { await bus.deleteRunRider(riderId); await bus.deleteGuest(r.guestId!); }
+      else await bus.saveRunRider({ ...r, ...OFF_CAR, notRiding: true });
+      await bus.setUndo(run.id, null, null); // I2: a since-removed rider makes the pre-generate snapshot stale
       await touch(ctx, run);
     },
     async createGuest(ctx, input) {
@@ -782,8 +821,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
             await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
           await bus.deleteRunVehicle(rv.id);
         }
-        else if (rv) await bus.saveRunVehicle({ ...rv, name: saved.name, seats: saved.seats, plate: saved.plate });
-        else if (!saved.archived) await bus.saveRunVehicle({ id: generateId(), runId: run.id, vehicleId: saved.id, ownerLeaderId: null,
+        else if (rv) await saveRV({ ...rv, name: saved.name, seats: saved.seats, plate: saved.plate });
+        else if (!saved.archived) await saveRV({ id: generateId(), runId: run.id, vehicleId: saved.id, ownerLeaderId: null,
           name: saved.name, seats: saved.seats, plate: saved.plate, running: true, leaderIds: [], endsAt: saved.endsAt,
           endsAddress: saved.endsAddress, endsPlaceId: saved.endsPlaceId, colourIndex: rvs.length });
         await touch(ctx, run);
@@ -798,7 +837,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // I1: a solve in flight is using this car's current seats/running state
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === id);
       if (!rv) throw new NotFoundError('Car not found');
-      await bus.saveRunVehicle({ ...rv, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) } as BusRunVehicle);
+      await saveRV({ ...rv, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) } as BusRunVehicle);
       if (v.running === false) {
         for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === id))
           await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
@@ -840,7 +879,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // under the SAME lock check above — a junior leader with no bus:roster places someone new
       // straight into their own car via placeRider (addRider's shared internals). Anyone already
       // on tonight's run is left alone and just folded into riderIds below, never re-written.
-      let riders = await bus.listRunRiders(run.id);
+      let riders = await ridingOf(run.id);
       // Fail fast BEFORE creating any guest/rider, so a rejected save leaves nothing behind.
       for (const id of v.riderIds) if (!riders.some((r) => r.id === id)) throw new NotFoundError('Rider not found');
       if (v.riderIds.length + v.newRiders.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
@@ -867,10 +906,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (riderIds.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
       const rvs = await bus.listRunVehicles(run.id);
       const prior = rvs.find((x) => x.ownerLeaderId === me);
-      const rv = await bus.saveRunVehicle({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
+      const rv = await saveRV({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
         name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
         endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,
-        colourIndex: prior?.colourIndex ?? rvs.length });
+        colourIndex: prior?.colourIndex ?? rvs.length, leaderSnap: prior?.leaderSnap });
       for (const r of riders.filter((r) => r.runVehicleId === rv.id && !riderIds.includes(r.id)))
         await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
       for (const [i, id] of riderIds.entries()) {
@@ -913,7 +952,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const views = await vehicleViews(run.id);
       const vehicle = views.find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
       if (!vehicle) throw new NotFoundError('Car not found');
-      const inCar = (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === vehicle.id);
+      const inCar = (await ridingOf(run.id)).filter((r) => r.runVehicleId === vehicle.id);
       const currentIds = new Set(inCar.map((r) => r.id));
       const given = [...v.riderIds, ...v.removeIds];
       const givenSet = new Set(given);
@@ -921,7 +960,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         throw new ConflictError('Your car changed — refresh');
       const byId = new Map(inCar.map((r) => [r.id, r]));
       for (const [i, id] of v.riderIds.entries()) await bus.saveRunRider({ ...byId.get(id)!, stopOrder: i + 1, pinned: true });
-      for (const id of v.removeIds) await bus.deleteRunRider(id); // never hard-deletes a guest — see comment above
+      for (const id of v.removeIds) await bus.saveRunRider({ ...byId.get(id)!, ...OFF_CAR, notRiding: true }); // kept as "not riding"; a guest is never hard-deleted — see comment above
       await bus.setUndo(run.id, null, null);
       await touch(ctx, run);
       return (await vehicleViews(run.id)).find((x) => x.id === vehicle.id)!;
@@ -945,7 +984,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run);
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
         const saved = await bus.saveRunRider({ ...r, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
@@ -961,7 +1000,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
       if (!rv) throw new NotFoundError('Car not found');
-      const inCar = (await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === rv.id && x.id !== r.id);
+      const inCar = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id && x.id !== r.id);
       // I7: a leader removed from the roster can still be named in this car's raw leaderIds —
       // vehicleViews/prepareFleet already filter them out of capacity/eligibility; Move must too,
       // or a free seat behind a now-deleted leader gets rejected as "full".
@@ -982,7 +1021,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // Task 3: same rider-write guard as addRider/updateRider/removeRider
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
       const prior = await bus.getConsent(owner);
       const who = await whoLabel(ctx);
@@ -1008,7 +1047,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(DroppedIn, input);
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === r.runVehicleId);
       const me = selfLeaderId(ctx);
       const inMyCar = !!rv && !!me && (rv.ownerLeaderId === me || rv.leaderIds.includes(me));
@@ -1026,7 +1065,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const vehicle = me ? views.find((v) => v.running && (v.ownerLeaderId === me || v.leaderIds.includes(me))) ?? null : null;
       const stops: MyCarView['stops'] = [];
       if (vehicle) {
-        const mine = (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === vehicle.id)
+        const mine = (await ridingOf(run.id)).filter((r) => r.runVehicleId === vehicle.id)
           .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
         const consents = await bus.listConsents();
         for (const r of mine) {
@@ -1038,7 +1077,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       let ownCarDraft: MyCarView['ownCarDraft'] = null;
       if (me && !vehicle) {
         const p = await bus.getLeaderPrefs(me);
-        const tonight = await bus.listRunRiders(run.id);
+        const tonight = await ridingOf(run.id);
         ownCarDraft = { car: p?.ownCar ?? null,
           riderIds: tonight.filter((r) => p?.lastOwnRiderKeys.includes(riderKey(r))).map((r) => r.id) };
       }
@@ -1080,19 +1119,103 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // M5: "Past nights" means strictly before tonight — without this, listRuns also
       // returned tonight's (and, if one somehow existed, a future) run.
       const today = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
-      const out = [];
-      for (const r of await bus.listRuns()) {
-        if (r.serviceDate >= today) continue;
-        const [riders, cars] = await Promise.all([bus.listRunRiders(r.id), bus.listRunVehicles(r.id)]);
-        out.push({ id: r.id, serviceDate: r.serviceDate, riders: riders.length, cars: cars.filter((v) => v.running).length });
-      }
-      return out;
+      const runs = (await bus.listRuns()).filter((r) => r.serviceDate < today);
+      const ids = runs.map((r) => r.id);
+      const [riders, cars] = await Promise.all([bus.listRunRidersOf(ids), bus.listRunVehiclesOf(ids)]);
+      return runs.map((r) => ({ id: r.id, serviceDate: r.serviceDate,
+        riders: riders.filter((x) => x.runId === r.id && !x.notRiding).length, cars: cars.filter((v) => v.runId === r.id && v.running).length }));
     },
     async getPastRun(ctx, runId) {
       const c = await gate(ctx, 'bus:analysis');
       const run = await bus.getRun(runId);
       if (!run) throw new NotFoundError('Night not found');
       return buildView(ctx, c, run);
+    },
+    // Past-nights history: nights before tonight (>= from) with their riders/cars, plus one row per
+    // ride for the table + export. Built from batch reads; firstTime looks at ALL history, not the window.
+    async history(ctx, from) {
+      const c = await gate(ctx, 'bus:coordinate');
+      if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) throw new BadRequestError('Bad from date');
+      const today = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
+      const floor = from || (() => { const d = new Date(`${today}T00:00:00Z`); d.setUTCFullYear(d.getUTCFullYear() - 1); return d.toISOString().slice(0, 10); })();
+      const canEdit = allowed(ctx, c, 'bus:analysis');
+      const past = (await bus.listRuns()).filter((r) => r.serviceDate < today); // newest first
+      const windowRuns = past.filter((r) => r.serviceDate >= floor);
+      const dateOf = new Map(past.map((r) => [r.id, r.serviceDate]));
+      const winIds = windowRuns.map((r) => r.id);
+      const [allRows, vehicles, allLeaders, edits] = await Promise.all([
+        bus.listRunRidersOf(past.map((r) => r.id)), bus.listRunVehiclesOf(winIds), leaders.findAll(),
+        canEdit ? bus.listRunEdits(winIds) : Promise.resolve([]),
+      ]);
+      const firstRide = new Map<string, string>(); // person → date of their first ride ever
+      for (const r of allRows) {
+        if (r.notRiding) continue;
+        const d = dateOf.get(r.runId)!, k = riderKey(r), cur = firstRide.get(k);
+        if (!cur || d < cur) firstRide.set(k, d);
+      }
+      const live = new Map(allLeaders.map((l) => [l.id, l.fullName]));
+      const nights: BusHistoryNight[] = [], rides: BusHistoryRide[] = [];
+      for (const run of windowRuns) {
+        const rows = allRows.filter((r) => r.runId === run.id);
+        if (!rows.length) continue;
+        const cars = vehicles.filter((v) => v.runId === run.id), running = cars.filter((v) => v.running);
+        const carById = new Map(cars.map((v) => [v.id, v]));
+        const riding = rows.filter((r) => !r.notRiding);
+        const placed = riding.filter((r) => r.runVehicleId && carById.get(r.runVehicleId)?.running).length;
+        nights.push({ id: run.id, date: run.serviceDate, riders: riding.length, placed, unassigned: riding.length - placed,
+          dropped: riding.filter((r) => r.droppedAt).length, notRiding: rows.length - riding.length, noShow: riding.filter((r) => r.noShow).length,
+          cars: running.length, seats: running.reduce((n, v) => n + v.seats, 0),
+          leaders: [...new Set(running.flatMap((v) => leaderNamesOf(v, live)))], guests: riding.filter((r) => r.guestId).length,
+          firstTime: riding.filter((r) => firstRide.get(riderKey(r)) === run.serviceDate).length,
+          ...(canEdit ? { edits: edits.filter((e) => e.runId === run.id).map((e) => ({ at: e.at, by: e.by, detail: e.detail })) } : {}) });
+        for (const r of [...rows].sort((a, b) => (carById.get(a.runVehicleId ?? '')?.colourIndex ?? 99) - (carById.get(b.runVehicleId ?? '')?.colourIndex ?? 99)
+          || (a.stopOrder ?? 999) - (b.stopOrder ?? 999) || a.snapName.localeCompare(b.snapName))) {
+          const car = r.runVehicleId ? carById.get(r.runVehicleId) ?? null : null;
+          rides.push({ runId: run.id, date: run.serviceDate, riderId: r.id, studentId: r.studentId, guestId: r.guestId,
+            kind: r.guestId ? 'guest' : 'student', wasGuest: r.wasGuest, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
+            car: car?.name ?? null, carColour: car?.colourIndex ?? null, runVehicleId: car?.id ?? null, leaders: car ? leaderNamesOf(car, live) : [],
+            stop: r.stopOrder, address: r.snapAddress, suburb: suburbOf(r.snapAddress), droppedAt: r.droppedAt, droppedBy: r.droppedBy,
+            addedBy: r.addedBy, notRiding: r.notRiding, noShow: r.noShow, note: r.note });
+        }
+      }
+      return { canEdit, nights, rides };
+    },
+    // Director/admin correction of a finished night: no routing, no lock; every change is logged.
+    async editPastRider(ctx, runId, riderId, input) {
+      const c = await gate(ctx, 'bus:analysis');
+      const v = parseIn(EditPastIn, input);
+      const run = await bus.getRun(runId);
+      if (!run) throw new NotFoundError('Night not found');
+      if (!isPast(run, ctx, c)) throw new BadRequestError('Only finished nights can be edited');
+      const r = await bus.getRunRider(riderId);
+      if (!r || r.runId !== run.id) throw new NotFoundError('Rider not found');
+      const cars = await bus.listRunVehicles(run.id);
+      const carName = (id: string | null) => (id ? cars.find((x) => x.id === id)?.name ?? 'removed car' : 'Unassigned');
+      const next = { ...r };
+      const parts: string[] = [];
+      if (v.notRiding !== undefined && v.notRiding !== r.notRiding) {
+        next.notRiding = v.notRiding;
+        if (v.notRiding) Object.assign(next, OFF_CAR);
+        parts.push(`not riding: ${r.notRiding ? 'yes' : 'no'} → ${v.notRiding ? 'yes' : 'no'}`);
+      }
+      if (v.runVehicleId !== undefined && !next.notRiding && v.runVehicleId !== r.runVehicleId) {
+        if (v.runVehicleId && !cars.some((x) => x.id === v.runVehicleId)) throw new NotFoundError('Car not found');
+        const last = Math.max(0, ...(await bus.listRunRiders(run.id)).filter((x) => x.runVehicleId === v.runVehicleId && x.id !== r.id).map((x) => x.stopOrder ?? 0));
+        next.runVehicleId = v.runVehicleId; next.stopOrder = v.runVehicleId ? last + 1 : null; next.pinned = false;
+        parts.push(`car ${carName(r.runVehicleId)} → ${carName(v.runVehicleId)}`);
+      }
+      if (v.droppedAt !== undefined && v.droppedAt !== r.droppedAt) {
+        next.droppedAt = v.droppedAt; next.droppedBy = v.droppedAt ? r.droppedBy ?? await whoLabel(ctx) : null;
+        parts.push(`dropped ${r.droppedAt ? clockAt(r.droppedAt) : 'none'} → ${v.droppedAt ? clockAt(v.droppedAt) : 'none'}`);
+      }
+      if (v.noShow !== undefined && v.noShow !== r.noShow) { next.noShow = v.noShow; parts.push(`no-show: ${r.noShow ? 'yes' : 'no'} → ${v.noShow ? 'yes' : 'no'}`); }
+      if (v.note !== undefined && (v.note || null) !== r.note) { next.note = v.note || null; parts.push(next.note ? 'note edited' : 'note cleared'); }
+      if (!parts.length) return { ok: true };
+      await bus.saveRunRider(next);
+      const by = await whoLabel(ctx);
+      await bus.insertRunEdit({ id: generateId(), runId: run.id, at: nowIso(), by, detail: `${r.snapName}: ${parts.join('; ')}${v.reason ? ` (${v.reason})` : ''}` });
+      await touch(ctx, run);
+      return { ok: true };
     },
     async autocomplete(ctx, q, session) {
       const c = await gate(ctx, 'bus:use');
@@ -1129,7 +1252,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const before = new Map(prep.riders.map((r) => [r.id, r]));
         // saveRunRider is an upsert: only write riders that still exist and weren't moved while Google was solving.
         const unchanged = (r: BusRunRider) => { const b0 = before.get(r.id); return !!b0 && b0.runVehicleId === r.runVehicleId && b0.pinned === r.pinned; };
-        const current = await bus.listRunRiders(run.id);
+        const current = await ridingOf(run.id);
         await bus.setUndo(run.id, prep.riders.map((r) => ({ riderId: r.id, runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned })),
           new Date(Date.now() + UNDO_MS).toISOString());
         for (const r of current) {
@@ -1143,7 +1266,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           for (const r of current.filter((x) => x.runVehicleId === id && !x.snapPlaceId && unchanged(x))) await bus.saveRunRider({ ...r, stopOrder: ++n });
         }
         const live = new Map((await bus.listRunVehicles(run.id)).map((v) => [v.id, v]));
-        for (const [id, leaderIds] of prep.filled) { const v = live.get(id); if (v) await bus.saveRunVehicle({ ...v, leaderIds }); }
+        for (const [id, leaderIds] of prep.filled) { const v = live.get(id); if (v) await saveRV({ ...v, leaderIds }); }
 
         // Task 7 (owner, replaces the old lone-girl rule): buildFleetProblem already made it a
         // HARD constraint that a non-fixed girl can only be placed in a car with >=1 female
@@ -1161,7 +1284,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         await touch(ctx, run);
         // Task 1: count what was actually written, not the solver's optimistic plan — a rider
         // removed mid-solve must not count as placed.
-        const finalRiders = await bus.listRunRiders(run.id);
+        const finalRiders = await ridingOf(run.id);
         const finalById = new Map(finalRiders.map((r) => [r.id, r]));
         const stopIdSet = new Set(prep.stopRiderIds);
         return {
@@ -1184,7 +1307,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rvs = await bus.listRunVehicles(run.id);
       const running = new Set(rvs.filter((v) => v.running).map((v) => v.id));
       const ownCarIds = new Set(rvs.filter((v) => v.ownerLeaderId).map((v) => v.id));
-      for (const r of await bus.listRunRiders(run.id)) {
+      for (const r of await ridingOf(run.id)) {
         const e = snap.get(r.id);
         if (!e) continue; // added after the generate — leave alone
         if (r.runVehicleId && ownCarIds.has(r.runVehicleId)) continue; // I2: never pull a rider out of someone's own car
@@ -1231,7 +1354,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         return { runVehicleId: v.id, name: v.name, colourIndex: v.colourIndex, routeMin: Math.round(route.totalSec / 60), riders };
       });
       return { version: run.version, detourMin: b.detourMin, detourPct: b.detourPct, cars,
-        unassigned: (await bus.listRunRiders(run.id)).filter((r) => !r.runVehicleId).length,
+        unassigned: (await ridingOf(run.id)).filter((r) => !r.runVehicleId).length,
         longestMin: Math.max(0, ...cars.map((x) => x.routeMin)), totalMin: sum(cars.map((x) => x.routeMin)) };
     },
     async extraCars(ctx, input) {
