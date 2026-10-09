@@ -7,7 +7,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "vercel-build": "echo 'no custom build needed — @vercel/node handles bundling'"
+    "vercel-build": "tsx scripts/migrate.ts",
+    "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

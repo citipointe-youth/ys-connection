@@ -4,6 +4,7 @@ import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult
 import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
   staticMapUrl, MATRIX_MAX_PAIRS, type ResolvedPlaces } from './google-requests';
 import { FakeRoutingProvider } from './fake-routing-provider';
+import { googleConfigFromEnv } from './google-config';
 
 export interface GoogleConfig { apiKey: string; saEmail: string; saPrivateKey: string; projectId: string }
 
@@ -179,23 +180,19 @@ export class GoogleRoutingProvider implements RoutingProvider {
  * I4's "reject a fake: place ID once Google is live" check.
  */
 export function googleRoutingEnabled(e: NodeJS.ProcessEnv = process.env): boolean {
-  const apiKey = e['GOOGLE_MAPS_API_KEY'], saEmail = e['GOOGLE_SA_EMAIL'], key = e['GOOGLE_SA_PRIVATE_KEY'], projectId = e['GOOGLE_PROJECT_ID'];
   const memory = (e['PERSISTENCE'] ?? 'memory') === 'memory';
-  return !!(apiKey && saEmail && key && projectId) && (!memory || e['BUS_ROUTING'] === 'google');
+  return !!googleConfigFromEnv(e) && (!memory || e['BUS_ROUTING'] === 'google');
 }
 
 export function routingFromEnv(e: NodeJS.ProcessEnv = process.env): RoutingProvider {
   const memory = (e['PERSISTENCE'] ?? 'memory') === 'memory';
-  if (!googleRoutingEnabled(e)) {
-    // I4: outside memory mode, this is the fallback a prod deploy gets if the four Google env
-    // vars aren't set yet — its autocomplete must not offer "Testville" suggestions that would
-    // get saved as real addresses. Memory/test mode still wants them (suggest defaults true).
+  const cfg = googleRoutingEnabled(e) ? googleConfigFromEnv(e) : null;
+  if (!cfg) {
     if (!memory) {
       console.warn('[routing] Google env not set — Bus Ministry uses straight-line fake routes');
       return new FakeRoutingProvider({ suggest: false });
     }
     return new FakeRoutingProvider();
   }
-  const apiKey = e['GOOGLE_MAPS_API_KEY']!, saEmail = e['GOOGLE_SA_EMAIL']!, key = e['GOOGLE_SA_PRIVATE_KEY']!, projectId = e['GOOGLE_PROJECT_ID']!;
-  return new GoogleRoutingProvider({ apiKey, saEmail, saPrivateKey: normalisePrivateKey(key), projectId });
+  return new GoogleRoutingProvider(cfg);
 }
