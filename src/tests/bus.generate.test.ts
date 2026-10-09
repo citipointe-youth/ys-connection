@@ -583,3 +583,19 @@ describe('autocomplete', () => {
     expect(rec.calls.autocomplete[0]).toEqual({ input: '24 Wynnum', session: 'sess-12345678', region: 'au' });
   });
 });
+
+describe('unassignAll', () => {
+  it('clears non-pinned riders, keeps pinned ones, and can be undone', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']);
+    const pinned = await f.rider('s1'); await f.rider('s2'); await f.rider('s3');
+    await f.svc.moveRider(f.admin, pinned.id, { runVehicleId: a }); // hand-moved = pinned
+    await f.svc.generate(f.admin, { mode: 'all' });
+    expect(await f.svc.unassignAll(f.admin)).toEqual({ unassigned: 2 });
+    let v = await f.svc.getRun(f.admin);
+    expect(v.riders.filter((r) => r.runVehicleId).map((r) => r.id)).toEqual([pinned.id]);
+    await f.svc.undo(f.admin);
+    v = await f.svc.getRun(f.admin);
+    expect(v.riders.every((r) => r.runVehicleId === a)).toBe(true);
+  });
+});

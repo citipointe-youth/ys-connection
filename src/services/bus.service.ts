@@ -53,6 +53,7 @@ export interface BusService {
   autocomplete(ctx: BusCtx, q: string, session: string): Promise<PlaceSuggestion[]>;
   generate(ctx: BusCtx, input: unknown): Promise<BusGenerateResult>;
   undo(ctx: BusCtx): Promise<void>;
+  unassignAll(ctx: BusCtx): Promise<{ unassigned: number }>;
   analysis(ctx: BusCtx): Promise<BusAnalysisView>;
   extraCars(ctx: BusCtx, input: unknown): Promise<BusExtraCarsView>;
   analysisMap(ctx: BusCtx): Promise<MapImage>;
@@ -1316,6 +1317,22 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       await bus.setUndo(run.id, null, null);
       await touch(ctx, run);
+    },
+    // Owner 2026-10-09: clear every non-pinned rider out of the fleet cars (own cars are the
+    // leader's choice, left alone, like Undo). Saves an undo snapshot so it can be reverted.
+    async unassignAll(ctx) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const run = await writableRun(ctx, c);
+      if (lockActive(run)) throw lockConflict(run);
+      const ownCarIds = new Set((await bus.listRunVehicles(run.id)).filter((v) => v.ownerLeaderId).map((v) => v.id));
+      const riders = await ridingOf(run.id);
+      const out = riders.filter((r) => r.runVehicleId && !r.pinned && !ownCarIds.has(r.runVehicleId));
+      if (!out.length) return { unassigned: 0 };
+      await bus.setUndo(run.id, riders.map((r) => ({ riderId: r.id, runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned })),
+        new Date(Date.now() + UNDO_MS).toISOString());
+      for (const r of out) await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+      await touch(ctx, run);
+      return { unassigned: out.length };
     },
     async analysis(ctx) {
       const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)

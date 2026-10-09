@@ -619,7 +619,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .cbx-row input{width:20px;height:20px;flex-shrink:0}
 .cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bus-gender{display:flex;gap:8px}
-.bus-checks{max-height:220px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
+.bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
 /* ── Car setup / Routes / My car (Task 7) ── */
 .veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:13px;margin-bottom:12px}
 .veh-card.off{opacity:.55}
@@ -9176,7 +9176,20 @@ function _busRoutesHead() {
     ? `<button class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="busGenerate('${anyPlaced ? 'fit' : 'all'}')">${icS('route')} ${label}</button>`
     : '<span style="flex:1"></span>';
   const kebab = anyPlaced ? `<button class="btn-icon" aria-label="More route options" ${busy ? 'disabled' : ''} onclick="busRoutesMenu()">${icN('kebab')}</button>` : '';
-  return `${lock ? `<div class="alert al-warn bus-lock">${icS('alert')} ${esc(lock)} is generating routes…</div>` : ''}<div class="bus-gen">${primary}${kebab}</div>`;
+  const unBtn = anyPlaced ? `<button class="btn btn-secondary btn-sm" ${busy ? 'disabled' : ''} onclick="busUnassignAllSheet()">Unassign all</button>` : '';
+  return `${lock ? `<div class="alert al-warn bus-lock">${icS('alert')} ${esc(lock)} is generating routes…</div>` : ''}<div class="bus-gen">${primary}${unBtn}${kebab}</div>`;
+}
+function busUnassignAllSheet() {
+  modal(`<div class="mo-title">Unassign everyone?</div>
+    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders and leaders' own cars goes back to Unassigned. You can undo for 2 minutes.</div>
+    <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="busUnassignAll()">Unassign all</button></div>`);
+}
+async function busUnassignAll() {
+  if (_busBlockWrite()) return;
+  closeModal();
+  try { const r = await _busSend('POST', '/bus/run/unassign-all'); BUS.routeMin = {}; toast(r.unassigned ? `${r.unassigned} unassigned` : 'No one to unassign'); }
+  catch (e) { toast(e.message); }
 }
 function busRoutesMenu() {
   modal(`<div class="mo-title">Re-generate all routes?</div>
