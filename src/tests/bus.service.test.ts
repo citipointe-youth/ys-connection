@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeBusService, type BusCtx } from '../services/bus.service';
-import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository } from '../repositories/in-memory';
+import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository, InMemoryConnectionRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
@@ -235,11 +235,28 @@ describe('my car', () => {
 // straight into their OWN car via the same bus:use-gated saveOwnCar call (newRiders).
 describe('own-car newRiders (junior leader, bus:use only, 2026-10-07)', () => {
   const juniorLeaderCtx = (): BusCtx => ({ actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM });
-  it('search is reachable with bus:use alone (no bus:roster)', async () => {
-    const { svc, ctx } = await setup();
-    await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+  it('search by a junior leader: only their connected students, no addresses; roster actors unchanged', async () => {
+    const { bus, students, leaders, settings, ctx, svc: admin } = await setup();
+    await admin.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
+    const conns = new InMemoryConnectionRepository(); await conns.init();
+    const svc = makeBusService(bus, students, leaders, settings, undefined, conns);
+    expect(await svc.search(juniorLeaderCtx(), 'tran')).toEqual([]); // not connected -> hidden
+    await conns.save({ id: 'c1', studentId: 's1', leaderId: 'L1', assignedByRole: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
     const hits = await svc.search(juniorLeaderCtx(), 'tran');
-    expect(hits[0]?.kind).toBe('student');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.addresses).toEqual([]);
+    expect((await svc.search(ctx('grade'), 'tran'))[0]!.addresses.length).toBe(1);
+  });
+  it('saveOwnCar rejects an unknown leader id', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.saveOwnCar(ctx('grade', 'nope'), { car: { name: 'X', seats: 4, endsAt: 'church' }, riderIds: [] }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+  it('getRun still loads when guest cleanup throws', async () => {
+    const { svc, bus, ctx } = await setup();
+    await bus.saveGuest({ id: 'g-old', firstName: 'Old', lastName: 'Guest', grade: 8, gender: 'male', phone: null, linkedStudentId: null, dismissed: false, createdAt: '2020-01-01T00:00:00.000Z', lastRiddenAt: null });
+    bus.deleteGuest = async () => { throw new Error('boom'); };
+    await expect(svc.getRun(ctx('admin'))).resolves.toBeTruthy();
   });
   it('a student + new address adds the rider to tonight and places them in the leader\'s own car', async () => {
     const { svc, ctx } = await setup();

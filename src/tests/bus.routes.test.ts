@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildContainer } from '../container';
 import { buildRoutes } from '../api/http/router';
+import { UNTIMED_ROUTES } from '../api/http/express-adapter';
 
 describe('bus routes', () => {
   it('registers /bus routes, all authenticated', async () => {
@@ -33,5 +34,11 @@ describe('R3 routes', () => {
     const { services } = await buildContainer();
     const keys = buildRoutes(services).map((r) => `${r.method} ${r.path}`);
     expect(keys).toEqual(expect.arrayContaining(['GET /bus/analysis', 'POST /bus/analysis/extra-cars', 'GET /bus/analysis/map']));
+  });
+});
+
+describe('timeouts', () => {
+  it('generate is untimed (its own 55s lock bounds it, not the 20s route timeout)', () => {
+    expect(UNTIMED_ROUTES.has('POST /bus/run/generate')).toBe(true);
   });
 });

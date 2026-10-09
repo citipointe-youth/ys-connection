@@ -31,12 +31,14 @@ const loginRateLimiter = new RateLimiter(30, 15 * 60 * 1000);
 // are exempt — they're expected to run long (see the 90s client-side timeout for
 // those endpoints) and already have their own ceiling (Vercel's maxDuration).
 const ROUTE_TIMEOUT_MS = 20_000;
-const UNTIMED_ROUTES = new Set([
+export const UNTIMED_ROUTES = new Set([
   'POST /import/csv',
   'POST /import/group-csv',
   'POST /connections/allocations/import',
   'POST /audits',
   'POST /audits/import-all',
+  // Google gets up to GENERATE_SOLVE_BUDGET_MS (30s) here; the service's own 55s lock + Vercel's 60s cap bound it.
+  'POST /bus/run/generate',
 ]);
 
 export function createApp(routes: Route[], authService: AuthService): Express {

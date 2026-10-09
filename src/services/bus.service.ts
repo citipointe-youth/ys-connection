@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { can, type Action } from './access-control';
+import { can, canAccessStudent, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
 import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
@@ -9,7 +9,7 @@ import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggesti
   type MapImage, type MapMarker, type MapPath } from './routing/routing-provider';
 import { decodePolyline, thinPolyline } from './routing/polyline';
 import { markerLabel } from './routing/google-requests';
-import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
@@ -186,7 +186,7 @@ function parseIn<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
 
 export function makeBusService(bus: IBusRepository, students: IStudentRepository,
   leaders: ILeaderRepository, settingsRepo: ISettingsRepository,
-  routing: RoutingProvider = new FakeRoutingProvider()): BusService {
+  routing: RoutingProvider = new FakeRoutingProvider(), connections?: IConnectionRepository): BusService {
 
   async function cfg(): Promise<MinistryConfig> { return (await settingsRepo.getSettings()).ministryConfig; }
 
@@ -615,7 +615,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   const svc: BusService = {
     async getRun(ctx) {
       const c = await gate(ctx, 'bus:use');
-      await purgeGuests();
+      // Best-effort housekeeping: one failed delete must not fail the whole Bus screen load.
+      try { await purgeGuests(); } catch (err) { console.error('purgeGuests: failed', err); }
       return buildView(ctx, c, await ensureRun(ctx, c));
     },
     async getVersion(ctx) {
@@ -682,26 +683,28 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // into their OWN car (saveOwnCar below), never the Students tab (still bus:roster-gated in
     // the SPA), but the lookup itself is the same name/grade/gender + saved-address data either
     // way, so this gate is simply widened rather than duplicating a second search method.
-    // Privacy note: this does let a junior leader search any student by name server-side (not
-    // just their own), same as the existing `as=` self-identification already lets them view
-    // another car's riders — flagged for the same safeguarding sign-off.
+    // Actors without bus:roster (the junior `leader`) only see students they may access — a leader's
+    // own connected students — and no street/address info; guests (walk-ins) stay searchable.
     async search(ctx, q) {
-      await gate(ctx, 'bus:use');
+      const c = await gate(ctx, 'bus:use');
       if (q.trim().length < 2) return [];
-      const hits: BusSearchHit[] = [];
+      const full = allowed(ctx, c, 'bus:roster');
+      let pool = (await students.findAll()).filter((s) => nameMatches(q, s.firstName, s.lastName));
+      if (!full) {
+        if (ctx.actor.role === 'leader') {
+          const mine = new Set(ctx.actor.leaderId && connections ? (await connections.findByLeader(ctx.actor.leaderId)).map((x) => x.studentId) : []);
+          pool = pool.filter((s) => mine.has(s.id));
+        } else pool = pool.filter((s) => canAccessStudent(ctx.actor, s.grade, s.gender, c.structure));
+      }
+      const addrsOf = async (who: { studentId: string } | { guestId: string }) =>
+        full ? (await bus.listAddresses(who)).map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) })) : [];
       // Task 3 (owner): `street` is always the decrypted address's street part — a display
       // fallback for an address saved before the default-label fix, when `label` is still blank.
-      for (const s of (await students.findAll()).filter((s) => nameMatches(q, s.firstName, s.lastName)).slice(0, 15)) {
-        const addrs = await bus.listAddresses({ studentId: s.id });
-        hits.push({ kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender),
-          addresses: addrs.map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) })) });
-      }
-      for (const g of (await bus.listGuests()).filter((g) => !g.linkedStudentId && nameMatches(q, g.firstName, g.lastName)).slice(0, 5)) {
-        const addrs = await bus.listAddresses({ guestId: g.id });
-        hits.push({ kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender,
-          addresses: addrs.map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) })) });
-      }
-      return hits;
+      const studentHits = await Promise.all(pool.slice(0, 15).map(async (s): Promise<BusSearchHit> => ({
+        kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender), addresses: await addrsOf({ studentId: s.id }) })));
+      const guestHits = await Promise.all((await bus.listGuests()).filter((g) => !g.linkedStudentId && nameMatches(q, g.firstName, g.lastName)).slice(0, 5)
+        .map(async (g): Promise<BusSearchHit> => ({ kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: await addrsOf({ guestId: g.id }) })));
+      return [...studentHits, ...guestHits];
     },
     async addRider(ctx, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -828,6 +831,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
+      const leader = await leaders.findById(me);
+      if (!leader) throw new NotFoundError('Leader not found');
       const v = parseIn(OwnCarIn, input);
       assertRealPlaceId(v.car.endsPlaceId, v.car.endsAt === 'address'); // Task 2: required only when ending at an address
       const run = await writableRun(ctx, c);
@@ -863,7 +868,6 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (riderIds.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
       const rvs = await bus.listRunVehicles(run.id);
       const prior = rvs.find((x) => x.ownerLeaderId === me);
-      const leader = await leaders.findById(me);
       const rv = await bus.saveRunVehicle({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
         name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
         endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,
@@ -875,7 +879,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       await reorderCar(c, run, rv);
       const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
-      if (leader) await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,
+      await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,
         lastOwnRiderKeys: riders.filter((r) => riderIds.includes(r.id)).map(riderKey) });
       await bus.setUndo(run.id, null, null); // I2: these riders just moved into an own car — a later Undo must not pull them back out
       await touch(ctx, run);
