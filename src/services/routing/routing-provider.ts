@@ -40,6 +40,8 @@ export interface RoutingProvider {
   /** Drive seconds for each from→to pair, same order as `pairs`. */
   matrix(pairs: { from: RoutePoint; to: RoutePoint }[], signal: AbortSignal): Promise<number[]>;
   staticMap(paths: MapPath[], markers: MapMarker[], signal: AbortSignal): Promise<MapImage>;
+  /** One drive through `points` in the given order (first = start, last = end). `stops[i]` is where leg i ends. */
+  route(points: RoutePoint[], signal: AbortSignal): Promise<{ polyline: string; stops: { lat: number; lng: number }[] }>;
 }
 
 /** Thrown by providers. The message never contains the API key or a URL. */

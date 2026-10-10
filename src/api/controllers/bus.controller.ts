@@ -68,6 +68,7 @@ export function makeBusController(deps: { bus: BusService }) {
     unassignAll: (r: HttpRequest) => b.unassignAll(ctxOf(r)),
     analysis: (r: HttpRequest) => b.analysis(ctxOf(r)),
     extraCars: (r: HttpRequest) => b.extraCars(ctxOf(r), r.body),
+    pastRunMap: async (r: HttpRequest) => { const img = await b.pastRunMap(ctxOf(r), p(r, 'runId')); return new RawResponse(img.contentType, img.bytes); },
     analysisMap: async (r: HttpRequest) => { const img = await b.analysisMap(ctxOf(r)); return new RawResponse(img.contentType, img.bytes); },
   };
 }

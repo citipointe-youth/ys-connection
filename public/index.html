@@ -9291,7 +9291,11 @@ function busMoveArm(btn, riderId, runVehicleId) {
 }
 async function busMove(riderId, runVehicleId) {
   const oldId = (BUS.view.riders.find((x) => x.id === riderId) || {}).runVehicleId;
-  try { await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId }); _busClearRouteMin(oldId, runVehicleId); closeModal(); } catch (e) { toast(e.message); }
+  try {
+    const res = await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId });
+    _busClearRouteMin(oldId, runVehicleId); closeModal();
+    if (res && res.reordered === false) toast("Moved — couldn't re-optimise the route (Google unreachable). Use Optimise route on My car.");
+  } catch (e) { toast(e.message); }
 }
 async function busUnpin(riderId) {
   const carId = (BUS.view.riders.find((x) => x.id === riderId) || {}).runVehicleId;
@@ -9641,7 +9645,7 @@ function _busMyCarHtml() {
     </div>
     <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
       <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
-    ${mc.stops.length > 1 ? `<button class="btn btn-ghost btn-sm" style="margin-bottom:6px" onclick="busOptimiseMyCar()">${icS('route')} Reset to optimal order</button>` : ''}
+    ${mc.stops.filter((s) => !s.droppedAt).length > 1 ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="busOptimiseMyCar(this)">${icS('route')} Optimise route</button>` : ''}
     ${rows}
     ${removeOwn}`;
   }
@@ -9696,11 +9700,14 @@ async function busMoveStop(i, dir) {
   [o[i], o[j]] = [o[j], o[i]];
   try { await _busSend('POST', '/bus/run/my-car/stops', { riderIds: o, removeIds: [] }); } catch (e) { toast(e.message); }
 }
-async function busOptimiseMyCar() {
+async function busOptimiseMyCar(btn) {
+  const label = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = 'Optimising…'; }
   try {
     const res = await _busSend('POST', '/bus/run/my-car/optimise');
-    toast(res && res.optimised === false ? "Couldn't reach Google — order unchanged" : 'Reset to the optimal order');
+    toast(res && res.optimised === false ? "Couldn't reach Google — order unchanged" : 'Route optimised');
   } catch (e) { toast(e.message); }
+  if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = label; }
 }
 function _busEmcRemove(btn, id) {
   if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Remove?'; btn.style.width = 'auto'; btn.style.padding = '0 10px'; return; }
@@ -9900,6 +9907,30 @@ function _busRideRow(r, canEdit, num) {
     <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}${r.kind === 'guest' ? ' <span class="chip c-neutral">Guest</span>' : ''}${r.noShow ? ' <span class="chip c-neutral">No-show</span>' : ''}</div>
       <div class="route-sub">${esc(r.suburb || _busSuburb(r.address))}${flags} ${warn}${r.note ? ` · ${esc(r.note)}` : ''}</div></div></div>`;
 }
+// Past night route map: fetched on demand, kept in BUS.pastMaps (data URL, like _busLoadMap; the
+// server never stores coordinates). Patches #busPastMap in place so the open sheet keeps its scroll.
+function _busPastMapHtml(id) {
+  const u = BUS.pastMaps && BUS.pastMaps[id];
+  if (u) return `<img class="an-map" src="${esc(u)}" alt="Map of the night's routes">`;
+  if (u === undefined) { _busLoadPastMap(id); return `<div id="busPastMap" class="an-map an-map-empty">Loading map…</div>`; }
+  return `<div id="busPastMap" class="an-map an-map-empty">Loading map…</div>`; // already loading
+}
+async function _busLoadPastMap(id) {
+  BUS.pastMaps = BUS.pastMaps || {};
+  if (BUS.pastMaps[id] !== undefined) return;
+  BUS.pastMaps[id] = null; // in flight — never retried in a loop
+  let u = '';
+  try {
+    const res = await fetch('/bus/history/' + encodeURIComponent(id) + '/map?' + _busQs(), { headers: API.token ? { Authorization: 'Bearer ' + API.token } : {}, signal: AbortSignal.timeout(20000) });
+    if (res.status === 401) { _handleAuthExpired(); throw new Error('Session expired'); }
+    if (!res.ok) throw new Error('Map unavailable');
+    const blob = await res.blob();
+    u = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(blob); });
+  } catch { u = ''; }
+  if (u) BUS.pastMaps[id] = u; else delete BUS.pastMaps[id]; // a failed map is retried next time the night is opened
+  const el = document.getElementById('busPastMap');
+  if (el) el.outerHTML = u ? `<img class="an-map" src="${esc(u)}" alt="Map of the night's routes">` : `<div class="an-map an-map-empty" style="aspect-ratio:auto;padding:14px">Map unavailable</div>`;
+}
 function busPastNight(id) {
   const h = BUS.hist; if (!h) return;
   const n = h.nights.find((x) => x.id === id); if (!n) return;
@@ -9921,13 +9952,14 @@ function busPastNight(id) {
     ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
   modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}</div>
     <div class="card-sub" style="margin-bottom:8px">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
+    ${cars.length ? `<div style="margin-bottom:8px">${_busPastMapHtml(id)}</div>` : ''}
     ${nl ? `<div class="alert al-warn" style="margin-bottom:8px">${icS('alert')} ${nl} drop-off${nl === 1 ? '' : 's'} not logged</div>` : ''}
     ${carHtml || '<div class="card-sub">No cars ran.</div>'}
     ${un.length ? `<div class="card"><div class="card-title">Unassigned (${un.length})</div>${un.map((r) => _busRideRow(r, h.canEdit)).join('')}</div>` : ''}
     ${nr.length ? `<div class="card"><div class="card-title">Not riding (${nr.length})</div>${nr.map((r) => _busRideRow(r, h.canEdit)).join('')}</div>` : ''}
     ${edits}
     ${h.canEdit ? '<div class="card-sub" style="margin-bottom:8px">Tap a rider to edit. Every change is logged.</div>' : ''}
-    <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
+    <div class="bus-sheet-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`);
 }
 function busPastPerson(i) {
   const p = (BUS.histPeople || [])[i]; if (!p) return;
@@ -9935,7 +9967,7 @@ function busPastPerson(i) {
     <div class="card-sub" style="margin-bottom:8px">${p.rides} ride${p.rides === 1 ? '' : 's'} · first ${esc(_busHDate(p.first))}</div>
     ${p.list.map((r) => `<div class="li" onclick="busPastNight('${esc(r.runId)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(r.date))} ${r.car ? `<span class="chip c-neutral">${esc(r.car)}</span>` : ''}${r.noShow ? ' <span class="chip c-neutral">No-show</span>' : ''}</div>
       <div class="li-sub">${esc(r.suburb || _busSuburb(r.address))}${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}</div></div>${icS('chevr')}</div>`).join('')}
-    <button class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>`);
+    <div class="bus-sheet-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`);
 }
 function busPastEdit(runId, riderId) {
   const h = BUS.hist; if (!h || !h.canEdit) return;
@@ -9971,6 +10003,7 @@ async function busPastSave(runId, riderId) {
   body.reason = v('bpe-reason').value.trim();
   try {
     await API.patch(`/bus/runs/${encodeURIComponent(runId)}/riders/${encodeURIComponent(riderId)}?` + _busQs(), body);
+    if (BUS.pastMaps) delete BUS.pastMaps[runId]; // the night changed — redraw its map
     await busLoadHist();
     if (S.page === 'bus' && BUS.tab === 'past') renderBus();
     busPastNight(runId);

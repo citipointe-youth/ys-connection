@@ -14,19 +14,20 @@ const T = '2026-01-01T00:00:00.000Z';
 /** Wraps a provider (default: fake) and records exactly what would be sent to Google. */
 export function recordingRouting(inner: RoutingProvider = new FakeRoutingProvider()) {
   const calls = { solve: [] as SolveProblem[], autocomplete: [] as { input: string; session: string; region: string }[],
-    matrix: 0, matrixCalls: [] as { from: RoutePoint; to: RoutePoint }[][], map: [] as { paths: MapPath[]; markers: MapMarker[] }[] };
+    matrix: 0, matrixCalls: [] as { from: RoutePoint; to: RoutePoint }[][], map: [] as { paths: MapPath[]; markers: MapMarker[] }[], route: [] as RoutePoint[][] };
   const provider: RoutingProvider = {
     name: 'fake',
     solve: (p, s) => { calls.solve.push(p); return inner.solve(p, s); },
     autocomplete: (i, t, r, s) => { calls.autocomplete.push({ input: i, session: t, region: r }); return inner.autocomplete(i, t, r, s); },
     matrix: (pairs, s) => { calls.matrix++; calls.matrixCalls.push(pairs); return inner.matrix(pairs, s); },
     staticMap: (paths, markers, s) => { calls.map.push({ paths, markers }); return inner.staticMap(paths, markers, s); },
+    route: (points, s) => { calls.route.push(points); return inner.route(points, s); },
   };
   return { provider, calls };
 }
 
 /** Fake provider with some methods replaced. */
-export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autocomplete' | 'matrix' | 'staticMap'>>): RoutingProvider {
+export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autocomplete' | 'matrix' | 'staticMap' | 'route'>>): RoutingProvider {
   const f = new FakeRoutingProvider();
   return {
     name: 'fake',
@@ -34,6 +35,7 @@ export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autoc
     autocomplete: over.autocomplete ?? ((a, b, c, s) => f.autocomplete(a, b, c, s)),
     matrix: over.matrix ?? ((p, s) => f.matrix(p, s)),
     staticMap: over.staticMap ?? ((p, m, s) => f.staticMap(p, m, s)),
+    route: over.route ?? ((p, s) => f.route(p, s)),
   };
 }
 

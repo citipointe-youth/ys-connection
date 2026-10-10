@@ -8,7 +8,7 @@ import { FakeRoutingProvider } from './routing/fake-routing-provider';
 import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
   type MapImage, type MapMarker, type MapPath } from './routing/routing-provider';
 import { decodePolyline, thinPolyline } from './routing/polyline';
-import { markerLabel } from './routing/google-requests';
+import { markerLabel, ROUTE_MAX_INTERMEDIATES } from './routing/google-requests';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { MinistryConfig } from '../core/ministry-config';
@@ -38,7 +38,7 @@ export interface BusService {
   setLeaderPrefs(ctx: BusCtx, leaderId: string, input: unknown): Promise<void>;
   saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
   removeOwnCar(ctx: BusCtx): Promise<void>;
-  moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
+  moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView & { reordered: boolean }>;
   setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   setDropped(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   myCar(ctx: BusCtx): Promise<MyCarView>;
@@ -57,6 +57,7 @@ export interface BusService {
   analysis(ctx: BusCtx): Promise<BusAnalysisView>;
   extraCars(ctx: BusCtx, input: unknown): Promise<BusExtraCarsView>;
   analysisMap(ctx: BusCtx): Promise<MapImage>;
+  pastRunMap(ctx: BusCtx, runId: string): Promise<MapImage>;
 }
 
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
@@ -132,6 +133,7 @@ const UNDO_MS = 120_000;
 const SESSION_RE = /^[A-Za-z0-9-]{8,36}$/;
 const NO_CHURCH = 'Set the church address in Bus settings first';
 const GENERATE_FAILED = "Couldn't reach Google Maps — nothing changed. Try again, or move riders by hand.";
+const MAP_FAILED = 'Could not draw the map';
 const SEARCH_FAILED = 'Address search is unavailable right now — try again in a minute.';
 const ANALYSIS_FAILED = "Couldn't reach Google Maps — try again in a minute.";
 const MAP_MAX_POINTS = 120; // per route, keeps the Static Maps URL far under its 16k limit
@@ -563,7 +565,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // auto-fill must not add a 2nd leader if that would drop capacity below how many of them there are.
     const fixedCount = new Map<string, number>();
     for (const r of fleetRiders) {
-      if (r.runVehicleId && (r.pinned || mode === 'fit' || !r.snapPlaceId))
+      if (r.runVehicleId && (r.pinned || r.droppedAt || mode === 'fit' || !r.snapPlaceId))
         fixedCount.set(r.runVehicleId, (fixedCount.get(r.runVehicleId) ?? 0) + 1);
     }
     const filled = autoFillPool(cars.map((v) => ({ id: v.id, seats: v.seats, leaderIds: known(v.leaderIds),
@@ -585,7 +587,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         endPlaceId: endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId) };
     });
     const { problem, stopRiderIds } = buildFleetProblem(mode, fleetCars,
-      solvable.map((r) => ({ id: r.id, placeId: r.snapPlaceId!, gender: r.snapGender, grade: r.snapGrade, runVehicleId: r.runVehicleId, pinned: r.pinned })),
+      solvable.map((r) => ({ id: r.id, placeId: r.snapPlaceId!, gender: r.snapGender, grade: r.snapGrade, runVehicleId: r.runVehicleId, pinned: r.pinned || !!r.droppedAt })), // already dropped off: never changes car
       b.churchPlaceId, leaveIso(run.serviceDate, b.leaveTime), b);
     return { problem, stopRiderIds, cars, filled, riders, untouched };
   }
@@ -596,13 +598,15 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const all = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id)
       .sort((x, y) => (x.stopOrder ?? 999) - (y.stopOrder ?? 999));
     // Riders already dropped off stay first, in their existing order — only the rest are re-sequenced.
-    const dropped = all.filter((x) => x.droppedAt);
+    const dropped = all.filter((x) => x.droppedAt).sort((x, y) => x.droppedAt!.localeCompare(y.droppedAt!));
+    // The car is out on the road: sequence the remaining stops from the last drop-off, not the church.
+    const startPlaceId = dropped[dropped.length - 1]?.snapPlaceId || b.churchPlaceId;
     const inCar = all.filter((x) => !x.droppedAt);
     const mapped = inCar.filter((x) => x.snapPlaceId);
     if (!b.churchPlaceId) return false;
     if (mapped.length < 2) return true; // nothing to re-order
     try {
-      const res = await routing.solve(buildSingleProblem(mapped.map((x) => x.snapPlaceId!), b.churchPlaceId,
+      const res = await routing.solve(buildSingleProblem(mapped.map((x) => x.snapPlaceId!), startPlaceId,
         endPlaceOf(rv.endsAt, rv.endsPlaceId, b.churchPlaceId), leaveIso(run.serviceDate, b.leaveTime), b.targetRouteMin), routingDeadline());
       const order = res.routes[0]?.stops ?? [];
       if (order.length !== mapped.length) return false;
@@ -626,6 +630,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   // semantics as before (see M6's comment), just no longer limited to exactly one.
   const ANALYSIS_CACHE_MAX = 5;
   const analysisCache = new Map<string, AnalysisSolve>();
+  const pastMapCache = new Map<string, MapImage>(); // finished images only, keyed by run version — editPastRider's touch() bumps it
   async function analysisSolve(c: MinistryConfig, run: BusRun, signal: AbortSignal): Promise<AnalysisSolve> {
     const b = c.busMinistry;
     // M6: a Bus-settings change (church, leave time, target route length) doesn't bump the run
@@ -770,6 +775,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       const addr = await resolveAddress(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }, v);
       const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: addr.address, snapPlaceId: addr.placeId });
+      const rv = saved.runVehicleId ? (await bus.listRunVehicles(run.id)).find((x) => x.id === saved.runVehicleId && x.running) : undefined;
+      if (rv) await reorderCar(c, run, rv); // a new address can change the best stop order
       await touch(ctx, run);
       return riderView(saved, await consentOf(saved));
     },
@@ -996,14 +1003,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const saved = await bus.saveRunRider({ ...r, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
         await touch(ctx, run);
-        return riderView(saved, await consentOf(saved));
+        return { ...riderView(saved, await consentOf(saved)), reordered: true };
       }
       if (v.runVehicleId === null) {
         // Owner 2026-10-06: Unassigned is never pinned — the next Generate / Fit in places them again.
         const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
         await touch(ctx, run);
-        return riderView(saved, await consentOf(saved));
+        return { ...riderView(saved, await consentOf(saved)), reordered: true };
       }
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
       if (!rv) throw new NotFoundError('Car not found');
@@ -1016,11 +1023,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (inCar.length >= capacityOf(rv.seats, activeLeaderCount)) throw new BadRequestError(`${rv.name} is full`);
       const maxStop = Math.max(0, ...inCar.map((x) => x.stopOrder ?? 0));
       const saved = await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
-      await reorderCar(c, run, rv); // R1 appended last; R2 re-orders with a single-car solve (falls back to appended)
+      const reordered = await reorderCar(c, run, rv); // R1 appended last; R2 re-orders with a single-car solve (falls back to appended)
       await bus.setUndo(run.id, null, null); // I2: see above
       await touch(ctx, run);
       const fresh = (await bus.getRunRider(saved.id)) ?? saved;
-      return riderView(fresh, await consentOf(fresh));
+      return { ...riderView(fresh, await consentOf(fresh)), reordered };
     },
     async setConsent(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -1273,6 +1280,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           for (const r of current.filter((x) => x.runVehicleId === id && !x.snapPlaceId && unchanged(x))) await bus.saveRunRider({ ...r, stopOrder: ++n });
         }
         const live = new Map((await bus.listRunVehicles(run.id)).map((v) => [v.id, v]));
+        // Dropped riders kept their cars (fixed above) but the solver renumbered every stop: put them
+        // first again and sequence the rest from the last drop-off.
+        const droppedCars = new Set((await ridingOf(run.id)).filter((r) => r.droppedAt && r.runVehicleId).map((r) => r.runVehicleId!));
+        await Promise.all([...droppedCars].map((id) => live.get(id)).filter((v): v is BusRunVehicle => !!v?.running).map((v) => reorderCar(c, run, v)));
         for (const [id, leaderIds] of prep.filled) { const v = live.get(id); if (v) await saveRV({ ...v, leaderIds }); }
 
         // Task 7 (owner, replaces the old lone-girl rule): buildFleetProblem already made it a
@@ -1332,7 +1343,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run);
       const ownCarIds = new Set((await bus.listRunVehicles(run.id)).filter((v) => v.ownerLeaderId).map((v) => v.id));
       const riders = await ridingOf(run.id);
-      const out = riders.filter((r) => r.runVehicleId && !r.pinned && !ownCarIds.has(r.runVehicleId));
+      const out = riders.filter((r) => r.runVehicleId && !r.pinned && !r.droppedAt && !ownCarIds.has(r.runVehicleId));
       if (!out.length) return { unassigned: 0 };
       await bus.setUndo(run.id, riders.map((r) => ({ riderId: r.id, runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned })),
         new Date(Date.now() + UNDO_MS).toISOString());
@@ -1445,6 +1456,44 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         before: { longestMin: Math.max(0, ...fleetNow), totalMin: sum(fleetNow), unassigned: prep.riders.filter((r) => !r.runVehicleId).length },
         after: { longestMin: Math.max(0, ...fleetAfter), totalMin: sum(fleetAfter), unassigned: extra.skipped.length + notSent },
         cars };
+    },
+    // Past night popup map: each car's route through its stops in stop order (Routes API computeRoutes).
+    // Nothing is stored (Google terms) — only the finished image is cached per run version.
+    async pastRunMap(ctx, runId) {
+      const c = await gate(ctx, 'bus:coordinate');
+      const run = await bus.getRun(runId);
+      if (!run) throw new NotFoundError('Night not found');
+      const b = c.busMinistry;
+      if (!b.churchPlaceId) throw new BadRequestError(NO_CHURCH);
+      const key = `${run.id}:${run.version}:${b.churchPlaceId}`;
+      const hit = pastMapCache.get(key);
+      if (hit) return hit;
+      const [cars, rows] = await Promise.all([bus.listRunVehicles(run.id), bus.listRunRiders(run.id)]);
+      const signal = routingDeadline();
+      const paths: MapPath[] = [], markers: MapMarker[] = [];
+      try {
+        await Promise.all(cars.map(async (rv) => {
+          // Same list/order as the popup, so marker labels match the numbers people see there.
+          const list = rows.filter((r) => r.runVehicleId === rv.id && !r.notRiding).sort((x, y) => (x.stopOrder ?? 99) - (y.stopOrder ?? 99));
+          const stops = list.map((r, i) => ({ r, i })).filter((x) => x.r.snapPlaceId && !x.r.noShow).slice(0, ROUTE_MAX_INTERMEDIATES);
+          if (!stops.length) return;
+          const end = endPlaceOf(rv.endsAt, rv.endsPlaceId, b.churchPlaceId);
+          const route = await routing.route([b.churchPlaceId, ...stops.map((x) => x.r.snapPlaceId!), ...(end ? [end] : [])].map((placeId) => ({ placeId })), signal);
+          const colour = BUS_CAR_COLOURS[rv.colourIndex % BUS_CAR_COLOURS.length]!;
+          paths.push({ colour, polyline: thinPolyline(route.polyline, MAP_MAX_POINTS) });
+          stops.forEach((x, n) => { const at = route.stops[n]; if (at) markers.push({ colour, label: markerLabel(x.i), lat: at.lat, lng: at.lng }); });
+        }));
+      } catch (err) { throw routingFailed(err, MAP_FAILED); }
+      if (!paths.length && !markers.length) throw new BadRequestError('No routes to show');
+      let img: MapImage;
+      try { img = await routing.staticMap(paths, markers, signal); }
+      catch (err) { throw routingFailed(err, MAP_FAILED); }
+      pastMapCache.set(key, img);
+      if (pastMapCache.size > ANALYSIS_CACHE_MAX) {
+        const oldest = pastMapCache.keys().next().value;
+        if (oldest !== undefined) pastMapCache.delete(oldest);
+      }
+      return img;
     },
     async analysisMap(ctx) {
       const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)

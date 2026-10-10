@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { SolveProblem } from '../services/routing/routing-provider';
 import { RoutingError } from '../services/routing/routing-provider';
 import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
-  staticMapUrl, markerLabel, SKIP_PENALTY, type ResolvedPlaces } from '../services/routing/google-requests';
+  staticMapUrl, markerLabel, computeRoutesBody, parseComputeRoutes, ROUTE_MAX_INTERMEDIATES, SKIP_PENALTY, type ResolvedPlaces } from '../services/routing/google-requests';
 import { encodePolyline, decodePolyline, thinPolyline } from '../services/routing/polyline';
 
 const problem: SolveProblem = {
@@ -24,7 +24,7 @@ const ALLOWED_KEYS = new Set(['model', 'globalStartTime', 'globalEndTime', 'glob
   'penaltyCost', 'vehicles', 'startWaypoint', 'endWaypoint', 'loadLimits', 'maxLoad', 'costPerHour', 'routeDurationLimit',
   'quadraticSoftMaxDuration', 'maxDuration', 'costPerSquareHourAfterQuadraticSoftMax', 'considerRoadTraffic', 'populatePolylines',
   'populateTransitionPolylines', 'input', 'sessionToken', 'includedRegionCodes', 'includedPrimaryTypes', 'origins', 'destinations',
-  'waypoint', 'travelMode', 'routingPreference',
+  'waypoint', 'travelMode', 'routingPreference', 'origin', 'destination', 'intermediates',
   // Task 4 (owner): a placeId Google rejected gets resent as a lat/lng waypoint instead.
   'location', 'latLng', 'latitude', 'longitude']);
 function keysOf(v: unknown, out: string[] = []): string[] {
@@ -176,5 +176,25 @@ describe('static map + polylines', () => {
   });
   it('labels markers 1-9 then A-Z, then none', () => {
     expect([0, 8, 9, 34, 35].map(markerLabel)).toEqual(['1', '9', 'A', 'Z', '']);
+  });
+});
+
+describe('computeRoutes (past night map)', () => {
+  const pts = [{ placeId: 'P_church' }, { placeId: 'P_a' }, { placeId: 'P_b' }, { placeId: 'P_end' }];
+  it('builds origin, intermediates and destination from place IDs only', () => {
+    const body = computeRoutesBody(pts);
+    expect(body).toEqual({ origin: { placeId: 'P_church' }, destination: { placeId: 'P_end' },
+      intermediates: [{ placeId: 'P_a' }, { placeId: 'P_b' }], travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' });
+    expect(keysOf(body).filter((k) => !ALLOWED_KEYS.has(k))).toEqual([]);
+    expect(ROUTE_MAX_INTERMEDIATES).toBe(25);
+  });
+  it('resolved place IDs go as lat/lng', () => {
+    const body = computeRoutesBody(pts, new Map([['P_a', { lat: -27.5, lng: 153.1 }]]));
+    expect(body.intermediates[0]).toEqual({ location: { latLng: { latitude: -27.5, longitude: 153.1 } } });
+  });
+  it('parses the polyline and each leg end; throws when there is no route', () => {
+    const json = { routes: [{ polyline: { encodedPolyline: 'abc' }, legs: [{ endLocation: { latLng: { latitude: -27.5, longitude: 153.1 } } }, { endLocation: { latLng: { latitude: -27.6, longitude: 153.2 } } }] }] };
+    expect(parseComputeRoutes(json)).toEqual({ polyline: 'abc', stops: [{ lat: -27.5, lng: 153.1 }, { lat: -27.6, lng: 153.2 }] });
+    expect(() => parseComputeRoutes({})).toThrow(RoutingError);
   });
 });

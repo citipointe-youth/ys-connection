@@ -2,6 +2,7 @@ import { createSign } from 'node:crypto';
 import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult, type PlaceSuggestion, type RoutePoint,
   type MapPath, type MapMarker, type MapImage } from './routing-provider';
 import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
+  computeRoutesBody, parseComputeRoutes,
   staticMapUrl, MATRIX_MAX_PAIRS, type ResolvedPlaces } from './google-requests';
 import { FakeRoutingProvider } from './fake-routing-provider';
 import { googleConfigFromEnv } from './google-config';
@@ -164,6 +165,17 @@ export class GoogleRoutingProvider implements RoutingProvider {
       out.push(...secs);
     }
     return out;
+  }
+
+  async route(points: RoutePoint[], signal: AbortSignal): Promise<{ polyline: string; stops: { lat: number; lng: number }[] }> {
+    const resolved: ResolvedPlaces = new Map();
+    return this.withBadPlaceIdRetry(signal, resolved, async () => {
+      const res = await this.call('https://routes.googleapis.com/directions/v2:computeRoutes', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': this.cfg.apiKey,
+          'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.legs.endLocation' },
+        body: JSON.stringify(computeRoutesBody(points, resolved)) }, signal, 'route');
+      return parseComputeRoutes(await res.json());
+    });
   }
 
   async staticMap(paths: MapPath[], markers: MapMarker[], signal: AbortSignal): Promise<MapImage> {

@@ -199,6 +199,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/bus/run/unassign-all',    auth: true, handler: (r) => busCtl.unassignAll(r) },
     { method: 'GET',    path: '/bus/analysis',            auth: true, handler: (r) => busCtl.analysis(r) },
     { method: 'POST',   path: '/bus/analysis/extra-cars', auth: true, handler: (r) => busCtl.extraCars(r) },
+    { method: 'GET',    path: '/bus/history/:runId/map', auth: true, handler: (r) => busCtl.pastRunMap(r) },
     { method: 'GET',    path: '/bus/analysis/map',        auth: true, handler: (r) => busCtl.analysisMap(r) },
   ];
 }

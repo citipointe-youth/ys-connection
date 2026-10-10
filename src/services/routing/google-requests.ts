@@ -114,6 +114,22 @@ export function parseRouteMatrix(json: unknown, pairs: { from: RoutePoint; to: R
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/** Routes API computeRoutes allows at most 25 intermediate waypoints — callers cap their stops to this. */
+export const ROUTE_MAX_INTERMEDIATES = 25;
+export function computeRoutesBody(points: RoutePoint[], resolved?: ResolvedPlaces) {
+  return { origin: wp(points[0]!, resolved), destination: wp(points[points.length - 1]!, resolved),
+    intermediates: points.slice(1, -1).map((p) => wp(p, resolved)),
+    travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' };
+}
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function parseComputeRoutes(json: unknown): { polyline: string; stops: { lat: number; lng: number }[] } {
+  const r = ((json ?? {}) as any).routes?.[0];
+  const polyline = r?.polyline?.encodedPolyline;
+  if (!polyline) throw new RoutingError('No route found');
+  return { polyline: String(polyline), stops: (r.legs ?? []).map((l: any) => ({ lat: Number(l.endLocation?.latLng?.latitude ?? 0), lng: Number(l.endLocation?.latLng?.longitude ?? 0) })) };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function markerLabel(i: number): string {
   return i < 9 ? String(i + 1) : i < 35 ? String.fromCharCode(65 + i - 9) : '';
 }

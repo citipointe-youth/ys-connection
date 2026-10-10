@@ -78,6 +78,11 @@ export class FakeRoutingProvider implements RoutingProvider {
     return pairs.map((x) => fakeSeconds(x.from, x.to));
   }
 
+  async route(points: RoutePoint[], _signal?: AbortSignal): Promise<{ polyline: string; stops: { lat: number; lng: number }[] }> {
+    const pts = points.map((x) => fakePoint(x.placeId));
+    return { polyline: encodePolyline(pts), stops: pts.slice(1) };
+  }
+
   /** A plain SVG of the straight-line routes — enough to check the Route analysis screen locally. */
   async staticMap(paths: MapPath[], markers: MapMarker[], _signal?: AbortSignal): Promise<MapImage> {
     const pts: LatLng[] = [...paths.flatMap((p) => decodePolyline(p.polyline)), ...markers];

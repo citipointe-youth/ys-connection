@@ -614,6 +614,7 @@ describe('I4: a "fake:" place ID is rejected once the Google provider is live', 
     autocomplete: async () => [],
     matrix: async () => [],
     staticMap: async () => ({ contentType: 'image/png', bytes: new Uint8Array() }),
+    route: async () => ({ polyline: '', stops: [] }),
   };
   it('rejects a new rider address with a fake: place ID — but the same input is fine against the dev/test fake provider', async () => {
     const live = await setup({ routing: googleStub });
