@@ -1068,6 +1068,12 @@ describe('F4.2 admin page', () => {
     const text = strip(out);
     for (const t of ['Status', 'Matching', 'Shadow check', 'Activity']) expect(text).toContain(t);
   });
+  it('A4 / X17: the Status card says how to stop all data flow', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.status = { console: { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 }, mirrors: {} };
+    h.get().LINK.adm = h.fns._lkAdmFresh ? h.fns._lkAdmFresh() : { acts: [] };
+    expect(strip(h.fns._lkAdmStatusHtml())).toContain('The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.');
+  });
   it('an identity row reads "Cody -> Sam (iPhone · Safari)" with an SVG arrow and all three values escaped', () => {
     const h = makeEnv({ role: 'admin' });
     const who = h.fns._lkLogWho(logRow());

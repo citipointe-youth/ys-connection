@@ -10181,6 +10181,7 @@ function _lkAdmStatusHtml() {
   acts.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
   const unclear = acts.filter((a) => a.status === 'unclear');
   return `<div class="lk-sec">Status</div>${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
+    <p class="lk-sub">The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(k)}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkEvents()[a.type] || a.type)}</b> · ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}`;

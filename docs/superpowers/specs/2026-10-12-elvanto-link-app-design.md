@@ -52,18 +52,20 @@ grade filter, Prayers off, Bus read-only routes.
   "Turns on the screens that send to Elvanto: New person, Check-in, Lifegroup report and Flow steps. Shadow mode shows
   them to the admin login only, for testing. Off by default." The New person More entry keeps its name.
 
-### 2.2 Attribution (decisions 6, 11, 17)
+### 2.2 Attribution (decisions 6, 11; ledger 25 D2 reverses 17)
 
-- **The console composes** `Self identified leader: <by.leaderName> — <note>` (name only when `note` is null) for
-  flow steps and lifegroup reports (decision 17). **The app sends the raw note**, so `note` keeps its contract
-  meaning and the fixtures stay true. No app code composes this line.
+- **The app composes** `Self identified leader: <leaderName> — <note>` (name only when the leader wrote no note) in
+  the `/sync/claim` row for flow steps and lifegroup reports and edits (ledger 25 D2, contract X1). The stored note
+  stays the leader's own words (encrypted; `hasNote` still means the leader wrote something). The console adds
+  nothing.
 - **"I am" is required** for `submitReport`, `editReport` and `completeStep` (decision 11): `leaderId` must be given
   and be a real leader → else 400 "Pick who you are first." A junior `leader` login always uses its bound `leaderId`.
   So `by.leaderName` (= `leader_name`) is always a real leader name for these three types. (This makes `leaderId`
   required where contract §4.1 says optional: an app-side tightening, listed in §14.)
 - `leader_name` for the other types: the "I am" leader's name if given, else the login's `displayName` (the column is
   `not null`).
-- Leader note cap: 1,800 characters (400 above that), leaving room for the console's prefix inside 1,900.
+- Leader note cap: 1,800 characters, and less for a long leader name, so the prefixed text fits 1,900 (400 above
+  that, with the exact limit in the message).
 - `hasNote` (contract §4) = raw note not null.
 
 ### 2.3 Which service (contract §5.5, amended)
@@ -560,13 +562,15 @@ action can't be completed again.
 ### 11.4 F4: first-timer tick and the admin page
 
 - **New person form:** when `_linkOn()`, a tick "Check them in to <service>" (on by default when §2.3 gives a
-  default; else a service select). After the send, queue `firstTimerCheckIn` (first/last name, grade `'7'`…`'12'` →
-  number, gender `f`/`m` → `female`/`male`) when the student form is not `failed` **and** either it was a live send,
-  **or** it was a dry run and the `firstTimerCheckIn` capability is not `live` (then the console shadows or refuses
-  it; nothing reaches Elvanto; so §12 and the shadow Friday can test it). Skip it (with a note on the result page)
-  when a name is over 60 characters. It goes through the queue, so it still sends if the host left the screen.
+  default; else a service select). New person always sends for real (ledger 23: master `382a35b` removed the
+  `ELVANTO_FORMS_LIVE` gate). After a send where the student form went (`sent` or `unconfirmed`), queue
+  `firstTimerCheckIn` (first/last name, grade `'7'`…`'12'` → number, gender `f`/`m` → `female`/`male`) as normal,
+  subject to the shared switch (`_linkOn`) and the console (`firstTimerCheckIn` not `off`). Skip it (with a note on
+  the result page) when a name is over 60 characters. It goes through the queue, so it still sends if the host left
+  the screen.
 - **Elvanto link page** (`link:admin`), four cards: **Status** (consoles, last seen, version, window, each type's
-  mode, mirror ages, today's counts by status, `unclear` rows with `detail`); **Matching** (Unmatched / Two possible;
+  mode, mirror ages, today's counts by status, `unclear` rows with `detail`, and the line "The link screens share the
+  New person switch. To stop all data flow, also Turn off the link on the console."); **Matching** (Unmatched / Two possible;
   candidates with DOB; Match / Not in YS / Clear); **Shadow check** (date, default last Friday); **Activity**
   (§6.3, with Export).
 
@@ -609,18 +613,19 @@ $env:PERSISTENCE='memory'; $env:LINK_SYNC_TOKEN='<32+ random chars>'; $env:PORT=
 2. Point the console at `http://localhost:4300` with the same token; all types `shadow`.
 3. Check: `/link/status` shows the console; the four mirrors arrive; matching lists roster people (seed students are
    fake, so most are unmatched: expected); a check-in, a check-out of that check-in, a report, a flow tick and a
-   first-timer (New person in dry run) each reach `shadowed` (check-out may be `refused`, `locked`); the Activity log
-   shows each, and an "I am" switch.
+   first-timer each reach `shadowed` (check-out may be `refused`, `locked`); the Activity log shows each, and an
+   "I am" switch. New person always sends for real: use a real first-timer, or delete the test submission in Elvanto
+   afterwards. Never use a made-up person.
 4. Turn Wi-Fi off on the phone, tap three check-ins, turn it on: the pill goes "3 waiting" → "All saved".
 5. Real Elvanto data then sits in that local memory process only; nothing is written to disk or committed.
 
 ## 14. Console-side change and contract deviations
 
-**For the operator / console orchestrator (decision 17, wording only, no fixture change):** replace the §7.1 line
-`— via YS Connection (<name>)` with `Self identified leader: <by.leaderName> — <note>`, or
-`Self identified leader: <by.leaderName>` when `note` is null, for `submitReport`, `editReport` and `completeStep`.
-For `editReport` the console **appends** this line after Elvanto's existing notes on every edit (each edit records its
-editor); the old "replace, don't stack" rule no longer applies. The 2,000-character `note-too-long` check counts it.
+**Attribution (ledger 25 D2, contract X1; reverses decision 17):** the APP builds
+`Self identified leader: <leaderName> — <note>` (or the name alone) in the `/sync/claim` row for `submitReport`,
+`editReport` and `completeStep`. The console sends `note` as received and adds nothing; an edit appends it after
+Elvanto's existing notes. The stored note stays the leader's own words, capped at enqueue so the prefixed text fits
+1,900. The 2,000-character `note-too-long` check counts the whole text.
 
 App-side deviations from the contract prose (no schema or fixture change): `modules.elvantoLink` not built (one
 switch); `leaderId` required for the three note types; check-out also allowed after a pending/shadowed check-in
@@ -639,12 +644,16 @@ switch); `leaderId` required for the three note types; check-out also allowed af
 4. **Shadow mode + matching:** switch = Shadow; the console pushes the roster; the admin matches people on the
    Elvanto link page.
 5. **Shadow Friday:** console types all `shadow`. The admin, at the door next to the kiosk, checks people in and out,
-   adds a first-timer, submits a report, ticks a step. After the 21:00 export/import: Shadow check for that Friday
+   adds a first-timer, submits a report, ticks a step. New person always sends for real: use a real first-timer, or
+   delete the test submission in Elvanto afterwards. After the 21:00 export/import: Shadow check for that Friday
    (expect `practice-matched`), and look over the Activity log.
 6. **Go live one type at a time, on the console:** reports, then flows, then check-in. The operator makes each type's
    first live send while the app is still in Shadow.
 7. **Switch On.** Every login sees the screens. Watch the first live Friday's `unclear`/`refused` rows.
-8. Stop button: switch **Off** (screens gone, nothing claimed; queued rows wait or expire after 3 days).
+8. Stop button: switch **Off** (screens gone, nothing claimed; queued rows wait or expire after 3 days). Pushes keep
+   applying while the switch is Off (a stale or empty roster on the next switch-on would break the door list, and the
+   data is the same minimal set either way). The link screens share the New person switch. To stop all data flow,
+   also Turn off the link on the console.
 
 ## 16. Open questions
 
@@ -655,10 +664,10 @@ door list, marked "Leader" = decision 13.)
 
 | Item | Resolution |
 |---|---|
-| I1 attribution | Console composes (decision 17); app sends raw note, always sets `by.leaderName` (§2.2, §14) |
+| I1 attribution | **Superseded** by ledger 25 D2 (contract X1): the app prefixes `Self identified leader: <name> — <note>` in the claim row; the console adds nothing (§14) |
 | I2 matching while Off | Matching happens in Shadow; Off hides everything (§2.1, §15 step 4) |
 | I3 check-out after pending/shadowed | Allowed (§2.4); tests in §8.2 |
-| I4 first-timer in dry run | Sent when the capability is not `live` (§11.4) |
+| I4 first-timer in dry run | **Superseded** (ledger 23): New person always sends for real; the first-timer is queued after every send where the student form went (§11.4) |
 | I5 lane circle / shared types | Lane T, wave 0, exact types (§3); index files named (§4.1) |
 | I6 migration number / hazard | `0017` now; hazard rewritten; duplicate-number test (§2.5, §15) |
 | I7 mirror vs `sent` | `sent` wins only until a newer services push (§5.2) |
