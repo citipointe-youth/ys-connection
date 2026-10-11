@@ -722,6 +722,56 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .mo-box:has(.sbar input:focus) > .bus-sheet-actions{position:static;box-shadow:none}
 .mo-box > .bus-sheet-actions{margin-top:12px}
 /* ── END BUS MODULE CSS ── */
+/* LINK CSS (Elvanto link screens; no gender colours anywhere) */
+.lk-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;margin-bottom:10px;border:none;font-family:inherit}
+.lk-pill.wait{background:var(--warn-light);color:#92400e}
+.lk-pill.ok{background:var(--success-light);color:#047857}
+.lk-pill.bad{background:var(--danger-light);color:#b91c1c;cursor:pointer}
+.lk-pill.fade{animation:lkfade 3s forwards}
+@keyframes lkfade{0%,60%{opacity:1}100%{opacity:0}}
+.lk-alert{padding:10px 12px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
+.lk-alert.practice{background:var(--paper-dark);color:#334155}
+.lk-alert.warn{background:var(--warn-light);color:#92400e}
+.lk-alert svg{flex:none;margin-top:1px}
+.lk-svc{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lk-svc-t{font-weight:700;font-size:16px}
+.lk-mb{margin-bottom:10px}
+.lk-filters{display:flex;gap:8px;margin-bottom:10px}
+.lk-filters .fs{flex:0 0 132px}
+.lk-sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lk-big{text-align:right;line-height:1}
+.lk-big b{display:block;font-size:24px;font-weight:800;color:var(--warn)}
+.lk-big span{font-size:11px;color:var(--ink-mid)}
+.lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
+.lk-row{padding:10px 12px;gap:10px;margin-bottom:6px}
+.lk-row[role=button]{cursor:pointer}
+.lk-chip{flex:none;min-width:42px;text-align:center;font-size:11px;font-weight:700;background:var(--chip);color:var(--accent-dark);border-radius:999px;padding:3px 7px}
+.lk-chip.lead{background:var(--paper-dark);color:var(--ink)}
+.lk-grow{flex:1;min-width:0}
+.lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
+.lk-st{font-size:12px;margin-top:2px;font-weight:500}
+.lk-st.wait{color:#b45309}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
+.lk-done{margin-top:6px}
+.lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.lk-done summary::-webkit-details-marker{display:none}
+.lk-hint{font-size:12px;color:var(--ink-faint);text-align:center;margin:12px 4px}
+.lk-sub{margin:0 0 12px;font-size:13px;color:var(--ink-mid)}
+.lk-opt{display:flex;width:100%;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:6px;font:inherit;font-size:15px;background:var(--paper-card);color:var(--ink);text-align:left;cursor:pointer}
+.lk-opt.on{border-color:var(--accent);background:var(--accent-light)}
+.lk-opt-t{display:block}
+.lk-d{display:block;font-size:12px;color:var(--ink-mid)}
+.lk-tag{font-size:11px;font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px;flex:none}
+.lk-lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;color:var(--ink-mid)}
+.lk-tickall{color:var(--accent)}
+.lk-lq-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;font-size:15px}
+.lk-lq-row[role=button]{cursor:pointer}
+.lk-lq-row.dis{color:var(--ink-faint)}
+.lk-box,.lk-box-sp{width:22px;height:22px;flex:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center}
+.lk-box{border:2px solid #b8c2d3}
+.lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.lk-done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
+.lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
+/* END LINK CSS */
 </style>
 </head>
 <body>
@@ -1399,7 +1449,13 @@ function getMyLeaderId() {
   if (S.user && S.user.role === 'leader' && S.user.leaderId) return S.user.leaderId;
   try { return localStorage.getItem('yap_leader_id') || null; } catch { return null; }
 }
-function setMyLeaderId(id) { try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {} }
+function setMyLeaderId(id) {
+  let prev = null;
+  try { prev = localStorage.getItem('yap_leader_id') || null; } catch {}
+  try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {}
+  // Elvanto link (spec §6.2): log the "I am" switch with the next flush, only while the screens are on.
+  try { if ((id || null) !== prev && _linkOn()) _lkPush({ kind: 'identity', id: _lkUuid(), at: new Date().toISOString(), from: prev, to: id || null }, false); } catch {}
+}
 
 // ── UNDO SYSTEM ──
 const _undo = { pending: null, timer: null };
@@ -1784,6 +1840,13 @@ function moreItems() {
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
+  /*LINK*/ if (_linkOn()) {
+    const r = S.user && S.user.role;
+    xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
+    if (r !== 'leader') xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
+    if (r !== 'leader') xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
+    if (r === 'admin' || r === 'director') xs.push({ id:'link-admin', ic:'link', label:'Elvanto link', open:"go('link-admin')" });
+  }
   return xs;
 }
 // Prayers' nav slot becomes More when there are 2+ modules to pick from; with Prayers alone it stays Prayers.
@@ -1907,19 +1970,21 @@ function _drop(id) { const el = document.getElementById(id); if (el) el.classLis
 // AUTH
 // ============================================================
 async function render() {
-  if (!S.user) { if (S.page === 'setup') renderSetup(); else renderLogin(); return; }
+  if (!S.user) { _lkSoftReset(); /*LINK: no login, no names in memory */ if (S.page === 'setup') renderSetup(); else renderLogin(); return; }
   if (S.user.mustChangePassword) { renderMustChangePassword(); return; }
   if (!_shellReady) _initShell();
   _updateNavActive();
   const p = S.page;
   /*BUS-HOOK*/ if (p !== 'bus') _busStopPoll();
+  _lkBoot(); /*LINK*/
   // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
   // other route home (defence-in-depth; the server also scopes/403s their data).
-  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p)) { go('home'); return; }
+  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p) && p !== 'link-checkin') { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
   else if (p==='new-youth') renderNewYouth(); /*NEW-YOUTH*/
+  else if (String(p).indexOf('link-') === 0) await renderLink(p); /*LINK*/
   else if (p==='leaders') await renderConnect();
   else if (p==='allocate') go('leaders'); // legacy route — merged into leaders
   else if (p==='my-students') await renderMyStudents();
@@ -2107,6 +2172,8 @@ async function doLogin() {
 }
 
 async function doLogout() {
+  if (!(await _lkLogoutGuard())) return; /*LINK*/
+  _lkClear(); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
   API.setToken(null); S.user = null; S.page = 'home';
   _msLeader = null; _trTab = 'svc';
@@ -6482,7 +6549,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
-    <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds New person to the More menu (in the Prayers spot on the nav bar). Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl" for="setup-ny">Elvanto features ${helpTip("Turns on the screens that send to Elvanto: New person, Check-in, Lifegroup report and Flow steps. Shadow mode shows them to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -8650,6 +8717,572 @@ function nyReset() { NY = { keep: null, sibling: false, sending: false, result: 
 // The Home tile: start fresh, unless a send is still in flight (then go back to it; resetting would lose its outcome).
 function nyOpen() { if (!NY.sending) nyReset(); go('new-youth'); }
 function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unknown = false; renderNewYouth(); }
+
+/* ── LINK MODULE ── Elvanto link screens (spec 2026-10-12-elvanto-link-app-design.md §9.2, §11).
+   Same switch as New person (modules.newYouthForms). A tap never waits for the network: it goes into a
+   per-login queue in localStorage and is sent in batches to POST /link/batch. The door list (minors' names)
+   is kept in memory only, never in localStorage. Helpers are _lk*; the state object is LINK. */
+let LINK = _lkFresh();
+function _lkFresh() {
+  return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
+    q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null };
+}
+const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
+function _linkOn() { return _nyOn(); }
+// Brisbane is UTC+10 all year (no daylight saving).
+function _lkTime(iso) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return '';
+  const d = new Date(t + 36e6), h = d.getUTCHours(), m = d.getUTCMinutes();
+  return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' am' : ' pm');
+}
+function _lkDay(ymd) {
+  const p = String(ymd || '').split('-').map(Number);
+  if (p.length !== 3 || !p[0]) return '';
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] + ' ' + p[2] + ' '
+    + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][p[1] - 1];
+}
+function _lkSvcLabel(s) { return s ? _lkDay(s.ymd) + ' · ' + (s.name || '') + ' ' + _lkTime(s.startsAt) : ''; }
+// The leader line for one action (contract §5.3 / §5.4, word for word). Two app-only statuses:
+// 'queued' (still on this phone) and 'mirror' (checked in on the kiosk; no app row).
+function _lkStatusText(row, lastSeen) {
+  if (!row) return '';
+  const R = {
+    'locked': "This isn't connected yet. Do it in Elvanto.",
+    'no-room': 'No room for this person. Check in on the kiosk.',
+    'person-unknown': "This person isn't in Elvanto any more.",
+    'report-exists': "There's already a report for that date. Edit it.",
+    'report-not-found': 'This report changed in Elvanto. Reload and try again.',
+    'report-changed': 'This report changed in Elvanto. Reload and try again.',
+    'member-left': "Someone ticked isn't in this group now. Reload.",
+    'not-in-group': "Someone ticked isn't in this group now. Reload.",
+    'multi-service': 'Edit this report in Elvanto.',
+    'unkept-notes': 'Edit this report in Elvanto.',
+    'note-too-long': 'Edit this report in Elvanto.',
+    'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
+    'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
+    'step-moved': 'This step changed in Elvanto. Do it there.',
+    'assignee-needed': 'This step changed in Elvanto. Do it there.',
+    'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
+    'too-old': 'Too late to send. Do it in Elvanto.',
+    'not-landed': "It didn't save. Do it in Elvanto.",
+    'console-cannot-read': "The console couldn't do this. Do it in Elvanto.",
+    'unknown': "The console couldn't do this. Do it in Elvanto.",
+    'lease-lost': 'Not sure it saved. The admin is checking Elvanto.',
+    'note-unreadable': "This note couldn't be read. Do it in Elvanto.",
+  };
+  switch (row.status) {
+    case 'queued': return 'Waiting to send.';
+    case 'mirror': return 'In Elvanto.';
+    case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
+      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : '');
+    case 'claimed': return 'Sending to Elvanto…';
+    case 'sent': return row.reason === 'already' ? 'Already in Elvanto ✓' : 'In Elvanto ✓' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
+    case 'shadowed': return 'Practice mode: not sent to Elvanto. Check in the usual way.';
+    case 'refused': return R[row.reason] || row.message || R.unknown;
+    case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
+    case 'cancelled': return 'Cancelled.';
+  }
+  return '';
+}
+function _lkStatusTone(row) {
+  const s = row && row.status;
+  return s === 'sent' || s === 'mirror' ? 'ok' : s === 'refused' || s === 'unclear' ? 'bad' : s === 'shadowed' || s === 'cancelled' ? 'prac' : 'wait';
+}
+function _lkCap(type) {
+  const c = LINK.status && LINK.status.console;
+  return (c && c.capabilities && c.capabilities[type]) || null;
+}
+// A type the console reports 'off' is hidden from the screens.
+function _lkCapOff(type) { return _lkCap(type) === 'off'; }
+// "Console last seen 7:02 pm" only while the console is offline.
+function _lkLastSeen() {
+  const c = LINK.status && LINK.status.console;
+  return c && !c.online && c.lastSeenAt ? _lkTime(c.lastSeenAt) : '';
+}
+// The banner above a link screen, from GET /link/status. types = the action types this screen sends.
+function _lkBanner(types, st) {
+  if (st === undefined) st = LINK.status;
+  if (!st) return '';
+  const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
+  const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', firstTimerCheckIn: 'First-timer check-in' };
+  if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkTime(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  if (types.some((t) => caps[t] === 'shadow')) out.push(['practice', 'Practice mode: not sent to Elvanto. Check in the usual way.']);
+  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
+  if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
+  return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
+}
+// ── The phone queue (§9.2): localStorage['ysc.lkq.' + login id], every access in try/catch. ──
+function _lkKey() { return 'ysc.lkq.' + ((S.user && S.user.id) || ''); }
+function _lkQGet() {
+  try {
+    const raw = localStorage.getItem(_lkKey());
+    if (raw) { const q = JSON.parse(raw); if (Array.isArray(q)) return q; }
+  } catch (e) {}
+  return LINK.mem.slice();
+}
+function _lkQSet(q) {
+  LINK.mem = q.slice();
+  try { if (q.length) localStorage.setItem(_lkKey(), JSON.stringify(q)); else localStorage.removeItem(_lkKey()); } catch (e) {}
+}
+function _lkUuid() {
+  try { const c = globalThis.crypto; if (c && c.randomUUID) return c.randomUUID(); } catch (e) {}
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => { const r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 3 | 8)).toString(16); });
+}
+function _lkPush(item, soon) {
+  try { const q = _lkQGet(); q.push(item); _lkQSet(q); } catch (e) {}
+  if (soon) _lkSchedule(300);
+  _lkRefreshView();
+}
+function _lkSchedule(ms) {
+  if (LINK.timer) clearTimeout(LINK.timer);
+  LINK.timer = setTimeout(() => { LINK.timer = null; _lkFlush(); }, ms);
+}
+// The index of the queued check-in / check-out / undo for one person and service, or -1.
+function _lkQueuedIdx(q, svc, pid) {
+  for (let i = q.length - 1; i >= 0; i--) {
+    const it = q[i];
+    if (it.kind === 'action' && (it.type === 'checkIn' || it.type === 'checkOut') && it.payload && it.payload.serviceTimeId === svc && it.payload.personId === pid) return i;
+    if (it.kind === 'undo' && it._s === svc && it._p === pid) return i;
+  }
+  return -1;
+}
+// Server rows win, except people with an item still in this phone's queue: those show the queued state.
+function _lkMerge(serverPeople, queue, svc) {
+  const last = {};
+  (queue || []).forEach((it) => {
+    if (it.kind === 'action' && (it.type === 'checkIn' || it.type === 'checkOut') && it.payload && it.payload.serviceTimeId === svc) last[it.payload.personId] = { id: it.id, type: it.type };
+    else if (it.kind === 'undo' && it._s === svc && it._p) last[it._p] = { id: it.newId, type: 'checkOut' };
+  });
+  return (serverPeople || []).map((p) => {
+    const q = p.personId ? last[p.personId] : null;
+    return q ? Object.assign({}, p, { checkedIn: q.type === 'checkIn', practice: false, mine: true, queued: true,
+      action: { id: q.id, type: q.type, status: 'queued', reason: null } }) : p;
+  });
+}
+// Write a server answer into the cached lists, so the row keeps it until the next refresh.
+function _lkApply(svc, pid, act) {
+  const d = LINK.people[svc];
+  if (!d || !pid) return;
+  [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
+    if (p.personId !== pid) return;
+    p.action = act; p.mine = true;
+    if (act.status === 'cancelled') { if (act.type === 'checkIn') p.checkedIn = false; }
+    else if (act.status !== 'refused') { p.checkedIn = act.type === 'checkIn'; p.practice = act.status === 'shadowed'; }
+  }));
+}
+// One flush at a time; up to 50 items per POST; 20 s client timeout. Fields starting with _ stay on the phone.
+function _lkFlush() {
+  if (LINK.flushing) return LINK.flushing;
+  const q = _lkQGet();
+  if (!q.length || !S.user) return Promise.resolve(true);
+  const items = q.slice(0, 50);
+  const send = items.map((it) => { const o = {}; Object.keys(it).forEach((k) => { if (k[0] !== '_') o[k] = it[k]; }); return o; });
+  let device;
+  try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
+  const p = API.post('/link/batch', { device, items: send }, 20000)
+    .then((res) => { _lkResults(items, (res && res.results) || []); return true; },
+      (err) => { if (!(err && err.status === 401)) _lkFailed(); return false; })
+    .finally(() => { LINK.flushing = null; });
+  LINK.flushing = p;
+  return p;
+}
+function _lkFailed() {
+  LINK.fails++;
+  if (LINK.fails >= 4) LINK.red = true; // the 45 s step failed too
+  _lkSchedule([5000, 15000, 45000, 60000][Math.min(LINK.fails - 1, 3)]);
+  _lkRefreshView();
+}
+function _lkRetry() { LINK.fails = Math.min(LINK.fails, 3); _lkFlush(); }
+function _lkResults(items, results) {
+  const by = {};
+  results.forEach((r) => { by[r.kind + ':' + r.id] = r; });
+  const done = {};
+  let rate = false, say = '';
+  items.forEach((it) => {
+    const r = by[it.kind + ':' + it.id];
+    if (!r) return; // no answer: keep it queued
+    if (r.outcome === 'refused' && r.code === 'RATE_LIMITED') { rate = true; return; }
+    done[it.kind + ':' + it.id] = true;
+    if (it.kind === 'action') {
+      const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
+      if (r.outcome === 'refused') {
+        if (svc && pid) LINK.refusals[svc + ':' + pid] = { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' };
+        else say = r.message || say;
+      } else if (svc && pid) {
+        const act = Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
+        if (r.outcome === 'duplicate' && r.existingId) act.id = r.existingId;
+        _lkApply(svc, pid, act);
+      }
+    } else if (it.kind === 'undo') {
+      if (r.outcome === 'cancelled') _lkApply(it._s, it._p, { id: it.id, type: 'checkIn', status: 'cancelled', reason: null });
+      else if (r.outcome === 'saved') _lkApply(it._s, it._p, Object.assign({ id: it.newId, type: 'checkOut', status: 'pending', reason: null }, r.action || {}));
+      else if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
+      else if (r.outcome === 'refused') say = r.message || say;
+    } else if (it.kind === 'cancel') {
+      if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
+      else if (r.outcome === 'refused') say = r.message || say;
+    }
+  });
+  const left = _lkQGet().filter((it) => !done[it.kind + ':' + it.id]);
+  _lkQSet(left);
+  LINK.fails = 0; LINK.red = false;
+  if (rate) toast('Too many taps. Wait a minute.', 4000);
+  else if (say) toast(say, 5000);
+  if (left.length) _lkSchedule(15000);
+  else LINK.flash = true;
+  _lkRefreshView();
+}
+function _lkPill() {
+  let n = 0;
+  try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
+  if (LINK.red && n) return `<button type="button" class="lk-pill bad" onclick="_lkRetry()">Not saved — tap to retry</button>`;
+  if (n) return `<span class="lk-pill wait">${n} waiting to send</span>`;
+  if (LINK.flash) { LINK.flash = false; return `<span class="lk-pill ok fade">All saved</span>`; }
+  return '';
+}
+function _lkBoot() {
+  if (LINK.booted || !S.user) return;
+  LINK.booted = true;
+  try { if (_lkQGet().length) _lkSchedule(1000); } catch (e) {}
+}
+// Logout with unsent items: ask, send (wait up to 10 s), then offer to log out anyway. False = stay.
+async function _lkLogoutGuard() {
+  let n = 0;
+  try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
+  if (!n) return true;
+  const what = n === 1 ? "1 check-in hasn't" : n + " check-ins haven't";
+  if (!(await _lkAsk(what + ' been sent yet. Send them now?', 'Send now', 'Stay'))) return false;
+  await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 10000))]);
+  if (!_lkQGet().filter((it) => it.kind !== 'identity').length) return true;
+  return _lkAsk('They could not be sent.', "Log out anyway (they'll be lost)", 'Stay');
+}
+function _lkAsk(text, yes, no) {
+  return new Promise((res) => {
+    LINK.ask = res;
+    modal(`<div class="mo-title">Not sent yet</div><p style="margin-bottom:14px">${esc(text)}</p>
+      <button type="button" class="btn btn-primary btn-full" onclick="_lkAnswer(true)">${esc(yes)}</button>
+      <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="_lkAnswer(false)">${esc(no)}</button>`,
+    () => { const f = LINK.ask; LINK.ask = null; if (f) f(false); });
+  });
+}
+function _lkAnswer(v) { const f = LINK.ask; LINK.ask = null; closeModal(); if (f) f(v); }
+// After logout (phones are shared): drop the queue and everything in memory.
+function _lkClear() {
+  try { localStorage.removeItem(_lkKey()); } catch (e) {}
+  _lkSoftReset();
+}
+// Session gone (expired, logout): forget the lists in memory; the queue stays for the same login.
+function _lkSoftReset() {
+  if (LINK.timer) clearTimeout(LINK.timer);
+  if (LINK.tick) clearInterval(LINK.tick);
+  LINK = _lkFresh();
+}
+// ── Status and refresh (only while a link page is visible) ──
+function _lkOnPage() { return !!S.user && String(S.page || '').indexOf('link-') === 0; }
+function _lkStatusLoad() {
+  return API.fresh('/link/status').then((st) => { LINK.status = st; LINK.statusAt = Date.now(); _lkRefreshView(); }).catch(() => {});
+}
+function _lkTickStart() {
+  if (LINK.tick) return;
+  LINK.ticks = 0;
+  LINK.tick = setInterval(_lkTick, 15000);
+}
+function _lkTickStop() { if (LINK.tick) clearInterval(LINK.tick); LINK.tick = null; }
+function _lkTick() {
+  if (!_lkOnPage() || document.visibilityState === 'hidden') { _lkTickStop(); return; }
+  LINK.ticks++;
+  if (LINK.ticks % 4 === 0) { // every 60 s: the console status and the door list
+    _lkStatusLoad();
+    if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc).then((ok) => { if (ok) _lkRefreshView(); });
+  } else if (S.page === 'link-checkin') _lkPollOpen(); // every 15 s: my own open rows
+}
+function _lkPollOpen() {
+  const d = LINK.people[LINK.svc];
+  if (!d) return;
+  const ids = [];
+  [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
+    const a = p.action;
+    if (p.mine && a && a.id && ['pending', 'claimed', 'unclear'].includes(a.status) && !ids.includes(a.id)) ids.push(a.id);
+  }));
+  if (!ids.length) return;
+  API.fresh('/link/actions?ids=' + ids.slice(0, 50).join(',')).then((rows) => {
+    const by = {};
+    (Array.isArray(rows) ? rows : (rows && rows.actions) || []).forEach((r) => { by[r.id] = r; });
+    [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
+      const r = p.action && by[p.action.id];
+      if (!r) return;
+      p.action = Object.assign({}, p.action, { status: r.status, reason: r.reason, resultAt: r.resultAt });
+      if (!['refused', 'cancelled'].includes(r.status)) { p.checkedIn = p.action.type === 'checkIn'; p.practice = r.status === 'shadowed'; }
+    }));
+    _lkRefreshView();
+  }).catch(() => {});
+}
+try {
+  window.addEventListener('online', () => { if (S.user) _lkFlush(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { _lkTickStop(); return; }
+    if (!S.user) return;
+    _lkFlush();
+    if (_lkOnPage()) { _lkTickStart(); _lkStatusLoad(); }
+  });
+} catch (e) {}
+// Repaint the parts of a link screen that show queue or status state (never the inputs, so focus stays).
+function _lkRefreshView() {
+  try {
+    if (!_lkOnPage()) return;
+    const top = document.getElementById('lk-top');
+    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : []);
+    const list = document.getElementById('lk-list');
+    if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
+    const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
+    if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
+  } catch (e) {}
+}
+function _lkTop(types) { return _lkPill() + _lkBanner(types); }
+// ── Pages ──
+async function renderLink(p) {
+  if (!_linkOn()) { go('home'); return; }
+  const role = S.user.role;
+  if ((p === 'link-admin' && role !== 'admin' && role !== 'director') || ((p === 'link-groups' || p === 'link-flows') && role === 'leader')) { go('home'); return; }
+  _lkTickStart();
+  if (!LINK.statusAt || Date.now() - LINK.statusAt > 60000) _lkStatusLoad();
+  if (p === 'link-checkin') { await renderLinkCheckin(); return; }
+  const title = { 'link-groups': 'Lifegroup report', 'link-flows': 'Flow steps', 'link-admin': 'Elvanto link' }[p];
+  if (!title) { go('home'); return; }
+  setApp(shell(`<div class="ph"><h1>${title}</h1></div><div id="lk-top">${_lkTop([])}</div>
+    <div class="card"><p>This screen is not ready yet.</p></div>`));
+}
+function _lkSvc() { return (LINK.services || []).find((s) => s.serviceTimeId === LINK.svc) || null; }
+function _lkTakeServices(r) {
+  if (!r) return;
+  if (Array.isArray(r.services)) LINK.services = r.services;
+  if (r.today) LINK.today = r.today;
+  if (r.defaultServiceTimeId !== undefined) LINK.defaultSvc = r.defaultServiceTimeId || null;
+}
+async function _lkLoadPeople(svc) {
+  try {
+    const r = await API.fresh('/link/checkin?serviceTime=' + encodeURIComponent(svc));
+    _lkTakeServices(r);
+    LINK.people[svc] = { people: (r && r.people) || [], leaders: (r && r.leaders) || [] };
+    LINK.loadErr = null;
+    return true;
+  } catch (e) { LINK.loadErr = e.message || 'Could not load the list.'; return false; }
+}
+// The door screen (mockup frame 1). Loads the pick list once, then one service's list once (60 s refresh).
+async function renderLinkCheckin() {
+  if (!LINK.services) {
+    setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
+    try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = e.message || 'Could not load the services.'; }
+    if (S.page !== 'link-checkin') return;
+    if (!LINK.services) {
+      setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div class="card"><p>${esc(LINK.loadErr)}</p>
+        <button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>`));
+      return;
+    }
+    if (!LINK.svc) LINK.svc = LINK.defaultSvc;
+  }
+  if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); _lkPickService(); return; }
+  if (!LINK.people[LINK.svc]) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
+  _lkPaintDoor();
+}
+function _lkPaintDoor() {
+  const s = _lkSvc();
+  const grades = [['all', 'All grades'], ['7', 'Grade 7'], ['8', 'Grade 8'], ['9', 'Grade 9'], ['10', 'Grade 10'], ['11', 'Grade 11'], ['12', 'Grade 12'], ['leaders', 'Leaders']];
+  setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
+    <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
+    <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}</div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
+    ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
+    ${s && !_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}
+    ${s ? `<div class="lk-filters"><input class="fi" id="lk-search" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)">
+      <select class="fs" onchange="_lkSetGrade(this.value)">${grades.map((g) => `<option value="${g[0]}"${LINK.q.grade === g[0] ? ' selected' : ''}>${g[1]}</option>`).join('')}</select></div>
+      <div id="lk-list">${_lkListHtml()}</div>
+      <p class="lk-hint">Tap a name to check in. Tap Check out when they leave.</p>` : ''}`));
+}
+function _lkSetSearch(v) { LINK.q.search = v; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }
+function _lkSetGrade(v) { LINK.q.grade = v; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }
+// Search matches every typed word, in any order. Grade: 'all', '7'…'12' (students), or 'leaders'.
+function _lkFilter(list, q) {
+  const toks = String((q && q.search) || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const g = (q && q.grade) || 'all';
+  return list.filter((p) => {
+    if (g === 'leaders') { if (!p.leader) return false; }
+    else if (g !== 'all' && (p.leader || String(p.grade) !== g)) return false;
+    const n = String(p.name || '').toLowerCase();
+    return toks.every((t) => n.indexOf(t) >= 0);
+  });
+}
+function _lkListHtml() {
+  const d = LINK.people[LINK.svc];
+  if (!d) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : '<p class="lk-hint">Loading…</p>';
+  let all = d.people;
+  try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
+  const list = _lkFilter(all, LINK.q);
+  const due = list.filter((p) => !p.checkedIn), done = list.filter((p) => p.checkedIn);
+  return `<div class="card lk-sum"><div><b>In ${done.length}</b> · Still to come ${due.length}</div>
+      <div class="lk-big"><b>${due.length}</b><span>not yet in</span></div></div>
+    <div class="lk-sec">Still to come</div>
+    ${due.map(_lkRowHtml).join('') || '<p class="lk-hint">Nobody left to check in.</p>'}
+    <details class="lk-done"${LINK.doneOpen ? ' open' : ''} ontoggle="LINK.doneOpen=this.open"><summary><span>Checked in · ${done.length}</span>${icS('chevd')}</summary>
+    ${done.map(_lkRowHtml).join('')}</details>`;
+}
+// One door row: a grade chip (neutral) or a Leader chip, the name, a status line and one button.
+function _lkRowHtml(p) {
+  const pid = esc(p.personId);
+  const ref = !p.queued && LINK.refusals[LINK.svc + ':' + p.personId];
+  const act = (!p.checkedIn && ref) || p.action || null;
+  const chip = p.leader ? '<span class="lk-chip lead">Leader</span>' : `<span class="lk-chip">${p.grade != null ? 'Yr ' + esc(p.grade) : '–'}</span>`;
+  let line = null;
+  if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
+  else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
+  const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${esc(_lkStatusText(line, _lkLastSeen()))}</div>` : '';
+  const undo = p.mine && act && act.status !== 'refused' && act.status !== 'cancelled'
+    && (act.status === 'queued' || (p.checkedIn && act.type === 'checkIn'));
+  let btn = '';
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkUndo('${pid}')">Undo</button>`;
+  else if (p.checkedIn) { if (!_lkCapOff('checkOut')) btn = `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
+  else if (!_lkCapOff('checkIn')) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
+  const tap = !p.checkedIn && !undo && !_lkCapOff('checkIn') ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
+  return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name)}</div>${lineHtml}</div>${btn}</div>`;
+}
+// A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
+function _lkCheck(pid, type) {
+  try {
+    const svc = LINK.svc, s = _lkSvc();
+    if (!svc || !s) return;
+    delete LINK.refusals[svc + ':' + pid];
+    const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
+    if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
+    const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
+    _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
+  } catch (e) {}
+}
+// Undo: still queued → removed here; sent check-in → an undo item; anything else → a cancel item.
+function _lkUndo(pid) {
+  try {
+    const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
+    if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
+    const d = LINK.people[svc];
+    const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === pid);
+    const a = p && p.action;
+    if (!a || !a.id) return;
+    const lid = getMyLeaderId() || null;
+    if (a.type === 'checkIn') _lkPush({ kind: 'undo', id: a.id, leaderId: lid, newId: _lkUuid(), _s: svc, _p: pid }, true);
+    else _lkPush({ kind: 'cancel', id: a.id, leaderId: lid, _s: svc, _p: pid }, true);
+  } catch (e) {}
+}
+// "Pick a service" sheet (mockup frame 2). then = 'leaders' opens the leader sheet after.
+function _lkPickService(then) {
+  LINK.pickThen = then || null;
+  LINK.pickSel = LINK.svc || LINK.defaultSvc || null;
+  modal(`<div id="lk-pick">${_lkPickHtml()}</div><div class="bus-sheet-actions" id="lk-pick-foot">${_lkPickFoot()}</div>`);
+}
+function _lkPickHtml() {
+  const xs = LINK.services || [];
+  return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>
+    ${xs.length ? xs.map((s) => `<button type="button" class="lk-opt${s.serviceTimeId === LINK.pickSel ? ' on' : ''}" onclick="_lkPickSel('${esc(s.serviceTimeId)}')">
+      <span><span class="lk-opt-t">${esc(_lkDay(s.ymd) + ' · ' + (s.name || ''))}</span><span class="lk-d">${esc(_lkTime(s.startsAt))}</span></span>
+      ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}</button>`).join('')
+    : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'}`;
+}
+function _lkPickFoot() {
+  return `<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button type="button" class="btn btn-primary"${LINK.pickSel ? '' : ' disabled'} onclick="_lkPickUse()">Use this service</button>`;
+}
+function _lkPickSel(id) {
+  LINK.pickSel = id;
+  const b = document.getElementById('lk-pick'), f = document.getElementById('lk-pick-foot');
+  if (b) b.innerHTML = _lkPickHtml();
+  if (f) f.innerHTML = _lkPickFoot();
+}
+async function _lkPickUse() {
+  if (!LINK.pickSel) return;
+  const then = LINK.pickThen;
+  LINK.svc = LINK.pickSel; LINK.pickThen = null;
+  closeModal();
+  await renderLinkCheckin();
+  if (then === 'leaders' && S.page === 'link-checkin' && LINK.people[LINK.svc]) _lkOpenLeaders();
+}
+// ── Leader quick check-in (decision 20; mockup frame 3) ──
+function _lkOpenLeaders() {
+  if (!LINK.svc || !_lkSvc()) { _lkPickService('leaders'); return; }
+  if (!LINK.people[LINK.svc]) return;
+  LINK.lq = {};
+  modal(`<div id="lk-lq">${_lkLeadersHtml()}</div><div class="bus-sheet-actions" id="lk-lq-foot">${_lkLeadersFoot()}</div>`);
+}
+function _lkLeadersView() {
+  const d = LINK.people[LINK.svc];
+  let xs = (d && d.leaders) || [];
+  try { xs = _lkMerge(xs, _lkQGet(), LINK.svc); } catch (e) {}
+  return xs.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+// done = checked in (or queued), nl = not linked to an Elvanto person, tick = can be ticked.
+function _lkLeaderState(l) { return l.checkedIn ? 'done' : !l.personId ? 'nl' : 'tick'; }
+function _lkTickedCount() {
+  const t = LINK.lq || {};
+  return _lkLeadersView().filter((l) => _lkLeaderState(l) === 'tick' && t[l.leaderId]).length;
+}
+function _lkLeadersHtml() {
+  const xs = _lkLeadersView(), t = LINK.lq || {};
+  const tick = xs.filter((l) => _lkLeaderState(l) === 'tick');
+  const allOn = tick.length > 0 && tick.every((l) => t[l.leaderId]);
+  const nDone = xs.filter((l) => _lkLeaderState(l) === 'done').length, nNl = xs.filter((l) => _lkLeaderState(l) === 'nl').length;
+  const rows = xs.map((l) => {
+    const st = _lkLeaderState(l);
+    if (st === 'done') {
+      const a = l.action && l.action.status !== 'cancelled' ? l.action : { status: 'mirror' };
+      return `<div class="lk-lq-row"><span class="lk-done-ic">${icS('check')}</span><div class="lk-nm">${esc(l.name)}<div class="lk-st ${_lkStatusTone(a)}">${esc(_lkStatusText(a, _lkLastSeen()))}</div></div></div>`;
+    }
+    if (st === 'nl') return `<div class="lk-lq-row dis"><span class="lk-box-sp"></span><div class="lk-nm">${esc(l.name)}</div><span class="lk-nl">Not linked</span></div>`;
+    const on = !!t[l.leaderId];
+    return `<div class="lk-lq-row" role="button" onclick="_lkTickLeader('${esc(l.leaderId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('check') : ''}</span><div class="lk-nm">${esc(l.name)}</div></div>`;
+  }).join('');
+  return `<div class="mo-title">Check in leaders</div><p class="lk-sub">${esc(_lkSvcLabel(_lkSvc()))}</p>
+    <div class="lk-lq-head"><span>${nDone} done · ${nNl} not linked</span>${tick.length ? `<button type="button" class="btn btn-ghost btn-sm lk-tickall" onclick="_lkTickAll()">${allOn ? 'Untick all' : 'Tick all'}</button>` : ''}</div>
+    <div class="lk-lq-list">${rows || '<p class="lk-sub">No active leaders.</p>'}</div>`;
+}
+function _lkLeadersFoot() {
+  const n = _lkTickedCount();
+  return `<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button type="button" class="btn btn-primary" id="lk-lq-go"${n ? '' : ' disabled'} onclick="_lkLeadersSubmit()">Submit (${n})</button>`;
+}
+function _lkLeadersDraw() {
+  const b = document.getElementById('lk-lq'), f = document.getElementById('lk-lq-foot');
+  if (b) b.innerHTML = _lkLeadersHtml();
+  if (f) f.innerHTML = _lkLeadersFoot();
+}
+function _lkTickLeader(id) { if (!LINK.lq) LINK.lq = {}; LINK.lq[id] = !LINK.lq[id]; _lkLeadersDraw(); }
+function _lkTickAll() {
+  const tick = _lkLeadersView().filter((l) => _lkLeaderState(l) === 'tick');
+  const t = LINK.lq || {};
+  const allOn = tick.length > 0 && tick.every((l) => t[l.leaderId]);
+  LINK.lq = {};
+  if (!allOn) tick.forEach((l) => { LINK.lq[l.leaderId] = true; });
+  _lkLeadersDraw();
+}
+// One ordinary checkIn per ticked leader, through the phone queue (instant; deduped on the server).
+function _lkLeadersSubmit() {
+  const s = _lkSvc();
+  if (!s) return;
+  const t = LINK.lq || {}, lid = getMyLeaderId() || null, q = _lkQGet();
+  let n = 0;
+  _lkLeadersView().forEach((l) => {
+    if (_lkLeaderState(l) !== 'tick' || !t[l.leaderId]) return;
+    q.push({ kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, personId: l.personId }, note: null, leaderId: lid });
+    n++;
+  });
+  if (!n) return;
+  _lkQSet(q);
+  LINK.lq = null;
+  closeModal();
+  _lkSchedule(300);
+  _lkRefreshView();
+}
+/* ── END LINK MODULE ── */
 
 function _busHomeTile() {
   if (!_busOn()) return '';

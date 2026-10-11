@@ -295,12 +295,14 @@ describe('result page buttons (M3)', () => {
 // ---- Task 7: shadow mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
 const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page: 'home', settings: { ministryConfig: { modules: { newYouthForms: mode, busMinistry: bus } } } });
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
-const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_busOn', 'moreItems', '_navItemsBase', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
+const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkOn', '_busOn', 'moreItems', '_navItemsBase', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
 type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; _isRootPage: (p: string) => boolean; openMore: () => void };
 const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, _isRootPage, openMore };`)(
   S, (k: string) => (k === 'busMinistry' ? 'Bus Ministry' : k), modal, (k: string) => `<i ${k}>`, (x: string) => x,
 ) as NavFns;
 const ids = (xs: any[]) => xs.map((i) => i.id);
+// The Elvanto link entries share this switch (link.spa.test.ts covers them); these tests look at the rest.
+const noLink = (xs: string[]) => xs.filter((id) => !id.startsWith('link-'));
 const ROLES = ['leader', 'grade', 'quad', 'director', 'admin'];
 
 describe('_nyOn: who sees the New person screen', () => {
@@ -375,12 +377,12 @@ describe('the More menu (in the Prayers slot)', () => {
     }
   });
   it('shadow: New person is in More for the admin only', () => {
-    expect(ids(navFns(modeOf('shadow', 'admin')).moreItems())).toEqual(['prayers', 'new-youth']);
-    expect(ids(navFns(modeOf('shadow', 'admin', true)).moreItems())).toEqual(['prayers', 'bus', 'new-youth']);
+    expect(noLink(ids(navFns(modeOf('shadow', 'admin')).moreItems()))).toEqual(['prayers', 'new-youth']);
+    expect(noLink(ids(navFns(modeOf('shadow', 'admin', true)).moreItems()))).toEqual(['prayers', 'bus', 'new-youth']);
     for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf('shadow', r, true)).moreItems()), r).toEqual(['prayers', 'bus']);
   });
   it('on: New person is in More for every role', () => {
-    for (const r of ROLES) expect(ids(navFns(modeOf('on', r)).moreItems()), r).toEqual(['prayers', 'new-youth']);
+    for (const r of ROLES) expect(noLink(ids(navFns(modeOf('on', r)).moreItems())), r).toEqual(['prayers', 'new-youth']);
   });
   it('the sheet lists each entry with its entry call; New person uses nyOpen (never a reset)', () => {
     let shown = '';
@@ -430,7 +432,7 @@ describe('"New person" is the name the host sees', () => {
     expect(html).not.toContain("_setupSet('modules.newYouthForms', this.checked)");
     expect(html).toMatch(/Shadow mode \(admin only\)/);
     expect(html).toMatch(/newYouthForms: 'off'/);
-    expect(html).toMatch(/Adds New person to the More menu/);
+    expect(html).toMatch(/Elvanto features \$\{helpTip\("Turns on the screens that send to Elvanto: New person, Check-in/);
   });
   it('saving Youth Setup rebuilds the nav when the module state changed', () => {
     expect(extractFn(html, 'saveMinistrySetup')).toContain('_initShell()');
