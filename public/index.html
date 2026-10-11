@@ -1454,6 +1454,20 @@ async function _vgSave(id) {
   } catch (e) { toast(e.message); }
 }
 function _vgReset() { clearTimeout(_vgTimer); _vgTimer = null; _vgLocal = {}; }
+// Pure per-screen rules (vg = _vgGrades(); null = no filter).
+function _vgStudents(list, vg) { return vg ? (list || []).filter(s => vg.includes(s.grade)) : (list || []); }
+// Connect Setup leader cards: grades overlap the filter, or the leader has no grades yet.
+function _vgLeaders(list, vg) {
+  return vg ? (list || []).filter(l => !(l.grades && l.grades.length) || l.grades.some(g => vg.includes(g))) : (list || []);
+}
+// Student prayers by the student's grade; a general prayer by createdByGrades overlap, or null.
+function _vgPrayers(list, vg) {
+  if (!vg) return list || [];
+  return (list || []).filter(p => p.studentId != null
+    ? !!(p.student && vg.includes(p.student.grade))
+    : (!Array.isArray(p.createdByGrades) || p.createdByGrades.some(g => vg.includes(g))));
+}
+function _vgGradeList(grades, vg) { return vg ? grades.filter(g => vg.includes(g)) : grades; }
 function _vgToggle(g) {
   const cur = _vgGrades();
   if (!cur) return;
@@ -1471,6 +1485,8 @@ function _vgMine() { _vgSet(null); }
 function _vgBar() {
   if (!_vgActive()) return '';
   const bracket = quadGrades(S.user.quad);
+  // Screens without /leaders in hand (Health, Prayers) fetch it once, then repaint.
+  if (getMyLeaderId() && Cache.getStale('/leaders') == null) API.get('/leaders').then(() => render(), () => {});
   const cur = _vgGrades();
   const word = esc(_gradeWord()) + 's:';
   if (!cur) {
@@ -2474,7 +2490,10 @@ async function _renderHomeInner(stale) {
   // Bug list item 1: birthdays-this-week must be grade/quad-scoped, not tied
   // to whichever leader identity is self-selected in Follow Up, and must not
   // show at all for director/admin. See _homeBirthdaysCtx's doc comment.
-  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
+  // Junior/Senior logins: the shared grade filter narrows "Birthdays this week" and the
+  // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
+  const _vg = _vgGrades();
+  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(_vgStudents(sc, _vg)) : null;
   const _connSet = new Set((conns || []).map(a => a.studentId));
   const _lgQuad = q => (lgStats && lgStats.byQuad || []).find(x => x.quad === q);
   const _lgGrade = g => (lgStats && lgStats.byGrade || []).find(x => x.grade === g);
@@ -2655,8 +2674,9 @@ async function _renderHomeInner(stale) {
       // "Lifegroups by Grade" section below; folded in here so quad only has to
       // tap one tile instead of scrolling to a second section for the same grade).
       if (u.role === 'quad') {
+        body += _vgBar();
         body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-        for (const gr of _hQuadGrades(u.quad)) {
+        for (const gr of _vgGradeList(_hQuadGrades(u.quad), _vg)) {
           const gLg = lifegroupsOn ? _lgGrade(gr) : null;
           const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0, hideLifegroupRow: !lifegroupsOn };
           if (gLg) {
@@ -3083,7 +3103,10 @@ function renderConnectView() {
 
   // Filter leaders by grade/gender chips (applied to the leader cards shown)
   let visLeaders = leaders;
-  if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  const vg = vgOn ? _vgGrades() : null;
+  if (vgOn) visLeaders = _vgLeaders(visLeaders, vg);
+  else if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
   if (df.size) visLeaders = visLeaders.filter(l => !l.gender || df.has(l.gender));
 
   // Counts — only students who have attended count toward connected/total; those
@@ -3105,7 +3128,8 @@ function renderConnectView() {
   // always reflecting the login's full unfiltered remit.
   const inChipFilter = s => (!gf.size || gf.has(s.grade)) && (!df.size || df.has(s.gender));
   const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
-  const connectable = students.filter(_hasAttended).filter(inOwnScope).filter(inChipFilter);
+  const ownScope = students.filter(_hasAttended).filter(inOwnScope);
+  const connectable = vgOn ? _vgStudents(ownScope, vg) : ownScope.filter(inChipFilter);
   const totalStudents = connectable.length;
   const connectedCount = connectable.filter(s => connectedStudentIds.has(s.id)).length;
 
@@ -3160,7 +3184,7 @@ function renderConnectView() {
       <div class="stat"><div class="stat-v" style="color:var(--warn)">${Math.max(0, totalStudents - connectedCount)}</div><div class="stat-l">Pending</div></div>
     </div>
     ${unallocDrop}
-    ${gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
+    ${vgOn ? _vgBar() : gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}
     </div>` : ''}
     ${dChips ? `<div class="filter-row" role="group" aria-label="Filter by gender">
@@ -3569,6 +3593,8 @@ async function renderUpcomingBirthdays() {
   // ministry list here; grade/quad logins are already scoped server-side).
   const showBdayFilters = ['admin', 'director'].includes(u.role);
   let scopedStudents = students || [];
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter
+  if (vgOn) scopedStudents = _vgStudents(scopedStudents, _vgGrades());
   if (showBdayFilters) {
     if (_bdayFilter.grade) scopedStudents = scopedStudents.filter(s => s.grade === _bdayFilter.grade);
     if (_bdayFilter.gender) scopedStudents = scopedStudents.filter(s => s.gender === _bdayFilter.gender);
@@ -3583,6 +3609,7 @@ async function renderUpcomingBirthdays() {
   upcoming.sort((a, b) => a.when - b.when);
 
   let body = `<div class="ph"><div class="ph-title">Upcoming Birthdays</div><div class="ph-sub">Next 2 months</div></div>`;
+  if (vgOn) body += _vgBar();
   if (showBdayFilters) {
     body += `<div style="display:flex;gap:8px;margin-bottom:12px">
       <select class="fs" style="flex:1" onchange="setBdayFilter('grade', this.value ? Number(this.value) : null)">
@@ -3886,7 +3913,9 @@ async function renderAtRisk() {
   // The /students list is role-scoped (grade/gender) server-side; apply the page's
   // grade/gender filters on top, then categorise by the dynamic qualifier.
   let scoped = (allStu || []).slice();
-  if (_arFilter.grade) scoped = scoped.filter(s => s.grade == _arFilter.grade);
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  if (vgOn) scoped = _vgStudents(scoped, _vgGrades());
+  else if (_arFilter.grade) scoped = scoped.filter(s => s.grade == _arFilter.grade);
   if (_arFilter.gender) scoped = scoped.filter(s => s.gender === _arFilter.gender);
   // Exclude youth who never attended a service or group in the current OR previous
   // term — they aren't "at risk", they've simply never engaged.
@@ -3907,7 +3936,8 @@ async function renderAtRisk() {
         <input id="ar-name-filter" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Find student" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
       </div>
     </div>`;
-  if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
+  if (vgOn) body += _vgBar();
+  else if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
   if (arGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_arFilter.gender?'on':''}" onclick="setArFilter('gender',null)">All</button></div>`;
   body += `<div id="ar-results">${_arSectionsHtml(scoped, u)}</div>`;
   setApp(shell(body));
@@ -4036,7 +4066,8 @@ function _prayerSection(sectionKey, title, items) {
 function _prayersHtml(list) {
   _prayerCache = list || [];
   const u = S.user;
-  const inFilter = _prayerCache.filter(_prayerPassesFilter);
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  const inFilter = vgOn ? _vgPrayers(_prayerCache, _vgGrades()) : _prayerCache.filter(_prayerPassesFilter);
   const open = inFilter.filter(p => p.status === 'open');
   const answered = inFilter.filter(p => p.status === 'answered');
   const archived = inFilter.filter(p => p.status === 'archived');
@@ -4049,7 +4080,8 @@ function _prayersHtml(list) {
   const gChips = prGrades.map(g => `<button class="fc ${_prayerFilter.grade == g ? 'on' : ''}" onclick="setPrayerFilter('grade',${g})">${g}</button>`).join('');
   const dChips = prGenders.map(g => `<button class="fc ${_prayerFilter.gender === g ? 'on' : ''}" onclick="setPrayerFilter('gender','${g}')">${g.charAt(0).toUpperCase() + g.slice(1)}</button>`).join('');
   let filterHtml = '';
-  if (prGrades.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_prayerFilter.grade ? 'on' : ''}" onclick="setPrayerFilter('grade',null)">All</button></div>`;
+  if (vgOn) filterHtml += _vgBar();
+  else if (prGrades.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_prayerFilter.grade ? 'on' : ''}" onclick="setPrayerFilter('grade',null)">All</button></div>`;
   if (prGenders.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_prayerFilter.gender ? 'on' : ''}" onclick="setPrayerFilter('gender',null)">All</button></div>`;
 
   const body = _prayerCache.length
@@ -4396,7 +4428,8 @@ function _visStudents() {
     if (_ROLE_SUFFIX_RE.test(full)) return false;
     return !leaderNames.has(full.toLowerCase());
   });
-  if (gf.size) vis = vis.filter(s => gf.has(s.grade));
+  if (_vgActive()) vis = _vgStudents(vis, _vgGrades()); // Junior/Senior logins: the shared grade filter
+  else if (gf.size) vis = vis.filter(s => gf.has(s.grade));
   if (df.size) vis = vis.filter(s => df.has(s.gender));
   if (search) vis = vis.filter(s => _matchesQuery(`${s.firstName} ${s.lastName}`, search));
   return vis;
@@ -4461,7 +4494,8 @@ function renderStudentView() {
   let body = `
     <div class="ph"><div class="ph-title">Student Search</div><div class="ph-sub"><span id="stu-count">${vis.length} of ${totalSearchable}</span></div></div>
     <div class="sbar"><input id="stu-search" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search students by name" placeholder="Search by name…" value="${search.replace(/"/g,'&quot;')}" oninput="studSearch(this.value)"></div>`;
-  if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
+  if (_vgActive()) body += _vgBar();
+  else if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
   if (ssGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}</div>`;
   body += `<div id="stu-results">${_studentResultsHtml(vis)}</div>`;
 

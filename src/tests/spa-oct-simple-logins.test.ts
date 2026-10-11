@@ -229,3 +229,55 @@ describe('S1.3 grade filter core', () => {
     expect(body).not.toMatch(/view-grades|viewGrades|_vg/);
   });
 });
+
+describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
+  const f = loadFns(['_vgStudents', '_vgLeaders', '_vgPrayers', '_vgGradeList']);
+  const VG = [8];
+  const studs = [{ id: 'a', grade: 7 }, { id: 'b', grade: 8 }, { id: 'c', grade: 9 }];
+
+  it('Health, Upcoming Birthdays, Student Search keep only grade 8', () => {
+    expect(f._vgStudents(studs, VG).map((s: any) => s.id)).toEqual(['b']);
+    expect(f._vgStudents(studs, null)).toHaveLength(3);
+  });
+  it('Connect Setup keeps leader cards whose grades overlap, or are []', () => {
+    const leaders = [{ id: 'L7', grades: [7] }, { id: 'L89', grades: [8, 9] }, { id: 'Lnone', grades: [] }];
+    expect(f._vgLeaders(leaders, VG).map((l: any) => l.id)).toEqual(['L89', 'Lnone']);
+    expect(f._vgLeaders(leaders, null)).toHaveLength(3);
+  });
+  it('Prayers: student prayers by grade; general by createdByGrades overlap or null', () => {
+    const list = [
+      { id: 's7', studentId: 'a', student: { grade: 7 } },
+      { id: 's8', studentId: 'b', student: { grade: 8 } },
+      { id: 'g7', studentId: null, createdByGrades: [7] },
+      { id: 'g78', studentId: null, createdByGrades: [7, 8] },
+      { id: 'gnull', studentId: null, createdByGrades: null },
+    ];
+    expect(f._vgPrayers(list, VG).map((p: any) => p.id)).toEqual(['s8', 'g78', 'gnull']);
+    expect(f._vgPrayers(list, null)).toHaveLength(5);
+  });
+  it('Home narrows only the quad grade tiles list', () => {
+    expect(f._vgGradeList([7, 8, 9], VG)).toEqual([8]);
+    expect(f._vgGradeList([7, 8, 9], null)).toEqual([7, 8, 9]);
+  });
+
+  it('each screen renders _vgBar and applies its helper', () => {
+    const src = loadIndexHtml();
+    const uses: Record<string, string[]> = {
+      renderAtRisk: ['_vgBar()', '_vgStudents('],
+      renderUpcomingBirthdays: ['_vgBar()', '_vgStudents('],
+      renderStudentView: ['_vgBar()'],
+      _visStudents: ['_vgStudents('],
+      renderConnectView: ['_vgBar()', '_vgLeaders(', '_vgStudents('],
+      _prayersHtml: ['_vgBar()', '_vgPrayers('],
+      _renderHomeInner: ['_vgBar()', '_vgGradeList(', '_vgStudents('],
+    };
+    for (const [fn, needles] of Object.entries(uses)) {
+      const body = extractFn(src, fn);
+      for (const n of needles) expect(body, `${fn} uses ${n}`).toContain(n);
+    }
+  });
+  it('not narrowed: Trends, My Connections, Bus, Connection Audit', () => {
+    const src = loadIndexHtml();
+    for (const fn of ['renderTrends', 'renderMyStudents']) expect(extractFn(src, fn)).not.toMatch(/_vg[A-Za-z]/);
+  });
+});
