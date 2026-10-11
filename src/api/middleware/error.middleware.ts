@@ -25,7 +25,9 @@ function isTransientDbError(err: unknown): boolean {
 
 export function sendError(res: Response, err: unknown): void {
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ code: err.code, message: err.message });
+    // `extra` (e.g. existingId, reason, expected) goes after code/message and can never overwrite them.
+    res.status(err.statusCode).json(Object.assign({ code: err.code, message: err.message }, err.extra,
+      { code: err.code, message: err.message }));
     return;
   }
   if (err instanceof ZodError) {

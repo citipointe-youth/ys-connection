@@ -1,0 +1,54 @@
+// Shared Elvanto link types (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §3). Copied exactly;
+// every lane imports these rather than inventing its own.
+import type { z } from 'zod';
+import type { ACTION_TYPES, STATUSES, PUSH_KINDS, REASONS, ResultItem as ResultItemSchema,
+  ResultResponse as ResultResponseSchema } from './link-contract';
+
+export type ActionType = (typeof ACTION_TYPES)[number];
+export type Status = (typeof STATUSES)[number];
+export type PushKind = (typeof PUSH_KINDS)[number];
+export type Reason = (typeof REASONS)[number];
+export type Capability = 'live' | 'shadow' | 'locked' | 'off';
+export type Capabilities = Record<ActionType, Capability>;
+export type Match = 'auto' | 'manual' | 'none' | 'ambiguous' | 'ignored';
+export type IgnoredWhy = 'unknown-id' | 'not-leased' | 'already-final' | 'bad-transition';
+export type ResultItem = z.infer<typeof ResultItemSchema>;
+export type ResultReply = z.infer<typeof ResultResponseSchema>;
+
+export interface OutboxRow {
+  id: string; type: ActionType; payload: Record<string, unknown>;
+  note: string | null;              // plaintext in memory; the Supabase repo encrypts/decrypts
+  dedupeKey: string; serviceDate: string; studentId: string | null; personId: string | null;
+  createdBy: string; leaderId: string | null; leaderName: string;
+  status: Status; reason: string | null; detail: string | null;
+  attempts: number; retryAt: string | null; leaseOwner: string | null; leaseUntil: string | null;
+  resultAt: string | null; sentLogKey: string | null; reportId: string | null;
+  createdAt: string; updatedAt: string;
+}
+export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 'dedupeKey' | 'serviceDate' |
+  'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'>;
+export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: string; contractVersion: number;
+  consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities; }
+export interface ClaimArgs { console: Omit<ConsoleRow, 'lastSeenAt'>; max: number; leaseSeconds: number;
+  cutoffDays: number; leaseLostMs: number; }
+export interface ClaimedRow { row: OutboxRow; reclaimed: boolean; noteUnreadable: boolean; }
+export interface MirrorStateRow { kind: PushKind; takenAt: string; consoleId: string; rowCount: number; appliedAt: string; }
+export interface LinkRosterRow { personId: string; firstName: string; lastName: string; gender: 'male' | 'female' | null;
+  grade: number | null; kind: 'student' | 'leader' | 'other'; active: boolean; studentId: string | null; match: Match;
+  updatedAt: string; }
+export interface LinkServiceRow { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string;
+  rooms: { id: string; name: string }[]; checkedIn: { personId: string; roomId: string }[]; }
+export interface LinkLastReport { reportId: string; date: string; time: string; didNotMeet: boolean; attendees: string[];
+  guests: number; serviceTimeId: string | null; editable: boolean;
+  blocked: 'multi-service' | 'unkept-notes' | 'member-left' | null; }
+export interface LinkGroupRow { groupId: string; name: string; grade: number | null; gender: 'male' | 'female' | null;
+  meets: string; members: { personId: string; name: string; leader: boolean }[];
+  thisWeek: 'reported' | 'did-not-meet' | 'none' | 'later' | 'unreadable'; lastReport: LinkLastReport | null; }
+export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; stepId: string; stepName: string;
+  stepOrder: number; personId: string | null; name: string; due: string | null; assignedTo: string; }
+export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo';
+export interface LinkLogRow { id: string; at: string; userId: string; login: string; deviceId: string | null;
+  deviceLabel: string | null; event: LogEvent; leaderId: string | null; leaderName: string | null;
+  prevLeaderId: string | null; prevLeaderName: string | null;
+  targetKind: 'person' | 'group' | 'flowRow' | 'action' | null; targetId: string | null; targetName: string | null;
+  outboxId: string | null; outcome: string; }
