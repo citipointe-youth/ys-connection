@@ -2087,6 +2087,7 @@ async function doLogout() {
   _prayerFilter = { grade: null, gender: null };
   /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
+  nyReset(); /*NEW-YOUTH*/
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
     sessionStorage.removeItem('yap_ar_filter'); sessionStorage.removeItem('yap_prayer_filter'); sessionStorage.removeItem('yap_connect_filters');
@@ -8498,6 +8499,7 @@ function renderNewYouth() {
     const ok = m.tone !== 'bad' || m.retryParent;
     const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
     setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+      ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
       ${ok ? `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>
@@ -8563,7 +8565,11 @@ async function nySend(ev, send) {
     renderNewYouth();
   } catch (e) {
     // An error card on the form, inputs kept (a toast is gone in 2.5 s). An unknown outcome says check Elvanto, never "try again".
-    NY.keep = p; NY.result = null; NY.error = _nyErrorText(e).text;
+    // An expired session: API already drew the login screen (or restored the admin). Drawing the form now would show a student's details with no shell.
+    if (e.status === 401 || !S.user) return;
+    NY.error = _nyErrorText(e).text;
+    if (send) { renderNewYouth(); return; } // a failed retry stays on the result page: the full form would send the student again
+    NY.keep = p; NY.result = null;
     renderNewYouth();
   } finally {
     NY.sending = false;

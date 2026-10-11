@@ -53,3 +53,50 @@ describe('New youth SPA', () => {
     expect(html).toMatch(/\['home','my-students','at-risk','prayers','birthdays','bus','new-youth'\]/);
   });
 });
+
+// Runs the REAL nySend / _nyErrorText from index.html against minimal stubs.
+function sendHarness(post: (path: string, body: any, ms?: number) => Promise<any>) {
+  const S: any = { user: { role: "admin" } };
+  const rendered: number[] = [];
+  const body = { host: "H", firstName: "A", lastName: "T", dob: "2012-04-03", gender: "m", grade: "8", school: "S", mobile: "0412345678", parentFirst: "P", parentLast: "T", parentMobile: "0498765432" };
+  const factory = new Function("S", "API", "toast", "document", "localStorage", "renderNewYouth", "_nyRead", "body",
+    `let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null };
+    ${extractFn(html, "_nyErrorText")}
+    ${extractFn(html, "nySend")}
+    return { nySend, get NY() { return NY; }, set NY(v) { NY = v; } };`);
+  const h = factory(S, { post }, () => {}, { getElementById: () => ({ disabled: false }) }, { setItem() {} }, () => rendered.push(1), () => ({ ...body }), body);
+  return { h, S, rendered, body };
+}
+
+describe("nySend failure paths", () => {
+  it("a 401 during send does not draw the form", async () => {
+    const t = sendHarness(async () => { t.S.user = null; throw Object.assign(new Error("Session expired"), { status: 401 }); });
+    await t.h.nySend({ preventDefault() {} });
+    expect(t.rendered).toHaveLength(0);
+    expect(t.h.NY.sending).toBe(false);
+  });
+  it("a failed parent-only retry stays on the result page", async () => {
+    const t = sendHarness(async () => { throw Object.assign(new Error("X"), { status: 502 }); });
+    const earlier = { student: "sent", parent: "failed", dryRun: false };
+    t.h.NY = { keep: null, sibling: false, sending: false, result: earlier, last: { ...t.body }, error: null };
+    await t.h.nySend(null, ["parent"]);
+    expect(t.h.NY.result).toBe(earlier);
+    expect(t.h.NY.error).toBe("X");
+    expect(t.rendered).toHaveLength(1);
+  });
+  it("a failed full send keeps the inputs", async () => {
+    const t = sendHarness(async () => { throw new Error("Can't reach the server"); });
+    await t.h.nySend({ preventDefault() {} });
+    expect(t.h.NY.result).toBeNull();
+    expect(t.h.NY.keep).toEqual(t.body);
+    expect(t.h.NY.error).toMatch(/Check the forms list in Elvanto/);
+    expect(t.rendered).toHaveLength(1);
+  });
+  it("the result page shows the error card, and sign-out clears the form state", () => {
+    const r = extractFn(html, "renderNewYouth");
+    const resultBranch = r.slice(r.indexOf("if (NY.result)"), r.indexOf("const k = NY.keep"));
+    expect(resultBranch.indexOf("NY.error ?")).toBeGreaterThan(-1);
+    expect(resultBranch.indexOf("NY.error ?")).toBeLessThan(resultBranch.indexOf("border-left:4px solid ${colour}"));
+    expect(extractFn(html, "doLogout")).toContain("nyReset()");
+  });
+});
