@@ -9,7 +9,7 @@ import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../in
 import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLogRow,
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
-import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
 
 type Row = Record<string, any>;
@@ -69,9 +69,12 @@ export class SupabaseLinkRepository implements ILinkRepository {
                                  leader_id, leader_name)
         values (${n.id}, ${n.type}, ${this.j(n.payload)}, ${maybeEncrypt(n.note, noteAad(n.id))}, ${n.dedupeKey},
                 ${n.serviceDate}, ${n.studentId}, ${n.personId}, ${n.createdBy}, ${n.leaderId}, ${n.leaderName})
+        on conflict (id) do nothing
         returning *`;
-      return toOutbox(r!, n.note);
+      if (!r) throw new LinkIdExists(n.id); // the caller re-reads and runs the replay check (APP-72)
+      return toOutbox(r, n.note);
     } catch (err) {
+      if (err instanceof LinkIdExists) throw err;
       const e = err as { code?: string; constraint_name?: string; message?: string };
       if (e.code === '23505' && (e.constraint_name === 'link_outbox_open_uq' || String(e.message).includes('link_outbox_open_uq'))) {
         const [o] = await sql`
@@ -304,7 +307,8 @@ export class SupabaseLinkRepository implements ILinkRepository {
         login: l.login, device_id: l.deviceId, device_label: l.deviceLabel, event: l.event, leader_id: l.leaderId,
         leader_name: l.leaderName, prev_leader_id: l.prevLeaderId, prev_leader_name: l.prevLeaderName,
         target_kind: l.targetKind, target_id: l.targetId, target_name: l.targetName, outbox_id: l.outboxId,
-        outcome: l.outcome })))}`;
+        outcome: l.outcome })))}
+        on conflict (id) do nothing`;
     }
   }
 

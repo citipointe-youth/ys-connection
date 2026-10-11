@@ -1,5 +1,5 @@
 // link.service (lane D, plan Tasks D1–D6; spec 2026-10-12-elvanto-link-app-design.md §6, §8.2, §9.1).
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLinkService, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import {
@@ -603,16 +603,91 @@ describe('D4 batch and the action log', () => {
     for (const x of r.results) expect(x).not.toHaveProperty('httpStatus');
   });
 
-  it('a non-AppError on item 3 fails the whole call 503; the replay gives replay for items 1–2', async () => {
+  it('a DB error on item 3 fails the whole call 503; the replay gives replay for items 1–2', async () => {
     const h = await setup();
     const items = [checkIn(P_AMY), checkIn(P_BEN), checkIn(P_TOM)].map((x) => ({ kind: 'action', ...x }));
     const orig = h.link.insertAction.bind(h.link);
     let n = 0;
-    h.link.insertAction = async (row) => { if (++n === 3) throw new Error('connection reset'); return orig(row); };
+    h.link.insertAction = async (row) => { if (++n === 3) throw Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }); return orig(row); };
     const e = await h.svc.batch(GRADE, { device: DEV, items }).catch((x: { code: string; statusCode: number }) => x);
     expect(e).toMatchObject({ code: 'SERVICE_UNAVAILABLE', statusCode: 503 });
     const r = await h.svc.batch(GRADE, { device: DEV, items });
     expect(r.results.map((x) => x.outcome)).toEqual(['replay', 'replay', 'saved']);
+  });
+
+  const ft = (i: number) => ({ kind: 'action', ...firstTimer(),
+    payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'New', lastName: `Kid${i}`, grade: 8, gender: 'male' } });
+
+  it('A8 / APP-7: a TypeError in one item refuses that item alone (INTERNAL), logs name/message/stack, never the body', async () => {
+    const h = await setup();
+    const items = [ft(1), ft(2), ft(3)];
+    const orig = h.link.getAction.bind(h.link);
+    h.link.getAction = async (id) => { if (id === items[1]!.id) throw new TypeError('x is undefined'); return orig(id); };
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await h.svc.batch(GRADE, { device: DEV, items });
+    expect(r.results.map((x) => x.outcome)).toEqual(['saved', 'refused', 'saved']);
+    expect(r.results[1]).toMatchObject({ code: 'INTERNAL' });
+    const logged = JSON.stringify(err.mock.calls);
+    err.mockRestore();
+    expect(logged).toContain('TypeError');
+    expect(logged).toContain('x is undefined');
+    expect(logged).not.toContain('Kid2');
+    const log = await h.link.listLog({ from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 50 });
+    expect(log.map((l) => l.outcome).sort()).toEqual(['refused:INTERNAL', 'saved', 'saved']);
+  });
+
+  it('A8 / APP-7: a DB blip on item 30 of 40 → 503, and the 29 log rows already collected are written first', async () => {
+    const h = await setup();
+    const items = Array.from({ length: 40 }, (_, i) => ft(i));
+    const orig = h.link.insertAction.bind(h.link);
+    let n = 0;
+    h.link.insertAction = async (row) => { if (++n === 30) throw Object.assign(new Error('reset'), { code: 'ECONNRESET' }); return orig(row); };
+    const e = await h.svc.batch(GRADE, { device: DEV, items }).catch((x: { code: string; statusCode: number }) => x);
+    expect(e).toMatchObject({ code: 'SERVICE_UNAVAILABLE', statusCode: 503 });
+    const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 100 };
+    expect((await h.link.listLog(range)).filter((l) => l.outcome === 'saved')).toHaveLength(29);
+    // The retry: 29 replays with their target filled from the stored row, then 11 saved.
+    h.link.insertAction = orig;
+    const r = await h.svc.batch(GRADE, { device: DEV, items });
+    expect(r.results.filter((x) => x.outcome === 'replay')).toHaveLength(29);
+    const replays = (await h.link.listLog(range)).filter((l) => l.outcome === 'replay');
+    expect(replays).toHaveLength(29);
+    for (const l of replays) expect(l).toMatchObject({ targetKind: 'person', targetName: expect.stringMatching(/^New Kid\d+$/) });
+  });
+
+  it('A8 / APP-72: two concurrent flushes of the same id → one saved, one replay, one row', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    const [r1, r2] = await Promise.all([h.svc.batch(GRADE, { device: DEV, items: [{ kind: 'action', ...a }] }),
+      h.svc.batch(GRADE, { device: DEV, items: [{ kind: 'action', ...a }] })]);
+    expect([r1.results[0]!.outcome, r2.results[0]!.outcome].sort()).toEqual(['replay', 'saved']);
+    expect(await h.link.listActions({ ids: [a.id] })).toHaveLength(1);
+  });
+
+  it('A8 / APP-30: replay equality includes the note and the leader; a replay log row names the person', async () => {
+    const h = await setup();
+    const s = step({}, { note: 'first' });
+    expect((await h.svc.enqueue(GRADE, s, DEV)).outcome).toBe('saved');
+    expect((await h.svc.enqueue(GRADE, s, DEV)).outcome).toBe('replay');
+    expect(await h.svc.enqueue(GRADE, { ...s, note: null }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
+    expect(await h.svc.enqueue(GRADE, { ...s, leaderId: L_EVE }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
+    const a = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    await h.svc.enqueue(GRADE, a, DEV);
+    const log = await h.link.listLog({ from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 50 });
+    const rep = log.filter((l) => l.event === 'checkIn' && l.outcome === 'replay');
+    expect(rep).toHaveLength(1);
+    expect(rep[0]).toMatchObject({ targetKind: 'person', targetId: P_AMY, targetName: 'Amy Adams', outboxId: a.id });
+    const stepReplay = log.find((l) => l.event === 'completeStep' && l.outcome === 'replay')!;
+    expect(stepReplay).toMatchObject({ targetKind: 'flowRow', targetId: FR1, targetName: 'Amy Adams', leaderId: L_DANA });
+  });
+
+  it('A8 / APP-71: a retried identity item writes one log row (log id = item id)', async () => {
+    const h = await setup();
+    const ident = { kind: 'identity', id: nid(), at: NOW.toISOString(), from: L_CODY, to: L_DANA };
+    for (let i = 0; i < 3; i++) await h.svc.batch(GRADE, { device: DEV, items: [ident] });
+    const log = await h.link.listLog({ from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 50 });
+    expect(log.filter((l) => l.event === 'identity').map((l) => l.id)).toEqual([ident.id]);
   });
 
   it('log: one addLog per batch, one row per item, no note text', async () => {

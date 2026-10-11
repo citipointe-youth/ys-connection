@@ -19,7 +19,11 @@ import { ACTION_TYPES, PAYLOAD_SCHEMAS, PUSH_KINDS } from '../core/link-contract
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
-import { LinkEditInElvanto, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkUnavailable } from '../core/errors/link-errors';
+import {
+  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkUnavailable,
+} from '../core/errors/link-errors';
+import { createLogger } from '../utils/logger';
+import { isDbError } from '../utils/transient-db';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
   addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
@@ -30,6 +34,7 @@ export const LINK_BATCH_MAX = 50;
 export const LINK_RATE_MAX = 300;          // items per login …
 export const LINK_RATE_WINDOW_MS = 600_000; // … per 10 minutes (container builds the RateLimiter with these)
 const LOG_MAX = 2000;
+const logger = createLogger('link');
 const REPORT_BACK_DAYS = 14;
 const CONSOLE_RECENT_MS = 600_000;
 const BRISBANE_MS = 10 * 3_600_000;
@@ -220,6 +225,22 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       serviceTimeId: p.serviceTimeId, editable: true, blocked: null };
   }
 
+  /** The log target of a stored row (APP-30): person, group or flow row. */
+  async function targetOf(c: Ctx, r: OutboxRow): Promise<Target> {
+    const p = r.payload as { personId?: string; firstName?: string; lastName?: string; groupId?: string; rowId?: string };
+    if (r.type === 'firstTimerCheckIn') return { kind: 'person', id: r.personId, name: `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() };
+    if (r.type === 'checkIn' || r.type === 'checkOut') {
+      const x = (await c.roster()).find((y) => y.personId === p.personId);
+      return { kind: 'person', id: p.personId ?? null, name: x ? fullName(x) : null };
+    }
+    if (r.type === 'submitReport' || r.type === 'editReport') {
+      const g = (await c.groups()).find((y) => y.groupId === p.groupId);
+      return { kind: 'group', id: p.groupId ?? null, name: g?.name ?? null };
+    }
+    const f = (await c.flows()).find((y) => y.rowId === p.rowId);
+    return { kind: 'flowRow', id: p.rowId ?? null, name: f?.name ?? null };
+  }
+
   const checkRows = (personId: string, serviceTimeId: string) =>
     d.link.listActions({ personId, serviceTimeId, types: CHECK_TYPES });
 
@@ -230,17 +251,22 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const dup = (row: OutboxRow): ItemResult =>
       ({ id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId: row.id, action: view(row) });
 
+    // Replay (same id, same type + payload + note-or-not + "I am") or id reuse (APP-30). The log target comes from the
+    // stored row, so a retried item still names its person.
+    const replay = async (prev: OutboxRow): Promise<ItemResult> => {
+      const noteGiven = it.note != null && it.note.trim() !== '';
+      const me0 = await resolveLeader(c, it.leaderId, false);
+      if (prev.type !== it.type || stable(prev.payload) !== stable(it.payload) || prev.hasNote !== noteGiven
+        || (prev.leaderId ?? null) !== me0.id) throw new LinkIdReused();
+      Object.assign(who, { id: prev.leaderId, name: prev.leaderName });
+      Object.assign(tgt, await targetOf(c, prev));
+      return ok(prev, 'replay');
+    };
     // 1. rate limit
     if (d.limiter.isBlocked(c.actor.id)) throw new TooManyRequestsError('Too many taps. Wait a minute.');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
-    if (prev) {
-      if (prev.type === it.type && stable(prev.payload) === stable(it.payload)) {
-        Object.assign(who, { id: prev.leaderId, name: prev.leaderName });
-        return ok(prev, 'replay');
-      }
-      throw new LinkIdReused();
-    }
+    if (prev) return replay(prev);
     // 3. capability off on the newest console (none seen yet → allowed)
     const con = newest(await c.consoles());
     if (con && con.capabilities[it.type] === 'off') throw new LinkUnavailable();
@@ -335,6 +361,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name });
       return ok(row, 'saved');
     } catch (e) {
+      if (e instanceof LinkIdExists) { // a concurrent flush stored the same id first (APP-72): re-read, then replay
+        const again = await d.link.getAction(it.id);
+        if (again) return replay(again);
+      }
       if (e instanceof LinkOpenDuplicate) {
         const existingId = String(e.extra?.existingId);
         const row = await d.link.getAction(existingId);
@@ -543,15 +573,29 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             const atMs = Date.parse(it.at);
             const at = atMs <= c.t.getTime() && atMs >= c.t.getTime() - 3 * 86_400_000 ? new Date(atMs).toISOString() : c.t.toISOString();
             out = { res: { id: it.id, kind: 'identity', outcome: 'logged', httpStatus: 200 },
-              log: await logRow(c, device, { at, event: 'identity', prevLeaderId: it.from, prevLeaderName: await leaderName(c, it.from),
+              // The item id is the log id, so a retried identity item is written once (APP-71).
+              log: await logRow(c, device, { id: it.id, at, event: 'identity', prevLeaderId: it.from, prevLeaderName: await leaderName(c, it.from),
                 leaderId: it.to, leaderName: await leaderName(c, it.to), outcome: 'logged' }) };
           }
           results.push(strip(out.res));
           if (out.log) logs.push(out.log);
         } catch (e) {
           if (e instanceof AppError) { results.push(strip(refused(it.id, it.kind, e))); continue; }
-          // A DB fault: fail the whole call so the phone retries it (ids make that safe; done items come back `replay`).
-          throw new AppError('SERVICE_UNAVAILABLE', 'The service is temporarily unavailable. Please try again.', 503);
+          const er = e instanceof Error ? e : new Error(String(e));
+          logger.error('batch item failed', { kind: it.kind, name: er.name, message: er.message, stack: er.stack }); // never the body
+          if (isDbError(e)) {
+            // A DB fault: keep the log rows so far, then fail the whole call so the phone retries it (ids make that
+            // safe; done items come back `replay`).
+            if (logs.length > 0) await d.link.addLog(logs).catch(() => {});
+            throw new AppError('SERVICE_UNAVAILABLE', 'The service is temporarily unavailable. Please try again.', 503);
+          }
+          // Any other fault refuses this item alone (APP-7).
+          const res = refused(it.id, it.kind, new AppError('INTERNAL', 'Something went wrong. Do it in Elvanto.', 500));
+          results.push(strip(res));
+          try {
+            logs.push(await logRow(c, device, { event: it.kind === 'action' ? it.type : it.kind,
+              outboxId: it.kind === 'identity' ? null : it.id, outcome: outcomeText(res) }));
+          } catch { /* the log row is best effort */ }
         }
       }
       if (logs.length > 0) await d.link.addLog(logs);

@@ -3,7 +3,7 @@
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow, LinkServiceRow,
   LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem, ResultReply, Status } from '../../core/link-types';
-import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
 
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
@@ -39,7 +39,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private nowIso() { return this.clock().toISOString(); }
 
   async insertAction(n: NewOutboxRow): Promise<OutboxRow> {
-    if (this.outbox.has(n.id)) throw new Error(`link_outbox: duplicate id ${n.id}`);
+    if (this.outbox.has(n.id)) throw new LinkIdExists(n.id); // on conflict (id) do nothing
     for (const { row } of this.outbox.values()) {
       if (row.dedupeKey === n.dedupeKey && OPEN.includes(row.status)) throw new LinkOpenDuplicate(row.id);
     }
@@ -187,7 +187,9 @@ export class InMemoryLinkRepository implements ILinkRepository {
     }
   }
 
-  async addLog(rows: LinkLogRow[]): Promise<void> { this.log.push(...clone(rows)); }
+  async addLog(rows: LinkLogRow[]): Promise<void> { // on conflict (id) do nothing
+    for (const r of rows) if (!this.log.some((l) => l.id === r.id)) this.log.push(clone(r));
+  }
 
   async listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; limit: number }): Promise<LinkLogRow[]> {
     const from = Date.parse(f.from); const to = Date.parse(f.to);

@@ -23,6 +23,12 @@ export class LinkOpenDuplicate extends AppError {
   }
 }
 
+/** Not an AppError: the repo found the id already stored (insert … on conflict (id) do nothing). The service re-reads
+ *  the row and runs the replay / id-reuse check (APP-72). */
+export class LinkIdExists extends Error {
+  constructor(public readonly id: string) { super('link_outbox: id already stored'); this.name = 'LinkIdExists'; }
+}
+
 export class LinkTooLate extends AppError {
   constructor() { super('LINK_TOO_LATE', 'Too late: this has already been picked up.', 409); }
 }

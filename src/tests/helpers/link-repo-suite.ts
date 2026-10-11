@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ILinkRepository, LinkRosterPushRow } from '../../repositories/interfaces/link.repository';
 import type { ActionType, Capabilities, ClaimArgs, ResultItem, NewOutboxRow, LinkLogRow, LinkServiceRow, LinkGroupRow, LinkFlowRow } from '../../core/link-types';
-import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { ResultResponse } from '../../core/link-contract';
 
 export type LinkTable = 'link_outbox' | 'link_roster' | 'link_log';
@@ -78,6 +78,13 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(await repo.cancelPending(a.id)).toBe(true);
         const b = await repo.insertAction(newRow({ dedupeKey: 'same' }));
         expect(b.status).toBe('pending');
+      });
+      it('A8 / APP-72: the same id twice throws LinkIdExists (insert on conflict (id) do nothing, nothing changed)', async () => {
+        const n = newRow();
+        await repo.insertAction(n);
+        const err = await repo.insertAction({ ...n, leaderName: 'Someone Else' }).catch((e) => e);
+        expect(err).toBeInstanceOf(LinkIdExists);
+        expect(await repo.getAction(n.id)).toMatchObject({ id: n.id, leaderName: 'Leader One' });
       });
     });
 
@@ -448,6 +455,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const d = logRow({ at: '2026-10-18T10:00:00.000Z' });
         await repo.addLog([a, b, c, d]);
         await repo.addLog([]);
+        await repo.addLog([{ ...a, outcome: 'again' }]); // A8 / APP-71: on conflict (id) do nothing
         const range = { from: '2026-10-16T00:00:00.000Z', to: '2026-10-17T00:00:00.000Z', limit: 2000 };
         const all = await repo.listLog(range);
         expect(all.map((l) => l.id)).toEqual([c.id, b.id, a.id]);
