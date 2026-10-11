@@ -4,6 +4,7 @@ import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../in
 import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow, LinkServiceRow,
   LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem, ResultReply, Status } from '../../core/link-types';
 import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { applyOutcome } from '../../services/link-rules';
 
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled'];
@@ -119,8 +120,17 @@ export class InMemoryLinkRepository implements ILinkRepository {
     return out;
   }
 
-  async applyResults(_consoleId: string, _items: ResultItem[], _now: Date): Promise<ResultReply> {
-    throw new Error('applyResults: Task A4');
+  /** Per item, in order: applyOutcome on the stored row, then write it. No await between read and write, so no guard needed. */
+  async applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply> {
+    const reply: ResultReply = { applied: [], ignored: [] };
+    for (const item of items) {
+      const e = this.outbox.get(item.id);
+      const res = applyOutcome(e ? clone(e.row) : null, item, consoleId, now);
+      if ('ignored' in res) { reply.ignored.push({ id: item.id, why: res.ignored }); continue; }
+      Object.assign(e!.row, clone(res.next));
+      reply.applied.push(item.id);
+    }
+    return reply;
   }
 
   async listConsoles(): Promise<ConsoleRow[]> { return clone([...this.consoles.values()]); }

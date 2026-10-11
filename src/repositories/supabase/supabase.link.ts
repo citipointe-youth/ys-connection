@@ -10,11 +10,17 @@ import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkF
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { applyOutcome } from '../../services/link-rules';
 
 type Row = Record<string, any>;
 const iso = (v: unknown) => (v == null ? null : toIso(v));
 const ymd = (v: unknown) => (v == null ? null : typeof v === 'string' ? v.slice(0, 10) : toIso(v).slice(0, 10));
 const noteAad = (id: string) => 'link_outbox.note:' + id;
+/** The columns applyOutcome may change. Anything else in its patch is a bug, not a silent write. */
+const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status', reason: 'reason', detail: 'detail',
+  retryAt: 'retry_at', leaseOwner: 'lease_owner', leaseUntil: 'lease_until', resultAt: 'result_at',
+  sentLogKey: 'sent_log_key', reportId: 'report_id', personId: 'person_id', updatedAt: 'updated_at' };
+const fail = (k: string): never => { throw new Error(`applyResults: unexpected column ${k}`); };
 
 function toOutbox(r: Row, note: string | null): OutboxRow {
   return { id: r.id, type: r.type as ActionType, payload: r.payload ?? {}, note, dedupeKey: r.dedupe_key,
@@ -173,8 +179,34 @@ export class SupabaseLinkRepository implements ILinkRepository {
     });
   }
 
-  async applyResults(_consoleId: string, _items: ResultItem[], _now: Date): Promise<ResultReply> {
-    throw new Error('applyResults: Task A4');
+  /**
+   * ONE transaction. Per item, in order: lock the row, run applyOutcome, then a guarded update (the status it was read
+   * with, plus the lease owner for a claimed row). A guarded update that hits 0 rows is ignored with the reason
+   * applyOutcome gives for the row as it now is. Only the result columns are written (never note or attempts).
+   */
+  async applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply> {
+    return this.sql.begin(async (tx) => {
+      const none = tx``;
+      const reply: ResultReply = { applied: [], ignored: [] };
+      for (const item of items) {
+        const [r] = await tx`select * from link_outbox where id = ${item.id} for update`;
+        const old = r ? toOutbox(r, null) : null;
+        const res = applyOutcome(old, item, consoleId, now);
+        if ('ignored' in res) { reply.ignored.push({ id: item.id, why: res.ignored }); continue; }
+        const set: Row = {};
+        for (const [k, v] of Object.entries(res.next)) set[RESULT_COLS[k as keyof OutboxRow] ?? fail(k)] = v;
+        const done = await tx`
+          update link_outbox set ${tx(set)}
+          where id = ${item.id} and status = ${old!.status}
+            ${old!.status === 'claimed' ? tx`and lease_owner = ${consoleId}` : none}
+          returning id`;
+        if (done.length) { reply.applied.push(item.id); continue; }
+        const [now2] = await tx`select * from link_outbox where id = ${item.id}`;
+        const again = applyOutcome(now2 ? toOutbox(now2, null) : null, item, consoleId, now);
+        reply.ignored.push({ id: item.id, why: 'ignored' in again ? again.ignored : 'bad-transition' });
+      }
+      return reply;
+    });
   }
 
   async listConsoles(): Promise<ConsoleRow[]> {

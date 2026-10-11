@@ -3,9 +3,12 @@
 // `backdate` so the Supabase run uses the real DB clock.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ILinkRepository, LinkRosterPushRow } from '../../repositories/interfaces/link.repository';
-import type { Capabilities, ClaimArgs, NewOutboxRow, LinkLogRow, LinkServiceRow, LinkGroupRow, LinkFlowRow } from '../../core/link-types';
+import type { ActionType, Capabilities, ClaimArgs, ResultItem, NewOutboxRow, LinkLogRow, LinkServiceRow, LinkGroupRow, LinkFlowRow } from '../../core/link-types';
 import { LinkOpenDuplicate } from '../../core/errors/link-errors';
+import { ResultResponse } from '../../core/link-contract';
 
 export type LinkTable = 'link_outbox' | 'link_roster' | 'link_log';
 export interface LinkRepoHarness {
@@ -321,6 +324,99 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
           expect(typeof s.appliedAt).toBe('string');
         }
         expect(st.find((x) => x.kind === 'roster')).toBeUndefined();
+      });
+    });
+
+    describe('applyResults', () => {
+      const FIX = join(__dirname, '..', 'fixtures', 'elvanto-link');
+      const fx = (f: string) => JSON.parse(readFileSync(join(FIX, f), 'utf8'));
+      const req = fx('result-request.json') as { consoleId: string; results: ResultItem[] };
+      const TYPES: Record<string, ActionType> = { '1': 'checkIn', '3': 'submitReport', '4': 'editReport', '5': 'completeStep',
+        '6': 'firstTimerCheckIn', '7': 'checkIn', '8': 'checkIn', '9': 'checkIn', a: 'checkIn' };
+      const fid = (n: string) => `0a000000-0000-4000-8000-00000000000${n}`;
+      /** Inserts the fixture rows, leases them to the fixture console, and resolves row a to sent (so its repeat is final). */
+      async function seed() {
+        for (const [n, type] of Object.entries(TYPES)) await repo.insertAction(newRow({ id: fid(n), type }));
+        await repo.claim(claimArgs({}, req.consoleId as ReturnType<typeof randomUUID>));
+        await repo.applyResults(req.consoleId, [{ id: fid('a'), outcome: 'unclear', sentLogKey: 'k:a' }], new Date());
+        expect(await repo.applyResults(randomUUID(), [{ id: fid('a'), outcome: 'resolved', landed: true }], new Date()))
+          .toEqual({ applied: [fid('a')], ignored: [] });
+      }
+
+      it('replays result-request.json: the reply parses and each row follows §3.3', async () => {
+        await seed();
+        const now = new Date();
+        const reply = await repo.applyResults(req.consoleId, req.results, now);
+        expect(ResultResponse.parse(reply)).toEqual(fx('result-response.json'));
+        const get = async (n: string) => (await repo.getAction(fid(n)))!;
+        expect(await get('1')).toMatchObject({ status: 'sent', reason: null,
+          sentLogKey: 'checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000001' });
+        expect(await get('3')).toMatchObject({ status: 'sent', reportId: '7e000000-0000-4000-8000-000000000003' });
+        expect(await get('6')).toMatchObject({ status: 'sent', personId: '9e000000-0000-4000-8000-000000000005' });
+        expect(await get('7')).toMatchObject({ status: 'sent', reason: 'already' });
+        expect(await get('4')).toMatchObject({ status: 'refused', reason: 'report-changed', detail: 'This report changed in Elvanto.' });
+        expect(await get('8')).toMatchObject({ status: 'unclear', detail: 'Elvanto may not have saved this.',
+          sentLogKey: 'checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000003' });
+        expect(await get('5')).toMatchObject({ status: 'shadowed', sentLogKey: 'complete:ys:f7000000-0000-4000-8000-000000000001' });
+        expect(await get('a')).toMatchObject({ status: 'sent', sentLogKey: 'k:a' });
+        for (const n of ['1', '3', '6', '7', '4', '8', '5']) expect((await get(n)).resultAt).not.toBeNull();
+        const retry = await get('9');
+        expect(retry).toMatchObject({ status: 'pending', reason: 'awaiting-approval', leaseOwner: null, leaseUntil: null });
+        expect(Math.abs(Date.parse(retry.retryAt!) - (now.getTime() + 300_000))).toBeLessThan(1000);
+      });
+
+      it('a repeat of the same final results is all already-final with no change', async () => {
+        await seed();
+        await repo.applyResults(req.consoleId, req.results, new Date());
+        const final = req.results.filter((r) => r.outcome !== 'retry');
+        const before = await repo.listActions({ ids: final.map((r) => r.id) });
+        const again = await repo.applyResults(req.consoleId, final, new Date(Date.now() + 5000));
+        expect(again).toEqual({ applied: [], ignored: final.map((r) => ({ id: r.id, why: 'already-final' })) });
+        expect(await repo.listActions({ ids: final.map((r) => r.id) })).toEqual(before);
+        // the retried row is pending again: nobody holds its lease
+        expect((await repo.applyResults(req.consoleId, req.results.filter((r) => r.outcome === 'retry'), new Date())).ignored)
+          .toEqual([{ id: fid('9'), why: 'not-leased' }]);
+      });
+
+      it('another console is not-leased; unknown id is unknown-id; a new outcome on a final row is bad-transition', async () => {
+        const a = await repo.insertAction(newRow());
+        const owner = claimArgs();
+        await repo.claim(owner);
+        const before = await repo.getAction(a.id);
+        const unknown = randomUUID();
+        const r = await repo.applyResults(randomUUID(), [{ id: a.id, outcome: 'sent', sentLogKey: 'k' },
+          { id: unknown, outcome: 'already' }], new Date());
+        expect(r).toEqual({ applied: [], ignored: [{ id: a.id, why: 'not-leased' }, { id: unknown, why: 'unknown-id' }] });
+        expect(await repo.getAction(a.id)).toEqual(before);
+        // the owner's result still counts after its lease ended
+        await h.backdate('link_outbox', a.id, 'lease_until', ago(60_000));
+        expect(await repo.applyResults(owner.console.consoleId, [{ id: a.id, outcome: 'refused', reason: 'no-room' }], new Date()))
+          .toEqual({ applied: [a.id], ignored: [] });
+        expect(await repo.applyResults(owner.console.consoleId, [{ id: a.id, outcome: 'already' }], new Date()))
+          .toEqual({ applied: [], ignored: [{ id: a.id, why: 'bad-transition' }] });
+        expect(await repo.getAction(a.id)).toMatchObject({ status: 'refused', reason: 'no-room' });
+      });
+
+      it('resolved on an unclear row works from a second console (landed and not landed)', async () => {
+        const x = await repo.insertAction(newRow());
+        const y = await repo.insertAction(newRow());
+        const owner = claimArgs();
+        await repo.claim(owner);
+        await repo.applyResults(owner.console.consoleId, [{ id: x.id, outcome: 'unclear', sentLogKey: 'k:x' },
+          { id: y.id, outcome: 'unclear', sentLogKey: 'k:y' }], new Date());
+        expect(await repo.applyResults(randomUUID(), [{ id: x.id, outcome: 'resolved', landed: true },
+          { id: y.id, outcome: 'resolved', landed: false }], new Date())).toEqual({ applied: [x.id, y.id], ignored: [] });
+        expect(await repo.getAction(x.id)).toMatchObject({ status: 'sent', sentLogKey: 'k:x' });
+        expect(await repo.getAction(y.id)).toMatchObject({ status: 'refused', reason: 'not-landed' });
+      });
+
+      it('writes only the result columns: the stored note and attempts are kept', async () => {
+        const a = await repo.insertAction(newRow({ note: 'keep me' }));
+        const owner = claimArgs();
+        await repo.claim(owner);
+        await repo.applyResults(owner.console.consoleId, [{ id: a.id, outcome: 'sent', sentLogKey: 'k' }], new Date());
+        expect(await h.peekNote(a.id)).toBe('keep me');
+        expect(await repo.getAction(a.id)).toMatchObject({ status: 'sent', attempts: 1, leaseOwner: owner.console.consoleId });
       });
     });
 

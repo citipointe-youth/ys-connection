@@ -29,6 +29,15 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(src).not.toContain('JSON.stringify(');
   });
   it('never logs', () => expect(src).not.toMatch(/console\.|logger\./));
+  it('applyResults: one transaction, row locked, applyOutcome, guarded update', () => {
+    const body = src.slice(src.indexOf('async applyResults('), src.indexOf('async listConsoles('));
+    expect(body).toContain('.begin(');
+    expect(body).toMatch(/select \* from link_outbox where id = \$\{[^}]+\} for update/);
+    expect(body).toContain('applyOutcome(');
+    expect(body).toMatch(/where id = \$\{[^}]+\} and status = \$\{/);
+    expect(body).toMatch(/and lease_owner = \$\{consoleId\}/);
+    expect(body).not.toContain('throw new Error(\'applyResults');
+  });
   it('encrypts the note with the outbox AAD', () => {
     expect(src).toContain("maybeEncrypt(");
     expect(src).toContain("'link_outbox.note:' + ");
