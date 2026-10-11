@@ -156,3 +156,9 @@ describe('canAccessGender()', () => {
     expect(canAccessGender(actor('director'), 'male')).toBe(true);
   });
 });
+
+describe('RBAC — intake:write (New youth forms)', () => {
+  it.each(['leader', 'grade', 'quad', 'director', 'admin'])('%s can send new youth forms', (role) => {
+    expect(can(actor(role), 'intake:write')).toBe(true);
+  });
+});

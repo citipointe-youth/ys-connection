@@ -108,6 +108,8 @@ export const MinistryConfigSchema = z.object({
       lifegroups: z.boolean().default(true),
       exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
       busMinistry: z.boolean().default(false),
+      // New youth forms: the "New youth" screen submits Citipointe's two public Elvanto connect forms. Off by default.
+      newYouthForms: z.boolean().default(false),
     })
     .default({}),
 

@@ -21,7 +21,8 @@ export type Action =
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
-  | 'bus:analysis';           // Past nights, new-people linking (route analysis is bus:coordinate)
+  | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
+  | 'intake:write';           // New youth screen: submit the Elvanto connect forms
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -36,6 +37,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:read',
     'prayer:write',
     'bus:use',
+    'intake:write',
   ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
@@ -50,6 +52,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:write',
     'bus:use',
     'bus:roster',
+    'intake:write',
   ]),
   // quad — full add/edit/allocate within their gender + year bracket
   quad: new Set<Action>([
@@ -65,6 +68,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:use',
     'bus:roster',
     'bus:coordinate',
+    'intake:write',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -83,6 +87,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:roster',
     'bus:coordinate',
     'bus:analysis',
+    'intake:write',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -104,6 +109,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:roster',
     'bus:coordinate',
     'bus:analysis',
+    'intake:write',
   ]),
 };
 
