@@ -117,6 +117,19 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
     must change: (a) do not run the migration itself (the prod runner applies 0017 on the push); (b) drop the
     PROD_REF refusal for an explicit opt-in (`LINK_TEST_ALLOW_PROD=1`); (c) refuse unless all 8 link tables are empty
     at the start; (d) truncate again at the end so prod is left empty. Touches only the 8 `link_*` tables.
+    **Timing:** the tables only stay empty until the practice Friday, so the run happens right after the push lands
+    0017, before the switch leaves Off. This brings forward the triage's L1/T-25 (deferred "before leaders") and
+    overrides its "scratch database (never production)" wording, on the operator's instruction.
+
+25. **Cross-device triage applied** (`reviews/2026-10-12-link-review-outcomes-app.md`, operator decisions D1–D4).
+    - D1: one switch stays (APP-1 not done; revisit before leaders get access).
+    - **D2 reverses ledger 17: the APP prefixes `Self identified leader: <name> — <note>` (or the name alone) in the
+      `/sync/claim` row for submitReport, editReport and completeStep.** The console adds nothing.
+    - D3: before 03:00 Brisbane the default is the previous day's service; Sunday stays 10:15 only.
+    - D4: see ledger 24 (real DB, brought forward).
+    - D5 (first live send of each type): pending operator; recommendation in the outcomes file.
+    - Contract stays v1; X1–X17 are text-only amendments. Scope here: sections A and B, plus L1's code parts.
+      Section C ("can wait") follows later.
 
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
