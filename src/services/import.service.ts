@@ -166,7 +166,7 @@ function normalizeDob(raw: string | null | undefined, dateOrder: 'DMY' | 'MDY' =
   return null;
 }
 
-function parseGroupName(name: string): { grade: number | null; gender: 'male' | 'female' | null } {
+export function parseGroupName(name: string): { grade: number | null; gender: 'male' | 'female' | null } {
   const gradeMatch = name.match(/\bGrade\s+(\d+)\b/i);
   const grade = gradeMatch ? parseInt(gradeMatch[1]!, 10) : null;
   let gender: 'male' | 'female' | null = null;

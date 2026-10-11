@@ -1,0 +1,188 @@
+// Pure rules for the Elvanto link (spec 2026-10-12-elvanto-link-app-design.md §5.1, §5.2). No I/O and no clock:
+// the caller passes `now` / `today`.
+import type {
+  ActionType, IgnoredWhy, LinkRosterRow, LinkServiceRow, Match, OutboxRow, ResultItem, Status,
+} from '../core/link-types';
+
+export const LINK_CUTOFF_DAYS = 3;
+export const LEASE_LOST_MS = 3_600_000;
+
+// ---------------- Time (Brisbane = UTC+10, no DST) ----------------
+
+const BRISBANE_MS = 10 * 3_600_000;
+const DAY_MS = 86_400_000;
+
+/** Today's date in Brisbane (YYYY-MM-DD). The day flips at 14:00Z. */
+export function brisbaneToday(now: Date): string {
+  return new Date(now.getTime() + BRISBANE_MS).toISOString().slice(0, 10);
+}
+
+export function addDays(ymd: string, n: number): string {
+  return new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** 0 = Sunday … 6 = Saturday. */
+export function weekdayOf(ymd: string): number {
+  return new Date(`${ymd}T00:00:00Z`).getUTCDay();
+}
+
+/** The Brisbane wall-clock time of an instant, "HH:MM". */
+export function brisbaneHHMM(iso: string): string {
+  return new Date(Date.parse(iso) + BRISBANE_MS).toISOString().slice(11, 16);
+}
+
+// ---------------- Which service (spec §2.3) ----------------
+
+/** Mirror services with ymd in today−7 … today, newest first. */
+export function pickList(services: LinkServiceRow[], today: string): LinkServiceRow[] {
+  const from = addDays(today, -7);
+  return services
+    .filter((s) => s.ymd >= from && s.ymd <= today)
+    .sort((a, b) => (a.ymd === b.ymd ? Date.parse(b.startsAt) - Date.parse(a.startsAt) : a.ymd < b.ymd ? 1 : -1));
+}
+
+/** Friday: the day's only service. Sunday: the day's only 10:15 service. Otherwise none. */
+export function defaultService(day: string, services: LinkServiceRow[]): LinkServiceRow | null {
+  const wd = weekdayOf(day);
+  let candidates = services.filter((s) => s.ymd === day);
+  if (wd === 0) candidates = candidates.filter((s) => brisbaneHHMM(s.startsAt) === '10:15');
+  else if (wd !== 5) return null;
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+/** The latest date ≤ today on the weekday named in `meets` ("Tue 6:30 PM", "Tuesday"); today if none. */
+export function lastMeetingDate(meets: string, today: string): string {
+  const m = meets.toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/);
+  if (!m) return today;
+  const target = WEEKDAYS.indexOf(m[1]!);
+  const back = (weekdayOf(today) - target + 7) % 7;
+  return addDays(today, -back);
+}
+
+// ---------------- Dedupe (contract §5.1) ----------------
+
+const fold = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+
+export function dedupeKey(type: ActionType, payload: Record<string, unknown>): string {
+  const p = payload as Record<string, string>;
+  switch (type) {
+    case 'checkIn': return `checkIn:${p.serviceTimeId}:${p.personId}`;
+    case 'checkOut': return `checkOut:${p.serviceTimeId}:${p.personId}`;
+    case 'submitReport':
+    case 'editReport': return `report:${p.groupId}:${p.date}`;
+    case 'completeStep': return `complete:${p.rowId}`;
+    case 'firstTimerCheckIn': return `first:${p.serviceTimeId}:${fold(`${p.firstName ?? ''} ${p.lastName ?? ''}`)}`;
+  }
+}
+
+// ---------------- Outbox state machine (contract §3.3 / §5.3) ----------------
+
+const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled', 'unclear'];
+
+function targetStatus(item: ResultItem): Status {
+  switch (item.outcome) {
+    case 'sent':
+    case 'already': return 'sent';
+    case 'retry': return 'pending';
+    case 'resolved': return item.landed ? 'sent' : 'refused';
+    default: return item.outcome;
+  }
+}
+
+export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId: string, now: Date):
+  { next: Partial<OutboxRow> } | { ignored: IgnoredWhy } {
+  if (!row) return { ignored: 'unknown-id' };
+  const at = now.toISOString();
+  const target = targetStatus(item);
+
+  if (item.outcome === 'resolved') {
+    if (row.status === 'unclear') {
+      return { next: item.landed
+        ? { status: 'sent', resultAt: at, updatedAt: at }
+        : { status: 'refused', reason: 'not-landed', resultAt: at, updatedAt: at } };
+    }
+    // An unclear row that was already resolved the same way: idempotent.
+    if ((row.status === 'sent' || row.status === 'refused') && row.status === target) return { ignored: 'already-final' };
+    return { ignored: 'bad-transition' };
+  }
+
+  if (row.status === 'claimed') {
+    if (row.leaseOwner !== consoleId) return { ignored: 'not-leased' };
+    const base = { updatedAt: at };
+    switch (item.outcome) {
+      case 'sent': return { next: { ...base, status: 'sent', reason: null, detail: null, resultAt: at,
+        sentLogKey: item.sentLogKey, reportId: item.reportId ?? row.reportId, personId: item.personId ?? row.personId } };
+      case 'already': return { next: { ...base, status: 'sent', reason: 'already', detail: null, resultAt: at } };
+      case 'refused': return { next: { ...base, status: 'refused', reason: item.reason, detail: item.detail ?? null, resultAt: at } };
+      case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at } };
+      case 'shadowed': return { next: { ...base, status: 'shadowed', sentLogKey: item.sentLogKey, resultAt: at } };
+      case 'retry': return { next: { ...base, status: 'pending', reason: item.reason,
+        retryAt: new Date(now.getTime() + item.retrySeconds * 1000).toISOString(), leaseOwner: null, leaseUntil: null } };
+    }
+  }
+
+  if (FINAL.includes(row.status)) return { ignored: row.status === target ? 'already-final' : 'bad-transition' };
+  return { ignored: 'not-leased' }; // pending: nobody holds a lease on it
+}
+
+// ---------------- Auto-match (contract §6) ----------------
+
+export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; }
+export interface MatchChange { personId: string; studentId: string | null; match: Match; }
+
+const nameKey = (first: string, last: string) => `${first.toLowerCase()} ${last.toLowerCase()}`;
+
+/**
+ * The changes to write after a roster push. Resets a dead studentId to none, then matches `none` (and re-checks
+ * `ambiguous`) rows by the import's name key + equal gender. Never changes a live manual/auto/ignored row.
+ */
+export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): MatchChange[] {
+  const studentIds = new Set(students.map((s) => s.id));
+  const byKey = new Map<string, MatchStudent[]>();
+  for (const s of students) {
+    const k = nameKey(s.firstName, s.lastName);
+    byKey.set(k, [...(byKey.get(k) ?? []), s]);
+  }
+  const rosterKeyCount = new Map<string, number>();
+  for (const r of roster) {
+    const k = nameKey(r.firstName, r.lastName);
+    rosterKeyCount.set(k, (rosterKeyCount.get(k) ?? 0) + 1);
+  }
+  // Students another live row already points at (the unique index allows one person per student).
+  const taken = new Set(roster.filter((r) => r.studentId && studentIds.has(r.studentId)).map((r) => r.studentId!));
+
+  const changes: MatchChange[] = [];
+  for (const r of roster) {
+    let studentId = r.studentId;
+    let match = r.match;
+    if (studentId && !studentIds.has(studentId)) { studentId = null; match = 'none'; }
+    if (match === 'none' || match === 'ambiguous') {
+      const k = nameKey(r.firstName, r.lastName);
+      const hits = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && !taken.has(s.id));
+      if ((rosterKeyCount.get(k) ?? 0) > 1 && hits.length > 0) { studentId = null; match = 'ambiguous'; }
+      else if (hits.length > 1) { studentId = null; match = 'ambiguous'; }
+      else if (hits.length === 1) { studentId = hits[0]!.id; match = 'auto'; taken.add(studentId); }
+      else { studentId = null; match = 'none'; }
+    }
+    if (studentId !== r.studentId || match !== r.match) changes.push({ personId: r.personId, studentId, match });
+  }
+  return changes;
+}
+
+// ---------------- Effective check state (spec §5.2) ----------------
+
+export interface CheckState { in: boolean; practice: boolean; row: OutboxRow | null; source: 'row' | 'mirror'; }
+
+/** One person and one service. `rows` = their checkIn/checkOut rows, newest first. */
+export function effectiveCheckState(a: { mirrorIn: boolean; mirrorTakenAt: string | null; rows: OutboxRow[] }): CheckState {
+  const newest = a.rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused') ?? null;
+  if (newest) {
+    const s = newest.status;
+    const decides = s === 'pending' || s === 'claimed' || s === 'unclear' || s === 'shadowed'
+      || (s === 'sent' && (a.mirrorTakenAt == null || (newest.resultAt != null && Date.parse(newest.resultAt) > Date.parse(a.mirrorTakenAt))));
+    if (decides) return { in: newest.type === 'checkIn', practice: s === 'shadowed', row: newest, source: 'row' };
+  }
+  return { in: a.mirrorIn, practice: false, row: null, source: 'mirror' };
+}

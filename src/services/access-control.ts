@@ -23,7 +23,9 @@ export type Action =
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
   | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
-  | 'intake:write';           // New youth screen: submit the Elvanto connect forms
+  | 'intake:write'            // New youth screen: submit the Elvanto connect forms
+  | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
+  | 'link:admin';             // Elvanto link: matching, shadow check, log, detail, cancel anyone's
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -39,6 +41,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:write',
     'bus:use',
     'intake:write',
+    'link:use',
   ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
@@ -54,6 +57,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:use',
     'bus:roster',
     'intake:write',
+    'link:use',
   ]),
   // quad — full add/edit/allocate within their gender + year bracket
   quad: new Set<Action>([
@@ -70,6 +74,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:roster',
     'bus:coordinate',
     'intake:write',
+    'link:use',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -89,6 +94,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:coordinate',
     'bus:analysis',
     'intake:write',
+    'link:use',
+    'link:admin',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -111,6 +118,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:coordinate',
     'bus:analysis',
     'intake:write',
+    'link:use',
+    'link:admin',
   ]),
 };
 
@@ -123,6 +132,15 @@ export function can(actor: Actor, action: Action): boolean {
 export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
   if (!can(actor, 'intake:write')) return false;
   return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
+}
+
+// The one Elvanto-features switch (modules.newYouthForms): 'on' = everyone, 'shadow' = the admin login only.
+export function modeAllows(actor: Actor, mode: NewYouthMode): boolean {
+  return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
+}
+
+export function canUseLink(actor: Actor, mode: NewYouthMode, action: 'link:use' | 'link:admin'): boolean {
+  return can(actor, action) && modeAllows(actor, mode);
 }
 
 export function assertCan(actor: Actor, action: Action): void {

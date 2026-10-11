@@ -19,6 +19,13 @@ const corsDefault = isProductionEnv(process.env) ? (process.env['APP_ORIGIN'] ??
 // (same pattern as SESSION_SECRET) — not re-exported here. Required whenever PERSISTENCE=supabase;
 // encrypts/decrypts students.mobile/students.parent_phone. See
 // docs/superpowers/specs/2026-07-18-phone-field-encryption-design.md.
+// The Elvanto console's bearer token for /sync/*. Trimmed; shorter than 32 characters counts as unset. Callers that
+// must see test changes (the adapter, setup) call this per request instead of reading env.LINK_SYNC_TOKEN.
+export function readLinkSyncToken(e: Record<string, string | undefined> = process.env): string | undefined {
+  const t = (e['LINK_SYNC_TOKEN'] ?? '').trim();
+  return t.length >= 32 ? t : undefined;
+}
+
 export const env = {
   PORT: parseInt(getEnv('PORT', '4300'), 10),
   NODE_ENV,
@@ -29,4 +36,5 @@ export const env = {
   DATABASE_URL: process.env['DATABASE_URL'],
   // New youth forms send to live Elvanto only when this is exactly "1" (set in Vercel Production only).
   ELVANTO_FORMS_LIVE: process.env['ELVANTO_FORMS_LIVE'] === '1',
+  LINK_SYNC_TOKEN: readLinkSyncToken(),
 };
