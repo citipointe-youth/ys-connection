@@ -112,6 +112,12 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
     as normal, subject to the shared switch (`_linkOn`) and the console (`firstTimerCheckIn` not off). The
     dry-run test was replaced by one that checks every non-off console mode queues.
 
+24. **V2 runs on the real database, not a scratch one** (operator, 2026-10-12: the changes are additive). Safe only
+    while the link tables are empty, i.e. after 0017 lands and before the switch leaves Off. Before running, the suite
+    must change: (a) do not run the migration itself (the prod runner applies 0017 on the push); (b) drop the
+    PROD_REF refusal for an explicit opt-in (`LINK_TEST_ALLOW_PROD=1`); (c) refuse unless all 8 link tables are empty
+    at the start; (d) truncate again at the end so prod is left empty. Touches only the 8 `link_*` tables.
+
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
 - 2026-10-12 late: rework pushed (deccde3, prod build applied 0016). Link built, V1 smoke 10/10, rework merged (905d62e), 7 reviews → OneDrive\2026-10-12-link-app-review-findings.md (b4d074f; 84 findings: 0 Crit / 23 Imp / 61 Minor; 2 CONTRACT, 8 both). WAITING for cross-device triage solutions (ledger 21). Next: apply solutions → V2 (scratch DB, needs operator) → V3 → V4 → H1.
