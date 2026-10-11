@@ -1,7 +1,8 @@
 # YS Connection ↔ Elvanto Sync Console link — step 0 contract
 
 Date: 2026-10-11. Status: spec (step 0 of the link), review fixes applied
-(`C:\Users\ThomasPC\src\link-run\spec-review.md`). Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
+(`C:\Users\ThomasPC\src\link-run\spec-review.md`). Amended in place 2026-10-12 (brief decisions 9–13: service choice,
+past-service check-ins, check-out on, §12 answers). v1 was never released, so `contractVersion` stays `1`. Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
 Repos: YS Connection branch `feature/elvanto-link-contract`; Elvanto Sync Console (Project 11.1) branch
 `feature/ys-link-contract`.
 
@@ -36,7 +37,8 @@ All operator decisions in the brief are binding. Every controller default is ado
 | Chunking | None. The largest push (roster, ~600 rows) is ~100 KB. Zod caps a push at 5,000 rows (Vercel's body limit is 4.5 MB). |
 | Free text | Leader notes live in one encrypted column (`link_outbox.note`). `payload` holds ids and small values only. |
 | Report notes | Never pushed down. An edit keeps Elvanto's notes and appends the leader's new note. |
-| Check-out | No writer exists in 11.1 ("Never a check-out"). The contract carries it; the console reports it `off` until the operator captures one and the writer is built. |
+| Check-out | **On in v1** (decision 10). No writer exists in 11.1 yet; it is built after one capture (§5.5). Until then the console reports `checkOut` as `locked`, then `shadow`, then `live`. |
+| Which service | The app picks the service and sends `serviceTimeId` in the payload (decision 11, §5.5). The console never chooses one. |
 | Room | The app does not pick a room. The console picks it by roster `kind` (§5.2). |
 | "Today" | One helper, `brisbaneToday()`: Brisbane = UTC+10, no DST (as `sent-log.js` does). Used for `service_date`, "today" checks and the cut-off. Vercel runs in UTC. |
 | Two prefixes | `/sync/*` (console, sync token) and `/link/*` (leaders, session). |
@@ -76,7 +78,7 @@ status in (`pending`, `claimed`); `service_date`.
 | Table | Key | Columns | Replace rule |
 |---|---|---|---|
 | `link_roster` | `person_id` | `first_name`, `last_name`, `gender`, `grade`, `kind` (`student`/`leader`/`other`), `active`, `student_id` (unique), `match` (`auto`/`manual`/`none`/`ambiguous`/`ignored`) | Upsert by `person_id`. Missing from a push → `active = false`. **A push never writes `student_id` or `match`.** |
-| `link_services` | `service_time_id` | `service_id`, `name`, `starts_at`, `ymd`, `rooms` (`[{id,name}]`), `checked_in` (`[{personId,roomId}]`) | Full replace (today + next 7 days). |
+| `link_services` | `service_time_id` | `service_id`, `name`, `starts_at`, `ymd`, `rooms` (`[{id,name}]`), `checked_in` (`[{personId,roomId}]`) | Full replace (the past 7 days + the next 7 days, Brisbane dates; incl. the Sunday 10:15 Connect). |
 | `link_groups` | `group_id` | `name`, `grade`, `gender`, `meets`, `members` (`[{personId,name,leader}]`), `this_week`, `last_report` (§3.4) | Full replace (YS lifegroups only). `grade`/`gender` are set **by the app** from the name with `parseGroupName` (`import.service.ts`, to be exported) — the same rule the app's lifegroup stats use. |
 | `link_flow_people` | `row_id` | `flow_id`, `flow_name`, `step_id`, `step_name`, `step_order`, `person_id` (null if unresolved), `name`, `due`, `assigned_to` | Full replace (configured flows only). |
 
@@ -86,7 +88,7 @@ No phone, email, address, date of birth, note text, form answer or pick-up code 
 
 | Table | Key | Columns |
 |---|---|---|
-| `link_console` | `console_id` | `label`, `last_seen_at`, `contract_version`, `console_version`, `in_window`, `poll_seconds`, `capabilities` (`{type: 'live'\|'shadow'\|'off'}`) |
+| `link_console` | `console_id` | `label`, `last_seen_at`, `contract_version`, `console_version`, `in_window`, `poll_seconds`, `capabilities` (`{type: 'live'\|'shadow'\|'locked'\|'off'}`) |
 | `link_mirror_state` | `kind` | `taken_at`, `console_id`, `row_count`, `applied_at` |
 
 "Console last seen" = `max(last_seen_at)`. Online = seen within `2 × poll_seconds + 60 s`. Capabilities shown to
@@ -134,7 +136,7 @@ Request:
   "consoleVersion": "11.1@185d8d6",
   "inWindow": true,
   "pollSeconds": 60,
-  "capabilities": { "checkIn": "shadow", "checkOut": "off", "submitReport": "shadow",
+  "capabilities": { "checkIn": "shadow", "checkOut": "locked", "submitReport": "shadow",
                     "editReport": "shadow", "completeStep": "shadow", "firstTimerCheckIn": "shadow" },
   "max": 3,
   "leaseSeconds": 180
@@ -147,7 +149,8 @@ Server, in one transaction:
 2. **Sweep** (whichever console polls): `pending` rows with `created_at` older than the cut-off (3 days, §12 Q1) →
    `refused`, `too-old`. `claimed` rows whose lease expired more than 1 h ago → `unclear`, `lease-lost` (they may have
    been sent; the operator resolves them as usual).
-3. Lease up to `max` rows of types whose capability is not `off`, oldest first, `for update skip locked`:
+3. Lease up to `max` rows of types whose capability is not `off` (`locked` rows are claimed and answered `refused`,
+   `locked`), oldest first, `for update skip locked`:
    `pending` with `retry_at` null or ≤ now, or `claimed` with `lease_until` < now and `lease_owner = consoleId`
    (**reclaim: same console only**). Set `claimed`, `lease_owner`, `lease_until`, `attempts + 1`.
 
@@ -233,7 +236,7 @@ Two new RBAC actions in `access-control.ts`: `link:use` (all five roles) and `li
 | Method + path | Action | Returns |
 |---|---|---|
 | `GET /link/status` | `link:use` | `{ console: { lastSeenAt, online, inWindow, pollSeconds, capabilities, consoles: n }, mirrors: { roster: { takenAt }, … } }` |
-| `GET /link/checkin?serviceTime=<uuid>` | `link:use` | Today's services; for one service: `people: [{ personId, name, grade, checkedIn, action: { id, type, status, reason } \| null }]` — roster `student` + `leader`, both genders, **name + grade only** |
+| `GET /link/checkin?serviceTime=<uuid>` | `link:use` | The pick list (mirror services with `ymd` from today−7 to today, newest first; the default marked, §5.5); for one service: `people: [{ personId, name, grade, checkedIn, action: { id, type, status, reason } \| null }]` — roster `student` + `leader`, both genders, **name + grade only** |
 | `POST /link/actions` | `link:use` | 201 `{ action }` (§4.1) |
 | `GET /link/actions?ids=…` or `?serviceDate=&type=` | `link:use` | `[{ id, type, status, reason, detail?, createdAt, resultAt, leaderName, login, hasNote }]` (`detail` for `link:admin` only) |
 | `DELETE /link/actions/:id` | `link:use` | One `update … where id = $1 and status = 'pending'` → `cancelled`; 0 rows → 409 `LINK_TOO_LATE` |
@@ -255,7 +258,8 @@ it, so lifegroups and flows are empty); the role is off by default.
 
 ```json
 { "id": "…uuid made on the phone…", "type": "submitReport",
-  "payload": { "groupId": "…", "date": "2026-10-16", "didNotMeet": false, "attendees": ["…"], "guests": 2, "notesPrivate": false },
+  "payload": { "groupId": "…", "date": "2026-10-16", "didNotMeet": false, "attendees": ["…"], "guests": 2, "notesPrivate": false,
+               "serviceTimeId": "…" },
   "note": "Good night, talked about …", "leaderId": "…" }
 ```
 
@@ -265,7 +269,7 @@ Checked in this order:
 |---|---|---|
 | Same `id` already stored, same `type` + payload (jsonb `=`) | 200 | — (replay; returns the row) |
 | Same `id`, different body | 409 | `LINK_ID_REUSED` |
-| Capability `off` (from the latest console; none seen yet → allowed, and the banner says "console not seen") | 409 | `LINK_UNAVAILABLE` ("Do this in Elvanto for now.") |
+| Capability `off` (from the latest console; none seen yet → allowed, and the banner says "console not seen"). `locked`, `shadow` and `live` are allowed | 409 | `LINK_UNAVAILABLE` ("Do this in Elvanto for now.") |
 | Edit of a non-editable last report | 409 | `LINK_EDIT_IN_ELVANTO` + `reason` |
 | Bad payload / scope | 400 / 403 | `VALIDATION_ERROR` / `FORBIDDEN` |
 | Insert hits `link_outbox_open_uq` (Postgres 23505) | 409 | `LINK_DUPLICATE` + `existingId` |
@@ -281,12 +285,12 @@ All ids are lower-case UUIDs. Dates are `YYYY-MM-DD` (Brisbane).
 
 | `type` | `payload` | `note` | `dedupe_key` | App checks at enqueue |
 |---|---|---|---|---|
-| `checkIn` | `{ serviceTimeId, serviceId, personId }` | none | `checkIn:<st>:<person>` | service in `link_services`, `ymd` = today; person `active` |
-| `checkOut` | `{ serviceTimeId, personId }` | none | `checkOut:<st>:<person>` | as above, and checked in (mirror or a `sent` check-in) |
-| `submitReport` | `{ groupId, date, didNotMeet, attendees: [uuid], guests: 0–99, notesPrivate }` | optional | `report:<group>:<date>` | group in scope; date ≤ today and ≥ today−14; attendees ⊆ members; `didNotMeet` ⇒ no attendees |
-| `editReport` | `{ groupId, reportId, date, didNotMeet, attendees, guests, notesPrivate, base: { date, didNotMeet, attendees, guests } }` | optional, **appended** | `report:<group>:<date>` | `reportId` = the group's last report (mirror, or the `reportId` of this group's latest `sent` submit); `editable`; `base` = that report |
+| `checkIn` | `{ serviceTimeId, serviceId, personId }` | none | `checkIn:<st>:<person>` | service in the pick list (`link_services`, `ymd` from today−7 to today); person `active` |
+| `checkOut` | `{ serviceTimeId, personId }` | none | `checkOut:<st>:<person>` | as above, and checked in to that service (mirror or a `sent` check-in) |
+| `submitReport` | `{ groupId, date, didNotMeet, attendees: [uuid], guests: 0–99, notesPrivate, serviceTimeId: uuid\|null }` | optional | `report:<group>:<date>` | group in scope; date ≤ today and ≥ today−14; attendees ⊆ members; `didNotMeet` ⇒ no attendees and `serviceTimeId` null; `serviceTimeId` null or in `link_services` |
+| `editReport` | `{ groupId, reportId, date, didNotMeet, attendees, guests, notesPrivate, serviceTimeId, base: { date, didNotMeet, attendees, guests, serviceTimeId } }` | optional, **appended** | `report:<group>:<date>` | `reportId` = the group's last report (mirror, or the `reportId` of this group's latest `sent` submit); `editable`; `base` = that report; `serviceTimeId` = `base.serviceTimeId` (kept) unless the leader picked another (null or in `link_services`) |
 | `completeStep` | `{ rowId, flowId, stepId, personId\|null, notePrivate }` | optional | `complete:<row>` | row in `link_flow_people`, in scope |
-| `firstTimerCheckIn` | `{ serviceTimeId, serviceId, firstName, lastName, grade: 7–12\|null, gender: "male"\|"female" }` | none | `first:<st>:<lower first last>` | service today; names 1–60 chars |
+| `firstTimerCheckIn` | `{ serviceTimeId, serviceId, firstName, lastName, grade: 7–12\|null, gender: "male"\|"female" }` | none | `first:<st>:<lower first last>` | service in the pick list (default today's); names 1–60 chars |
 
 `service_date` = the service's `ymd`, the report `date`, or today (flows). `student_id` is filled from the roster match.
 
@@ -304,9 +308,9 @@ every first-timer → `Youth Program`; `leader` → `Kids/Youth Team`; `other`, 
 | `type` | Call | Body the console builds | Sent-log key |
 |---|---|---|---|
 | `checkIn` | `POST /api/interact/checkin` | `{ input: { service, serviceTime, person, room } }` | `checkIn:service:<st>:<person>` |
-| `checkOut` | **new** route + writer after the operator's capture (finds the check-in id by reading the room) | `{ input: { serviceTime, person } }` | `checkOut:service:<st>:<person>` |
-| `submitReport` | `POST /api/interact/lifegroup` | `{ action: 'submitReport', input: { group, date: dd/mm/yyyy, time, didNotMeet, service, attendees, guests, notes, notesPrivate } }`; `time` from `meets`, else the form's; `service` = `''` when `didNotMeet` or none offered, the one offered service, else refuse `pick-service`; `notes` = note + signature | `submitReport:lifegroup:<group>:<yyyymmdd>` |
-| `editReport` | `POST /api/interact/lifegroup` | same + `report`; `time`/`service` = the saved ones (`''` when `didNotMeet`); `notes` = Elvanto's notes + new note + signature; refuse `report-changed` if the form ≠ `base`, `note-too-long` if over 2,000 chars | `editReport:lifegroup:<group>:<report>` |
+| `checkOut` | **new** route + writer, built from the capture (§5.5; finds the check-in id by reading the room). Until it exists: `refused`, `locked`, nothing sent | `{ input: { serviceTime, person } }` | `checkOut:service:<st>:<person>` |
+| `submitReport` | `POST /api/interact/lifegroup` | `{ action: 'submitReport', input: { group, date: dd/mm/yyyy, time, didNotMeet, service, attendees, guests, notes, notesPrivate } }`; `time` from `meets`, else the form's; `service` = the payload's `serviceTimeId` (`''` when null); if Elvanto does not offer it for the date, the writer's read refuses it → `service-not-offered`; `notes` = note + signature | `submitReport:lifegroup:<group>:<yyyymmdd>` |
+| `editReport` | `POST /api/interact/lifegroup` | same + `report`; `time` = the saved one; `service` = the payload's `serviceTimeId` (`''` when null; the app sends the saved one unless the leader changed it); `notes` = Elvanto's notes + new note + signature; refuse `report-changed` if the form ≠ `base` (incl. its service), `service-not-offered` as for submit, `note-too-long` if over 2,000 chars | `editReport:lifegroup:<group>:<report>` |
 | `completeStep` | `GET /api/interact/complete-form?row=` then `POST /api/interact/complete` | `{ row, note: note + signature, private, assignTo: the modal's pre-selected assignee, actions: [], key: 'complete:ys:<row>', role: 'ys' }` — the route gets one optional `{ key, role }` pass-through (today it always logs `complete:manual:<row>`, which is B2-exempt) | `complete:ys:<row>` (never twice) |
 | `firstTimerCheckIn` | `GET /api/interact/youth-plan?mode=intake&date=<serviceDate>`, then as `checkIn` | the student form with the same first + last name (case and spaces folded) → its approved person | `checkIn:service:<st>:<person>` |
 
@@ -363,7 +367,8 @@ What the leader sees:
 | `report-exists` | "There's already a report for that date. Edit it." |
 | `report-not-found`, `report-changed` | "This report changed in Elvanto. Reload and try again." |
 | `member-left`, `not-in-group` | "Someone ticked isn't in this group now. Reload." |
-| `multi-service`, `unkept-notes`, `service-not-offered`, `pick-service`, `note-too-long` | "Edit this report in Elvanto." |
+| `multi-service`, `unkept-notes`, `note-too-long` | "Edit this report in Elvanto." |
+| `service-not-offered` | "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto." |
 | `did-not-meet-conflict` | "Untick everyone, or untick Group did not meet." |
 | `step-moved`, `assignee-needed` | "This step changed in Elvanto. Do it there." |
 | `ambiguous-first-timer` | "Two new people have this name. Check in on the kiosk." |
@@ -379,15 +384,28 @@ link uses; the console never maps text.
 
 ### 5.5 Per-type notes
 
+- **Which service (decision 11).** The app chooses; the payload carries it (`serviceTimeId` for reports, check-ins,
+  check-outs and first-timers). Default: on a Friday, that day's service; on a Sunday, that day's service that starts
+  at 10:15 (Connect). Any other day, more than one candidate, or a default not in the mirror → the leader picks from the
+  pick list (mirror services with `ymd` from today−7 to today, newest first). A report also offers "No service"
+  (`null`). For a report the day is the report `date`; for a check-in it is today. The console sends that service. If
+  Elvanto does not offer it for the report date → `refused`, `service-not-offered`. An edit keeps the saved service
+  unless the leader changes it.
 - **Check-in:** the writer reads every room first. B2-exempt role `service`, so a re-check-in after a check-out works.
-- **Check-out:** capability `off` until the writer exists. The app shows "Check out in Elvanto for now" and refuses
-  enqueue (`LINK_UNAVAILABLE`).
+  Check-in, check-out and first-timer may target a recent past service from the pick list, not only today's. The 3-day
+  cut-off for queued rows (§3.2 sweep) is unchanged.
+- **Check-out (on in v1, decision 10):** no writer exists in 11.1 yet. It is built after one capture: the console
+  orchestrator, with Claude in Chrome, checks the operator's own record (L12) OUT of one stated service in Elvanto while
+  reading the network request (the capture), then checks it back IN. That one record, that one service, out then in;
+  nothing else live. The writer is then built from the capture. Until the writer exists the console reports `checkOut`
+  as `locked` (rows are claimed and answered `refused`, `locked`: "This isn't connected yet. Do it in Elvanto."), then
+  `shadow`, then `live` after the operator's first live send. The app offers check-out the whole time.
 - **Last report / edit:** the app shows `lastReport` (attendees, did-not-meet, guests; never notes). Edit is offered
   only for that report, only when `editable`. After a link submit, the app overlays the row's payload + `reportId` as
   the last report until the next `groups` push. Elvanto wins: `base` must still match at send time.
 - **Flow tick + note:** one Complete per row. If the step sends a text or email, it goes when the step completes; the
   confirm says "Completing may send this step's message."
-- **First-timer:** enqueued with the new-person form (later YS stream). Form pending or not yet listed → `retry`,
+- **First-timer:** enqueued with the new-person form (later YS stream), with the service from the pick list. Form pending or not yet listed → `retry`,
   `awaiting-approval` (5 min). Approved, one name match → check-in → `sent` with `personId`. Two or more →
   `refused`, `ambiguous-first-timer`. Never approved → the sweep refuses it `too-old`.
 
@@ -528,10 +546,11 @@ are per machine, so 11.1's read-first is the cross-machine guard (as for intake,
 `push-response.json`, `errors.json` (one body per §3.1 code). Hashes are SHA-256 of `JSON.stringify(JSON.parse(file))`,
 so a CRLF checkout does not break them.
 
-**How 11.1 gets the same copy:** byte copy, no editor:
-`cp C:/Users/ThomasPC/src/ys-connection/src/tests/fixtures/elvanto-link/*.json C:/Users/ThomasPC/src/wt-11.1-link/spike/fixtures/ys-link/`.
+**How 11.1 gets the same copy:** from the committed blob, never from a CRLF working file:
+`git -C <ys> show feature/elvanto-link-contract:src/tests/fixtures/elvanto-link/<f> > <11.1>/spike/fixtures/ys-link/<f>`
+for each file, then compare blob hashes (`git hash-object` in 11.1 = `git rev-parse <branch>:<path>` in YS).
 YS is the source of truth. A contract change bumps `contractVersion`, regenerates `manifest.json`, and is copied in the
-same session.
+same session. (The 2026-10-12 amendment kept `1`: v1 was never released.)
 
 **YS test asserts:** manifest hashes match; `manifest.contractVersion === LINK_CONTRACT_VERSION`; every request/response
 fixture parses with its schema; every claim row's payload parses with its type's schema; `errors.json` codes are the
@@ -543,7 +562,9 @@ manifest hashes and version (`CONTRACT_VERSION = 1` in the test for now); for ea
 in the test as the reference; the console stream moves it to `src/ys-link.js`) builds an input that
 `createWriter({ reader: stub, session: stub, verified: {} }).run(name, input)` answers with **423** (validation,
 read-first and builder pass; nothing sent; no sent-log line); `completeStep` is checked through `complete()` with
-`sendVerified: false`; `checkOut` maps to no writer and its capability is `off`; every `result-request.json` outcome
+`sendVerified: false`; `checkOut` maps to no writer, answers `refused`, `locked`, and its capability is `locked`; a
+check-in to the past service in `push-services.json` also answers 423; a report service Elvanto does not offer is
+refused by the writer's read (`service-not-offered`), nothing sent; every `result-request.json` outcome
 appears in the §5.3 map copied into the test.
 
 Step 0 does **not** touch `supabase/migrations/`, the router, `vercel.json`, `sw.js`, the SPA, repos, services, or any
@@ -573,7 +594,8 @@ Step 0 does **not** touch `supabase/migrations/`, the router, `vercel.json`, `sw
    `getInteractApi().handle()`, the §5.3 outcome map, the poller timer in `gui/server.js` (§7.3), drain, backoff.
 2. 11.1 changes: a `reason` on each `bad()` the link uses (incl. the check-in read failure); the optional `{ key, role }`
    pass-through on `POST /api/interact/complete`; `reportId` returned by `submitReport` (its confirm already reads it);
-   the `checkOut` route + writer after the operator's capture (`VERIFIED: false` until then).
+   the `checkOut` route + writer, built from the Claude in Chrome capture (§5.5; `VERIFIED: false` until then, reported
+   `locked`, then `shadow`, then `live`).
 3. Sent-log: `withVia({ via: 'ys', link })` writes `via` + `link` (UUID, whitelisted); a lookup by `link` id for
    reclaims; the Unclear saves panel shows link rows, and resolving one reports `resolved` up.
 4. Readers: the roster people reader (new; operator probe first); pushes for services (+ rooms, check-ins), groups
@@ -584,7 +606,7 @@ Step 0 does **not** touch `supabase/migrations/`, the router, `vercel.json`, `sw
 
 ## 11. Risks found while researching
 
-1. **Two 11.1 gaps:** no people reader with ids (the roster), and no check-out writer at all.
+1. **Two 11.1 gaps:** no people reader with ids (the roster), and no check-out writer yet (built after the capture, §5.5).
 2. **The Friday sync's `run.lock`** blocks Interact writes inside the service window (8:30–8:50 pm), and the laptop
    sleeps (Modern Standby). Both delay check-ins; neither loses them.
 3. **Small 11.1 seams** the link needs: refusal reason codes, the `complete` key pass-through, `reportId` from a submit,
@@ -592,12 +614,18 @@ Step 0 does **not** touch `supabase/migrations/`, the router, `vercel.json`, `sw
 
 ## 12. Open questions (with recommendations)
 
-1. **Cut-off for queued and first-timer actions.** Can a check-in be sent to a service time that has passed?
-   Recommend: the sweep refuses `pending` rows older than 3 days (`too-old`); the operator confirms once, by hand in
-   Elvanto, that an admin check-in to a past service time works.
-2. **Check-out in v1.** Recommend: ship with capability `off` ("Check out in Elvanto") until the operator captures one
-   real check-out; then build and unlock the writer.
-3. **Report service link.** Recommend: submit = `''` when the group did not meet or Elvanto offers no service for the
-   date, the one offered service when there is one, refuse `pick-service` when there are more; edit keeps the saved one.
+1. **Cut-off for queued and first-timer actions.** **Decided 2026-10-12:** 3 days, as recommended (the sweep refuses
+   older `pending` rows `too-old`); the operator still confirms once, by hand, that a past-service check-in works.
+2. **Check-out in v1.** **Decided 2026-10-12:** on in v1; the writer is built from one Claude in Chrome capture (§5.5),
+   reported `locked`, then `shadow`, then `live`.
+3. **Report service link.** **Decided 2026-10-12:** the app picks (Friday → that day's service, Sunday → 10:15 Connect,
+   else the leader picks) and sends `serviceTimeId`; `pick-service` is gone (§5.5).
 4. **Roster categories.** Which Elvanto categories make the roster? Recommend: a console setting with two lists
-   (`student`, `leader`), set at the PC, after the operator's read-only probe.
+   (`student`, `leader`), set at the PC, after the operator's read-only probe. **Still open.**
+5. **Services push cadence (review L11).** A push every 60 s reads every occupied room, now for 14 days of services.
+   Consider every 5 min (the outbox overlay already shows the leader's own check-ins at once). **Still open:** the
+   operator's call.
+
+Note (decision 12, not a contract change): Junior/Senior (quad) logins do **not** get `bus:coordinate`. It is part of a
+product-wide login simplification (every location, not only the YS config), done in the YS Connection rework (§10.1
+item 8); it ships behind a flag with the check-in release. `link:use` / `link:admin` above are unchanged.

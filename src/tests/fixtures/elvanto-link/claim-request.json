@@ -7,7 +7,7 @@
   "pollSeconds": 60,
   "capabilities": {
     "checkIn": "shadow",
-    "checkOut": "off",
+    "checkOut": "locked",
     "submitReport": "shadow",
     "editReport": "shadow",
     "completeStep": "shadow",

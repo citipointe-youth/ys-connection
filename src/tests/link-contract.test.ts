@@ -103,4 +103,29 @@ describe('link contract: bad requests are rejected', () => {
     rejects(C.PAYLOAD_SCHEMAS.submitReport, { ...p, phone: '0400 000 000' });
     rejects(C.PAYLOAD_SCHEMAS.submitReport, { ...p, didNotMeet: true });
   });
+  it('a report payload must say which service (null = none), and did-not-meet means no service', () => {
+    const rows = load('claim-response.json').rows;
+    const p = rows.find((r: any) => r.type === 'submitReport').payload;
+    const { serviceTimeId, ...noService } = p;
+    expect(serviceTimeId).toMatch(/^[0-9a-f-]{36}$/);
+    rejects(C.PAYLOAD_SCHEMAS.submitReport, noService);
+    C.PAYLOAD_SCHEMAS.submitReport.parse({ ...p, serviceTimeId: null });
+    C.PAYLOAD_SCHEMAS.submitReport.parse({ ...p, didNotMeet: true, attendees: [], serviceTimeId: null });
+    rejects(C.PAYLOAD_SCHEMAS.submitReport, { ...p, didNotMeet: true, attendees: [] });
+    const e = rows.find((r: any) => r.type === 'editReport').payload;
+    const { serviceTimeId: _s, ...baseNoService } = e.base;
+    rejects(C.PAYLOAD_SCHEMAS.editReport, { ...e, base: baseNoService });
+  });
+});
+
+describe('link contract: decisions 2026-10-12', () => {
+  it('the services push carries a recent past service (check-ins and reports may pick one)', () => {
+    const push = C.PUSH_SCHEMAS.services.parse(load('push-services.json'));
+    const today = push.takenAt.slice(0, 10);
+    expect(push.rows.some((r) => r.ymd < today)).toBe(true);
+  });
+  it('check-out is on: the console reports it locked until its writer exists, never off', () => {
+    expect(C.ClaimRequest.parse(load('claim-request.json')).capabilities.checkOut).toBe('locked');
+    expect(C.REASONS).not.toContain('pick-service' as never);
+  });
 });

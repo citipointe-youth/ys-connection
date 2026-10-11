@@ -88,7 +88,7 @@ create table if not exists link_console (
   console_version text not null default '',
   in_window boolean not null default false,
   poll_seconds int not null default 900,
-  capabilities jsonb not null default '{}'     -- {type: 'live'|'shadow'|'off'}
+  capabilities jsonb not null default '{}'     -- {type: 'live'|'shadow'|'locked'|'off'}
 );
 
 create table if not exists link_mirror_state (

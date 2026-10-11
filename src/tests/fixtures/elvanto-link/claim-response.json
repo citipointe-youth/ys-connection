@@ -20,7 +20,7 @@
       "id": "0a000000-0000-4000-8000-000000000003", "type": "submitReport", "attempts": 1, "reclaimed": false,
       "createdAt": "2026-10-16T08:30:57.000Z", "serviceDate": "2026-10-13",
       "by": { "login": "grade9g", "leaderName": "Test Leader" },
-      "payload": { "groupId": "6a000000-0000-4000-8000-000000000002", "date": "2026-10-13", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000001"], "guests": 2, "notesPrivate": false },
+      "payload": { "groupId": "6a000000-0000-4000-8000-000000000002", "date": "2026-10-13", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000001"], "guests": 2, "notesPrivate": false, "serviceTimeId": "57000000-0000-4000-8000-000000000002" },
       "note": "Good night, talked about the parable of the sower."
     },
     {
@@ -29,8 +29,8 @@
       "by": { "login": "grade9g", "leaderName": "Test Leader" },
       "payload": {
         "groupId": "6a000000-0000-4000-8000-000000000001", "reportId": "7e000000-0000-4000-8000-000000000001",
-        "date": "2026-10-12", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000003"], "guests": 1, "notesPrivate": false,
-        "base": { "date": "2026-10-12", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000003"], "guests": 0 }
+        "date": "2026-10-12", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000003"], "guests": 1, "notesPrivate": false, "serviceTimeId": null,
+        "base": { "date": "2026-10-12", "didNotMeet": false, "attendees": ["9e000000-0000-4000-8000-000000000003"], "guests": 0, "serviceTimeId": null }
       },
       "note": "Forgot a guest."
     },

@@ -3,17 +3,19 @@ import { z } from 'zod';
 // Step 0 of the YS Connection <-> Elvanto Sync Console link (spec docs/superpowers/specs/2026-10-11-elvanto-link-contract.md).
 // Shapes only: no routes, no services. Fixtures: src/tests/fixtures/elvanto-link/ (11.1 keeps a byte copy).
 // A shape change bumps LINK_CONTRACT_VERSION, the fixtures and the manifest, and is copied to 11.1 in the same session.
+// (v1 was amended in place on 2026-10-12, operator decisions 9-13, before any release: no bump for that.)
 export const LINK_CONTRACT_VERSION = 1;
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn'] as const;
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved'] as const;
-export const CAPABILITIES = ['live', 'shadow', 'off'] as const;
+// locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
+export const CAPABILITIES = ['live', 'shadow', 'locked', 'off'] as const;
 export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const RETRY_REASONS = ['console-busy', 'awaiting-approval', 'console-cannot-read'] as const;
 // Spec 5.4: every stable code, incl. the non-refusals (already, console-busy, awaiting-approval) the app shows as status.
 export const REASONS = ['locked', 'no-room', 'person-unknown', 'report-exists', 'report-not-found', 'report-changed',
-  'member-left', 'not-in-group', 'multi-service', 'unkept-notes', 'service-not-offered', 'pick-service', 'note-too-long',
+  'member-left', 'not-in-group', 'multi-service', 'unkept-notes', 'service-not-offered', 'note-too-long',
   'did-not-meet-conflict', 'step-moved', 'assignee-needed', 'ambiguous-first-timer', 'too-old', 'not-landed',
   'console-cannot-read', 'unknown', 'lease-lost', 'note-unreadable', 'already', 'console-busy', 'awaiting-approval'] as const;
 // Spec 3.1 (+ the two existing transient 503 codes from error.middleware.ts).
@@ -31,16 +33,20 @@ const Gender = z.enum(['male', 'female']);
 const Version = z.literal(LINK_CONTRACT_VERSION);
 
 // ---- Payloads (spec 5.1). Strict: an outbox payload holds ids and small values only.
+// serviceTimeId: the service the report links to, chosen in the app (spec 5.5); null = did not meet or no service.
 const reportFields = { groupId: Uuid, date: Ymd, didNotMeet: z.boolean(), attendees: z.array(Uuid).max(300),
-  guests: z.number().int().min(0).max(99), notesPrivate: z.boolean() };
-const noAttendeesIfDidNotMeet = (p: { didNotMeet: boolean; attendees: string[] }) => !p.didNotMeet || p.attendees.length === 0;
+  guests: z.number().int().min(0).max(99), notesPrivate: z.boolean(), serviceTimeId: Uuid.nullable() };
+const didNotMeetIsEmpty = (p: { didNotMeet: boolean; attendees: string[]; serviceTimeId: string | null }) =>
+  !p.didNotMeet || (p.attendees.length === 0 && p.serviceTimeId === null);
+const DID_NOT_MEET = 'didNotMeet means no attendees and no service';
 export const PAYLOAD_SCHEMAS = {
   checkIn: z.object({ serviceTimeId: Uuid, serviceId: Uuid, personId: Uuid }).strict(),
   checkOut: z.object({ serviceTimeId: Uuid, personId: Uuid }).strict(),
-  submitReport: z.object(reportFields).strict().refine(noAttendeesIfDidNotMeet, 'didNotMeet means no attendees'),
+  submitReport: z.object(reportFields).strict().refine(didNotMeetIsEmpty, DID_NOT_MEET),
   editReport: z.object({ ...reportFields, reportId: Uuid,
-    base: z.object({ date: Ymd, didNotMeet: z.boolean(), attendees: z.array(Uuid).max(300), guests: z.number().int().min(0).max(999) }).strict(),
-  }).strict().refine(noAttendeesIfDidNotMeet, 'didNotMeet means no attendees'),
+    base: z.object({ date: Ymd, didNotMeet: z.boolean(), attendees: z.array(Uuid).max(300), guests: z.number().int().min(0).max(999),
+      serviceTimeId: Uuid.nullable() }).strict(),
+  }).strict().refine(didNotMeetIsEmpty, DID_NOT_MEET),
   completeStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), notePrivate: z.boolean() }).strict(),
   firstTimerCheckIn: z.object({ serviceTimeId: Uuid, serviceId: Uuid, firstName: Name, lastName: Name, grade: Grade, gender: Gender }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
