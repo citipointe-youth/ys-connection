@@ -373,9 +373,10 @@ describe('Account Service — guard while Simple logins is on', () => {
     const { svc, inactive } = await build(true);
     await expect(svc.toggleStatus(admin, inactive.id)).rejects.toMatchObject({ statusCode: 400, message: MSG });
   });
-  it('on: update that sets status active on a grade account is 400', async () => {
+  it('on: update cannot activate a grade account (status is not in the update schema): a rename succeeds, still inactive', async () => {
     const { svc, inactive } = await build(true);
-    await expect(svc.update(admin, inactive.id, { status: 'active' })).rejects.toMatchObject({ statusCode: 400, message: MSG });
+    const r = await svc.update(admin, inactive.id, { displayName: 'X', status: 'active' });
+    expect(r).toMatchObject({ displayName: 'X', status: 'inactive' });
   });
   it('on: update that turns an active quad into a grade account is 400', async () => {
     const { svc, quadUser } = await build(true);

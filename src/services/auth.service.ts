@@ -160,11 +160,15 @@ export function makeAuthService(users: IUserRepository): AuthService {
 
       const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) throw new UnauthorizedError('Invalid credentials');
+      // Re-read after the slow bcrypt check: a retire (Simple logins on, role off, lock) that
+      // landed meanwhile must win. The full-row saves below would otherwise write 'active' back.
+      const fresh = await users.findById(user.id);
+      if (!fresh || fresh.status !== 'active') throw new UnauthorizedError('Invalid credentials');
 
       // Silently upgrade legacy SHA-256 hashes to bcrypt on first login
       if (needsRehash(user.passwordHash)) {
         const newHash = await hashPassword(password);
-        await users.save({ ...user, passwordHash: newHash, updatedAt: new Date().toISOString() });
+        await users.save({ ...fresh, passwordHash: newHash, updatedAt: new Date().toISOString() });
       }
 
       // Login activity tracking (ported from the Youth Camp Platform, 2026-09-20): a short
@@ -174,15 +178,15 @@ export function makeAuthService(users: IUserRepository): AuthService {
       // uses, not a dedicated atomic method.
       try {
         const nowIso = new Date().toISOString();
-        const history = [nowIso, ...(user.loginHistory ?? [])].slice(0, MAX_LOGIN_HISTORY);
-        const devices = deviceId ? recordDevice(user.loginDevices, deviceId, deviceLabel ?? '', nowIso) : user.loginDevices;
-        await users.save({ ...user, loginHistory: history, loginDevices: devices });
+        const history = [nowIso, ...(fresh.loginHistory ?? [])].slice(0, MAX_LOGIN_HISTORY);
+        const devices = deviceId ? recordDevice(fresh.loginDevices, deviceId, deviceLabel ?? '', nowIso) : fresh.loginDevices;
+        await users.save({ ...fresh, loginHistory: history, loginDevices: devices });
       } catch {
         // Never let a tracking failure block a successful login.
       }
 
-      const token = signSession(toActor(user), Date.now() + TOKEN_TTL_MS);
-      return { token, user: toSafeUser(user) };
+      const token = signSession(toActor(fresh), Date.now() + TOKEN_TTL_MS);
+      return { token, user: toSafeUser(fresh) };
     },
 
     async resolveToken(token: string) {

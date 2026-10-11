@@ -196,10 +196,9 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       if (nextRole === 'grade' && nextGender == null) {
         throw new BadRequestError('Grade login requires a gender scope');
       }
-      // `status` is not part of the update schema, but refuse an explicit attempt to activate a
-      // grade account, and a role change that would leave an active grade account behind.
-      const wantsActive = (input as { status?: unknown } | null)?.status === 'active' && existing.status !== 'active';
-      if (nextRole === 'grade' && (wantsActive || (existing.status === 'active' && existing.role !== 'grade')) && (await simpleOn())) {
+      // `status` is not part of the update schema (activation goes through toggleStatus), so the
+      // only way update() can leave an active grade account behind is a role change to grade.
+      if (nextRole === 'grade' && existing.role !== 'grade' && existing.status === 'active' && (await simpleOn())) {
         throw new BadRequestError(SIMPLE_ON_MSG);
       }
       const nextLeaderId = patch.leaderId !== undefined ? (patch.leaderId ?? null) : (existing.leaderId ?? null);
