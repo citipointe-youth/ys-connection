@@ -4,6 +4,20 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+NEW YOUTH FORMS  (2026-10-11)
+-------------------------------------------------------------------------------
+- New "New youth" screen (Home tile, off by default: Youth Setup -> Modules).
+  A host types a new student and their parent once; the app sends Citipointe
+  Brisbane's two public Elvanto connect forms (student 1 of 2, parent 2 of 2).
+- No Elvanto login. Nothing is stored. Sends only where ELVANTO_FORMS_LIVE=1
+  (Vercel Production); everywhere else is test mode.
+- Until the live capture is done (plan Task 0), every send shows "check the
+  forms list in Elvanto" rather than "is in Elvanto". Student mobile is
+  required for now.
+- New API route /intake (router, vercel.json, sw.js API_RE).
+- SW cache bumped ysc-v87 -> ysc-v88.
+
+-------------------------------------------------------------------------------
 LOGIN-SCREEN "SAVE YOUR PASSWORD" HELP PAGE  (2026-07-30)
 -------------------------------------------------------------------------------
 - New static page public/save-password.html - step-by-step instructions for

@@ -67,6 +67,7 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 | Admin | `POST /admin/reset` (clears students+leaders+connections+attendance **and connection_audits** — see below), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
 | Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed; returns `{ ok, token }` — a freshly-issued session token, since `mustChangePassword` is baked into the token at login and this is the one write that needs the caller's own token refreshed — see "Forced password change" gotcha below), `POST /accounts/cohort-layout/preview` / `POST /accounts/cohort-layout/apply` (admin-only "Apply account layout" dry-run/apply pair — see "Admin bug/improvement batch" below) |
+| New youth forms | `POST /intake/new-youth` (`intake:write`, module `newYouthForms` off by default; dry run unless `ELVANTO_FORMS_LIVE=1`) — submits Citipointe's two public Elvanto connect forms; see "New youth forms" below |
 
 **Checklist: adding a new top-level API route.** This has caused two separate production
 incidents (`/manifest.json` 2026-07-11, `/prayers` 2026-07-18) from the same root cause. The
@@ -322,6 +323,7 @@ CORS_ORIGINS=*
 APP_ORIGIN=https://<your-deployment>.vercel.app   # CORS fallback when CORS_ORIGINS is unset
 SESSION_SECRET=<random>  # REQUIRED in production, or session tokens can be forged
 SETUP_CODE=<16+ chars>   # first-run admin creation (setup screen); ignored once an admin exists
+ELVANTO_FORMS_LIVE=1      # New youth forms send to live Elvanto only when exactly "1" (Vercel Production only); otherwise dry run
 GOOGLE_SA_JSON=<key file as one line>   # Bus; replaces the three GOOGLE_SA_* vars (they still work; JSON wins if both set)
 GOOGLE_MAPS_API_KEY=<key>               # Bus; always required
 
@@ -2389,6 +2391,33 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 - **`/health`** reports `db` and `schema {current, expected}`.
 - **Settings file**: Youth Setup "Use this setup at another location" (Download/Load settings file) replaces the old in-app deploy-guide card.
 - `/setup` is in `router.ts`, the `vercel.json` regex and `sw.js` `API_RE`.
+
+### New youth forms (2026-10-11)
+
+A host types a new student and one parent into the **New youth** screen. The app sends Citipointe Brisbane's two public Elvanto connect forms (student, then parent). No Elvanto account is needed. Branch `feat/new-youth-forms`; no migration.
+- **Route:** `POST /intake/new-youth` (`new-youth.controller.ts` → `new-youth.service.ts`). RBAC `intake:write`, granted to all five roles. Module `ministryConfig.modules.newYouthForms`, **off by default** (Youth Setup → Modules). Off = 404 (`ModuleDisabledError`). The Home tile shows only while it is on.
+- **Dry run unless `ELVANTO_FORMS_LIVE=1`.** `env.ts` reads it, `container.ts` passes `dryRun: !env.ELVANTO_FORMS_LIVE`. A dry run still fetches both forms and checks their shape, then returns `skipped`/`skipped` with `dryRun: true`. The SPA says "Test mode: nothing was sent to Elvanto." Set it for **Vercel Production only**.
+- **Where Elvanto's markup lives:** `src/services/elvanto-forms.ts` only (form ids, field names, option ids, the body builders). It was captured 2026-10-11. Fixtures: `src/tests/fixtures/elvanto-student-form.html` and `elvanto-parent-form.html`. One location is hard-coded; move it into `ministryConfig` when a second location forks.
+- **The shape check:** before any POST the service fetches both live forms and runs `shapeProblems()`. It refuses with 502 `ELVANTO_FORM_CHANGED` if a field or option id we post is missing, if the form has an input we do not post, or if the honeypot is missing. Nothing is sent. The message tells the host to use the welcome-desk form and tell the admin. **If the church edits a form, refresh the fixtures and the constants in `elvanto-forms.ts` together.**
+- **Reply classifier:** `classifyPost()` returns `sent`, `failed`, `unconfirmed` or `skipped`. A 5xx, a timeout, or a reply it cannot read is `unconfirmed` (Elvanto may have saved it). A reply that is the form again (`name="save"`) is `failed`. If the student form is `failed`, the parent form is not sent. Only the `SUCCESS` table can give `sent`.
+- **OPEN ITEM: the live capture (plan Task 0) has NOT been done.** `SUCCESS` is `null` for both forms, so every accepted-looking reply is `unconfirmed` and the screen says "check the forms list in Elvanto". It never says `sent`. When `capture.md` exists (in the operator's `ys-connection-intake` folder, plan Task 0 Step 6): paste each form's success redirect or marker into `SUCCESS`, add a test with the captured replies, and decide whether the student mobile becomes optional. **Student mobile is required until then.**
+- **Never auto-resend.**
+  - *Dedupe:* the key is a hash of first name, last name, date of birth, parent mobile and which forms. In live mode an `unconfirmed` mark is written **before** the form GETs, so a second tap while the first is still running gets `unconfirmed` + `repeat: true`. The mark is cleared if the GETs fail or the form has changed. The final result is kept for 2 minutes, except when the student form was rejected (`failed`), so a fixed retry goes through.
+  - *Rate limit:* 60 sends per hour per login. Logins are shared (`grade9g`), so a busy night needs headroom.
+  - Both are **in memory, per serverless instance**. A double tap normally lands on the same warm instance. Move them to a DB row if that stops holding.
+- **Timeouts:** each form GET 5 s (the two run in parallel); each POST 10 s. The route is in `UNTIMED_ROUTES` (`express-adapter.ts`), because the 20 s guard's 503 "try again" could arrive after the student form is already in Elvanto and invite a duplicate. The SPA's send uses a 45 s client timeout. The server's worst case is about 35 s. **Watch item:** a local dry-run smoke test saw the first send fail with 502 `ELVANTO_UNREACHABLE` (a cold fetch over 5 s) and the next ones succeed. If hosts see this, raise `GET_TIMEOUT_MS` in `new-youth.service.ts`.
+- **SPA** (`/* NEW-YOUTH */` block in `public/index.html`; grep `NEW-YOUTH`, `_nyMessage`, `nySend`):
+  - 400, 404, 429 and 502 are refusals **before any POST**, so the screen shows the server's message. Any other failure (no status, 500, 503, 504) says "We don't know if the forms went in. Check the forms list in Elvanto before sending again." It never says "try again".
+  - A 401 mid-send draws nothing: the session handler has already shown the login screen.
+  - "Send the parent form again" appears only when the student form is in and the parent form failed. If that retry fails, the screen stays on the result page, so the student form is never sent twice.
+  - "Add a brother or sister" keeps the parent details and sends the student form only.
+  - Logout clears the screen's state (`nyReset()`).
+  - Only the host's own name is stored, in `localStorage` `ysc.nyHost`, on that device.
+- **No personal data is stored or logged.** Validation errors name the field only (fixed `LABELS` strings), never the value. Names are tidied to match Project 11.1's `capName`, so 11.1 does not offer a capital fix on a form this app sent. Phones go out as bare `04XXXXXXXX`.
+- **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.
+- **SW cache** `ysc-v87` → `ysc-v88`.
+- **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only after Citipointe approves and the owner promotes the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
+- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts`. 976 tests pass in total.
 
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 
