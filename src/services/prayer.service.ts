@@ -8,7 +8,7 @@ import type { IPrayerRepository, IStudentRepository, ISettingsRepository,
 import type { PrayerRequest, PrayerWithStudent } from '../core/entities/prayer';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
-import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { NotFoundError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { buildPrayerCsvRows, parsePrayerRows, planPrayerImport,
   type PrayerCsvRow, type PrayerImportReport } from './prayer-allocations';
 
@@ -47,6 +47,15 @@ export function makePrayerService(
   settingsRepo?: ISettingsRepository,
   connRepo?: IConnectionRepository,
 ): PrayerService {
+  // Prayers can be switched off in Youth Setup. Data is never deleted — the
+  // methods just refuse (404-shaped). No settingsRepo = always on.
+  async function requirePrayersModule(): Promise<void> {
+    if (!settingsRepo) return;
+    if ((await settingsRepo.getSettings()).ministryConfig.modules.prayers === false) {
+      throw new ModuleDisabledError('Prayers');
+    }
+  }
+
   async function structureScope(): Promise<StructureScope> {
     if (!settingsRepo) return MINISTRY_CONFIG_DEFAULTS.structure;
     return (await settingsRepo.getSettings()).ministryConfig.structure;
@@ -98,6 +107,7 @@ export function makePrayerService(
 
   return {
     async list(actor) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:read');
       const [all, students, structure] = await Promise.all([
         repo.findAll(), studentRepo.findAll(), structureScope(),
@@ -134,6 +144,7 @@ export function makePrayerService(
     },
 
     async listByStudent(actor, studentId) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:read');
       const structure = await structureScope();
       await studentInScope(actor, studentId, structure);
@@ -142,6 +153,7 @@ export function makePrayerService(
     },
 
     async create(actor, input) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:write');
       const data = CreateSchema.parse(input);
       const studentId = data.studentId ?? null;
@@ -174,6 +186,7 @@ export function makePrayerService(
     },
 
     async update(actor, id, input) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:write');
       const structure = await structureScope();
       const existing = await loadInScope(actor, id, structure);
@@ -188,6 +201,7 @@ export function makePrayerService(
     },
 
     async setStatus(actor, id, input) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:write');
       const structure = await structureScope();
       const existing = await loadInScope(actor, id, structure);
@@ -215,6 +229,7 @@ export function makePrayerService(
     },
 
     async remove(actor, id) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:write');
       const structure = await structureScope();
       await loadInScope(actor, id, structure);
@@ -222,12 +237,14 @@ export function makePrayerService(
     },
 
     async exportCsv(actor) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:import');
       const [prayers, students] = await Promise.all([repo.findAll(), studentRepo.findAll()]);
       return buildPrayerCsvRows(prayers, students);
     },
 
     async importCsv(actor, rows) {
+      await requirePrayersModule();
       assertCan(actor, 'prayer:import'); // admin-only, so this is always the wide-open ministry scope
       const structure = await structureScope();
       const creatorScope = generalPrayerCreatorScope(actor, structure);
