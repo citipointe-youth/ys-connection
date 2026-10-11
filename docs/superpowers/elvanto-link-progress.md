@@ -114,3 +114,4 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
 
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
+- 2026-10-12 late: rework pushed (deccde3, prod build applied 0016). Link built, V1 smoke 10/10, rework merged (905d62e), 7 reviews → OneDrive\2026-10-12-link-app-review-findings.md (b4d074f; 84 findings: 0 Crit / 23 Imp / 61 Minor; 2 CONTRACT, 8 both). WAITING for cross-device triage solutions (ledger 21). Next: apply solutions → V2 (scratch DB, needs operator) → V3 → V4 → H1.
