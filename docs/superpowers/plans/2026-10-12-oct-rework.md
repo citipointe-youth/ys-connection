@@ -510,6 +510,31 @@ not change. No test; run the verify command.
 
 ---
 
+## Lane R — Review wave (after S2, before V) — added by the operator 2026-10-12
+
+Seven independent reviews, run **in parallel**. Each one is an **Opus subagent at medium effort**, and each is
+**read-only**: it writes one file, `docs/superpowers/reviews/2026-10-12-rework-<name>.md`, and never edits code.
+Each reviewer reads the spec, this plan and the diff `master...feat/oct-rework`. Findings are ranked
+Critical / Important / Minor. Each finding has file:line, a concrete failure scenario and a proposed fix. Each
+reviewer returns 5 lines or fewer.
+
+| # | Review | Focus |
+|---|---|---|
+| R1 | **Six-hat** | White (facts/claims vs code), Red (how an operator and a leader will feel about it), Black (risks, privacy, safeguarding — the bus suburb redaction, retired logins), Yellow (what is good, so it isn't broken), Green (simpler alternatives), Blue (rollout order, flags, whether the doc matches the code). |
+| R2 | **Ponytail** | YAGNI and the simplest thing that works: dead code, needless abstraction, duplicated client/server mirrors that could be one, config surface that nobody asked for. |
+| R3 | **False positives / negatives** | Tests that pass while the behaviour is wrong (asserting mocks, over-broad matchers, leak tests that can't fail), and checks that block valid cases (the suburb extractor, the Simple-logins account guard, the RBAC denials). |
+| R4 | **Edge cases** | The switch flipped on and off repeatedly; an admin preview while Simple logins is on; a leader with no grades; a leader with grades outside the bracket; grade 6 included; prayers off with exactly 0, 1 or 2 other modules; an empty bus run; an address with no suburb; old clients with the old cache; json and memory persistence. |
+| R5 | **Web/phone UI** | Phone width (360 px) and desktop: the Youth Setup toggle, the grade filter bar, the More slot, the All cars tab. Tap targets ≥40 px, no horizontal scroll, safe areas, esc() everywhere, no dark-mode rules, the wording is plain English. Static review of the HTML/CSS plus a local run (`npm run start`, PERSISTENCE=memory, port 4300) with the browser if one is available. |
+| R6 | **Reliability** | Partial failures (the settings save half-applied, a failed view-grades save), cache invalidation, the migration on prod (additive, LATEST_MIGRATION, the duplicate guard), a Supabase upsert that would break before 0016 is applied, the service worker cache bump. |
+| R7 | **Speed / end-user feel** | No extra requests on hot screens (Home, My Connections, Health); the filter applies on the phone without a reload; no full-shell rebuilds on a filter change; the perceived latency on a busy Friday with the pool capped at 15. |
+
+**Then R8 [Opus] — triage and fix.** The orchestrator reads the seven review files and rules on each finding:
+fix, defer (listed in CLAUDE.md "Resume here") or reject (with a reason). One Opus executor then fixes the
+accepted findings, TDD, and commits with explicit paths. Re-run the verify command. Write a table
+`docs/superpowers/reviews/2026-10-12-rework-triage.md` (finding → ruling → commit).
+
+---
+
 ## Lane V — Final verification and docs (last)
 
 ### Task V1 [Opus] — Final verification
