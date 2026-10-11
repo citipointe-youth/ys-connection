@@ -77,6 +77,21 @@ describe('sendError with extra', () => {
   });
 });
 
+describe('L1 / APP-2: deadlock, serialisation and statement timeout answer 503', () => {
+  it('40P01, 40001 and 57014 are transient', () => {
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      for (const code of ['40P01', '40001', '57014']) {
+        const { res, out } = fakeRes();
+        sendError(res, Object.assign(new Error('db'), { code }));
+        expect(out.status, code).toBe(503);
+        expect(out.body).toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+      }
+    } finally { console.warn = warn; }
+  });
+});
+
 describe('link types (compile-only)', () => {
   it('compiles', () => {
     const t: ActionType = 'checkIn';

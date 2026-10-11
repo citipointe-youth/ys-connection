@@ -126,13 +126,17 @@ export class SupabaseLinkRepository implements ILinkRepository {
         on conflict (console_id) do update set label = excluded.label, last_seen_at = now(),
           contract_version = excluded.contract_version, console_version = excluded.console_version,
           in_window = excluded.in_window, poll_seconds = excluded.poll_seconds, capabilities = excluded.capabilities`;
-      // sweep
+      // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2)
       await tx`
         update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
-        where status = 'pending' and created_at < now() - make_interval(days => ${a.cutoffDays})`;
+        where id in (
+          select id from link_outbox where status = 'pending' and created_at < now() - make_interval(days => ${a.cutoffDays})
+          order by id for update skip locked)`;
       await tx`
         update link_outbox set status = 'unclear', reason = 'lease-lost', result_at = now(), updated_at = now()
-        where status = 'claimed' and lease_until < now() - make_interval(secs => ${a.leaseLostMs / 1000})`;
+        where id in (
+          select id from link_outbox where status = 'claimed' and lease_until < now() - make_interval(secs => ${a.leaseLostMs / 1000})
+          order by id for update skip locked)`;
       // purge (§4.3)
       await tx`
         delete from link_roster

@@ -8,6 +8,8 @@ export const TRANSIENT_DB_CODES = new Set([
   'CONNECTION_CLOSED', 'CONNECTION_ENDED', 'CONNECTION_DESTROYED', 'CONNECT_TIMEOUT',
   'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE',
   '08000', '08001', '08003', '08004', '08006', // class 08 — connection exception
+  '40001', // serialization_failure
+  '40P01', // deadlock_detected
   '53300', // too_many_connections (pool/connection-limit exhaustion)
   '57014', // query_canceled (statement_timeout)
   '57P01', // admin_shutdown
