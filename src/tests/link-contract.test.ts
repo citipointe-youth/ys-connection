@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -33,5 +34,73 @@ describe('link contract: draft SQL', () => {
     const tables = [...sql.matchAll(/create table (?:if not exists )?(\w+)/gi)].map((m) => m[1]!);
     expect(tables.length).toBeGreaterThan(0);
     for (const t of tables) expect(sql, t).toMatch(new RegExp(String.raw`alter table\s+${t}\s+enable row level security`, 'i'));
+  });
+});
+
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+const rejects = (schema: z.ZodTypeAny, v: unknown) => expect(schema.safeParse(v).success).toBe(false);
+
+const FIXTURES: Record<string, z.ZodTypeAny> = {
+  'claim-request.json': C.ClaimRequest,
+  'claim-response.json': C.ClaimResponse,
+  'result-request.json': C.ResultRequest,
+  'result-response.json': C.ResultResponse,
+  'push-roster.json': C.PUSH_SCHEMAS.roster,
+  'push-services.json': C.PUSH_SCHEMAS.services,
+  'push-groups.json': C.PUSH_SCHEMAS.groups,
+  'push-flows.json': C.PUSH_SCHEMAS.flows,
+  'push-response.json': z.array(C.PushResponse).min(1),
+  'errors.json': z.array(z.object({ status: z.number().int(), body: C.ErrorBody })).min(1),
+};
+
+describe('link contract: every fixture parses with its schema', () => {
+  it('covers every fixture file', () => expect(Object.keys(FIXTURES).sort()).toEqual(Object.keys(load('manifest.json').files).sort()));
+  for (const [f, schema] of Object.entries(FIXTURES)) it(f, () => { schema.parse(load(f)); });
+
+  it('claim-response has one row per action type; each payload parses with its type schema', () => {
+    const rows = C.ClaimResponse.parse(load('claim-response.json')).rows;
+    expect(rows.map((r) => r.type).sort()).toEqual([...C.ACTION_TYPES].sort());
+    for (const r of rows) (C.PAYLOAD_SCHEMAS[r.type] as z.ZodTypeAny).parse(r.payload);
+  });
+  it('result-request has every outcome', () => {
+    const outcomes = new Set(C.ResultRequest.parse(load('result-request.json')).results.map((r) => r.outcome));
+    expect([...outcomes].sort()).toEqual([...C.OUTCOMES].sort());
+  });
+  it('errors.json is the section 3.1 set', () => {
+    const errs = load('errors.json') as { status: number; body: { code: string } }[];
+    expect(errs.map((e) => `${e.status} ${e.body.code}`).sort()).toEqual(['400 VALIDATION_ERROR', '401 UNAUTHORIZED',
+      '409 LINK_CONTRACT_MISMATCH', '503 LINK_OFF', '503 REQUEST_TIMEOUT', '503 SERVICE_UNAVAILABLE']);
+    expect([...new Set(errs.map((e) => e.body.code))].sort()).toEqual([...C.SYNC_ERROR_CODES].sort());
+  });
+});
+
+describe('link contract: bad requests are rejected', () => {
+  const REQUESTS: [string, z.ZodTypeAny][] = [
+    ['claim-request.json', C.ClaimRequest], ['result-request.json', C.ResultRequest],
+    ['push-roster.json', C.PUSH_SCHEMAS.roster], ['push-services.json', C.PUSH_SCHEMAS.services],
+    ['push-groups.json', C.PUSH_SCHEMAS.groups], ['push-flows.json', C.PUSH_SCHEMAS.flows],
+  ];
+  for (const [f, schema] of REQUESTS) {
+    it(`${f}: missing or other contractVersion, non-uuid or upper-case consoleId`, () => {
+      const missing = clone(load(f)); delete missing.contractVersion; rejects(schema, missing);
+      rejects(schema, { ...load(f), contractVersion: 2 });
+      rejects(schema, { ...load(f), consoleId: 'not-a-uuid' });
+      rejects(schema, { ...load(f), consoleId: load(f).consoleId.toUpperCase() });
+    });
+  }
+  it('unknown types, outcomes, capabilities and kinds are rejected', () => {
+    const claim = clone(load('claim-request.json')); claim.capabilities.bogus = 'live'; rejects(C.ClaimRequest, claim);
+    const result = clone(load('result-request.json')); result.results[0].outcome = 'bogus'; rejects(C.ResultRequest, result);
+    const rows = clone(load('claim-response.json')); rows.rows[0].type = 'bogus'; rejects(C.ClaimResponse, rows);
+    const roster = clone(load('push-roster.json')); roster.rows[0].kind = 'bogus'; rejects(C.PUSH_SCHEMAS.roster, roster);
+  });
+  it('a push over 5,000 rows is rejected', () => {
+    const roster = load('push-roster.json');
+    rejects(C.PUSH_SCHEMAS.roster, { ...roster, rows: Array(5001).fill(roster.rows[0]) });
+  });
+  it('a payload with an extra field, or did-not-meet with attendees, is rejected', () => {
+    const p = load('claim-response.json').rows.find((r: any) => r.type === 'submitReport').payload;
+    rejects(C.PAYLOAD_SCHEMAS.submitReport, { ...p, phone: '0400 000 000' });
+    rejects(C.PAYLOAD_SCHEMAS.submitReport, { ...p, didNotMeet: true });
   });
 });
