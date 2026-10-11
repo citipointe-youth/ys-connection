@@ -21,7 +21,9 @@ import {
 } from '../core/errors/app-error';
 import { LinkEditInElvanto, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkUnavailable } from '../core/errors/link-errors';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
-import { addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, pickList } from './link-rules';
+import {
+  addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
+} from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -245,9 +247,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
     if (note !== null && !noteType) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
-    if (note !== null && note.length > LINK_NOTE_MAX) throw new BadRequestError(`A note can be up to ${LINK_NOTE_MAX} characters.`);
     const me = await resolveLeader(c, it.leaderId, noteType);
     Object.assign(who, me);
+    // X1: the claim row carries "Self identified leader: <name> — <note>", so the leader's part is capped to fit 1,900.
+    const room = Math.min(LINK_NOTE_MAX, noteRoom(me.name));
+    if (note !== null && note.length > room) throw new BadRequestError(`A note can be up to ${room} characters.`);
 
     const [roster, services] = await Promise.all([c.roster(), c.services()]);
     let serviceDate = c.today;

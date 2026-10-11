@@ -49,6 +49,7 @@ type Mode = 'off' | 'shadow' | 'on';
 interface H {
   svc: LinkService; link: InMemoryLinkRepository; clock: { now: Date };
   sessions: InMemoryServiceSessionRepository; attendance: InMemoryServiceAttendanceRepository;
+  leaders: InMemoryLeaderRepository;
 }
 
 const student = (id: string, first: string, last: string, gender: 'male' | 'female', grade: number) => ({
@@ -125,7 +126,7 @@ async function setup(mode: Mode = 'on', o: { console?: boolean; caps?: Partial<C
 
   const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions,
     serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(300, 10 * 60_000), now: () => clock.now });
-  return { svc, link, clock, sessions, attendance };
+  return { svc, link, clock, sessions, attendance, leaders };
 }
 
 async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60) {
@@ -381,6 +382,22 @@ describe('D2 enqueue', () => {
     expect((await h.svc.enqueue(GRADE, checkIn(P_AMY, { note: 'hi' }), DEV)).httpStatus).toBe(400);
     expect((await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1801) }), DEV)).httpStatus).toBe(400);
     expect((await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1800) }), DEV)).outcome).toBe('saved');
+  });
+
+  it('notes: the leader note is capped so "Self identified leader: <name> — <note>" fits 1,900 (X1)', async () => {
+    const h = await setup();
+    const r1900 = await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1900) }), DEV);
+    expect(r1900).toMatchObject({ outcome: 'refused', httpStatus: 400, message: 'A note can be up to 1800 characters.' });
+    const LONG = 'c0000000-0000-4000-8000-00000000abcd';
+    const name = 'N'.repeat(90);
+    await h.leaders.save(leader(LONG, name, 'female') as never);
+    const room = 1900 - 'Self identified leader: '.length - name.length - ' — '.length; // 1783
+    const over = await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(room + 1), leaderId: LONG }), DEV);
+    expect(over).toMatchObject({ outcome: 'refused', httpStatus: 400, message: `A note can be up to ${room} characters.` });
+    const fits = step({}, { note: 'x'.repeat(room), leaderId: LONG });
+    expect((await h.svc.enqueue(GRADE, fits, DEV)).outcome).toBe('saved');
+    // The stored note stays the leader's own words.
+    expect(h.link._peekNote(fits.id)).toBe('x'.repeat(room));
   });
 
   it('"I am" is required for reports and flow steps', async () => {

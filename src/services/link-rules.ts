@@ -77,6 +77,23 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
   }
 }
 
+// ---------------- Attribution (contract X1, ledger 25 D2) ----------------
+
+/** The ClaimRow `note` cap (contract §3.2). The prefixed text must fit it. */
+export const CLAIM_NOTE_MAX = 1900;
+export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editReport', 'completeStep'];
+
+/** `Self identified leader: <name> — <note>`, or the name alone when the leader wrote no note. */
+export function attributedNote(leaderName: string, note: string | null): string {
+  const head = `Self identified leader: ${leaderName}`;
+  return note ? `${head} — ${note}` : head;
+}
+
+/** The longest leader note that still fits CLAIM_NOTE_MAX once prefixed. */
+export function noteRoom(leaderName: string): number {
+  return CLAIM_NOTE_MAX - attributedNote(leaderName, 'x').length + 1;
+}
+
 // ---------------- Outbox state machine (contract §3.3 / §5.3) ----------------
 
 const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled', 'unclear'];

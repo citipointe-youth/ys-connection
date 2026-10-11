@@ -8,7 +8,7 @@ import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors
 import type { PushKind, ResultReply } from '../core/link-types';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch } from './link-rules';
 import { parseGroupName } from './import.service';
 
 export interface SyncDeps {
@@ -53,7 +53,9 @@ export function makeSyncService(d: SyncDeps) {
         rows: ok.map(({ row, reclaimed }) => ({
           id: row.id, type: row.type, attempts: row.attempts, reclaimed, createdAt: row.createdAt,
           serviceDate: row.serviceDate, by: { login: logins.get(row.createdBy) ?? '', leaderName: row.leaderName },
-          payload: row.payload, note: row.note, // raw note: the console composes the attribution (decision 17)
+          payload: row.payload,
+          // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
+          note: ATTRIBUTED_TYPES.includes(row.type) ? attributedNote(row.leaderName, row.note) : row.note,
         })),
       };
     },

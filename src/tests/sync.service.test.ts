@@ -109,12 +109,40 @@ describe('sync.service claim', () => {
     for (const row of reply.rows) {
       expect(PAYLOAD_SCHEMAS[row.type as ActionType].safeParse(row.payload).success).toBe(true);
     }
-    // Same as the fixture, apart from the clock fields.
+    // Same as the fixture, apart from the clock fields and the leader prefix on the note (X1, ledger 25 D2).
     const strip = (r: any) => { const { createdAt: _c, ...rest } = r; return rest; };
-    expect(reply.rows.map(strip)).toEqual(claimRes.rows.map(strip));
-    // Decision 17: the app sends the raw note, never a "Self identified leader" prefix.
-    for (const row of reply.rows) if (row.note !== null) expect(row.note).not.toMatch(/Self identified leader/);
+    const prefixed = (r: any) => (['submitReport', 'editReport', 'completeStep'].includes(r.type)
+      ? { ...r, note: `Self identified leader: ${r.by.leaderName}` + (r.note ? ` — ${r.note}` : '') } : r);
+    expect(reply.rows.map(strip)).toEqual(claimRes.rows.map(strip).map(prefixed));
     expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
+  });
+
+  it('X1: the app puts the leader name in front of the note for report, edit and flow step; others stay null', async () => {
+    const { svc, link } = await setup();
+    const byType = Object.fromEntries(claimRes.rows.map((r: any) => [r.type, r]));
+    const ids: Record<string, string> = {};
+    let n = 0;
+    for (const t of ['submitReport', 'editReport', 'completeStep']) {
+      for (const note of ['Called, left a message.', null]) {
+        const id = `d0000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
+        const p = { ...byType[t].payload, ...(t === 'completeStep' ? { rowId: `e0000000-0000-4000-8000-${String(n).padStart(12, '0')}` }
+          : { date: `2026-10-${String(n).padStart(2, '0')}` }) };
+        await link.insertAction({ ...rowFromFixture({ ...byType[t], id, payload: p, note }), leaderName: 'Cody Cobb' });
+        ids[`${t}:${note ? 'note' : 'none'}`] = id;
+      }
+    }
+    const ci = rowFromFixture(byType.checkIn);
+    await link.insertAction({ ...ci, leaderName: 'Cody Cobb' });
+    const reply = await svc.claim({ ...claimReq, max: 20 });
+    expect(ClaimResponse.parse(reply)).toBeTruthy();
+    const note = (id: string) => reply.rows.find((r) => r.id === id)!.note;
+    for (const t of ['submitReport', 'editReport', 'completeStep']) {
+      expect(note(ids[`${t}:note`]!)).toBe('Self identified leader: Cody Cobb — Called, left a message.');
+      expect(note(ids[`${t}:none`]!)).toBe('Self identified leader: Cody Cobb');
+    }
+    expect(note(ci.id)).toBeNull();
+    // The stored note stays the leader's own words.
+    expect(link._peekNote(ids['completeStep:note']!)).toBe('Called, left a message.');
   });
 
   it('mode off → nothing leased, but the console row is upserted and the sweep ran', async () => {
