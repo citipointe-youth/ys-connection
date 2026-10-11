@@ -16,7 +16,9 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
-  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter'];
+  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
+  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
+  '_lkLogExport', '_lkEvents', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -29,7 +31,7 @@ interface Env { storage: Map<string, string>; failStorage?: boolean; post?: (pat
 
 function makeEnv(e: Partial<Env> = {}) {
   const env: Env = { storage: e.storage ?? new Map(), ...e } as Env;
-  const calls = { posts: [] as any[], toasts: [] as string[], modals: [] as string[], closed: 0, asks: [] as string[], apps: [] as string[] };
+  const calls = { posts: [] as any[], toasts: [] as string[], modals: [] as string[], closed: 0, asks: [] as string[], apps: [] as string[], gos: [] as string[] };
   const ls = {
     getItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); return env.storage.has(k) ? env.storage.get(k)! : null; },
     setItem: (k: string, v: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.set(k, String(v)); },
@@ -45,6 +47,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const document = { getElementById: () => null, visibilityState: 'visible' };
     const API = { post: (p, b, ms) => __post(p, b, ms), fresh: () => Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
     const setApp = (h) => __calls.apps.push(h);
+    const go = (p) => __calls.gos.push(p);
     const shell = (h) => h;
     const toast = (m) => __calls.toasts.push(m);
     const modal = (h) => __calls.modals.push(h);
@@ -1022,5 +1025,81 @@ describe('F4.1 first-timer check-in', () => {
     expect(send).toContain("if (typeof _lkFirstTimerAfter === 'function') _lkFirstTimerAfter(mine, result);");
     expect(send).toContain("API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000)");
     expect(extractFn(html, 'renderNewYouth')).toContain('NY.lkNote');
+  });
+});
+
+// ── F4.2 Elvanto link admin page ──
+describe('F4.2 admin page', () => {
+  const logRow = (over: any = {}) => ({ id: P(300), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'grade9<b>g</b>', deviceId: 'dev-<1>',
+    deviceLabel: 'iPhone · <i>Safari</i>', event: 'identity', leaderId: P(301), leaderName: 'Sam <u>S</u>', prevLeaderId: P(302),
+    prevLeaderName: 'Cody <s>C</s>', targetKind: null, targetId: null, targetName: null, outboxId: null, outcome: 'logged', ...over });
+  it('four cards render: Status, Matching, Shadow check, Activity', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.today = '2026-10-16';
+    const out = h.fns._lkAdminHtml();
+    for (const id of ['lk-adm-status', 'lk-adm-match', 'lk-adm-shadow', 'lk-adm-log']) expect(out).toContain(`id="${id}"`);
+    const text = strip(out);
+    for (const t of ['Status', 'Matching', 'Shadow check', 'Activity']) expect(text).toContain(t);
+  });
+  it('an identity row reads "Cody -> Sam (iPhone · Safari)" with an SVG arrow and all three values escaped', () => {
+    const h = makeEnv({ role: 'admin' });
+    const who = h.fns._lkLogWho(logRow());
+    expect(who).toBe('Cody &lt;s&gt;C&lt;/s&gt; <svg data-ic="arrr"></svg> Sam &lt;u&gt;S&lt;/u&gt; (iPhone · &lt;i&gt;Safari&lt;/i&gt;)');
+    const row = h.fns._lkLogRowHtml(logRow());
+    for (const raw of ['<b>g', '<i>Safari', '<u>S', '<s>C']) expect(row).not.toContain(raw);
+    expect(row).toContain('grade9&lt;b&gt;g&lt;/b&gt;');
+    const act = h.fns._lkLogRowHtml(logRow({ event: 'checkIn', prevLeaderName: null, targetKind: 'person', targetName: 'Ava <b>E</b>', outcome: 'saved' }));
+    expect(act).toContain('Ava &lt;b&gt;E&lt;/b&gt;');
+    expect(strip(act)).toContain('Check-in');
+  });
+  it('the export file name is elvanto-activity-YYYY-MM-DD.xlsx; one sheet, same columns as the list plus the device id', () => {
+    const h = makeEnv({ role: 'admin' });
+    expect(h.fns._lkLogFile('2026-10-16')).toBe('elvanto-activity-2026-10-16.xlsx');
+    const aoa = h.fns._lkLogAoa([logRow()]);
+    expect(aoa[0]).toEqual(['Time', 'Login', 'Device', 'Device id', 'I am before', 'I am', 'Event', 'Target', 'Outcome']);
+    expect(aoa[1]).toEqual(['Fri 16 Oct 6:31 pm', 'grade9<b>g</b>', 'iPhone · <i>Safari</i>', 'dev-<1>', 'Cody <s>C</s>', 'Sam <u>S</u>', 'Identity', '', 'logged']);
+    const ex = extractFn(html, '_lkLogExport');
+    expect(ex).toContain('await _ensureXlsx()');
+    expect(ex).toContain('XLSX.writeFile(wb, _lkLogFile(_lkToday()))');
+    expect(ex.match(/book_append_sheet/g)).toHaveLength(1);
+  });
+  it('the Shadow check date defaults to the last Friday', () => {
+    const f = makeEnv().fns._lkLastFriday;
+    expect(f('2026-10-16')).toBe('2026-10-16'); // a Friday
+    expect(f('2026-10-17')).toBe('2026-10-16');
+    expect(f('2026-10-22')).toBe('2026-10-16');
+    expect(f('2026-10-15')).toBe('2026-10-09');
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.today = '2026-10-19';
+    expect(h.fns._lkAdminHtml()).toContain('value="2026-10-16"');
+    expect(h.fns._lkAdmShadowHtml()).toContain('type="date"');
+  });
+  it('the page is not reachable for quad, grade or leader', async () => {
+    for (const role of ['quad', 'grade', 'leader']) {
+      const h = makeEnv({ role });
+      await h.fns.renderLink('link-admin');
+      expect(h.calls.gos).toEqual(['home']);
+      expect(h.calls.apps).toHaveLength(0);
+    }
+    expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-admin') { await renderLinkAdmin(); return; }");
+  });
+  it('matching lists Unmatched and Two possible with candidates and their DOB, escaped', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(400), name: 'Ava <b>X</b>', grade: 8, kind: 'student', match: 'none', studentId: null,
+        candidates: [{ studentId: P(401), name: 'Ava <i>Y</i>', grade: 8, gender: 'female', dob: '2012-04-03' }] },
+      { personId: P(402), name: 'Bo Two', grade: 9, kind: 'student', match: 'ambiguous', studentId: null, candidates: [] },
+      { personId: P(403), name: 'Done Already', grade: 9, kind: 'student', match: 'auto', studentId: P(404), candidates: [] },
+    ];
+    const out = h.fns._lkAdmMatchHtml();
+    expect(out).toContain('Ava &lt;b&gt;X&lt;/b&gt;');
+    expect(out).toContain('Ava &lt;i&gt;Y&lt;/i&gt;');
+    expect(out).toContain('2012-04-03');
+    expect(out).toContain(`_lkAdmMatch('${P(400)}','${P(401)}')`);
+    expect(out).toContain(`_lkAdmIgnore('${P(400)}')`);
+    expect(strip(out)).toContain('Not in YS');
+    expect(out).not.toContain('Done Already');
+    h.get().LINK.adm.mf = 'ambiguous';
+    expect(h.fns._lkAdmMatchHtml()).toContain('Bo Two');
   });
 });

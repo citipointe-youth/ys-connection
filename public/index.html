@@ -785,6 +785,10 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-step{font-size:13px;font-weight:700;color:var(--ink);margin:10px 2px 6px}
 .lk-late{color:#b91c1c;font-weight:700}
+.lk-log-row{border-bottom:1px solid var(--line);padding:8px 0;font-size:14px}
+.lk-log-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.lk-log-row .ic-s{width:12px;height:12px;vertical-align:-2px}
+.lk-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 /* END LINK CSS */
 </style>
 </head>
@@ -8763,7 +8767,7 @@ function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
-    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null };
+    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 function _linkOn() { return _nyOn(); }
@@ -9095,6 +9099,8 @@ function _lkRefreshView() {
     if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
     const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
     if (gp && g) gp.innerHTML = _lkGroupHtml(g);
+    const ast = document.getElementById('lk-adm-status');
+    if (ast && S.page === 'link-admin') ast.innerHTML = _lkAdmStatusHtml();
     const fl = document.getElementById('lk-flist');
     if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml();
     const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
@@ -9112,10 +9118,8 @@ async function renderLink(p) {
   if (p === 'link-checkin') { await renderLinkCheckin(); return; }
   if (p === 'link-groups') { await renderLinkGroups(); return; }
   if (p === 'link-flows') { await renderLinkFlows(); return; }
-  const title = { 'link-admin': 'Elvanto link' }[p];
-  if (!title) { go('home'); return; }
-  setApp(shell(`<div class="ph"><h1>${title}</h1></div><div id="lk-top">${_lkTop([])}</div>
-    <div class="card"><p>This screen is not ready yet.</p></div>`));
+  if (p === 'link-admin') { await renderLinkAdmin(); return; }
+  go('home');
 }
 function _lkSvc() { return (LINK.services || []).find((s) => s.serviceTimeId === LINK.svc) || null; }
 function _lkTakeServices(r) {
@@ -9797,6 +9801,180 @@ function _lkFirstTimerAfter(mine, result) {
     _lkPush({ kind: 'action', id: _lkUuid(), type: 'firstTimerCheckIn', payload: _lkFirstTimerPayload(p, s), note: null, leaderId: getMyLeaderId() || null }, true);
     mine.lkNote = 'Check-in for ' + _lkSvcLabel(s) + ' is waiting to send.';
   } catch (e) {}
+}
+// ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin and director. ──
+function _lkAdmFresh() {
+  return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none', sDate: null, shadow: null, sErr: null,
+    from: null, to: null, login: '', event: '', log: null, lErr: null };
+}
+// The latest Friday on or before the given day (Brisbane date).
+function _lkLastFriday(ymd) {
+  const t = Date.parse(String(ymd || '') + 'T00:00:00Z');
+  if (!isFinite(t)) return '';
+  const back = (new Date(t).getUTCDay() + 2) % 7; // Fri = 0 days back, Sat = 1, ... Thu = 6
+  return _lkAddDays(ymd, -back);
+}
+function _lkAt(iso) { const t = Date.parse(iso); return isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) + ' ' + _lkTime(iso) : ''; }
+function _lkEvents() {
+  return { identity: 'Identity', checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in',
+  submitReport: 'Lifegroup report', editReport: 'Report edit', completeStep: 'Flow step', cancel: 'Cancel', undo: 'Undo' };
+}
+// "Cody -> Sam (iPhone · Safari)": the arrow is the SVG icon; every value escaped.
+function _lkLogWho(r) {
+  if (r.event === 'identity') {
+    return esc(r.prevLeaderName || 'Nobody') + ' ' + icS('arrr') + ' ' + esc(r.leaderName || 'Nobody') + ' (' + esc(r.deviceLabel || 'Unknown device') + ')';
+  }
+  return esc(r.leaderName || '');
+}
+function _lkLogRowHtml(r) {
+  const target = r.event === 'identity' ? '' : (r.targetName || r.targetId || '');
+  return `<div class="lk-log-row"><div class="lk-log-top"><b>${esc(_lkEvents()[r.event] || r.event)}</b><span class="lk-d">${esc(_lkAt(r.at))}</span></div>
+    <div class="lk-d">${esc(r.login)}${r.event === 'identity' ? '' : ' · ' + esc(r.deviceLabel || 'Unknown device')}</div>
+    <div>${_lkLogWho(r)}${target ? ' · ' + esc(target) : ''}</div><div class="lk-d">${esc(r.outcome)}</div></div>`;
+}
+function _lkLogFile(ymd) { return 'elvanto-activity-' + ymd + '.xlsx'; }
+// One sheet, the list's columns plus the device id. Plain values (SheetJS writes text, not HTML).
+function _lkLogAoa(rows) {
+  const out = [['Time', 'Login', 'Device', 'Device id', 'I am before', 'I am', 'Event', 'Target', 'Outcome']];
+  (rows || []).forEach((r) => out.push([_lkAt(r.at), r.login || '', r.deviceLabel || '', r.deviceId || '', r.prevLeaderName || '', r.leaderName || '',
+    _lkEvents()[r.event] || r.event, r.event === 'identity' ? '' : (r.targetName || r.targetId || ''), r.outcome || '']));
+  return out;
+}
+async function _lkLogExport() {
+  const rows = LINK.adm.log;
+  if (!rows || !rows.length) { toast('Nothing to export. Show the activity first.'); return; }
+  try {
+    await _ensureXlsx();
+    const ws = XLSX.utils.aoa_to_sheet(_lkLogAoa(rows));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Activity');
+    XLSX.writeFile(wb, _lkLogFile(_lkToday()));
+  } catch (e) { toast(e.message || 'Could not export.'); }
+}
+// Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows with detail.
+function _lkAdmStatusHtml() {
+  const st = LINK.status, c = st && st.console;
+  if (!st) return '<div class="lk-sec">Status</div><p class="lk-hint">Loading...</p>';
+  const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
+    ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
+  const caps = (c && c.capabilities) || {};
+  Object.keys(_lkEvents()).filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], caps[k]]));
+  Object.keys(st.mirrors || {}).forEach((k) => { const m = st.mirrors[k]; kv.push(['Mirror: ' + k, m && m.ageSeconds != null ? Math.round(m.ageSeconds / 60) + ' min old' : 'None yet']); });
+  const acts = LINK.adm.acts || [];
+  const counts = {};
+  acts.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
+  const unclear = acts.filter((a) => a.status === 'unclear');
+  return `<div class="lk-sec">Status</div>${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
+    <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
+      : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(k)}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
+    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkEvents()[a.type] || a.type)}</b> · ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}`;
+}
+// Matching: Unmatched / Two possible / Set by hand. Candidates show grade and DOB.
+function _lkAdmMatchHtml() {
+  const A = LINK.adm, f = A.mf;
+  const tabs = [['none', 'Unmatched'], ['ambiguous', 'Two possible'], ['manual', 'Set by hand']];
+  let body;
+  if (A.rErr) body = `<p class="lk-sub">${esc(A.rErr)}</p>`;
+  else if (!A.roster) body = '<p class="lk-hint">Loading...</p>';
+  else {
+    const xs = A.roster.filter((r) => r.kind === 'student' && (f === 'manual' ? r.match === 'manual' || r.match === 'ignored' : r.match === f));
+    body = xs.length ? xs.slice(0, 60).map((r) => {
+      const pid = esc(r.personId);
+      const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv"><span>${esc(c.name)} · Yr ${esc(c.grade == null ? '-' : c.grade)} · ${esc(c.dob || 'No DOB')}</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
+      const acts = f === 'manual' ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmMatch('${pid}','')">Clear</button>`
+        : `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
+      return `<div class="lk-log-row"><div class="lk-log-top"><b>${esc(r.name)}</b><span class="lk-d">Yr ${esc(r.grade == null ? '-' : r.grade)}${r.match === 'ignored' ? ' · Not in YS' : ''}</span></div>
+        ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No likely students.</p>')}<div class="lk-acts">${acts}</div></div>`;
+    }).join('') + (xs.length > 60 ? `<p class="lk-hint">Showing 60 of ${xs.length}.</p>` : '') : '<p class="lk-sub">Nobody here.</p>';
+  }
+  return `<div class="lk-sec">Matching</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${body}`;
+}
+function _lkAdmShadowHtml() {
+  const V = { 'matched': 'In Elvanto and in YS attendance', 'sent-not-imported': 'In Elvanto; in YS attendance after the next import.',
+    'practice-matched': 'Practice: in YS attendance', 'practice-missing': 'Practice: not in YS attendance', 'no-student': 'Not matched to a student' };
+  const A = LINK.adm, r = A.shadow;
+  let body = '';
+  if (A.sErr) body = `<p class="lk-sub">${esc(A.sErr)}</p>`;
+  else if (r && !r.imported) body = `<p class="lk-sub">${esc(r.message || 'Not in the import')}</p>`;
+  else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
+    + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(x.message || V[x.verdict] || x.verdict)}</b></div>`).join('');
+  return `<div class="lk-sec">Shadow check</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
+    <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;
+}
+function _lkAdmLogListHtml() {
+  const A = LINK.adm;
+  if (A.lErr) return `<p class="lk-sub">${esc(A.lErr)}</p>`;
+  if (!A.log) return '<p class="lk-hint">Loading...</p>';
+  if (!A.log.length) return '<p class="lk-sub">No activity for these dates.</p>';
+  return A.log.map(_lkLogRowHtml).join('') + (A.log.length >= 2000 ? '<p class="lk-hint">Showing the newest 2,000.</p>' : '');
+}
+function _lkAdmLogHtml() {
+  const A = LINK.adm, today = _lkToday();
+  const ev = [['', 'All events']].concat(Object.keys(_lkEvents()).map((k) => [k, _lkEvents()[k]]));
+  return `<div class="lk-sec">Activity</div>
+    <div class="lk-filters"><input type="date" class="fi" value="${esc(A.from || _lkAddDays(today, -6))}" onchange="LINK.adm.from=this.value">
+      <input type="date" class="fi" value="${esc(A.to || today)}" onchange="LINK.adm.to=this.value"></div>
+    <div class="lk-filters"><input class="fi" placeholder="Login" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(A.login)}" oninput="LINK.adm.login=this.value">
+      <select class="fs" onchange="LINK.adm.event=this.value">${ev.map((e) => `<option value="${e[0]}"${A.event === e[0] ? ' selected' : ''}>${esc(e[1])}</option>`).join('')}</select></div>
+    <div class="lk-acts lk-mb"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmLoadLog()">Show</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkLogExport()">${icS('upload')} Export</button></div>
+    <div id="lk-adm-loglist">${_lkAdmLogListHtml()}</div>`;
+}
+function _lkAdminHtml() {
+  if (!LINK.adm) LINK.adm = _lkAdmFresh();
+  return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
+    <div class="card" id="lk-adm-shadow">${_lkAdmShadowHtml()}</div><div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+}
+function _lkAdmDraw(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+async function _lkAdmLoadActs() {
+  const today = _lkToday();
+  try {
+    const xs = await Promise.all(['checkIn', 'checkOut', 'firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep']
+      .map((t) => API.fresh('/link/actions?serviceDate=' + today + '&type=' + t)));
+    LINK.adm.acts = [].concat(...xs.map((x) => (Array.isArray(x) ? x : [])));
+    LINK.adm.aErr = null;
+  } catch (e) { LINK.adm.aErr = e.message || 'Could not load the actions.'; }
+  _lkAdmDraw('lk-adm-status', _lkAdmStatusHtml());
+}
+async function _lkAdmLoadRoster() {
+  try { const r = await API.fresh('/link/admin/roster'); LINK.adm.roster = (r && r.rows) || []; LINK.adm.rErr = null; }
+  catch (e) { LINK.adm.rErr = e.message || 'Could not load the roster.'; }
+  _lkAdmDraw('lk-adm-match', _lkAdmMatchHtml());
+}
+function _lkAdmFilter(f) { LINK.adm.mf = f; _lkAdmDraw('lk-adm-match', _lkAdmMatchHtml()); }
+async function _lkAdmSet(personId, body) {
+  try { await API.post('/link/admin/roster/' + encodeURIComponent(personId), body); }
+  catch (e) { toast(e.message || 'Could not save.'); return; }
+  await _lkAdmLoadRoster();
+}
+function _lkAdmMatch(personId, studentId) { return _lkAdmSet(personId, { studentId: studentId || null }); }
+function _lkAdmIgnore(personId) { return _lkAdmSet(personId, { studentId: null, ignore: true }); }
+async function _lkAdmShadow() {
+  const A = LINK.adm, d = A.sDate || _lkLastFriday(_lkToday());
+  A.sErr = null; A.shadow = null;
+  _lkAdmDraw('lk-adm-shadow-r', '<p class="lk-hint">Checking...</p>');
+  try { A.shadow = await API.fresh('/link/admin/shadow-check?date=' + encodeURIComponent(d)); }
+  catch (e) { A.sErr = e.message || 'Could not check.'; }
+  _lkAdmDraw('lk-adm-shadow', _lkAdmShadowHtml());
+}
+async function _lkAdmLoadLog() {
+  const A = LINK.adm, today = _lkToday();
+  const q = ['from=' + encodeURIComponent(A.from || _lkAddDays(today, -6)), 'to=' + encodeURIComponent(A.to || today)];
+  if (A.login.trim()) q.push('login=' + encodeURIComponent(A.login.trim()));
+  if (A.event) q.push('event=' + encodeURIComponent(A.event));
+  A.log = null; A.lErr = null;
+  _lkAdmDraw('lk-adm-loglist', _lkAdmLogListHtml());
+  try { const r = await API.fresh('/link/admin/log?' + q.join('&')); A.log = (r && r.rows) || []; }
+  catch (e) { A.lErr = e.message || 'Could not load the activity.'; }
+  _lkAdmDraw('lk-adm-loglist', _lkAdmLogListHtml());
+}
+async function renderLinkAdmin() {
+  if (!LINK.adm) LINK.adm = _lkAdmFresh();
+  if (!LINK.today) { try { _lkTakeServices(await API.fresh('/link/checkin')); } catch (e) {} if (S.page !== 'link-admin') return; }
+  setApp(shell(`<div class="ph"><h1>Elvanto link</h1></div><div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
+  _lkAdmLoadActs(); _lkAdmLoadRoster(); if (!LINK.adm.log) _lkAdmLoadLog();
 }
 /* ── END LINK MODULE ── */
 
