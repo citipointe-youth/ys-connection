@@ -4,6 +4,18 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+MORE MENU IN THE PRAYERS SPOT  (2026-10-12)
+-------------------------------------------------------------------------------
+- The Prayers button on the nav bar becomes "More" whenever a login has more
+  than one module to pick from. It opens a small sheet at the bottom of the
+  screen: Prayers, Bus Ministry (when it is on) and New person (when that
+  login may use it). Later: service check-in and the lifegroup report.
+- With Prayers as the only module, the button stays a plain Prayers tab.
+- New person no longer has a Home tile; it is reached from More only. Bus
+  Ministry keeps its Home tile as well.
+- Replaces the shadow-mode "Prayers / New person" chooser. SW cache ysc-v89.
+
+-------------------------------------------------------------------------------
 NEW PERSON: SHADOW MODE, NAME, NAV SWAP  (2026-10-11)
 -------------------------------------------------------------------------------
 - The "New youth" screen is now called "New person" (title, Home tile, buttons,

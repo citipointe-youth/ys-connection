@@ -281,6 +281,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.mo-box{border-radius:var(--radius)}}
 .mo-handle{width:40px;height:4px;background:var(--paper-dark);border-radius:2px;margin:0 auto 16px}
 .mo-title{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px}
+.more-list{display:flex;flex-direction:column;gap:8px}
+.more-row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper-card);color:var(--ink);font:inherit;font-size:15px;font-weight:600;text-align:left;cursor:pointer}
+.more-row.on{border-color:var(--accent);background:var(--accent-light)}
 
 /* Filters */
 .filter-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center}
@@ -1284,7 +1287,7 @@ function setApp(h) {
 function _updateNavActive() {
   const cur = S.page;
   document.querySelectorAll('[data-nav-page]').forEach(el => {
-    el.classList.toggle('on', el.dataset.navPage === cur);
+    el.classList.toggle('on', el.dataset.navPage === cur || (el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)));
   });
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
@@ -1295,7 +1298,9 @@ function _updateNavActive() {
 // sub-page, so the header's brand mark swaps for a back arrow that always
 // returns to Home — a flat "back to base" rather than a real history stack.
 function _isRootPage(page) {
-  return bottomNavItems().some(it => it.id === page);
+  const bn = bottomNavItems();
+  // Prayers stays a root page when it sits behind More (it was a bottom tab before).
+  return bn.some(it => it.id === page) || (page === 'prayers' && bn.some(it => it.id === 'more'));
 }
 function _hdrBrandHtml() {
   if (!_isRootPage(S.page)) {
@@ -1745,6 +1750,7 @@ const IC = {
   map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
   route:    '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h5a4 4 0 004-4V9a4 4 0 00-4-4H8"/>',
   pinned:   '<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="14" x2="9" y2="21"/>',
+  grid:     '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   kebab:    '<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>',
 };
 // 'pray' is the one raster (PNG-masked) icon — see the .ic-png-mask CSS comment — so every
@@ -1769,13 +1775,27 @@ function brandMark(px, color){
     + `<path d="M16 42 L33 42 L44 64 L56 64 L67 42 L84 42 L62 84 L38 84 Z"/></svg>`;
 }
 
-// A nav item normally goes to its page; an item with an `action` runs that instead (the Prayers chooser, in shadow mode).
+// A nav item normally goes to its page; an item with an `action` runs that instead (the More menu).
 function _navClick(it) { return it.action || "go('" + it.id + "')"; }
+// The More menu (2026-10-12): the modules this login can use right now, in a sheet at the bottom of the
+// screen. Later: service check-in, lifegroup report. Each entry has its page id and its entry call.
+function moreItems() {
+  const xs = [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }];
+  if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
+  // nyOpen never wipes a send that is still in flight.
+  if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
+  return xs;
+}
+// Prayers' nav slot becomes More when there are 2+ modules to pick from; with Prayers alone it stays Prayers.
 function navItems() {
   const items = _navItemsBase();
-  // Shadow mode (admin only): Prayers opens a small Prayers / New person chooser.
-  if (!_nyShadowAdmin()) return items;
-  return items.map(it => it.id === 'prayers' ? Object.assign({}, it, { action: 'nyPrayersMenu()' }) : it);
+  if (moreItems().length < 2) return items;
+  return items.map(it => it.id === 'prayers' ? { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' } : it);
+}
+function openMore() {
+  const rows = moreItems().map(m => `<button type="button" class="more-row${S.page === m.id ? ' on' : ''}" onclick="closeModal();${m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`).join('');
+  modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
+    <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
 function _navItemsBase() {
   const u = S.user; if (!u) return [];
@@ -2447,7 +2467,6 @@ async function _renderHomeInner(stale) {
   }
   body += `</div>`;
   /*BUS-HOOK*/ body += _busHomeTile();
-  /*NEW-YOUTH*/ body += _nyHomeTile();
   /*BUS-HOOK*/ body += _busNewPeopleCard();
 
   if (stats) {
@@ -2608,8 +2627,8 @@ async function renderLeaderHome() {
   const u = S.user;
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
   /*BUS-HOOK*/ body += _busHomeTile();
-  /*NEW-YOUTH*/ body += _nyHomeTile();
-  const acts = navItems().filter(i => i.id !== 'home');
+  // The base list, so Prayers stays a plain button here even when the nav shows More.
+  const acts = _navItemsBase().filter(i => i.id !== 'home');
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
@@ -6463,7 +6482,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
-    <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds a New person tile. Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds New person to the More menu (in the Prayers spot on the nav bar). Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -8468,24 +8487,8 @@ function _nyMode() {
 }
 // Shadow mode shows the screen to the admin login only.
 function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin'); }
-function _nyShadowAdmin() { return _nyMode() === 'shadow' && _nyOn(); }
-// The Prayers nav item in shadow mode: a small chooser. New person goes through nyOpen, the same entry as the Home tile
-// (it never wipes a send that is still in flight).
-function nyPrayersMenu() {
-  modal(`<div class="mo-title">Prayers</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
-      <button class="btn btn-primary" onclick="closeModal();go('prayers')">Prayers</button>
-      <button class="btn btn-secondary" onclick="closeModal();nyOpen()">New person</button>
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    </div>`);
-}
+// New person is reached from the More menu only (moreItems); it has no Home tile.
 function _navSig() { return navItems().map(it => it.id + '|' + (it.action || '')).join(','); }
-function _nyHomeTile() {
-  if (!_nyOn()) return '';
-  return `<div class="bus-tile" onclick="nyOpen()" role="button" tabindex="0">
-    <div class="bt-ic">${icN('plus')}</div><div class="bt-label">New person</div>
-    <div class="bt-count">Send the connect forms</div></div>`;
-}
 function _nyHost() { try { return localStorage.getItem('ysc.nyHost') || ''; } catch (e) { return ''; } }
 function _nyMessage(r) {
   if (r.dryRun) return { tone: 'good', retryParent: false, lines: ['Test mode: nothing was sent to Elvanto.'] };
