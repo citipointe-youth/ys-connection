@@ -2,7 +2,8 @@
 
 Date: 2026-10-11. Status: spec (step 0 of the link), review fixes applied
 (`C:\Users\ThomasPC\src\link-run\spec-review.md`). Amended in place 2026-10-12 (brief decisions 9–13: service choice,
-past-service check-ins, check-out on, §12 answers). v1 was never released, so `contractVersion` stays `1`. Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
+past-service check-ins, check-out on, §12 answers), and again 2026-10-12 with the cross-device triage's text-only change set
+X1–X17 (no fixture, schema, `/sync/*` shape, reason code or status changes). v1 was never released, so `contractVersion` stays `1`. Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
 Repos: YS Connection branch `feature/elvanto-link-contract`; Elvanto Sync Console (Project 11.1) branch
 `feature/ys-link-contract`.
 
@@ -105,6 +106,9 @@ leaders come from the console with the latest `last_seen_at`.
 
 ## 3. Console API `/sync/*`
 
+**Base address (X15).** The app is served at its host root. The console calls `<origin>/sync/<path>`, whatever path the
+saved address holds.
+
 ### 3.1 Auth and errors
 
 - Header `Authorization: Bearer <token>`. The app compares SHA-256 digests with `crypto.timingSafeEqual` (the
@@ -124,6 +128,10 @@ leaders come from the console with the latest `last_seen_at`.
 | 409 | `LINK_CONTRACT_MISMATCH` | `contractVersion` ≠ the app's | Stop. Toast. Body has `expected`. |
 | 400 | `VALIDATION_ERROR` | Envelope or a row fails Zod (incl. > 5,000 rows) | Alert. Nothing was applied. |
 | 503 | existing transient codes | DB hiccup | Back off 1, 2, 4 … 15 min. |
+
+**Errors (X15).** The console already treats a 500 like a 503 and backs off. The app will answer deadlock,
+serialisation and statement-timeout errors with 503. That is deferred with T-25 (D4), so until then they can arrive as
+a raw 500, which the console also backs off on.
 
 ### 3.2 `POST /sync/claim` (lease + heartbeat)
 
@@ -148,7 +156,8 @@ Server, in one transaction:
 1. Upsert `link_console` (heartbeat fields, `last_seen_at = now()`).
 2. **Sweep** (whichever console polls): `pending` rows with `created_at` older than the cut-off (3 days, §12 Q1) →
    `refused`, `too-old`. `claimed` rows whose lease expired more than 1 h ago → `unclear`, `lease-lost` (they may have
-   been sent; the operator resolves them as usual).
+   been sent; the operator resolves them as usual). **X6:** the sweep's `lease-lost` step skips rows whose `lease_owner`
+   is the console making the claim. That console reclaims them instead (same console only, as now).
 3. Lease up to `max` rows of types whose capability is not `off` (`locked` rows are claimed and answered `refused`,
    `locked`), oldest first, `for update skip locked`:
    `pending` with `retry_at` null or ≤ now, or `claimed` with `lease_until` < now and `lease_owner = consoleId`
@@ -168,8 +177,19 @@ Response 200:
   ]
 }
 ```
-`note` is decrypted here (TLS only). The console claims again at once when `rows.length === max`, and drops any
-reclaimed id it is still working on.
+`note` is decrypted here (TLS only). `note` is the text to write, not only the leader's own words (X1, §7.1). The
+console claims again at once when `rows.length === max`, and drops any reclaimed id it is still working on.
+
+**Paused (X14).** A heartbeat with `inWindow: true` and `max: 0` means paused for the weekly sync. The app then shows
+"Paused for the weekly sync. Check-ins go through after it." Outside the window, a pending row adds "Goes to Elvanto
+within 15 minutes."
+
+**Reclaimed rows (X6).** On a reclaimed row the console reads its sent-log first. `confirmed` (or resolved as landed) →
+`sent`, with that line's key as `sentLogKey`, and for a first-timer the `personId` taken from that key. `pending` or
+`not-confirmed` → `unclear`. No line → run normally. Before it runs any row that has no sent-log line, the console
+refuses `too-old` if `createdAt` is past the 3-day cut-off. The rows of one claim run in the order given. The one
+exception: first-timer rows may run after the others. If a claim reply comes after the console's timeout, its rows stay
+leased until the lease ends, and the next claim reclaims them (accepted).
 
 ### 3.3 `POST /sync/result`
 
@@ -191,13 +211,19 @@ The console reports **each row as soon as it finishes** (up to 20 per call).
 
 | `outcome` | From | To | Required |
 |---|---|---|---|
-| `sent` | `claimed` | `sent` | `sentLogKey`; `reportId` for `submitReport`; `personId` for `firstTimerCheckIn` |
+| `sent` | `claimed` | `sent` | `sentLogKey`; `reportId` for `submitReport` when known (X5); `personId` for `firstTimerCheckIn` |
 | `already` | `claimed` | `sent`, `reason = 'already'` | — |
 | `refused` | `claimed` | `refused` | `reason` |
 | `unclear` | `claimed` | `unclear` | `sentLogKey` |
-| `retry` | `claimed` | `pending`, `retry_at = now + retrySeconds` (60–3600) | `reason` (`console-busy`, `awaiting-approval`, `console-cannot-read`) |
+| `retry` | `claimed` | `pending`, `retry_at = now + retrySeconds` (60–3600) | `reason` (`console-busy`, `awaiting-approval`, `console-cannot-read`); `awaiting-approval` retries every 300 s in the window and every 900 s outside it (X7) |
 | `shadowed` | `claimed` | `shadowed` | `sentLogKey` (the key it would use) |
-| `resolved` | `unclear` (**any console**) | `landed: true` → `sent`; `false` → `refused`, `not-landed` | `landed` |
+| `resolved` | `unclear` (**any console**) | `landed: true` → `sent`, `reason` and `detail` null; `false` → `refused`, `not-landed`, `detail` null | `landed` |
+
+**Resolved and ids (X5).** `resolved` with `landed: true` → `sent`, with `reason` and `detail` set to null. With
+`landed: false` → `refused`, `not-landed`, and `detail` set to null. `already` and `resolved` carry no ids. A
+`submitReport` settled by `resolved` or by a reclaim (X6) may have no `reportId`. It gets one from the next `groups`
+push (the "required" above becomes "when known"). A first-timer answered `already` (the kiosk got there first) keeps
+`personId` null.
 
 A result for a `claimed` row is accepted while `lease_owner = consoleId`, **expired or not**. Anything else →
 `ignored`. Response 200 (valid envelope): `{ "applied": ["…"], "ignored": [{ "id": "…", "why": "already-final" }] }`,
@@ -220,6 +246,8 @@ Envelope: `{ "contractVersion": 1, "consoleId": "…", "takenAt": "2026-10-16T08
 
 Rules:
 - One push = the whole kind, in one transaction. One bad row rejects the push (400).
+- **X10:** `rows: []` is a valid full replace and means "none now". The console sends it once when the flow list goes
+  from some rows to none. People checked in to "No room" are not in `services.checkedIn`.
 - **Order:** `takenAt` equal to or older than the stored one → 200 `{ "applied": false }`. Otherwise apply and store
   `link_mirror_state`.
 - `roster` runs the auto-match (§6) after the upsert. Response: `{ "applied": true, "rows": 612, "matched": { "auto": 3, "ambiguous": 1 } }`
@@ -230,16 +258,16 @@ Rules:
 
 ## 4. App API `/link/*` (leaders)
 
-Session auth, module flag `ministryConfig.modules.elvantoLink` (default `false`; off → `ModuleDisabledError` 404).
+Session auth. **X14:** the link screens stay under the New person switch (`newYouthForms`, D1 decided 2026-10-12), not a
+separate `modules.elvantoLink`; revisit before leaders get access. Off → `ModuleDisabledError` 404.
 Two new RBAC actions in `access-control.ts`: `link:use` (all five roles) and `link:admin` (director, admin).
 
 | Method + path | Action | Returns |
 |---|---|---|
 | `GET /link/status` | `link:use` | `{ console: { lastSeenAt, online, inWindow, pollSeconds, capabilities, consoles: n }, mirrors: { roster: { takenAt }, … } }` |
 | `GET /link/checkin?serviceTime=<uuid>` | `link:use` | The pick list (mirror services with `ymd` from today−7 to today, newest first; the default marked, §5.5); for one service: `people: [{ personId, name, grade, checkedIn, action: { id, type, status, reason } \| null }]` — roster `student` + `leader`, both genders, **name + grade only** |
-| `POST /link/actions` | `link:use` | 201 `{ action }` (§4.1) |
+| `POST /link/batch` | `link:use` | Per-item results (§4.1). **X14:** `/link/batch` replaces the single `POST /link/actions` and `DELETE /link/actions/:id` routes (removed). |
 | `GET /link/actions?ids=…` or `?serviceDate=&type=` | `link:use` | `[{ id, type, status, reason, detail?, createdAt, resultAt, leaderName, login, hasNote }]` (`detail` for `link:admin` only) |
-| `DELETE /link/actions/:id` | `link:use` | One `update … where id = $1 and status = 'pending'` → `cancelled`; 0 rows → 409 `LINK_TOO_LATE` |
 | `GET /link/lifegroups` | `link:use` | Groups in scope: `name`, `meets`, `members` (name, leader), `thisWeek`, `lastReport` (no notes), open actions |
 | `GET /link/flows` | `link:use` | Flow people in scope: `flowName`, `stepName`, `name`, `due`, `assignedTo`, open action |
 | `GET /link/admin/roster?match=none\|ambiguous` | `link:admin` | Roster rows + candidate students (name, grade, gender, DOB from `students`) |
@@ -254,7 +282,10 @@ it, so lifegroups and flows are empty); the role is off by default.
 `routes[0].src` regex and `public/sw.js` `API_RE`; bump the `sw.js` `CACHE`; add a `link.routes.test.ts` like
 `bus.routes.test.ts`; after deploy, `curl` each prefix unauthenticated (expect JSON 401).
 
-### 4.1 `POST /link/actions`
+### 4.1 One action item in `POST /link/batch`
+
+Each action item in a `/link/batch` call (X14) is checked as below. A cancel item is one
+`update … where id = $1 and status = 'pending'` → `cancelled`; 0 rows → `LINK_TOO_LATE`.
 
 ```json
 { "id": "…uuid made on the phone…", "type": "submitReport",
@@ -301,17 +332,17 @@ All ids are lower-case UUIDs. Dates are `YYYY-MM-DD` (Brisbane).
 error-to-`{ error, sent, step }` mapping. Each call runs inside `sentLog.withVia({ via: 'ys', link: <outbox id> })`, so
 each sent-log line names the outbox row (ids only).
 
-**Room** (check-in and first-timer): by roster `kind`, matched by room **name** as `defaultRoom` does: `student` and
-every first-timer → `Youth Program`; `leader` → `Kids/Youth Team`; `other`, or a name the service lacks → `refused`,
-`no-room`. Never the person's Elvanto category (a newly approved person is "New People"/"Inactive").
+**Room and flows (X16; console departures already built).** The room comes from the person's Demographics ticks
+(console spec §0), not from roster `kind`. No room → `refused`, `no-room`. A `completeStep` for a flow that is not in
+the console's flow list → `refused`, `locked`. Console defaults: `max: 3`, `leaseSeconds: 300`.
 
 | `type` | Call | Body the console builds | Sent-log key |
 |---|---|---|---|
 | `checkIn` | `POST /api/interact/checkin` | `{ input: { service, serviceTime, person, room } }` | `checkIn:service:<st>:<person>` |
 | `checkOut` | **new** route + writer, built from the capture (§5.5; finds the check-in id by reading the room). Until it exists: `refused`, `locked`, nothing sent | `{ input: { serviceTime, person } }` | `checkOut:service:<st>:<person>` |
-| `submitReport` | `POST /api/interact/lifegroup` | `{ action: 'submitReport', input: { group, date: dd/mm/yyyy, time, didNotMeet, service, attendees, guests, notes, notesPrivate } }`; `time` from `meets`, else the form's; `service` = the payload's `serviceTimeId` (`''` when null); if Elvanto does not offer it for the date, the writer's read refuses it → `service-not-offered`; `notes` = note + signature | `submitReport:lifegroup:<group>:<yyyymmdd>` |
-| `editReport` | `POST /api/interact/lifegroup` | same + `report`; `time` = the saved one; `service` = the payload's `serviceTimeId` (`''` when null; the app sends the saved one unless the leader changed it); `notes` = Elvanto's notes + new note + signature; refuse `report-changed` if the form ≠ `base` (incl. its service), `service-not-offered` as for submit, `note-too-long` if over 2,000 chars | `editReport:lifegroup:<group>:<report>` |
-| `completeStep` | `GET /api/interact/complete-form?row=` then `POST /api/interact/complete` | `{ row, note: note + signature, private, assignTo: the modal's pre-selected assignee, actions: [], key: 'complete:ys:<row>', role: 'ys' }` — the route gets one optional `{ key, role }` pass-through (today it always logs `complete:manual:<row>`, which is B2-exempt) | `complete:ys:<row>` (never twice) |
+| `submitReport` | `POST /api/interact/lifegroup` | `{ action: 'submitReport', input: { group, date: dd/mm/yyyy, time, didNotMeet, service, attendees, guests, notes, notesPrivate } }`; `time` from `meets`, else the form's; `service` = the payload's `serviceTimeId` (`''` when null); if Elvanto does not offer it for the date, the writer's read refuses it → `service-not-offered`; `notes` = `note` as received | `submitReport:lifegroup:<group>:<yyyymmdd>` |
+| `editReport` | `POST /api/interact/lifegroup` | same + `report`; `time` = the saved one; `service` = the payload's `serviceTimeId` (`''` when null; the app sends the saved one unless the leader changed it); `notes` = Elvanto's notes + `\n` + `note` as received; refuse `report-changed` if the form ≠ `base` (incl. its service), `service-not-offered` as for submit, `note-too-long` if the whole text is over 2,000 chars | `editReport:lifegroup:<group>:<report>` |
+| `completeStep` | `GET /api/interact/complete-form?row=` then `POST /api/interact/complete` | `{ row, note: `note` as received, private, assignTo: the modal's pre-selected assignee, actions: [], key: 'complete:ys:<row>', role: 'ys' }` — the route gets one optional `{ key, role }` pass-through (today it always logs `complete:manual:<row>`, which is B2-exempt) | `complete:ys:<row>` (never twice) |
 | `firstTimerCheckIn` | `GET /api/interact/youth-plan?mode=intake&date=<serviceDate>`, then as `checkIn` | the student form with the same first + last name (case and spaces folded) → its approved person | `checkIn:service:<st>:<person>` |
 
 ### 5.3 State machine and outcome map
@@ -334,7 +365,7 @@ The console maps each reply by `err.category` + `err.sent`, **never by HTTP stat
 | 2 | 200 `{ already: true }`; "Already checked in"; check-out "not checked in" (via `reason`) | `already` |
 | 3 | `sent === 'unknown'`, or an error with no `sent` | `unclear` |
 | 4 | `busy`, `act-busy`, `sent-log` | `retry`, `console-busy` |
-| 5 | `sent-log-blocked` | `unclear` |
+| 5 | `sent-log-blocked` | `retry`, `console-busy`, 300 s (X4; the row runs again, reading first, once the open key is settled) |
 | 6 | `sent-log-stuck` | `already` |
 | 7 | `elvanto-shape`, `elvanto-timeout`, `elvanto-unavailable`, `elvanto-login`, `browser-launch` with `sent: false` | `retry`, `console-cannot-read`; after 1 h from `createdAt` → `refused`, `console-cannot-read` |
 | 8 | `bad-input` with a known `reason` | `refused`, that reason |
@@ -351,8 +382,8 @@ What the leader sees:
 |---|---|---|
 | `pending` | "Waiting for the console." (+ "Console last seen 7:02 pm" if offline); `awaiting-approval`: "Waiting for the new-person form to be approved." | attempts, retry time |
 | `claimed` | "Sending to Elvanto…" | console label |
-| `sent` | "In Elvanto ✓ 7:02 pm" (`already`: "Already in Elvanto ✓") | sent-log key |
-| `shadowed` | "Practice mode: not sent to Elvanto. Check in the usual way." | would-send key |
+| `sent` | "In Elvanto ✓ 7:02 pm" (`already`: "Already in Elvanto ✓"; `already` on a flow step, X9: "Done once already ✓. If it's back on the list, do it in Elvanto.") | sent-log key |
+| `shadowed` | By type (X9). Check-in and first-timer: "Practice mode: not sent to Elvanto. Check in the usual way." Check-out: "Practice mode: not sent to Elvanto. Check out the usual way." Report, edit and flow step: "Practice mode: not sent to Elvanto. Do it in Elvanto as usual." | would-send key |
 | `refused` | The reason line (§5.4) | `detail` |
 | `unclear` | "Not sure it saved. The admin is checking Elvanto." | sent-log key |
 | `cancelled` | "Cancelled." | — |
@@ -362,7 +393,7 @@ What the leader sees:
 | Code | Leader line |
 |---|---|
 | `locked` | "This isn't connected yet. Do it in Elvanto." |
-| `no-room` | "No room for this person. Check in on the kiosk." |
+| `no-room` | "No room for this person. Check in on the kiosk." On a check-out (X9): "They aren't in a room in Elvanto. Check them out in Elvanto." |
 | `person-unknown` | "This person isn't in Elvanto any more." |
 | `report-exists` | "There's already a report for that date. Edit it." |
 | `report-not-found`, `report-changed` | "This report changed in Elvanto. Reload and try again." |
@@ -378,6 +409,9 @@ What the leader sees:
 | `lease-lost` | (unclear) "Not sure it saved. The admin is checking Elvanto." |
 | `note-unreadable` | "This note couldn't be read. Do it in Elvanto." |
 | `already`, `console-busy`, `awaiting-approval` | not a refusal (see §5.3) |
+
+**X9:** codes are unchanged; the leader line is picked by type. `detail` is for the admin only. The console takes it
+from its own table keyed by reason (no PII, 300 chars at most), never from a route's message.
 
 11.1 refusals are English text today (`bad('…')`). The console stream adds a `reason` property next to each `bad()` the
 link uses; the console never maps text.
@@ -408,6 +442,11 @@ link uses; the console never maps text.
 - **First-timer:** enqueued with the new-person form (later YS stream), with the service from the pick list. Form pending or not yet listed → `retry`,
   `awaiting-approval` (5 min). Approved, one name match → check-in → `sent` with `personId`. Two or more →
   `refused`, `ambiguous-first-timer`. Never approved → the sweep refuses it `too-old`.
+  **X7:** `awaiting-approval` retries every 300 s in the window and every 900 s outside it. Once a first-timer row is
+  24 h old and still not approved, or its name never matched, the console answers `refused`, `too-old`. The console
+  reads the intake week that holds the service date. Two intake rows that resolve to the same person count as one
+  match, not `ambiguous-first-timer`. A student side with a hold or an unfinished step (for example an archived
+  profile) is not approved yet.
 
 ## 6. Identity and matching
 
@@ -423,6 +462,11 @@ link uses; the console never maps text.
 - **Manual:** admins match or ignore in `/link/admin/roster` (they see the student's DOB from `students`). A push never
   overwrites `manual`, `auto` or `ignored`. The unique index stops two people pointing at one student; for an Elvanto
   duplicate profile the admin matches one and ignores the other.
+- **One name fold (X8).** For every name match: Unicode NFKD with the accents removed, curly quotes made straight,
+  lower case, no spaces round a hyphen, runs of spaces made one space, and trimmed. It is used by the console's
+  first-timer match, the app's first-timer dedupe key (`first:<st>:<fold(first)> <fold(last)>`), the app's roster
+  auto-match key and its leader-name mapping. A short name still does not match a full name. X7's 24 h refusal covers
+  that case.
 - **Unmatched people still work:** check-in lists the roster, not app students. Matching only links app features.
 - **First-timers** reach the roster after approval; the next CSV import creates the student; the next auto-match links
   them.
@@ -432,9 +476,15 @@ link uses; the console never maps text.
 ### 7.1 Attribution
 
 Every row records the login (`created_by`) and the self-identified leader (`leader_id`, `leader_name`, unverified).
-Elvanto shows the operator's admin as the author, so the console adds a last line
-`— via YS Connection (<leader name>)` to report notes and the Complete note. An edit replaces an existing signature
-line rather than stacking one. Check-in and check-out have no text; their attribution is the outbox row plus the
+Elvanto shows the operator's admin as the author. **X1 (D2 decided 2026-10-12): the app prefixes the name.** For
+`submitReport`, `editReport` and `completeStep`, the app puts the self-identified leader's name in front of the note
+text it sends in the claim row's `note`: `Self identified leader: <leaderName> — <note>`. When the leader wrote no
+note, `note` is `Self identified leader: <leaderName>` alone. The console adds nothing and changes nothing: Submit and
+Complete send `note` as received, and Edit sends Elvanto's notes + `\n` + `note` as received, never replacing an older
+line. Check-in, check-out and first-timer carry no text (`note` null). The app stores the leader's own note and builds
+the prefixed text when it builds the claim row. It caps the leader's own note so the prefixed text fits the existing
+1,900-char `note` cap, so the cap is unchanged. `note-too-long` on an edit counts the whole text (2,000). The fixtures
+stay as they are: their notes are valid example text. Check-in and check-out attribution is the outbox row plus the
 sent-log `link` id.
 
 ### 7.2 Shadow mode
@@ -445,19 +495,32 @@ line), and reports `shadowed` with the key it would use (or `already` / `refused
 app which types are practice. The comparison against the Friday import is the app's reconciliation (§8.6). The operator
 makes the first live send of each type (11.1 rule).
 
+**Practice and the sent-log (X12).** Practice does not ask the sent-log. So it can answer `shadowed` for a key that
+live would answer `already` or `retry`. This is accepted.
+
+**Go live and the practice Friday (X13).** Turn a type live outside the window, when no rows of that type wait. The
+operator makes the first live action and checks it in Elvanto. A `shadowed` check-in does not count as "in" when the
+app checks for a duplicate check-in. On the practice Friday, check-ins are compared with the import. For reports,
+edits and flow steps, the admin compares the would-send keys by hand. New person always sends for real, so never test
+it with a made-up person.
+
 ### 7.3 Polling cadence
 
 The poller lives in the console server process (`gui/server.js`, a timer), not Task Scheduler: it needs the Interact
 session and its write lock. Window: on a Brisbane day with a YS service (`isBrisbaneYs`), **first start − 90 min to
-last start + 4 h** (6:30 pm → 5:00–10:30 pm). If the services read fails: Friday 17:00–23:00.
+last start + 4 h** (6:30 pm → 5:00–10:30 pm). **X3:** if the services read fails, the console stays in the window and
+reads again in 5 min. "No YS service today" is kept for one hour, then read again.
 
 | What | In window | Outside |
 |---|---|---|
 | Claim (+ heartbeat) | every 60 s (`max: 0` while `run.lock` is held) | every 15 min |
-| Push `services` (incl. who is checked in) | every 60 s | hourly |
-| Push `groups` | hourly | hourly |
-| Push `flows` | every 15 min | every 15 min |
-| Push `roster` | at window start | every 6 h |
+| Push `services` (incl. who is checked in) | every 5 min | hourly |
+| Push `groups` | — | hourly (outside the window only) |
+| Push `flows` | every 15 min, only while the console's flow list is not empty | same |
+| Push `roster` | at window start, only once both console category lists are set | every 6 h, same condition |
+
+**X2:** until both console category lists are set there is no roster push and the door list is empty. A failed push
+waits for its normal interval, like a good one. Claims are timed from the start of the last tick.
 
 Screens overlay the leader's own outbox rows on the mirrors, so no push follows a write.
 
@@ -504,12 +567,15 @@ sends nothing; mirrors keep their last snapshot (`takenAt` shows its age).
 Each row is reported as soon as it is done. A crash between send and result: the same console reclaims the row
 (`reclaimed: true`) and looks up its sent-log by `link` id first: `confirmed` → `sent`; `pending`/`not-confirmed` →
 `unclear`; no line → run normally (read-first still guards). If that console never returns (reinstall, new host), the
-sweep moves the row to `unclear`, `lease-lost` after 1 h.
+sweep moves the row to `unclear`, `lease-lost` after 1 h. **X6:** the sweep skips rows leased by the console making
+the claim; that console reclaims them and its sent-log decides (§3.2).
 
 ### 8.4 Clock skew
 
 Leases, `retry_at`, the sweep and `service_date` use the database/server clock. The console clock decides only its
-window and `takenAt` order (one console).
+window and `takenAt` order (one console). **X11:** `takenAt` is the console's server-corrected time (the console clock
+plus the offset from `serverTime`), taken when the read starts. The app lets a person's own outbox row decide their
+state while `resultAt + 120 s > takenAt`.
 
 ### 8.5 Two consoles
 
@@ -518,6 +584,9 @@ are per machine, so 11.1's read-first is the cross-machine guard (as for intake,
 `consoles: n` seen in the last 10 minutes; n > 1 shows an admin warning. Recommended: one console.
 
 ### 8.6 The Friday import and app check-ins
+
+**Stopping (X17).** Turning the New person switch (which the link screens share) Off stops the screens only. Mirrors
+still arrive. To stop all data flow, also Turn off the link on the console.
 
 - The import replaces sessions and attendance. **Outbox rows are a separate table with no FK**, so nothing the app
   queued vanishes: `pending`, `refused` and `unclear` check-ins stay visible with their status after the import.
