@@ -683,10 +683,27 @@ concrete failure scenario and a proposed fix. A finding that would need a fixtur
 | RV6 | **Reliability** | The phone queue survives a reload, an app kill or a dead signal; flush retries and backoff; idempotency end to end (phone → `/link/batch` → outbox → `/sync/claim` → result); lease expiry and a double console; partial batch failures; the Supabase claim transaction; the 0017 migration and RLS; the rate limits under a real Friday; clock skew between phone and server. |
 | RV7 | **Speed / end-user feel** | Tap-to-tick under 100 ms with no network wait; roster loaded once per service; search on the phone; batch size versus the pool cap of 15; no request per keystroke; the shell isn't rebuilt on queue changes; the leader quick check-in submits 40 leaders in one request; cold start on the first Friday tap. |
 
-**Then RV8 [Opus] — triage and fix.** The orchestrator rules on each finding: fix, defer (listed in CLAUDE.md
-"Resume here") or reject (with a reason). CONTRACT findings go to the operator. One Opus executor fixes the accepted
-findings, TDD, and commits with explicit paths. Re-run the verify command and the V1 smoke. Write a table
-`docs/superpowers/reviews/2026-10-12-link-triage.md` (finding → ruling → commit).
+**Then RV8 [Opus] — consolidate for cross-device triage** (changed by the operator 2026-10-12). The console side
+(Project 11.1, on the PC) runs its own review set. A separate Claude instance triages BOTH sides' findings together
+and sends solutions back to each device. So here we do **not** triage alone:
+1. Merge the seven review files into ONE self-contained file,
+   `docs/superpowers/reviews/2026-10-12-link-app-review-findings.md`. Remove duplicates (keep every source review's
+   tag). It must make sense to a reader who has NOT seen this repo:
+   - **Header:** repo, branch, commit hash, contract version, the date, the reviews run, and the counts by severity.
+   - **A short context section:** what the app side does; its endpoints (`/link/*`, `/sync/*`); the outbox state
+     machine; the phone queue and `/link/batch`; the attribution split (the console composes "Self identified
+     leader: …"); and the ledger decisions the reader must respect (one shared switch, 3-day too-old, which-service
+     rule, check-out on).
+   - **One entry per finding:** ID (`APP-<n>`), severity, **side** (`app` / `console` / `both` / `CONTRACT`),
+     source reviews, file:line, the failure scenario, the proposed fix, and whether the fix needs the other side to
+     change.
+   - **Sections in this order:** CONTRACT and cross-side findings first, then app-only.
+2. Copy it to the OneDrive root: `C:\Users\thoma\OneDrive\2026-10-12-link-app-review-findings.md`. Commit the repo
+   copy.
+3. **Stop and wait.** Don't fix anything yet, not even the app-only findings. The triager's answer may change them.
+   When the solutions file comes back, an Opus executor applies the rulings for this side, TDD, and commits with
+   explicit paths. Then re-run the verify command and the V1 smoke. Write
+   `docs/superpowers/reviews/2026-10-12-link-triage.md` (finding → ruling → commit).
 
 ### Task V3 [Opus] — Final verification
 Verify: `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`

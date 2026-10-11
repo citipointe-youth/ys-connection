@@ -95,5 +95,10 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
     (person, service, type), logged per action (ledger 12). Same gate (shared switch), any login, same service pick.
     No contract change: each is a normal check-in action.
 
+21. **Cross-device review triage** (operator, 2026-10-12). The link review wave (plan Lane RV) ends by consolidating
+    every link finding into ONE self-contained file → `OneDrive\2026-10-12-link-app-review-findings.md`. A separate
+    Claude instance triages it together with the console's review file and sends solutions back to each device.
+    App side waits for those solutions before fixing. Rework reviews (plan Lane R) are triaged locally as before.
+
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
