@@ -68,9 +68,9 @@ describe('New youth SPA', () => {
 
 // Runs the REAL nySend / nyOpen / renderNewYouth etc. from index.html against minimal stubs.
 const FRESH = '{ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }';
-const FNS = ['_nyOn', '_nyHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
+const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
 function harness(post: (path: string, body: any, ms?: number) => Promise<any>) {
-  const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: true } } } };
+  const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
   const pages: string[] = [];
   const toasts: Array<[string, number | undefined]> = [];
   const scrolled: any[] = [];
@@ -122,7 +122,7 @@ describe('nySend failure paths', () => {
     expect(t.last()).not.toContain('id="ny-send"');
     expect(t.last()).not.toContain('Send the parent form again');
     expect(t.last()).not.toContain('nyBack()'); // the full form would send the student a second time
-    expect(t.last()).toContain('Next new youth');
+    expect(t.last()).toContain('Next new person');
   });
   it('a REFUSED full send keeps the inputs, stays on the form, and puts the card above Send in view', async () => {
     const t = harness(async () => { throw Object.assign(new Error('Check the parent mobile'), { status: 400, code: 'BAD_REQUEST' }); });
@@ -288,5 +288,109 @@ describe('result page buttons (M3)', () => {
     t.h.renderNewYouth();
     expect(t.last()).toContain('Only the student form will be sent: the parent form was sent with the last student.');
     expect(t.last()).not.toContain('already in');
+  });
+});
+
+
+// ---- Task 7: shadow mode, "New person" naming, nav swap, Prayers chooser ----
+const modeOf = (mode: any, role: string) => ({ user: { role }, settings: { ministryConfig: { modules: { newYouthForms: mode } } } });
+const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
+const navFns = (S: any) => new Function('S', `${['_nyModeOf', '_nyMode', '_nyOn', '_nyShadowAdmin', '_navItemsBase', 'navItems', 'bottomNavItems', '_navClick'].map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick };`)(S) as { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string };
+const ids = (xs: any[]) => xs.map((i) => i.id);
+
+describe('_nyOn: who sees the New person screen', () => {
+  it('off: nobody', () => {
+    for (const r of ['leader', 'grade', 'quad', 'director', 'admin']) expect(nyOnFn(modeOf('off', r))()).toBe(false);
+  });
+  it('on: everybody', () => {
+    for (const r of ['leader', 'grade', 'quad', 'director', 'admin']) expect(nyOnFn(modeOf('on', r))()).toBe(true);
+  });
+  it('shadow: the admin login only', () => {
+    for (const r of ['leader', 'grade', 'quad', 'director']) expect(nyOnFn(modeOf('shadow', r))()).toBe(false);
+    expect(nyOnFn(modeOf('shadow', 'admin'))()).toBe(true);
+  });
+  it('a legacy boolean still works (true = on, false/missing = off)', () => {
+    expect(nyOnFn(modeOf(true, 'grade'))()).toBe(true);
+    expect(nyOnFn(modeOf(false, 'admin'))()).toBe(false);
+    expect(nyOnFn(modeOf(undefined, 'admin'))()).toBe(false);
+    expect(nyOnFn({ user: { role: 'admin' }, settings: null })()).toBe(false);
+  });
+});
+
+describe('bottom nav order and the Prayers chooser', () => {
+  it('grade: Home | Health | My Connections | Prayers | Setup', () => {
+    const n = navFns(modeOf('off', 'grade'));
+    expect(ids(n.bottomNavItems())).toEqual(['home', 'at-risk', 'my-students', 'prayers', 'leaders']);
+    expect(ids(n.navItems())).toEqual(['home', 'at-risk', 'my-students', 'prayers', 'leaders', 'trends', 'birthdays']);
+  });
+  it('leader: Home | Prayers | Health | My Connections | Birthdays', () => {
+    const n = navFns(modeOf('off', 'leader'));
+    expect(ids(n.bottomNavItems())).toEqual(['home', 'prayers', 'at-risk', 'my-students', 'birthdays']);
+  });
+  it('the swap keeps each item id, icon, label and mbl as they were', () => {
+    const g = navFns(modeOf('off', 'grade')).navItems();
+    expect(g.find((i) => i.id === 'prayers')).toMatchObject({ ic: 'pray', label: 'Prayers', mbl: 'Prayers' });
+    expect(g.find((i) => i.id === 'my-students')).toMatchObject({ ic: 'users', label: 'My Connections' });
+  });
+  it('quad, director and admin keep their order', () => {
+    expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
+    expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
+    expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);
+  });
+  it('shadow + admin: the Prayers item is an action that opens the chooser, not go(prayers)', () => {
+    const n = navFns(modeOf('shadow', 'admin'));
+    const p = n.navItems().find((i) => i.id === 'prayers')!;
+    expect(p.action).toBe('nyPrayersMenu()');
+    expect(n._navClick(p)).toBe('nyPrayersMenu()');
+    expect(n.bottomNavItems().find((i) => i.id === 'prayers')!.action).toBe('nyPrayersMenu()');
+    expect(ids(n.bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']); // order unchanged
+  });
+  it('off, on, and shadow for other roles: Prayers is a plain go(prayers)', () => {
+    const cases: Array<[any, string]> = [['off', 'admin'], ['on', 'admin'], ['on', 'grade'], ['shadow', 'grade'], ['shadow', 'leader'], ['shadow', 'quad'], ['shadow', 'director'], [true, 'admin']];
+    for (const [mode, role] of cases) {
+      const n = navFns(modeOf(mode, role));
+      const p = n.navItems().find((i) => i.id === 'prayers')!;
+      expect(p.action, `${mode}/${role}`).toBeUndefined();
+      expect(n._navClick(p)).toBe("go('prayers')");
+    }
+  });
+  it('the shell builds both navs from _navClick, so desktop and bottom agree', () => {
+    const shell = extractFn(html, '_initShell');
+    expect(shell.match(/_navClick\(it\)/g)).toHaveLength(2);
+    expect(shell).not.toMatch(/onclick="go\('\$\{it\.id\}'\)"/);
+  });
+  it('the chooser offers Prayers and New person; New person uses the Home tile entry (nyOpen)', () => {
+    let shown = '';
+    const f = new Function('modal', `${extractFn(html, 'nyPrayersMenu')}; return nyPrayersMenu;`)((h: string) => { shown = h; });
+    f();
+    expect(shown).toContain("go('prayers')");
+    expect(shown).toContain('closeModal();nyOpen()');
+    expect(shown).toContain('New person');
+    expect(shown).not.toMatch(/nyReset/); // follows the tile: never wipe an in-flight send
+    expect(shown).toContain('Cancel');
+  });
+});
+
+describe('"New person" is the name the host sees', () => {
+  it('title, tile and buttons say New person', () => {
+    const r = extractFn(html, 'renderNewYouth');
+    expect(r).not.toMatch(/New youth/);
+    expect(r.match(/<h1>New person<\/h1>/g)!.length).toBeGreaterThanOrEqual(4);
+    expect(r).toContain('Next new person');
+    expect(extractFn(html, '_nyHomeTile')).toContain('New person');
+    expect(extractFn(html, '_nyHomeTile')).not.toMatch(/New youth/);
+  });
+  it('Youth Setup shows an Off / Shadow mode / On select and no checkbox for it', () => {
+    expect(html).toContain("_setupSet('modules.newYouthForms', this.value)");
+    expect(html).not.toContain("_setupSet('modules.newYouthForms', this.checked)");
+    expect(html).toMatch(/Shadow mode \(admin only\)/);
+    expect(html).toMatch(/newYouthForms: 'off'/);
+    expect(html).toMatch(/Adds a New person tile/);
+  });
+  it('saving Youth Setup rebuilds the nav when the module state changed', () => {
+    expect(extractFn(html, 'saveMinistrySetup')).toContain('_initShell()');
+  });
+  it('Bus Ministry keeps its own New Person button', () => {
+    expect(html).toMatch(/New Person/);
   });
 });

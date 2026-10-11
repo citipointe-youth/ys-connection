@@ -1,6 +1,7 @@
 import type { Actor } from '../core/entities/user';
 import type { UserRole } from '../core/types/enums';
 import { ForbiddenError } from '../core/errors/app-error';
+import type { NewYouthMode } from '../core/ministry-config';
 
 // All actions in the system
 export type Action =
@@ -115,6 +116,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
 
 export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
+}
+
+// Who may use the New person screen (module key newYouthForms): 'on' = every role that has
+// intake:write, 'shadow' = the admin login only, 'off' = nobody.
+export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
+  if (!can(actor, 'intake:write')) return false;
+  return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
 }
 
 export function assertCan(actor: Actor, action: Action): void {

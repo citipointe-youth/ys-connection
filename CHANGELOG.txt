@@ -4,6 +4,21 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+NEW PERSON: SHADOW MODE, NAME, NAV SWAP  (2026-10-11)
+-------------------------------------------------------------------------------
+- The "New youth" screen is now called "New person" (title, Home tile, buttons,
+  Youth Setup). Internal names are unchanged (route, page id, module key).
+- Youth Setup -> Modules: the control is now Off / Shadow mode (admin only) /
+  On. Shadow mode shows New person to the admin login only; every other login
+  gets the same "not available" answer from the server. Sending is unchanged
+  (live only where ELVANTO_FORMS_LIVE=1). The old tick-box value still reads.
+- In shadow mode the Prayers item in the nav opens a small Prayers / New person
+  chooser (admin only). Off and On: Prayers works as before.
+- Bottom nav: Prayers and My Connections swap places for grade logins
+  (Home | Health | My Connections | Prayers | Setup) and leader logins
+  (Home | Prayers | Health | My Connections | Birthdays).
+
+-------------------------------------------------------------------------------
 NEW YOUTH FORMS  (2026-10-11)
 -------------------------------------------------------------------------------
 - New "New youth" screen (Home tile, off by default: Youth Setup -> Modules).

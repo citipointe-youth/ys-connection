@@ -1317,8 +1317,8 @@ function _initShell() {
   if (!u) return;
   const items = navItems();
   const bn = bottomNavItems();
-  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
-  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       ${_previewStash ? _previewBannerHtml(u) : ''}
@@ -1769,27 +1769,35 @@ function brandMark(px, color){
     + `<path d="M16 42 L33 42 L44 64 L56 64 L67 42 L84 42 L62 84 L38 84 Z"/></svg>`;
 }
 
+// A nav item normally goes to its page; an item with an `action` runs that instead (the Prayers chooser, in shadow mode).
+function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function navItems() {
+  const items = _navItemsBase();
+  // Shadow mode (admin only): Prayers opens a small Prayers / New person chooser.
+  if (!_nyShadowAdmin()) return items;
+  return items.map(it => it.id === 'prayers' ? Object.assign({}, it, { action: 'nyPrayersMenu()' }) : it);
+}
+function _navItemsBase() {
   const u = S.user; if (!u) return [];
   const modules = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules) || {};
   // CA defaults true (empty/absent config = current behaviour).
   const caOn = modules.connectionAudit !== false;
   const caItem = { id:'ca-overview', ic:'link', label:'Connection Audit', mbl:'Connection Audit' };
   // Leader (junior leader, §5.2): a slim, follow-up-focused nav — Home (lite) |
-  // My Connections | Health | Birthdays. No Connect Setup / Trends / Import.
+  // Prayers | Health | My Connections | Birthdays (2026-10-11: Prayers and My Connections swapped). No Connect Setup / Trends / Import.
   if (u.role === 'leader') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
-    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
-  // Grade: Home | Health | My Students | Connect Setup  (Trends + Birthdays in quick actions)
+  // Grade: Home | Health | My Connections | Prayers | Setup  (Trends + Birthdays in quick actions; Prayers and My Connections swapped 2026-10-11)
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
-    { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
+    { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
     { id:'leaders',    ic:'arrr',     label:'Setup',              mbl:'Setup' },
     // quick actions:
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
@@ -6227,7 +6235,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: false },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off' },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
@@ -6267,8 +6275,10 @@ async function saveMinistrySetup() {
       termGapDays: _setupTermGapDays,
     });
     Cache.del('/settings');
+    const navBefore = _navSig();
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
+    if (_shellReady && _navSig() !== navBefore) _initShell(); // the New person state changes the Prayers nav item
     toast('Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
@@ -6453,7 +6463,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
-    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('newYouthForms')?'checked':''} onchange="_setupSet('modules.newYouthForms', this.checked)"> <span>New youth forms ${helpTip("Adds a New youth tile. Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Off by default.")}</span></label>
+    <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds a New person tile. Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -8450,14 +8460,30 @@ function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.p
 const NY_ALLERGIES = ["Anaphylaxis","Asthmatic","Dairy Intolerance","Egg Allergy","Gluten Intolerance","Lactose Intolerance","Nut Allergy","Penicilin Allergy","Skin Allergy","Sugar Allergy","Wheat Allergy"];
 const NY_CONDITIONS = ["ADHD","Autism/Aspergers","Diabetes Type 1","Epilepsy"];
 let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
-function _nyOn() {
+// The module state: 'off' | 'shadow' | 'on'. A legacy boolean (true = on) is read too; the server normalises it.
+function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'shadow' ? 'shadow' : 'off'; }
+function _nyMode() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
-  return !!(mc.modules && mc.modules.newYouthForms);
+  return _nyModeOf(mc.modules && mc.modules.newYouthForms);
 }
+// Shadow mode shows the screen to the admin login only.
+function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin'); }
+function _nyShadowAdmin() { return _nyMode() === 'shadow' && _nyOn(); }
+// The Prayers nav item in shadow mode: a small chooser. New person goes through nyOpen, the same entry as the Home tile
+// (it never wipes a send that is still in flight).
+function nyPrayersMenu() {
+  modal(`<div class="mo-title">Prayers</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" onclick="closeModal();go('prayers')">Prayers</button>
+      <button class="btn btn-secondary" onclick="closeModal();nyOpen()">New person</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+function _navSig() { return navItems().map(it => it.id + '|' + (it.action || '')).join(','); }
 function _nyHomeTile() {
   if (!_nyOn()) return '';
   return `<div class="bus-tile" onclick="nyOpen()" role="button" tabindex="0">
-    <div class="bt-ic">${icN('plus')}</div><div class="bt-label">New youth</div>
+    <div class="bt-ic">${icN('plus')}</div><div class="bt-label">New person</div>
     <div class="bt-count">Send the connect forms</div></div>`;
 }
 function _nyHost() { try { return localStorage.getItem('ysc.nyHost') || ''; } catch (e) { return ''; } }
@@ -8496,15 +8522,15 @@ function renderNewYouth() {
   if (!_nyOn()) { go('home'); return; }
   const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
   if (NY.sending) { // the host left mid-send and came back: the reply is still on its way
-    setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
       <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>Sending to Elvanto...</p><p>Stay on this screen until it says whether the forms went in.</p></div>`));
     return;
   }
   if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
-    setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
       <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
       ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
-      <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new youth</button>`));
+      <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`));
     window.scrollTo(0, 0);
     return;
   }
@@ -8512,13 +8538,13 @@ function renderNewYouth() {
     const m = _nyMessage(NY.result);
     const colour = m.tone === 'good' ? 'var(--success)' : m.tone === 'bad' ? 'var(--danger)' : 'var(--warn)';
     const failed = [NY.result.student, NY.result.parent].includes('failed');
-    setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
       ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
       ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
-      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new youth</button>`}`));
+      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`}`));
     return;
   }
   const k = NY.keep || {};
@@ -8528,7 +8554,7 @@ function renderNewYouth() {
   const sel = (id, label, opts) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><select class="fs" id="ny-${id}">${opts.map(([v, l]) => `<option value="${v}" ${k[id] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
   const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
   const addr = k.address || {};
-  setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+  setApp(shell(`<div class="ph"><h1>New person</h1></div>
     ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form was sent with the last student.</div>` : ''}
     <form id="ny-form" onsubmit="nySend(event)" novalidate autocomplete="off">
     <div class="card">

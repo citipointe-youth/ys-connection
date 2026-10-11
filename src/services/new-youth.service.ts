@@ -4,7 +4,7 @@ import type { Actor } from '../core/entities/user';
 import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import { AppError, BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
 import { RateLimiter } from '../utils/rate-limiter';
-import { assertCan } from './access-control';
+import { assertCan, canUseNewYouth } from './access-control';
 import * as EF from './elvanto-forms';
 
 export interface NewYouthResult {
@@ -118,7 +118,7 @@ export function makeNewYouthService(
     async send(actor, input) {
       assertCan(actor, 'intake:write');
       const settings = await settingsRepo.getSettings();
-      if (!settings.ministryConfig.modules.newYouthForms) throw new ModuleDisabledError('New youth forms');
+      if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New youth forms');
 
       const parsed = Schema.safeParse(input);
       if (!parsed.success) {
