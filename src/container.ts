@@ -217,7 +217,7 @@ export async function buildContainer(): Promise<Container> {
   // ----- Services -----
   const auth = makeAuthService(users);
   const student = makeStudentService(students, settings, connections, prayers);
-  const leader = makeLeaderService(leaders);
+  const leader = makeLeaderService(leaders, settings);
   const prayer = makePrayerService(prayers, students, settings, connections);
   const connection = makeConnectionService(connections, students, leaders, settings);
   const followup = makeFollowupService(
@@ -260,7 +260,7 @@ export async function buildContainer(): Promise<Container> {
     }
     catch { return null; }
   };
-  const setup = makeSetupService({ users, auth, env: process.env, probeDb, schemaVersion });
+  const setup = makeSetupService({ users, auth, settings, env: process.env, probeDb, schemaVersion });
   const health = cachedProbe(async (): Promise<Record<string, unknown>> => {
     const [db, current] = await Promise.all([probeDb(), schemaVersion()]);
     return { db: db ? 'ok' : 'down', schema: { current, expected: LATEST_MIGRATION } };
