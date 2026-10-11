@@ -9,7 +9,11 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkFlush', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
-  '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop'];
+  '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
+  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkHHMM', '_lkDefaultSvcFor',
+  '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
+  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -22,7 +26,7 @@ interface Env { storage: Map<string, string>; failStorage?: boolean; post?: (pat
 
 function makeEnv(e: Partial<Env> = {}) {
   const env: Env = { storage: e.storage ?? new Map(), ...e } as Env;
-  const calls = { posts: [] as any[], toasts: [] as string[], modals: [] as string[], closed: 0, asks: [] as string[] };
+  const calls = { posts: [] as any[], toasts: [] as string[], modals: [] as string[], closed: 0, asks: [] as string[], apps: [] as string[] };
   const ls = {
     getItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); return env.storage.has(k) ? env.storage.get(k)! : null; },
     setItem: (k: string, v: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.set(k, String(v)); },
@@ -36,7 +40,9 @@ function makeEnv(e: Partial<Env> = {}) {
     const localStorage = __ls;
     const navigator = { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1' };
     const document = { getElementById: () => null, visibilityState: 'visible' };
-    const API = { post: (p, b, ms) => __post(p, b, ms), fresh: () => Promise.reject(new Error('no')) };
+    const API = { post: (p, b, ms) => __post(p, b, ms), fresh: () => Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
+    const setApp = (h) => __calls.apps.push(h);
+    const shell = (h) => h;
     const toast = (m) => __calls.toasts.push(m);
     const modal = (h) => __calls.modals.push(h);
     const closeModal = () => { __calls.closed++; };
@@ -100,8 +106,8 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
     expect(t({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for the console. Console last seen 7:02 pm');
     expect(t({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
     expect(t({ status: 'claimed' })).toBe('Sending to Elvanto…');
-    expect(t({ status: 'sent', reason: null, resultAt: '2026-10-16T09:02:00.000Z' })).toBe('In Elvanto ✓ 7:02 pm');
-    expect(t({ status: 'sent', reason: 'already' })).toBe('Already in Elvanto ✓');
+    expect(t({ status: 'sent', reason: null, resultAt: '2026-10-16T09:02:00.000Z' })).toBe('In Elvanto 7:02 pm');
+    expect(t({ status: 'sent', reason: 'already' })).toBe('Already in Elvanto');
     expect(t({ status: 'shadowed' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
     expect(t({ status: 'unclear', reason: 'lease-lost' })).toBe('Not sure it saved. The admin is checking Elvanto.');
     expect(t({ status: 'cancelled' })).toBe('Cancelled.');
@@ -483,7 +489,7 @@ describe('F1.4 leader sheet', () => {
   });
   it('checked in = Done (no box); no personId = greyed Not linked (no box); the rest get a box', () => {
     const r = rowsOf(setup());
-    expect(r[1]).toContain('lk-done-ic'); expect(r[1]).not.toContain('lk-box'); expect(strip('<' + r[1])).toContain('In Elvanto ✓');
+    expect(r[1]).toContain('lk-done-ic'); expect(r[1]).not.toContain('lk-box'); expect(strip('<' + r[1])).toContain('In Elvanto'); expect(r[1]).toContain('data-ic="check"');
     expect(r[3]).toContain(' dis"'); expect(r[3]).toContain('Not linked'); expect(r[3]).not.toContain('class="lk-box"');
     expect(r[0]).toContain('class="lk-box"'); expect(r[2]).toContain('class="lk-box"');
   });
@@ -531,5 +537,273 @@ describe('F1.4 leader sheet', () => {
     // _lkPickService is not loaded here: the call proves the branch without a sheet of leaders.
     expect(() => h.fns._lkOpenLeaders()).toThrow(/_lkPickService/);
     expect(h.calls.modals).toEqual([]);
+  });
+});
+
+// ── Orchestrator fixes to F1 ──
+describe('F1 fix: no Unicode symbols in the LINK block', () => {
+  it('no arrow or tick glyphs; the sent tick is the SVG check icon', () => {
+    const block = html.slice(html.indexOf('/* ── LINK MODULE ──'), html.indexOf('/* ── END LINK MODULE ── */'));
+    expect(block).not.toMatch(/[←-⇿☀-➿]/);
+    const h = makeEnv();
+    expect(h.fns._lkStatusHtml({ status: 'sent', reason: 'already' })).toBe('<svg data-ic="check"></svg> Already in Elvanto');
+    expect(h.fns._lkStatusHtml({ status: 'pending', reason: null })).toBe('Waiting for the console.');
+    expect(h.fns._lkStatusHtml({ status: 'refused', reason: 'report-exists' })).toBe('There&#39;s already a report for that date. Edit it.');
+  });
+});
+
+describe('F1 fix: "I am" switch guard (ledger 18)', () => {
+  const act = (n: number) => ({ kind: 'action', id: P(n), type: 'checkIn', payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, personId: P(n + 100) }, note: null, leaderId: 'L1' });
+  const saved = (b: any) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: i.kind === 'identity' ? 'logged' : 'saved' })) });
+  it('unsent items: asks first, sends, then switches; the sent items keep their own "I am"', async () => {
+    let atPost: string | undefined = 'unset';
+    const h: any = makeEnv({ leaderId: 'L1', post: (_p, b) => { atPost = h.env.storage.get('yap_leader_id'); return saved(b); } });
+    h.fns._lkQSet([act(1), act(2), { kind: 'identity', id: P(9), at: '2026-10-16T08:00:00.000Z', from: null, to: 'L1' }]);
+    h.answers.push(true);
+    expect(await h.fns._lkSwitchLeader('L2')).toBe(true);
+    expect(h.calls.asks).toEqual(['2 actions are still waiting to send. Send them first? | Send first | Cancel']);
+    expect(h.calls.posts).toHaveLength(1);
+    expect(atPost).toBeUndefined(); // the flush went out before the switch
+    expect(h.calls.posts[0].b.items.filter((i: any) => i.kind === 'action').map((i: any) => i.leaderId)).toEqual(['L1', 'L1']);
+    expect(h.env.storage.get('yap_leader_id')).toBe('L2');
+  });
+  it('one item reads in the singular; Cancel keeps the old "I am" and sends nothing', async () => {
+    const h = makeEnv({ leaderId: 'L1' });
+    h.fns._lkQSet([act(1)]);
+    h.answers.push(false);
+    expect(await h.fns._lkSwitchLeader(null)).toBe(false);
+    expect(h.calls.asks).toEqual(['1 action is still waiting to send. Send it first? | Send first | Cancel']);
+    expect(h.calls.posts).toHaveLength(0);
+    expect(h.env.storage.has('yap_leader_id')).toBe(false);
+    expect(h.fns._lkQGet()).toHaveLength(1);
+  });
+  it('no question with an empty queue (identity items do not count), with no "I am" yet, or for the same leader', async () => {
+    const a = makeEnv({ leaderId: 'L1' });
+    a.fns._lkQSet([{ kind: 'identity', id: P(9), at: 'x', from: null, to: 'L1' }]);
+    expect(await a.fns._lkSwitchLeader('L2')).toBe(true);
+    const b = makeEnv({ leaderId: null });
+    b.fns._lkQSet([act(1)]);
+    expect(await b.fns._lkSwitchLeader('L2')).toBe(true);
+    const c = makeEnv({ leaderId: 'L1' });
+    c.fns._lkQSet([act(1)]);
+    expect(await c.fns._lkSwitchLeader('L1')).toBe(true);
+    expect([...a.calls.asks, ...b.calls.asks, ...c.calls.asks]).toEqual([]);
+    expect(b.env.storage.get('yap_leader_id')).toBe('L2');
+  });
+  it('a send that does not finish still switches after 10 s (nothing is lost: items keep their "I am")', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ leaderId: 'L1', post: () => new Promise(() => {}) });
+    h.fns._lkQSet([act(1)]);
+    h.answers.push(true);
+    const p = h.fns._lkSwitchLeader('L2');
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(await p).toBe(true);
+    expect(h.env.storage.get('yap_leader_id')).toBe('L2');
+    expect(h.fns._lkQGet().filter((i: any) => i.kind === 'action')).toHaveLength(1);
+  });
+  it('every UI entry point changes "I am" through the guard; setMyLeaderId itself stays synchronous', () => {
+    // setMyLeaderId is called only by _lkSwitchLeader and _busIdentityChanged (whose two handlers run the guard first).
+    expect(html.match(/setMyLeaderId\(/g)).toHaveLength(3);
+    expect(extractFn(html, '_lkSwitchLeader')).toContain('setMyLeaderId(');
+    expect(extractFn(html, '_busIdentityChanged')).toContain('setMyLeaderId(');
+    expect(html.match(/_busIdentityChanged\((this\.value|null)\)/g)).toHaveLength(2);
+    expect(html).toContain('onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })"');
+    expect(html).toContain(`onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"`);
+    expect(extractFn(html, 'setMyLeaderId')).not.toMatch(/async|await/);
+    for (const fn of ['_homeNotYou', 'chooseHomeLeader', '_msNotYou', '_msPickLeader', '_lkIamUse']) {
+      expect(extractFn(html, fn)).toContain('_lkSwitchLeader(');
+    }
+    expect(html).toContain('onclick="_homeNotYou()">Not you?</button>');
+    expect(html).toContain('onclick="_msNotYou()">Not you?</button>');
+    expect(html).toContain('onchange="_msPickLeader(this.value)"');
+  });
+});
+
+// ── F2 lifegroup report ──
+describe('F2 lifegroup report', () => {
+  const G = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const RSVC = [
+    { serviceTimeId: P(50), serviceId: P(51), name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' },
+    { serviceTimeId: P(52), serviceId: P(53), name: 'Morning', startsAt: '2026-10-11T00:15:00.000Z', ymd: '2026-10-11' },
+  ];
+  const grp = (over: any = {}) => ({ groupId: G(1), name: 'Yr 9 <i>Girls</i>', meets: 'Tue 6:30 PM',
+    members: [{ personId: P(61), name: 'Ava Example', leader: false }, { personId: P(62), name: 'Dana Testleader', leader: true },
+      { personId: P(63), name: 'Ben <b>Sample</b>', leader: false }],
+    thisWeek: 'reported', defaultDate: '2026-10-13', openAction: null,
+    lastReport: { reportId: G(9), date: '2026-10-06', time: '18:30', didNotMeet: false, attendees: [P(61), P(62)], guests: 2,
+      serviceTimeId: null, editable: true, blocked: null, notes: 'SECRET NOTE' }, ...over });
+  const setup = (leaderId: string | null = 'L1', over: any = {}, post?: Env['post']) => {
+    const h = makeEnv({ leaderId, post });
+    const L = h.get().LINK;
+    L.rToday = '2026-10-16'; L.rServices = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
+    L.groups = [grp(over)]; L.gid = G(1);
+    return h;
+  };
+  it('the group list chip per thisWeek; "Can\'t read" is double-quoted in the source', () => {
+    const want: Record<string, string> = { reported: 'Reported', 'did-not-meet': 'Did not meet', none: 'No report', later: 'Later', unreadable: "Can't read" };
+    const f = makeEnv().fns;
+    for (const [k, v] of Object.entries(want)) expect(strip(f._lkWeekChip(k))).toBe(v);
+    expect(extractFn(html, '_lkWeekChip')).toContain(`"Can't read"`);
+    const h = setup();
+    const list = h.fns._lkGroupsHtml();
+    expect(strip(list)).toContain('Reported');
+    expect(list).toContain('Yr 9 &lt;i&gt;Girls&lt;/i&gt;');
+    expect(list).not.toContain('<i>Girls');
+  });
+  it('the Last report card never shows notes', () => {
+    const h = setup();
+    const out = strip(h.fns._lkLastHtml(h.get().LINK.groups[0]));
+    expect(out).not.toContain('SECRET');
+    expect(out).toContain('Tue 6 Oct 18:30');
+    expect(out).toContain('No service');
+    expect(out).toContain('Guests2');
+    expect(out).toContain('Here (2)Ava Example, Dana Testleader');
+    const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
+    expect(strip(dnm.fns._lkLastHtml(dnm.get().LINK.groups[0]))).toContain('Group did not meet');
+  });
+  it('Edit is shown only when editable, else "Edit this report in Elvanto."', () => {
+    const a = setup();
+    const on = a.fns._lkLastHtml(a.get().LINK.groups[0]);
+    expect(on).toContain('onclick="_lkEditReport()"');
+    expect(on).not.toContain('Edit this report in Elvanto.');
+    const b = setup('L1', { lastReport: { ...grp().lastReport, editable: false, blocked: 'multi-service' } });
+    const off = b.fns._lkLastHtml(b.get().LINK.groups[0]);
+    expect(off).not.toContain('_lkEditReport');
+    expect(off).toContain('Edit this report in Elvanto.');
+  });
+  it('"Group did not meet" clears and hides ticks and service', () => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.fns._lkNewReport();
+    h.fns._lkRfTick(P(61)); h.fns._lkRfSvc(P(50));
+    expect(h.fns._lkFormHtml()).toContain('Who was there');
+    h.fns._lkRfDnm(true);
+    const rf = h.get().LINK.rf;
+    expect(rf.ticks).toEqual({}); expect(rf.svc).toBe('');
+    const form = h.fns._lkFormHtml();
+    expect(form).not.toContain('Who was there'); expect(form).not.toContain('_lkRfSvc'); expect(form).not.toContain('_lkRfTick');
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()[0].payload).toMatchObject({ didNotMeet: true, attendees: [], serviceTimeId: null });
+  });
+  it('a date equal to the last report date shows the message and queues nothing', () => {
+    const h = setup();
+    h.fns._lkNewReport();
+    h.fns._lkRfDate('2026-10-06'); h.fns._lkRfSvc('none');
+    const form = h.fns._lkFormHtml();
+    expect(strip(form)).toContain("There's already a report for that date. Edit it.");
+    expect(form).toMatch(/disabled onclick="_lkReportSend\(\)"/);
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()).toEqual([]);
+  });
+  it('the note counter stops at 1,800', () => {
+    const h = setup();
+    h.fns._lkNewReport();
+    const el = { value: 'x'.repeat(2000) };
+    h.fns._lkRfNote(el);
+    expect(el.value).toHaveLength(1800);
+    expect(h.get().LINK.rf.note).toHaveLength(1800);
+    expect(h.fns._lkFormHtml()).toContain('1,800 / 1,800');
+    expect(h.fns._lkFormHtml()).toContain('maxlength="1800"');
+    expect(h.fns._lkNoteCount(5)).toBe('5 / 1,800');
+  });
+  it('no "I am": the picker opens first (for New report, Edit and Send)', () => {
+    const h = setup(null);
+    h.fns._lkNewReport();
+    expect(h.get().LINK.rf).toBeNull();
+    expect(h.calls.modals).toHaveLength(1);
+    expect(h.calls.modals[0]).toContain('Who are you?');
+    expect(h.calls.modals[0]).toContain('Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(h.get().LINK.iamThen).toBeTypeOf('function');
+    h.fns._lkEditReport();
+    expect(h.calls.modals).toHaveLength(2);
+    h.get().LINK.rf = { mode: 'submit', date: '2026-10-13', didNotMeet: true, ticks: {}, guests: 0, svc: '', note: '', priv: false };
+    h.fns._lkReportSend();
+    expect(h.calls.modals).toHaveLength(3);
+    expect(h.fns._lkQGet()).toEqual([]);
+  });
+  it('a report goes into the shared queue as submitReport with the raw note (no prefix)', () => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.fns._lkNewReport();
+    expect(h.get().LINK.rf).toMatchObject({ date: '2026-10-13', svc: '' }); // Tuesday: no default service
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()).toEqual([]);
+    expect(strip(h.fns._lkFormHtml())).toContain('Pick a service, or pick No service.');
+    h.fns._lkRfSvc(P(50)); h.fns._lkRfTick(P(61)); h.fns._lkRfGuests('150');
+    h.fns._lkRfNote({ value: 'Great night' });
+    h.fns._lkReportSend();
+    const q = h.fns._lkQGet();
+    expect(q).toHaveLength(1);
+    expect(Object.keys(q[0]).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type']);
+    expect(q[0]).toMatchObject({ kind: 'action', type: 'submitReport', note: 'Great night', leaderId: 'L1' });
+    expect(q[0].payload).toEqual({ groupId: G(1), date: '2026-10-13', didNotMeet: false, attendees: [P(61)], guests: 99, notesPrivate: false, serviceTimeId: P(50) });
+    expect(h.get().LINK.rf).toBeNull();
+    expect(h.fns._lkGroupAct(h.get().LINK.groups[0]).status).toBe('queued');
+    expect(strip(h.fns._lkGroupHtml(h.get().LINK.groups[0]))).toContain('Waiting to send.');
+    h.fns._lkReportUndo();
+    expect(h.fns._lkQGet()).toEqual([]);
+    // a blank note is sent as null; "No service" as null
+    h.fns._lkNewReport(); h.fns._lkRfSvc('none'); h.fns._lkRfNote({ value: '   ' }); h.fns._lkReportSend();
+    expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { serviceTimeId: null } });
+  });
+  it('an edit goes in as editReport with reportId and base; the date stays the saved one', () => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.fns._lkEditReport();
+    expect(h.get().LINK.rf).toMatchObject({ mode: 'edit', date: '2026-10-06', svc: 'none', ticks: { [P(61)]: true, [P(62)]: true } });
+    h.fns._lkRfDate('2026-10-13');
+    expect(h.get().LINK.rf.date).toBe('2026-10-06');
+    h.fns._lkRfTick(P(63)); h.fns._lkRfNote({ value: 'Edited' });
+    h.fns._lkReportSend();
+    const it = h.fns._lkQGet()[0];
+    expect(it).toMatchObject({ type: 'editReport', note: 'Edited', leaderId: 'L1' });
+    expect(it.payload).toEqual({ groupId: G(1), date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62), P(63)], guests: 2, notesPrivate: false,
+      serviceTimeId: null, reportId: G(9), base: { date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62)], guests: 2, serviceTimeId: null } });
+  });
+  it('the line "Elvanto will show: Self identified leader: <name>" is escaped', () => {
+    const h = setup();
+    h.fns._lkNewReport();
+    const form = h.fns._lkFormHtml();
+    expect(form).toContain('Elvanto will show: Self identified leader: Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(form).not.toContain('<b>Cobb');
+    expect(form).toContain('Ben &lt;b&gt;Sample&lt;/b&gt;');
+  });
+  it('service default per §2.3 and the older-than-7-days line', () => {
+    const f = makeEnv().fns;
+    expect(f._lkDefaultSvcFor('2026-10-16', RSVC)).toBe(P(50));
+    expect(f._lkDefaultSvcFor('2026-10-11', RSVC)).toBe(P(52));
+    expect(f._lkDefaultSvcFor('2026-10-13', RSVC)).toBeNull();
+    expect(f._lkDefaultSvcFor('2026-10-16', [...RSVC, { ...RSVC[0], serviceTimeId: P(54) }])).toBeNull();
+    const h = setup();
+    h.fns._lkNewReport();
+    h.fns._lkRfDate('2026-10-16');
+    expect(h.get().LINK.rf.svc).toBe(P(50));
+    expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
+    h.fns._lkRfDate('2026-10-08');
+    expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');
+    expect(h.fns._lkFormHtml()).toContain('>No service</option>');
+  });
+  it('a refusal from the batch shows on the group; a pending answer offers Cancel', async () => {
+    const reply = (outcome: string, extra: any = {}) => (_p: string, b: any) =>
+      Promise.resolve({ results: [{ id: b.items[0].id, kind: b.items[0].kind, outcome, ...extra }] });
+    const h = setup('L1', {}, reply('refused', { code: 'BAD_REQUEST', reason: 'report-exists', message: 'x' }));
+    h.fns._lkQSet([{ kind: 'action', id: P(70), type: 'submitReport', payload: { groupId: G(1) }, note: null, leaderId: 'L1' }]);
+    await h.fns._lkFlush();
+    expect(strip(h.fns._lkGroupsHtml())).toContain("There's already a report for that date. Edit it.");
+    const k = setup('L1', {}, reply('saved', { action: { id: P(71), type: 'submitReport', status: 'pending', reason: null } }));
+    k.fns._lkQSet([{ kind: 'action', id: P(71), type: 'submitReport', payload: { groupId: G(1) }, note: null, leaderId: 'L1' }]);
+    await k.fns._lkFlush();
+    expect(k.fns._lkGroupHtml(k.get().LINK.groups[0])).toContain('_lkReportCancel()');
+    k.fns._lkReportCancel();
+    expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(71), leaderId: 'L1', _g: G(1) });
+  });
+  it('the page is routed; New report and Edit hide when the console has the type off', () => {
+    expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-groups') { await renderLinkGroups(); return; }");
+    const h = setup();
+    expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).toContain('_lkNewReport()');
+    h.get().LINK.status = { console: { capabilities: { submitReport: 'off', editReport: 'off' } } };
+    const out = h.fns._lkGroupHtml(h.get().LINK.groups[0]);
+    expect(out).not.toContain('_lkNewReport()');
+    expect(out).toContain('Edit this report in Elvanto.');
   });
 });

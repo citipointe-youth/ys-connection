@@ -750,6 +750,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-grow{flex:1;min-width:0}
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
 .lk-st{font-size:12px;margin-top:2px;font-weight:500}
+.lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-st.wait{color:#b45309}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -771,6 +772,17 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .lk-done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
 .lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
+.lk-wk{flex:none;font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap}
+.lk-wk.ok{background:var(--success-light);color:#047857}.lk-wk.wait{background:var(--warn-light);color:#92400e}
+.lk-wk.prac{background:var(--paper-dark);color:var(--ink-mid)}.lk-wk.bad{background:var(--danger-light);color:#b91c1c}
+.lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}
+.lk-kv span{color:var(--ink-mid);flex:none}.lk-kv b{font-weight:600;text-align:right;min-width:0}
+.lk-mt{margin-top:10px}
+.lk-right{text-align:right;margin-top:4px}
+.lk-row-act{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer}
+.lk-chk input{width:20px;height:20px}
+.lk-acts{display:flex;gap:8px;justify-content:flex-end}
 /* END LINK CSS */
 </style>
 </head>
@@ -2737,7 +2749,7 @@ async function renderHomeFollowup() {
   if (!data) { host.innerHTML = ''; return; }
 
   // A junior-leader login is bound to its own leader record — no "Not you?".
-  const changeBtn = (S.user && S.user.role === 'leader') ? '' : `<button class="btn btn-secondary btn-sm" onclick="setMyLeaderId(null);renderHomeFollowup()">Not you?</button>`;
+  const changeBtn = (S.user && S.user.role === 'leader') ? '' : `<button class="btn btn-secondary btn-sm" onclick="_homeNotYou()">Not you?</button>`;
   // Each "not seen" list reflects the most recent session/week — label it with the
   // service day that ends that week so the leader knows which week they're chasing up.
   // serviceDayOfWeek (§5, phase 6b) drives both the word and _fridayLabel()'s date math.
@@ -2823,12 +2835,14 @@ function _followupListHtml(title, items, emptyMsg, stream) {
 }
 
 // Commit the Home self-identify picker selection and re-render.
-function chooseHomeLeader() {
+// "I am" changes go through _lkSwitchLeader (LINK MODULE): it warns first when link actions are unsent.
+async function chooseHomeLeader() {
   const v = document.getElementById('home-leader-pick')?.value;
   if (!v) return;
-  setMyLeaderId(v);
+  await _lkSwitchLeader(v);
   renderHomeFollowup();
 }
+async function _homeNotYou() { if (await _lkSwitchLeader(null)) renderHomeFollowup(); }
 
 // Toggle the Home hero's previous-term table (Recommendation 4b). In-DOM only.
 function _toggleHomePrev() {
@@ -3621,6 +3635,9 @@ function fmtBday(iso) {
   return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : String(iso);
 }
 
+// "I am" changes go through _lkSwitchLeader (LINK MODULE): it warns first when link actions are unsent.
+async function _msNotYou() { if (await _lkSwitchLeader(null)) { _msLeader = null; renderMyStudents(); } }
+async function _msPickLeader(v) { if (await _lkSwitchLeader(v || null)) _msLeader = v; renderMyStudents(); }
 const MYSTUDENTS_PATHS = ['/leaders', '/students'];
 let _myStudentsRevalidating = false;
 function _revalidateMyStudents() {
@@ -3681,8 +3698,8 @@ async function renderMyStudents() {
   if (_msLeader && !visLeaders.some(l => l.id === _msLeader)) _msLeader = null;
 
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
-  const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msLeader=null;setMyLeaderId(null);renderMyStudents()">Not you?</button>` : '';
-  body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">I am…</label>${msNotYouBtn}</div><select class="fs" onchange="_msLeader=this.value;setMyLeaderId(this.value||null);renderMyStudents()"><option value="">— Choose a leader —</option>${opts}</select></div>`;
+  const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
+  body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">I am…</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
     let summary;
@@ -8726,7 +8743,8 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null };
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 function _linkOn() { return _nyOn(); }
@@ -8779,13 +8797,18 @@ function _lkStatusText(row, lastSeen) {
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : '');
     case 'claimed': return 'Sending to Elvanto…';
-    case 'sent': return row.reason === 'already' ? 'Already in Elvanto ✓' : 'In Elvanto ✓' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
+    case 'sent': return row.reason === 'already' ? 'Already in Elvanto' : 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'shadowed': return 'Practice mode: not sent to Elvanto. Check in the usual way.';
     case 'refused': return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
     case 'cancelled': return 'Cancelled.';
   }
   return '';
+}
+// The status line as HTML: the contract's tick is the SVG check icon (the SPA has no Unicode symbols).
+function _lkStatusHtml(row, lastSeen) {
+  const t = _lkStatusText(row, lastSeen);
+  return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
   const s = row && row.status;
@@ -8907,7 +8930,12 @@ function _lkResults(items, results) {
     if (!r) return; // no answer: keep it queued
     if (r.outcome === 'refused' && r.code === 'RATE_LIMITED') { rate = true; return; }
     done[it.kind + ':' + it.id] = true;
-    if (it.kind === 'action') {
+    const gid = it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload ? it.payload.groupId : null;
+    if (gid) { // a lifegroup report: the answer shows on the group's row
+      if (!LINK.gres) LINK.gres = {};
+      LINK.gres[gid] = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
+        : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
+    } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
       if (r.outcome === 'refused') {
         if (svc && pid) LINK.refusals[svc + ':' + pid] = { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' };
@@ -8923,6 +8951,7 @@ function _lkResults(items, results) {
       else if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
       else if (r.outcome === 'refused') say = r.message || say;
     } else if (it.kind === 'cancel') {
+      if (r.outcome === 'cancelled' && it._g && LINK.gres) LINK.gres[it._g] = { id: it.id, type: 'submitReport', status: 'cancelled', reason: null };
       if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
       else if (r.outcome === 'refused') say = r.message || say;
     }
@@ -8998,6 +9027,7 @@ function _lkTick() {
   if (LINK.ticks % 4 === 0) { // every 60 s: the console status and the door list
     _lkStatusLoad();
     if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc).then((ok) => { if (ok) _lkRefreshView(); });
+    if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups().then((ok) => { if (ok) _lkRefreshView(); });
   } else if (S.page === 'link-checkin') _lkPollOpen(); // every 15 s: my own open rows
 }
 function _lkPollOpen() {
@@ -9035,9 +9065,13 @@ function _lkRefreshView() {
   try {
     if (!_lkOnPage()) return;
     const top = document.getElementById('lk-top');
-    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : []);
+    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? ['submitReport', 'editReport'] : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
+    const gl = document.getElementById('lk-glist');
+    if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
+    const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
+    if (gp && g) gp.innerHTML = _lkGroupHtml(g);
     const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
     if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
   } catch (e) {}
@@ -9051,7 +9085,8 @@ async function renderLink(p) {
   _lkTickStart();
   if (!LINK.statusAt || Date.now() - LINK.statusAt > 60000) _lkStatusLoad();
   if (p === 'link-checkin') { await renderLinkCheckin(); return; }
-  const title = { 'link-groups': 'Lifegroup report', 'link-flows': 'Flow steps', 'link-admin': 'Elvanto link' }[p];
+  if (p === 'link-groups') { await renderLinkGroups(); return; }
+  const title = { 'link-flows': 'Flow steps', 'link-admin': 'Elvanto link' }[p];
   if (!title) { go('home'); return; }
   setApp(shell(`<div class="ph"><h1>${title}</h1></div><div id="lk-top">${_lkTop([])}</div>
     <div class="card"><p>This screen is not ready yet.</p></div>`));
@@ -9139,7 +9174,7 @@ function _lkRowHtml(p) {
   let line = null;
   if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
   else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
-  const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${esc(_lkStatusText(line, _lkLastSeen()))}</div>` : '';
+  const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${_lkStatusHtml(line, _lkLastSeen())}</div>` : '';
   const undo = p.mine && act && act.status !== 'refused' && act.status !== 'cancelled'
     && (act.status === 'queued' || (p.checkedIn && act.type === 'checkIn'));
   let btn = '';
@@ -9161,7 +9196,7 @@ function _lkCheck(pid, type) {
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
   } catch (e) {}
 }
-// Undo: still queued → removed here; sent check-in → an undo item; anything else → a cancel item.
+// Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {
   try {
     const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
@@ -9235,7 +9270,7 @@ function _lkLeadersHtml() {
     const st = _lkLeaderState(l);
     if (st === 'done') {
       const a = l.action && l.action.status !== 'cancelled' ? l.action : { status: 'mirror' };
-      return `<div class="lk-lq-row"><span class="lk-done-ic">${icS('check')}</span><div class="lk-nm">${esc(l.name)}<div class="lk-st ${_lkStatusTone(a)}">${esc(_lkStatusText(a, _lkLastSeen()))}</div></div></div>`;
+      return `<div class="lk-lq-row"><span class="lk-done-ic">${icS('check')}</span><div class="lk-nm">${esc(l.name)}<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div></div></div>`;
     }
     if (st === 'nl') return `<div class="lk-lq-row dis"><span class="lk-box-sp"></span><div class="lk-nm">${esc(l.name)}</div><span class="lk-nl">Not linked</span></div>`;
     const on = !!t[l.leaderId];
@@ -9281,6 +9316,278 @@ function _lkLeadersSubmit() {
   closeModal();
   _lkSchedule(300);
   _lkRefreshView();
+}
+// ── "I am" switch guard (ledger 18). Every UI entry point that changes "I am" calls _lkSwitchLeader. ──
+// Unsent items keep the "I am" of their tap, so nothing is lost; the warning lets the leader send first.
+async function _lkSwitchGuard(id) {
+  const cur = getMyLeaderId();
+  if (!cur || (id || null) === cur) return true;
+  let n = 0;
+  try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
+  if (!n) return true;
+  const text = n === 1 ? '1 action is still waiting to send. Send it first?' : n + ' actions are still waiting to send. Send them first?';
+  if (!(await _lkAsk(text, 'Send first', 'Cancel'))) return false;
+  await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 10000))]);
+  return true;
+}
+// True when "I am" was changed (setMyLeaderId stays synchronous; the guard runs first).
+async function _lkSwitchLeader(id) {
+  if (!(await _lkSwitchGuard(id))) return false;
+  setMyLeaderId(id || null);
+  return true;
+}
+// The "Who are you?" sheet. then() runs after a pick.
+function _lkIamPick(then) {
+  LINK.iamThen = then || null;
+  const show = (ls) => {
+    const xs = (ls || []).filter((l) => l && l.active !== false).slice()
+      .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
+    modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name first. Elvanto shows it on the report.</p>
+      ${xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
+        : '<p class="lk-sub">No leaders found.</p>'}
+      <button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>`, () => { LINK.iamThen = null; });
+  };
+  if (LINK.ldrs) { show(LINK.ldrs); return; }
+  API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; show(LINK.ldrs); }, () => show([]));
+}
+async function _lkIamUse(id) {
+  const then = LINK.iamThen;
+  LINK.iamThen = null;
+  closeModal();
+  if (!(await _lkSwitchLeader(id))) return;
+  if (then) then();
+}
+function _lkMyName() {
+  const id = getMyLeaderId();
+  const l = id && (LINK.ldrs || []).find((x) => x.id === id);
+  return l ? String(l.fullName || '') : '';
+}
+// ── Lifegroup report (F2; spec §11.2, §2.3) ──
+function _lkAddDays(ymd, n) {
+  const t = Date.parse(String(ymd || '') + 'T00:00:00Z');
+  return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : '';
+}
+// Brisbane wall-clock "HH:MM" (UTC+10, no daylight saving).
+function _lkHHMM(iso) { const t = Date.parse(iso); return isFinite(t) ? new Date(t + 36e6).toISOString().slice(11, 16) : ''; }
+// §2.3 for a report date: Friday = the day's only service; Sunday = the day's only 10:15 service; else none.
+function _lkDefaultSvcFor(day, services) {
+  const t = Date.parse(String(day || '') + 'T00:00:00Z');
+  if (!isFinite(t)) return null;
+  const wd = new Date(t).getUTCDay();
+  let xs = (services || []).filter((s) => s.ymd === day);
+  if (wd === 0) xs = xs.filter((s) => _lkHHMM(s.startsAt) === '10:15');
+  else if (wd !== 5) return null;
+  return xs.length === 1 ? xs[0].serviceTimeId : null;
+}
+function _lkWeekChip(w) {
+  const m = { reported: ['ok', 'Reported'], 'did-not-meet': ['prac', 'Did not meet'], none: ['wait', 'No report'],
+    later: ['prac', 'Later'], unreadable: ['bad', "Can't read"] };
+  const c = m[w] || m.none;
+  return `<span class="lk-wk ${c[0]}">${esc(c[1])}</span>`;
+}
+function _lkGroup() { return (LINK.groups || []).find((g) => g.groupId === LINK.gid) || null; }
+// The group's report action: still on this phone, else this phone's last answer, else the server's open row.
+function _lkGroupAct(g) {
+  let q = [];
+  try { q = _lkQGet(); } catch (e) {}
+  for (let i = q.length - 1; i >= 0; i--) {
+    const it = q[i];
+    if (it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload && it.payload.groupId === g.groupId) {
+      return { id: it.id, type: it.type, status: 'queued', reason: null };
+    }
+  }
+  return (LINK.gres && LINK.gres[g.groupId]) || g.openAction || null;
+}
+function _lkGroupsHtml() {
+  const gs = LINK.groups;
+  if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
+  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.</p>';
+  return gs.map((g) => {
+    const a = _lkGroupAct(g);
+    return `<div class="li lk-row" role="button" onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(g.name)}</div>
+      <div class="lk-d">${esc(g.meets)}</div>${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${_lkWeekChip(g.thisWeek)}</div>`;
+  }).join('');
+}
+function _lkSvcName(id) {
+  if (!id) return 'No service';
+  const s = (LINK.rServices || []).find((x) => x.serviceTimeId === id);
+  return s ? _lkSvcLabel(s) : 'A service more than 7 days ago';
+}
+// The Last report card: date, service, did-not-meet, guests, ticked members. Never notes.
+function _lkLastHtml(g) {
+  const r = g.lastReport;
+  if (!r) return '<div class="card"><div class="lk-sec">Last report</div><p class="lk-sub">No report yet.</p></div>';
+  const att = r.attendees || [];
+  const names = (g.members || []).filter((m) => att.includes(m.personId)).map((m) => m.name);
+  const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
+  if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
+  else kv.push(['Service', _lkSvcName(r.serviceTimeId)], ['Guests', String(r.guests || 0)], ['Here (' + names.length + ')', names.join(', ') || 'Nobody ticked']);
+  const edit = r.editable && !_lkCapOff('editReport')
+    ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport()">${icS('edit')} Edit</button>`
+    : '<p class="lk-sub">Edit this report in Elvanto.</p>';
+  return `<div class="card"><div class="lk-sec">Last report</div>
+    ${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}<div class="lk-mt">${edit}</div></div>`;
+}
+function _lkGroupHtml(g) {
+  const a = _lkGroupAct(g);
+  let btn = '';
+  if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportUndo()">Undo</button>`;
+  else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel</button>`;
+  const line = a ? `<div class="lk-row-act"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
+  return `<div class="card"><div class="lk-svc"><div><div class="lk-svc-t">${esc(g.name)}</div><div class="lk-d">${esc(g.meets)}</div></div>${_lkWeekChip(g.thisWeek)}</div>${line}</div>
+    ${_lkLastHtml(g)}
+    ${_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-primary btn-full" onclick="_lkNewReport()">${icS('plus')} New report</button>`}`;
+}
+function _lkNoteCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' / 1,800'; }
+function _lkFormHtml() {
+  const f = LINK.rf, g = _lkGroup();
+  if (!f || !g) return '';
+  const today = LINK.rToday || f.date, min = _lkAddDays(today, -14);
+  const last = g.lastReport;
+  const clash = f.mode === 'submit' && last && last.date === f.date;
+  const name = _lkMyName();
+  const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
+    : `<input type="date" class="fi" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)">`;
+  let body = '';
+  if (!f.didNotMeet) {
+    const svcs = (LINK.rServices || []).slice();
+    if (f.svc && f.svc !== 'none' && !svcs.some((s) => s.serviceTimeId === f.svc)) svcs.push({ serviceTimeId: f.svc, _saved: true });
+    const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
+    body = `<div class="fg"><label class="fl">Who was there</label><div class="lk-lq-list">${(g.members || []).map((m) => {
+        const on = !!f.ticks[m.personId];
+        return `<div class="lk-lq-row" role="button" onclick="_lkRfTick('${esc(m.personId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('check') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
+      }).join('') || '<p class="lk-sub">No members.</p>'}</div></div>
+      <div class="fg"><label class="fl">Guests</label><input type="number" class="fi" min="0" max="99" inputmode="numeric" value="${esc(f.guests)}" oninput="_lkRfGuests(this.value)"></div>
+      <div class="fg"><label class="fl">Service</label><select class="fs" onchange="_lkRfSvc(this.value)">
+        ${f.svc ? '' : '<option value="" selected>Pick a service</option>'}
+        ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
+        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Older services are not listed. Pick No service, or do it in Elvanto.</p>' : ''}</div>`;
+  }
+  return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(g.name)}</p>
+    <div class="fg"><label class="fl">Date</label>${date}</div>
+    ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}</div></div>` : ''}
+    <label class="lk-chk"><input type="checkbox"${f.didNotMeet ? ' checked' : ''} onchange="_lkRfDnm(this.checked)"> Group did not meet</label>
+    ${body}
+    <div class="fg"><label class="fl">Note</label><textarea class="fi" rows="4" maxlength="1800" oninput="_lkRfNote(this)">${esc(f.note)}</textarea>
+      <div class="lk-d lk-right" id="lk-rf-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.rf.priv=this.checked"> Keep notes private</label>
+    <p class="lk-sub" id="lk-rf-who">${name ? 'Elvanto will show: Self identified leader: ' + esc(name) : 'Pick who you are before you send.'}</p>
+    ${f.err && !clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc(f.err)}</div></div>` : ''}
+    <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_lkGroupsBack()">Cancel</button>
+      <button type="button" class="btn btn-primary"${clash ? ' disabled' : ''} onclick="_lkReportSend()">Send</button></div></div>`;
+}
+function _lkPaintGroups() {
+  const g = LINK.gid ? _lkGroup() : null;
+  const body = !g ? `<div id="lk-glist">${_lkGroupsHtml()}</div>`
+    : `<button type="button" class="btn btn-ghost btn-sm lk-mb" onclick="_lkGroupsBack()">${icS('arrl')} ${LINK.rf ? 'Back to the group' : 'All groups'}</button>`
+      + (LINK.rf ? _lkFormHtml() : `<div id="lk-gpage">${_lkGroupHtml(g)}</div>`);
+  setApp(shell(`<div class="ph"><h1>Lifegroup report</h1></div><div id="lk-top">${_lkTop(['submitReport', 'editReport'])}</div>${body}`));
+}
+async function _lkLoadGroups() {
+  try {
+    const [r, c] = await Promise.all([API.fresh('/link/lifegroups'), LINK.rServices ? null : API.fresh('/link/checkin').catch(() => null)]);
+    LINK.groups = (r && r.groups) || [];
+    if (c) { LINK.rServices = Array.isArray(c.services) ? c.services : []; LINK.rToday = c.today || null; }
+    // The server's open row is the truth again; keep only this phone's final answers.
+    Object.keys(LINK.gres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.gres[k].status)) delete LINK.gres[k]; });
+    LINK.gErr = null;
+    return true;
+  } catch (e) { LINK.gErr = e.message || 'Could not load the groups.'; return false; }
+}
+async function renderLinkGroups() {
+  if (!LINK.groups) { _lkPaintGroups(); await _lkLoadGroups(); if (S.page !== 'link-groups') return; }
+  _lkPaintGroups();
+  if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (S.page === 'link-groups' && LINK.rf) _lkPaintGroups(); }, () => {});
+}
+function _lkOpenGroup(id) { LINK.gid = id; LINK.rf = null; _lkPaintGroups(); }
+function _lkGroupsBack() { if (LINK.rf) LINK.rf = null; else LINK.gid = null; _lkPaintGroups(); }
+// "I am" is required before a report (decision 11): no "I am" yet: the picker opens first.
+function _lkNewReport() { if (!getMyLeaderId()) { _lkIamPick(_lkNewReport); return; } _lkFormOpen('submit'); }
+function _lkEditReport() { if (!getMyLeaderId()) { _lkIamPick(_lkEditReport); return; } _lkFormOpen('edit'); }
+function _lkFormOpen(mode) {
+  const g = _lkGroup();
+  if (!g) return;
+  const r = g.lastReport;
+  if (mode === 'edit') {
+    if (!r || !r.editable) return;
+    const base = { date: r.date, didNotMeet: !!r.didNotMeet, attendees: (r.attendees || []).slice(), guests: r.guests || 0, serviceTimeId: r.serviceTimeId || null };
+    const ticks = {};
+    base.attendees.forEach((pid) => { ticks[pid] = true; });
+    LINK.rf = { mode, date: r.date, didNotMeet: base.didNotMeet, ticks, guests: Math.min(base.guests, 99), svc: base.didNotMeet ? '' : (base.serviceTimeId || 'none'),
+      svcSet: true, note: '', priv: false, reportId: r.reportId, base, err: '' };
+  } else {
+    const date = g.defaultDate || LINK.rToday || '';
+    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.rServices) || '', svcSet: false,
+      note: '', priv: false, reportId: null, base: null, err: '' };
+  }
+  _lkPaintGroups();
+}
+function _lkRfDate(v) {
+  const f = LINK.rf;
+  if (!f || f.mode === 'edit') return;
+  f.date = String(v || ''); f.err = '';
+  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.rServices) || '';
+  _lkPaintGroups();
+}
+// Group did not meet: clears and hides the ticks and the service.
+function _lkRfDnm(on) {
+  const f = LINK.rf;
+  if (!f) return;
+  f.didNotMeet = !!on; f.err = '';
+  if (on) { f.ticks = {}; f.svc = ''; f.svcSet = false; }
+  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.rServices) || '';
+  _lkPaintGroups();
+}
+function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; _lkPaintGroups(); }
+function _lkRfGuests(v) { const f = LINK.rf; if (!f) return; const n = parseInt(v, 10); f.guests = isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; }
+function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.svcSet = true; f.err = ''; }
+// The note stops at 1,800 characters (the console adds the leader line in front, inside Elvanto's 1,900).
+function _lkRfNote(el) {
+  const f = LINK.rf;
+  if (!f || !el) return;
+  let v = String(el.value || '');
+  if (v.length > 1800) { v = v.slice(0, 1800); el.value = v; }
+  f.note = v;
+  const n = document.getElementById('lk-rf-n');
+  if (n) n.textContent = _lkNoteCount(v.length);
+}
+// Send = into the shared phone queue. The raw note goes as typed: the console composes the leader line.
+function _lkReportSend() {
+  const f = LINK.rf, g = _lkGroup();
+  if (!f || !g) return;
+  const lid = getMyLeaderId();
+  if (!lid) { _lkIamPick(_lkReportSend); return; }
+  const today = LINK.rToday || f.date;
+  let err = '';
+  if (f.mode === 'submit' && g.lastReport && g.lastReport.date === f.date) err = "There's already a report for that date. Edit it.";
+  else if (!f.date || f.date > today || f.date < _lkAddDays(today, -14)) err = 'The date must be in the last 14 days.';
+  else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
+  if (err) { f.err = err; _lkPaintGroups(); return; }
+  const attendees = f.didNotMeet ? [] : (g.members || []).filter((m) => f.ticks[m.personId]).map((m) => m.personId);
+  const payload = { groupId: g.groupId, date: f.mode === 'edit' ? f.base.date : f.date, didNotMeet: !!f.didNotMeet, attendees, guests: f.guests || 0,
+    notesPrivate: !!f.priv, serviceTimeId: f.didNotMeet || f.svc === 'none' ? null : f.svc };
+  if (f.mode === 'edit') { payload.reportId = f.reportId; payload.base = f.base; }
+  const note = String(f.note || '').trim() ? f.note : null;
+  if (LINK.gres) delete LINK.gres[g.groupId];
+  LINK.rf = null;
+  _lkPush({ kind: 'action', id: _lkUuid(), type: f.mode === 'edit' ? 'editReport' : 'submitReport', payload, note, leaderId: lid }, true);
+  _lkPaintGroups();
+}
+// Still on this phone: removed here (nothing sent). Sent and still pending: a cancel item.
+function _lkReportUndo() {
+  const g = _lkGroup();
+  if (!g) return;
+  const q = _lkQGet();
+  for (let i = q.length - 1; i >= 0; i--) {
+    const it = q[i];
+    if (it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload && it.payload.groupId === g.groupId) { q.splice(i, 1); _lkQSet(q); break; }
+  }
+  _lkRefreshView();
+}
+function _lkReportCancel() {
+  const g = _lkGroup(), a = g && LINK.gres && LINK.gres[g.groupId];
+  if (!a || !a.id) return;
+  _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _g: g.groupId }, true);
 }
 /* ── END LINK MODULE ── */
 
@@ -10429,6 +10736,7 @@ function _busDropAtIso(hhmm) {
 // Task B (owner, 2026-10-08): changing "who you are" on My car now does a full page reload
 // (previously BUS.myCar=null;busRefresh() — the owner wants a clean reload instead) — the
 // yap_bus_reload flag is read once in boot() so the app lands back on Bus → My car afterwards.
+// Its two UI entry points run _lkSwitchGuard first (unsent link actions warn before "I am" changes).
 function _busIdentityChanged(id) {
   setMyLeaderId(id || null);
   try { localStorage.setItem('yap_bus_reload', '1'); } catch {}
@@ -10451,9 +10759,9 @@ function _busMyCarHtml() {
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_busIdentityChanged(null)">Not you?</button></div>`
+    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id">I am: <select class="fs" onchange="_busIdentityChanged(this.value)"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id">I am: <select class="fs" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
