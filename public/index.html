@@ -1358,7 +1358,13 @@ function _prefetch() {
 // HELPERS
 // ============================================================
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
-function quadLabel(q) { return QUAD_LABELS[q] || q; }
+const SIMPLE_QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };
+// Junior/Senior logins (ministryConfig.logins.simple) rename the four quad logins everywhere.
+function _simpleLoginsOn() {
+  const lg = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.logins;
+  return !!(lg && lg.simple);
+}
+function quadLabel(q) { return (_simpleLoginsOn() ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q]) || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
@@ -1368,7 +1374,7 @@ function _roleLabel(role) {
 }
 const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
-  quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — quads fully manage leaders and connections within their gender+bracket`,
+  quad:  (u) => `${quadLabel(u.quad)} login — quads fully manage leaders and connections within their gender+bracket`,
   leader: () => `${_roleLabel('leader')} — sees and follows up only their own connected students`,
   director: () => `${_roleLabel('director')} — full ministry access, can import data`,
   admin: () => `${_roleLabel('admin')} — full access including settings and accounts`,
@@ -1426,7 +1432,7 @@ document.addEventListener('keydown', (e) => {
 });
 function quadChip(q) {
   if (!q) return '';
-  return `<span class="chip quad-${q}">${QUAD_LABELS[q] || q}</span>`;
+  return `<span class="chip quad-${q}">${esc(quadLabel(q))}</span>`;
 }
 // Format a phone number with a space after the 4th and 7th digit (e.g. 0412 345 678).
 // Normalizes AU mobiles that lost their leading 0 to spreadsheet numeric coercion in
@@ -2563,7 +2569,7 @@ async function _renderHomeInner(stale) {
               gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds));
             }
             const qBorder = quadGender(q.quad) === 'female' ? '#ec4899' : null;
-            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true, borderColor: qBorder });
+            body += _hAttTile(quadLabel(q.quad), qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true, borderColor: qBorder });
           }
           body += '</div>';
         }
@@ -2598,7 +2604,7 @@ async function _renderHomeInner(stale) {
             body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;padding:11px">
               <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
                 <span class="drop-chev" style="font-size:12px;color:var(--ink-faint);font-weight:800">›</span>
-                <div style="flex:1;font-size:13px;font-weight:700">${q.label}</div>
+                <div style="flex:1;font-size:13px;font-weight:700">${esc(quadLabel(q.quad))}</div>
                 <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
               </div><div class="drop-body">`;
             for (const gr of _hQuadGrades(q.quad)) {
@@ -4671,7 +4677,6 @@ async function renderTrends() {
   }
 
   const canExport = ['quad','director','admin'].includes(u.role);
-  const QUAD_LABELS_LOCAL = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 
   // Compute per-grade stats from students
   function gradeStats(sc) {
@@ -4691,7 +4696,7 @@ async function renderTrends() {
       const att = qs.reduce((s,x)=>s+x.svcAttended,0);
       const svcPct = tot > 0 ? Math.round(att/tot*100) : 0;
       const uniq = qs.filter(s=>s.svcAttended>0).length;
-      return { quad:q, label:QUAD_LABELS_LOCAL[q], count:qs.length, svcPct, uniq, att, tot };
+      return { quad:q, label:quadLabel(q), count:qs.length, svcPct, uniq, att, tot };
     });
   }
 
@@ -4775,7 +4780,7 @@ async function renderTrends() {
     } else if (u.role === 'quad') {
       const ql = students.filter(s => s.quad === u.quad);
       const c = _svcAgg(ql, false), p = _svcAgg(ql, true);
-      body += `<div class="sh">${QUAD_LABELS_LOCAL[u.quad]||u.quad}</div><div class="card">`;
+      body += `<div class="sh">${esc(quadLabel(u.quad))}</div><div class="card">`;
       body += statCard([c.uniq, c.avg], ['Seen','Weekly'], _svcPrevSub(p));
       body += '<div class="sh" style="margin-top:10px">By Grade</div>';
       const grades = u.quad==='g79'||u.quad==='b79' ? [7,8,9] : [10,11,12];
@@ -4801,7 +4806,7 @@ async function renderTrends() {
         body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
         body += `<div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
           <span class="drop-chev" style="font-size:12px">›</span>
-          <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
+          <div style="flex:1;font-weight:700;font-size:14px">${esc(quadLabel(q.quad))}</div>
           <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${c.uniq} seen · ${c.avg} weekly</span>
         </div>`;
         if (p.weeks>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${p.uniq} seen · ${p.avg} weekly</div>`;
@@ -4885,7 +4890,7 @@ async function renderTrends() {
           body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
           body += `<div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
             <span class="drop-chev" style="font-size:12px">›</span>
-            <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
+            <div style="flex:1;font-weight:700;font-size:14px">${esc(quadLabel(q.quad))}</div>
             <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
           </div>`;
           if (q.previous.uniqueAttenders>0 || q.previous.members>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${q.previous.uniqueAttenders} seen · ${q.previous.avgPerWeek} weekly</div>`;
@@ -5587,7 +5592,7 @@ async function renderAdminView(settings, users, history) {
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
-        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):_roleLabel(u.role);
+        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?quadLabel(u.quad):_roleLabel(u.role);
         // The account named "Admin" is protected: it can always be edited (except
         // renamed — see showEditUser), but never deactivated or deleted, regardless
         // of how many other admin accounts exist.
@@ -5758,7 +5763,7 @@ function _loginActivityBodyHtml(users) {
   const row = u => {
     const history = u.loginHistory || [];
     const devices = u.loginDevices || [];
-    const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? (QUAD_LABELS[u.quad] || u.quad) : _roleLabel(u.role);
+    const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? quadLabel(u.quad) : _roleLabel(u.role);
     const inactive = u.status === 'inactive' ? ' · inactive' : '';
     let meta;
     if (_laLastMs(u) === -Infinity) {
@@ -6254,7 +6259,8 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off' },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', prayers: true },
+  logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
@@ -6853,8 +6859,7 @@ async function showAddUser() {
     <div id="u-quad-f" class="fg" style="display:none">
       <label class="fl">Quad</label>
       <select class="fs" id="u-quad" onchange="suggestEmail()">
-        <option value="g79">Girls Yr 7–9</option><option value="b79">Boys Yr 7–9</option>
-        <option value="g1012">Girls Yr 10–12</option><option value="b1012">Boys Yr 10–12</option>
+        ${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}">${esc(quadLabel(q))}</option>`).join('')}
       </select>
     </div>
     <div id="u-leader-f" class="fg" style="display:none">
@@ -6970,7 +6975,7 @@ async function showEditUser(id) {
     </div>
     <div id="u-quad-f" class="fg" style="${u.role!=='quad'?'display:none':''}">
       <label class="fl">Quad</label>
-      <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${QUAD_LABELS[q]||q}</option>`).join('')}</select>
+      <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${esc(quadLabel(q))}</option>`).join('')}</select>
     </div>
     <div id="u-leader-f" class="fg" style="${u.role!=='leader'?'display:none':''}">
       <label class="fl">${esc(_roleLabel('leader'))} — linked leader ${helpTip('A junior-leader login sees only the students connected to this leader record.')}</label>
@@ -7163,7 +7168,6 @@ let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
 let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
-const QLBL={g79:'Girls Yr 7–9',b79:'Boys Yr 7–9',g1012:'Girls Yr 10–12',b1012:'Boys Yr 10–12'};
 const CA_NAMES=['Ava Okafor','Noah Castellanos','Isla Vandermeer','Eli Borowski','Maya Lindqvist','Levi Acheampong','Zara Kowalczyk','Finn Drummond','Lena Marchetti','Kai Stratford','Ruby Vasquez','Theo Lindgren','Nina Oyelaran','Jude Hartmann','Esme Calloway','Remy Delacroix','Sofia Andrade','Hugo Bertrand','Lola Fitzwilliam','Omar Castaneda','Iris Galloway','Felix Moreau','Tara Whitlock','Ezra Soderberg','Mila Beaumont','Arlo Kingsley'];
 
 // ---------- utils ----------
@@ -7672,13 +7676,13 @@ function rFunnel(){
   const worst=Object.entries(qc).sort((a,b)=>b[1]-a[1])[0];
   let b='';
   b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run Interacted, '+L('service')+', Regular, '+L('smallGroup')+', then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
-  b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+(QLBL[worst[0]]||worst[0])+' ('+worst[1]+').':'')+'</div></div>';
+  b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+quadLabel(worst[0])+' ('+worst[1]+').':'')+'</div></div>';
   b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
   if(FQ){
-    for(const q of Object.keys(QLBL)){
+    for(const q of Object.keys(QUAD_LABELS)){
       const qp=m.people.filter(p=>p.quad===q);
       const qr=R.map(r=>({lb:r.lb,v:qp.filter(p=>p.stage>=r.n).length}));
-      b+='<div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px"><span class="chip quad-'+q+'">'+(QLBL[q]||q)+'</span><span style="font-size:.62rem;color:var(--ca-muted)">'+qr[0].v+' people</span></div>';
+      b+='<div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px"><span class="chip quad-'+q+'">'+quadLabel(q)+'</span><span style="font-size:.62rem;color:var(--ca-muted)">'+qr[0].v+' people</span></div>';
       // Integration ladder (same horizontal-bar style as the overview ladder).
       b+=qr.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round((qr[0].v?r.v/qr[0].v:0)*100))+'%;background:'+cols[i][0]+'">'+r.v+'</div></div></div>').join('');
       if(qr[0].v>0){
@@ -7725,7 +7729,7 @@ function rGroups(){
   // Quad filter buttons.
   b+='<div class="ca-fch">'
     +'<span class="chip '+(LGQ===''?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\'\')">All</span>'
-    +Object.keys(QLBL).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+(QLBL[q]||q)+'</span>').join('')
+    +Object.keys(QUAD_LABELS).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+quadLabel(q)+'</span>').join('')
     +'</div>';
   if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';caShell(b,'ca-groups');return;}
   const rc='text-align:center;padding:7px 8px;white-space:nowrap';
@@ -7810,7 +7814,7 @@ function rPeople(){
   b+='<input class="fi" style="margin-bottom:9px" placeholder="Search '+m.people.length+' people…" value="'+PF.q.replace(/"/g,'&quot;')+'" oninput="CA.pq(this.value)">';
   b+='<div class="ca-fch">'
     +'<select class="fs ca-sel" onchange="CA.pstage(this.value)"><option value="">All stages</option>'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(PF.stage==n?' selected':'')+'>Stage '+n+' · '+STG()[n]+'</option>').join('')+'</select>'
-    +'<select class="fs ca-sel" onchange="CA.pquad(this.value)"><option value="">All quads</option>'+Object.entries(QLBL).map(([k,v])=>'<option value="'+k+'"'+(PF.quad===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'
+    +'<select class="fs ca-sel" onchange="CA.pquad(this.value)"><option value="">All quads</option>'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<option value="'+k+'"'+(PF.quad===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'
     +'</div>';
   b+='<div id="ca-plist">'+plist()+'</div>';
   caShell(b,'ca-people');
@@ -7839,7 +7843,7 @@ function showPerson(id){
   modal(h);
 }
 function exportMenu(){
-  modal('<div style="font-size:1rem;font-weight:800;margin-bottom:6px">Follow-up list — pick a quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+Object.entries(QLBL).map(([k,v])=>'<button class="btn btn-secondary" onclick="CA.exportQuad(\''+k+'\')">'+v+'</button>').join('')+'</div><button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>');
+  modal('<div style="font-size:1rem;font-weight:800;margin-bottom:6px">Follow-up list — pick a quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<button class="btn btn-secondary" onclick="CA.exportQuad(\''+k+'\')">'+v+'</button>').join('')+'</div><button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>');
 }
 function exportQuad(q){
   const m=model();
@@ -7853,7 +7857,7 @@ function exportQuad(q){
     if(!reason)continue;
     rows.push([p.name,p.s.grade,p.s.gender,p.s.ph||'',reason,p.score]);
   }
-  if(rows.length===1){closeModal();toast('No follow-ups for '+(QLBL[q]||q));return;}
+  if(rows.length===1){closeModal();toast('No follow-ups for '+quadLabel(q));return;}
   const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=u;a.download='followup-'+q+'-'+new Date().toISOString().slice(0,10)+'.csv';
@@ -8050,7 +8054,7 @@ function _buildDeckBody(){
   };
   const bigNumViz=(num,cap)=>'<div class="bignum"><b>'+num+'</b><span>'+esc(cap)+'</span></div>';
   const quadFunnelViz=()=>{
-    const QUADS=[['g79','Girls Yr 7–9'],['b79','Boys Yr 7–9'],['g1012','Girls Yr 10–12'],['b1012','Boys Yr 10–12']];
+    const QUADS=Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]);
     const RLBL=['Interacted','Came to '+L('service'),'Regular','Attended a '+L('smallGroup').toLowerCase(),'Student Team'];
     const cells=QUADS.map(([q,ql])=>{
       const qp=m.people.filter(p=>p.quad===q);
