@@ -93,3 +93,39 @@ describe('modules.newYouthForms (off / shadow / on)', () => {
     expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: 'shadow' } }).modules.newYouthForms).toBe('shadow');
   });
 });
+
+describe('logins and modules.prayers (October rework)', () => {
+  it('parses {} with Simple logins off and Prayers on', () => {
+    const cfg = MinistryConfigSchema.parse({});
+    expect(cfg.logins).toEqual({ simple: false, retiredGradeIds: [], gradeRoleWasOn: true });
+    expect(cfg.modules.prayers).toBe(true);
+  });
+
+  it('parses a pre-rework stored config with no logins key and no modules.prayers', () => {
+    const old = {
+      version: 1,
+      preset: 'large-graded-au',
+      roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
+      modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', busMinistry: true, newYouthForms: 'shadow' },
+      busMinistry: { churchAddress: '1 Church St', coordinatorLeaderIds: ['l1'] },
+    };
+    const cfg = MinistryConfigSchema.parse(old);
+    expect(cfg.logins).toEqual({ simple: false, retiredGradeIds: [], gradeRoleWasOn: true });
+    expect(cfg.modules.prayers).toBe(true);
+    expect(cfg.modules.busMinistry).toBe(true);
+    expect(cfg.modules.newYouthForms).toBe('shadow');
+  });
+
+  it('mergeMinistryConfig deep-merges logins (keeps retiredGradeIds/gradeRoleWasOn)', () => {
+    const base = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
+      logins: { simple: false, retiredGradeIds: ['u1', 'u2'], gradeRoleWasOn: false },
+    });
+    const merged = mergeMinistryConfig(base, { logins: { simple: true } });
+    expect(merged.logins).toEqual({ simple: true, retiredGradeIds: ['u1', 'u2'], gradeRoleWasOn: false });
+  });
+
+  it('MINISTRY_CONFIG_DEFAULTS has logins.simple false and modules.prayers true', () => {
+    expect(MINISTRY_CONFIG_DEFAULTS.logins.simple).toBe(false);
+    expect(MINISTRY_CONFIG_DEFAULTS.modules.prayers).toBe(true);
+  });
+});

@@ -519,6 +519,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(pointer:coarse){
   .btn-sm,.tbbtn,.btn-icon{min-height:40px}
   .btn-sm,.btn-icon{min-width:40px}
+  .vg-bar .fc{min-height:40px;min-width:40px}
 }
 @media(max-width:767px){
   .tbbar{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
@@ -935,6 +936,8 @@ const API = (() => {
         if (e.code === 'MUST_CHANGE_PASSWORD' && S.user && !S.user.mustChangePassword) {
           S.user.mustChangePassword = true; render();
         }
+        // Prayers was switched off after this login signed in: refresh settings and go home.
+        if (e.code === 'MODULE_DISABLED' && /^\/prayers/.test(path) && S.user) _moduleDisabledRefresh();
         if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
@@ -1390,8 +1393,8 @@ function _initShell() {
   if (!u) return;
   const items = navItems();
   const bn = bottomNavItems();
-  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
-  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       ${_previewStash ? _previewBannerHtml(u) : ''}
@@ -1419,14 +1422,39 @@ function _prefetch() {
   // pooler the real problem is that a page's fan-out multiplies serverless instances ->
   // pooler client connections (the EMAXCONN / 200 ceiling). Collapsing login's prefetch
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
-  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history', '/prayers']);
+  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'].concat(_prayersOn() ? ['/prayers'] : []));
+}
+// Prayers module switch (ministryConfig.modules.prayers, default on).
+function _prayersOn() {
+  const mc = (S.settings && S.settings.ministryConfig) || {};
+  return !(mc.modules && mc.modules.prayers === false);
+}
+// A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
+let _mdBusy = false;
+async function _moduleDisabledRefresh() {
+  if (_mdBusy) return;
+  _mdBusy = true;
+  try {
+    const before = _navSig();
+    Cache.del('/settings');
+    S.settings = await API.get('/settings');
+    if (_shellReady && _navSig() !== before) _initShell();
+    // Only the Prayers page itself is gone; any other screen (My Connections, Youth Setup) stays.
+    if (S.page === 'prayers') go('home'); else render();
+  } catch (e) {} finally { _mdBusy = false; }
 }
 
 // ============================================================
 // HELPERS
 // ============================================================
 const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
-function quadLabel(q) { return QUAD_LABELS[q] || q; }
+const SIMPLE_QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };
+// Junior/Senior logins (ministryConfig.logins.simple) rename the four quad logins everywhere.
+function _simpleLoginsOn() {
+  const lg = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.logins;
+  return !!(lg && lg.simple);
+}
+function quadLabel(q) { return (_simpleLoginsOn() ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q]) || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
@@ -1436,7 +1464,7 @@ function _roleLabel(role) {
 }
 const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
-  quad:  (u) => `${QUAD_LABELS[u.quad]||u.quad} login — quads fully manage leaders and connections within their gender+bracket`,
+  quad:  (u) => `${quadLabel(u.quad)} login — quads fully manage leaders and connections within their gender+bracket`,
   leader: () => `${_roleLabel('leader')} — sees and follows up only their own connected students`,
   director: () => `${_roleLabel('director')} — full ministry access, can import data`,
   admin: () => `${_roleLabel('admin')} — full access including settings and accounts`,
@@ -1475,6 +1503,114 @@ function setMyLeaderId(id) {
   try { if ((id || null) !== prev && _linkOn()) _lkPush({ kind: 'identity', id: _lkUuid(), at: new Date().toISOString(), from: prev, to: id || null }, false); } catch {}
 }
 
+// ── GRADE FILTER (Junior/Senior logins) ──
+// A VIEW PREFERENCE, not security: the server still limits every read to the quad's
+// bracket and gender. Saved on the server against the leader picked in "I am…"
+// (PATCH /leaders/:id/view-grades), so it follows that leader and survives logout.
+// _vgLocal holds taps not yet saved (and every tap during an account preview, which
+// is never saved). Key present with null = "back to my grades".
+let _vgLocal = {}, _vgTimer = null;
+function _vgActive() { return !!(S.user && S.user.role === 'quad' && _simpleLoginsOn()); }
+function _vgLeader(id) {
+  const ls = Cache.getStale('/leaders') || [];
+  return ls.find(l => l.id === id) || null;
+}
+// The effective grades, or null for "no filter" (not a quad login under Simple logins,
+// or no "I am…" pick yet).
+function _vgGrades() {
+  if (!_vgActive()) return null;
+  const id = getMyLeaderId();
+  if (!id) return null;
+  const bracket = quadGrades(S.user.quad);
+  const l = _vgLeader(id);
+  const saved = Object.prototype.hasOwnProperty.call(_vgLocal, id) ? _vgLocal[id] : (l ? l.viewGrades : null);
+  const base = saved != null ? saved : ((l && l.grades) || []);
+  const pick = bracket.filter(g => base.includes(g));
+  return pick.length ? pick : bracket.slice();
+}
+function _vgSet(grades) {
+  const id = getMyLeaderId();
+  if (!id) return;
+  _vgLocal[id] = grades;
+  _vgRepaint();
+  if (_previewStash) return; // looking at a login never changes a real leader's filter
+  clearTimeout(_vgTimer);
+  _vgTimer = setTimeout(() => _vgSave(id), 600);
+}
+async function _vgSave(id) {
+  if (!Object.prototype.hasOwnProperty.call(_vgLocal, id)) return;
+  const grades = _vgLocal[id];
+  try {
+    await API.patch(`/leaders/${id}/view-grades`, { grades });
+    // Update the cached leader in place (no refetch), then drop the local override
+    // unless another tap landed while the save was in flight.
+    const l = _vgLeader(id);
+    if (l) l.viewGrades = grades;
+    if (_vgLocal[id] === grades) delete _vgLocal[id];
+  } catch (e) {
+    // Not saved: drop the tap so the screen shows the real saved filter again, and say why.
+    if (_vgLocal[id] === grades) { delete _vgLocal[id]; _vgRepaint(); }
+    toast(e.message);
+  }
+}
+// Repaint the current screen from the cache only (T7). A chip tap must not re-run the page
+// loader: that sent a /batch, refetched Follow Up (blank card) and painted twice. Health and
+// Birthdays keep their loader, which their own chips already used.
+function _vgRepaint() {
+  const p = S.page;
+  if (p === 'leaders') return renderConnectView();
+  if (p === 'students') return renderStudentView();
+  if (p === 'prayers') return setApp(shell(_prayersHtml(_prayerCache)));
+  if (p === 'home') return _renderHomeInner(true, true);
+  return render();
+}
+function _vgReset() { clearTimeout(_vgTimer); _vgTimer = null; _vgLocal = {}; }
+// Pure per-screen rules (vg = _vgGrades(); null = no filter).
+function _vgStudents(list, vg) { return vg ? (list || []).filter(s => vg.includes(s.grade)) : (list || []); }
+// Connect Setup leader cards: grades overlap the filter, or the leader has no grades yet.
+function _vgLeaders(list, vg) {
+  return vg ? (list || []).filter(l => !(l.grades && l.grades.length) || l.grades.some(g => vg.includes(g))) : (list || []);
+}
+// Student prayers by the student's grade; a general prayer by createdByGrades overlap, or null.
+function _vgPrayers(list, vg) {
+  if (!vg) return list || [];
+  return (list || []).filter(p => p.studentId != null
+    ? !!(p.student && vg.includes(p.student.grade))
+    : (!Array.isArray(p.createdByGrades) || p.createdByGrades.some(g => vg.includes(g))));
+}
+function _vgGradeList(grades, vg) { return vg ? grades.filter(g => vg.includes(g)) : grades; }
+function _vgToggle(g) {
+  const cur = _vgGrades();
+  if (!cur) return;
+  if (cur.includes(g)) {
+    if (cur.length === 1) return; // an empty pick is never saved
+    _vgSet(cur.filter(x => x !== g));
+  } else {
+    _vgSet(cur.concat([g]).sort((a, b) => a - b));
+  }
+}
+function _vgAll() { if (_vgActive()) _vgSet(quadGrades(S.user.quad)); }
+function _vgMine() { _vgSet(null); }
+// The shared chip row: "Grades: [7] [8] [9] · All · My grades". Quad logins are one
+// gender, so there are no gender chips.
+function _vgBar() {
+  if (!_vgActive()) return '';
+  const bracket = quadGrades(S.user.quad);
+  // Screens without /leaders in hand (Health, Prayers) fetch it once, then repaint.
+  if (getMyLeaderId() && Cache.getStale('/leaders') == null) API.get('/leaders').then(() => _vgRepaint(), () => {});
+  const cur = _vgGrades();
+  const word = esc(_gradeWord()) + 's:';
+  if (!cur) {
+    const chips = bracket.map(g => `<button class="fc" style="opacity:.55" disabled>${g}</button>`).join('');
+    const where = S.page === 'home' ? 'below' : 'on Home';
+    return `<div class="filter-row vg-bar" role="group" aria-label="Filter by grade"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}</div>
+      <div class="help-text" style="margin:-4px 0 8px">Pick who you are ${where} to use your grades</div>`;
+  }
+  const all = bracket.every(g => cur.includes(g));
+  const chips = bracket.map(g => `<button class="fc ${cur.includes(g) ? 'on' : ''}" aria-pressed="${cur.includes(g)}" title="${esc(_gradeWord())} ${g}" onclick="_vgToggle(${g})">${g}</button>`).join('');
+  return `<div class="filter-row vg-bar" role="group" aria-label="Filter by grade"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}<span style="color:var(--ink-faint)">·</span><button class="fc ${all ? 'on' : ''}" aria-pressed="${all}" onclick="_vgAll()">All</button><button class="fc" onclick="_vgMine()">My grades</button></div>`;
+}
+
 // ── UNDO SYSTEM ──
 const _undo = { pending: null, timer: null };
 function showUndoToast(msg, undoFn) {
@@ -1500,7 +1636,7 @@ document.addEventListener('keydown', (e) => {
 });
 function quadChip(q) {
   if (!q) return '';
-  return `<span class="chip quad-${q}">${QUAD_LABELS[q] || q}</span>`;
+  return `<span class="chip quad-${q}">${esc(quadLabel(q))}</span>`;
 }
 // Format a phone number with a space after the 4th and 7th digit (e.g. 0412 345 678).
 // Normalizes AU mobiles that lost their leading 0 to spreadsheet numeric coercion in
@@ -1854,7 +1990,7 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 // The More menu (2026-10-12): the modules this login can use right now, in a sheet at the bottom of the
 // screen. Later: service check-in, lifegroup report. Each entry has its page id and its entry call.
 function moreItems() {
-  const xs = [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }];
+  const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
@@ -1867,14 +2003,27 @@ function moreItems() {
   }
   return xs;
 }
-// Prayers' nav slot becomes More when there are 2+ modules to pick from; with Prayers alone it stays Prayers.
-function navItems() {
-  const items = _navItemsBase();
-  if (moreItems().length < 2) return items;
-  return items.map(it => it.id === 'prayers' ? { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' } : it);
+// The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
+function _navSlots() {
+  const more = moreItems();
+  return _navItemsBase().map(it => {
+    if (it.id !== 'prayers') return it;
+    if (more.length >= 2) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
+    if (more.length === 0) return null;
+    const m = more[0];
+    if (m.id === 'prayers') return it;
+    if (m.id === 'bus') return { id:'bus', ic:'bus', label:esc(L('busMinistry')), mbl:'Bus' }; // _initShell puts labels in raw: escape here
+    return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+  });
 }
+function navItems() { return _navSlots().filter(Boolean); }
 function openMore() {
-  const rows = moreItems().map(m => `<button type="button" class="more-row${S.page === m.id ? ' on' : ''}" onclick="closeModal();${m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`).join('');
+  // The row for the page you are on only closes the sheet: re-running its entry would wipe that page
+  // (nyOpen resets the New person form, which could hide a "we don't know if it went in" result).
+  const rows = moreItems().map(m => {
+    const here = S.page === m.id;
+    return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
+  }).join('');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -1947,8 +2096,8 @@ function _navItemsBase() {
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
   ];
 }
-function bottomNavItems() { return navItems().slice(0, 5); }
-function quickActionItems() { return navItems().slice(5); }
+function bottomNavItems() { return _navSlots().slice(0, 5).filter(Boolean); }
+function quickActionItems() { return _navSlots().slice(5).filter(Boolean); }
 
 // shell() is kept for compatibility — the persistent shell is set up by _initShell().
 // All setApp(shell(x)) calls now just update <main id="page-main"> with x.
@@ -1998,6 +2147,7 @@ async function render() {
   // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
   // other route home (defence-in-depth; the server also scopes/403s their data).
   if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p) && p !== 'link-checkin') { go('home'); return; }
+  if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
@@ -2198,9 +2348,10 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
+  _vgReset(); // unsaved grade taps never fire after logout or carry into the next login
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
     sessionStorage.removeItem('yap_ar_filter'); sessionStorage.removeItem('yap_prayer_filter'); sessionStorage.removeItem('yap_connect_filters');
@@ -2454,7 +2605,8 @@ function _revalidateHome() {
     .catch(() => {})
     .finally(() => { _homeRevalidating = false; });
 }
-async function _renderHomeInner(stale) {
+// fromCache (T7/T8): a grade-filter repaint; the Follow Up card also reads from the cache.
+async function _renderHomeInner(stale, fromCache) {
   const u = S.user;
   const _pg = S.page;
   const lifegroupsOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.lifegroups === false);
@@ -2477,7 +2629,10 @@ async function _renderHomeInner(stale) {
   // Bug list item 1: birthdays-this-week must be grade/quad-scoped, not tied
   // to whichever leader identity is self-selected in Follow Up, and must not
   // show at all for director/admin. See _homeBirthdaysCtx's doc comment.
-  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
+  // Junior/Senior logins: the shared grade filter narrows "Birthdays this week" and the
+  // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
+  const _vg = _vgGrades();
+  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(_vgStudents(sc, _vg)) : null;
   const _connSet = new Set((conns || []).map(a => a.studentId));
   const _lgQuad = q => (lgStats && lgStats.byQuad || []).find(x => x.quad === q);
   const _lgGrade = g => (lgStats && lgStats.byGrade || []).find(x => x.grade === g);
@@ -2648,7 +2803,7 @@ async function _renderHomeInner(stale) {
               gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds));
             }
             const qBorder = quadGender(q.quad) === 'female' ? '#ec4899' : null;
-            body += _hAttTile(q.label, qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true, borderColor: qBorder });
+            body += _hAttTile(quadLabel(q.quad), qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true, borderColor: qBorder });
           }
           body += '</div>';
         }
@@ -2658,8 +2813,9 @@ async function _renderHomeInner(stale) {
       // "Lifegroups by Grade" section below; folded in here so quad only has to
       // tap one tile instead of scrolling to a second section for the same grade).
       if (u.role === 'quad') {
+        body += _vgBar();
         body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-        for (const gr of _hQuadGrades(u.quad)) {
+        for (const gr of _vgGradeList(_hQuadGrades(u.quad), _vg)) {
           const gLg = lifegroupsOn ? _lgGrade(gr) : null;
           const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0, hideLifegroupRow: !lifegroupsOn };
           if (gLg) {
@@ -2683,7 +2839,7 @@ async function _renderHomeInner(stale) {
             body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;padding:11px">
               <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
                 <span class="drop-chev" style="font-size:12px;color:var(--ink-faint);font-weight:800">›</span>
-                <div style="flex:1;font-size:13px;font-weight:700">${q.label}</div>
+                <div style="flex:1;font-size:13px;font-weight:700">${esc(quadLabel(q.quad))}</div>
                 <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
               </div><div class="drop-body">`;
             for (const gr of _hQuadGrades(q.quad)) {
@@ -2703,7 +2859,7 @@ async function _renderHomeInner(stale) {
 
   setApp(shell(body));
   // Fill the follow-up container after the main paint (the div is now in the DOM).
-  renderHomeFollowup();
+  renderHomeFollowup(fromCache);
 }
 
 // Junior-leader home (§5.2): no ministry stats — just a greeting, quick actions,
@@ -2713,7 +2869,7 @@ async function renderLeaderHome() {
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
   /*BUS-HOOK*/ body += _busHomeTile();
   // The base list, so Prayers stays a plain button here even when the nav shows More.
-  const acts = _navItemsBase().filter(i => i.id !== 'home');
+  const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
@@ -2730,15 +2886,17 @@ async function renderLeaderHome() {
 
 // Render the weekly follow-up into #home-followup. If no leader identity is set,
 // show a self-identify picker first (Recommendation 2 + 3).
-async function renderHomeFollowup() {
+async function renderHomeFollowup(fromCache) {
   const host = document.getElementById('home-followup');
   if (!host) return;
   const mine = getMyLeaderId();
+  // fromCache: a repaint (grade filter) — reuse the last reply instead of a network call.
+  const G = (p) => (fromCache && Cache.getStale(p)) || API.get(p);
 
   // No identity yet → offer a picker built from the leaders in scope.
   if (!mine) {
     let leaders = [];
-    try { leaders = await API.get('/leaders'); } catch {}
+    try { leaders = await G('/leaders'); } catch {}
     if (!leaders.length) { host.innerHTML = ''; return; }
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
     host.innerHTML = `<div class="sh" style="font-size:13px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
@@ -2750,7 +2908,7 @@ async function renderHomeFollowup() {
   }
 
   let data;
-  try { data = await API.get(`/connections/leader/${mine}/followup`); }
+  try { data = await G(`/connections/leader/${mine}/followup`); }
   catch { host.innerHTML = ''; return; }
   if (!data) { host.innerHTML = ''; return; }
 
@@ -2846,9 +3004,14 @@ async function chooseHomeLeader() {
   const v = document.getElementById('home-leader-pick')?.value;
   if (!v) return;
   await _lkSwitchLeader(v);
-  renderHomeFollowup();
+  _homeIdChanged();
 }
-async function _homeNotYou() { if (await _lkSwitchLeader(null)) renderHomeFollowup(); }
+// "I am" picked or cleared on Home (T8): with the grade filter on, the bar, the grade tiles and
+// the birthdays all follow the pick, so repaint Home from the cache; otherwise only Follow Up.
+function _homeIdChanged() {
+  if (_vgActive()) _vgRepaint(); else renderHomeFollowup();
+}
+async function _homeNotYou() { if (await _lkSwitchLeader(null)) _homeIdChanged(); }
 
 // Toggle the Home hero's previous-term table (Recommendation 4b). In-DOM only.
 function _toggleHomePrev() {
@@ -3088,7 +3251,10 @@ function renderConnectView() {
 
   // Filter leaders by grade/gender chips (applied to the leader cards shown)
   let visLeaders = leaders;
-  if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  const vg = vgOn ? _vgGrades() : null;
+  if (vgOn) visLeaders = _vgLeaders(visLeaders, vg);
+  else if (gf.size) visLeaders = visLeaders.filter(l => l.grades?.some(g => gf.has(g)));
   if (df.size) visLeaders = visLeaders.filter(l => !l.gender || df.has(l.gender));
 
   // Counts — only students who have attended count toward connected/total; those
@@ -3110,7 +3276,8 @@ function renderConnectView() {
   // always reflecting the login's full unfiltered remit.
   const inChipFilter = s => (!gf.size || gf.has(s.grade)) && (!df.size || df.has(s.gender));
   const connectedStudentIds = new Set(Object.keys(allocs).filter(id => allocs[id].length > 0));
-  const connectable = students.filter(_hasAttended).filter(inOwnScope).filter(inChipFilter);
+  const ownScope = students.filter(_hasAttended).filter(inOwnScope);
+  const connectable = vgOn ? _vgStudents(ownScope, vg) : ownScope.filter(inChipFilter);
   const totalStudents = connectable.length;
   const connectedCount = connectable.filter(s => connectedStudentIds.has(s.id)).length;
 
@@ -3165,7 +3332,7 @@ function renderConnectView() {
       <div class="stat"><div class="stat-v" style="color:var(--warn)">${Math.max(0, totalStudents - connectedCount)}</div><div class="stat-l">Pending</div></div>
     </div>
     ${unallocDrop}
-    ${gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
+    ${vgOn ? _vgBar() : gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}
     </div>` : ''}
     ${dChips ? `<div class="filter-row" role="group" aria-label="Filter by gender">
@@ -3574,6 +3741,8 @@ async function renderUpcomingBirthdays() {
   // ministry list here; grade/quad logins are already scoped server-side).
   const showBdayFilters = ['admin', 'director'].includes(u.role);
   let scopedStudents = students || [];
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter
+  if (vgOn) scopedStudents = _vgStudents(scopedStudents, _vgGrades());
   if (showBdayFilters) {
     if (_bdayFilter.grade) scopedStudents = scopedStudents.filter(s => s.grade === _bdayFilter.grade);
     if (_bdayFilter.gender) scopedStudents = scopedStudents.filter(s => s.gender === _bdayFilter.gender);
@@ -3588,6 +3757,7 @@ async function renderUpcomingBirthdays() {
   upcoming.sort((a, b) => a.when - b.when);
 
   let body = `<div class="ph"><div class="ph-title">Upcoming Birthdays</div><div class="ph-sub">Next 2 months</div></div>`;
+  if (vgOn) body += _vgBar();
   if (showBdayFilters) {
     body += `<div style="display:flex;gap:8px;margin-bottom:12px">
       <select class="fs" style="flex:1" onchange="setBdayFilter('grade', this.value ? Number(this.value) : null)">
@@ -3720,7 +3890,7 @@ async function renderMyStudents() {
     // Best-effort — a per-student prayer summary + quick-add is a nice-to-have,
     // not core to the screen, so a failed fetch just means no summary line shows.
     let prayers = [];
-    try { prayers = await API.get('/prayers'); } catch {}
+    if (_prayersOn()) try { prayers = await API.get('/prayers'); } catch {}
     const prayersByStudent = {};
     for (const p of prayers) {
       if (!p.student) continue;
@@ -3763,7 +3933,7 @@ async function renderMyStudents() {
             ${prayerSummary}
           </div>
           <div class="li-right">
-            <button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>
+            ${_prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : ''}
           </div>
         </div>`;
       }
@@ -3894,7 +4064,9 @@ async function renderAtRisk() {
   // The /students list is role-scoped (grade/gender) server-side; apply the page's
   // grade/gender filters on top, then categorise by the dynamic qualifier.
   let scoped = (allStu || []).slice();
-  if (_arFilter.grade) scoped = scoped.filter(s => s.grade == _arFilter.grade);
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  if (vgOn) scoped = _vgStudents(scoped, _vgGrades());
+  else if (_arFilter.grade) scoped = scoped.filter(s => s.grade == _arFilter.grade);
   if (_arFilter.gender) scoped = scoped.filter(s => s.gender === _arFilter.gender);
   // Exclude youth who never attended a service or group in the current OR previous
   // term — they aren't "at risk", they've simply never engaged.
@@ -3915,7 +4087,8 @@ async function renderAtRisk() {
         <input id="ar-name-filter" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Find student" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
       </div>
     </div>`;
-  if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
+  if (vgOn) body += _vgBar();
+  else if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
   if (arGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_arFilter.gender?'on':''}" onclick="setArFilter('gender',null)">All</button></div>`;
   body += `<div id="ar-results">${_arSectionsHtml(scoped, u)}</div>`;
   setApp(shell(body));
@@ -4044,7 +4217,8 @@ function _prayerSection(sectionKey, title, items) {
 function _prayersHtml(list) {
   _prayerCache = list || [];
   const u = S.user;
-  const inFilter = _prayerCache.filter(_prayerPassesFilter);
+  const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter replaces the grade chips
+  const inFilter = vgOn ? _vgPrayers(_prayerCache, _vgGrades()) : _prayerCache.filter(_prayerPassesFilter);
   const open = inFilter.filter(p => p.status === 'open');
   const answered = inFilter.filter(p => p.status === 'answered');
   const archived = inFilter.filter(p => p.status === 'archived');
@@ -4057,7 +4231,8 @@ function _prayersHtml(list) {
   const gChips = prGrades.map(g => `<button class="fc ${_prayerFilter.grade == g ? 'on' : ''}" onclick="setPrayerFilter('grade',${g})">${g}</button>`).join('');
   const dChips = prGenders.map(g => `<button class="fc ${_prayerFilter.gender === g ? 'on' : ''}" onclick="setPrayerFilter('gender','${g}')">${g.charAt(0).toUpperCase() + g.slice(1)}</button>`).join('');
   let filterHtml = '';
-  if (prGrades.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_prayerFilter.grade ? 'on' : ''}" onclick="setPrayerFilter('grade',null)">All</button></div>`;
+  if (vgOn) filterHtml += _vgBar();
+  else if (prGrades.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_prayerFilter.grade ? 'on' : ''}" onclick="setPrayerFilter('grade',null)">All</button></div>`;
   if (prGenders.length) filterHtml += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_prayerFilter.gender ? 'on' : ''}" onclick="setPrayerFilter('gender',null)">All</button></div>`;
 
   const body = _prayerCache.length
@@ -4404,7 +4579,8 @@ function _visStudents() {
     if (_ROLE_SUFFIX_RE.test(full)) return false;
     return !leaderNames.has(full.toLowerCase());
   });
-  if (gf.size) vis = vis.filter(s => gf.has(s.grade));
+  if (_vgActive()) vis = _vgStudents(vis, _vgGrades()); // Junior/Senior logins: the shared grade filter
+  else if (gf.size) vis = vis.filter(s => gf.has(s.grade));
   if (df.size) vis = vis.filter(s => df.has(s.gender));
   if (search) vis = vis.filter(s => _matchesQuery(`${s.firstName} ${s.lastName}`, search));
   return vis;
@@ -4469,7 +4645,8 @@ function renderStudentView() {
   let body = `
     <div class="ph"><div class="ph-title">Student Search</div><div class="ph-sub"><span id="stu-count">${vis.length} of ${totalSearchable}</span></div></div>
     <div class="sbar"><input id="stu-search" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search students by name" placeholder="Search by name…" value="${search.replace(/"/g,'&quot;')}" oninput="studSearch(this.value)"></div>`;
-  if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
+  if (_vgActive()) body += _vgBar();
+  else if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
   if (ssGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}</div>`;
   body += `<div id="stu-results">${_studentResultsHtml(vis)}</div>`;
 
@@ -4597,7 +4774,7 @@ async function showStudentDetail(id) {
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-secondary btn-sm" onclick="openPrayerModal('${s.id}')">${icS('plus')} Prayer</button>
+      ${_prayersOn() ? `<button class="btn btn-secondary btn-sm" onclick="openPrayerModal('${s.id}')">${icS('plus')} Prayer</button>` : ''}
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
   if (canEdit) sdLeaderSearch(id);
@@ -4761,7 +4938,6 @@ async function renderTrends() {
   }
 
   const canExport = ['quad','director','admin'].includes(u.role);
-  const QUAD_LABELS_LOCAL = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 
   // Compute per-grade stats from students
   function gradeStats(sc) {
@@ -4781,7 +4957,7 @@ async function renderTrends() {
       const att = qs.reduce((s,x)=>s+x.svcAttended,0);
       const svcPct = tot > 0 ? Math.round(att/tot*100) : 0;
       const uniq = qs.filter(s=>s.svcAttended>0).length;
-      return { quad:q, label:QUAD_LABELS_LOCAL[q], count:qs.length, svcPct, uniq, att, tot };
+      return { quad:q, label:quadLabel(q), count:qs.length, svcPct, uniq, att, tot };
     });
   }
 
@@ -4865,7 +5041,7 @@ async function renderTrends() {
     } else if (u.role === 'quad') {
       const ql = students.filter(s => s.quad === u.quad);
       const c = _svcAgg(ql, false), p = _svcAgg(ql, true);
-      body += `<div class="sh">${QUAD_LABELS_LOCAL[u.quad]||u.quad}</div><div class="card">`;
+      body += `<div class="sh">${esc(quadLabel(u.quad))}</div><div class="card">`;
       body += statCard([c.uniq, c.avg], ['Seen','Weekly'], _svcPrevSub(p));
       body += '<div class="sh" style="margin-top:10px">By Grade</div>';
       const grades = u.quad==='g79'||u.quad==='b79' ? [7,8,9] : [10,11,12];
@@ -4891,7 +5067,7 @@ async function renderTrends() {
         body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
         body += `<div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
           <span class="drop-chev" style="font-size:12px">›</span>
-          <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
+          <div style="flex:1;font-weight:700;font-size:14px">${esc(quadLabel(q.quad))}</div>
           <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${c.uniq} seen · ${c.avg} weekly</span>
         </div>`;
         if (p.weeks>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${p.uniq} seen · ${p.avg} weekly</div>`;
@@ -4975,7 +5151,7 @@ async function renderTrends() {
           body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;border-left:4px solid ${QUAD_COLORS[q.quad]}">`;
           body += `<div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="_drop('${qid}')">
             <span class="drop-chev" style="font-size:12px">›</span>
-            <div style="flex:1;font-weight:700;font-size:14px">${q.label}</div>
+            <div style="flex:1;font-weight:700;font-size:14px">${esc(quadLabel(q.quad))}</div>
             <span style="font-size:12px;font-weight:700;color:var(--ink-mid)">${q.current.uniqueAttenders} seen · ${q.current.avgPerWeek} weekly</span>
           </div>`;
           if (q.previous.uniqueAttenders>0 || q.previous.members>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${q.previous.uniqueAttenders} seen · ${q.previous.avgPerWeek} weekly</div>`;
@@ -5677,7 +5853,7 @@ async function renderAdminView(settings, users, history) {
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
-        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?(QUAD_LABELS[u.quad]||u.quad):_roleLabel(u.role);
+        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?quadLabel(u.quad):_roleLabel(u.role);
         // The account named "Admin" is protected: it can always be edited (except
         // renamed — see showEditUser), but never deactivated or deleted, regardless
         // of how many other admin accounts exist.
@@ -5726,7 +5902,7 @@ async function renderAdminView(settings, users, history) {
       </label>
       <div id="alloc-import-status" style="margin-top:8px"></div>
     </div>`;
-    body += `<div class="card">
+    if (_prayersOn()) body += `<div class="card">
       <div class="sh" style="margin-top:0">Prayers</div>
       <div class="help-text" style="margin-bottom:10px">Export every prayer request as a CSV (one row per prayer), edit it, then re-import. Import matches students by name and reports anything it can't match.</div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportPrayersCSV()">Export Prayers</button>
@@ -5848,7 +6024,7 @@ function _loginActivityBodyHtml(users) {
   const row = u => {
     const history = u.loginHistory || [];
     const devices = u.loginDevices || [];
-    const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? (QUAD_LABELS[u.quad] || u.quad) : _roleLabel(u.role);
+    const rl = u.role === 'grade' ? gradeBadgeLabel(u) : u.role === 'quad' ? quadLabel(u.quad) : _roleLabel(u.role);
     const inactive = u.status === 'inactive' ? ' · inactive' : '';
     let meta;
     if (_laLastMs(u) === -Infinity) {
@@ -5891,8 +6067,8 @@ function _loginActivityBodyHtml(users) {
 // State is deliberately in-memory only (session-based) — re-opening this tab
 // always starts a fresh run; there's no reliable way to know from the server
 // whether a past export was actually saved somewhere by the admin.
-let _wiz = { step1Done: false, prayersExportDone: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
-function _wizReset() { _wiz = { step1Done: false, prayersExportDone: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
+let _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
+function _wizReset() { _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
 function renderWizard() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 
 function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
@@ -5909,6 +6085,12 @@ function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
 function renderNewYearWizard() {
   const caOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.connectionAudit === false);
   const skippedCard = `<div class="alert al-info">Skipped — Connection Audit is disabled for this deployment.</div>`;
+  const prayersOn = _prayersOn();
+  // Prayers off: they are still saved, and the Full Reset deletes them. The export is off too,
+  // so the admin either turns Prayers on to export, or ticks that they can go (T4).
+  const prayersSkippedCard = `<div class="alert al-warn" style="margin-bottom:8px">Prayers are switched off but still saved. Turn Prayers on and export them, or tick to confirm they can be deleted.</div>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${_wiz.prayersDeleteOk ? 'checked' : ''} onchange="_wiz.prayersDeleteOk=this.checked;renderWizard()"> <span>The saved prayers can be deleted</span></label>`;
+  const prayersSatisfied = prayersOn ? _wiz.prayersExportDone : !!_wiz.prayersDeleteOk;
   // When CA is off, steps 2 and 6 (audit backup/restore) count as satisfied
   // for gating purposes without any action — nothing to back up or restore.
   const step2Satisfied = caOn ? _wiz.step2Done : true;
@@ -5927,18 +6109,18 @@ function renderNewYearWizard() {
   // attached to, so they must be exported before it — same reasoning as allocations.
   b += _wizStepCard(2, 'Export Prayers',
     "Downloads a CSV of every prayer request (you'll re-import it in step 6, alongside allocations).",
-    `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>`,
-    _wiz.prayersExportDone, !_wiz.step1Done);
+    prayersOn ? `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>` : prayersSkippedCard,
+    prayersSatisfied, !_wiz.step1Done);
 
   b += _wizStepCard(3, 'Export Configuration Audit Data',
     "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 4. You'll re-load it in step 7, once the roster is rebuilt.",
     caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
-    step2Satisfied, !_wiz.prayersExportDone);
+    step2Satisfied, !prayersSatisfied);
 
   b += _wizStepCard(4, 'Full Reset',
     'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
-    _wiz.step3Done, !step2Satisfied);
+    _wiz.step3Done, !step2Satisfied || !prayersSatisfied);
 
   b += _wizStepCard(5, "Re-import this year's attendance",
     'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 6 can match allocations back on.',
@@ -5952,11 +6134,11 @@ function renderNewYearWizard() {
     `<label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="wizHandleAllocationImportFile(this)">
     </label>
-    <div id="alloc-import-status" style="margin-top:8px"></div>
+    <div id="alloc-import-status" style="margin-top:8px"></div>${prayersOn ? `
     <label class="btn btn-secondary btn-full" style="cursor:pointer;margin-top:8px">Import Prayers
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
     </label>
-    <div id="prayer-import-status" style="margin-top:8px"></div>`,
+    <div id="prayer-import-status" style="margin-top:8px"></div>` : ''}`,
     _wiz.step5Done, !_wiz.step4Ack);
 
   b += _wizStepCard(7, 'Re-import Configuration Audit Data',
@@ -6344,7 +6526,8 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off' },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', prayers: true },
+  logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
@@ -6356,8 +6539,27 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
 // one in progress yet. switchAdminTab() nulls these out whenever the admin
 // switches INTO this tab, so re-entering after time away picks up any
 // server-side changes; edits within a visit persist across every re-render.
+// The two risky switches as they were when the draft was seeded (T1). A save sends a switch
+// only when the draft differs from this, with expect = this value, so a stale tab cannot flip it.
+let _setupBase = null;
+function _setupBaseOf(mc) {
+  const c = mc || {};
+  return { simple: !!(c.logins && c.logins.simple), prayers: !(c.modules && c.modules.prayers === false) };
+}
+// The PATCH body parts for a draft: logins / modules.prayers only when changed from base. Pure.
+function _setupPatch(draft, base) {
+  const mc = JSON.parse(JSON.stringify(draft || {}));
+  const now = _setupBaseOf(mc), b = base || now;
+  const expect = {};
+  if (now.simple !== b.simple) { mc.logins = { simple: now.simple }; expect.simple = b.simple; }
+  else delete mc.logins;
+  if (now.prayers !== b.prayers) { mc.modules = { ...(mc.modules || {}), prayers: now.prayers }; expect.prayers = b.prayers; }
+  else if (mc.modules) { delete mc.modules.prayers; if (!Object.keys(mc.modules).length) delete mc.modules; }
+  return Object.keys(expect).length ? { ministryConfig: mc, expect } : { ministryConfig: mc };
+}
 function _ensureSetupDraft(settings) {
   if (_setupDraft == null) {
+    _setupBase = _setupBaseOf(settings && settings.ministryConfig);
     _setupDraft = JSON.parse(JSON.stringify((settings && settings.ministryConfig) || {}));
     _setupServiceMinAttendance = (settings && settings.serviceMinAttendance) ?? 100;
     _setupTermGapDays = (settings && settings.termGapDays) ?? 14;
@@ -6371,24 +6573,36 @@ function pickMinistryPreset(id) {
   // previous preset's overrides instead of accumulating them. Doesn't touch
   // serviceMinAttendance... actually it does (presets scale it) — but leaves
   // termGapDays alone, since that's not part of any preset.
+  // A preset never flips Junior/Senior logins or Prayers on its own: keep the draft's values.
+  const prev = _setupDraft || {};
   _setupDraft = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
+  if (prev.logins) _setupDraft.logins = JSON.parse(JSON.stringify(prev.logins));
+  if (prev.modules && prev.modules.prayers != null) {
+    _setupDraft.modules = _setupDraft.modules || {};
+    _setupDraft.modules.prayers = prev.modules.prayers;
+  }
   _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
   _setupRerender();
 }
 
 async function saveMinistrySetup() {
   try {
-    const fresh = await API.patch('/settings', {
-      ministryConfig: _setupDraft,
+    const res = await API.patch('/settings', {
+      ..._setupPatch(_setupDraft, _setupBase),
       serviceMinAttendance: _setupServiceMinAttendance,
       termGapDays: _setupTermGapDays,
     });
+    const { renamedQuads, ...fresh } = res || {};
+    // Re-seed the draft and base from the saved config straight away (not null: the old
+    // page stays live until the re-render, and a tap there must not start from {}).
+    _setupDraft = JSON.parse(JSON.stringify(fresh.ministryConfig || {}));
+    _setupBase = _setupBaseOf(fresh.ministryConfig);
     Cache.del('/settings');
     const navBefore = _navSig();
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
-    if (_shellReady && _navSig() !== navBefore) _initShell(); // the New person state changes the Prayers nav item
-    toast('Youth Setup saved');
+    if (_shellReady && _navSig() !== navBefore) _initShell(); // Bus / New person / Prayers can turn the Prayers slot into More (or back)
+    toast(renamedQuads != null ? `Youth Setup saved. Renamed ${renamedQuads} quad logins` : 'Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
     const [settings, users, history] = await Promise.all([
@@ -6401,6 +6615,15 @@ async function saveMinistrySetup() {
   } catch (e) { toast(e.message); }
 }
 
+// Junior/Senior logins and Include Grade 6 block each other (no quad bracket covers grade 6).
+// Returns the reason each toggle is greyed out, or '' when it is free. Mirrors the server 400s.
+function _setupLocks(o) {
+  const simple = o.simpleOn ? ''
+    : (o.cohort !== 'grades-quads' || !o.quadOn) ? 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.'
+    : o.includeGrade6 ? 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.' : '';
+  const grade6 = (o.simpleOn && !o.includeGrade6) ? 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.' : '';
+  return { simple, grade6 };
+}
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);
   const cfg = _setupDraft || {};
@@ -6421,6 +6644,10 @@ function _youthSetupBody(settings, users) {
   const savedGradeMin = savedStructure.gradeMin != null ? savedStructure.gradeMin : dst.gradeMin;
   const savedGradeMax = savedStructure.gradeMax != null ? savedStructure.gradeMax : dst.gradeMax;
   const savedGradeLabel = savedStructure.gradeLabel != null ? savedStructure.gradeLabel : dst.gradeLabel;
+  const savedSimple = !!(settings.ministryConfig && settings.ministryConfig.logins && settings.ministryConfig.logins.simple);
+  // Junior/Senior logins in the DRAFT: greys out the controls that would break its rule.
+  const simpleOn = !!(cfg.logins && cfg.logins.simple);
+  const SIMPLE_LOCK_TIP = 'Turn off Junior/Senior logins first';
   const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
   const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
   // The highest grade is always 12 — see includeGrade6 below, which is the
@@ -6428,6 +6655,7 @@ function _youthSetupBody(settings, users) {
   // replaced separate Lowest/Highest grade number fields).
   const gMax = 12;
   const includeGrade6 = gMin <= 6;
+  const locks = _setupLocks({ simpleOn, includeGrade6, cohort: st.cohortModel || dst.cohortModel, quadOn: roleEnabled('quad') });
   const gPolicy = st.genderPolicy || dst.genderPolicy;
   const svcDay = st.serviceDayOfWeek != null ? st.serviceDayOfWeek : dst.serviceDayOfWeek;
 
@@ -6461,9 +6689,14 @@ function _youthSetupBody(settings, users) {
     ['grade', 'Grade', 'A login responsible for one or more grades, e.g. '+gLabel+' 9. One login can cover several grades at once.'],
     ['quad', 'Quad', 'A login for one age group and gender, e.g. Girls Yr 7-9. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
     ['leader', 'Leader', 'A login that only sees the students connected to it.'],
-  ].map(([k, label, hint]) =>
-    `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
+  ].map(([k, label, hint]) => ((k === 'grade' || k === 'quad') && simpleOn)
+    ? `<label class="fg" style="display:flex;align-items:center;gap:8px" title="${SIMPLE_LOCK_TIP}"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" ${k === 'quad' ? 'checked' : ''} disabled> <span>${esc(label)}</span></span> ${helpTip(hint + (k === 'grade' ? ' Off while Junior/Senior logins is on.' : ' On while Junior/Senior logins is on.'))}</label>`
+    : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
+  const simpleTip = "Turns off the single-grade logins and renames the four quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each Junior/Senior login gets a Grades filter, saved for the name chosen in “I am…”. Bus is then run by admin, director and named Bus coordinators. Needs the Complex cohort model, the Quad role and Years 7 to 12 only. Turning it off brings the grade logins back.";
+  const simpleToggleRow = locks.simple
+    ? `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>Junior/Senior logins</span></span> ${helpTip(locks.simple)}</label>`
+    : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${simpleOn?'checked':''} onchange="_setupSet('logins.simple', this.checked)"> <span>Junior/Senior logins ${helpTip(simpleTip)}</span></label>`;
 
   // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
   // fallback to the mirrored defaults.
@@ -6486,19 +6719,23 @@ function _youthSetupBody(settings, users) {
     <div class="sh" style="margin-top:0">Pre-set Configurations</div>
     <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
+      ${MINISTRY_PRESETS_INFO.map(p => (p.id === 'simple' && simpleOn)
+        ? `<button class="btn btn-secondary" style="flex:1;min-width:150px" disabled title="${SIMPLE_LOCK_TIP}">${esc(p.title)}</button>`
+        : `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
     </div>
+    ${simpleOn ? `<div class="help-text" style="margin-bottom:8px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}
     ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
   </div>`;
 
   b += _setupCard('structure', 'Structure & Roles', `
     <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only ever sees its own students. Changing this also switches Director/Quad on or off below to match.')}</label>
-      <select class="fs" onchange="_setupSetCohortModel(this.value)">
+      <select class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
         <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
         <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
-    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
+    ${locks.grade6 ? `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>Include ${esc(gLabel)} 6 (kids-church intake)</span></span> ${helpTip(locks.grade6)}</label>` : ''}
+    <label class="fg" style="display:${locks.grade6 ? 'none' : 'flex'};align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
     <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders (the current setup). Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
@@ -6509,6 +6746,7 @@ function _youthSetupBody(settings, users) {
     <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
     ${adminRoleRow}
     ${roleToggleRows}
+    ${simpleToggleRow}
     <div class="sh" style="margin:16px 0 8px">Attendance</div>
     <div class="form-row">
       <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
@@ -6571,6 +6809,7 @@ function _youthSetupBody(settings, users) {
   b += _setupCard('modules', 'Modules & Import', `
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
     <div class="fg"><label class="fl" for="setup-ny">Elvanto features ${helpTip("Turns on the screens that send to Elvanto: New person, Check-in, Lifegroup report and Flow steps. Shadow mode shows them to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
@@ -6606,7 +6845,7 @@ function _youthSetupBody(settings, users) {
   // already match, rather than only appearing while switching models; a
   // grade-6-toggle change with the SAME cohort model still needs this to
   // pick up new/changed bracket accounts.
-  const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers);
+  const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
   const aligned = !alignPlan.toCreate.length && !alignPlan.toDeactivate.length;
   const targetLabel = savedCohort === 'none' ? 'Simple' : 'Complex';
   b += `<button class="btn btn-secondary btn-full" style="margin-top:8px" ${aligned?'disabled':''} onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}${aligned?' (already aligned)':''}</button>
@@ -6637,7 +6876,7 @@ function _gradeWordLabelClient(grades, gradeWord) {
   const nums = g.length > 1 ? (g[0] + '–' + g[g.length - 1]) : String(g[0]);
   return gradeWord + (g.length > 1 ? 's' : '') + ' ' + nums;
 }
-function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord) {
+function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple) {
   const out = [];
   const genders = [{ gender: 'female', label: 'Girls', suffix: 'g' }, { gender: 'male', label: 'Boys', suffix: 'b' }];
   if (targetCohort === 'none') {
@@ -6645,17 +6884,18 @@ function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord) 
       for (const g of genders) out.push({ role: 'grade', username: 'grade' + bracket.join('') + g.suffix, displayName: _gradeWordLabelClient(bracket, gradeWord) + ' ' + g.label });
     }
   } else {
-    for (let grade = gradeMin; grade <= gradeMax; grade++) {
+    // Junior/Senior logins on: the four quads only, with their Simple names, no grade accounts.
+    for (let grade = gradeMin; grade <= gradeMax && !simple; grade++) {
       for (const g of genders) out.push({ role: 'grade', username: 'grade' + grade + g.suffix, displayName: _gradeWordLabelClient([grade], gradeWord) + ' ' + g.label });
     }
-    for (const q of [['g79', 'Girls Yr 7-9'], ['b79', 'Boys Yr 7-9'], ['g1012', 'Girls Yr 10-12'], ['b1012', 'Boys Yr 10-12']]) {
-      out.push({ role: 'quad', username: q[0], displayName: q[1] });
+    for (const q of ['g79', 'b79', 'g1012', 'b1012']) {
+      out.push({ role: 'quad', username: q, displayName: simple ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q] });
     }
   }
   return out;
 }
-function planCohortAccountLayoutClient(targetCohort, gradeMin, gradeMax, gradeWord, existing) {
-  const targets = buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord);
+function planCohortAccountLayoutClient(targetCohort, gradeMin, gradeMax, gradeWord, existing, simple) {
+  const targets = buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple);
   const existingUsernames = new Set(existing.map(u => (u.email || '').toLowerCase()));
   const targetUsernames = new Set(targets.map(t => t.username.toLowerCase()));
   const toCreate = targets.filter(t => !existingUsernames.has(t.username.toLowerCase()));
@@ -6733,8 +6973,39 @@ function _showCohortLayoutResult(report) {
 // Confirm before applying Youth Setup changes — this is live config for
 // every user of the app, not a per-device preference, so a stray tap
 // shouldn't silently rebrand/reconfigure the ministry.
+// Which risky switches differ between the saved config and the draft, whatever changed them
+// (the toggle, a preset button or a loaded settings file). Pure, so it is unit-tested.
+function _setupRiskyDiff(saved, draft) {
+  const s = saved || {}, d = draft || {};
+  const simple = (c) => !!(c.logins && c.logins.simple);
+  const prayers = (c) => !(c.modules && c.modules.prayers === false);
+  const out = [];
+  if (simple(s) !== simple(d)) out.push('logins.simple');
+  if (prayers(s) !== prayers(d)) out.push('modules.prayers');
+  return out;
+}
 function confirmSaveMinistrySetup() {
+  const saved = (_adminData.settings && _adminData.settings.ministryConfig) || {};
+  const draft = _setupDraft || {};
+  const diff = _setupRiskyDiff(saved, draft);
+  let risky = '';
+  if (diff.includes('logins.simple')) {
+    if (draft.logins && draft.logins.simple) {
+      const n = (_adminData.users || []).filter(u => u.role === 'grade' && u.status === 'active').length;
+      const coords = (saved.busMinistry && saved.busMinistry.coordinatorLeaderIds) || [];
+      const busOn = !!(draft.modules && draft.modules.busMinistry);
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This ${n ? `switches off the ${n} grade logins (they come back if you turn this off) and ` : ''}renames the 4 quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys.${busOn ? ' Quad logins stop coordinating Bus.' : ''}</div>`;
+      if (busOn && !coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and director can run Bus.</div>`;
+    } else {
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back, and the quad logins get their old names.</div>`;
+    }
+  }
+  if (diff.includes('modules.prayers')) {
+    const on = !(draft.modules && draft.modules.prayers === false);
+    risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Prayers ${on ? 'on' : 'off'} for everyone.</div>`;
+  }
   modal(`<div class="mo-title">Save Youth Setup?</div>
+    ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup()">Save</button>
@@ -6756,6 +7027,19 @@ function _setupSet(path, val) {
   o[parts[parts.length - 1]] = val;
   _setupRerender();
 }
+// Turning Prayers off asks for an export first; turning it on needs no question.
+function _setupPrayersToggle(el) {
+  if (el.checked) { _setupSet('modules.prayers', true); return; }
+  el.checked = true;
+  modal(`<div class="mo-title">Export prayers first?</div>
+    <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">Turning Prayers off hides it from every login. Saved prayers are kept, but the export stops working while it is off. Press Save Youth Setup to apply.</div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      ${_prayersOn() ? `<button type="button" class="btn btn-secondary" onclick="exportPrayersCSV()">Download CSV</button>` : ''}
+      <button type="button" class="btn btn-primary" onclick="_setupPrayersOff()">Turn off</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+function _setupPrayersOff() { closeModal(); _setupSet('modules.prayers', false); }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
 // "Include Grade 6" toggle (bug 8 follow-up) replaces separate Lowest/Highest
 // grade number fields — the highest grade is always 12, so this is really
@@ -6791,8 +7075,17 @@ function _setupSetList(path, val) {
   _setupSet(path, String(val).split('\n').map((s) => s.trim()).filter(Boolean));
 }
 
+// logins.retiredGradeIds / gradeRoleWasOn are server-owned account ids for ONE location:
+// never written to or read from a settings file. logins.simple is still carried.
+function _stripServerOwnedLogins(cfg) {
+  if (cfg && cfg.logins && typeof cfg.logins === 'object') {
+    const { retiredGradeIds, gradeRoleWasOn, ...rest } = cfg.logins;
+    cfg.logins = rest;
+  }
+  return cfg;
+}
 function exportSettingsFile() {
-  const cfg = JSON.parse(JSON.stringify(_setupDraft || {}));
+  const cfg = _stripServerOwnedLogins(JSON.parse(JSON.stringify(_setupDraft || {})));
   delete cfg.busMinistry; // church address, coordinators: location-specific
   const file = { kind: 'ys-connection-settings', version: 1, ministryConfig: cfg,
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
@@ -6801,7 +7094,7 @@ function exportSettingsFile() {
 function _parseSettingsFile(text) {
   let j; try { j = JSON.parse(text); } catch { return null; }
   if (!j || j.kind !== 'ys-connection-settings' || typeof j.ministryConfig !== 'object' || !j.ministryConfig) return null;
-  const cfg = { ...j.ministryConfig }; delete cfg.busMinistry;
+  const cfg = _stripServerOwnedLogins({ ...j.ministryConfig }); delete cfg.busMinistry;
   return { ministryConfig: cfg,
     serviceMinAttendance: typeof j.serviceMinAttendance === 'number' ? j.serviceMinAttendance : null,
     termGapDays: typeof j.termGapDays === 'number' ? j.termGapDays : null };
@@ -6943,8 +7236,7 @@ async function showAddUser() {
     <div id="u-quad-f" class="fg" style="display:none">
       <label class="fl">Quad</label>
       <select class="fs" id="u-quad" onchange="suggestEmail()">
-        <option value="g79">Girls Yr 7–9</option><option value="b79">Boys Yr 7–9</option>
-        <option value="g1012">Girls Yr 10–12</option><option value="b1012">Boys Yr 10–12</option>
+        ${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}">${esc(quadLabel(q))}</option>`).join('')}
       </select>
     </div>
     <div id="u-leader-f" class="fg" style="display:none">
@@ -7060,7 +7352,7 @@ async function showEditUser(id) {
     </div>
     <div id="u-quad-f" class="fg" style="${u.role!=='quad'?'display:none':''}">
       <label class="fl">Quad</label>
-      <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${QUAD_LABELS[q]||q}</option>`).join('')}</select>
+      <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${esc(quadLabel(q))}</option>`).join('')}</select>
     </div>
     <div id="u-leader-f" class="fg" style="${u.role!=='leader'?'display:none':''}">
       <label class="fl">${esc(_roleLabel('leader'))} — linked leader ${helpTip('A junior-leader login sees only the students connected to this leader record.')}</label>
@@ -7215,6 +7507,7 @@ async function enterPreview(id) {
     const res = await API.post(`/accounts/users/${id}/preview`, {});
     _previewStash = { token: API.token, user: S.user };
     try { localStorage.setItem('yap_preview_stash', JSON.stringify(_previewStash)); } catch (e) {}
+    setMyLeaderId(null); _vgReset(); // the admin's "I am…" pick and grade taps never carry into a preview
     API.setToken(res.token);
     S.user = res.user;
     Cache.clear();
@@ -7229,6 +7522,7 @@ function exitPreview() {
   S.user = _previewStash.user;
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
+  setMyLeaderId(null); _vgReset(); // preview-only taps are dropped, never saved
   Cache.clear();
   _shellReady = false;
   go('home');
@@ -7253,7 +7547,6 @@ let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
 let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
-const QLBL={g79:'Girls Yr 7–9',b79:'Boys Yr 7–9',g1012:'Girls Yr 10–12',b1012:'Boys Yr 10–12'};
 const CA_NAMES=['Ava Okafor','Noah Castellanos','Isla Vandermeer','Eli Borowski','Maya Lindqvist','Levi Acheampong','Zara Kowalczyk','Finn Drummond','Lena Marchetti','Kai Stratford','Ruby Vasquez','Theo Lindgren','Nina Oyelaran','Jude Hartmann','Esme Calloway','Remy Delacroix','Sofia Andrade','Hugo Bertrand','Lola Fitzwilliam','Omar Castaneda','Iris Galloway','Felix Moreau','Tara Whitlock','Ezra Soderberg','Mila Beaumont','Arlo Kingsley'];
 
 // ---------- utils ----------
@@ -7762,13 +8055,13 @@ function rFunnel(){
   const worst=Object.entries(qc).sort((a,b)=>b[1]-a[1])[0];
   let b='';
   b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run Interacted, '+L('service')+', Regular, '+L('smallGroup')+', then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
-  b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+(QLBL[worst[0]]||worst[0])+' ('+worst[1]+').':'')+'</div></div>';
+  b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+quadLabel(worst[0])+' ('+worst[1]+').':'')+'</div></div>';
   b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
   if(FQ){
-    for(const q of Object.keys(QLBL)){
+    for(const q of Object.keys(QUAD_LABELS)){
       const qp=m.people.filter(p=>p.quad===q);
       const qr=R.map(r=>({lb:r.lb,v:qp.filter(p=>p.stage>=r.n).length}));
-      b+='<div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px"><span class="chip quad-'+q+'">'+(QLBL[q]||q)+'</span><span style="font-size:.62rem;color:var(--ca-muted)">'+qr[0].v+' people</span></div>';
+      b+='<div class="card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px"><span class="chip quad-'+q+'">'+quadLabel(q)+'</span><span style="font-size:.62rem;color:var(--ca-muted)">'+qr[0].v+' people</span></div>';
       // Integration ladder (same horizontal-bar style as the overview ladder).
       b+=qr.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round((qr[0].v?r.v/qr[0].v:0)*100))+'%;background:'+cols[i][0]+'">'+r.v+'</div></div></div>').join('');
       if(qr[0].v>0){
@@ -7815,7 +8108,7 @@ function rGroups(){
   // Quad filter buttons.
   b+='<div class="ca-fch">'
     +'<span class="chip '+(LGQ===''?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\'\')">All</span>'
-    +Object.keys(QLBL).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+(QLBL[q]||q)+'</span>').join('')
+    +Object.keys(QUAD_LABELS).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+quadLabel(q)+'</span>').join('')
     +'</div>';
   if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';caShell(b,'ca-groups');return;}
   const rc='text-align:center;padding:7px 8px;white-space:nowrap';
@@ -7900,7 +8193,7 @@ function rPeople(){
   b+='<input class="fi" style="margin-bottom:9px" placeholder="Search '+m.people.length+' people…" value="'+PF.q.replace(/"/g,'&quot;')+'" oninput="CA.pq(this.value)">';
   b+='<div class="ca-fch">'
     +'<select class="fs ca-sel" onchange="CA.pstage(this.value)"><option value="">All stages</option>'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(PF.stage==n?' selected':'')+'>Stage '+n+' · '+STG()[n]+'</option>').join('')+'</select>'
-    +'<select class="fs ca-sel" onchange="CA.pquad(this.value)"><option value="">All quads</option>'+Object.entries(QLBL).map(([k,v])=>'<option value="'+k+'"'+(PF.quad===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'
+    +'<select class="fs ca-sel" onchange="CA.pquad(this.value)"><option value="">All quads</option>'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<option value="'+k+'"'+(PF.quad===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'
     +'</div>';
   b+='<div id="ca-plist">'+plist()+'</div>';
   caShell(b,'ca-people');
@@ -7929,7 +8222,7 @@ function showPerson(id){
   modal(h);
 }
 function exportMenu(){
-  modal('<div style="font-size:1rem;font-weight:800;margin-bottom:6px">Follow-up list — pick a quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+Object.entries(QLBL).map(([k,v])=>'<button class="btn btn-secondary" onclick="CA.exportQuad(\''+k+'\')">'+v+'</button>').join('')+'</div><button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>');
+  modal('<div style="font-size:1rem;font-weight:800;margin-bottom:6px">Follow-up list — pick a quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<button class="btn btn-secondary" onclick="CA.exportQuad(\''+k+'\')">'+v+'</button>').join('')+'</div><button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>');
 }
 function exportQuad(q){
   const m=model();
@@ -7943,7 +8236,7 @@ function exportQuad(q){
     if(!reason)continue;
     rows.push([p.name,p.s.grade,p.s.gender,p.s.ph||'',reason,p.score]);
   }
-  if(rows.length===1){closeModal();toast('No follow-ups for '+(QLBL[q]||q));return;}
+  if(rows.length===1){closeModal();toast('No follow-ups for '+quadLabel(q));return;}
   const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=u;a.download='followup-'+q+'-'+new Date().toISOString().slice(0,10)+'.csv';
@@ -8140,7 +8433,7 @@ function _buildDeckBody(){
   };
   const bigNumViz=(num,cap)=>'<div class="bignum"><b>'+num+'</b><span>'+esc(cap)+'</span></div>';
   const quadFunnelViz=()=>{
-    const QUADS=[['g79','Girls Yr 7–9'],['b79','Boys Yr 7–9'],['g1012','Girls Yr 10–12'],['b1012','Boys Yr 10–12']];
+    const QUADS=Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]);
     const RLBL=['Interacted','Came to '+L('service'),'Regular','Attended a '+L('smallGroup').toLowerCase(),'Student Team'];
     const cells=QUADS.map(([q,ql])=>{
       const qp=m.people.filter(p=>p.quad===q);
@@ -8438,7 +8731,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, cars: null, carsErr: false, carsLoading: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
   hist: null, histErr: '', histSub: 'nights', histPeople: [],
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
@@ -8530,6 +8823,7 @@ async function busRefresh() {
     // Ministry load/poll stays one round trip pair instead of two serial ones — same
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
+      // The read-only All cars list has its own fetch (busCarsRefresh), only while that tab is open.
       const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
       if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
@@ -8550,16 +8844,30 @@ async function busRefresh() {
   })();
   return BUS.loading;
 }
+// The All cars list (T5/T6): fetched when the tab is shown and on every poll tick while it is
+// open, never as part of busRefresh. A failure keeps the last list and offers a retry.
+async function busCarsRefresh() {
+  if (BUS.carsLoading) return BUS.carsLoading;
+  BUS.carsLoading = (async () => {
+    try { BUS.cars = await _busGet('/bus/run/cars'); BUS.carsErr = false; }
+    catch (e) { BUS.carsErr = true; }
+    finally { BUS.carsLoading = null; }
+    if (S.page === 'bus' && BUS.tab === 'allcars' && !_busEditing()) renderBus();
+  })();
+  return BUS.carsLoading;
+}
+async function _busPollTick() {
+  if (S.page !== 'bus' || document.hidden || document.getElementById('mo-overlay')) return;
+  // I5: catch up on a repaint deferred earlier because a field was focused, without
+  // waiting on a version re-fetch — the data's already current.
+  if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
+  if (_busEditing()) return;
+  if (BUS.tab === 'allcars') { await busCarsRefresh(); return; }
+  try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
+}
 function _busStartPoll() {
   _busStopPoll();
-  BUS.pollTimer = setInterval(async () => {
-    if (S.page !== 'bus' || document.hidden || document.getElementById('mo-overlay')) return;
-    // I5: catch up on a repaint deferred earlier because a field was focused, without
-    // waiting on a version re-fetch — the data's already current.
-    if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
-    if (_busEditing()) return;
-    try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
-  }, 10000);
+  BUS.pollTimer = setInterval(_busPollTick, 10000);
 }
 function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.pollTimer = null; }
 
@@ -9741,13 +10049,12 @@ async function renderLinkFlows() {
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (LINK.fs) _lkStepDraw(); }, () => {});
 }
 // ── First-timer check-in on the New person form (F4.1; spec §11.4 first bullet) ──
-// Queue after a New person send? Live: when the student form went (sent or unconfirmed). Dry run: only when the
-// console reports firstTimerCheckIn and it is not live (it shadows or refuses it; nothing reaches Elvanto).
+// Queue after a New person send (always live since 2026-10-12, ledger 23): when the student form went (sent or
+// unconfirmed) and the console has not turned firstTimerCheckIn off. The shared switch is checked by the caller.
 function _lkFirstTimerDecision(result, capability, names) {
   const r = result || {};
   if (r.student === 'failed' || capability === 'off') return { queue: false, note: null };
-  const go = r.dryRun ? !!capability && capability !== 'live' : r.student === 'sent' || r.student === 'unconfirmed';
-  if (!go) return { queue: false, note: null };
+  if (r.student !== 'sent' && r.student !== 'unconfirmed') return { queue: false, note: null };
   if ((names || []).some((n) => String(n || '').trim().length > 60)) {
     return { queue: false, note: 'Not checked in: the name is too long for the check-in. Check them in on the kiosk.' };
   }
@@ -10072,6 +10379,7 @@ async function renderBus() {
   const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
   const tabs = [
     { id: 'mycar', label: 'My car' },
+    v.canSeeCars && { id: 'allcars', label: 'All cars' },
     canRoster && { id: 'roster', label: 'Students' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
     v.canCoordinate && { id: 'routes', label: 'Assign' },
@@ -10080,7 +10388,7 @@ async function renderBus() {
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, allcars: _busAllCarsHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -10089,10 +10397,36 @@ async function renderBus() {
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
-    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
+    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()${t.id === 'allcars' ? ';busCarsRefresh()' : ''}">${esc(t.label)}</button>`).join('')}</div>
     ${isAdmin && v.google && v.google.state !== 'on' ? `<div class="alert al-warn">${esc(v.google.text)}</div>` : ''}
     ${last ? `<div class="bus-last">${last}</div>` : ''}
     ${body}</div>`);
+}
+
+// All cars (read-only): car, leaders, stop order, rider name, grade and suburb only.
+function _busAllCarsHtml() {
+  const d = BUS.cars;
+  if (!d) {
+    if (BUS.carsErr) return `<button type="button" class="btn btn-secondary btn-full" onclick="busCarsRefresh()">Couldn't load the cars. Tap to retry.</button>`;
+    if (!BUS.carsLoading) busCarsRefresh();
+    return `<div class="card-sub">Loading…</div>`;
+  }
+  const notOnCar = d.unassigned ? `<div class="card-sub">${esc(String(d.unassigned))} not on a car yet.</div>` : '';
+  if (!d.cars.length) return `<div class="card-sub">No cars are running tonight.</div>${notOnCar}`;
+  const cards = d.cars.map((c) => {
+    const rows = c.stops.map((st) => `<div class="li" style="align-items:center;gap:8px">
+        <span style="font-weight:700;min-width:18px">${st.stop == null ? '' : esc(String(st.stop))}</span>
+        <div class="li-body"><div class="li-title">${esc(st.name)}</div>
+          <div class="li-sub">${st.grade ? `<span class="chip c-neutral">Y${esc(String(st.grade))}</span> ` : ''}${esc(st.suburb)}</div></div>
+        ${st.dropped ? `<span class="bus-dropped-tick" style="color:var(--success)" aria-label="Dropped off">${icS('check')}</span>` : ''}
+      </div>`).join('');
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:12px;height:12px;border-radius:50%;flex:none;background:${_busCarColour(c.colourIndex)}"></span>
+        <span style="font-weight:700">${esc(c.name)}</span>${c.leaderNames.length ? `<span class="card-sub" style="margin-left:auto">${esc(c.leaderNames.join(', '))}</span>` : ''}</div>
+      ${rows || `<div class="card-sub">No riders yet.</div>`}
+    </div>`;
+  }).join('');
+  return `${cards}${notOnCar}`;
 }
 
 function _busRosterHtml() {
@@ -11594,6 +11928,7 @@ function _handleAuthExpired() {
     S.user = _previewStash.user;
     _previewStash = null;
     try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
+    setMyLeaderId(null); _vgReset(); // as exitPreview: the preview's "I am" pick and taps stay behind
     Cache.clear();
     _shellReady = false;
     toast('Preview expired, back to your admin session');
@@ -11604,6 +11939,7 @@ function _handleAuthExpired() {
   S.user = null;
   S.page = 'home';
   _shellReady = false;
+  _vgReset();
   toast('Session expired, please log in again');
   render();
 }

@@ -163,3 +163,17 @@ describe('AuthService.login — device tracking', () => {
     expect(list!.some((d) => d.id === 'd0')).toBe(false);
   });
 });
+
+describe('AuthService.login — a retire during the password check is not undone (R8 minor)', () => {
+  it('the account was deactivated while bcrypt ran: login is refused and the save never writes active back', async () => {
+    const { users, auth } = await seedUser(false);
+    const stale = (await users.findById('u-1'))!;
+    // The retire lands after login read the row (simulated: findByEmail hands back the stale active copy).
+    await users.save({ ...stale, status: 'inactive', updatedAt: 'retired' });
+    users.findByEmail = async () => stale;
+    await expect(auth.login({ email: 'director', password: 'correcthorse1' })).rejects.toMatchObject({ statusCode: 401 });
+    const now = (await users.findById('u-1'))!;
+    expect(now.status).toBe('inactive');
+    expect(now.updatedAt).toBe('retired');
+  });
+});

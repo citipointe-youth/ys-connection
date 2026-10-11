@@ -55,6 +55,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const icS = (k) => '<svg data-ic="' + k + '"></svg>';
     const L = (k) => k;
     const _busOn = () => false;
+    const _prayersOn = () => true;
     const _deviceId = () => 'dev-1';
     const _deviceLabel = () => 'iPhone · Safari';
     let __leader = ${JSON.stringify(env.leaderId ?? null)};
@@ -608,8 +609,10 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
     expect(h.fns._lkQGet().filter((i: any) => i.kind === 'action')).toHaveLength(1);
   });
   it('every UI entry point changes "I am" through the guard; setMyLeaderId itself stays synchronous', () => {
-    // setMyLeaderId is called only by _lkSwitchLeader and _busIdentityChanged (whose two handlers run the guard first).
-    expect(html.match(/setMyLeaderId\(/g)).toHaveLength(3);
+    // setMyLeaderId is called only by _lkSwitchLeader and _busIdentityChanged (whose two handlers run the guard first),
+    // plus the rework's three admin-preview resets (enter, exit, exit on a stale preview), which are not "I am" choices.
+    expect(html.match(/setMyLeaderId\(/g)).toHaveLength(6);
+    expect(html.match(/setMyLeaderId\(null\); _vgReset\(\);/g)).toHaveLength(3);
     expect(extractFn(html, '_lkSwitchLeader')).toContain('setMyLeaderId(');
     expect(extractFn(html, '_busIdentityChanged')).toContain('setMyLeaderId(');
     expect(html.match(/_busIdentityChanged\((this\.value|null)\)/g)).toHaveLength(2);
@@ -945,7 +948,7 @@ describe('F3 flow steps', () => {
 
 // ── F4.1 first-timer tick on the New person form ──
 describe('F4.1 first-timer check-in', () => {
-  const OK = { student: 'sent', parent: 'sent', dryRun: false };
+  const OK = { student: 'sent', parent: 'sent' };
   it('_lkFirstTimerDecision: live send queues unless the student form failed or was not sent', () => {
     const d = makeEnv().fns._lkFirstTimerDecision;
     expect(d(OK, 'live', ['Ava', 'Example']).queue).toBe(true);
@@ -954,13 +957,9 @@ describe('F4.1 first-timer check-in', () => {
     expect(d({ ...OK, student: 'skipped', parent: 'sent' }, 'live', ['Ava', 'Example']).queue).toBe(false); // a parent-only retry
     expect(d(OK, 'off', ['Ava', 'Example']).queue).toBe(false);
   });
-  it('_lkFirstTimerDecision: a dry run queues only when the capability is known and not live', () => {
+  it('_lkFirstTimerDecision: sends are always live, so a sent student queues whatever the console mode short of off', () => {
     const d = makeEnv().fns._lkFirstTimerDecision;
-    const dry = { student: 'skipped', parent: 'skipped', dryRun: true };
-    expect(d(dry, 'shadow', ['Ava', 'Example']).queue).toBe(true);
-    expect(d(dry, 'locked', ['Ava', 'Example']).queue).toBe(true);
-    expect(d(dry, 'live', ['Ava', 'Example']).queue).toBe(false);
-    expect(d(dry, null, ['Ava', 'Example']).queue).toBe(false);
+    for (const cap of ['live', 'shadow', 'locked', null]) expect(d(OK, cap, ['Ava', 'Example']).queue).toBe(true);
   });
   it('_lkFirstTimerDecision: a name over 60 characters is skipped with a note', () => {
     const d = makeEnv().fns._lkFirstTimerDecision;

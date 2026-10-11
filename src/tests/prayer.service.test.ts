@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { makePrayerService } from '../services/prayer.service';
-import { InMemoryPrayerRepository, InMemoryStudentRepository, InMemoryConnectionRepository } from '../repositories/in-memory';
+import { InMemoryPrayerRepository, InMemoryStudentRepository, InMemoryConnectionRepository, InMemorySettingsRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
-import { ForbiddenError, NotFoundError } from '../core/errors/app-error';
+import { ForbiddenError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
 
 const actor = (role: string, opts: { grade?: number; gender?: string; quad?: string; leaderId?: string } = {}): Actor =>
   ({ id: 'a', role: role as any, displayName: 'T',
@@ -292,5 +292,58 @@ describe('PrayerService scoping + CRUD', () => {
     expect(inScope).toHaveLength(2);
 
     await expect(s.listByStudent(G8M, 'ava')).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
+describe('PrayerService — modules.prayers toggle', () => {
+  async function withModule(prayersOn: boolean) {
+    const prayers = new InMemoryPrayerRepository();
+    const studentRepo = new InMemoryStudentRepository();
+    const settings = new InMemorySettingsRepository();
+    await prayers.init(); await studentRepo.init(); await settings.init();
+    const cur = await settings.getSettings();
+    await settings.updateSettings({
+      ministryConfig: { ...cur.ministryConfig, modules: { ...cur.ministryConfig.modules, prayers: prayersOn } },
+    });
+    return makePrayerService(prayers, studentRepo, settings);
+  }
+
+  it.each([
+    ['list', (s: any) => s.list(ADMIN)],
+    ['listByStudent', (s: any) => s.listByStudent(ADMIN, 'x')],
+    ['create', (s: any) => s.create(ADMIN, { text: 'hi' })],
+    ['update', (s: any) => s.update(ADMIN, 'x', { text: 'hi' })],
+    ['setStatus', (s: any) => s.setStatus(ADMIN, 'x', { status: 'open' })],
+    ['remove', (s: any) => s.remove(ADMIN, 'x')],
+    ['exportCsv', (s: any) => s.exportCsv(ADMIN)],
+    ['importCsv', (s: any) => s.importCsv(ADMIN, [])],
+  ])('%s rejects with ModuleDisabledError when prayers is off', async (_n, call) => {
+    const s = await withModule(false);
+    await expect(call(s)).rejects.toThrow(ModuleDisabledError);
+  });
+
+  it('works when prayers is on', async () => {
+    const s = await withModule(true);
+    const p = await s.create(ADMIN, { text: 'hi' });
+    expect((await s.list(ADMIN)).map((x) => x.id)).toEqual([p.id]);
+  });
+
+  it('reads the settings once per call (list and create)', async () => {
+    const prayers = new InMemoryPrayerRepository();
+    const studentRepo = new InMemoryStudentRepository();
+    const settings = new InMemorySettingsRepository();
+    await prayers.init(); await studentRepo.init(); await settings.init();
+    const s = makePrayerService(prayers, studentRepo, settings);
+    const spy = vi.spyOn(settings, 'getSettings');
+    await s.list(ADMIN);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockClear();
+    await s.create(ADMIN, { text: 'hi' });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('works with no settingsRepo (always on)', async () => {
+    const { s } = await svc();
+    await expect(s.list(ADMIN)).resolves.toEqual([]);
   });
 });

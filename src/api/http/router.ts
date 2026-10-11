@@ -104,6 +104,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'DELETE', path: '/leaders/:id', auth: true, handler: (r) => leader.remove(r) },
     { method: 'PATCH',  path: '/leaders/:id/sms-template', auth: true, handler: (r) => leader.updateSmsTemplate(r) },
     { method: 'PATCH',  path: '/leaders/:id/grades',       auth: true, handler: (r) => leader.updateGrades(r) },
+    { method: 'PATCH',  path: '/leaders/:id/view-grades',  auth: true, handler: (r) => leader.setViewGrades(r) },
 
     // ----- Prayers -----
     { method: 'GET',    path: '/prayers',              auth: true, handler: (r) => prayer.list(r) },
@@ -172,6 +173,7 @@ export function buildRoutes(services: Services): Route[] {
 
     // ----- Bus Ministry -----
     { method: 'GET',    path: '/bus/run',                  auth: true, handler: (r) => busCtl.run(r) },
+    { method: 'GET',    path: '/bus/run/cars',             auth: true, handler: (r) => busCtl.cars(r) },
     { method: 'GET',    path: '/bus/run/version',          auth: true, handler: (r) => busCtl.version(r) },
     { method: 'PATCH',  path: '/bus/run/pool',             auth: true, handler: (r) => busCtl.setPool(r) },
     { method: 'POST',   path: '/bus/run/own-car',          auth: true, handler: (r) => busCtl.saveOwnCar(r) },

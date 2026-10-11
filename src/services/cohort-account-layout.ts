@@ -6,6 +6,8 @@
 // imports here, same pattern as connection-allocations.ts, so the plan is
 // unit-testable without a database.
 
+import { quadLabelFor } from '../core/types/enums';
+
 export type CohortModel = 'grades-quads' | 'none';
 
 export type TargetAccountSpec =
@@ -76,21 +78,18 @@ export function gradeBrackets(gradeMin: number, gradeMax: number): number[][] {
   return top;
 }
 
-const QUAD_TARGETS: { quad: 'g79' | 'b79' | 'g1012' | 'b1012'; label: string }[] = [
-  { quad: 'g79', label: 'Girls Yr 7-9' },
-  { quad: 'b79', label: 'Boys Yr 7-9' },
-  { quad: 'g1012', label: 'Girls Yr 10-12' },
-  { quad: 'b1012', label: 'Boys Yr 10-12' },
-];
+const QUAD_TARGETS = ['g79', 'b79', 'g1012', 'b1012'] as const;
 
 // The full target account set for a cohort model — 'none' (Simple) is the 6
 // grade-bracket accounts; 'grades-quads' (Complex) is one account per grade
-// per gender plus the 4 quads (mirrors the app's own seed layout).
+// per gender plus the 4 quads (mirrors the app's own seed layout). With Simple
+// (Junior/Senior) logins on, Complex is the 4 quads only, with the Junior/Senior names.
 export function buildTargetAccounts(
   targetCohort: CohortModel,
   gradeMin: number,
   gradeMax: number,
   gradeWord: string,
+  simple = false,
 ): TargetAccountSpec[] {
   const out: TargetAccountSpec[] = [];
   const genders: { gender: 'male' | 'female'; label: string; suffix: 'g' | 'b' }[] = [
@@ -110,7 +109,7 @@ export function buildTargetAccounts(
       }
     }
   } else {
-    for (let grade = gradeMin; grade <= gradeMax; grade++) {
+    for (let grade = gradeMin; grade <= gradeMax && !simple; grade++) {
       for (const g of genders) {
         out.push({
           role: 'grade',
@@ -122,7 +121,7 @@ export function buildTargetAccounts(
       }
     }
     for (const q of QUAD_TARGETS) {
-      out.push({ role: 'quad', username: q.quad, displayName: q.label, quad: q.quad });
+      out.push({ role: 'quad', username: q, displayName: quadLabelFor(q, simple), quad: q });
     }
   }
   return out;
@@ -175,8 +174,9 @@ export function planCohortAccountLayout(
   gradeMax: number,
   gradeWord: string,
   existing: ExistingAccountLite[],
+  simple = false,
 ): CohortLayoutPlan {
-  const targets = buildTargetAccounts(targetCohort, gradeMin, gradeMax, gradeWord);
+  const targets = buildTargetAccounts(targetCohort, gradeMin, gradeMax, gradeWord, simple);
   const existingUsernames = new Set(existing.map((u) => u.email.toLowerCase()));
   const targetUsernames = new Set(targets.map((t) => t.username.toLowerCase()));
   const targetsByUsername = new Map(targets.map((t) => [t.username.toLowerCase(), t]));

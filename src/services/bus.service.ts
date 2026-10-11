@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { can, canAccessStudent, type Action } from './access-control';
+import { can, canWithConfig, modeAllows, canAccessStudent, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
 import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
@@ -18,8 +18,16 @@ import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderVie
 
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
 
+/** Read-only All cars view (October rework C). Allow-listed fields only: no ids, streets, phones or consent. */
+export interface BusCarsView {
+  cars: { name: string; colourIndex: number; leaderNames: string[];
+          stops: { stop: number | null; name: string; grade: number | null; suburb: string; dropped: boolean }[] }[];
+  unassigned: number;
+}
+
 export interface BusService {
   getRun(ctx: BusCtx): Promise<BusRunView>;
+  carsView(ctx: BusCtx): Promise<BusCarsView>;
   getVersion(ctx: BusCtx): Promise<{ runId: string; version: number }>;
   search(ctx: BusCtx, q: string): Promise<BusSearchHit[]>;
   riderAddresses(ctx: BusCtx, riderId: string): Promise<BusSearchHit['addresses']>;
@@ -232,7 +240,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return ctx.actor.role === 'leader' ? ctx.actor.leaderId ?? null : ctx.asLeaderId;
   }
   function allowed(ctx: BusCtx, c: MinistryConfig, action: Action): boolean {
-    if (can(ctx.actor, action)) return true;
+    if (canWithConfig(ctx.actor, action, c)) return true;
     const me = selfLeaderId(ctx);
     const coordinator = !!me && c.busMinistry.coordinatorLeaderIds.includes(me);
     return coordinator && (action === 'bus:use' || action === 'bus:roster' || action === 'bus:coordinate');
@@ -330,8 +338,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
   }
 
-  async function vehicleViews(runId: string, past = false): Promise<BusRunVehicleView[]> {
-    const [all, riders] = await Promise.all([leaders.findAll(), ridingOf(runId)]);
+  /** `ridersIn`: the caller's own ridingOf(runId) read, so one request reads the riders once. */
+  async function vehicleViews(runId: string, past = false, ridersIn?: Promise<BusRunRider[]>): Promise<BusRunVehicleView[]> {
+    const [all, riders] = await Promise.all([leaders.findAll(), ridersIn ?? ridingOf(runId)]);
     const byId = new Map(all.map((l) => [l.id, l]));
     // I7: count/name only leaders that still exist — a leader deleted mid-run must not show
     // as a "Leader" placeholder chip with an unknown-gender eligibility, or be deducted from
@@ -353,8 +362,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
+    const ridersP = ridingOf(run.id);
     const [vehicles, riders, active, prefs, fleet, consents] = await Promise.all([
-      vehicleViews(run.id, isPast(run, ctx, c)), ridingOf(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
+      vehicleViews(run.id, isPast(run, ctx, c), ridersP), ridersP, leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
@@ -374,12 +384,13 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       riders: isRedactedLeader ? riderViews.map((r) => ({
         id: r.id, studentId: null, guestId: null, addressId: null,
         runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
-        name: r.name, grade: r.grade, gender: r.gender, address: suburbOf(r.address), placeId: null,
+        name: r.name, grade: r.grade, gender: r.gender, address: suburbOnly(r.address), placeId: null,
         consent: r.consent ? { given: r.consent.given } : null,
         droppedAt: r.droppedAt, droppedBy: r.droppedBy,
       })) : riderViews,
       leaders: isRedactedLeader ? [] : leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: isRedactedLeader ? [] : fleet.filter((v) => !v.archived), canCoordinate,
+      canSeeCars: modeAllows(ctx.actor, c.modules.newYouthForms),
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
       onCarLeaders: await onCarLeaderList(run.id),
@@ -669,6 +680,28 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // Best-effort housekeeping: one failed delete must not fail the whole Bus screen load.
       try { await purgeGuests(); } catch (err) { console.error('purgeGuests: failed', err); }
       return buildView(ctx, c, await ensureRun(ctx, c));
+    },
+    async carsView(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      if (!modeAllows(ctx.actor, c.modules.newYouthForms)) throw new ModuleDisabledError('All cars');
+      // ctx.asLeaderId is deliberately unused: everyone allowed sees the same view.
+      const run = await ensureRun(ctx, c);
+      const ridersP = ridingOf(run.id);
+      const [vehicles, riders] = await Promise.all([vehicleViews(run.id, false, ridersP), ridersP]);
+      const running = vehicles.filter((v) => v.running);
+      const onCar = new Set(running.map((v) => v.id));
+      // Built field by field — never spread a repo object into this response. A placed rider
+      // with no stopOrder sorts last with no number; the rest are numbered 1..n like Assign.
+      return {
+        cars: running.map((v) => ({
+          name: v.name, colourIndex: v.colourIndex, leaderNames: [...v.leaderNames],
+          stops: riders.filter((r) => r.runVehicleId === v.id)
+            .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999))
+            .map((r, i) => ({ stop: r.stopOrder == null ? null : i + 1, name: r.snapName, grade: r.snapGrade ?? null,
+              suburb: suburbOnly(r.snapAddress), dropped: !!r.droppedAt })),
+        })),
+        unassigned: riders.filter((r) => !r.runVehicleId || !onCar.has(r.runVehicleId)).length,
+      };
     },
     async getVersion(ctx) {
       const c = await gate(ctx, 'bus:use');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, modeAllows, canUseLink } from '../services/access-control';
+import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canWithConfig, modeAllows, canSetViewGrades, canUseLink, type Action } from '../services/access-control';
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
 import { ForbiddenError } from '../core/errors/app-error';
@@ -200,5 +200,77 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
   }
   it('shadow + director + link:admin -> false', () => {
     expect(canUseLink(actor('director'), 'shadow', 'link:admin')).toBe(false);
+  });
+});
+
+// Every Action, checked at compile time against the union in both directions.
+const ALL_ACTIONS = [
+  'student:read', 'student:read:sensitive', 'student:write', 'leader:read', 'leader:write',
+  'connection:write', 'overview:read', 'atrisk:read', 'import:run', 'connection:import',
+  'admin:manage', 'prayer:read', 'prayer:write', 'prayer:import', 'bus:use', 'bus:roster',
+  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin',
+] as const satisfies readonly Action[];
+type _MissingAction = Exclude<Action, (typeof ALL_ACTIONS)[number]>;
+const _allActionsListed: [_MissingAction] extends [never] ? true : never = true;
+void _allActionsListed;
+const ALL_ROLES = ['leader', 'grade', 'quad', 'director', 'admin'] as const;
+const simpleCfg = (simple: boolean) => ({ logins: { simple, retiredGradeIds: [], gradeRoleWasOn: true } });
+
+describe('RBAC — canWithConfig (Simple logins)', () => {
+  it('quad loses bus:coordinate only while Simple logins is on', () => {
+    expect(canWithConfig(actor('quad', { quad: 'b1012' }), 'bus:coordinate', simpleCfg(true))).toBe(false);
+    expect(canWithConfig(actor('quad', { quad: 'b1012' }), 'bus:coordinate', simpleCfg(false))).toBe(true);
+  });
+
+  it('equals can() for every role × action × simple, except quad + bus:coordinate + simple', () => {
+    for (const role of ALL_ROLES) {
+      for (const action of ALL_ACTIONS) {
+        for (const simple of [true, false]) {
+          const a = actor(role, { quad: role === 'quad' ? 'g79' : undefined, grade: role === 'grade' ? 9 : undefined });
+          const expected = role === 'quad' && action === 'bus:coordinate' && simple ? false : can(a, action);
+          expect(canWithConfig(a, action, simpleCfg(simple)), `${role} ${action} simple=${simple}`).toBe(expected);
+        }
+      }
+    }
+  });
+});
+
+describe('RBAC — modeAllows', () => {
+  it.each(ALL_ROLES)('on: %s allowed', (role) => {
+    expect(modeAllows(actor(role), 'on')).toBe(true);
+  });
+  it.each(ALL_ROLES)('shadow: only admin (%s)', (role) => {
+    expect(modeAllows(actor(role), 'shadow')).toBe(role === 'admin');
+  });
+  it.each(ALL_ROLES)('off: %s not allowed', (role) => {
+    expect(modeAllows(actor(role), 'off')).toBe(false);
+  });
+});
+
+describe('RBAC — canUseNewYouth full table', () => {
+  const table: Array<[string, 'off' | 'shadow' | 'on', boolean]> = [];
+  for (const role of ALL_ROLES) {
+    table.push([role, 'off', false], [role, 'shadow', role === 'admin'], [role, 'on', true]);
+  }
+  it.each(table)('%s in %s mode → %s', (role, mode, expected) => {
+    expect(canUseNewYouth(actor(role), mode)).toBe(expected);
+  });
+});
+
+describe('RBAC — canSetViewGrades', () => {
+  it.each(['quad', 'director', 'admin'])('%s may write any leader', (role) => {
+    expect(canSetViewGrades(actor(role, { quad: role === 'quad' ? 'g79' : undefined }), 'L1')).toBe(true);
+    expect(canSetViewGrades(actor(role, { quad: role === 'quad' ? 'g79' : undefined }), 'L2')).toBe(true);
+  });
+  it('leader may write only its own leaderId', () => {
+    const me: Actor = { ...actor('leader'), leaderId: 'L1' };
+    expect(canSetViewGrades(me, 'L1')).toBe(true);
+    expect(canSetViewGrades(me, 'L2')).toBe(false);
+  });
+  it('a leader with no leaderId cannot write', () => {
+    expect(canSetViewGrades(actor('leader'), 'L1')).toBe(false);
+  });
+  it('grade cannot write', () => {
+    expect(canSetViewGrades(actor('grade', { grade: 9 }), 'L1')).toBe(false);
   });
 });

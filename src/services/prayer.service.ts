@@ -8,7 +8,7 @@ import type { IPrayerRepository, IStudentRepository, ISettingsRepository,
 import type { PrayerRequest, PrayerWithStudent } from '../core/entities/prayer';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
-import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { NotFoundError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { buildPrayerCsvRows, parsePrayerRows, planPrayerImport,
   type PrayerCsvRow, type PrayerImportReport } from './prayer-allocations';
 
@@ -47,9 +47,14 @@ export function makePrayerService(
   settingsRepo?: ISettingsRepository,
   connRepo?: IConnectionRepository,
 ): PrayerService {
-  async function structureScope(): Promise<StructureScope> {
+  // Prayers can be switched off in Youth Setup. Data is never deleted — the
+  // methods just refuse (404-shaped). No settingsRepo = always on. One settings
+  // read per call: the module check and the structure scope come from it.
+  async function cfg(): Promise<StructureScope> {
     if (!settingsRepo) return MINISTRY_CONFIG_DEFAULTS.structure;
-    return (await settingsRepo.getSettings()).ministryConfig.structure;
+    const c = (await settingsRepo.getSettings()).ministryConfig;
+    if (c.modules.prayers === false) throw new ModuleDisabledError('Prayers');
+    return c.structure;
   }
 
   // A junior leader (§5.2) has no grade/gender of their own — canAccessStudent
@@ -98,10 +103,9 @@ export function makePrayerService(
 
   return {
     async list(actor) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:read');
-      const [all, students, structure] = await Promise.all([
-        repo.findAll(), studentRepo.findAll(), structureScope(),
-      ]);
+      const [all, students] = await Promise.all([repo.findAll(), studentRepo.findAll()]);
       const byId = new Map(students.map((s) => [s.id, s]));
       // Junior leader: resolve their own connected-student set once instead of
       // per-row (canAccessStudent can't scope role 'leader' at all — see
@@ -134,18 +138,18 @@ export function makePrayerService(
     },
 
     async listByStudent(actor, studentId) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:read');
-      const structure = await structureScope();
       await studentInScope(actor, studentId, structure);
       const rows = await repo.findByStudent(studentId);
       return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
 
     async create(actor, input) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:write');
       const data = CreateSchema.parse(input);
       const studentId = data.studentId ?? null;
-      const structure = await structureScope();
       await studentInScope(actor, studentId, structure);
       // Captured for every prayer (cheap), but only read back for a general one
       // (studentId null) — a student-linked prayer scopes through the student.
@@ -174,8 +178,8 @@ export function makePrayerService(
     },
 
     async update(actor, id, input) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:write');
-      const structure = await structureScope();
       const existing = await loadInScope(actor, id, structure);
       const patch = UpdateSchema.parse(input);
       const updated: PrayerRequest = {
@@ -188,8 +192,8 @@ export function makePrayerService(
     },
 
     async setStatus(actor, id, input) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:write');
-      const structure = await structureScope();
       const existing = await loadInScope(actor, id, structure);
       const patch = StatusSchema.parse(input);
       const now = new Date().toISOString();
@@ -215,21 +219,22 @@ export function makePrayerService(
     },
 
     async remove(actor, id) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:write');
-      const structure = await structureScope();
       await loadInScope(actor, id, structure);
       await repo.delete(id);
     },
 
     async exportCsv(actor) {
+      await cfg();
       assertCan(actor, 'prayer:import');
       const [prayers, students] = await Promise.all([repo.findAll(), studentRepo.findAll()]);
       return buildPrayerCsvRows(prayers, students);
     },
 
     async importCsv(actor, rows) {
+      const structure = await cfg();
       assertCan(actor, 'prayer:import'); // admin-only, so this is always the wide-open ministry scope
-      const structure = await structureScope();
       const creatorScope = generalPrayerCreatorScope(actor, structure);
       const parsed = parsePrayerRows(z.array(z.record(z.unknown())).parse(rows));
       const [students, existing] = await Promise.all([studentRepo.findAll(), repo.findAll()]);

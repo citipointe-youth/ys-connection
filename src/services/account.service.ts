@@ -103,7 +103,13 @@ function generateTempPassword(): string {
   return randomBytes(9).toString('base64url');
 }
 
+const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
+
 export function makeAccountService(users: IUserRepository, settings: ISettingsRepository): AccountService {
+  // While Simple (Junior/Senior) logins is on, no grade account may be created or made active.
+  async function simpleOn(): Promise<boolean> {
+    return (await settings.getSettings()).ministryConfig.logins.simple;
+  }
   async function guardAdmin(id: string, action: string) {
     const admins = await users.findByRole('admin');
     if (admins.length <= 1) {
@@ -123,6 +129,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
     async create(actor, input) {
       assertCan(actor, 'admin:manage');
       const data = CreateUserSchema.parse(input);
+      if (data.role === 'grade' && (await simpleOn())) throw new BadRequestError(SIMPLE_ON_MSG);
       const existing = await users.findByEmail(data.email);
       if (existing) throw new ConflictError('Username already in use');
 
@@ -189,6 +196,11 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       if (nextRole === 'grade' && nextGender == null) {
         throw new BadRequestError('Grade login requires a gender scope');
       }
+      // `status` is not part of the update schema (activation goes through toggleStatus), so the
+      // only way update() can leave an active grade account behind is a role change to grade.
+      if (nextRole === 'grade' && existing.role !== 'grade' && existing.status === 'active' && (await simpleOn())) {
+        throw new BadRequestError(SIMPLE_ON_MSG);
+      }
       const nextLeaderId = patch.leaderId !== undefined ? (patch.leaderId ?? null) : (existing.leaderId ?? null);
       if (nextRole === 'leader' && !nextLeaderId) {
         throw new BadRequestError('Junior leader login requires a linked leader record');
@@ -240,6 +252,9 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       if (isProtectedAdmin(existing) && existing.status === 'active') {
         throw new BadRequestError(`The "${existing.displayName}" account cannot be deactivated`);
       }
+      if (existing.role === 'grade' && existing.status !== 'active' && (await simpleOn())) {
+        throw new BadRequestError(SIMPLE_ON_MSG);
+      }
       const updated = await users.save({
         ...existing,
         status: existing.status === 'active' ? 'inactive' : 'active',
@@ -286,6 +301,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
           id: u.id, role: u.role, email: u.email, displayName: u.displayName, status: u.status,
           grades: u.grades ?? (u.grade != null ? [u.grade] : []), gender: u.gender, quad: u.quad,
         })),
+        current.ministryConfig.logins.simple,
       );
     },
 
@@ -303,6 +319,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
           id: u.id, role: u.role, email: u.email, displayName: u.displayName, status: u.status,
           grades: u.grades ?? (u.grade != null ? [u.grade] : []), gender: u.gender, quad: u.quad,
         })),
+        current.ministryConfig.logins.simple,
       );
 
       const now = new Date().toISOString();

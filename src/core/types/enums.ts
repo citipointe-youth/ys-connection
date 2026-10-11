@@ -15,6 +15,18 @@ export const QUAD_LABELS: Record<Quad, string> = {
   b1012: 'Boys Yr 10–12',
 };
 
+// Simple logins (October rework): the quad logins read as Junior/Senior Girls/Guys.
+const SIMPLE_QUAD_LABELS: Record<Quad, string> = {
+  g79: 'Junior Girls',
+  b79: 'Junior Guys',
+  g1012: 'Senior Girls',
+  b1012: 'Senior Guys',
+};
+
+export function quadLabelFor(quad: Quad, simple: boolean): string {
+  return simple ? SIMPLE_QUAD_LABELS[quad] : QUAD_LABELS[quad];
+}
+
 // Compute the quad a student belongs to from grade + gender
 export function computeQuad(grade: number | null, gender: string): Quad | null {
   if (!grade) return null;

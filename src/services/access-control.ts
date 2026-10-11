@@ -1,7 +1,7 @@
 import type { Actor } from '../core/entities/user';
 import type { UserRole } from '../core/types/enums';
 import { ForbiddenError } from '../core/errors/app-error';
-import type { NewYouthMode } from '../core/ministry-config';
+import type { MinistryConfig, NewYouthMode } from '../core/ministry-config';
 
 // All actions in the system
 export type Action =
@@ -127,18 +127,34 @@ export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
 }
 
-// Who may use the New person screen (module key newYouthForms): 'on' = every role that has
-// intake:write, 'shadow' = the admin login only, 'off' = nobody.
-export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
-  if (!can(actor, 'intake:write')) return false;
-  return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
+// can() with the config-dependent exceptions. ROLE_PERMISSIONS stays static; the only
+// exception today: while Simple logins is on, a quad login does not coordinate Bus
+// (a coordinatorLeaderIds pick still elevates it, in bus.service allowed()).
+export function canWithConfig(actor: Actor, action: Action, cfg: Pick<MinistryConfig, 'logins'>): boolean {
+  if (action === 'bus:coordinate' && actor.role === 'quad' && cfg.logins.simple) return false;
+  return can(actor, action);
 }
 
-// The one Elvanto-features switch (modules.newYouthForms): 'on' = everyone, 'shadow' = the admin login only.
+// The off / shadow / on module mode (newYouthForms): 'on' = everyone, 'shadow' = the
+// admin login only, 'off' = nobody. Used by New person and the Bus All cars tab.
 export function modeAllows(actor: Actor, mode: NewYouthMode): boolean {
   return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
 }
 
+// Who may use the New person screen (module key newYouthForms).
+export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
+  return can(actor, 'intake:write') && modeAllows(actor, mode);
+}
+
+// Who may save a leader's Grades filter (PATCH /leaders/:id/view-grades): quad, director and
+// admin any leader; a junior leader only its own record; grade never.
+export function canSetViewGrades(actor: Actor, leaderId: string): boolean {
+  if (actor.role === 'quad' || actor.role === 'director' || actor.role === 'admin') return true;
+  if (actor.role === 'leader') return !!actor.leaderId && actor.leaderId === leaderId;
+  return false;
+}
+
+// The Elvanto link (also gated by modules.newYouthForms): the role's link:* permission plus modeAllows.
 export function canUseLink(actor: Actor, mode: NewYouthMode, action: 'link:use' | 'link:admin'): boolean {
   return can(actor, action) && modeAllows(actor, mode);
 }

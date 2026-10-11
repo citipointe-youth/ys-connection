@@ -67,7 +67,7 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 | Admin | `POST /admin/reset` (clears students+leaders+connections+attendance **and connection_audits** — see below), `POST /admin/clear-service-group` (clears service/lifegroup data, **keeps** students+connections+leaders, resets student aggregates), `GET /admin/audit` (log kept; unreachable from the SPA since the Audit tab was removed) |
 | Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed; returns `{ ok, token }` — a freshly-issued session token, since `mustChangePassword` is baked into the token at login and this is the one write that needs the caller's own token refreshed — see "Forced password change" gotcha below), `POST /accounts/cohort-layout/preview` / `POST /accounts/cohort-layout/apply` (admin-only "Apply account layout" dry-run/apply pair — see "Admin bug/improvement batch" below) |
-| New youth forms | `POST /intake/new-youth` (`intake:write`, module `newYouthForms` off / shadow / on, off by default; dry run unless `ELVANTO_FORMS_LIVE=1`) — submits Citipointe's two public Elvanto connect forms; see "New youth forms" below |
+| New youth forms | `POST /intake/new-youth` (`intake:write`, module `newYouthForms` off / shadow / on, off by default; always live since 2026-10-12) — submits Citipointe's two public Elvanto connect forms; see "New youth forms" below |
 
 **Checklist: adding a new top-level API route.** This has caused two separate production
 incidents (`/manifest.json` 2026-07-11, `/prayers` 2026-07-18) from the same root cause. The
@@ -110,7 +110,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0016` (`0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0018` (`0017` = Elvanto link tables; `0016` = `leaders.view_grades`; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 **Migrations now apply automatically in the Vercel production build** (`scripts/migrate.ts`, `npm run migrate`, `vercel-build`): it records versions in `schema_migrations`, baselines `<= 0014` once for a database that already has `users` + `bus_run_edits` (Citipointe), holds an advisory lock, and prints `Database up to date — N of N changes applied (K new).` Rules: files stay additive; no `create index concurrently`; never edit a shipped file (`0003` was the one exception, now an empty comment); bump `LATEST_MIGRATION` in `src/core/schema-version.ts` with every new file (a test enforces it).
 
@@ -323,7 +323,6 @@ CORS_ORIGINS=*
 APP_ORIGIN=https://<your-deployment>.vercel.app   # CORS fallback when CORS_ORIGINS is unset
 SESSION_SECRET=<random>  # REQUIRED in production, or session tokens can be forged
 SETUP_CODE=<16+ chars>   # first-run admin creation (setup screen); ignored once an admin exists
-# ELVANTO_FORMS_LIVE=1   # Vercel Production ONLY (never local/preview): New youth forms send to live Elvanto; anything else = dry run
 GOOGLE_SA_JSON=<key file as one line>   # Bus; replaces the three GOOGLE_SA_* vars (they still work; JSON wins if both set)
 GOOGLE_MAPS_API_KEY=<key>               # Bus; always required
 
@@ -2394,11 +2393,11 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 
 ### New youth forms (2026-10-11)
 
-**▶ Resume here (state as of 2026-10-12):** built, reviewed and **merged to `master` and pushed 2026-10-12** (the laptop build, 12 commits after `052bcc8`, then the More menu commit the same day). **Not promoted yet**: `ys-connection.vercel.app` changes only when the owner promotes the build in Vercel. New person is Off by default, so after promotion what everyone sees is: (a) the grade/leader nav swap; (b) the leader Home quick-action buttons in the new order; (c) **More** in the Prayers slot for every login, because Bus Ministry is on in prod, so there are 2 modules (Prayers, Bus); and (d) one SW cache refresh (`ysc-v89`). Shadow mode then has to be switched on in Youth Setup; until `ELVANTO_FORMS_LIVE=1` is set, admin sends are test runs. Left to do, in order:
+**▶ Resume here (state as of 2026-10-12):** built, reviewed and **merged to `master` and pushed 2026-10-12** (the laptop build, 12 commits after `052bcc8`, then the More menu commit the same day). **Not promoted yet**: `ys-connection.vercel.app` changes only when the owner promotes the build in Vercel. New person is Off by default, so after promotion what everyone sees is: (a) the grade/leader nav swap; (b) the leader Home quick-action buttons in the new order; (c) **More** in the Prayers slot for every login, because Bus Ministry is on in prod, so there are 2 modules (Prayers, Bus); and (d) one SW cache refresh (`ysc-v89`). Shadow mode then has to be switched on in Youth Setup. Sends are live (the `ELVANTO_FORMS_LIVE` gate was removed 2026-10-12, owner). Left to do, in order:
 1. **Owner:** promote the build; `curl -s -X POST https://ys-connection.vercel.app/intake/new-youth` must return a JSON 401.
 2. **Owner:** phone-width visual check (Claude never did one): the New person form, the warn and result pages, the More sheet, the swapped navs, a refusal from the bottom of the form, and leaving mid-send.
 3. **Operator: plan Task 0** (live capture in their own browser → `D:\ys-connection-intake\capture.md`). Then Claude pastes `SUCCESS` into `elvanto-forms.ts` and adds a captured-reply test (see the OPEN ITEM below).
-4. **Owner:** set `ELVANTO_FORMS_LIVE=1` in Vercel **Production only** and redeploy. Citipointe approved the feature 2026-10-11.
+4. ~~Set `ELVANTO_FORMS_LIVE=1`~~: the gate was removed 2026-10-12 (owner); every deployment, local dev included, sends live. The owner tests through the app and deletes test submissions in Elvanto. Citipointe approved the feature 2026-10-11.
 
 **Owner calls still open (parked, not bugs):**
 - **Wording:** "Check the forms list in Elvanto" assumes Elvanto access, which shared-login hosts may not have. Maybe "Ask the youth admin to check Elvanto". (Final review M7.)
@@ -2412,6 +2411,11 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 - `classifyPost` treats 201/202/204/408/429 as `failed`. Revisit with the Task 0 capture.
 - The Bus "New Person" regex test is weak.
 - `account.service.test.ts` "applying Complex deactivates the pre-existing grade7g…" sometimes times out (~5 s) on the laptop. This predates the feature and was ignored.
+- From the 2026-10-12 independent Opus review of `052bcc8..f105c46` (verdict: ready to promote):
+  - M-1: several SPA tests check that a string is present rather than running the code.
+  - M-3: toggling Bus in Youth Setup now rebuilds the whole shell (a brief blank and extra prefetch).
+  - M-5: focus doesn't move into the More sheet.
+  - M-2 (More with Prayers alone stays a plain Prayers tab) is the owner's chosen behaviour.
 
 A host types a new student and one parent into the **New person** screen (its user-facing name since 2026-10-11; every internal name stays: route `/intake/new-youth`, page id `new-youth`, module key `newYouthForms`, `_ny*`/`ny*`). The app sends Citipointe Brisbane's two public Elvanto connect forms (student, then parent). No Elvanto account is needed. Built on branch `feat/new-youth-forms`, merged to `master` (deleted after the merge); no migration.
 - **Route:** `POST /intake/new-youth` (`new-youth.controller.ts` → `new-youth.service.ts`). RBAC `intake:write`, granted to all five roles. Module `ministryConfig.modules.newYouthForms` has **three states**, **off by default** (Youth Setup → Modules, an Off / Shadow mode (admin only) / On select):
@@ -2419,17 +2423,17 @@ A host types a new student and one parent into the **New person** screen (its us
   - *Shadow mode:* only the `admin` login sees it and can send. Every other role gets the same 404 and sees no page or More entry. The decision is `canUseNewYouth(actor, mode)` in `access-control.ts`, called by the service.
   - *On:* every role with `intake:write`.
   - The old boolean still parses (`true` = on, `false` = off) via `z.preprocess`, so a stored config from before needs no migration. The SPA reads a legacy boolean the same way (`_nyModeOf`).
-  - Shadow mode controls **who** may use it only. Live or dry run still depends only on `ELVANTO_FORMS_LIVE`.
+  - Shadow mode controls **who** may use it only. Sends are always live (gate removed 2026-10-12).
   - *The More menu (2026-10-12; replaced the shadow-mode "Prayers chooser" and the New person Home tile):*
     - `moreItems()` lists the modules this login can use right now: Prayers (always), Bus Ministry (`_busOn()`), and New person (`_nyOn()`). Later, add service check-in and the lifegroup report here.
     - With 2+ entries, `navItems()` replaces the `prayers` item **in place** with `{ id:'more', ic:'grid', label:'More', action:'openMore()' }` for every role, in the bottom and desktop navs. With Prayers alone the slot stays a plain Prayers tab.
-    - `openMore()` opens the standard `modal()` bottom sheet (`.more-list` / `.more-row`; the current page is marked `.on`). New person's entry is `nyOpen()`, which never wipes an in-flight send.
+    - `openMore()` opens the standard `modal()` bottom sheet (`.more-list` / `.more-row`). The current page's row is marked `.on` and **only closes the sheet**: re-running `nyOpen()` there would wipe the form or an unknown-outcome result (independent review I-1, fixed 2026-10-12). The More nav links carry `aria-haspopup="dialog"`. New person's entry is `nyOpen()`, which never wipes an in-flight send.
     - More lights up on any page it lists (`_updateNavActive`). `prayers` stays a root page with no back arrow (`_isRootPage`); `bus` and `new-youth` stay sub-pages as before.
     - The leader Home quick-action grid uses `_navItemsBase()`, so it still shows a plain Prayers button.
     - New person has **no Home tile** (owner, 2026-10-12). Bus keeps its Home tile.
     - `_initShell` builds both navs with `_navClick(it)`. Saving Youth Setup rebuilds the shell when `_navSig()` changed (More appearing or going), so no reload is needed.
   - *Nav swap (2026-10-11):* the bottom nav for `grade` is now Home | Health | My Connections | Prayers | Setup, and for `leader` Home | Prayers | Health | My Connections | Birthdays. Other roles are unchanged. The swap applies in every module state, Off included. The leader's Home quick-action grid follows the nav order, so it changed too (Prayers / Health / My Connections / Birthdays).
-- **Dry run unless `ELVANTO_FORMS_LIVE=1`.** `env.ts` reads it, `container.ts` passes `{ live: env.ELVANTO_FORMS_LIVE }`. Live is the explicit opt-in: `makeNewYouthService(settings, opts)` posts only when `opts.live === true`, so a caller that omits the option gets a dry run. A dry run still fetches both forms and checks their shape, then returns `skipped`/`skipped` with `dryRun: true`. The SPA says "Test mode: nothing was sent to Elvanto." Set it for **Vercel Production only**.
+- **Always live since 2026-10-12** (owner removed the `ELVANTO_FORMS_LIVE` gate: `container.ts` passes `{ live: true }`, so local dev and previews send real forms too). The service keeps its dry-run path for tests: Live is the explicit opt-in: `makeNewYouthService(settings, opts)` posts only when `opts.live === true`, so a caller that omits the option gets a dry run. A dry run still fetches both forms and checks their shape, then returns `skipped`/`skipped` with `dryRun: true`. The SPA says "Test mode: nothing was sent to Elvanto." Set it for **Vercel Production only**.
 - **Where Elvanto's markup lives:** `src/services/elvanto-forms.ts` only (form ids, field names, option ids, the body builders). It was captured 2026-10-11. Fixtures: `src/tests/fixtures/elvanto-student-form.html` and `elvanto-parent-form.html`. One location is hard-coded; move it into `ministryConfig` when a second location forks.
 - **The shape check:** before any POST the service fetches both live forms and runs `shapeProblems()`. It refuses with 502 `ELVANTO_FORM_CHANGED` if a field or option id we post is missing, if the form has an input we do not post, or if the honeypot is missing. Nothing is sent. The message tells the host to use the welcome-desk form and tell the admin. **If the church edits a form, refresh the fixtures and the constants in `elvanto-forms.ts` together.**
 - **Reply classifier:** `classifyPost()` returns `sent`, `failed`, `unconfirmed` or `skipped`. A 5xx, a timeout, or a reply it cannot read is `unconfirmed` (Elvanto may have saved it). A reply that is the form again (`name="save"`) is `failed`. If the student form is `failed`, the parent form is not sent. Only the `SUCCESS` table can give `sent`.
@@ -2452,7 +2456,41 @@ A host types a new student and one parent into the **New person** screen (its us
 - **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.
 - **SW cache** `ysc-v87` → `ysc-v88` → `ysc-v89` (More menu).
 - **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only when Task 0 is done** (`capture.md` written, `SUCCESS` pasted into `elvanto-forms.ts`, captured-reply test green), **Citipointe has approved (given) and the owner has promoted the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
-- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1045 tests pass in total (74 files).
+- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1047 tests pass in total (74 files).
+
+## October rework (2026-10-12)
+
+**▶ Resume here** (branch `feat/oct-rework`, plan `docs/superpowers/plans/2026-10-12-oct-rework.md`; 1280 tests, 81 files pass; SW `ysc-v91`; migration `0016`)
+
+**What shipped**
+- **Simple logins** (its own module switch). Labels become Junior and Senior. The grade logins are retired, and this is reversible (`gradeRoleWasOn` remembers the old state). Each leader gets a server-side grade filter, `leaders.view_grades`. While Simple is on, the quad loses `bus:coordinate`, and Grade 6 blocks it. The view-grades save sends `expect`, and a stale value gets a 409.
+- **Prayers module switch.** Prayers can be turned off in Youth Setup → Modules. Turning it on needs a reload.
+- **Bus "All cars" read-only view.** Suburb only, name + grade. Gated by the `newYouthForms` switch. Route `GET /bus/run/cars`.
+- **Nav-slot rules.** Slots follow the module switches; a switched-off module leaves no empty slot.
+
+**Deferred** (from `docs/superpowers/reviews/2026-10-12-rework-triage.md`)
+- **Pre-existing leak:** junior-leader `GET /bus/run` still carries each car's `endsAddress` (six-hat M7). `_busMapsLinks` reads it, so it needs its own change and test.
+- viewGrades writes are not chained: an out-of-order save can leave the older pick, and a `GET /leaders` landing after a save can restore the old value (reliability M3).
+- Two near-simultaneous opposite flips (reliability M2): the next save repairs it; no lock.
+- Before `0016` is applied the view-grades PATCH is a raw 500 (reliability M6); preview testing only.
+- A quad may set any leader's filter, and there is one filter per leader across brackets (six-hat M3, edge M3). By design.
+- Docs still owed in this file (six-hat M6 advisory quad restriction; M8 "kept except Full Reset and student delete"; M9 routes, migration, Grade 6 limit, 12 h tail; edge M10 Prayers-on needs a reload).
+- Turning Simple off always restores Grade from `gradeRoleWasOn`, ignoring an unticked Grade box (edge M6).
+- `enterPreview` / `exitPreview` don't reset the BUS session fields (edge M11; cosmetic, nothing leaks).
+- All cars rows use `.li` (tappable look) and a hard-coded `Y9` chip (ui M6); Youth Setup toggle rows are 22 px (ui M9, pre-existing); "My grades" never shows an on state (ui M7).
+- SPA source-regex tests that only check a string is present (false-pos-neg M7, ponytail M8).
+- The flip loops are serial `save` calls (speed M7); fine at ~16 accounts.
+- Prayers turned off makes every phone rebuild the shell and prefetch once (speed M4).
+
+**Migration note:** `0016` = `leaders.view_grades` (one nullable column). The Elvanto link branch took `0017` when it merged this rework; the next migration number is `0018`.
+
+**Operator rollout (in order)**
+1. **Export prayers** first: Admin → Prayers export CSV (or Youth Setup Modules → Download CSV). Keep the file.
+2. **Push / promote.** Merge `feat/oct-rework` to `master` and push. Every push runs `0016` on prod at build time, before promotion (safe: one nullable column the live code never names).
+3. **Read the build log** for `Database up to date — …` (it must count `0016`), then promote in the Vercel dashboard. `/health` must show `schema.current = 0016`.
+4. **curl the new routes** on the promoted URL: `curl -s -X PATCH https://ys-connection.vercel.app/leaders/x/view-grades` and `curl -s https://ys-connection.vercel.app/bus/run/cars` must each return a **JSON 401**, not HTML. Nothing changes for YS Brisbane yet (`logins.simple` false, `prayers` true; All cars only in Shadow for admin, or On).
+5. **Flip Simple logins for YS Brisbane when ready** (1–2 weeks, with the check-in release, on a weekday). First fill Bus settings → coordinators and check each can pick themselves in "I am…". Then turn it on and check: no Grade section in Accounts; toast "Renamed 4 quad logins"; badge "Senior Guys" after reopening; on Senior Guys, picking Cody Cobb shows Year 10 in Health and still does on another phone; a quad login with no coordinator pick has no Assign tab; a coordinator pick does. Tell users to reopen the app; old grade logins stop within 12 h.
+6. **Turn Prayers off** (Youth Setup → Modules), using the export from step 1 (or export again first).
 
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 

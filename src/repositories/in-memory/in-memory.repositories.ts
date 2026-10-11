@@ -16,7 +16,7 @@ import type {
 } from '../../core/entities/attendance';
 import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 import type { ConnectionAudit } from '../../core/entities/connection-audit';
-import type { UserRole } from '../../core/types/enums';
+import type { Grade, UserRole } from '../../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS } from '../../core/ministry-config';
 
 import type {
@@ -133,8 +133,27 @@ export class InMemoryLeaderRepository
       .map((l) => this.clone(l));
   }
 
+  // Mirrors the Supabase upsert, which never lists view_grades: a leader
+  // saved without viewGrades keeps the stored value.
+  private withStoredViewGrades(l: Leader): Leader {
+    if (l.viewGrades !== undefined) return l;
+    const stored = this.store.get(l.id)?.viewGrades;
+    return stored === undefined ? l : { ...l, viewGrades: stored };
+  }
+
+  override async save(leader: Leader): Promise<Leader> {
+    return super.save(this.withStoredViewGrades(leader));
+  }
+
   async saveMany(leaders: Leader[]): Promise<void> {
-    for (const l of leaders) this.store.set(l.id, this.clone(l));
+    for (const l of leaders) this.store.set(l.id, this.clone(this.withStoredViewGrades(l)));
+    await this.writeToPersistence();
+  }
+
+  async setViewGrades(id: string, grades: Grade[] | null): Promise<void> {
+    const l = this.store.get(id);
+    if (!l) return;
+    this.store.set(id, this.clone({ ...l, viewGrades: grades ? [...grades] : null }));
     await this.writeToPersistence();
   }
 }

@@ -106,5 +106,11 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
     value sent to Elvanto where the host name went before is the leader's name. Drop `localStorage ysc.nyHost`.
     Done in the link branch with F4.1.
 
+23. **First-timer tick: no dry-run branch** (R1 merge, 2026-10-12). Master commit `382a35b` removed the
+    `ELVANTO_FORMS_LIVE` gate, so New person sends are always live. `_lkFirstTimerDecision` no longer reads
+    `dryRun`: after a send where the student form went (sent or unconfirmed), the first-timer check-in is queued
+    as normal, subject to the shared switch (`_linkOn`) and the console (`firstTimerCheckIn` not off). The
+    dry-run test was replaced by one that checks every non-off console mode queues.
+
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.

@@ -7,6 +7,8 @@ export interface Leader {
   gender: Gender | null;
   // Grades this leader focuses on (empty = no restriction)
   grades: Grade[];
+  // Grades filter a Junior/Senior login shows for this leader (null/absent = use `grades`).
+  viewGrades?: Grade[] | null;
   active: boolean;
   // Which grade-login created this leader
   createdByGrade: number | null;

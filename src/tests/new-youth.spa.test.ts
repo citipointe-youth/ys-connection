@@ -298,7 +298,7 @@ describe('result page buttons (M3)', () => {
 // ---- Task 7: shadow mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
 const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page: 'home', settings: { ministryConfig: { modules: { newYouthForms: mode, busMinistry: bus } } } });
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
-const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkOn', '_busOn', 'moreItems', '_navItemsBase', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
+const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
 type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; _isRootPage: (p: string) => boolean; openMore: () => void };
 const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, _isRootPage, openMore };`)(
   S, (k: string) => (k === 'busMinistry' ? 'Bus Ministry' : k), modal, (k: string) => `<i ${k}>`, (x: string) => x,
@@ -402,8 +402,19 @@ describe('the More menu (in the Prayers slot)', () => {
   it('the sheet marks the page you are on', () => {
     let shown = '';
     navFns({ ...modeOf('off', 'grade', true), page: 'bus' }, (h) => { shown = h; }).openMore();
-    expect(shown).toMatch(/more-row on"[^>]*go\('bus'\)/);
-    expect(shown).not.toMatch(/more-row on"[^>]*go\('prayers'\)/);
+    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i bus>/);
+    expect(shown).toMatch(/class="more-row" onclick="closeModal\(\);go\('prayers'\)"><i pray>/);
+  });
+  it('the row for the page you are on only closes the sheet: it never re-runs nyOpen over a form or result', () => {
+    let shown = '';
+    navFns({ ...modeOf('shadow', 'admin', true), page: 'new-youth' }, (h) => { shown = h; }).openMore();
+    expect(shown).not.toContain('nyOpen()');
+    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i plus><span>New person/);
+    expect(shown).toContain(`closeModal();go('prayers')`);
+    expect(shown).toContain(`closeModal();go('bus')`);
+  });
+  it('the More nav item says it opens a popup', () => {
+    expect(extractFn(html, '_initShell').match(/it\.action \? ' aria-haspopup="dialog"' : ''/g)).toHaveLength(2);
   });
   it('Prayers stays a root page behind More (no back arrow); Bus and New person stay sub-pages', () => {
     const n = navFns(modeOf('shadow', 'admin', true));
@@ -417,7 +428,7 @@ describe('the More menu (in the Prayers slot)', () => {
   it('New person has no Home tile; the leader Home buttons still show Prayers', () => {
     expect(html).not.toContain('_nyHomeTile');
     expect(html).not.toContain('nyPrayersMenu');
-    expect(extractFn(html, 'renderLeaderHome')).toContain("_navItemsBase().filter(i => i.id !== 'home')");
+    expect(extractFn(html, 'renderLeaderHome')).toContain("_navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()))");
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { QUAD_LABELS } from '../core/types/enums';
 import { gradeBrackets, buildTargetAccounts, planCohortAccountLayout } from '../services/cohort-account-layout';
 
 describe('gradeBrackets', () => {
@@ -43,7 +44,7 @@ describe('buildTargetAccounts', () => {
     expect(targets.filter((t) => t.role === 'grade')).toHaveLength(12);
     expect(targets.filter((t) => t.role === 'quad')).toHaveLength(4);
     expect(targets[0]).toEqual({ role: 'grade', username: 'grade7g', displayName: 'Grade 7 Girls', grades: [7], gender: 'female' });
-    expect(targets).toContainEqual({ role: 'quad', username: 'g79', displayName: 'Girls Yr 7-9', quad: 'g79' });
+    expect(targets).toContainEqual({ role: 'quad', username: 'g79', displayName: QUAD_LABELS.g79, quad: 'g79' });
   });
 });
 
@@ -137,5 +138,24 @@ describe('planCohortAccountLayout', () => {
     const existing = [{ id: 'u1', role: 'grade', email: 'grade78g', displayName: 'Stale', status: 'inactive', grades: [9, 10], gender: 'male' }];
     const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
     expect(plan.mismatched).toHaveLength(0);
+  });
+});
+
+describe('Simple (Junior/Senior) logins on', () => {
+  it('Complex target is the 4 quads only, named Junior/Senior Girls/Guys', () => {
+    const targets = buildTargetAccounts('grades-quads', 7, 12, 'Grade', true);
+    expect(targets).toEqual([
+      { role: 'quad', username: 'g79', displayName: 'Junior Girls', quad: 'g79' },
+      { role: 'quad', username: 'b79', displayName: 'Junior Guys', quad: 'b79' },
+      { role: 'quad', username: 'g1012', displayName: 'Senior Girls', quad: 'g1012' },
+      { role: 'quad', username: 'b1012', displayName: 'Senior Guys', quad: 'b1012' },
+    ]);
+  });
+  it('plan does not create the 4 quads when they exist, and creates no grade accounts', () => {
+    const existing = (['g79', 'b79', 'g1012', 'b1012'] as const).map((q, i) =>
+      ({ id: `q${i}`, role: 'quad', email: q, displayName: QUAD_LABELS[q], status: 'active', quad: q }));
+    const plan = planCohortAccountLayout('grades-quads', 7, 12, 'Grade', existing, true);
+    expect(plan.toCreate).toEqual([]);
+    expect(plan.toDeactivate).toEqual([]);
   });
 });

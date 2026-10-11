@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessGrade, canAccessGender, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
-import type { ILeaderRepository } from '../repositories/interfaces/entity-repositories';
+import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
+import type { ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import { MINISTRY_CONFIG_DEFAULTS, gradeRange } from '../core/ministry-config';
 import type { Leader } from '../core/entities/leader';
 import type { Actor } from '../core/entities/user';
 import type { Grade } from '../core/types/enums';
@@ -30,7 +31,12 @@ export interface LeaderService {
   // import). Gender is NEVER touched here — that lock stays enforced by
   // simply not accepting it as an input.
   updateGrades(actor: Actor, id: string, grades: unknown): Promise<Leader>;
+  // The quad grade filter (Simple logins). input = { grades: number[] | null };
+  // null = "back to my grades". Writes only viewGrades (repo.setViewGrades).
+  setViewGrades(actor: Actor, id: string, input: unknown): Promise<Leader>;
 }
+
+const ViewGradesSchema = z.object({ grades: z.array(z.number().int()).min(1).nullable() });
 
 /** A quad may only manage leaders within its gender + year bracket. */
 function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
@@ -43,7 +49,9 @@ function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
   }
 }
 
-export function makeLeaderService(repo: ILeaderRepository): LeaderService {
+// settings is optional for tests (container.ts always wires it);
+// without it the grade range is the default structure (7-12).
+export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsRepository): LeaderService {
   return {
     async list(actor) {
       assertCan(actor, 'leader:read');
@@ -201,6 +209,28 @@ export function makeLeaderService(repo: ILeaderRepository): LeaderService {
       const parsed = z.array(z.number().int().min(7).max(12)).parse(grades);
       const updated: Leader = { ...existing, grades: parsed as Grade[], updatedAt: new Date().toISOString() };
       return repo.save(updated);
+    },
+
+    async setViewGrades(actor, id, input) {
+      if (!canSetViewGrades(actor, id)) throw new ForbiddenError("You cannot change this leader's grade filter");
+      const parsed = ViewGradesSchema.safeParse(input);
+      if (!parsed.success) throw new BadRequestError('Pick at least one grade, or reset to your grades');
+      const [existing, cfg] = await Promise.all([repo.findById(id), settings ? settings.getSettings() : null]);
+      if (!existing) throw new NotFoundError('Leader not found');
+
+      let grades: Grade[] | null = null;
+      if (parsed.data.grades) {
+        const structure = cfg ? cfg.ministryConfig.structure : MINISTRY_CONFIG_DEFAULTS.structure;
+        const allowed = actor.role === 'quad'
+          ? gradeRange(structure).filter((g) => quadGradesOf(actor.quad).includes(g))
+          : gradeRange(structure);
+        if (parsed.data.grades.some((g) => !allowed.includes(g))) {
+          throw new BadRequestError('Grades must be within your grade range');
+        }
+        grades = [...new Set(parsed.data.grades)].sort((a, b) => a - b) as Grade[];
+      }
+      await repo.setViewGrades(id, grades);
+      return { ...existing, viewGrades: grades };
     },
   };
 }
