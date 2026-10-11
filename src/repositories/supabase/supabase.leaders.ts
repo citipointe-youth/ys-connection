@@ -14,6 +14,10 @@ function toLeader(row: Record<string, unknown>): Leader {
     active: row['active'] as boolean,
     createdByGrade: (row['created_by_grade'] as number | null) ?? null,
     smsTemplate: (row['sms_template'] as string | null) ?? null,
+    // Column added by 0016; undefined before the migration runs, null = "use my grades".
+    viewGrades: (row['view_grades'] as number[] | null | undefined) == null
+      ? null
+      : ((row['view_grades'] as number[]) as Grade[]),
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -105,6 +109,11 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
           updated_at       = excluded.updated_at
       `;
     }
+  }
+
+  // Only this method writes view_grades; save/saveMany deliberately never list it.
+  async setViewGrades(id: string, grades: Grade[] | null): Promise<void> {
+    await this.sql`update leaders set view_grades = ${grades ? (grades as number[]) : null} where id = ${id}`;
   }
 
   async delete(id: string): Promise<boolean> {

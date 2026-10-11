@@ -96,3 +96,82 @@ describe('Leader Service — updateGrades (self-service grade broadening)', () =
     await expect(s.updateGrades(ADMIN, leader.id, [6])).rejects.toBeInstanceOf(Error);
   });
 });
+
+describe('Leader Service — setViewGrades (quad grade filter)', async () => {
+  const { InMemorySettingsRepository } = await import('../repositories/in-memory');
+  const { mergeMinistryConfig } = await import('../core/ministry-config');
+  const { NotFoundError } = await import('../core/errors/app-error');
+
+  async function setup(opts: { gradeMin?: number } = {}) {
+    const repo = new InMemoryLeaderRepository();
+    await repo.init();
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    if (opts.gradeMin !== undefined) {
+      const cur = await settings.getSettings();
+      await settings.updateSettings({
+        ministryConfig: mergeMinistryConfig(cur.ministryConfig, { structure: { gradeMin: opts.gradeMin } }),
+      });
+    }
+    const s = makeLeaderService(repo, settings);
+    const l = await s.create(ADMIN, { fullName: 'Cody', gender: 'female', grades: [8] });
+    return { s, repo, l };
+  }
+
+  it('quad g79 sets [9,7] on any leader -> saved sorted; [10] -> 400 (outside bracket)', async () => {
+    const { s, l } = await setup();
+    const saved = await s.setViewGrades(G79, l.id, { grades: [9, 7, 9] });
+    expect(saved.viewGrades).toEqual([7, 9]);
+    await expect(s.setViewGrades(G79, l.id, { grades: [10] })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('admin [6] -> 400 with gradeMin 7; ok with Include Grade 6', async () => {
+    const a = await setup();
+    await expect(a.s.setViewGrades(ADMIN, a.l.id, { grades: [6] })).rejects.toBeInstanceOf(BadRequestError);
+    const b = await setup({ gradeMin: 6 });
+    expect((await b.s.setViewGrades(ADMIN, b.l.id, { grades: [6] })).viewGrades).toEqual([6]);
+  });
+
+  it('null resets to "my grades"; [] -> 400', async () => {
+    const { s, l } = await setup();
+    await s.setViewGrades(ADMIN, l.id, { grades: [9] });
+    expect((await s.setViewGrades(ADMIN, l.id, { grades: null })).viewGrades).toBeNull();
+    await expect(s.setViewGrades(ADMIN, l.id, { grades: [] })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('leader role: own id ok, another id 403; grade role 403', async () => {
+    const { s, l } = await setup();
+    const own: Actor = { ...actor('leader'), leaderId: l.id } as Actor;
+    const other: Actor = { ...actor('leader'), leaderId: 'someone-else' } as Actor;
+    expect((await s.setViewGrades(own, l.id, { grades: [8] })).viewGrades).toEqual([8]);
+    await expect(s.setViewGrades(other, l.id, { grades: [8] })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.setViewGrades(actor('grade', { grade: 8 }), l.id, { grades: [8] })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('unknown leader id -> 404', async () => {
+    const { s } = await setup();
+    await expect(s.setViewGrades(ADMIN, 'nope', { grades: [8] })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('works without a settings repo (defaults to grades 7-12)', async () => {
+    const repo = new InMemoryLeaderRepository();
+    await repo.init();
+    const s = makeLeaderService(repo);
+    const l = await s.create(ADMIN, { fullName: 'X', grades: [8] });
+    expect((await s.setViewGrades(ADMIN, l.id, { grades: [12] })).viewGrades).toEqual([12]);
+    await expect(s.setViewGrades(ADMIN, l.id, { grades: [6] })).rejects.toBeInstanceOf(BadRequestError);
+  });
+
+  it('updateSmsTemplate, updateGrades and an import-style saveMany leave viewGrades unchanged', async () => {
+    const { s, repo, l } = await setup();
+    await s.setViewGrades(ADMIN, l.id, { grades: [9] });
+    await s.updateSmsTemplate(ADMIN, l.id, 'Hi <first name>');
+    await s.updateGrades(ADMIN, l.id, [8, 9]);
+    const cur = (await repo.findById(l.id))!;
+    const { viewGrades: _drop, ...imported } = cur;
+    await repo.saveMany([{ ...imported, fullName: 'Cody Cobb' }]);
+    const after = (await repo.findById(l.id))!;
+    expect(after.fullName).toBe('Cody Cobb');
+    expect(after.viewGrades).toEqual([9]);
+  });
+});

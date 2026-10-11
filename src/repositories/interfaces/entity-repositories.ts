@@ -14,7 +14,7 @@ import type {
 } from '../../core/entities/attendance';
 import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
 import type { ConnectionAudit } from '../../core/entities/connection-audit';
-import type { UserRole } from '../../core/types/enums';
+import type { Grade, UserRole } from '../../core/types/enums';
 import type {
   BusVehicle,
   BusLeaderPrefs,
@@ -50,6 +50,9 @@ export interface ILeaderRepository extends IRepository<Leader> {
   findActive(): Promise<Leader[]>;
   saveMany(leaders: Leader[]): Promise<void>;
   deleteAll(): Promise<void>;
+  // Writes ONLY the view-grades filter (null = "use my grades"). save/saveMany
+  // never write it, so an edit or an import cannot wipe it.
+  setViewGrades(id: string, grades: Grade[] | null): Promise<void>;
 }
 
 export interface IPrayerRepository extends IRepository<PrayerRequest> {
