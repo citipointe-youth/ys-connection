@@ -2394,7 +2394,26 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 
 ### New youth forms (2026-10-11)
 
-A host types a new student and one parent into the **New person** screen (its user-facing name since 2026-10-11; every internal name stays: route `/intake/new-youth`, page id `new-youth`, module key `newYouthForms`, `_ny*`/`ny*`). The app sends Citipointe Brisbane's two public Elvanto connect forms (student, then parent). No Elvanto account is needed. Branch `feat/new-youth-forms`; no migration.
+**▶ Resume here (state as of 2026-10-12):** built, reviewed and **merged to `master` and pushed 2026-10-12** (the laptop build, 12 commits after `052bcc8`). **Not promoted yet**: `ys-connection.vercel.app` changes only when the owner promotes the build in Vercel. The module is Off by default, so after promotion what everyone sees is only (a) the grade/leader nav swap, (b) the leader Home quick-action buttons in the new order, and (c) one SW cache refresh (`ysc-v88`). Shadow mode then has to be switched on in Youth Setup; until `ELVANTO_FORMS_LIVE=1` is set, admin sends are test runs. Left to do, in order:
+1. **Owner:** promote the build; `curl -s -X POST https://ys-connection.vercel.app/intake/new-youth` must return a JSON 401.
+2. **Owner:** phone-width visual check (Claude never did one): the New person form, the warn and result pages, the Prayers chooser, the swapped navs, a refusal from the bottom of the form, and leaving mid-send.
+3. **Operator: plan Task 0** (live capture in their own browser → `D:\ys-connection-intake\capture.md`). Then Claude pastes `SUCCESS` into `elvanto-forms.ts` and adds a captured-reply test (see the OPEN ITEM below).
+4. **Owner:** set `ELVANTO_FORMS_LIVE=1` in Vercel **Production only** and redeploy. Citipointe approved the feature 2026-10-11.
+
+**Owner calls still open (parked, not bugs):**
+- **Wording:** "Check the forms list in Elvanto" assumes Elvanto access, which shared-login hosts may not have. Maybe "Ask the youth admin to check Elvanto". (Final review M7.)
+- **Carry-over:** a Brisbane settings file loaded at another location carries `newYouthForms`, but it can't send there without that location's own `ELVANTO_FORMS_LIVE`. (M8.)
+- **Late POST:** no server deadline before the student POST, so if the settings read stalls, the student form can still be sent after the phone gave up. The host sees "we don't know", and nothing is auto-resent. (M2.)
+
+**Deferred minors:**
+- Two toasts can collide on the toast timer.
+- A Youth Setup save that changes the nav rebuilds the whole shell, so the scroll position is lost.
+- In json mode, a legacy boolean `newYouthForms` gets a server 404.
+- `classifyPost` treats 201/202/204/408/429 as `failed`. Revisit with the Task 0 capture.
+- The Bus "New Person" regex test is weak.
+- `account.service.test.ts` "applying Complex deactivates the pre-existing grade7g…" sometimes times out (~5 s) on the laptop. This predates the feature and was ignored.
+
+A host types a new student and one parent into the **New person** screen (its user-facing name since 2026-10-11; every internal name stays: route `/intake/new-youth`, page id `new-youth`, module key `newYouthForms`, `_ny*`/`ny*`). The app sends Citipointe Brisbane's two public Elvanto connect forms (student, then parent). No Elvanto account is needed. Built on branch `feat/new-youth-forms`, merged to `master` (deleted after the merge); no migration.
 - **Route:** `POST /intake/new-youth` (`new-youth.controller.ts` → `new-youth.service.ts`). RBAC `intake:write`, granted to all five roles. Module `ministryConfig.modules.newYouthForms` has **three states**, **off by default** (Youth Setup → Modules, an Off / Shadow mode (admin only) / On select):
   - *Off:* nobody sees it; the server answers 404 (`ModuleDisabledError`).
   - *Shadow mode:* only the `admin` login sees it and can send. Every other role gets the same 404 and sees no tile, page or popup option. The decision is `canUseNewYouth(actor, mode)` in `access-control.ts`, called by the service.
@@ -2402,7 +2421,7 @@ A host types a new student and one parent into the **New person** screen (its us
   - The old boolean still parses (`true` = on, `false` = off) via `z.preprocess`, so a stored config from before needs no migration. The SPA reads a legacy boolean the same way (`_nyModeOf`).
   - Shadow mode controls **who** may use it only. Live or dry run still depends only on `ELVANTO_FORMS_LIVE`.
   - *Prayers chooser (shadow mode, admin only):* the Prayers nav item (bottom and desktop nav) carries an `action`, so tapping it opens a small Prayers / New person popup (`nyPrayersMenu()`) instead of going to Prayers. New person uses `nyOpen()`, the same entry as the Home tile (it never wipes an in-flight send). In Off and On modes Prayers is a plain `go('prayers')`. The Home tile stays. `navItems()` wraps `_navItemsBase()` and adds the action; `_initShell` builds both navs with `_navClick(it)`. Saving Youth Setup rebuilds the shell (`_initShell()`) when the nav changed, so no reload is needed.
-  - *Nav swap (2026-10-11):* the bottom nav for `grade` is now Home | Health | My Connections | Prayers | Setup, and for `leader` Home | Prayers | Health | My Connections | Birthdays. Other roles are unchanged.
+  - *Nav swap (2026-10-11):* the bottom nav for `grade` is now Home | Health | My Connections | Prayers | Setup, and for `leader` Home | Prayers | Health | My Connections | Birthdays. Other roles are unchanged. The swap applies in every module state, Off included. The leader's Home quick-action grid follows the nav order, so it changed too (Prayers / Health / My Connections / Birthdays).
 - **Dry run unless `ELVANTO_FORMS_LIVE=1`.** `env.ts` reads it, `container.ts` passes `{ live: env.ELVANTO_FORMS_LIVE }`. Live is the explicit opt-in: `makeNewYouthService(settings, opts)` posts only when `opts.live === true`, so a caller that omits the option gets a dry run. A dry run still fetches both forms and checks their shape, then returns `skipped`/`skipped` with `dryRun: true`. The SPA says "Test mode: nothing was sent to Elvanto." Set it for **Vercel Production only**.
 - **Where Elvanto's markup lives:** `src/services/elvanto-forms.ts` only (form ids, field names, option ids, the body builders). It was captured 2026-10-11. Fixtures: `src/tests/fixtures/elvanto-student-form.html` and `elvanto-parent-form.html`. One location is hard-coded; move it into `ministryConfig` when a second location forks.
 - **The shape check:** before any POST the service fetches both live forms and runs `shapeProblems()`. It refuses with 502 `ELVANTO_FORM_CHANGED` if a field or option id we post is missing, if the form has an input we do not post, or if the honeypot is missing. Nothing is sent. The message tells the host to use the welcome-desk form and tell the admin. **If the church edits a form, refresh the fixtures and the constants in `elvanto-forms.ts` together.**
@@ -2426,7 +2445,7 @@ A host types a new student and one parent into the **New person** screen (its us
 - **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.
 - **SW cache** `ysc-v87` → `ysc-v88`.
 - **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only when Task 0 is done** (`capture.md` written, `SUCCESS` pasted into `elvanto-forms.ts`, captured-reply test green), **Citipointe has approved (given) and the owner has promoted the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
-- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts`. 1036 tests pass in total.
+- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1039 tests pass in total (74 files).
 
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 
