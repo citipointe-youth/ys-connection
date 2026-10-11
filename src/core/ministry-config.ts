@@ -116,6 +116,18 @@ export const MinistryConfigSchema = z.object({
       newYouthForms: z
         .preprocess((v) => (v === true ? 'on' : v === false ? 'off' : v), z.enum(['off', 'shadow', 'on']))
         .default('off'),
+      // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
+      prayers: z.boolean().default(true),
+    })
+    .default({}),
+
+  // Simple logins (October rework, spec A): Junior/Senior quad logins replace the grade logins.
+  logins: z
+    .object({
+      simple: z.boolean().default(false),
+      // SERVER-OWNED. Never taken from a client patch (see "Server-owned fields").
+      retiredGradeIds: z.array(z.string()).default([]),
+      gradeRoleWasOn: z.boolean().default(true),
     })
     .default({}),
 
@@ -147,6 +159,7 @@ export const MinistryConfigSchema = z.object({
 });
 
 export type MinistryConfig = z.infer<typeof MinistryConfigSchema>;
+export type LoginsConfig = MinistryConfig['logins'];
 
 // The inclusive list of grade numbers a deployment uses (structure.gradeMin..
 // gradeMax). Replaces the hardcoded [7..12] iterations in the aggregate
