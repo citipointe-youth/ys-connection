@@ -119,7 +119,7 @@ export function makeSetupService(deps: {
         const current = await deps.settings.getSettings();
         await deps.settings.updateSettings({
           ministryConfig: mergeMinistryConfig(current.ministryConfig, {
-            logins: { simple: true, gradeRoleWasOn: true }, roles: { enabled: { grade: false } },
+            logins: { simple: true }, roles: { enabled: { grade: false } },
           }),
         });
       }

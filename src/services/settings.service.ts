@@ -2,14 +2,14 @@ import { z } from 'zod';
 import { assertCan } from './access-control';
 import type { ISettingsRepository, IAuditRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { AppSettings } from '../core/entities/settings';
-import type { Actor } from '../core/entities/user';
+import type { Actor, User } from '../core/entities/user';
 import { QUAD_LABELS, quadLabelFor, type UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
 import { mergeMinistryConfig } from '../core/ministry-config';
 import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
-import { BadRequestError } from '../core/errors/app-error';
+import { AppError, BadRequestError } from '../core/errors/app-error';
 import { googleRoutingEnabled } from './routing/google-routing-provider';
 
 // The optional roles a ministry can switch off in Setup (Admin always exists
@@ -25,9 +25,16 @@ const SettingsPatchSchema = z.object({
   // MinistryConfigSchema after merging) — accept any partial shape here so a
   // deep-partial patch like {branding:{accent:'#fff'}} isn't rejected up front.
   ministryConfig: z.record(z.unknown()).optional(),
+  // T1: the value of each risky switch the client's draft was based on. A flip whose base no
+  // longer matches the stored value is refused with 409, so a stale tab can't undo a change.
+  expect: z.object({ simple: z.boolean().optional(), prayers: z.boolean().optional() }).optional(),
 });
 
 const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
+const SIMPLE_NEEDS_MSG = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
+const SIMPLE_G6_MSG = 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.';
+const SIMPLE_G6_ON_MSG = 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.';
+const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
 export type SettingsUpdateResult = AppSettings & { renamedQuads?: number };
@@ -96,7 +103,7 @@ export function makeSettingsService(
         }
       }
 
-      const { ministryConfig: _omit, ...scalarPatch } = patch;
+      const { ministryConfig: _omit, expect: base, ...scalarPatch } = patch;
       const update: Partial<AppSettings> = { ...scalarPatch };
 
       // Roles newly turned OFF by this save (compared against the pre-save config) —
@@ -104,13 +111,19 @@ export function makeSettingsService(
       // enabled-map to diff. Deactivation itself runs after the settings write
       // succeeds (below), matching the confirm-then-cascade shape of a live setting.
       let rolesJustDisabled: UserRole[] = [];
-      // Simple (Junior/Senior) logins transition, applied after the settings write.
-      let simpleFlip: 'on' | 'off' | null = null;
-      let retireIds: string[] = [];
-      let restoreIds: string[] = [];
+      // Simple (Junior/Senior) logins. The reconcile runs on EVERY ministryConfig save, not only
+      // on a flip, so a half-applied flip (a failed save mid-loop) is repaired by saving again.
+      let simpleFlip = false;
+      let simpleOnNow = false;
+      let retire: User[] = [];
 
       if (ministryConfigPatch !== undefined) {
         const current = await repo.getSettings();
+        const cur = current.ministryConfig;
+        if ((base?.simple !== undefined && base.simple !== cur.logins.simple)
+          || (base?.prayers !== undefined && base.prayers !== cur.modules.prayers)) {
+          throw new AppError('SETTINGS_CHANGED', CHANGED_MSG, 409);
+        }
         // retiredGradeIds / gradeRoleWasOn are SERVER-OWNED: drop them from any client patch
         // (stale draft, second tab, settings file, raw PATCH) so the stored values carry forward.
         let cleanPatch: Record<string, unknown> = ministryConfigPatch;
@@ -119,34 +132,45 @@ export function makeSettingsService(
           const { retiredGradeIds: _r, gradeRoleWasOn: _w, ...rest } = loginsPatch as Record<string, unknown>;
           cleanPatch = { ...ministryConfigPatch, logins: rest };
         }
-        const merged = mergeMinistryConfig(current.ministryConfig, cleanPatch);
-        const wasOn = current.ministryConfig.logins.simple;
+        const merged = mergeMinistryConfig(cur, cleanPatch);
+        const wasOn = cur.logins.simple;
         const isOn = merged.logins.simple;
+        simpleOnNow = isOn;
+        simpleFlip = wasOn !== isOn;
         if (isOn) {
-          // The rule: Simple logins needs the Complex cohort model and the Quad role.
-          if (merged.structure.cohortModel !== 'grades-quads' || !merged.roles.enabled.quad) {
-            throw new BadRequestError(SIMPLE_ON_MSG);
+          // The rule: Simple logins needs the Complex cohort model and the Quad role, and no
+          // grade 6 (no quad bracket covers it). The message names the step that fixes it:
+          // undo the change that broke a valid stored state, else fix the missing piece.
+          const valid = (m: typeof cur) => m.structure.cohortModel === 'grades-quads' && m.roles.enabled.quad;
+          if (!valid(merged)) throw new BadRequestError(wasOn && valid(cur) ? SIMPLE_ON_MSG : SIMPLE_NEEDS_MSG);
+          if (merged.structure.gradeMin < 7) {
+            throw new BadRequestError(wasOn && cur.structure.gradeMin >= 7 ? SIMPLE_G6_ON_MSG : SIMPLE_G6_MSG);
           }
           merged.roles.enabled.grade = false;
-        }
-        if (!wasOn && isOn) {
-          // Collect the active grade logins BEFORE the write (also catches ones left active
-          // while the Grade role was already off), and record them in that same write.
-          retireIds = (await users.findByRole('grade')).filter((u) => u.status === 'active').map((u) => u.id);
-          merged.logins.retiredGradeIds = retireIds;
-          merged.logins.gradeRoleWasOn = current.ministryConfig.roles.enabled.grade;
-          simpleFlip = 'on';
-        } else if (wasOn && !isOn) {
-          merged.roles.enabled.grade = current.ministryConfig.logins.gradeRoleWasOn;
-          restoreIds = current.ministryConfig.logins.retiredGradeIds;
+          // Every active grade login is retired and listed (normally none while on).
+          retire = (await users.findByRole('grade')).filter((u) => u.status === 'active');
+          const listed = wasOn ? cur.logins.retiredGradeIds : [];
+          merged.logins.retiredGradeIds = [...new Set([...listed, ...retire.map((u) => u.id)])];
+          if (!wasOn) merged.logins.gradeRoleWasOn = cur.roles.enabled.grade;
+        } else if (wasOn) {
+          merged.roles.enabled.grade = cur.logins.gradeRoleWasOn;
+          // Restore BEFORE the write that clears the list: a failure here leaves the stored
+          // config (Simple on, full list) untouched, and saving OFF again finishes the job.
+          // Only ids that still exist, are still grade logins and are still inactive come back.
+          for (const id of cur.logins.retiredGradeIds) {
+            const u = await users.findById(id);
+            if (u && u.role === 'grade' && u.status === 'inactive') {
+              await users.save({ ...u, status: 'active', updatedAt: new Date().toISOString() });
+            }
+          }
           merged.logins.retiredGradeIds = [];
-          simpleFlip = 'off';
         }
         update.ministryConfig = merged;
 
-        const before = current.ministryConfig.roles?.enabled;
+        const before = cur.roles?.enabled;
         const after = merged.roles.enabled;
-        rolesJustDisabled = OPTIONAL_ROLES.filter((r) => before?.[r] !== false && after[r] === false);
+        // While Simple is on, the retire list above is the only path for grade logins.
+        rolesJustDisabled = OPTIONAL_ROLES.filter((r) => before?.[r] !== false && after[r] === false && !(isOn && r === 'grade'));
       }
 
       if (Object.keys(patch).length > 0) {
@@ -161,18 +185,15 @@ export function makeSettingsService(
 
       const updated = await repo.updateSettings({ ...update, updatedAt: new Date().toISOString() });
 
-      // Simple logins on: retire exactly the ids recorded above. Off: bring back only listed
-      // ids that still exist, are still grade logins and are still inactive.
-      for (const id of retireIds) {
-        const u = await users.findById(id);
-        if (u && u.status === 'active') await users.save({ ...u, status: 'inactive', updatedAt: new Date().toISOString() });
-      }
-      for (const id of restoreIds) {
-        const u = await users.findById(id);
-        if (u && u.role === 'grade' && u.status === 'inactive') {
-          await users.save({ ...u, status: 'active', updatedAt: new Date().toISOString() });
-        }
-      }
+      // Fix for the pre-existing invalidation gap: any settings change (term
+      // math, min-attendance floor, or ministryConfig) could affect the three
+      // 60s actor-keyed stats caches. Cleared straight after the write, so a
+      // later failure (retire loop, rename) cannot leave them stale.
+      invalidateOverviewCache();
+      invalidateTrendsCache();
+      invalidateLgStatsCache();
+
+      for (const u of retire) await users.save({ ...u, status: 'inactive', updatedAt: new Date().toISOString() });
 
       // A role toggled OFF in Setup deactivates every currently-active account of
       // that role — the Accounts screen also hides that role's whole section
@@ -190,16 +211,12 @@ export function makeSettingsService(
         }
       }
 
-      // Fix for the pre-existing invalidation gap: any settings change (term
-      // math, min-attendance floor, or ministryConfig) could affect the three
-      // 60s actor-keyed stats caches, which previously had no invalidation
-      // hook on this path at all — see design doc / CLAUDE.md's "Settings
-      // updates invalidate NO caches" gotcha.
-      invalidateOverviewCache();
-      invalidateTrendsCache();
-      invalidateLgStatsCache();
-
-      if (simpleFlip) return { ...updated, renamedQuads: await renameQuads(simpleFlip === 'on') };
+      // Quad names follow Simple logins on every save while on (repairs a failed rename), and
+      // on the off flip. The count is returned when something was renamed or the switch flipped.
+      if (simpleOnNow || simpleFlip) {
+        const n = await renameQuads(simpleOnNow);
+        if (n > 0 || simpleFlip) return { ...updated, renamedQuads: n };
+      }
       return updated;
     },
   };

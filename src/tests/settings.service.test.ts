@@ -257,6 +257,9 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
   const ON = { ministryConfig: { logins: { simple: true } } };
   const OFF = { ministryConfig: { logins: { simple: false } } };
   const MSG = 'Turn off Junior/Senior logins first';
+  const NEEDS = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
+  const G6 = 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.';
+  const G6_ON = 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.';
 
   async function fixture() {
     const f = await makeService();
@@ -354,10 +357,12 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     expect((await repo.getSettings()).ministryConfig.roles.enabled.grade).toBe(false);
   });
 
-  it('rule: cohortModel none or quad off, while on or when turning on, is 400', async () => {
+  it('rule: cohortModel none or quad off, while on or when turning on, is 400 with the right next step', async () => {
     const { service } = await fixture();
     await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: true }, structure: { cohortModel: 'none' } } }))
-      .rejects.toMatchObject({ statusCode: 400, message: MSG });
+      .rejects.toMatchObject({ statusCode: 400, message: NEEDS });
+    await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: true }, roles: { enabled: { quad: false } } } }))
+      .rejects.toMatchObject({ statusCode: 400, message: NEEDS });
     await service.update(ADMIN, ON);
     await expect(service.update(ADMIN, { ministryConfig: { structure: { cohortModel: 'none' } } }))
       .rejects.toMatchObject({ statusCode: 400, message: MSG });
@@ -377,5 +382,112 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     const r = await service.update(ADMIN, { ministryConfig: { branding: { accent: '#ff0000' } } });
     expect(r.renamedQuads).toBeUndefined();
     expect((await users.findById('q1'))!.displayName).toBe('Girls Yr 7–9');
+  });
+  // T3: grade 6 has no quad bracket, so Simple logins needs gradeMin >= 7.
+  it('T3: turning Simple on with Include Grade 6 is 400 (turn off Grade 6 first)', async () => {
+    const { service, users } = await fixture();
+    await service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } });
+    await expect(service.update(ADMIN, ON)).rejects.toMatchObject({ statusCode: 400, message: G6 });
+    expect(await status(users, 'g7')).toBe('active');
+  });
+
+  it('T3: turning Include Grade 6 on while Simple is on is 400 (turn off Simple first)', async () => {
+    const { service, repo } = await fixture();
+    await service.update(ADMIN, ON);
+    await expect(service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } }))
+      .rejects.toMatchObject({ statusCode: 400, message: G6_ON });
+    expect((await repo.getSettings()).ministryConfig.structure.gradeMin).toBe(7);
+  });
+
+  // T1: a stale draft must not flip Simple logins / Prayers.
+  it('T1: a colour-only save (no logins/prayers in the patch) keeps Simple logins on', async () => {
+    const { service, repo, users } = await fixture();
+    await service.update(ADMIN, ON);
+    await service.update(ADMIN, { ministryConfig: { branding: { accent: '#ff0000' } } });
+    expect((await repo.getSettings()).ministryConfig.logins.simple).toBe(true);
+    expect(await status(users, 'g7')).toBe('inactive');
+  });
+
+  it('T1: a flip whose expect does not match the stored value is 409 SETTINGS_CHANGED and touches nothing', async () => {
+    const { service, repo, users } = await fixture();
+    await service.update(ADMIN, ON);
+    const spy = vi.spyOn(repo, 'updateSettings');
+    await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: true } }, expect: { simple: true } })).resolves.toBeDefined();
+    spy.mockClear();
+    // A stale tab still thinks Simple is off and "turns it on" again — fine; but a stale OFF:
+    await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: false } }, expect: { simple: false } }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'SETTINGS_CHANGED', message: 'Someone else changed this. Reload Youth Setup.' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(await status(users, 'g7')).toBe('inactive');
+  });
+
+  it('T1: a stale Prayers flip is 409; a matching expect saves', async () => {
+    const { service, repo } = await fixture();
+    await service.update(ADMIN, { ministryConfig: { modules: { prayers: false } }, expect: { prayers: true } });
+    expect((await repo.getSettings()).ministryConfig.modules.prayers).toBe(false);
+    await expect(service.update(ADMIN, { ministryConfig: { modules: { prayers: false } }, expect: { prayers: true } }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'SETTINGS_CHANGED' });
+  });
+
+  // T2: the flip converges, so a re-save repairs a half-applied one.
+  function failNthSave(users: InMemoryUserRepository, n: number) {
+    const real = users.save.bind(users);
+    let calls = 0;
+    return vi.spyOn(users, 'save').mockImplementation(async (u) => {
+      calls++;
+      if (calls === n) throw new Error('EMAXCONNSESSION');
+      return real(u);
+    });
+  }
+
+  it('T2: on, a save failing mid-retire; a second save retires the rest and renames the quads', async () => {
+    const { service, repo, users } = await fixture();
+    const spy = failNthSave(users, 2);
+    await expect(service.update(ADMIN, ON)).rejects.toThrow('EMAXCONNSESSION');
+    spy.mockRestore();
+    const after1 = [await status(users, 'g7'), await status(users, 'g8')];
+    expect(after1).toContain('active'); // half-applied
+    await service.update(ADMIN, { ministryConfig: { branding: { accent: '#00ff00' } } });
+    expect(await status(users, 'g7')).toBe('inactive');
+    expect(await status(users, 'g8')).toBe('inactive');
+    expect([...(await repo.getSettings()).ministryConfig.logins.retiredGradeIds].sort()).toEqual(['g7', 'g8']);
+    expect((await users.findById('q1'))!.displayName).toBe('Junior Girls');
+  });
+
+  it('T2: off, a restore failing mid-loop keeps the list; a second OFF save restores the rest', async () => {
+    const { service, repo, users } = await fixture();
+    await service.update(ADMIN, ON);
+    const spy = failNthSave(users, 2);
+    await expect(service.update(ADMIN, OFF)).rejects.toThrow('EMAXCONNSESSION');
+    spy.mockRestore();
+    expect([...(await repo.getSettings()).ministryConfig.logins.retiredGradeIds].sort()).toEqual(['g7', 'g8']);
+    await service.update(ADMIN, OFF);
+    const cfg = (await repo.getSettings()).ministryConfig;
+    expect(cfg.logins.simple).toBe(false);
+    expect(cfg.logins.retiredGradeIds).toEqual([]);
+    expect(await status(users, 'g7')).toBe('active');
+    expect(await status(users, 'g8')).toBe('active');
+  });
+
+  it('T2: the stats caches are cleared even when the retire loop fails', async () => {
+    const studentRepo = new InMemoryStudentRepository();
+    const leaderRepo = new InMemoryLeaderRepository();
+    const connRepo = new InMemoryConnectionRepository();
+    await Promise.all([studentRepo.init(), leaderRepo.init(), connRepo.init()]);
+    const overviewSvc = makeOverviewService(studentRepo, leaderRepo, connRepo);
+    const { service, users } = await fixture();
+    expect((await overviewSvc.getStats(ADMIN)).ministryTotal).toBe(0);
+    await studentRepo.save({
+      id: 's1', firstName: 'A', lastName: 'B', gender: 'female', grade: 9,
+      quad: null, mobile: null, parentPhone: null, dateOfBirth: null,
+      svcAttended: 1, svcTotal: 1, grpAttended: 0, grpTotal: 0, grpMetWeeks: 0,
+      prevSvcAttended: 0, prevSvcTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0,
+      atRiskStatus: null, dataSource: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    });
+    const spy = failNthSave(users, 1);
+    await expect(service.update(ADMIN, ON)).rejects.toThrow();
+    spy.mockRestore();
+    expect((await overviewSvc.getStats(ADMIN)).ministryTotal).toBe(1);
   });
 });
