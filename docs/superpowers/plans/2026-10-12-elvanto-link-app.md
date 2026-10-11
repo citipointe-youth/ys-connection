@@ -664,6 +664,30 @@ run R1 + V3 + H1 again later.
 3. Run the verify command; `npx vitest run src/tests/link src/tests/schema-version.test.ts src/tests/migrate-runner.test.ts`
    once more on its own. Commit the merge with an explicit file list.
 
+### Lane RV — Review wave (after R1, before V3) — added by the operator 2026-10-12
+
+Seven independent reviews, run **in parallel**. Each one is an **Opus subagent at medium effort**, and each is
+**read-only**: it writes one file, `docs/superpowers/reviews/2026-10-12-link-<name>.md`, and never edits code.
+Each reviewer reads the spec, the frozen contract, this plan, the ledger and the diff
+`master...feat/elvanto-link-app`. Findings are ranked Critical / Important / Minor. Each finding has file:line, a
+concrete failure scenario and a proposed fix. A finding that would need a fixture or schema change is flagged
+"CONTRACT" and is never fixed here. Each reviewer returns 5 lines or fewer.
+
+| # | Review | Focus |
+|---|---|---|
+| RV1 | **Six-hat** | White (claims vs code and contract), Red (how a door host, a leader and the operator will feel on a Friday), Black (minors' PII on the door list, sync token, shared logins, wrong-person actions, Elvanto writes on the admin account), Yellow (what's good), Green (simpler designs), Blue (rollout: shadow Friday → On, flags, docs match code). |
+| RV2 | **Ponytail** | YAGNI: unneeded states in the outbox machine, over-built admin pages, duplicated client/server logic, config nobody asked for, code paths the console never calls. |
+| RV3 | **False positives / negatives** | Tests that can't fail (mocked repos asserting mocks, fixtures compared loosely), dedupe that wrongly merges two real actions or misses a duplicate, matching that links the wrong person or refuses a right one, `too-old` / which-service rules at the edges. |
+| RV4 | **Edge cases** | A Friday after midnight; a Sunday with two services; a leader picking a past service; the same youth checked in on two phones; undo after the console claimed; check-out before the check-in is sent; switch flipped mid-night; console offline for 3+ days; an "I am" switch mid-queue; logout with a queued item; leaders with duplicate names; leader quick check-in with 0 or all linked; a lifegroup report edit after a newer Elvanto report. |
+| RV5 | **Web/phone UI** | The door screen, leader quick check-in sheet, report and flow screens, the pending pill, the banners, the admin log, at 360 px and desktop. Tap targets ≥40 px, the sticky Submit doesn't hide the last row, the keyboard doesn't cover search, no horizontal scroll, esc() everywhere, no dark mode, plain wording. A static review plus a local run (`npm run start`, PERSISTENCE=memory, port 4300) with the browser if one is available. |
+| RV6 | **Reliability** | The phone queue survives a reload, an app kill or a dead signal; flush retries and backoff; idempotency end to end (phone → `/link/batch` → outbox → `/sync/claim` → result); lease expiry and a double console; partial batch failures; the Supabase claim transaction; the 0017 migration and RLS; the rate limits under a real Friday; clock skew between phone and server. |
+| RV7 | **Speed / end-user feel** | Tap-to-tick under 100 ms with no network wait; roster loaded once per service; search on the phone; batch size versus the pool cap of 15; no request per keystroke; the shell isn't rebuilt on queue changes; the leader quick check-in submits 40 leaders in one request; cold start on the first Friday tap. |
+
+**Then RV8 [Opus] — triage and fix.** The orchestrator rules on each finding: fix, defer (listed in CLAUDE.md
+"Resume here") or reject (with a reason). CONTRACT findings go to the operator. One Opus executor fixes the accepted
+findings, TDD, and commits with explicit paths. Re-run the verify command and the V1 smoke. Write a table
+`docs/superpowers/reviews/2026-10-12-link-triage.md` (finding → ruling → commit).
+
 ### Task V3 [Opus] — Final verification
 Verify: `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`
 1. The verify command passes; record the test count.

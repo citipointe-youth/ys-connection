@@ -86,5 +86,14 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
       give one Elvanto action. Server reply per item: saved / duplicate / refused (too-old, etc.) → row updates.
     - Same queue for flow ticks and lifegroup reports (they are less time-critical, but get the same safety).
 
+20. **Leader quick check-in** (operator, 2026-10-12). A button on the door screen ("Check in leaders") opens a sheet
+    listing every active Leader in the app (name only, A–Z), each with a tick box, plus a "Tick all" control at the
+    top, and a sticky **Submit (N)** at the bottom — modelled on the camp app's daily check-in. Usually 90–95% are
+    there, so it is used before the service. Leaders already checked in for the chosen service show as done (no box).
+    Leaders not matched to an Elvanto person show greyed "Not linked" (can't be ticked). Submit queues one ordinary
+    check-in per ticked leader through the same phone queue and `/link/batch` (ledger 18): instant, deduped by
+    (person, service, type), logged per action (ledger 12). Same gate (shared switch), any login, same service pick.
+    No contract change: each is a normal check-in action.
+
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
