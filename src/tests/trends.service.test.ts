@@ -9,6 +9,7 @@ import {
   InMemoryServiceAttendanceRepository,
 } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
+import { QUAD_LABELS, quadLabelFor } from '../core/types/enums';
 
 function actor(role: string, opts: { grade?: number; quad?: string } = {}): Actor {
   return { id: 'a-test', role: role as any, displayName: 'T', grade: (opts.grade ?? null) as any, quad: (opts.quad ?? null) as any };
@@ -150,5 +151,19 @@ describe('Trends Service', () => {
     const data = await trendsSvc.get(ADMIN);
     expect(data.groupSummary.studentsIncreasing).toBe(1);
     expect(data.groupSummary.studentsDecreasing).toBe(1);
+  });
+});
+
+describe('Trends Service — quad labels and Simple logins', () => {
+  it('byQuad labels follow logins.simple', async () => {
+    const { trendsSvc, settingsRepo } = await makeServices();
+    const before = await trendsSvc.get(ADMIN);
+    for (const q of before.byQuad) expect(q.label).toBe(QUAD_LABELS[q.quad]);
+    const cur = await settingsRepo.getSettings();
+    await settingsRepo.updateSettings({ ministryConfig: { ...cur.ministryConfig, logins: { ...cur.ministryConfig.logins, simple: true } } });
+    invalidateTrendsCache();
+    const after = await trendsSvc.get(ADMIN);
+    expect(after.byQuad.length).toBeGreaterThan(0);
+    for (const q of after.byQuad) expect(q.label).toBe(quadLabelFor(q.quad, true));
   });
 });

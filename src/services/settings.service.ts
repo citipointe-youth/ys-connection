@@ -3,7 +3,7 @@ import { assertCan } from './access-control';
 import type { ISettingsRepository, IAuditRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { AppSettings } from '../core/entities/settings';
 import type { Actor } from '../core/entities/user';
-import type { UserRole } from '../core/types/enums';
+import { QUAD_LABELS, quadLabelFor, type UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
 import { mergeMinistryConfig } from '../core/ministry-config';
 import { invalidateOverviewCache } from './overview.service';
@@ -27,9 +27,14 @@ const SettingsPatchSchema = z.object({
   ministryConfig: z.record(z.unknown()).optional(),
 });
 
+const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
+
+/** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
+export type SettingsUpdateResult = AppSettings & { renamedQuads?: number };
+
 export interface SettingsService {
   get(): Promise<AppSettings>;
-  update(actor: Actor, input: unknown): Promise<AppSettings>;
+  update(actor: Actor, input: unknown): Promise<SettingsUpdateResult>;
 }
 
 export function makeSettingsService(
@@ -37,6 +42,20 @@ export function makeSettingsService(
   audit: IAuditRepository,
   users: IUserRepository,
 ): SettingsService {
+  // Quad logins are picked by role + quad field (usernames can be edited). A hand-typed display
+  // name is overwritten in both directions. Returns how many were actually renamed.
+  async function renameQuads(simple: boolean): Promise<number> {
+    let n = 0;
+    for (const u of await users.findByRole('quad')) {
+      if (!u.quad) continue;
+      const name = simple ? quadLabelFor(u.quad, true) : QUAD_LABELS[u.quad];
+      if (u.displayName === name) continue;
+      await users.save({ ...u, displayName: name, updatedAt: new Date().toISOString() });
+      n++;
+    }
+    return n;
+  }
+
   return {
     async get() {
       return repo.getSettings();
@@ -85,10 +104,44 @@ export function makeSettingsService(
       // enabled-map to diff. Deactivation itself runs after the settings write
       // succeeds (below), matching the confirm-then-cascade shape of a live setting.
       let rolesJustDisabled: UserRole[] = [];
+      // Simple (Junior/Senior) logins transition, applied after the settings write.
+      let simpleFlip: 'on' | 'off' | null = null;
+      let retireIds: string[] = [];
+      let restoreIds: string[] = [];
 
       if (ministryConfigPatch !== undefined) {
         const current = await repo.getSettings();
-        const merged = mergeMinistryConfig(current.ministryConfig, ministryConfigPatch);
+        // retiredGradeIds / gradeRoleWasOn are SERVER-OWNED: drop them from any client patch
+        // (stale draft, second tab, settings file, raw PATCH) so the stored values carry forward.
+        let cleanPatch: Record<string, unknown> = ministryConfigPatch;
+        const loginsPatch = ministryConfigPatch['logins'];
+        if (loginsPatch && typeof loginsPatch === 'object' && !Array.isArray(loginsPatch)) {
+          const { retiredGradeIds: _r, gradeRoleWasOn: _w, ...rest } = loginsPatch as Record<string, unknown>;
+          cleanPatch = { ...ministryConfigPatch, logins: rest };
+        }
+        const merged = mergeMinistryConfig(current.ministryConfig, cleanPatch);
+        const wasOn = current.ministryConfig.logins.simple;
+        const isOn = merged.logins.simple;
+        if (isOn) {
+          // The rule: Simple logins needs the Complex cohort model and the Quad role.
+          if (merged.structure.cohortModel !== 'grades-quads' || !merged.roles.enabled.quad) {
+            throw new BadRequestError(SIMPLE_ON_MSG);
+          }
+          merged.roles.enabled.grade = false;
+        }
+        if (!wasOn && isOn) {
+          // Collect the active grade logins BEFORE the write (also catches ones left active
+          // while the Grade role was already off), and record them in that same write.
+          retireIds = (await users.findByRole('grade')).filter((u) => u.status === 'active').map((u) => u.id);
+          merged.logins.retiredGradeIds = retireIds;
+          merged.logins.gradeRoleWasOn = current.ministryConfig.roles.enabled.grade;
+          simpleFlip = 'on';
+        } else if (wasOn && !isOn) {
+          merged.roles.enabled.grade = current.ministryConfig.logins.gradeRoleWasOn;
+          restoreIds = current.ministryConfig.logins.retiredGradeIds;
+          merged.logins.retiredGradeIds = [];
+          simpleFlip = 'off';
+        }
         update.ministryConfig = merged;
 
         const before = current.ministryConfig.roles?.enabled;
@@ -107,6 +160,19 @@ export function makeSettingsService(
       }
 
       const updated = await repo.updateSettings({ ...update, updatedAt: new Date().toISOString() });
+
+      // Simple logins on: retire exactly the ids recorded above. Off: bring back only listed
+      // ids that still exist, are still grade logins and are still inactive.
+      for (const id of retireIds) {
+        const u = await users.findById(id);
+        if (u && u.status === 'active') await users.save({ ...u, status: 'inactive', updatedAt: new Date().toISOString() });
+      }
+      for (const id of restoreIds) {
+        const u = await users.findById(id);
+        if (u && u.role === 'grade' && u.status === 'inactive') {
+          await users.save({ ...u, status: 'active', updatedAt: new Date().toISOString() });
+        }
+      }
 
       // A role toggled OFF in Setup deactivates every currently-active account of
       // that role — the Accounts screen also hides that role's whole section
@@ -133,6 +199,7 @@ export function makeSettingsService(
       invalidateTrendsCache();
       invalidateLgStatsCache();
 
+      if (simpleFlip) return { ...updated, renamedQuads: await renameQuads(simpleFlip === 'on') };
       return updated;
     },
   };

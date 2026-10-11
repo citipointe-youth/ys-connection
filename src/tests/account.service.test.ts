@@ -348,3 +348,51 @@ describe('Account Service — list() payload safety', () => {
     expect(found?.loginDevices).toEqual([device]);
   });
 });
+
+describe('Account Service — guard while Simple logins is on', () => {
+  const admin = actorFor('adm', 'admin');
+  const MSG = 'Turn off Junior/Senior logins first';
+  async function build(simple: boolean) {
+    const b = await buildService();
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    const cur = await settings.getSettings();
+    await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, logins: { ...cur.ministryConfig.logins, simple } } });
+    const svc = makeAccountService(b.users, settings);
+    const inactive = await b.users.save({ ...b.grade, id: 'u-g9', email: 'grade9g', grade: 9, grades: [9], gender: 'female', status: 'inactive' });
+    const quadUser = await b.users.save({ ...b.grade, id: 'u-q', email: 'g79', role: 'quad', grade: null, grades: null, quad: 'g79', status: 'active' });
+    return { svc, users: b.users, grade: b.grade, inactive, quadUser };
+  }
+  const gradeInput = { displayName: 'G8', email: 'grade8g', password: 'longenough', role: 'grade', grades: [8], gender: 'female' };
+
+  it('on: creating a grade account is 400', async () => {
+    const { svc } = await build(true);
+    await expect(svc.create(admin, gradeInput)).rejects.toMatchObject({ statusCode: 400, message: MSG });
+  });
+  it('on: toggleStatus on an inactive grade account is 400', async () => {
+    const { svc, inactive } = await build(true);
+    await expect(svc.toggleStatus(admin, inactive.id)).rejects.toMatchObject({ statusCode: 400, message: MSG });
+  });
+  it('on: update that sets status active on a grade account is 400', async () => {
+    const { svc, inactive } = await build(true);
+    await expect(svc.update(admin, inactive.id, { status: 'active' })).rejects.toMatchObject({ statusCode: 400, message: MSG });
+  });
+  it('on: update that turns an active quad into a grade account is 400', async () => {
+    const { svc, quadUser } = await build(true);
+    await expect(svc.update(admin, quadUser.id, { role: 'grade', grades: [7], gender: 'female' })).rejects.toMatchObject({ statusCode: 400, message: MSG });
+  });
+  it('on: deactivating an active grade account is allowed', async () => {
+    const { svc, grade } = await build(true);
+    expect((await svc.toggleStatus(admin, grade.id)).status).toBe('inactive');
+  });
+  it('on: creating a quad or director account is allowed', async () => {
+    const { svc } = await build(true);
+    await expect(svc.create(admin, { displayName: 'Q', email: 'b79', password: 'longenough', role: 'quad', quad: 'b79' })).resolves.toMatchObject({ role: 'quad' });
+    await expect(svc.create(admin, { displayName: 'D', email: 'dir', password: 'longenough', role: 'director' })).resolves.toMatchObject({ role: 'director' });
+  });
+  it('off: all of the above are allowed', async () => {
+    const { svc, inactive } = await build(false);
+    await expect(svc.create(admin, gradeInput)).resolves.toMatchObject({ role: 'grade' });
+    expect((await svc.toggleStatus(admin, inactive.id)).status).toBe('active');
+  });
+});

@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
+import type { IUserRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import { mergeMinistryConfig } from '../core/ministry-config';
 import type { Actor, User, SafeUser } from '../core/entities/user';
 import { type AuthService, sessionSecretConfigured, toSafeUser } from './auth.service';
 import { CreateUserSchema } from './account.service';
@@ -39,6 +40,8 @@ export function makeSetupService(deps: {
   /** max(schema_migrations.version), or null when unknown. */
   schemaVersion: () => Promise<string | null>;
   sessionSecretOk?: () => boolean;
+  /** Optional: when given, a new install starts with Simple (Junior/Senior) logins on. */
+  settings?: ISettingsRepository;
 }): SetupService {
   const { users, auth, env } = deps;
   const secretOk = deps.sessionSecretOk ?? (() => sessionSecretConfigured(env));
@@ -110,6 +113,16 @@ export function makeSetupService(deps: {
         loginHistory: [], loginDevices: [],
         createdAt: now, updatedAt: now,
       };
+      // New installs default to Simple logins. Written BEFORE the admin so a failed create
+      // leaves only a harmless config behind and a retry still goes through.
+      if (deps.settings) {
+        const current = await deps.settings.getSettings();
+        await deps.settings.updateSettings({
+          ministryConfig: mergeMinistryConfig(current.ministryConfig, {
+            logins: { simple: true, gradeRoleWasOn: true }, roles: { enabled: { grade: false } },
+          }),
+        });
+      }
       const saved = await users.createFirstAdmin(user);
       if (!saved) throw new ConflictError('An admin already exists. Log in.');
       const token = await auth.issueTokenFor(saved.id);

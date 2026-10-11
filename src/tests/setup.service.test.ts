@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { InMemoryUserRepository } from '../repositories/in-memory/in-memory.repositories';
+import { InMemoryUserRepository, InMemorySettingsRepository } from '../repositories/in-memory/in-memory.repositories';
 import { makeSetupService, codeMatches } from '../services/setup.service';
 import type { AuthService } from '../services/auth.service';
 import { LATEST_MIGRATION } from '../core/schema-version';
@@ -9,7 +9,7 @@ const good = { PERSISTENCE: 'supabase', DATABASE_URL: 'postgresql://u:p@h.exampl
   FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'), APP_ORIGIN: 'https://church.vercel.app', SETUP_CODE: 'ABCD-EFGH-JKMN-PQRS-TUVW' };
 
 function svc(env: Record<string, string | undefined> = good, over: Partial<Parameters<typeof makeSetupService>[0]> = {}) {
-  const users = new InMemoryUserRepository();
+  const users = (over.users as InMemoryUserRepository | undefined) ?? new InMemoryUserRepository();
   const s = makeSetupService({ users, auth: fakeAuth, env, probeDb: async () => true, schemaVersion: async () => LATEST_MIGRATION, ...over });
   return { s, users };
 }
@@ -79,6 +79,48 @@ describe('createFirstAdmin', () => {
     const { s, users } = svc({ ...good, SESSION_SECRET: undefined, NODE_ENV: 'production' }, { sessionSecretOk: () => false });
     await expect(s.createFirstAdmin({ code: good.SETUP_CODE, displayName: 'A', password: 'longenough' })).rejects.toMatchObject({ statusCode: 400 });
     expect(await users.findByEmail('admin')).toBeNull();
+  });
+});
+
+describe('createFirstAdmin: new installs default to Simple logins', () => {
+  const body = { code: good.SETUP_CODE, displayName: 'A', password: 'longenough' };
+  it('stores logins.simple, gradeRoleWasOn and Grade off', async () => {
+    const settings = new InMemorySettingsRepository();
+    const { s } = svc(good, { settings });
+    await s.createFirstAdmin(body);
+    const cfg = (await settings.getSettings()).ministryConfig;
+    expect(cfg.logins.simple).toBe(true);
+    expect(cfg.logins.gradeRoleWasOn).toBe(true);
+    expect(cfg.roles.enabled.grade).toBe(false);
+  });
+  it('writes the settings before the admin is created', async () => {
+    const settings = new InMemorySettingsRepository();
+    const users = new InMemoryUserRepository();
+    const order: string[] = [];
+    const upd = settings.updateSettings.bind(settings);
+    settings.updateSettings = async (p) => { order.push('settings'); return upd(p); };
+    const mk = users.createFirstAdmin.bind(users);
+    users.createFirstAdmin = async (u) => { order.push('admin'); return mk(u); };
+    const { s } = svc(good, { settings, users });
+    await s.createFirstAdmin(body);
+    expect(order).toEqual(['settings', 'admin']);
+  });
+  it('if the admin create throws, the settings write has happened and a retry succeeds', async () => {
+    const settings = new InMemorySettingsRepository();
+    const users = new InMemoryUserRepository();
+    const mk = users.createFirstAdmin.bind(users);
+    let fail = true;
+    users.createFirstAdmin = async (u) => { if (fail) { fail = false; throw new Error('db down'); } return mk(u); };
+    const { s } = svc(good, { settings, users });
+    await expect(s.createFirstAdmin(body)).rejects.toThrow('db down');
+    expect((await settings.getSettings()).ministryConfig.logins.simple).toBe(true);
+    const r = await s.createFirstAdmin(body);
+    expect(r.user.role).toBe('admin');
+  });
+  it('with no settings dep behaves as before', async () => {
+    const { s } = svc();
+    const r = await s.createFirstAdmin(body);
+    expect(r.user.role).toBe('admin');
   });
 });
 
