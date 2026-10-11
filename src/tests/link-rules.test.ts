@@ -241,6 +241,21 @@ describe('autoMatch (contract 6)', () => {
       stu('s2', 'Bo', 'Sample', 'male'), stu('s3', 'Cy', 'Sample', 'male')];
     expect(autoMatch(roster, students)).toEqual([]);
   });
+  it('A6 / APP-11 A: a leader or other row never auto-matches; a leader auto row is released', () => {
+    expect(autoMatch([ros(1, 'Sam', 'Taylor', 'male', { kind: 'leader' }), ros(2, 'Pat', 'Parent', 'female', { kind: 'other' })],
+      [stu('s1', 'Sam', 'Taylor', 'male'), stu('s2', 'Pat', 'Parent', 'female')])).toEqual([]);
+    expect(autoMatch([ros(1, 'Sam', 'Taylor', 'male', { kind: 'leader', studentId: 's1', match: 'auto' })], [stu('s1', 'Sam', 'Taylor', 'male')]))
+      .toEqual([{ personId: U(1), studentId: null, match: 'none' }]);
+  });
+  it('A6 / APP-11 B: an inactive auto row is released and the new profile takes the student', () => {
+    const roster = [ros(1, 'Alex', 'Sample', 'male', { active: false, studentId: 's1', match: 'auto' }), ros(2, 'Alex', 'Sample', 'male')];
+    expect(autoMatch(roster, [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([
+      { personId: U(1), studentId: null, match: 'none' }, { personId: U(2), studentId: 's1', match: 'auto' }]);
+  });
+  it('A6: an inactive row does not count towards the same-name check, and never matches', () => {
+    const roster = [ros(1, 'Alex', 'Sample', 'male', { active: false }), ros(2, 'Alex', 'Sample', 'male')];
+    expect(autoMatch(roster, [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([{ personId: U(2), studentId: 's1', match: 'auto' }]);
+  });
   it('a student already linked to another roster row is not offered again', () => {
     const roster = [ros(1, 'Other', 'Name', 'male', { studentId: 's1', match: 'manual' }), ros(2, 'Alex', 'Sample', 'male')];
     expect(autoMatch(roster, [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([]);

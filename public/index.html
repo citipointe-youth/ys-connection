@@ -10203,7 +10203,7 @@ function _lkAdmMatchHtml() {
         <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
       const acts = f === 'manual' ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmMatch('${pid}','')">Clear</button>`
         : `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
-      return `<div class="lk-log-row"><div class="lk-log-top"><b>${esc(r.name)}</b><span class="lk-d">Yr ${esc(r.grade == null ? '-' : r.grade)}${r.match === 'ignored' ? ' · Not in YS' : ''}</span></div>
+      return `<div class="lk-log-row"><div class="lk-log-top"><b>${esc(r.name)}</b><span class="lk-d">Yr ${esc(r.grade == null ? '-' : r.grade)}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
         ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No likely students.</p>')}<div class="lk-acts">${acts}</div></div>`;
     }).join('') + (xs.length > 60 ? `<p class="lk-hint">Showing 60 of ${xs.length}.</p>` : '') : '<p class="lk-sub">Nobody here.</p>';
   }

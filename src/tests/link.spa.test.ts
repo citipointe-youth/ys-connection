@@ -1066,6 +1066,14 @@ describe('A5 / T-41 matching on a phone, disabled buttons', () => {
       match: 'none', studentId: null, candidates: [{ studentId: P(2), name: 'Ava Example', grade: 9, gender: 'female', dob: '2011-05-01' }] }] };
     expect(h.fns._lkAdmMatchHtml()).toContain('<div class="lk-kv lk-cand">');
   });
+  it('A6: an inactive holder in Set by hand is marked and can be cleared', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm = { ...h.fns._lkAdmFresh(), mf: 'manual', roster: [{ personId: P(1), name: 'Ava Example', grade: 9, kind: 'student',
+      active: false, match: 'manual', studentId: P(2), candidates: [] }] };
+    const out = h.fns._lkAdmMatchHtml();
+    expect(strip(out)).toContain('No longer in Elvanto');
+    expect(out).toContain('Clear');
+  });
   it('a disabled button is faded (.45) and not clickable-looking', () => {
     expect(html).toContain('.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}');
   });

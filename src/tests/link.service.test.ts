@@ -703,9 +703,33 @@ describe('D6 admin: matching, shadow check, log', () => {
     const r = await h.svc.rosterForMatching(ADMIN, { match: 'none' });
     expect(r.rows.every((x) => x.match === 'none')).toBe(true);
     const ben = r.rows.find((x) => x.personId === P_BEN)!;
-    expect(ben.candidates).toEqual([{ studentId: S_BEN, name: 'Ben Brown', grade: 9, gender: 'male', dob: '2011-05-01' }]);
+    expect(ben.candidates).toEqual([{ studentId: S_BEN, name: 'Ben Brown', grade: 9, dob: '2011-05-01' }]);
     expect(r.rows.find((x) => x.personId === P_EVE1)!.candidates).toEqual([]);
-    expect((await h.svc.rosterForMatching(ADMIN, {})).rows.length).toBe(7);
+  });
+
+  it('A6 / APP-40: only student rows that still need a match; candidates only for none/ambiguous; no unused fields', async () => {
+    const all = (await h.svc.rosterForMatching(ADMIN, {})).rows;
+    expect(all.map((x) => x.personId).sort()).toEqual([P_BEN, P_EVE1, P_EVE2, P_TOM].sort()); // no auto, leader or other
+    expect(all.some((x) => x.match === 'auto')).toBe(false);
+    for (const x of all) {
+      expect(Object.keys(x).sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
+      for (const c of x.candidates) expect(Object.keys(c).sort()).toEqual(['dob', 'grade', 'name', 'studentId']);
+    }
+    expect(all.find((x) => x.personId === P_TOM)!.candidates).toEqual([]); // manual: no candidates computed
+  });
+
+  it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {
+    // P_OLD (inactive) holds S_BEN by hand; the new profile P_BEN must still be matchable.
+    await h.link.setMatches([{ personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
+    const held = (await h.svc.rosterForMatching(ADMIN, { match: 'manual' })).rows.find((x) => x.personId === P_OLD)!;
+    expect(held).toMatchObject({ active: false, studentId: S_BEN, match: 'manual' });
+    expect(await h.svc.setMatch(ADMIN, P_BEN, { studentId: S_BEN })).toEqual({ personId: P_BEN, studentId: S_BEN, match: 'manual' });
+    const roster = await h.link.roster();
+    expect(roster.find((r) => r.personId === P_OLD)).toMatchObject({ studentId: null, match: 'none' });
+    expect(roster.find((r) => r.personId === P_BEN)).toMatchObject({ studentId: S_BEN, match: 'manual' });
+    // An inactive holder can also be cleared directly.
+    await h.link.setMatches([{ personId: P_BEN, studentId: null, match: 'none' }, { personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
+    expect(await h.svc.setMatch(ADMIN, P_OLD, { studentId: null })).toMatchObject({ studentId: null, match: 'none' });
   });
 
   it('setMatch: manual / none / ignored; a student matched to another person → 409', async () => {

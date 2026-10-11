@@ -152,8 +152,10 @@ export interface MatchChange { personId: string; studentId: string | null; match
 const nameKey = (first: string, last: string) => `${first.toLowerCase()} ${last.toLowerCase()}`;
 
 /**
- * The changes to write after a roster push. Resets a dead studentId to none, then matches `none` (and re-checks
- * `ambiguous`) rows by the import's name key + equal gender. Never changes a live manual/auto/ignored row.
+ * The changes to write after a roster push. Resets a dead studentId to none and releases an `auto` row that is no
+ * longer an active student (APP-11), then matches `none` (and re-checks `ambiguous`) active student rows by the
+ * import's name key + equal gender. Inactive rows do not count towards a same-name clash. Never changes a live
+ * manual/ignored row, or an auto row that is still an active student.
  */
 export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): MatchChange[] {
   const studentIds = new Set(students.map((s) => s.id));
@@ -162,20 +164,28 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
     const k = nameKey(s.firstName, s.lastName);
     byKey.set(k, [...(byKey.get(k) ?? []), s]);
   }
+  const eligible = (r: LinkRosterRow) => r.active && r.kind === 'student';
   const rosterKeyCount = new Map<string, number>();
   for (const r of roster) {
+    if (!r.active) continue;
     const k = nameKey(r.firstName, r.lastName);
     rosterKeyCount.set(k, (rosterKeyCount.get(k) ?? 0) + 1);
   }
-  // Students another live row already points at (the unique index allows one person per student).
-  const taken = new Set(roster.filter((r) => r.studentId && studentIds.has(r.studentId)).map((r) => r.studentId!));
-
-  const changes: MatchChange[] = [];
-  for (const r of roster) {
+  const state = roster.map((r) => {
     let studentId = r.studentId;
     let match = r.match;
     if (studentId && !studentIds.has(studentId)) { studentId = null; match = 'none'; }
-    if (match === 'none' || match === 'ambiguous') {
+    if (!eligible(r) && (match === 'auto' || match === 'ambiguous')) { studentId = null; match = 'none'; }
+    return { r, studentId, match };
+  });
+  // Students another row still points at (the unique index allows one person per student).
+  const taken = new Set(state.filter((x) => x.studentId).map((x) => x.studentId!));
+
+  const changes: MatchChange[] = [];
+  for (const x of state) {
+    const r = x.r;
+    let { studentId, match } = x;
+    if (eligible(r) && (match === 'none' || match === 'ambiguous')) {
       const k = nameKey(r.firstName, r.lastName);
       const hits = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && !taken.has(s.id));
       if ((rosterKeyCount.get(k) ?? 0) > 1 && hits.length > 0) { studentId = null; match = 'ambiguous'; }

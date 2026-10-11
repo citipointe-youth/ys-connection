@@ -86,9 +86,10 @@ export interface LifegroupView { groupId: string; name: string; meets: string; m
   thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null; defaultDate: string; openAction: ActionView | null }
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
   personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null }
-export interface MatchCandidate { studentId: string; name: string; grade: number | null; gender: string; dob: string | null }
-export interface MatchRow { personId: string; name: string; firstName: string; lastName: string; gender: 'male' | 'female' | null;
-  grade: number | null; kind: LinkRosterRow['kind']; studentId: string | null; match: Match; candidates: MatchCandidate[] }
+export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
+/** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
+export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
+  active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[] }
 export type ShadowVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
 export interface ShadowRow { id: string; personId: string | null; name: string | null; status: Status; studentId: string | null;
   verdict: ShadowVerdict; message?: string }
@@ -578,12 +579,25 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       await gate(actor, 'link:admin');
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
       const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
-      return { rows: roster.filter((r) => r.active && (!f.match || r.match === f.match)).map((r) => ({
-        personId: r.personId, name: fullName(r), firstName: r.firstName, lastName: r.lastName, gender: r.gender, grade: r.grade,
-        kind: r.kind, studentId: r.studentId, match: r.match,
-        candidates: students.filter((s) => fold(fullName(s)) === fold(fullName(r)) || fold(s.lastName) === fold(r.lastName))
-          .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, gender: s.gender, dob: s.dateOfBirth })),
-      })) };
+      // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
+      // admin can release it (APP-11). Candidates only for none/ambiguous, from one index of folded names.
+      const rows = roster.filter((r) => ((r.active && r.kind === 'student' && r.match !== 'auto') || (!r.active && r.studentId))
+        && (!f.match || r.match === f.match));
+      const byName = new Map<string, typeof students>();
+      const add = (k: string, s: (typeof students)[number]) => byName.set(k, [...(byName.get(k) ?? []), s]);
+      if (rows.some((r) => r.match === 'none' || r.match === 'ambiguous')) {
+        for (const s of students) { add('n:' + fold(fullName(s)), s); add('l:' + fold(s.lastName), s); }
+      }
+      const candidatesOf = (r: LinkRosterRow): MatchCandidate[] => {
+        if (r.match !== 'none' && r.match !== 'ambiguous') return [];
+        const seen = new Set<string>();
+        return [...(byName.get('n:' + fold(fullName(r))) ?? []), ...(byName.get('l:' + fold(r.lastName)) ?? [])]
+          .filter((s) => !seen.has(s.id) && seen.add(s.id))
+          .sort((a, b) => students.indexOf(a) - students.indexOf(b))
+          .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
+      };
+      return { rows: rows.map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
+        studentId: r.studentId, match: r.match, candidates: candidatesOf(r) })) };
     },
 
     async setMatch(actor, personId, body) {
@@ -592,15 +606,17 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const roster = await d.link.roster();
       if (!roster.some((r) => r.personId === personId)) throw new NotFoundError('This person is not in the roster.');
       let change: { personId: string; studentId: string | null; match: Match };
+      const release: { personId: string; studentId: null; match: Match }[] = [];
       if (b.ignore) change = { personId, studentId: null, match: 'ignored' };
       else if (b.studentId) {
         if (!(await d.students.findById(b.studentId))) throw new NotFoundError('No such student.');
-        if (roster.some((r) => r.personId !== personId && r.studentId === b.studentId)) {
-          throw new ConflictError('This student is already matched to someone else.');
-        }
+        const holder = roster.find((r) => r.personId !== personId && r.studentId === b.studentId);
+        if (holder?.active) throw new ConflictError('This student is already matched to someone else.');
+        // An inactive holder (a merged or removed Elvanto profile) is released first (APP-11 B).
+        if (holder) release.push({ personId: holder.personId, studentId: null, match: 'none' });
         change = { personId, studentId: b.studentId, match: 'manual' };
       } else change = { personId, studentId: null, match: 'none' };
-      await d.link.setMatches([change]);
+      await d.link.setMatches([...release, change]);
       return change;
     },
 
