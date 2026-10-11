@@ -28,8 +28,15 @@ describe('link contract: manifest', () => {
 });
 
 describe('link contract: draft SQL', () => {
-  // The YS stream moves this file into supabase/migrations/ and updates this path in the same commit.
-  const sql = readFileSync(join(ROOT, 'docs', 'superpowers', 'specs', '2026-10-11-elvanto-link-0016.draft.sql'), 'utf8');
+  // The draft now lives in supabase/migrations/ as NNNN_elvanto_link.sql (0017, spec app-design §2.5).
+  const MIG = join(ROOT, 'supabase', 'migrations');
+  const matches = readdirSync(MIG).filter((f) => /^\d{4}_elvanto_link\.sql$/.test(f));
+  const sql = matches.length === 1 ? readFileSync(join(MIG, matches[0]!), 'utf8') : '';
+  it('exists exactly once in supabase/migrations', () => expect(matches).toHaveLength(1));
+  it('adds report_id and the link_log index', () => {
+    expect(sql).toContain('add column if not exists report_id uuid');
+    expect(sql).toContain('create index if not exists link_log_at_idx');
+  });
   it('enables RLS on every table it creates (by rule)', () => {
     const tables = [...sql.matchAll(/create table (?:if not exists )?(\w+)/gi)].map((m) => m[1]!);
     expect(tables.length).toBeGreaterThan(0);

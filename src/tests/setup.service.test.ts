@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { InMemoryUserRepository } from '../repositories/in-memory/in-memory.repositories';
 import { makeSetupService, codeMatches } from '../services/setup.service';
 import type { AuthService } from '../services/auth.service';
+import { LATEST_MIGRATION } from '../core/schema-version';
 
 const fakeAuth = { issueTokenFor: vi.fn(async (id: string) => `tok-${id}`) } as unknown as AuthService;
 const good = { PERSISTENCE: 'supabase', DATABASE_URL: 'postgresql://u:p@h.example.com:5432/postgres', SESSION_SECRET: 's'.repeat(64),
@@ -9,7 +10,7 @@ const good = { PERSISTENCE: 'supabase', DATABASE_URL: 'postgresql://u:p@h.exampl
 
 function svc(env: Record<string, string | undefined> = good, over: Partial<Parameters<typeof makeSetupService>[0]> = {}) {
   const users = new InMemoryUserRepository();
-  const s = makeSetupService({ users, auth: fakeAuth, env, probeDb: async () => true, schemaVersion: async () => '0015', ...over });
+  const s = makeSetupService({ users, auth: fakeAuth, env, probeDb: async () => true, schemaVersion: async () => LATEST_MIGRATION, ...over });
   return { s, users };
 }
 const byId = (checks: { id: string }[], id: string) => checks.find((c) => c.id === id) as any;
