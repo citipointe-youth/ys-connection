@@ -62,6 +62,20 @@ export function suburbOf(address: string): string {
   return parts[1]!.replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
 }
 
+const STATES = 'QLD|NSW|VIC|SA|WA|TAS|NT|ACT';
+export const STREET_WORDS = /\b(st|street|rd|road|ave|avenue|ct|court|dr|drive|pde|parade|pl|place|cres|crescent|tce|terrace|hwy|highway|ln|lane|way|cl|close|cct|circuit|bvd|boulevard|esp|esplanade|unit|lot)\b/i;
+const SUBURB_PART = new RegExp(`^([A-Za-z][A-Za-z' .-]*?)\\s+(?:${STATES})\\s+\\d{4}$`);
+
+/** Strict suburb for logins that must never see a street: only a comma part shaped like
+ *  "Suburb STATE 1234" with no digit or street word in the suburb. Unsure → "". */
+export function suburbOnly(address: string): string {
+  for (const part of address.split(',').map((p) => p.trim())) {
+    const m = SUBURB_PART.exec(part);
+    if (m && !/\d/.test(m[1]!) && !STREET_WORDS.test(m[1]!)) return m[1]!.trim();
+  }
+  return '';
+}
+
 /** Task 3: "24 Wynnum Rd, Carina QLD 4152, Australia" → "24 Wynnum Rd" — the street part, used
  *  both as the default label for a new address saved with a blank label, and as a display
  *  fallback for an existing address whose label is still blank. Max 40 chars (NewAddress.label's

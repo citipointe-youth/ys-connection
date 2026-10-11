@@ -29,6 +29,7 @@ export function makeBusController(deps: { bus: BusService }) {
       const s = googleConfigStatus();
       return { ...v, google: { ...s, text: googleStatusText(s) } };
     },
+    cars: (r: HttpRequest) => b.carsView(ctxOf(r)),
     version: (r: HttpRequest) => b.getVersion(ctxOf(r)),
     search: (r: HttpRequest) => b.search(ctxOf(r), String(r.query['q'] ?? '')),
     riderAddresses: (r: HttpRequest) => b.riderAddresses(ctxOf(r), p(r, 'id')),

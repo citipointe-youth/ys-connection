@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches } from '../services/bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, STREET_WORDS } from '../services/bus-logic';
 
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
@@ -71,5 +71,21 @@ describe('phone matching (Task 2: guest↔student suggestions)', () => {
     expect(phoneMatches('0412345678', '0498765432')).toBe(false);
     expect(phoneMatches(null, null)).toBe(false);
     expect(phoneMatches('12345', '12345')).toBe(false); // too short to be real
+  });
+});
+describe('suburbOnly (strict: blank when unsure, never a street)', () => {
+  it('spec table', () => {
+    expect(suburbOnly('Unit 3, 24 Wynnum Rd, Carina QLD 4152, Australia')).toBe('Carina');
+    expect(suburbOnly('24 Wynnum Rd Carina QLD 4152')).toBe('');
+    expect(suburbOnly('24 Wynnum Rd')).toBe('');
+    expect(suburbOnly(' ')).toBe('');
+  });
+  it('normal Places address', () => expect(suburbOnly('8 Smith St, Carina QLD 4152, Australia')).toBe('Carina'));
+  it('state is case-sensitive: lower-case state is unsure', () => expect(suburbOnly('8 Smith St, carina qld 4152')).toBe(''));
+  it('multi-word suburb', () => expect(suburbOnly('8 Smith St, Mount Gravatt East QLD 4122, Australia')).toBe('Mount Gravatt East'));
+  it('a part with a street word is rejected', () => expect(suburbOnly('Wynnum Rd QLD 4178')).toBe(''));
+  it('STREET_WORDS is exported', () => {
+    expect(STREET_WORDS.test('Wynnum Rd')).toBe(true);
+    expect(STREET_WORDS.test('Carina')).toBe(false);
   });
 });

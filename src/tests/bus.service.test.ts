@@ -909,3 +909,41 @@ describe('personAddresses — Past riders confirm sheet', () => {
     await expect(svc.personAddresses(ctx('grade'), {})).rejects.toMatchObject({ statusCode: 400 });
   });
 });
+
+describe('quad loses bus:coordinate under Simple logins (October rework E2)', () => {
+  async function simple(t: Awaited<ReturnType<typeof withFleet>>, on: boolean, coordinatorLeaderIds: string[] = []) {
+    const cur = (await t.settings.getSettings()).ministryConfig;
+    await t.settings.updateSettings({ ministryConfig: { ...cur, logins: { ...cur.logins, simple: on },
+      busMinistry: { ...cur.busMinistry, coordinatorLeaderIds, churchAddress: '1 Church St, Testville', churchPlaceId: 'fake:church' } } });
+  }
+  it('Simple on, quad with no as=: cannot coordinate, Generate 403, drop-off on another car 403', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
+    await simple(t, true);
+    expect((await t.svc.getRun(t.ctx('quad'))).canCoordinate).toBe(false);
+    await expect(t.svc.generate(t.ctx('quad'), { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('Simple on, quad as a coordinator leader: coordinates', async () => {
+    const t = await withFleet();
+    await simple(t, true, ['L2']);
+    expect((await t.svc.getRun(t.ctx('quad', 'L2'))).canCoordinate).toBe(true);
+    await expect(t.svc.generate(t.ctx('quad', 'L2'), { mode: 'all' })).resolves.toBeTruthy();
+  });
+  it('Simple off, quad: unchanged (coordinates)', async () => {
+    const t = await withFleet();
+    await simple(t, false);
+    expect((await t.svc.getRun(t.ctx('quad'))).canCoordinate).toBe(true);
+    await expect(t.svc.generate(t.ctx('quad'), { mode: 'all' })).resolves.toBeTruthy();
+  });
+  it('admin and director coordinate in both modes', async () => {
+    for (const on of [true, false]) {
+      const t = await withFleet();
+      await simple(t, on);
+      for (const role of ['admin', 'director']) {
+        expect((await t.svc.getRun(t.ctx(role))).canCoordinate).toBe(true);
+        await expect(t.svc.generate(t.ctx(role), { mode: 'all' })).resolves.toBeTruthy();
+      }
+    }
+  });
+});
