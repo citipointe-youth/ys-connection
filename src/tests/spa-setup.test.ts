@@ -15,7 +15,7 @@ describe('setup generators', () => {
 });
 
 describe('_parseSettingsFile', () => {
-  const { _parseSettingsFile } = loadFns(['_parseSettingsFile']);
+  const { _parseSettingsFile } = loadFns(['_stripServerOwnedLogins', '_parseSettingsFile'], '', ['_parseSettingsFile']);
   it('accepts a file made by exportSettingsFile', () => {
     const r = _parseSettingsFile(JSON.stringify({ kind: 'ys-connection-settings', version: 1, ministryConfig: { branding: { appName: 'X' } }, serviceMinAttendance: 5, termGapDays: 14 }));
     expect(r).toMatchObject({ ministryConfig: { branding: { appName: 'X' } }, serviceMinAttendance: 5, termGapDays: 14 });

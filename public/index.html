@@ -6287,24 +6287,35 @@ function pickMinistryPreset(id) {
   // previous preset's overrides instead of accumulating them. Doesn't touch
   // serviceMinAttendance... actually it does (presets scale it) — but leaves
   // termGapDays alone, since that's not part of any preset.
+  // A preset never flips Junior/Senior logins or Prayers on its own: keep the draft's values.
+  const prev = _setupDraft || {};
   _setupDraft = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
+  if (prev.logins) _setupDraft.logins = JSON.parse(JSON.stringify(prev.logins));
+  if (prev.modules && prev.modules.prayers != null) {
+    _setupDraft.modules = _setupDraft.modules || {};
+    _setupDraft.modules.prayers = prev.modules.prayers;
+  }
   _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
   _setupRerender();
 }
 
 async function saveMinistrySetup() {
   try {
-    const fresh = await API.patch('/settings', {
+    const res = await API.patch('/settings', {
       ministryConfig: _setupDraft,
       serviceMinAttendance: _setupServiceMinAttendance,
       termGapDays: _setupTermGapDays,
     });
+    const { renamedQuads, ...fresh } = res || {};
+    // Re-seed the draft from the saved config on the next render, so a later edit never
+    // carries stale values (e.g. the server-owned logins fields) from before this save.
+    _setupDraft = null;
     Cache.del('/settings');
     const navBefore = _navSig();
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
     if (_shellReady && _navSig() !== navBefore) _initShell(); // the New person state changes the Prayers nav item
-    toast('Youth Setup saved');
+    toast(renamedQuads != null ? `Youth Setup saved. Renamed ${renamedQuads} quad logins` : 'Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
     const [settings, users, history] = await Promise.all([
@@ -6337,6 +6348,10 @@ function _youthSetupBody(settings, users) {
   const savedGradeMin = savedStructure.gradeMin != null ? savedStructure.gradeMin : dst.gradeMin;
   const savedGradeMax = savedStructure.gradeMax != null ? savedStructure.gradeMax : dst.gradeMax;
   const savedGradeLabel = savedStructure.gradeLabel != null ? savedStructure.gradeLabel : dst.gradeLabel;
+  const savedSimple = !!(settings.ministryConfig && settings.ministryConfig.logins && settings.ministryConfig.logins.simple);
+  // Junior/Senior logins in the DRAFT: greys out the controls that would break its rule.
+  const simpleOn = !!(cfg.logins && cfg.logins.simple);
+  const SIMPLE_LOCK_TIP = 'Turn off Junior/Senior logins first';
   const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
   const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
   // The highest grade is always 12 — see includeGrade6 below, which is the
@@ -6377,9 +6392,11 @@ function _youthSetupBody(settings, users) {
     ['grade', 'Grade', 'A login responsible for one or more grades, e.g. '+gLabel+' 9. One login can cover several grades at once.'],
     ['quad', 'Quad', 'A login for one age group and gender, e.g. Girls Yr 7-9. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
     ['leader', 'Leader', 'A login that only sees the students connected to it.'],
-  ].map(([k, label, hint]) =>
-    `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
+  ].map(([k, label, hint]) => (k === 'grade' && simpleOn)
+    ? `<label class="fg" style="display:flex;align-items:center;gap:8px" title="${SIMPLE_LOCK_TIP}"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>${esc(label)}</span></span> ${helpTip(hint + ' Off while Junior/Senior logins is on.')}</label>`
+    : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
+  const simpleToggleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${simpleOn?'checked':''} onchange="_setupSet('logins.simple', this.checked)"> <span>Junior/Senior logins ${helpTip("Turns off the single-grade logins and renames the four quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each Junior/Senior login gets a Grades filter, saved for the leader picked in I am. Quad logins stop coordinating Bus, unless the leader picked is a Bus coordinator. Needs the Complex cohort model and the Quad role. Turning it off brings the grade logins back.")}</span></label>`;
 
   // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
   // fallback to the mirrored defaults.
@@ -6402,14 +6419,16 @@ function _youthSetupBody(settings, users) {
     <div class="sh" style="margin-top:0">Pre-set Configurations</div>
     <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
+      ${MINISTRY_PRESETS_INFO.map(p => (p.id === 'simple' && simpleOn)
+        ? `<button class="btn btn-secondary" style="flex:1;min-width:150px" disabled title="${SIMPLE_LOCK_TIP}">${esc(p.title)}</button>`
+        : `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
     </div>
     ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
   </div>`;
 
   b += _setupCard('structure', 'Structure & Roles', `
     <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only ever sees its own students. Changing this also switches Director/Quad on or off below to match.')}</label>
-      <select class="fs" onchange="_setupSetCohortModel(this.value)">
+      <select class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
         <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
         <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
@@ -6425,6 +6444,7 @@ function _youthSetupBody(settings, users) {
     <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
     ${adminRoleRow}
     ${roleToggleRows}
+    ${simpleToggleRow}
     <div class="sh" style="margin:16px 0 8px">Attendance</div>
     <div class="form-row">
       <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
@@ -6522,7 +6542,7 @@ function _youthSetupBody(settings, users) {
   // already match, rather than only appearing while switching models; a
   // grade-6-toggle change with the SAME cohort model still needs this to
   // pick up new/changed bracket accounts.
-  const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers);
+  const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
   const aligned = !alignPlan.toCreate.length && !alignPlan.toDeactivate.length;
   const targetLabel = savedCohort === 'none' ? 'Simple' : 'Complex';
   b += `<button class="btn btn-secondary btn-full" style="margin-top:8px" ${aligned?'disabled':''} onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}${aligned?' (already aligned)':''}</button>
@@ -6553,7 +6573,7 @@ function _gradeWordLabelClient(grades, gradeWord) {
   const nums = g.length > 1 ? (g[0] + '–' + g[g.length - 1]) : String(g[0]);
   return gradeWord + (g.length > 1 ? 's' : '') + ' ' + nums;
 }
-function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord) {
+function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple) {
   const out = [];
   const genders = [{ gender: 'female', label: 'Girls', suffix: 'g' }, { gender: 'male', label: 'Boys', suffix: 'b' }];
   if (targetCohort === 'none') {
@@ -6561,17 +6581,18 @@ function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord) 
       for (const g of genders) out.push({ role: 'grade', username: 'grade' + bracket.join('') + g.suffix, displayName: _gradeWordLabelClient(bracket, gradeWord) + ' ' + g.label });
     }
   } else {
-    for (let grade = gradeMin; grade <= gradeMax; grade++) {
+    // Junior/Senior logins on: the four quads only, with their Simple names, no grade accounts.
+    for (let grade = gradeMin; grade <= gradeMax && !simple; grade++) {
       for (const g of genders) out.push({ role: 'grade', username: 'grade' + grade + g.suffix, displayName: _gradeWordLabelClient([grade], gradeWord) + ' ' + g.label });
     }
-    for (const q of [['g79', 'Girls Yr 7-9'], ['b79', 'Boys Yr 7-9'], ['g1012', 'Girls Yr 10-12'], ['b1012', 'Boys Yr 10-12']]) {
-      out.push({ role: 'quad', username: q[0], displayName: q[1] });
+    for (const q of ['g79', 'b79', 'g1012', 'b1012']) {
+      out.push({ role: 'quad', username: q, displayName: simple ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q] });
     }
   }
   return out;
 }
-function planCohortAccountLayoutClient(targetCohort, gradeMin, gradeMax, gradeWord, existing) {
-  const targets = buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord);
+function planCohortAccountLayoutClient(targetCohort, gradeMin, gradeMax, gradeWord, existing, simple) {
+  const targets = buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple);
   const existingUsernames = new Set(existing.map(u => (u.email || '').toLowerCase()));
   const targetUsernames = new Set(targets.map(t => t.username.toLowerCase()));
   const toCreate = targets.filter(t => !existingUsernames.has(t.username.toLowerCase()));
@@ -6649,8 +6670,38 @@ function _showCohortLayoutResult(report) {
 // Confirm before applying Youth Setup changes — this is live config for
 // every user of the app, not a per-device preference, so a stray tap
 // shouldn't silently rebrand/reconfigure the ministry.
+// Which risky switches differ between the saved config and the draft, whatever changed them
+// (the toggle, a preset button or a loaded settings file). Pure, so it is unit-tested.
+function _setupRiskyDiff(saved, draft) {
+  const s = saved || {}, d = draft || {};
+  const simple = (c) => !!(c.logins && c.logins.simple);
+  const prayers = (c) => !(c.modules && c.modules.prayers === false);
+  const out = [];
+  if (simple(s) !== simple(d)) out.push('logins.simple');
+  if (prayers(s) !== prayers(d)) out.push('modules.prayers');
+  return out;
+}
 function confirmSaveMinistrySetup() {
+  const saved = (_adminData.settings && _adminData.settings.ministryConfig) || {};
+  const draft = _setupDraft || {};
+  const diff = _setupRiskyDiff(saved, draft);
+  let risky = '';
+  if (diff.includes('logins.simple')) {
+    if (draft.logins && draft.logins.simple) {
+      const n = (_adminData.users || []).filter(u => u.role === 'grade' && u.status === 'active').length;
+      const coords = (saved.busMinistry && saved.busMinistry.coordinatorLeaderIds) || [];
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns off ${n} grade logins and renames the quad logins to Junior/Senior Girls/Guys. Turning it off brings them back. Quad logins stop coordinating Bus.</div>`;
+      if (!coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and director can run Bus.</div>`;
+    } else {
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back, and the quad logins get their old names.</div>`;
+    }
+  }
+  if (diff.includes('modules.prayers')) {
+    const on = !(draft.modules && draft.modules.prayers === false);
+    risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Prayers ${on ? 'on' : 'off'} for everyone.</div>`;
+  }
   modal(`<div class="mo-title">Save Youth Setup?</div>
+    ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup()">Save</button>
@@ -6707,8 +6758,17 @@ function _setupSetList(path, val) {
   _setupSet(path, String(val).split('\n').map((s) => s.trim()).filter(Boolean));
 }
 
+// logins.retiredGradeIds / gradeRoleWasOn are server-owned account ids for ONE location:
+// never written to or read from a settings file. logins.simple is still carried.
+function _stripServerOwnedLogins(cfg) {
+  if (cfg && cfg.logins && typeof cfg.logins === 'object') {
+    const { retiredGradeIds, gradeRoleWasOn, ...rest } = cfg.logins;
+    cfg.logins = rest;
+  }
+  return cfg;
+}
 function exportSettingsFile() {
-  const cfg = JSON.parse(JSON.stringify(_setupDraft || {}));
+  const cfg = _stripServerOwnedLogins(JSON.parse(JSON.stringify(_setupDraft || {})));
   delete cfg.busMinistry; // church address, coordinators: location-specific
   const file = { kind: 'ys-connection-settings', version: 1, ministryConfig: cfg,
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
@@ -6717,7 +6777,7 @@ function exportSettingsFile() {
 function _parseSettingsFile(text) {
   let j; try { j = JSON.parse(text); } catch { return null; }
   if (!j || j.kind !== 'ys-connection-settings' || typeof j.ministryConfig !== 'object' || !j.ministryConfig) return null;
-  const cfg = { ...j.ministryConfig }; delete cfg.busMinistry;
+  const cfg = _stripServerOwnedLogins({ ...j.ministryConfig }); delete cfg.busMinistry;
   return { ministryConfig: cfg,
     serviceMinAttendance: typeof j.serviceMinAttendance === 'number' ? j.serviceMinAttendance : null,
     termGapDays: typeof j.termGapDays === 'number' ? j.termGapDays : null };
