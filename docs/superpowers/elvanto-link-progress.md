@@ -100,5 +100,11 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
     Claude instance triages it together with the console's review file and sends solutions back to each device.
     App side waits for those solutions before fixing. Rework reviews (plan Lane R) are triaged locally as before.
 
+22. **New person: no "Your name (host)" field** (operator, 2026-10-12). The host is the self-identified "I am" leader.
+    The form shows "Host: <leader name>" with a Change link (the shared "I am" picker, with `_lkSwitchGuard`). With no
+    leader picked, the picker opens before the form can be sent. A junior `leader` login uses its bound leader. The
+    value sent to Elvanto where the host name went before is the leader's name. Drop `localStorage ysc.nyHost`.
+    Done in the link branch with F4.1.
+
 ## Ledger
 - 2026-10-12 interview done; worktrees created; specs dispatched.
