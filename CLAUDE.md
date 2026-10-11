@@ -110,7 +110,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0016` (`0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0017` (`0016` = `leaders.view_grades`; the Elvanto link branch also uses `0017`, so renumber whichever lands second; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 **Migrations now apply automatically in the Vercel production build** (`scripts/migrate.ts`, `npm run migrate`, `vercel-build`): it records versions in `schema_migrations`, baselines `<= 0014` once for a database that already has `users` + `bus_run_edits` (Citipointe), holds an advisory lock, and prints `Database up to date — N of N changes applied (K new).` Rules: files stay additive; no `create index concurrently`; never edit a shipped file (`0003` was the one exception, now an empty comment); bump `LATEST_MIGRATION` in `src/core/schema-version.ts` with every new file (a test enforces it).
 
@@ -2458,6 +2458,40 @@ A host types a new student and one parent into the **New person** screen (its us
 - **SW cache** `ysc-v87` → `ysc-v88` → `ysc-v89` (More menu).
 - **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only when Task 0 is done** (`capture.md` written, `SUCCESS` pasted into `elvanto-forms.ts`, captured-reply test green), **Citipointe has approved (given) and the owner has promoted the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
 - **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1047 tests pass in total (74 files).
+
+## October rework (2026-10-12)
+
+**▶ Resume here** (branch `feat/oct-rework`, plan `docs/superpowers/plans/2026-10-12-oct-rework.md`; 1280 tests, 81 files pass; SW `ysc-v91`; migration `0016`)
+
+**What shipped**
+- **Simple logins** (its own module switch). Labels become Junior and Senior. The grade logins are retired, and this is reversible (`gradeRoleWasOn` remembers the old state). Each leader gets a server-side grade filter, `leaders.view_grades`. While Simple is on, the quad loses `bus:coordinate`, and Grade 6 blocks it. The view-grades save sends `expect`, and a stale value gets a 409.
+- **Prayers module switch.** Prayers can be turned off in Youth Setup → Modules. Turning it on needs a reload.
+- **Bus "All cars" read-only view.** Suburb only, name + grade. Gated by the `newYouthForms` switch. Route `GET /bus/run/cars`.
+- **Nav-slot rules.** Slots follow the module switches; a switched-off module leaves no empty slot.
+
+**Deferred** (from `docs/superpowers/reviews/2026-10-12-rework-triage.md`)
+- **Pre-existing leak:** junior-leader `GET /bus/run` still carries each car's `endsAddress` (six-hat M7). `_busMapsLinks` reads it, so it needs its own change and test.
+- viewGrades writes are not chained: an out-of-order save can leave the older pick, and a `GET /leaders` landing after a save can restore the old value (reliability M3).
+- Two near-simultaneous opposite flips (reliability M2): the next save repairs it; no lock.
+- Before `0016` is applied the view-grades PATCH is a raw 500 (reliability M6); preview testing only.
+- A quad may set any leader's filter, and there is one filter per leader across brackets (six-hat M3, edge M3). By design.
+- Docs still owed in this file (six-hat M6 advisory quad restriction; M8 "kept except Full Reset and student delete"; M9 routes, migration, Grade 6 limit, 12 h tail; edge M10 Prayers-on needs a reload).
+- Turning Simple off always restores Grade from `gradeRoleWasOn`, ignoring an unticked Grade box (edge M6).
+- `enterPreview` / `exitPreview` don't reset the BUS session fields (edge M11; cosmetic, nothing leaks).
+- All cars rows use `.li` (tappable look) and a hard-coded `Y9` chip (ui M6); Youth Setup toggle rows are 22 px (ui M9, pre-existing); "My grades" never shows an on state (ui M7).
+- SPA source-regex tests that only check a string is present (false-pos-neg M7, ponytail M8).
+- The flip loops are serial `save` calls (speed M7); fine at ~16 accounts.
+- Prayers turned off makes every phone rebuild the shell and prefetch once (speed M4).
+
+**Migration note:** `0016` = `leaders.view_grades` (one nullable column). The next migration number is `0017`, but the Elvanto link branch already uses `0017`. Renumber whichever lands second.
+
+**Operator rollout (in order)**
+1. **Export prayers** first: Admin → Prayers export CSV (or Youth Setup Modules → Download CSV). Keep the file.
+2. **Push / promote.** Merge `feat/oct-rework` to `master` and push. Every push runs `0016` on prod at build time, before promotion (safe: one nullable column the live code never names).
+3. **Read the build log** for `Database up to date — …` (it must count `0016`), then promote in the Vercel dashboard. `/health` must show `schema.current = 0016`.
+4. **curl the new routes** on the promoted URL: `curl -s -X PATCH https://ys-connection.vercel.app/leaders/x/view-grades` and `curl -s https://ys-connection.vercel.app/bus/run/cars` must each return a **JSON 401**, not HTML. Nothing changes for YS Brisbane yet (`logins.simple` false, `prayers` true; All cars only in Shadow for admin, or On).
+5. **Flip Simple logins for YS Brisbane when ready** (1–2 weeks, with the check-in release, on a weekday). First fill Bus settings → coordinators and check each can pick themselves in "I am…". Then turn it on and check: no Grade section in Accounts; toast "Renamed 4 quad logins"; badge "Senior Guys" after reopening; on Senior Guys, picking Cody Cobb shows Year 10 in Health and still does on another phone; a quad login with no coordinator pick has no Assign tab; a coordinator pick does. Tell users to reopen the app; old grade logins stop within 12 h.
+6. **Turn Prayers off** (Youth Setup → Modules), using the export from step 1 (or export again first).
 
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 
