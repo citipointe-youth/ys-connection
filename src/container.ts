@@ -240,9 +240,9 @@ export async function buildContainer(): Promise<Container> {
     imports, audit, connectionAudits,
   );
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
-  // Live POSTs to the church's Elvanto forms only where ELVANTO_FORMS_LIVE=1 is set: Vercel Production,
-  // after Citipointe's approval. Local dev (any PERSISTENCE), tests and previews run dry.
-  const newYouth = makeNewYouthService(settings, { live: env.ELVANTO_FORMS_LIVE });
+  // Always live (owner 2026-10-12: the ELVANTO_FORMS_LIVE gate was removed; test sends are deleted in Elvanto).
+  // Local dev and preview deployments send real forms too.
+  const newYouth = makeNewYouthService(settings, { live: true });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;

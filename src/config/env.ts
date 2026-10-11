@@ -27,6 +27,4 @@ export const env = {
   CORS_ORIGINS: getEnv('CORS_ORIGINS', corsDefault).split(','),
   APP_ORIGIN: process.env['APP_ORIGIN'],
   DATABASE_URL: process.env['DATABASE_URL'],
-  // New youth forms send to live Elvanto only when this is exactly "1" (set in Vercel Production only).
-  ELVANTO_FORMS_LIVE: process.env['ELVANTO_FORMS_LIVE'] === '1',
 };
