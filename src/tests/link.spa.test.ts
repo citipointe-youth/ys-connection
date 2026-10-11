@@ -13,7 +13,9 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkHHMM', '_lkDefaultSvcFor',
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
-  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel'];
+  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
+  '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -805,5 +807,134 @@ describe('F2 lifegroup report', () => {
     const out = h.fns._lkGroupHtml(h.get().LINK.groups[0]);
     expect(out).not.toContain('_lkNewReport()');
     expect(out).toContain('Edit this report in Elvanto.');
+  });
+});
+
+// ── F3 flow steps ──
+describe('F3 flow steps', () => {
+  const F = (n: number) => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const row = (n: number, over: any = {}) => ({ rowId: F(n), flowId: F(100), stepId: F(200), flowName: 'Follow up', stepName: 'Call',
+    stepOrder: 1, personId: P(n), name: 'Person ' + n, due: '2026-10-20', assignedTo: 'Sam Example', openAction: null, ...over });
+  const ROWS = () => [
+    row(1, { flowName: 'Welcome', flowId: F(101), stepName: 'Text', stepId: F(201), stepOrder: 2, name: 'Zed Welcome-text' }),
+    row(2, { flowName: 'Follow up', stepName: 'Visit', stepId: F(202), stepOrder: 2, name: 'Amy Follow-visit' }),
+    row(3, { flowName: 'Follow up', stepName: 'Call', stepOrder: 1, name: 'Bo Follow-call', due: '2026-10-10' }),
+    row(4, { flowName: 'Welcome', flowId: F(101), stepName: 'Hello', stepId: F(203), stepOrder: 1, name: 'Cy Welcome-hello' }),
+  ];
+  const setup = (leaderId: string | null = 'L1', rows: any[] = ROWS(), post?: Env['post']) => {
+    const h = makeEnv({ leaderId, post });
+    const L = h.get().LINK;
+    L.today = '2026-10-16'; L.flows = rows; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
+    return h;
+  };
+  it('rows are grouped by flow, then step (step order)', () => {
+    const out = strip(setup().fns._lkFlowsHtml());
+    const at = (t: string) => out.indexOf(t);
+    expect(at('Follow up')).toBeGreaterThanOrEqual(0);
+    expect(at('Follow up')).toBeLessThan(at('Welcome'));
+    expect(at('Bo Follow-call')).toBeLessThan(at('Amy Follow-visit'));
+    expect(at('Amy Follow-visit')).toBeLessThan(at('Welcome'));
+    expect(at('Cy Welcome-hello')).toBeLessThan(at('Zed Welcome-text'));
+    expect(out.split('Follow up').length).toBe(2); // one heading per flow
+  });
+  it('a past due date is red; today or later is not', () => {
+    const rows = setup().fns._lkFlowsHtml().split('lk-row').slice(1);
+    const late = rows.find((r: string) => r.includes('Bo Follow-call'))!;
+    const ok = rows.find((r: string) => r.includes('Amy Follow-visit'))!;
+    expect(late).toContain('lk-late');
+    expect(ok).not.toContain('lk-late');
+    expect(strip(late)).toContain('Due Sat 10 Oct');
+  });
+  it('a row with an open action (or one still on the phone) cannot be completed', () => {
+    const h = setup('L1', [row(1, { openAction: { id: P(90), type: 'completeStep', status: 'pending', reason: null } }), row(2)]);
+    const rows = h.fns._lkFlowsHtml().split('lk-row').slice(1);
+    expect(rows[0]).not.toContain('_lkOpenStep');
+    expect(strip(rows[0])).toContain('Waiting for the console.');
+    expect(rows[1]).toContain(`_lkOpenStep('${F(2)}')`);
+    h.fns._lkOpenStep(F(1));
+    expect(h.calls.modals).toHaveLength(0);
+    h.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1' }]);
+    expect(h.fns._lkFlowsHtml()).not.toContain('_lkOpenStep');
+    h.fns._lkOpenStep(F(2));
+    expect(h.calls.modals).toHaveLength(0);
+    // a refused or cancelled answer can be completed again
+    const k = setup('L1', [row(1, { openAction: { id: P(92), type: 'completeStep', status: 'refused', reason: 'step-moved' } })]);
+    expect(k.fns._lkFlowsHtml()).toContain('_lkOpenStep');
+  });
+  it('the sheet needs "I am": the picker opens first, then the sheet', () => {
+    const h = setup(null);
+    h.fns._lkOpenStep(F(2));
+    expect(h.calls.modals).toHaveLength(1);
+    expect(h.calls.modals[0]).toContain('Who are you?');
+    expect(h.get().LINK.iamThen).toBeTypeOf('function');
+    const k = setup('L1');
+    k.fns._lkOpenStep(F(2));
+    expect(k.calls.modals[0]).toContain('Complete');
+    expect(k.calls.modals[0]).toContain('Amy Follow-visit');
+  });
+  it('the note stops at 1,800; Keep note private is shown; the message line is double-quoted', () => {
+    const h = setup();
+    h.fns._lkOpenStep(F(2));
+    const sheet = h.calls.modals[0]!;
+    expect(sheet).toContain('maxlength="1800"');
+    expect(strip(sheet)).toContain('Keep note private');
+    expect(strip(sheet)).toContain("Completing may send this step's message.");
+    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send this step's message."`);
+    const el = { value: 'y'.repeat(2500) };
+    h.fns._lkStepNote(el);
+    expect(el.value).toHaveLength(1800);
+    expect(h.get().LINK.fs.note).toHaveLength(1800);
+    expect(h.fns._lkStepHtml()).toContain('1,800 / 1,800');
+  });
+  it('Complete queues completeStep with the raw note and notePrivate; the row then waits', () => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.fns._lkOpenStep(F(2));
+    h.fns._lkStepNote({ value: 'Called, all good' });
+    h.get().LINK.fs.priv = true;
+    h.fns._lkStepSend();
+    const q = h.fns._lkQGet();
+    expect(q).toHaveLength(1);
+    expect(Object.keys(q[0]).sort()).toEqual(['_f', 'id', 'kind', 'leaderId', 'note', 'payload', 'type']);
+    expect(q[0]).toMatchObject({ kind: 'action', type: 'completeStep', note: 'Called, all good', leaderId: 'L1', _f: F(2) });
+    expect(q[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: true });
+    expect(h.calls.closed).toBe(1);
+    expect(strip(h.fns._lkFlowsHtml())).toContain('Waiting to send.');
+    h.fns._lkStepUndo(F(2));
+    expect(h.fns._lkQGet()).toEqual([]);
+    // a blank note goes as null; private defaults off
+    h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
+    expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
+  });
+  it('the sheet shows "Elvanto will show: Self identified leader: <name>" escaped; every value escaped', () => {
+    const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);
+    const list = h.fns._lkFlowsHtml();
+    for (const raw of ['<b>X', '<i>1', '<u>1', '<s>Y']) expect(list).not.toContain(raw);
+    expect(list).toContain('Ann &lt;b&gt;X&lt;/b&gt;');
+    h.fns._lkOpenStep(F(1));
+    expect(h.calls.modals[0]).toContain('Elvanto will show: Self identified leader: Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(h.calls.modals[0]).not.toContain('<b>X');
+  });
+  it('a refusal from the batch shows on the row; a pending answer offers Cancel', async () => {
+    const reply = (outcome: string, extra: any = {}) => (_p: string, b: any) =>
+      Promise.resolve({ results: [{ id: b.items[0].id, kind: b.items[0].kind, outcome, ...extra }] });
+    const h = setup('L1', [row(1)], reply('refused', { code: 'CONFLICT', reason: 'step-moved', message: 'x' }));
+    h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
+    await h.fns._lkFlush();
+    expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Do it there.');
+    expect(h.calls.toasts).toEqual([]);
+    const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
+    k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
+    await k.fns._lkFlush();
+    expect(k.fns._lkFlowsHtml()).toContain(`_lkStepCancel('${F(1)}')`);
+    k.fns._lkStepCancel(F(1));
+    expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(81), leaderId: 'L1', _f: F(1) });
+  });
+  it('the page is routed; Complete hides when the console has completeStep off', () => {
+    expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-flows') { await renderLinkFlows(); return; }");
+    const h = setup();
+    h.get().LINK.status = { console: { capabilities: { completeStep: 'off' } } };
+    expect(h.fns._lkFlowsHtml()).not.toContain('_lkOpenStep');
   });
 });

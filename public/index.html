@@ -783,6 +783,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer}
 .lk-chk input{width:20px;height:20px}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
+.lk-step{font-size:13px;font-weight:700;color:var(--ink);margin:10px 2px 6px}
+.lk-late{color:#b91c1c;font-weight:700}
 /* END LINK CSS */
 </style>
 </head>
@@ -8744,7 +8746,7 @@ function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
-    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null };
+    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 function _linkOn() { return _nyOn(); }
@@ -8931,10 +8933,12 @@ function _lkResults(items, results) {
     if (r.outcome === 'refused' && r.code === 'RATE_LIMITED') { rate = true; return; }
     done[it.kind + ':' + it.id] = true;
     const gid = it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload ? it.payload.groupId : null;
-    if (gid) { // a lifegroup report: the answer shows on the group's row
-      if (!LINK.gres) LINK.gres = {};
-      LINK.gres[gid] = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
+    const fr = it.kind === 'action' && it.type === 'completeStep' && it.payload ? it.payload.rowId : null;
+    if (gid || fr) { // a lifegroup report or a flow step: the answer shows on the group's or the step's row
+      const ans = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
         : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
+      if (gid) { if (!LINK.gres) LINK.gres = {}; LINK.gres[gid] = ans; }
+      else { if (!LINK.fres) LINK.fres = {}; LINK.fres[fr] = ans; }
     } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
       if (r.outcome === 'refused') {
@@ -8952,6 +8956,7 @@ function _lkResults(items, results) {
       else if (r.outcome === 'refused') say = r.message || say;
     } else if (it.kind === 'cancel') {
       if (r.outcome === 'cancelled' && it._g && LINK.gres) LINK.gres[it._g] = { id: it.id, type: 'submitReport', status: 'cancelled', reason: null };
+      if (r.outcome === 'cancelled' && it._f && LINK.fres) LINK.fres[it._f] = { id: it.id, type: 'completeStep', status: 'cancelled', reason: null };
       if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
       else if (r.outcome === 'refused') say = r.message || say;
     }
@@ -9028,6 +9033,7 @@ function _lkTick() {
     _lkStatusLoad();
     if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc).then((ok) => { if (ok) _lkRefreshView(); });
     if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups().then((ok) => { if (ok) _lkRefreshView(); });
+    if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows().then((ok) => { if (ok) _lkRefreshView(); });
   } else if (S.page === 'link-checkin') _lkPollOpen(); // every 15 s: my own open rows
 }
 function _lkPollOpen() {
@@ -9065,13 +9071,15 @@ function _lkRefreshView() {
   try {
     if (!_lkOnPage()) return;
     const top = document.getElementById('lk-top');
-    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? ['submitReport', 'editReport'] : []);
+    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? ['submitReport', 'editReport'] : S.page === 'link-flows' ? ['completeStep'] : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
     const gl = document.getElementById('lk-glist');
     if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
     const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
     if (gp && g) gp.innerHTML = _lkGroupHtml(g);
+    const fl = document.getElementById('lk-flist');
+    if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml();
     const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
     if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
   } catch (e) {}
@@ -9086,7 +9094,8 @@ async function renderLink(p) {
   if (!LINK.statusAt || Date.now() - LINK.statusAt > 60000) _lkStatusLoad();
   if (p === 'link-checkin') { await renderLinkCheckin(); return; }
   if (p === 'link-groups') { await renderLinkGroups(); return; }
-  const title = { 'link-flows': 'Flow steps', 'link-admin': 'Elvanto link' }[p];
+  if (p === 'link-flows') { await renderLinkFlows(); return; }
+  const title = { 'link-admin': 'Elvanto link' }[p];
   if (!title) { go('home'); return; }
   setApp(shell(`<div class="ph"><h1>${title}</h1></div><div id="lk-top">${_lkTop([])}</div>
     <div class="card"><p>This screen is not ready yet.</p></div>`));
@@ -9588,6 +9597,127 @@ function _lkReportCancel() {
   const g = _lkGroup(), a = g && LINK.gres && LINK.gres[g.groupId];
   if (!a || !a.id) return;
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _g: g.groupId }, true);
+}
+// ── Flow steps (F3; spec §11.3) ──
+// Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
+function _lkToday() { return LINK.today || LINK.rToday || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
+function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
+// The step's action: still on this phone, else this phone's last answer, else the server's open row.
+function _lkFlowAct(r) {
+  let q = [];
+  try { q = _lkQGet(); } catch (e) {}
+  for (let i = q.length - 1; i >= 0; i--) {
+    const it = q[i];
+    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === r.rowId) return { id: it.id, type: it.type, status: 'queued', reason: null };
+  }
+  return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || null;
+}
+// By flow (A–Z), then step (step order), then name. A row with an open action cannot be completed again.
+function _lkFlowsHtml() {
+  const rs = LINK.flows;
+  if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
+  if (!rs.length) return '<p class="lk-hint">No flow steps for this login.</p>';
+  const xs = rs.slice().sort((a, b) => String(a.flowName || '').localeCompare(String(b.flowName || '')) || String(a.flowId).localeCompare(String(b.flowId))
+    || (a.stepOrder || 0) - (b.stepOrder || 0) || String(a.stepId).localeCompare(String(b.stepId)) || String(a.name || '').localeCompare(String(b.name || '')));
+  const today = _lkToday(), off = _lkCapOff('completeStep');
+  let out = '', flow = null, step = null;
+  xs.forEach((r) => {
+    if (r.flowId !== flow) { flow = r.flowId; step = null; out += `<div class="lk-sec">${esc(r.flowName)}</div>`; }
+    if (r.stepId !== step) { step = r.stepId; out += `<div class="lk-step">${esc(r.stepName)}</div>`; }
+    const a = _lkFlowAct(r);
+    const open = !!a && !['refused', 'cancelled'].includes(a.status);
+    const rid = esc(r.rowId);
+    const due = r.due ? `<span${r.due < today ? ' class="lk-late"' : ''}>Due ${esc(_lkDay(r.due))}</span>` : '';
+    const meta = [due, r.assignedTo ? 'Assigned to ' + esc(r.assignedTo) : ''].filter(Boolean).join(' · ');
+    let btn = '';
+    if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepUndo('${rid}')">Undo</button>`;
+    else if (a && a.status === 'pending' && LINK.fres && LINK.fres[r.rowId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepCancel('${rid}')">Cancel</button>`;
+    const tap = !open && !off ? ` role="button" onclick="_lkOpenStep('${rid}')"` : '';
+    out += `<div class="li lk-row"${tap}><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
+      ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}</div>`;
+  });
+  return out;
+}
+// The Complete sheet. "I am" is required (decision 11): no "I am" yet: the picker opens first.
+function _lkOpenStep(id) {
+  const r = _lkFlowRow(id);
+  if (!r || _lkCapOff('completeStep')) return;
+  const a = _lkFlowAct(r);
+  if (a && !['refused', 'cancelled'].includes(a.status)) return;
+  if (!getMyLeaderId()) { _lkIamPick(() => _lkOpenStep(id)); return; }
+  if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false };
+  modal(`<div id="lk-fs">${_lkStepHtml()}</div>`, () => { LINK.fs = null; });
+}
+function _lkStepHtml() {
+  const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
+  if (!r) return '';
+  const name = _lkMyName();
+  return `<div class="mo-title">${esc(r.stepName)}</div><p class="lk-sub">${esc(r.name)} · ${esc(r.flowName)}</p>
+    <div class="fg"><label class="fl">Note</label><textarea class="fi" rows="4" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
+      <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>
+    <p class="lk-sub">${name ? 'Elvanto will show: Self identified leader: ' + esc(name) : 'Pick who you are before you complete.'}</p>
+    <p class="lk-sub">${esc("Completing may send this step's message.")}</p>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} Complete</button></div>`;
+}
+function _lkStepDraw() { const b = document.getElementById('lk-fs'); if (b) b.innerHTML = _lkStepHtml(); }
+// The note stops at 1,800 characters (the console adds the leader line in front).
+function _lkStepNote(el) {
+  const f = LINK.fs;
+  if (!f || !el) return;
+  let v = String(el.value || '');
+  if (v.length > 1800) { v = v.slice(0, 1800); el.value = v; }
+  f.note = v;
+  const n = document.getElementById('lk-fs-n');
+  if (n) n.textContent = _lkNoteCount(v.length);
+}
+// Complete = into the shared phone queue, with the raw note (the console composes the leader line).
+function _lkStepSend() {
+  const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
+  if (!r) return;
+  const lid = getMyLeaderId();
+  if (!lid) { _lkIamPick(() => _lkOpenStep(r.rowId)); return; }
+  const note = String(f.note || '').trim() ? f.note : null;
+  if (LINK.fres) delete LINK.fres[r.rowId];
+  LINK.fs = null;
+  closeModal();
+  _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv },
+    note, leaderId: lid, _f: r.rowId }, true);
+}
+// Still on this phone: removed here (nothing sent).
+function _lkStepUndo(id) {
+  const q = _lkQGet();
+  for (let i = q.length - 1; i >= 0; i--) {
+    const it = q[i];
+    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === id) { q.splice(i, 1); _lkQSet(q); break; }
+  }
+  _lkRefreshView();
+}
+// Sent and still pending: a cancel item.
+function _lkStepCancel(id) {
+  const a = LINK.fres && LINK.fres[id];
+  if (!a || !a.id) return;
+  _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _f: id }, true);
+}
+function _lkPaintFlows() {
+  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div><div id="lk-top">${_lkTop(['completeStep'])}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
+}
+async function _lkLoadFlows() {
+  try {
+    const r = await API.fresh('/link/flows');
+    LINK.flows = (r && r.rows) || [];
+    // The server's open row is the truth again; keep only this phone's final answers.
+    Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
+    LINK.fErr = null;
+    return true;
+  } catch (e) { LINK.fErr = e.message || 'Could not load the flow steps.'; return false; }
+}
+async function renderLinkFlows() {
+  if (!LINK.flows) { _lkPaintFlows(); await _lkLoadFlows(); if (S.page !== 'link-flows') return; }
+  _lkPaintFlows();
+  if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (LINK.fs) _lkStepDraw(); }, () => {});
 }
 /* ── END LINK MODULE ── */
 
