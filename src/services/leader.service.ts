@@ -49,7 +49,7 @@ function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
   }
 }
 
-// settings is optional so container.ts compiles unchanged until Z1 wires it;
+// settings is optional for tests (container.ts always wires it);
 // without it the grade range is the default structure (7-12).
 export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsRepository): LeaderService {
   return {
@@ -215,14 +215,12 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       if (!canSetViewGrades(actor, id)) throw new ForbiddenError("You cannot change this leader's grade filter");
       const parsed = ViewGradesSchema.safeParse(input);
       if (!parsed.success) throw new BadRequestError('Pick at least one grade, or reset to your grades');
-      const existing = await repo.findById(id);
+      const [existing, cfg] = await Promise.all([repo.findById(id), settings ? settings.getSettings() : null]);
       if (!existing) throw new NotFoundError('Leader not found');
 
       let grades: Grade[] | null = null;
       if (parsed.data.grades) {
-        const structure = settings
-          ? (await settings.getSettings()).ministryConfig.structure
-          : MINISTRY_CONFIG_DEFAULTS.structure;
+        const structure = cfg ? cfg.ministryConfig.structure : MINISTRY_CONFIG_DEFAULTS.structure;
         const allowed = actor.role === 'quad'
           ? gradeRange(structure).filter((g) => quadGradesOf(actor.quad).includes(g))
           : gradeRange(structure);
@@ -232,9 +230,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
         grades = [...new Set(parsed.data.grades)].sort((a, b) => a - b) as Grade[];
       }
       await repo.setViewGrades(id, grades);
-      const fresh = await repo.findById(id);
-      if (!fresh) throw new NotFoundError('Leader not found');
-      return fresh;
+      return { ...existing, viewGrades: grades };
     },
   };
 }

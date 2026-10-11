@@ -42,7 +42,7 @@ export function makeLeaderController(deps: { leader: LeaderService }) {
       return deps.leader.updateGrades(req.ctx, req.params['id']!, body?.grades ?? []);
     },
 
-    // PATCH /leaders/:id/view-grades — body { grades: number[] | null }. Route added in Z1.
+    // PATCH /leaders/:id/view-grades — body { grades: number[] | null }.
     async setViewGrades(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
       return deps.leader.setViewGrades(req.ctx, req.params['id']!, req.body);

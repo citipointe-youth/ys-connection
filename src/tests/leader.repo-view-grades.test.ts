@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { InMemoryLeaderRepository } from '../repositories/in-memory';
 import type { Leader } from '../core/entities/leader';
 
@@ -43,5 +45,19 @@ describe('ILeaderRepository.setViewGrades (in-memory; json mode uses the same cl
   it('a leader never given a value reads viewGrades as undefined or null', async () => {
     const repo = await repoWith(leader('a'));
     expect((await repo.findById('a'))!.viewGrades ?? null).toBeNull();
+  });
+});
+
+describe('Supabase leaders repo: only setViewGrades writes view_grades (source guard, R8 minor)', () => {
+  const src = readFileSync(join(__dirname, '..', 'repositories', 'supabase', 'supabase.leaders.ts'), 'utf8');
+  // Code only: comment lines may mention the column.
+  const body = (from: string, to: string) => src.slice(src.indexOf(from), src.indexOf(to)).replace(/^\s*\/\/.*$/gm, '');
+  it('save and saveMany never name view_grades (an upsert listing it would wipe every filter on import)', () => {
+    expect(src.indexOf('async save(')).toBeGreaterThan(-1);
+    expect(body('async save(', 'async saveMany(')).not.toContain('view_grades');
+    expect(body('async saveMany(', 'async setViewGrades(')).not.toContain('view_grades');
+  });
+  it('setViewGrades does', () => {
+    expect(src.slice(src.indexOf('async setViewGrades('))).toContain('view_grades');
   });
 });

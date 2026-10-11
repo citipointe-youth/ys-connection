@@ -159,7 +159,6 @@ export const MinistryConfigSchema = z.object({
 });
 
 export type MinistryConfig = z.infer<typeof MinistryConfigSchema>;
-export type LoginsConfig = MinistryConfig['logins'];
 
 // The inclusive list of grade numbers a deployment uses (structure.gradeMin..
 // gradeMax). Replaces the hardcoded [7..12] iterations in the aggregate

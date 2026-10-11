@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { makePrayerService } from '../services/prayer.service';
 import { InMemoryPrayerRepository, InMemoryStudentRepository, InMemoryConnectionRepository, InMemorySettingsRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
@@ -326,6 +326,20 @@ describe('PrayerService — modules.prayers toggle', () => {
     const s = await withModule(true);
     const p = await s.create(ADMIN, { text: 'hi' });
     expect((await s.list(ADMIN)).map((x) => x.id)).toEqual([p.id]);
+  });
+
+  it('reads the settings once per call (list and create)', async () => {
+    const prayers = new InMemoryPrayerRepository();
+    const studentRepo = new InMemoryStudentRepository();
+    const settings = new InMemorySettingsRepository();
+    await prayers.init(); await studentRepo.init(); await settings.init();
+    const s = makePrayerService(prayers, studentRepo, settings);
+    const spy = vi.spyOn(settings, 'getSettings');
+    await s.list(ADMIN);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockClear();
+    await s.create(ADMIN, { text: 'hi' });
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('works with no settingsRepo (always on)', async () => {
