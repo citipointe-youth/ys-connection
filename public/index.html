@@ -8449,14 +8449,14 @@ function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.p
    except the host's own name (localStorage, this device only). */
 const NY_ALLERGIES = ["Anaphylaxis","Asthmatic","Dairy Intolerance","Egg Allergy","Gluten Intolerance","Lactose Intolerance","Nut Allergy","Penicilin Allergy","Skin Allergy","Sugar Allergy","Wheat Allergy"];
 const NY_CONDITIONS = ["ADHD","Autism/Aspergers","Diabetes Type 1","Epilepsy"];
-let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null };
+let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
 function _nyOn() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
   return !!(mc.modules && mc.modules.newYouthForms);
 }
 function _nyHomeTile() {
   if (!_nyOn()) return '';
-  return `<div class="bus-tile" onclick="nyReset();go('new-youth')" role="button" tabindex="0">
+  return `<div class="bus-tile" onclick="nyOpen()" role="button" tabindex="0">
     <div class="bt-ic">${icN('plus')}</div><div class="bt-label">New youth</div>
     <div class="bt-count">Send the connect forms</div></div>`;
 }
@@ -8473,9 +8473,10 @@ function _nyMessage(r) {
   const tone = outs.includes('failed') ? 'bad' : outs.every((o) => o === 'sent') ? 'good' : 'warn';
   return { tone, retryParent: r.student !== 'failed' && r.parent === 'failed', lines };
 }
-// 400/404/429/502 are the service refusing before any POST. Anything else may have landed in Elvanto.
+// Only the service's own refusals, matched by their error CODE and never by status, mean nothing was posted:
+// Vercel itself answers a bare 502 when a function dies, possibly after the student POST. Anything else may have landed in Elvanto.
 function _nyErrorText(e) {
-  if ([400, 404, 429, 502].includes(e.status)) return { unsent: true, text: e.message };
+  if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED'].includes(e.code)) return { unsent: true, text: e.message };
   return { unsent: false, text: "We don't know if the forms went in. Check the forms list in Elvanto before sending again." };
 }
 function _nyRead() {
@@ -8493,18 +8494,31 @@ function _nyRead() {
 }
 function renderNewYouth() {
   if (!_nyOn()) { go('home'); return; }
+  const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
+  if (NY.sending) { // the host left mid-send and came back: the reply is still on its way
+    setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>Sending to Elvanto...</p><p>Stay on this screen until it says whether the forms went in.</p></div>`));
+    return;
+  }
+  if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
+    setApp(shell(`<div class="ph"><h1>New youth</h1></div>
+      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
+      ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
+      <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new youth</button>`));
+    window.scrollTo(0, 0);
+    return;
+  }
   if (NY.result) {
     const m = _nyMessage(NY.result);
     const colour = m.tone === 'good' ? 'var(--success)' : m.tone === 'bad' ? 'var(--danger)' : 'var(--warn)';
-    const ok = m.tone !== 'bad' || m.retryParent;
-    const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
+    const failed = [NY.result.student, NY.result.parent].includes('failed');
     setApp(shell(`<div class="ph"><h1>New youth</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
-      ${ok ? `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>
-              <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new youth</button>`
-           : `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>`}`));
+      ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
+      ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
+      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new youth</button>`}`));
     return;
   }
   const k = NY.keep || {};
@@ -8515,8 +8529,7 @@ function renderNewYouth() {
   const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
   const addr = k.address || {};
   setApp(shell(`<div class="ph"><h1>New youth</h1></div>
-    ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
-    ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form is already in.</div>` : ''}
+    ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form was sent with the last student.</div>` : ''}
     <form id="ny-form" onsubmit="nySend(event)" novalidate autocomplete="off">
     <div class="card">
       <div class="fg"><label class="fl" for="ny-host">Your name (host)</label><input class="fi" id="ny-host" autocomplete="name" value="${val('host', _nyHost())}"></div>
@@ -8544,8 +8557,12 @@ function renderNewYouth() {
       ${sel('parentGender', 'Gender (optional)', [['', ''], ['f', 'Female'], ['m', 'Male']])}
       <p class="fl">The student has texted or called their parent to say where they are.</p>
     </div>
+    ${NY.error ? `<div class="card" id="ny-err" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
     <button class="btn btn-primary btn-full" id="ny-send" type="submit">Send to Elvanto</button>
     </form>`));
+  // setApp keeps the scroll position, and a failed send leaves the host at the bottom: bring the card into view.
+  const errEl = NY.error && document.getElementById('ny-err');
+  if (errEl && errEl.scrollIntoView) errEl.scrollIntoView({ block: 'center' });
 }
 async function nySend(ev, send) {
   if (ev) ev.preventDefault();
@@ -8555,35 +8572,55 @@ async function nySend(ev, send) {
     ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
   if (need) { toast('Add the ' + need[1]); return; }
-  NY.last = p;
+  // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
+  // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
+  const mine = NY;
+  mine.last = p;
   try { localStorage.setItem('ysc.nyHost', p.host); } catch (e) { /* per-device convenience only */ }
-  NY.sending = true; NY.error = null;
-  const btn = document.getElementById('ny-send'); if (btn) btn.disabled = true;
+  mine.sending = true; mine.error = null;
+  const here = () => NY === mine && S.page === 'new-youth';
+  const btn = document.getElementById('ny-send');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
   try {
-    // 45 s: the server can spend up to about 35 s (settings read, 5 s GETs, two 10 s POSTs); the default 25 s would wrongly report "unknown".
-    NY.result = await API.post('/intake/new-youth', { ...p, send: send || (NY.sibling ? ['student'] : ['student', 'parent']) }, 45000);
-    renderNewYouth();
+    // 45 s: the server can spend about 28 s plus the settings read (8 s form GETs in parallel, two 10 s POSTs); the default 25 s would wrongly report "unknown".
+    const result = await API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000);
+    mine.sending = false; // before drawing: renderNewYouth shows a Sending page while it is set
+    mine.result = result;
+    if (here()) renderNewYouth();
+    else toast(_nyMessage(result).lines.join(' '), 8000); // the host left the screen: still tell them
   } catch (e) {
-    // An error card on the form, inputs kept (a toast is gone in 2.5 s). An unknown outcome says check Elvanto, never "try again".
+    mine.sending = false;
     // An expired session: API already drew the login screen (or restored the admin). Drawing the form now would show a student's details with no shell.
     if (e.status === 401 || !S.user) return;
-    NY.error = _nyErrorText(e).text;
-    if (send) { renderNewYouth(); return; } // a failed retry stays on the result page: the full form would send the student again
-    NY.keep = p; NY.result = null;
-    renderNewYouth();
+    const err = _nyErrorText(e);
+    mine.error = err.text;
+    if (err.unsent) {
+      // Refused before any POST: stay on the form (or the result page for a parent-only retry) with the inputs kept.
+      if (!send) { mine.keep = p; mine.result = null; }
+    } else {
+      // Unknown outcome: a result page, never a pre-filled form with a ready Send button. A parent-only retry keeps its
+      // earlier result and offers no way back to the form, which would send the student a second time.
+      mine.unknown = true;
+      if (!send) mine.result = null;
+    }
+    if (here()) renderNewYouth();
+    else toast(err.text, 8000);
   } finally {
-    NY.sending = false;
-    const b = document.getElementById('ny-send'); if (b) b.disabled = false;
+    mine.sending = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = label; } // only if the host is still looking at this button
   }
 }
 function nySibling() {
   const l = NY.last || {};
   NY = { keep: { host: l.host, parentFirst: l.parentFirst, parentLast: l.parentLast, parentMobile: l.parentMobile, parentGender: l.parentGender, address: l.address },
-         sibling: true, sending: false, result: null, last: null, error: null };
+         sibling: true, sending: false, result: null, last: null, error: null, unknown: false };
   renderNewYouth();
 }
-function nyReset() { NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null }; }
-function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; renderNewYouth(); }
+function nyReset() { NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }; }
+// The Home tile: start fresh, unless a send is still in flight (then go back to it; resetting would lose its outcome).
+function nyOpen() { if (!NY.sending) nyReset(); go('new-youth'); }
+function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unknown = false; renderNewYouth(); }
 
 function _busHomeTile() {
   if (!_busOn()) return '';

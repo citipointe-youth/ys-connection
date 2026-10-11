@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { extractFn } from './helpers/extract-fn';
 import { ALLERGIES, CONDITIONS } from '../services/elvanto-forms';
@@ -36,10 +36,22 @@ describe('New youth SPA', () => {
     expect(nyMessage({ student: 'sent', parent: 'sent', dryRun: false, repeat: true }).lines[0]).toMatch(/already sent/);
     expect(nyMessage({ student: 'skipped', parent: 'skipped', dryRun: true }).lines).toEqual(['Test mode: nothing was sent to Elvanto.']);
   });
-  it('a refusal before sending says nothing was sent and shows the server message', () => {
-    for (const status of [400, 404, 429, 502]) {
-      expect(nyErrorText(Object.assign(new Error('Check the parent mobile'), { status }))).toEqual({ unsent: true, text: 'Check the parent mobile' });
+  it('a refusal before sending is recognised by its server CODE and shows the server message', () => {
+    const cases: Array<[string, number]> = [['BAD_REQUEST', 400], ['MODULE_DISABLED', 404], ['RATE_LIMITED', 429], ['ELVANTO_UNREACHABLE', 502], ['ELVANTO_FORM_CHANGED', 502]];
+    for (const [code, status] of cases) {
+      expect(nyErrorText(Object.assign(new Error('Check the parent mobile'), { status, code }))).toEqual({ unsent: true, text: 'Check the parent mobile' });
     }
+  });
+  it('a 502 with no code (Vercel itself, a function that died) is an UNKNOWN outcome, not a refusal', () => {
+    for (const status of [502, 400, 404, 429]) {
+      const r = nyErrorText(Object.assign(new Error('Bad Gateway'), { status }));
+      expect(r.unsent).toBe(false);
+      expect(r.text).toMatch(/Check the forms list in Elvanto before sending again/);
+      expect(r.text).not.toMatch(/Bad Gateway|try again/i);
+    }
+  });
+  it('an unrelated server code is an unknown outcome too', () => {
+    expect(nyErrorText(Object.assign(new Error('x'), { status: 502, code: 'SOMETHING_ELSE' })).unsent).toBe(false);
   });
   it('a lost reply or timeout never says "try again": check Elvanto first', () => {
     for (const e of [new Error("Can't reach the server"), Object.assign(new Error('Please try again'), { status: 503 }), Object.assign(new Error('x'), { status: 500 })]) {
@@ -54,49 +66,227 @@ describe('New youth SPA', () => {
   });
 });
 
-// Runs the REAL nySend / _nyErrorText from index.html against minimal stubs.
-function sendHarness(post: (path: string, body: any, ms?: number) => Promise<any>) {
-  const S: any = { user: { role: "admin" } };
-  const rendered: number[] = [];
-  const body = { host: "H", firstName: "A", lastName: "T", dob: "2012-04-03", gender: "m", grade: "8", school: "S", mobile: "0412345678", parentFirst: "P", parentLast: "T", parentMobile: "0498765432" };
-  const factory = new Function("S", "API", "toast", "document", "localStorage", "renderNewYouth", "_nyRead", "body",
-    `let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null };
-    ${extractFn(html, "_nyErrorText")}
-    ${extractFn(html, "nySend")}
-    return { nySend, get NY() { return NY; }, set NY(v) { NY = v; } };`);
-  const h = factory(S, { post }, () => {}, { getElementById: () => ({ disabled: false }) }, { setItem() {} }, () => rendered.push(1), () => ({ ...body }), body);
-  return { h, S, rendered, body };
+// Runs the REAL nySend / nyOpen / renderNewYouth etc. from index.html against minimal stubs.
+const FRESH = '{ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }';
+const FNS = ['_nyOn', '_nyHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
+function harness(post: (path: string, body: any, ms?: number) => Promise<any>) {
+  const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: true } } } };
+  const pages: string[] = [];
+  const toasts: Array<[string, number | undefined]> = [];
+  const scrolled: any[] = [];
+  const button: any = { disabled: false, textContent: 'Send to Elvanto', isConnected: true };
+  const errEl = { scrollIntoView: (o: any) => scrolled.push(o) };
+  const body = { host: 'H', firstName: 'A', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
+  const ref: any = {};
+  const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null) };
+  const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
+    `let NY = ${FRESH};
+    ${FNS.map((n) => extractFn(html, n)).join('\n')}
+    return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
+  const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },
+    (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} }, () => ({ ...body }), [], []);
+  ref.h = h;
+  return { h, S, pages, toasts, scrolled, button, body, last: () => pages[pages.length - 1] ?? '' };
 }
+const deferred = () => {
+  let res!: (v: any) => void, rej!: (e: any) => void;
+  const p = new Promise<any>((a, b) => { res = a; rej = b; });
+  return { p, res, rej };
+};
+const fresh = (over: any = {}) => ({ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false, ...over });
 
-describe("nySend failure paths", () => {
-  it("a 401 during send does not draw the form", async () => {
-    const t = sendHarness(async () => { t.S.user = null; throw Object.assign(new Error("Session expired"), { status: 401 }); });
+describe('nySend failure paths', () => {
+  it('a 401 during send does not draw the form', async () => {
+    const t = harness(async () => { t.S.user = null; throw Object.assign(new Error('Session expired'), { status: 401 }); });
     await t.h.nySend({ preventDefault() {} });
-    expect(t.rendered).toHaveLength(0);
+    expect(t.pages).toHaveLength(0);
     expect(t.h.NY.sending).toBe(false);
   });
-  it("a failed parent-only retry stays on the result page", async () => {
-    const t = sendHarness(async () => { throw Object.assign(new Error("X"), { status: 502 }); });
-    const earlier = { student: "sent", parent: "failed", dryRun: false };
-    t.h.NY = { keep: null, sibling: false, sending: false, result: earlier, last: { ...t.body }, error: null };
-    await t.h.nySend(null, ["parent"]);
+  it('a parent-only retry that was REFUSED stays on the result page with the server message', async () => {
+    const t = harness(async () => { throw Object.assign(new Error('X'), { status: 502, code: 'ELVANTO_UNREACHABLE' }); });
+    const earlier = { student: 'sent', parent: 'failed', dryRun: false };
+    t.h.NY = fresh({ result: earlier, last: { ...t.body } });
+    await t.h.nySend(null, ['parent']);
     expect(t.h.NY.result).toBe(earlier);
-    expect(t.h.NY.error).toBe("X");
-    expect(t.rendered).toHaveLength(1);
+    expect(t.h.NY.error).toBe('X');
+    expect(t.h.NY.unknown).toBe(false);
+    expect(t.pages).toHaveLength(1);
+    expect(t.last()).toContain('Send the parent form again');
   });
-  it("a failed full send keeps the inputs", async () => {
-    const t = sendHarness(async () => { throw new Error("Can't reach the server"); });
+  it('a parent-only retry with an UNKNOWN outcome offers no ready send button', async () => {
+    const t = harness(async () => { throw Object.assign(new Error('Bad Gateway'), { status: 502 }); });
+    t.h.NY = fresh({ result: { student: 'sent', parent: 'failed', dryRun: false }, last: { ...t.body } });
+    await t.h.nySend(null, ['parent']);
+    expect(t.h.NY.unknown).toBe(true);
+    expect(t.last()).toMatch(/Check the forms list in Elvanto before sending again/);
+    expect(t.last()).not.toContain('id="ny-send"');
+    expect(t.last()).not.toContain('Send the parent form again');
+    expect(t.last()).not.toContain('nyBack()'); // the full form would send the student a second time
+    expect(t.last()).toContain('Next new youth');
+  });
+  it('a REFUSED full send keeps the inputs, stays on the form, and puts the card above Send in view', async () => {
+    const t = harness(async () => { throw Object.assign(new Error('Check the parent mobile'), { status: 400, code: 'BAD_REQUEST' }); });
     await t.h.nySend({ preventDefault() {} });
     expect(t.h.NY.result).toBeNull();
+    expect(t.h.NY.unknown).toBe(false);
     expect(t.h.NY.keep).toEqual(t.body);
-    expect(t.h.NY.error).toMatch(/Check the forms list in Elvanto/);
-    expect(t.rendered).toHaveLength(1);
+    expect(t.h.NY.error).toBe('Check the parent mobile');
+    expect(t.pages).toHaveLength(1);
+    const out = t.last();
+    expect(out).toContain('id="ny-send"');
+    const card = out.indexOf('id="ny-err"');
+    expect(card).toBeGreaterThan(-1);
+    expect(card).toBeLessThan(out.indexOf('id="ny-send"')); // directly above Send, not at the top of a long form
+    expect(out.indexOf('id="ny-send"') - card).toBeLessThan(400);
+    expect(out).toContain('Check the parent mobile');
+    expect(t.scrolled).toEqual([{ block: 'center' }]);
   });
-  it("the result page shows the error card, and sign-out clears the form state", () => {
-    const r = extractFn(html, "renderNewYouth");
-    const resultBranch = r.slice(r.indexOf("if (NY.result)"), r.indexOf("const k = NY.keep"));
-    expect(resultBranch.indexOf("NY.error ?")).toBeGreaterThan(-1);
-    expect(resultBranch.indexOf("NY.error ?")).toBeLessThan(resultBranch.indexOf("border-left:4px solid ${colour}"));
-    expect(extractFn(html, "doLogout")).toContain("nyReset()");
+  it('an UNKNOWN full send shows a warn page with the student name and a deliberate Back button, never a ready Send', async () => {
+    const t = harness(async () => { throw new Error("Can't reach the server"); });
+    await t.h.nySend({ preventDefault() {} });
+    expect(t.h.NY.result).toBeNull();
+    expect(t.h.NY.unknown).toBe(true);
+    expect(t.h.NY.last).toEqual(t.body);
+    expect(t.pages).toHaveLength(1);
+    const out = t.last();
+    expect(out).toMatch(/Check the forms list in Elvanto before sending again/);
+    expect(out).toContain('A T');
+    expect(out).toContain('nyBack()');
+    expect(out).toContain('Back to the form');
+    expect(out).not.toContain('id="ny-send"');
+    expect(out).not.toContain('Send to Elvanto');
+    expect(out).not.toMatch(/try again/i);
+  });
+  it('Back to the form restores the inputs and clears the unknown flag', async () => {
+    const t = harness(async () => { throw new Error("Can't reach the server"); });
+    await t.h.nySend({ preventDefault() {} });
+    t.h.nyBack();
+    expect(t.h.NY.unknown).toBe(false);
+    expect(t.h.NY.error).toBeNull();
+    expect(t.h.NY.keep).toEqual(t.body);
+    expect(t.last()).toContain('id="ny-send"');
+  });
+  it('the result page shows the error card, and sign-out clears the form state', () => {
+    const r = extractFn(html, 'renderNewYouth');
+    const resultBranch = r.slice(r.indexOf('if (NY.result)'), r.indexOf('const k = NY.keep'));
+    expect(resultBranch.indexOf('NY.error ?')).toBeGreaterThan(-1);
+    expect(resultBranch.indexOf('NY.error ?')).toBeLessThan(resultBranch.indexOf('border-left:4px solid ${colour}'));
+    expect(extractFn(html, 'doLogout')).toContain('nyReset()');
+  });
+});
+
+describe('leaving the screen mid-send (I2)', () => {
+  it('the reply for a send the host left is toasted, and does not wipe or repaint the next entry', async () => {
+    const d = deferred();
+    const t = harness(() => d.p);
+    const sending = t.h.nySend({ preventDefault() {} });
+    const mine = t.h.NY;
+    t.h.NY = fresh({ keep: { firstName: 'Next' } }); // the host went Home, tapped the tile, started the next student
+    d.res({ student: 'sent', parent: 'sent', dryRun: false });
+    await sending;
+    expect(t.pages).toHaveLength(0);
+    expect(t.h.NY.keep).toEqual({ firstName: 'Next' });
+    expect(t.h.NY.result).toBeNull();
+    expect(mine.result).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+    expect(t.toasts).toHaveLength(1);
+    expect(t.toasts[0]![0]).toMatch(/Student form is in Elvanto\. Parent form is in Elvanto\./);
+    expect(t.toasts[0]![1]).toBeGreaterThanOrEqual(8000);
+  });
+  it('a reply that lands while the host is on another page does not paint over it', async () => {
+    const d = deferred();
+    const t = harness(() => d.p);
+    const sending = t.h.nySend({ preventDefault() {} });
+    t.S.page = 'home';
+    d.res({ student: 'sent', parent: 'unconfirmed', dryRun: false });
+    await sending;
+    expect(t.pages).toHaveLength(0);
+    expect(t.toasts[0]![0]).toMatch(/Check the forms list in Elvanto/);
+  });
+  it('an unknown-outcome failure after leaving still tells the host to check Elvanto, in a long toast', async () => {
+    const d = deferred();
+    const t = harness(() => d.p);
+    const sending = t.h.nySend({ preventDefault() {} });
+    t.S.page = 'home';
+    d.rej(new Error("Can't reach the server"));
+    await sending;
+    expect(t.pages).toHaveLength(0);
+    expect(t.toasts[0]![0]).toMatch(/Check the forms list in Elvanto before sending again/);
+    expect(t.toasts[0]![1]).toBeGreaterThanOrEqual(8000);
+  });
+  it('coming back to the screen mid-send shows a Sending page, not a blank form, and the reply then lands', async () => {
+    const d = deferred();
+    const t = harness(() => d.p);
+    const sending = t.h.nySend({ preventDefault() {} });
+    t.S.page = 'home';
+    t.h.nyOpen(); // the Home tile
+    expect(t.S.page).toBe('new-youth');
+    expect(t.h.NY.sending).toBe(true); // not reset: still the same in-flight send
+    expect(t.last()).toMatch(/Sending/);
+    expect(t.last()).not.toContain('id="ny-send"');
+    d.res({ student: 'sent', parent: 'sent', dryRun: false });
+    await sending;
+    expect(t.last()).toContain('Student form is in Elvanto.');
+  });
+  it('the tile resets only when nothing is in flight', () => {
+    const t = harness(async () => ({}));
+    t.h.NY = fresh({ keep: { firstName: 'Old' }, sibling: true });
+    t.h.nyOpen();
+    expect(t.h.NY.keep).toBeNull();
+    expect(t.S.page).toBe('new-youth');
+    expect(extractFn(html, '_nyHomeTile')).toContain('nyOpen()');
+    expect(extractFn(html, '_nyHomeTile')).not.toContain('nyReset');
+  });
+  it('the button reads Sending... while waiting, and a second tap is ignored', async () => {
+    const d = deferred();
+    const post = vi.fn(() => d.p);
+    const t = harness(post);
+    const sending = t.h.nySend({ preventDefault() {} });
+    expect(t.button.textContent).toBe('Sending...');
+    expect(t.button.disabled).toBe(true);
+    await t.h.nySend({ preventDefault() {} });
+    expect(post).toHaveBeenCalledTimes(1);
+    t.S.page = 'home'; // left; the button node is gone
+    t.button.isConnected = false;
+    d.res({ student: 'sent', parent: 'sent', dryRun: false });
+    await sending;
+    expect(t.button.textContent).toBe('Sending...'); // a detached node is never touched
+  });
+  it('the SPA comment states the real worst case', () => {
+    expect(extractFn(html, 'nySend')).not.toMatch(/35 s/);
+  });
+});
+
+describe('result page buttons (M3)', () => {
+  const page = (result: any, sibling = false) => {
+    const t = harness(async () => ({}));
+    t.h.NY = fresh({ sibling, result, last: { ...t.body } });
+    t.h.renderNewYouth();
+    return t.last();
+  };
+  it('sibling is offered after sent or unconfirmed parent forms', () => {
+    expect(page({ student: 'sent', parent: 'sent', dryRun: false })).toContain('nySibling()');
+    expect(page({ student: 'sent', parent: 'unconfirmed', dryRun: false })).toContain('nySibling()');
+    expect(page({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false })).toContain('nySibling()');
+  });
+  it('sibling is offered after a student-only send (a brother or sister) and in test mode', () => {
+    expect(page({ student: 'sent', parent: 'skipped', dryRun: false }, true)).toContain('nySibling()');
+    expect(page({ student: 'skipped', parent: 'skipped', dryRun: true })).toContain('nySibling()');
+  });
+  it('sibling is NOT offered when the parent form failed, which competes with the parent retry', () => {
+    const out = page({ student: 'sent', parent: 'failed', dryRun: false });
+    expect(out).toContain('Send the parent form again');
+    expect(out).not.toContain('nySibling()');
+  });
+  it('sibling is NOT offered when the student form failed', () => {
+    const out = page({ student: 'failed', parent: 'skipped', dryRun: false });
+    expect(out).not.toContain('nySibling()');
+    expect(out).toContain('Back to the form');
+  });
+  it('the sibling card is true after an unconfirmed parent form too', () => {
+    const t = harness(async () => ({}));
+    t.h.NY = fresh({ sibling: true });
+    t.h.renderNewYouth();
+    expect(t.last()).toContain('Only the student form will be sent: the parent form was sent with the last student.');
+    expect(t.last()).not.toContain('already in');
   });
 });

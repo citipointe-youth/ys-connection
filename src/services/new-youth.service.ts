@@ -64,26 +64,28 @@ const Schema = z.object({
   parentGender: z.enum(['m', 'f']).optional(),
 });
 
-// The route is in UNTIMED_ROUTES (Task 3), so these bound it: GETs in parallel + two POSTs = 5 + 10 + 10 s,
-// plus the settings read, well inside Vercel's 60 s. Raise POST_TIMEOUT_MS if Task 0's SLOWEST_POST_MS is over 5 s
+// The route is in UNTIMED_ROUTES (Task 3), so these bound it: GETs in parallel (8 s) + two 10 s POSTs = 28 s,
+// plus the settings read, inside the SPA's 45 s wait and Vercel's 60 s. Raise POST_TIMEOUT_MS if Task 0's SLOWEST_POST_MS is over 5 s
 // (2x the slowest, at most 20 s).
-const GET_TIMEOUT_MS = 5_000;
+const GET_TIMEOUT_MS = 8_000;
 const POST_TIMEOUT_MS = 10_000;
 const DEDUPE_MS = 2 * 60 * 1000;
 const UA = 'Mozilla/5.0 (compatible; YS-Connection)';
 
 export function makeNewYouthService(
   settingsRepo: ISettingsRepository,
-  opts: { fetchFn?: typeof fetch; dryRun?: boolean } = {},
+  // Live POSTs are an explicit opt-in: `live` omitted or false is a dry run (GETs and the shape check only).
+  opts: { fetchFn?: typeof fetch; live?: boolean } = {},
 ): NewYouthService {
   const fetchFn = opts.fetchFn ?? fetch;
+  const live = opts.live === true;
   // ponytail: per-instance memory on serverless; a double tap lands on the same warm instance. Use a DB row if that stops holding.
   const limiter = new RateLimiter(60, 60 * 60 * 1000); // logins are shared (grade9g), so a busy night needs headroom
   const recent = new Map<string, { at: number; result: NewYouthResult }>();
 
   async function getForm(id: string): Promise<string> {
     try {
-      const r = await fetchFn(EF.formUrl(id), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(GET_TIMEOUT_MS) });
+      const r = await fetchFn(EF.formUrl(id), { headers: { 'User-Agent': UA }, redirect: 'manual', signal: AbortSignal.timeout(GET_TIMEOUT_MS) });
       if (r.status !== 200) throw new Error(`status ${r.status}`);
       return await r.text();
     } catch {
@@ -138,7 +140,7 @@ export function makeNewYouthService(
 
       // Remember the send BEFORE the form GETs (live mode only): a second tap while this one is still
       // fetching or posting gets "unconfirmed" back instead of posting the same student again.
-      if (!opts.dryRun) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false } });
+      if (live) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false } });
 
       let sBody: URLSearchParams, pBody: URLSearchParams;
       try {
@@ -154,7 +156,7 @@ export function makeNewYouthService(
         throw e;
       }
 
-      if (opts.dryRun) return { student: 'skipped', parent: 'skipped', dryRun: true };
+      if (!live) return { student: 'skipped', parent: 'skipped', dryRun: true };
 
       const student: EF.Outcome = data.send.includes('student') ? await post('student', sBody) : 'skipped';
       const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post('parent', pBody);
