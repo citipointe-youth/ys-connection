@@ -397,8 +397,19 @@ describe('the More menu (in the Prayers slot)', () => {
   it('the sheet marks the page you are on', () => {
     let shown = '';
     navFns({ ...modeOf('off', 'grade', true), page: 'bus' }, (h) => { shown = h; }).openMore();
-    expect(shown).toMatch(/more-row on"[^>]*go\('bus'\)/);
-    expect(shown).not.toMatch(/more-row on"[^>]*go\('prayers'\)/);
+    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i bus>/);
+    expect(shown).toMatch(/class="more-row" onclick="closeModal\(\);go\('prayers'\)"><i pray>/);
+  });
+  it('the row for the page you are on only closes the sheet: it never re-runs nyOpen over a form or result', () => {
+    let shown = '';
+    navFns({ ...modeOf('shadow', 'admin', true), page: 'new-youth' }, (h) => { shown = h; }).openMore();
+    expect(shown).not.toContain('nyOpen()');
+    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i plus><span>New person/);
+    expect(shown).toContain(`closeModal();go('prayers')`);
+    expect(shown).toContain(`closeModal();go('bus')`);
+  });
+  it('the More nav item says it opens a popup', () => {
+    expect(extractFn(html, '_initShell').match(/it\.action \? ' aria-haspopup="dialog"' : ''/g)).toHaveLength(2);
   });
   it('Prayers stays a root page behind More (no back arrow); Bus and New person stay sub-pages', () => {
     const n = navFns(modeOf('shadow', 'admin', true));

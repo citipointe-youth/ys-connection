@@ -2412,6 +2412,11 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 - `classifyPost` treats 201/202/204/408/429 as `failed`. Revisit with the Task 0 capture.
 - The Bus "New Person" regex test is weak.
 - `account.service.test.ts` "applying Complex deactivates the pre-existing grade7g…" sometimes times out (~5 s) on the laptop. This predates the feature and was ignored.
+- From the 2026-10-12 independent Opus review of `052bcc8..f105c46` (verdict: ready to promote):
+  - M-1: several SPA tests check that a string is present rather than running the code.
+  - M-3: toggling Bus in Youth Setup now rebuilds the whole shell (a brief blank and extra prefetch).
+  - M-5: focus doesn't move into the More sheet.
+  - M-2 (More with Prayers alone stays a plain Prayers tab) is the owner's chosen behaviour.
 
 A host types a new student and one parent into the **New person** screen (its user-facing name since 2026-10-11; every internal name stays: route `/intake/new-youth`, page id `new-youth`, module key `newYouthForms`, `_ny*`/`ny*`). The app sends Citipointe Brisbane's two public Elvanto connect forms (student, then parent). No Elvanto account is needed. Built on branch `feat/new-youth-forms`, merged to `master` (deleted after the merge); no migration.
 - **Route:** `POST /intake/new-youth` (`new-youth.controller.ts` → `new-youth.service.ts`). RBAC `intake:write`, granted to all five roles. Module `ministryConfig.modules.newYouthForms` has **three states**, **off by default** (Youth Setup → Modules, an Off / Shadow mode (admin only) / On select):
@@ -2423,7 +2428,7 @@ A host types a new student and one parent into the **New person** screen (its us
   - *The More menu (2026-10-12; replaced the shadow-mode "Prayers chooser" and the New person Home tile):*
     - `moreItems()` lists the modules this login can use right now: Prayers (always), Bus Ministry (`_busOn()`), and New person (`_nyOn()`). Later, add service check-in and the lifegroup report here.
     - With 2+ entries, `navItems()` replaces the `prayers` item **in place** with `{ id:'more', ic:'grid', label:'More', action:'openMore()' }` for every role, in the bottom and desktop navs. With Prayers alone the slot stays a plain Prayers tab.
-    - `openMore()` opens the standard `modal()` bottom sheet (`.more-list` / `.more-row`; the current page is marked `.on`). New person's entry is `nyOpen()`, which never wipes an in-flight send.
+    - `openMore()` opens the standard `modal()` bottom sheet (`.more-list` / `.more-row`). The current page's row is marked `.on` and **only closes the sheet**: re-running `nyOpen()` there would wipe the form or an unknown-outcome result (independent review I-1, fixed 2026-10-12). The More nav links carry `aria-haspopup="dialog"`. New person's entry is `nyOpen()`, which never wipes an in-flight send.
     - More lights up on any page it lists (`_updateNavActive`). `prayers` stays a root page with no back arrow (`_isRootPage`); `bus` and `new-youth` stay sub-pages as before.
     - The leader Home quick-action grid uses `_navItemsBase()`, so it still shows a plain Prayers button.
     - New person has **no Home tile** (owner, 2026-10-12). Bus keeps its Home tile.
@@ -2452,7 +2457,7 @@ A host types a new student and one parent into the **New person** screen (its us
 - **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.
 - **SW cache** `ysc-v87` → `ysc-v88` → `ysc-v89` (More menu).
 - **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only when Task 0 is done** (`capture.md` written, `SUCCESS` pasted into `elvanto-forms.ts`, captured-reply test green), **Citipointe has approved (given) and the owner has promoted the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
-- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1045 tests pass in total (74 files).
+- **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1047 tests pass in total (74 files).
 
 ## Bus Ministry (2026-10-05) — optional module, admin-only on prod
 

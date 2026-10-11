@@ -1322,8 +1322,8 @@ function _initShell() {
   if (!u) return;
   const items = navItems();
   const bn = bottomNavItems();
-  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
-  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       ${_previewStash ? _previewBannerHtml(u) : ''}
@@ -1793,7 +1793,12 @@ function navItems() {
   return items.map(it => it.id === 'prayers' ? { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' } : it);
 }
 function openMore() {
-  const rows = moreItems().map(m => `<button type="button" class="more-row${S.page === m.id ? ' on' : ''}" onclick="closeModal();${m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`).join('');
+  // The row for the page you are on only closes the sheet: re-running its entry would wipe that page
+  // (nyOpen resets the New person form, which could hide a "we don't know if it went in" result).
+  const rows = moreItems().map(m => {
+    const here = S.page === m.id;
+    return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
+  }).join('');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -6297,7 +6302,7 @@ async function saveMinistrySetup() {
     const navBefore = _navSig();
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
-    if (_shellReady && _navSig() !== navBefore) _initShell(); // the New person state changes the Prayers nav item
+    if (_shellReady && _navSig() !== navBefore) _initShell(); // Bus / New person can turn the Prayers slot into More (or back)
     toast('Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
