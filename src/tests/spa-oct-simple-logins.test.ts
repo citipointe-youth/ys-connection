@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { loadFns, loadIndexHtml } from './helpers/extract-fn';
+import { describe, it, expect, vi } from 'vitest';
+import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const QL = `const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
 const SIMPLE_QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };`;
@@ -103,5 +103,129 @@ let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
     expect(f.__d()).toEqual([null]);
     expect(f.__t().join(' ')).toMatch(/Renamed 4 quad logins/);
     expect(f.__s().settings.renamedQuads).toBeUndefined();
+  });
+});
+
+describe('S1.3 grade filter core', () => {
+  const VG = ['_vgActive', '_vgLeader', '_vgGrades', '_vgSet', '_vgToggle', '_vgAll', '_vgMine', '_vgSave', '_vgReset', '_vgBar'];
+  const prelude = (opts: { me?: string | null; role?: string; leaders?: any[]; preview?: boolean; simple?: boolean }) => `
+    ${QL}
+    const S = { user: { role: ${JSON.stringify(opts.role ?? 'quad')}, quad: 'b79' }, settings: { ministryConfig: { logins: { simple: ${opts.simple ?? true} }, structure: {} } } };
+    function _simpleLoginsOn() { return !!S.settings.ministryConfig.logins.simple; }
+    function getMyLeaderId() { return ${JSON.stringify(opts.me ?? null)}; }
+    function quadGrades(q) { return (q === 'g79' || q === 'b79') ? [7, 8, 9] : [10, 11, 12]; }
+    function _gradeWord() { return 'Year'; }
+    function esc(s) { return String(s); }
+    const __leaders = ${JSON.stringify(opts.leaders ?? [])};
+    const Cache = { getStale(k) { return k === '/leaders' ? __leaders : null; } };
+    let _previewStash = ${opts.preview ? '{ token: 1 }' : 'null'};
+    const __patches = []; const API = { patch: async (p, b) => { __patches.push([p, b]); return {}; } };
+    let __renders = 0; function render() { __renders++; }
+    let _vgLocal = {}, _vgTimer = null;
+    function toast() {}
+    function __p() { return __patches; }
+  `;
+  const load = (o: Parameters<typeof prelude>[0]) => loadFns(VG, prelude(o), [...VG, '__p']);
+
+  it('no I am pick: null (whole bracket) and the hint', () => {
+    const f = load({ me: null });
+    expect(f._vgGrades()).toBeNull();
+    expect(f._vgBar()).toContain('Pick who you are on Home to filter by your grades');
+  });
+  it('non-quad login: null and no bar', () => {
+    const f = load({ me: 'L1', role: 'director', leaders: [{ id: 'L1', grades: [8] }] });
+    expect(f._vgGrades()).toBeNull();
+    expect(f._vgBar()).toBe('');
+  });
+  it('Simple off: null', () => {
+    const f = load({ me: 'L1', simple: false, leaders: [{ id: 'L1', grades: [8] }] });
+    expect(f._vgGrades()).toBeNull();
+  });
+  it('no saved filter: leader.grades within the bracket', () => {
+    const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8, 9, 10] }] });
+    expect(f._vgGrades()).toEqual([8, 9]);
+  });
+  it('saved viewGrades win, clamped to the bracket', () => {
+    const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8], viewGrades: [7, 12] }] });
+    expect(f._vgGrades()).toEqual([7]);
+  });
+  it('out-of-bracket only falls back to the whole bracket', () => {
+    const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [11] }] });
+    expect(f._vgGrades()).toEqual([7, 8, 9]);
+  });
+  it('All saves the full bracket, My grades saves null (debounced 600 ms)', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8] }] });
+      f._vgAll();
+      expect(f._vgGrades()).toEqual([7, 8, 9]);
+      await vi.advanceTimersByTimeAsync(600);
+      expect(f.__p()).toEqual([['/leaders/L1/view-grades', { grades: [7, 8, 9] }]]);
+      f._vgMine();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(f.__p()[1]).toEqual(['/leaders/L1/view-grades', { grades: null }]);
+      expect(f._vgGrades()).toEqual([8]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('unticking the last chip does nothing', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8] }] });
+      f._vgToggle(8);
+      expect(f._vgGrades()).toEqual([8]);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(f.__p()).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('three taps inside 600 ms save once', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8] }] });
+      f._vgToggle(7); f._vgToggle(9); f._vgToggle(8);
+      await vi.advanceTimersByTimeAsync(599);
+      expect(f.__p()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(f.__p()).toEqual([['/leaders/L1/view-grades', { grades: [7, 9] }]]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('a save updates the /leaders cache entry in place', async () => {
+    vi.useFakeTimers();
+    try {
+      const leaders = [{ id: 'L1', grades: [8] }];
+      const f = load({ me: 'L1', leaders });
+      f._vgToggle(9);
+      await vi.advanceTimersByTimeAsync(600);
+      f._vgReset();
+      expect(f._vgGrades()).toEqual([8, 9]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('in account preview taps change the in-memory filter but never call the API', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = load({ me: 'L1', preview: true, leaders: [{ id: 'L1', grades: [8] }] });
+      f._vgToggle(9); f._vgAll(); f._vgMine(); f._vgToggle(7);
+      expect(f._vgGrades()).toEqual([7, 8]);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(f.__p()).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('enterPreview and exitPreview both clear yap_leader_id', async () => {
+    const src = loadIndexHtml();
+
+    for (const n of ['enterPreview', 'exitPreview']) expect(extractFn(src, n)).toMatch(/setMyLeaderId\(null\)/);
+    const store: Record<string, string> = { yap_leader_id: 'L1' };
+    (globalThis as any).__store = store;
+    const f = loadFns(['setMyLeaderId', 'exitPreview'], `
+      const localStorage = { setItem(k, v) { store[k] = v; }, removeItem(k) { delete store[k]; } };
+      const store = globalThis.__store; let _previewStash = { token: 't', user: {} };
+      const API = { setToken() {} }; const S = {}; const Cache = { clear() {} }; let _shellReady = true;
+      function go() {} function _vgReset() {}`, ['exitPreview']);
+    f.exitPreview();
+    expect(store.yap_leader_id).toBeUndefined();
+  });
+  it('doLogout leaves the view grades alone (they live on the server)', () => {
+
+    const body = extractFn(loadIndexHtml(), 'doLogout');
+    expect(body).not.toMatch(/view-grades|viewGrades|_vg/);
   });
 });

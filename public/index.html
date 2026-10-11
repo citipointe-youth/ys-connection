@@ -1407,6 +1407,82 @@ function getMyLeaderId() {
 }
 function setMyLeaderId(id) { try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {} }
 
+// ── GRADE FILTER (Junior/Senior logins) ──
+// A VIEW PREFERENCE, not security: the server still limits every read to the quad's
+// bracket and gender. Saved on the server against the leader picked in "I am…"
+// (PATCH /leaders/:id/view-grades), so it follows that leader and survives logout.
+// _vgLocal holds taps not yet saved (and every tap during an account preview, which
+// is never saved). Key present with null = "back to my grades".
+let _vgLocal = {}, _vgTimer = null;
+function _vgActive() { return !!(S.user && S.user.role === 'quad' && _simpleLoginsOn()); }
+function _vgLeader(id) {
+  const ls = Cache.getStale('/leaders') || [];
+  return ls.find(l => l.id === id) || null;
+}
+// The effective grades, or null for "no filter" (not a quad login under Simple logins,
+// or no "I am…" pick yet).
+function _vgGrades() {
+  if (!_vgActive()) return null;
+  const id = getMyLeaderId();
+  if (!id) return null;
+  const bracket = quadGrades(S.user.quad);
+  const l = _vgLeader(id);
+  const saved = Object.prototype.hasOwnProperty.call(_vgLocal, id) ? _vgLocal[id] : (l ? l.viewGrades : null);
+  const base = saved != null ? saved : ((l && l.grades) || []);
+  const pick = bracket.filter(g => base.includes(g));
+  return pick.length ? pick : bracket.slice();
+}
+function _vgSet(grades) {
+  const id = getMyLeaderId();
+  if (!id) return;
+  _vgLocal[id] = grades;
+  render();
+  if (_previewStash) return; // looking at a login never changes a real leader's filter
+  clearTimeout(_vgTimer);
+  _vgTimer = setTimeout(() => _vgSave(id), 600);
+}
+async function _vgSave(id) {
+  if (!Object.prototype.hasOwnProperty.call(_vgLocal, id)) return;
+  const grades = _vgLocal[id];
+  try {
+    await API.patch(`/leaders/${id}/view-grades`, { grades });
+    // Update the cached leader in place (no refetch), then drop the local override
+    // unless another tap landed while the save was in flight.
+    const l = _vgLeader(id);
+    if (l) l.viewGrades = grades;
+    if (_vgLocal[id] === grades) delete _vgLocal[id];
+  } catch (e) { toast(e.message); }
+}
+function _vgReset() { clearTimeout(_vgTimer); _vgTimer = null; _vgLocal = {}; }
+function _vgToggle(g) {
+  const cur = _vgGrades();
+  if (!cur) return;
+  if (cur.includes(g)) {
+    if (cur.length === 1) return; // an empty pick is never saved
+    _vgSet(cur.filter(x => x !== g));
+  } else {
+    _vgSet(cur.concat([g]).sort((a, b) => a - b));
+  }
+}
+function _vgAll() { if (_vgActive()) _vgSet(quadGrades(S.user.quad)); }
+function _vgMine() { _vgSet(null); }
+// The shared chip row: "Grades: [7] [8] [9] · All · My grades". Quad logins are one
+// gender, so there are no gender chips.
+function _vgBar() {
+  if (!_vgActive()) return '';
+  const bracket = quadGrades(S.user.quad);
+  const cur = _vgGrades();
+  const word = esc(_gradeWord()) + 's:';
+  if (!cur) {
+    const chips = bracket.map(g => `<button class="fc on" disabled>${g}</button>`).join('');
+    return `<div class="filter-row vg-bar"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}</div>
+      <div class="help-text" style="margin:-4px 0 8px">Pick who you are on Home to filter by your grades</div>`;
+  }
+  const all = bracket.every(g => cur.includes(g));
+  const chips = bracket.map(g => `<button class="fc ${cur.includes(g) ? 'on' : ''}" title="${esc(_gradeWord())} ${g}" onclick="_vgToggle(${g})">${g}</button>`).join('');
+  return `<div class="filter-row vg-bar"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}<span style="color:var(--ink-faint)">·</span><button class="fc ${all ? 'on' : ''}" onclick="_vgAll()">All</button><button class="fc" onclick="_vgMine()">My grades</button></div>`;
+}
+
 // ── UNDO SYSTEM ──
 const _undo = { pending: null, timer: null };
 function showUndoToast(msg, undoFn) {
@@ -7190,6 +7266,7 @@ async function enterPreview(id) {
     const res = await API.post(`/accounts/users/${id}/preview`, {});
     _previewStash = { token: API.token, user: S.user };
     try { localStorage.setItem('yap_preview_stash', JSON.stringify(_previewStash)); } catch (e) {}
+    setMyLeaderId(null); _vgReset(); // the admin's "I am…" pick and grade taps never carry into a preview
     API.setToken(res.token);
     S.user = res.user;
     Cache.clear();
@@ -7204,6 +7281,7 @@ function exitPreview() {
   S.user = _previewStash.user;
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
+  setMyLeaderId(null); _vgReset(); // preview-only taps are dropped, never saved
   Cache.clear();
   _shellReady = false;
   go('home');
