@@ -192,8 +192,8 @@ export function shapeProblems(html: string, body: URLSearchParams): string[] {
 
 export type FormKind = 'student' | 'parent';
 
-// Filled in from the Task 0 capture, one rule per form. Until then an accepted-looking reply is
-// 'unconfirmed', which the screen shows as "check Elvanto": safe, never a silent resend.
+// Optional per-form success rules. With none set, an accepted-looking reply (a redirect, or a 200 that
+// isn't the form again) is 'sent': owner 2026-10-12, after a live test landed both forms in Elvanto.
 export const SUCCESS: Record<FormKind, { redirect: RegExp | null; marker: string | null }> = {
   student: { redirect: null, marker: null },
   parent: { redirect: null, marker: null },
@@ -202,11 +202,11 @@ export const SUCCESS: Record<FormKind, { redirect: RegExp | null; marker: string
 export function classifyPost(form: FormKind, r: { status: number; location: string | null; body: string }): Outcome {
   const ok = SUCCESS[form];
   if (r.status >= 300 && r.status < 400) {
-    return ok.redirect && ok.redirect.test(r.location ?? '') ? 'sent' : 'unconfirmed';
+    return ok.redirect && !ok.redirect.test(r.location ?? '') ? 'unconfirmed' : 'sent';
   }
   if (r.status >= 500) return 'unconfirmed'; // Elvanto may have saved it before erroring
   if (r.status !== 200) return 'failed';
   if (ok.marker && r.body.includes(ok.marker)) return 'sent';
   if (r.body.includes('name="save"')) return 'failed'; // the form came back: Elvanto refused it
-  return 'unconfirmed';
+  return ok.marker ? 'unconfirmed' : 'sent';
 }

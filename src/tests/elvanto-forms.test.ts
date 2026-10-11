@@ -112,10 +112,10 @@ describe('classifyPost', () => {
     EF.SUCCESS.student.redirect = /\?success/;
     expect(EF.classifyPost('student', { status: 302, location: '/form/x/?success', body: '' })).toBe('sent');
     expect(EF.classifyPost('student', { status: 302, location: '/login', body: '' })).toBe('unconfirmed');
-    expect(EF.classifyPost('parent', { status: 302, location: '/form/x/?success', body: '' })).toBe('unconfirmed');
+    expect(EF.classifyPost('parent', { status: 302, location: '/form/x/?success', body: '' })).toBe('sent');
   });
-  it('anything else is unconfirmed (never guessed as sent)', () => {
-    expect(EF.classifyPost('student', { status: 200, location: null, body: '<p>hello</p>' })).toBe('unconfirmed');
-    expect(EF.classifyPost('student', { status: 302, location: '/x', body: '' })).toBe('unconfirmed');
+  it('with no success rule, a redirect or a 200 that is not the form is sent', () => {
+    expect(EF.classifyPost('student', { status: 200, location: null, body: '<p>hello</p>' })).toBe('sent');
+    expect(EF.classifyPost('student', { status: 302, location: '/x', body: '' })).toBe('sent');
   });
 });
