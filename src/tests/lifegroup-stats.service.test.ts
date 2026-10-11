@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeLifegroupStatsService, invalidateLgStatsCache } from '../services/lifegroup-stats.service';
-import { QUAD_LABELS, quadLabelFor } from '../core/types/enums';
+import { makeLifegroupStatsService } from '../services/lifegroup-stats.service';
 import { makeImportService } from '../services/import.service';
 import {
   InMemoryStudentRepository,
@@ -222,20 +221,5 @@ describe('Lifegroup Stats Service', () => {
     expect(grade9.current.uniqueAttenders).toBe(1);
     const b79 = data.byQuad.find((q) => q.quad === 'b79')!;
     expect(b79.grades.find((g) => g.grade === 9)!.lifegroups.map((l) => l.name)).toEqual(['Grade 9 Boys Lifegroup']);
-  });
-});
-
-describe('Lifegroup Stats Service — quad labels and Simple logins', () => {
-  it('byQuad labels follow logins.simple', async () => {
-    invalidateLgStatsCache();
-    const { r, statsSvc } = await setup();
-    const before = await statsSvc.get(ADMIN);
-    expect(before.byQuad.length).toBeGreaterThan(0);
-    for (const q of before.byQuad) expect(q.label).toBe(QUAD_LABELS[q.quad]);
-    const cur = await r.settings.getSettings();
-    await r.settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, logins: { ...cur.ministryConfig.logins, simple: true } } });
-    invalidateLgStatsCache();
-    const after = await statsSvc.get(ADMIN);
-    for (const q of after.byQuad) expect(q.label).toBe(quadLabelFor(q.quad, true));
   });
 });

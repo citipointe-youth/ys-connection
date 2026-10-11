@@ -9,7 +9,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
-import { QUADS, quadLabelFor } from '../core/types/enums';
+import { QUADS, QUAD_LABELS } from '../core/types/enums';
 import { gradeRange } from '../core/ministry-config';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
@@ -307,7 +307,7 @@ export function makeLifegroupStatsService(
           .filter((g) => !isEmptyGrade(g));
         if (current.uniqueAttenders === 0 && previous.uniqueAttenders === 0 &&
             current.members === 0 && previous.members === 0 && quadGrades.length === 0) continue;
-        byQuad.push({ quad, label: quadLabelFor(quad, settings.ministryConfig.logins.simple), current, previous, grades: quadGrades });
+        byQuad.push({ quad, label: QUAD_LABELS[quad], current, previous, grades: quadGrades });
       }
 
       // ── Overall (scoped to the login): all visible groups, all visible students ──

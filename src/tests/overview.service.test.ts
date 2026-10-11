@@ -5,9 +5,7 @@ import {
   InMemoryStudentRepository,
   InMemoryLeaderRepository,
   InMemoryConnectionRepository,
-  InMemorySettingsRepository,
 } from '../repositories/in-memory';
-import { QUADS, QUAD_LABELS, quadLabelFor } from '../core/types/enums';
 import type { Actor } from '../core/entities/user';
 
 function actor(role: string): Actor {
@@ -64,33 +62,5 @@ describe('Overview Service', () => {
     invalidateOverviewCache();
     const third = await overviewSvc.getStats(ADMIN);
     expect(third.ministryTotal).toBe(2); // fresh after invalidation
-  });
-});
-
-describe('Overview Service — quad labels and Simple logins', () => {
-  async function labels(simple: boolean | null) {
-    invalidateOverviewCache();
-    const { studentRepo, leaderRepo, connRepo } = await makeServices();
-    let settings: InMemorySettingsRepository | undefined;
-    if (simple !== null) {
-      settings = new InMemorySettingsRepository();
-      await settings.init();
-      const cur = await settings.getSettings();
-      await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, logins: { ...cur.ministryConfig.logins, simple } } });
-    }
-    invalidateOverviewCache();
-    const stats = await makeOverviewService(studentRepo, leaderRepo, connRepo, settings).getStats(ADMIN);
-    return Object.fromEntries(stats.byQuad.map((q) => [q.quad, q.label]));
-  }
-  it('Simple on: Junior/Senior names', async () => {
-    const l = await labels(true);
-    for (const q of QUADS) expect(l[q]).toBe(quadLabelFor(q, true));
-    expect(l.b1012).toBe('Senior Guys');
-  });
-  it('default config and no settings repo: the old labels', async () => {
-    for (const s of [false, null] as const) {
-      const l = await labels(s);
-      for (const q of QUADS) expect(l[q]).toBe(QUAD_LABELS[q]);
-    }
   });
 });
