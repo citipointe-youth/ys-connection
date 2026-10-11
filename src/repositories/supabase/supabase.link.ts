@@ -126,7 +126,8 @@ export class SupabaseLinkRepository implements ILinkRepository {
         on conflict (console_id) do update set label = excluded.label, last_seen_at = now(),
           contract_version = excluded.contract_version, console_version = excluded.console_version,
           in_window = excluded.in_window, poll_seconds = excluded.poll_seconds, capabilities = excluded.capabilities`;
-      // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2)
+      // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2).
+      // lease-lost skips this console's own rows: it reclaims them below and its sent-log decides (B1 / X6).
       await tx`
         update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
         where id in (
@@ -136,6 +137,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
         update link_outbox set status = 'unclear', reason = 'lease-lost', result_at = now(), updated_at = now()
         where id in (
           select id from link_outbox where status = 'claimed' and lease_until < now() - make_interval(secs => ${a.leaseLostMs / 1000})
+            and lease_owner <> ${c.consoleId}
           order by id for update skip locked)`;
       // purge (§4.3)
       await tx`

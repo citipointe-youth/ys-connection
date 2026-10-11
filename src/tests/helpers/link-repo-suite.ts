@@ -229,6 +229,20 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect((await repo.getAction(late.id))!.status).toBe('claimed');
         expect((await repo.getAction(young.id))!.status).toBe('claimed');
       });
+      it('B1 / X6: the sweep skips the claiming console\'s own rows; that console reclaims them, another marks them lost', async () => {
+        const a = await repo.insertAction(newRow());
+        const b = await repo.insertAction(newRow());
+        const A = claimArgs();
+        await repo.claim(A);
+        for (const id of [a.id, b.id]) await h.backdate('link_outbox', id, 'lease_until', ago(2 * 3_600_000));
+        const got = (await repo.claim({ ...A, max: 1 })).find((g) => g.row.id === a.id)!;
+        expect(got).toMatchObject({ reclaimed: true });
+        expect(got.row).toMatchObject({ status: 'claimed', leaseOwner: A.console.consoleId });
+        expect((await repo.getAction(b.id))!.status).toBe('claimed'); // not swept by its own console
+        await repo.claim(claimArgs({ max: 0 })); // console B
+        expect(await repo.getAction(b.id)).toMatchObject({ status: 'unclear', reason: 'lease-lost' });
+        expect((await repo.getAction(a.id))!.status).toBe('claimed'); // A's fresh lease is live
+      });
     });
 
     describe('purge', () => {
