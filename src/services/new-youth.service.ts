@@ -118,7 +118,7 @@ export function makeNewYouthService(
     async send(actor, input) {
       assertCan(actor, 'intake:write');
       const settings = await settingsRepo.getSettings();
-      if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New youth forms');
+      if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New person');
 
       const parsed = Schema.safeParse(input);
       if (!parsed.success) {

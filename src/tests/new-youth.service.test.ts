@@ -81,6 +81,16 @@ describe('NewYouthService.send', () => {
     expect(f.calls).toHaveLength(0);
   });
 
+  it.each([['off', LEADER], ['shadow', LEADER], ['shadow', GRADE]] as const)('the refusal (%s mode, actor %#) names the screen New person, never New youth', async (mode, who) => {
+    const f = fakeFetch();
+    const svc = makeNewYouthService(await settingsWith(mode), { fetchFn: f.fetchFn, live: true });
+    const err: any = await svc.send(who, INPUT).catch((e) => e);
+    expect(err.statusCode).toBe(404);
+    expect(err.code).toBe('MODULE_DISABLED');
+    expect(err.message).toContain('New person');
+    expect(err.message).not.toMatch(/New youth/i);
+  });
+
   it('happy path: student then parent, normalised once for both', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
