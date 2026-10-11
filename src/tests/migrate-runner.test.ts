@@ -95,3 +95,28 @@ describe('listMigrationFiles', () => {
     expect(listMigrationFiles(dir).map((f) => f.version)).toEqual(['0002', '0010']);
   });
 });
+
+describe('duplicate migration versions', () => {
+  it('listMigrationFiles throws MigrationAbort naming both files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mig-dup-'));
+    for (const n of ['0015_x.sql', '0016_a.sql', '0016_b.sql']) writeFileSync(join(dir, n), '--');
+    expect(() => listMigrationFiles(dir)).toThrow(MigrationAbort);
+    expect(() => listMigrationFiles(dir)).toThrow(
+      'Two database changes share version 0016: 0016_a.sql, 0016_b.sql. Renumber one.',
+    );
+  });
+
+  it('runMigrations aborts before any db call when two files share a version', async () => {
+    const calls: string[] = [];
+    const db = new Proxy({} as MigrationDb, {
+      get: (_t, prop) => async () => { calls.push(String(prop)); return []; },
+    });
+    const dup: MigrationFile[] = [
+      { version: '0016', name: '0016_a.sql', path: '/m/0016_a.sql' },
+      { version: '0016', name: '0016_b.sql', path: '/m/0016_b.sql' },
+    ];
+    await expect(runMigrations(db, dup, () => {})).rejects.toThrow(MigrationAbort);
+    await expect(runMigrations(db, dup, () => {})).rejects.toThrow('0016_a.sql, 0016_b.sql');
+    expect(calls).toEqual([]);
+  });
+});

@@ -29,14 +29,29 @@ export function shouldRun(env: Record<string, string | undefined>, argv: string[
   return env['VERCEL_ENV'] === 'production' && env['PERSISTENCE'] === 'supabase' ? 'run' : 'skip';
 }
 
+/** Two files with one version would make the second one silently skipped forever. Fail the build instead. */
+function assertUniqueVersions(files: MigrationFile[]): void {
+  const seen = new Map<string, string>();
+  for (const f of files) {
+    const first = seen.get(f.version);
+    if (first !== undefined) {
+      throw new MigrationAbort(`Two database changes share version ${f.version}: ${first}, ${f.name}. Renumber one.`);
+    }
+    seen.set(f.version, f.name);
+  }
+}
+
 export function listMigrationFiles(dir: string): MigrationFile[] {
-  return readdirSync(dir)
+  const files = readdirSync(dir)
     .filter((n) => FILE_RE.test(n))
     .sort()
     .map((name) => ({ version: FILE_RE.exec(name)![1]!, name, path: join(dir, name) }));
+  assertUniqueVersions(files);
+  return files;
 }
 
 export async function runMigrations(db: MigrationDb, files: MigrationFile[], log: (line: string) => void): Promise<RunSummary> {
+  assertUniqueVersions(files);
   await db.lock();
   try {
     await db.ensureTable();
