@@ -361,6 +361,13 @@ method first does `canUseLink` → 404 `MODULE_DISABLED` when false.
   (decision 13; no gender, phone or student id). `action` = newest row for that person and service, any login's
   (`{ id, type, status, reason }`); `mine` = `createdBy === actor.id`. `checkedIn`/`practice` from
   `effectiveCheckState`. All reads in one `Promise.all`.
+  **Also `leaders` (leader quick check-in, decision 20).** `people` is not enough: it holds Elvanto roster
+  leaders, not the app's Leader records, and nothing links the two (roster matching links students only). So the
+  read (for one service) adds `leaders: [{ leaderId, name, personId, checkedIn, practice, action, mine }]`: every
+  **active** app `Leader`, A–Z by `fullName`. `personId` comes from a read-time name match (no new column, no
+  migration): the folded, lower-cased `fullName` equals an active roster row's `first + ' ' + last` (prefer kind
+  `leader`; genders must agree when both are known). Exactly one hit → that `personId`; none or several → `null`
+  ("Not linked"). Linked leaders get `checkedIn`/`practice`/`action`/`mine` exactly as in `people`. Name only.
 - `enqueue(actor, item, device)` — the one code path for `POST /link/actions` and batch `action` items:
   1. Rate limit: `limiter` = `RateLimiter(300, 10 min)` keyed by `actor.id`, one hit per item. Over →
      `refused:RATE_LIMITED` (the phone keeps it queued and retries later).
@@ -519,6 +526,18 @@ object `LINK`, helpers `_lk*`.
   (collapsed `<details>`) with **Check out**; practice rows show the practice line. 8. A row whose newest action is
   mine (local or `mine: true`) shows **Undo**.
   Re-render keeps the scroll position (the camp `_rCheckin` lesson).
+- **Leader quick check-in** (decision 20; mockup frame 3), modelled on the camp app's daily check-in list. A
+  **"Check in leaders"** button on the door screen (under New person) opens a bottom sheet for the chosen service
+  (same service pick; no default → the Pick a service sheet first). It lists `leaders` from the check-in read, name
+  only, A–Z, each in one of three states:
+  - **Done**: `checkedIn` (incl. practice or a queued tap): a green tick and its status line; no box.
+  - **Not linked**: `personId` null: greyed, "Not linked"; no box.
+  - **Tickable**: a tick box, unticked by default.
+  **"Tick all"** at the top ticks every tickable row (it reads "Untick all" once all are ticked). A sticky
+  **Submit (N)** (disabled at 0) queues one ordinary `checkIn` per ticked leader (`{ serviceTimeId, serviceId,
+  personId }`, `leaderId` = the device's "I am" if set) through the phone queue and `/link/batch` (§9): instant,
+  deduped by (person, service, type) on the server, logged per action (§6). The sheet closes; those leaders show as
+  Done. Same switch, any login. No contract, fixture or Zod change.
 
 ### 11.2 F2: lifegroup report
 
@@ -647,6 +666,7 @@ door list, marked "Leader" = decision 13.)
 | I9 rate limit / cancel | 300 items per 10 min per login; cancel same login + same "I am" or admin, logged (§8.2) |
 | Decision 12 log | `link_log` in `0017`, write points, admin view, xlsx (§6) |
 | Decision 18 queue | Phone queue, `/link/batch`, per-item reply, same-action dedupe (§9, §8.2) |
+| Decision 20 leader quick check-in | `leaders` added to the check-in read (read-time name match, no migration); sheet with Tick all + sticky Submit (N) (§8.2, §11.1) |
 | Decision 13 leaders | "Leader" chip on the door list (§8.2, §11.1) |
 | M1 token compare | Raw strings, exact `Bearer`, never logged (§10.1) |
 | M2 missing version | Missing → 400, wrong → 409; all `/sync` errors `VALIDATION_ERROR` (§8.1) |

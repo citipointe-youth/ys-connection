@@ -86,7 +86,7 @@ E∥F2) share no file. Imports across lanes are fine; edits are not.
 Dependencies: A1–A3 and B1–B3 need T. **A4 needs B2** (`applyOutcome`). C needs A4 + B. D needs A4 + B. E needs C + D.
 F1 needs only this spec's shapes (its tests are extract-and-run). F2–F4 need F1.
 
-Waves: **0** = T1 · **1** = A1, A2, A3 ∥ B1, B2, B3, then A4 · **2** = C1, C2 ∥ D1–D6 ∥ F1.1–F1.3 · **3** = E1–E3 ∥ F2 ·
+Waves: **0** = T1 · **1** = A1, A2, A3 ∥ B1, B2, B3, then A4 · **2** = C1, C2 ∥ D1–D6 ∥ F1.1–F1.4 · **3** = E1–E3 ∥ F2 ·
 then F3, F4.1, F4.2 · **4** = V1, V2, R1, V3, V4, H1.
 
 ---
@@ -331,11 +331,19 @@ Tests first:
   `personId, name, grade, leader, checkedIn, practice, action, mine` (assert there is **no** `gender`, phone or
   `studentId` key); `action` = the newest row for that person and service by any login; `mine` =
   `createdBy === actor.id`; `checkedIn`/`practice` from `effectiveCheckState`.
+- `checkin(actor, st)` also returns `leaders` (decision 20, spec §8.2): every **active** app `Leader`, A–Z by
+  `fullName`; keys exactly `leaderId, name, personId, checkedIn, practice, action, mine`. `personId` = the one active
+  roster row whose folded `lower(first + ' ' + last)` equals the folded `fullName` (prefer kind `leader`; genders
+  must agree when both are set); no hit or two hits → `personId: null`, `checkedIn: false`, `action: null`. Cases:
+  one match; no match; two roster rows with the name → null; an inactive leader is left out; a linked leader
+  checked in by a `shadowed` row shows `practice: true`.
 
 Change: `makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance, limiter,
 now? })` (`now` defaults to `() => new Date()`; tests pass a fixed clock). Every method starts with
 `canUseLink(actor, mode, action)` → `ModuleDisabledError` when false (404 for both mode and RBAC misses on `link:use`;
 RBAC miss on `link:admin` under On → `ForbiddenError`). All reads in one `Promise.all`.
+The leader name match is a small private helper in `link.service.ts` (not `link-rules.ts`, which lane B owns): no
+new column, no migration, no contract change.
 
 ### Task D2 [Opus] — Enqueue and dedupe
 Verify: `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`
@@ -466,6 +474,20 @@ practice rows show the practice line; every name passes through `esc()` (a name 
 Change: mockup frames 1 and 2, spec §11.1 items 1–8. `LINK.people[serviceTimeId]` in memory only (never
 localStorage), loaded once per service from `GET /link/checkin`, revalidated every 60 s and its own open rows every
 15 s while visible. No default service → the "Pick a service" sheet first. Re-render keeps the scroll position.
+
+### Task F1.4 [Sonnet] — Leader quick check-in sheet (decision 20)
+Verify: `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`
+Files: `public/index.html`, `src/tests/link.spa.test.ts` (same lane, after F1.3).
+
+Tests first (extract-and-run): the sheet lists `leaders` A–Z, name only; a `checkedIn` leader renders as Done (no
+box), a `personId: null` leader as greyed "Not linked" (no box), the rest with a box; "Tick all" ticks only tickable
+rows and flips to "Untick all"; Submit shows the ticked count and is disabled at 0; Submit queues exactly one
+`checkIn` item per ticked leader (`serviceTimeId`, `serviceId`, `personId`) into the F1.2 queue and nothing else;
+every name passes through `esc()`.
+
+Change: spec §11.1 "Leader quick check-in", mockup frame 3. A "Check in leaders" button on the door screen (under
+New person) opens a `modal()` bottom sheet for the chosen service; the Submit bar is sticky (the
+`.bus-sheet-actions` pattern). After Submit the sheet closes and those leaders show as Done at once.
 
 ---
 
@@ -710,7 +732,7 @@ Verify: `npx tsc --noEmit && npx vitest run && node scripts/check-spa-syntax.js`
 
 ---
 
-## Task list (32)
+## Task list (33)
 
-T1 · A1 · A2 · A3 · B1 · B2 · B3 · A4 · C1 · C2 · D1 · D2 · D3 · D4 · D5 · D6 · F1.1 · F1.2 · F1.3 · E1 · E2 · E3 ·
+T1 · A1 · A2 · A3 · B1 · B2 · B3 · A4 · C1 · C2 · D1 · D2 · D3 · D4 · D5 · D6 · F1.1 · F1.2 · F1.3 · F1.4 · E1 · E2 · E3 ·
 F2 · F3 · F4.1 · F4.2 · V1 · V2 · R1 · V3 · V4 · H1

@@ -76,6 +76,16 @@ details.done[open] summary{margin-bottom:6px}
 .opt.on{border-color:var(--accent);background:var(--accent-light)}
 .opt .d{font-size:var(--t-label);color:var(--ink-mid)}
 .tag{font-size:var(--t-micro);font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px}
+.lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.lq-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;font-size:var(--t-body)}
+.lq-row .nm{flex:1}
+.lq-row.dis{color:var(--ink-faint)}
+.box{width:22px;height:22px;border:2px solid #b8c2d3;border-radius:6px;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.box.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
+.nl{font-size:var(--t-micro);font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px}
+.lq-list{max-height:520px;overflow:auto}
+.lq-foot{position:sticky;bottom:0;background:var(--paper-card);padding-top:10px;display:flex;gap:8px}
 .notes{max-width:820px;margin:28px auto 0;font-size:var(--t-sm);color:var(--ink);background:#fff;border-radius:var(--radius);padding:14px 18px;line-height:1.5}
 .notes h2{font-size:var(--t-title);margin:0 0 6px}
 .notes ul{margin:0;padding-left:18px}
@@ -104,6 +114,10 @@ details.done[open] summary{margin-bottom:6px}
     <button class="btn btn-secondary btn-full" style="margin-bottom:10px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
       New person (first time here)
+    </button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+      Check in leaders
     </button>
 
     <div class="row2">
@@ -208,6 +222,37 @@ details.done[open] summary{margin-bottom:6px}
 </div>
 </div>
 
+<!-- Frame 3: leader quick check-in -->
+<div>
+<p class="cap">3. Check in leaders (decision 20). Every active leader in the app, A&ndash;Z, name only. Done = no box; Not linked = greyed, no box. Submit queues one ordinary check-in each.</p>
+<div class="phone">
+  <div class="hdr"><span class="back">&#8249;</span><h1>Check-in</h1><span class="badge">Grade 9 Girls</span></div>
+  <div class="pg"></div>
+  <div class="dim">
+    <div class="sheet">
+      <h3>Check in leaders</h3>
+      <p>Fri 16 Oct &middot; Youth 6:30 pm</p>
+      <div class="lq-head"><span style="font-size:var(--t-sm);color:var(--ink-mid)">2 done &middot; 1 not linked</span><button class="btn btn-ghost btn-sm" style="color:var(--accent)">Tick all</button></div>
+      <div class="lq-list">
+        <div class="lq-row"><span class="box on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Alex Testleader</div></div>
+        <div class="lq-row"><span class="done-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Bea Sampleleader<div class="st ok">In Elvanto &#10003; 6:12 pm</div></div></div>
+        <div class="lq-row"><span class="box on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Cal Exampleleader</div></div>
+        <div class="lq-row"><span class="box on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Dana Testleader</div></div>
+        <div class="lq-row dis"><span class="box" style="visibility:hidden"></span><div class="nm">Eve Mockleader</div><span class="nl">Not linked</span></div>
+        <div class="lq-row"><span class="done-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Finn Fakeleader<div class="st ok">Waiting to send.</div></div></div>
+        <div class="lq-row"><span class="box on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Gia Placeleader</div></div>
+        <div class="lq-row"><span class="box"></span><div class="nm">Hal Demoleader</div></div>
+        <div class="lq-row"><span class="box on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><div class="nm">Ivy Fictleader</div></div>
+      </div>
+      <div class="lq-foot">
+        <button class="btn btn-secondary" style="flex:1">Cancel</button>
+        <button class="btn btn-primary" style="flex:2">Submit (5)</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
 </div>
 
 <div class="notes">
@@ -219,6 +264,7 @@ details.done[open] summary{margin-bottom:6px}
     <li>Leaders are in the list, marked "Leader" instead of a grade.</li>
     <li>The banner reports the console: practice mode per type, check-out not connected yet, or the console offline. "In Elvanto." = checked in on the kiosk (no app row).</li>
     <li>New person opens the existing form; its "Check them in to this service" tick sends a first-timer check-in.</li>
+    <li>"Check in leaders" opens frame 3: tick boxes, Tick all, a sticky Submit (N). Each ticked leader becomes one ordinary check-in through the phone queue.</li>
     <li>Reached from More (the Prayers slot). Grade logins' nav shown.</li>
   </ul>
 </div>
