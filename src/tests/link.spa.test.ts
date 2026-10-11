@@ -1056,6 +1056,21 @@ describe('F4.1 first-timer check-in', () => {
 });
 
 // ── F4.2 Elvanto link admin page ──
+describe('A5 / T-41 matching on a phone, disabled buttons', () => {
+  it('a candidate row has its own class: the text shrinks, the Match button stays its own size', () => {
+    expect(html).toMatch(/\.lk-cand span\{flex:1 1 auto;min-width:0\}/);
+    expect(html).toMatch(/\.lk-cand \.btn\{flex:none\}/);
+    expect(html).toContain('.lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}');
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm = { ...h.fns._lkAdmFresh(), mf: 'none', roster: [{ personId: P(1), name: 'Ava Example', grade: 9, kind: 'student',
+      match: 'none', studentId: null, candidates: [{ studentId: P(2), name: 'Ava Example', grade: 9, gender: 'female', dob: '2011-05-01' }] }] };
+    expect(h.fns._lkAdmMatchHtml()).toContain('<div class="lk-kv lk-cand">');
+  });
+  it('a disabled button is faded (.45) and not clickable-looking', () => {
+    expect(html).toContain('.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}');
+  });
+});
+
 describe('F4.2 admin page', () => {
   const logRow = (over: any = {}) => ({ id: P(300), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'grade9<b>g</b>', deviceId: 'dev-<1>',
     deviceLabel: 'iPhone · <i>Safari</i>', event: 'identity', leaderId: P(301), leaderName: 'Sam <u>S</u>', prevLeaderId: P(302),

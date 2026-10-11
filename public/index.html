@@ -158,6 +158,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}.btn-primary:active{transform:translateY(0)}
 .btn-secondary{background:var(--paper-dark);color:var(--ink)}.btn-secondary:hover{background:#d1d5db}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
@@ -778,6 +779,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-wk.prac{background:var(--paper-dark);color:var(--ink-mid)}.lk-wk.bad{background:var(--danger-light);color:#b91c1c}
 .lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}
 .lk-kv span{color:var(--ink-mid);flex:none}.lk-kv b{font-weight:600;text-align:right;min-width:0}
+.lk-cand{align-items:center}.lk-cand span{flex:1 1 auto;min-width:0}.lk-cand .btn{flex:none}
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
 .lk-row-act{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
@@ -10197,7 +10199,7 @@ function _lkAdmMatchHtml() {
     const xs = A.roster.filter((r) => r.kind === 'student' && (f === 'manual' ? r.match === 'manual' || r.match === 'ignored' : r.match === f));
     body = xs.length ? xs.slice(0, 60).map((r) => {
       const pid = esc(r.personId);
-      const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv"><span>${esc(c.name)} · Yr ${esc(c.grade == null ? '-' : c.grade)} · ${esc(c.dob || 'No DOB')}</span>
+      const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv lk-cand"><span>${esc(c.name)} · Yr ${esc(c.grade == null ? '-' : c.grade)} · ${esc(c.dob || 'No DOB')}</span>
         <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
       const acts = f === 'manual' ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmMatch('${pid}','')">Clear</button>`
         : `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
