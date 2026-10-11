@@ -21,6 +21,8 @@ const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex c
 export const MINISTRY_PRESETS = ['large-graded-au', 'simple'] as const;
 export type MinistryPreset = (typeof MINISTRY_PRESETS)[number];
 
+export type NewYouthMode = 'off' | 'shadow' | 'on';
+
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
   preset: z.enum(MINISTRY_PRESETS).default('large-graded-au'),
@@ -108,6 +110,12 @@ export const MinistryConfigSchema = z.object({
       lifegroups: z.boolean().default(true),
       exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
       busMinistry: z.boolean().default(false),
+      // New person (internal name: new youth forms): the screen submits Citipointe's two public Elvanto connect forms.
+      // 'off' = nobody, 'shadow' = the admin login only (for testing), 'on' = every role. Off by default.
+      // The old boolean is still read (true = on, false = off) so a config stored before this change parses.
+      newYouthForms: z
+        .preprocess((v) => (v === true ? 'on' : v === false ? 'off' : v), z.enum(['off', 'shadow', 'on']))
+        .default('off'),
     })
     .default({}),
 

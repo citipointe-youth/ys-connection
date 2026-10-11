@@ -72,6 +72,7 @@ import { makeAdminService, type AdminService } from './services/admin.service';
 import { makeTrendsService, type TrendsService } from './services/trends.service';
 import { makeLifegroupStatsService, type LifegroupStatsService } from './services/lifegroup-stats.service';
 import { makeConnectionAuditService, type ConnectionAuditService } from './services/connection-audit.service';
+import { makeNewYouthService, type NewYouthService } from './services/new-youth.service';
 import { makeBusService, type BusService } from './services/bus.service';
 import { makeSetupService, type SetupService } from './services/setup.service';
 import { cachedProbe } from './utils/cached-probe';
@@ -113,6 +114,7 @@ export interface Services {
   admin: AdminService;
   connectionAudit: ConnectionAuditService;
   bus: BusService;
+  newYouth: NewYouthService;
   users: IUserRepository;
   setup: SetupService;
   /** Cached (30 s) db + schema probe for GET /health. */
@@ -238,6 +240,9 @@ export async function buildContainer(): Promise<Container> {
     imports, audit, connectionAudits,
   );
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
+  // Live POSTs to the church's Elvanto forms only where ELVANTO_FORMS_LIVE=1 is set: Vercel Production,
+  // after Citipointe's approval. Local dev (any PERSISTENCE), tests and previews run dry.
+  const newYouth = makeNewYouthService(settings, { live: env.ELVANTO_FORMS_LIVE });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;
@@ -265,6 +270,7 @@ export async function buildContainer(): Promise<Container> {
     auth, student, leader, prayer, connection, followup, overview, atRisk, trends, lifegroupStats,
     importService, settings: settingsSvc, account, admin, connectionAudit,
     bus: busSvc,
+    newYouth,
     users,
     setup,
     health,

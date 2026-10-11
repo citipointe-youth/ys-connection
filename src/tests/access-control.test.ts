@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent } from '../services/access-control';
+import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth } from '../services/access-control';
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
 import { ForbiddenError } from '../core/errors/app-error';
@@ -154,5 +154,24 @@ describe('canAccessGender()', () => {
   it('TC22: director can access any gender', () => {
     expect(canAccessGender(actor('director'), 'female')).toBe(true);
     expect(canAccessGender(actor('director'), 'male')).toBe(true);
+  });
+});
+
+describe('RBAC — intake:write (New youth forms)', () => {
+  it.each(['leader', 'grade', 'quad', 'director', 'admin'])('%s can send new youth forms', (role) => {
+    expect(can(actor(role), 'intake:write')).toBe(true);
+  });
+});
+
+describe('RBAC — canUseNewYouth (off / shadow / on)', () => {
+  const roles = ['leader', 'grade', 'quad', 'director', 'admin'];
+  it.each(roles)('off: %s cannot', (role) => {
+    expect(canUseNewYouth(actor(role), 'off')).toBe(false);
+  });
+  it.each(roles)('on: %s can', (role) => {
+    expect(canUseNewYouth(actor(role), 'on')).toBe(true);
+  });
+  it.each(roles)('shadow: only admin (%s)', (role) => {
+    expect(canUseNewYouth(actor(role), 'shadow')).toBe(role === 'admin');
   });
 });

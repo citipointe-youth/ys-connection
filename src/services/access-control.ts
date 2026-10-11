@@ -1,6 +1,7 @@
 import type { Actor } from '../core/entities/user';
 import type { UserRole } from '../core/types/enums';
 import { ForbiddenError } from '../core/errors/app-error';
+import type { NewYouthMode } from '../core/ministry-config';
 
 // All actions in the system
 export type Action =
@@ -21,7 +22,8 @@ export type Action =
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
-  | 'bus:analysis';           // Past nights, new-people linking (route analysis is bus:coordinate)
+  | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
+  | 'intake:write';           // New youth screen: submit the Elvanto connect forms
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -36,6 +38,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:read',
     'prayer:write',
     'bus:use',
+    'intake:write',
   ]),
   // grade — scoped to their grade; can manage leaders within their grade
   grade: new Set<Action>([
@@ -50,6 +53,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:write',
     'bus:use',
     'bus:roster',
+    'intake:write',
   ]),
   // quad — full add/edit/allocate within their gender + year bracket
   quad: new Set<Action>([
@@ -65,6 +69,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:use',
     'bus:roster',
     'bus:coordinate',
+    'intake:write',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -83,6 +88,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:roster',
     'bus:coordinate',
     'bus:analysis',
+    'intake:write',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -104,11 +110,19 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:roster',
     'bus:coordinate',
     'bus:analysis',
+    'intake:write',
   ]),
 };
 
 export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
+}
+
+// Who may use the New person screen (module key newYouthForms): 'on' = every role that has
+// intake:write, 'shadow' = the admin login only, 'off' = nobody.
+export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
+  if (!can(actor, 'intake:write')) return false;
+  return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
 }
 
 export function assertCan(actor: Actor, action: Action): void {

@@ -281,6 +281,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 @media(min-width:768px){.mo-box{border-radius:var(--radius)}}
 .mo-handle{width:40px;height:4px;background:var(--paper-dark);border-radius:2px;margin:0 auto 16px}
 .mo-title{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px}
+.more-list{display:flex;flex-direction:column;gap:8px}
+.more-row{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper-card);color:var(--ink);font:inherit;font-size:15px;font-weight:600;text-align:left;cursor:pointer}
+.more-row.on{border-color:var(--accent);background:var(--accent-light)}
 
 /* Filters */
 .filter-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center}
@@ -1284,7 +1287,7 @@ function setApp(h) {
 function _updateNavActive() {
   const cur = S.page;
   document.querySelectorAll('[data-nav-page]').forEach(el => {
-    el.classList.toggle('on', el.dataset.navPage === cur);
+    el.classList.toggle('on', el.dataset.navPage === cur || (el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)));
   });
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
@@ -1295,7 +1298,9 @@ function _updateNavActive() {
 // sub-page, so the header's brand mark swaps for a back arrow that always
 // returns to Home — a flat "back to base" rather than a real history stack.
 function _isRootPage(page) {
-  return bottomNavItems().some(it => it.id === page);
+  const bn = bottomNavItems();
+  // Prayers stays a root page when it sits behind More (it was a bottom tab before).
+  return bn.some(it => it.id === page) || (page === 'prayers' && bn.some(it => it.id === 'more'));
 }
 function _hdrBrandHtml() {
   if (!_isRootPage(S.page)) {
@@ -1317,8 +1322,8 @@ function _initShell() {
   if (!u) return;
   const items = navItems();
   const bn = bottomNavItems();
-  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
-  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="go('${it.id}')">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}" onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       ${_previewStash ? _previewBannerHtml(u) : ''}
@@ -1745,6 +1750,7 @@ const IC = {
   map:      '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
   route:    '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h5a4 4 0 004-4V9a4 4 0 00-4-4H8"/>',
   pinned:   '<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="14" x2="9" y2="21"/>',
+  grid:     '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   kebab:    '<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>',
 };
 // 'pray' is the one raster (PNG-masked) icon — see the .ic-png-mask CSS comment — so every
@@ -1769,27 +1775,49 @@ function brandMark(px, color){
     + `<path d="M16 42 L33 42 L44 64 L56 64 L67 42 L84 42 L62 84 L38 84 Z"/></svg>`;
 }
 
+// A nav item normally goes to its page; an item with an `action` runs that instead (the More menu).
+function _navClick(it) { return it.action || "go('" + it.id + "')"; }
+// The More menu (2026-10-12): the modules this login can use right now, in a sheet at the bottom of the
+// screen. Later: service check-in, lifegroup report. Each entry has its page id and its entry call.
+function moreItems() {
+  const xs = [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }];
+  if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
+  // nyOpen never wipes a send that is still in flight.
+  if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
+  return xs;
+}
+// Prayers' nav slot becomes More when there are 2+ modules to pick from; with Prayers alone it stays Prayers.
 function navItems() {
+  const items = _navItemsBase();
+  if (moreItems().length < 2) return items;
+  return items.map(it => it.id === 'prayers' ? { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' } : it);
+}
+function openMore() {
+  const rows = moreItems().map(m => `<button type="button" class="more-row${S.page === m.id ? ' on' : ''}" onclick="closeModal();${m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`).join('');
+  modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
+    <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
+}
+function _navItemsBase() {
   const u = S.user; if (!u) return [];
   const modules = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules) || {};
   // CA defaults true (empty/absent config = current behaviour).
   const caOn = modules.connectionAudit !== false;
   const caItem = { id:'ca-overview', ic:'link', label:'Connection Audit', mbl:'Connection Audit' };
   // Leader (junior leader, §5.2): a slim, follow-up-focused nav — Home (lite) |
-  // My Connections | Health | Birthdays. No Connect Setup / Trends / Import.
+  // Prayers | Health | My Connections | Birthdays (2026-10-11: Prayers and My Connections swapped). No Connect Setup / Trends / Import.
   if (u.role === 'leader') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
-    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
-    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
     { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
+    { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
-  // Grade: Home | Health | My Students | Connect Setup  (Trends + Birthdays in quick actions)
+  // Grade: Home | Health | My Connections | Prayers | Setup  (Trends + Birthdays in quick actions; Prayers and My Connections swapped 2026-10-11)
   if (u.role === 'grade') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
-    { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
     { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
+    { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
     { id:'leaders',    ic:'arrr',     label:'Setup',              mbl:'Setup' },
     // quick actions:
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
@@ -1887,10 +1915,11 @@ async function render() {
   /*BUS-HOOK*/ if (p !== 'bus') _busStopPoll();
   // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
   // other route home (defence-in-depth; the server also scopes/403s their data).
-  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus'].includes(p)) { go('home'); return; }
+  if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p)) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
+  else if (p==='new-youth') renderNewYouth(); /*NEW-YOUTH*/
   else if (p==='leaders') await renderConnect();
   else if (p==='allocate') go('leaders'); // legacy route — merged into leaders
   else if (p==='my-students') await renderMyStudents();
@@ -2086,6 +2115,7 @@ async function doLogout() {
   _prayerFilter = { grade: null, gender: null };
   /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
+  nyReset(); /*NEW-YOUTH*/
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
     sessionStorage.removeItem('yap_ar_filter'); sessionStorage.removeItem('yap_prayer_filter'); sessionStorage.removeItem('yap_connect_filters');
@@ -2597,7 +2627,8 @@ async function renderLeaderHome() {
   const u = S.user;
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
   /*BUS-HOOK*/ body += _busHomeTile();
-  const acts = navItems().filter(i => i.id !== 'home');
+  // The base list, so Prayers stays a plain button here even when the nav shows More.
+  const acts = _navItemsBase().filter(i => i.id !== 'home');
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
@@ -6223,7 +6254,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off' },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
@@ -6263,8 +6294,10 @@ async function saveMinistrySetup() {
       termGapDays: _setupTermGapDays,
     });
     Cache.del('/settings');
+    const navBefore = _navSig();
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
+    if (_shellReady && _navSig() !== navBefore) _initShell(); // the New person state changes the Prayers nav item
     toast('Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
@@ -6449,6 +6482,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
+    <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds New person to the More menu (in the Prayers spot on the nav bar). Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -8438,6 +8472,184 @@ function _busStartPoll() {
   }, 10000);
 }
 function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.pollTimer = null; }
+
+/* NEW-YOUTH: one screen fills Citipointe's two public Elvanto connect forms (plan 2026-10-11).
+   The student is never with a parent; the server fixes those answers. Nothing is stored here
+   except the host's own name (localStorage, this device only). */
+const NY_ALLERGIES = ["Anaphylaxis","Asthmatic","Dairy Intolerance","Egg Allergy","Gluten Intolerance","Lactose Intolerance","Nut Allergy","Penicilin Allergy","Skin Allergy","Sugar Allergy","Wheat Allergy"];
+const NY_CONDITIONS = ["ADHD","Autism/Aspergers","Diabetes Type 1","Epilepsy"];
+let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
+// The module state: 'off' | 'shadow' | 'on'. A legacy boolean (true = on) is read too; the server normalises it.
+function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'shadow' ? 'shadow' : 'off'; }
+function _nyMode() {
+  const mc = (S.settings && S.settings.ministryConfig) || {};
+  return _nyModeOf(mc.modules && mc.modules.newYouthForms);
+}
+// Shadow mode shows the screen to the admin login only.
+function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin'); }
+// New person is reached from the More menu only (moreItems); it has no Home tile.
+function _navSig() { return navItems().map(it => it.id + '|' + (it.action || '')).join(','); }
+function _nyHost() { try { return localStorage.getItem('ysc.nyHost') || ''; } catch (e) { return ''; } }
+function _nyMessage(r) {
+  if (r.dryRun) return { tone: 'good', retryParent: false, lines: ['Test mode: nothing was sent to Elvanto.'] };
+  const say = { sent: 'is in Elvanto.', failed: "wasn't accepted by Elvanto.", unconfirmed: "was sent, but Elvanto didn't confirm it. Check the forms list in Elvanto before sending again." };
+  const lines = [];
+  if (r.repeat) lines.push('This was already sent a moment ago, so it was not sent again.');
+  if (r.student !== 'skipped') lines.push('Student form ' + say[r.student]);
+  if (r.student === 'failed') lines.push('Nothing else was sent. Check the details and try again.');
+  else if (r.parent !== 'skipped') lines.push('Parent form ' + say[r.parent]);
+  const outs = [r.student, r.parent].filter((o) => o !== 'skipped');
+  const tone = outs.includes('failed') ? 'bad' : outs.every((o) => o === 'sent') ? 'good' : 'warn';
+  return { tone, retryParent: r.student !== 'failed' && r.parent === 'failed', lines };
+}
+// Only the service's own refusals, matched by their error CODE and never by status, mean nothing was posted:
+// Vercel itself answers a bare 502 when a function dies, possibly after the student POST. Anything else may have landed in Elvanto.
+function _nyErrorText(e) {
+  if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED'].includes(e.code)) return { unsent: true, text: e.message };
+  return { unsent: false, text: "We don't know if the forms went in. Check the forms list in Elvanto before sending again." };
+}
+function _nyRead() {
+  const g = (id) => ((document.getElementById('ny-' + id) || {}).value || '').trim();
+  const ticked = (n) => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map((i) => i.value);
+  const p = { host: g('host'), firstName: g('firstName'), lastName: g('lastName'),
+    dob: g('dob'), gender: g('gender'), grade: g('grade'), school: g('school'), mobile: g('mobile'),
+    allergies: ticked('ny-allergy'), conditions: ticked('ny-condition'), medicalNotes: g('medicalNotes'),
+    parentFirst: g('parentFirst'), parentLast: g('parentLast'), parentMobile: g('parentMobile') };
+  if (g('parentGender')) p.parentGender = g('parentGender');
+  if (g('street') || g('suburb') || g('postcode')) { // State is prefilled QLD, so it alone isn't an address
+    p.address = { street: g('street'), suburb: g('suburb'), state: g('state'), postcode: g('postcode') };
+  }
+  return p;
+}
+function renderNewYouth() {
+  if (!_nyOn()) { go('home'); return; }
+  const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
+  if (NY.sending) { // the host left mid-send and came back: the reply is still on its way
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
+      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>Sending to Elvanto...</p><p>Stay on this screen until it says whether the forms went in.</p></div>`));
+    return;
+  }
+  if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
+      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
+      ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
+      <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`));
+    window.scrollTo(0, 0);
+    return;
+  }
+  if (NY.result) {
+    const m = _nyMessage(NY.result);
+    const colour = m.tone === 'good' ? 'var(--success)' : m.tone === 'bad' ? 'var(--danger)' : 'var(--warn)';
+    const failed = [NY.result.student, NY.result.parent].includes('failed');
+    setApp(shell(`<div class="ph"><h1>New person</h1></div>
+      ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
+      <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
+      ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
+      ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
+      ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
+      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`}`));
+    return;
+  }
+  const k = NY.keep || {};
+  const val = (id, d) => esc(k[id] != null ? k[id] : (d || ''));
+  const ro = NY.sibling ? 'readonly' : '';
+  const input = (id, label, attrs) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><input class="fi" id="ny-${id}" value="${val(id)}" ${attrs || ''}></div>`;
+  const sel = (id, label, opts) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><select class="fs" id="ny-${id}">${opts.map(([v, l]) => `<option value="${v}" ${k[id] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
+  const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
+  const addr = k.address || {};
+  setApp(shell(`<div class="ph"><h1>New person</h1></div>
+    ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form was sent with the last student.</div>` : ''}
+    <form id="ny-form" onsubmit="nySend(event)" novalidate autocomplete="off">
+    <div class="card">
+      <div class="fg"><label class="fl" for="ny-host">Your name (host)</label><input class="fi" id="ny-host" autocomplete="name" value="${val('host', _nyHost())}"></div>
+    </div>
+    <div class="card"><div class="sh">Student</div>
+      ${input('firstName', 'First name', 'autocapitalize="words"')}${input('lastName', 'Last name', 'autocapitalize="words"')}
+      ${input('dob', 'Date of birth', 'type="date"')}
+      ${sel('gender', 'Gender', [['', ''], ['f', 'Female'], ['m', 'Male']])}
+      ${sel('grade', 'School grade', [['', ''], ...['7', '8', '9', '10', '11', '12'].map((g) => [g, g])])}
+      ${input('school', 'School')}${input('mobile', 'Mobile', 'type="tel" inputmode="tel"')}
+      <details id="ny-addr"><summary>Address (optional)</summary>
+        <div class="fg"><input class="fi" id="ny-street" placeholder="Street" value="${esc(addr.street || '')}"></div>
+        <div class="fg"><input class="fi" id="ny-suburb" placeholder="Suburb" value="${esc(addr.suburb || '')}"></div>
+        <div class="fg"><input class="fi" id="ny-state" placeholder="State" value="${esc(addr.state || 'QLD')}"></div>
+        <div class="fg"><input class="fi" id="ny-postcode" placeholder="Postcode" inputmode="numeric" value="${esc(addr.postcode || '')}"></div>
+      </details>
+      <details><summary>Medical (optional)</summary>
+        ${ticks('ny-allergy', NY_ALLERGIES, k.allergies)}${ticks('ny-condition', NY_CONDITIONS, k.conditions)}
+        <div class="fg"><label class="fl" for="ny-medicalNotes">Other allergies or instructions</label><textarea class="ft" id="ny-medicalNotes" rows="2">${val('medicalNotes')}</textarea></div>
+      </details>
+    </div>
+    <div class="card"><div class="sh">Parent or guardian</div>
+      ${input('parentFirst', 'First name', `autocapitalize="words" ${ro}`)}${input('parentLast', 'Last name', `autocapitalize="words" ${ro}`)}
+      ${input('parentMobile', 'Mobile', `type="tel" inputmode="tel" ${ro}`)}
+      ${sel('parentGender', 'Gender (optional)', [['', ''], ['f', 'Female'], ['m', 'Male']])}
+      <p class="fl">The student has texted or called their parent to say where they are.</p>
+    </div>
+    ${NY.error ? `<div class="card" id="ny-err" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
+    <button class="btn btn-primary btn-full" id="ny-send" type="submit">Send to Elvanto</button>
+    </form>`));
+  // setApp keeps the scroll position, and a failed send leaves the host at the bottom: bring the card into view.
+  const errEl = NY.error && document.getElementById('ny-err');
+  if (errEl && errEl.scrollIntoView) errEl.scrollIntoView({ block: 'center' });
+}
+async function nySend(ev, send) {
+  if (ev) ev.preventDefault();
+  if (NY.sending) return;
+  const p = send ? NY.last : _nyRead();
+  const need = [['host', 'your name'], ['firstName', 'first name'], ['lastName', 'last name'],
+    ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
+    ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
+  if (need) { toast('Add the ' + need[1]); return; }
+  // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
+  // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
+  const mine = NY;
+  mine.last = p;
+  try { localStorage.setItem('ysc.nyHost', p.host); } catch (e) { /* per-device convenience only */ }
+  mine.sending = true; mine.error = null;
+  const here = () => NY === mine && S.page === 'new-youth';
+  const btn = document.getElementById('ny-send');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    // 45 s: the server can spend about 28 s plus the settings read (8 s form GETs in parallel, two 10 s POSTs); the default 25 s would wrongly report "unknown".
+    const result = await API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000);
+    mine.sending = false; // before drawing: renderNewYouth shows a Sending page while it is set
+    mine.result = result;
+    if (here()) renderNewYouth();
+    else toast(_nyMessage(result).lines.join(' '), 8000); // the host left the screen: still tell them
+  } catch (e) {
+    mine.sending = false;
+    // An expired session: API already drew the login screen (or restored the admin). Drawing the form now would show a student's details with no shell.
+    if (e.status === 401 || !S.user) return;
+    const err = _nyErrorText(e);
+    mine.error = err.text;
+    if (err.unsent) {
+      // Refused before any POST: stay on the form (or the result page for a parent-only retry) with the inputs kept.
+      if (!send) { mine.keep = p; mine.result = null; }
+    } else {
+      // Unknown outcome: a result page, never a pre-filled form with a ready Send button. A parent-only retry keeps its
+      // earlier result and offers no way back to the form, which would send the student a second time.
+      mine.unknown = true;
+      if (!send) mine.result = null;
+    }
+    if (here()) renderNewYouth();
+    else toast(err.text, 8000);
+  } finally {
+    mine.sending = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = label; } // only if the host is still looking at this button
+  }
+}
+function nySibling() {
+  const l = NY.last || {};
+  NY = { keep: { host: l.host, parentFirst: l.parentFirst, parentLast: l.parentLast, parentMobile: l.parentMobile, parentGender: l.parentGender, address: l.address },
+         sibling: true, sending: false, result: null, last: null, error: null, unknown: false };
+  renderNewYouth();
+}
+function nyReset() { NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }; }
+// The Home tile: start fresh, unless a send is still in flight (then go back to it; resetting would lose its outcome).
+function nyOpen() { if (!NY.sending) nyReset(); go('new-youth'); }
+function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unknown = false; renderNewYouth(); }
 
 function _busHomeTile() {
   if (!_busOn()) return '';

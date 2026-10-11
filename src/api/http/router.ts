@@ -4,6 +4,7 @@ import { makeAuthController } from '../controllers/auth.controller';
 import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
 import { makePrayerController } from '../controllers/prayer.controller';
+import { makeNewYouthController } from '../controllers/new-youth.controller';
 import { makeConnectionController } from '../controllers/connection.controller';
 import { makeFollowupController } from '../controllers/followup.controller';
 import { makeOverviewController } from '../controllers/overview.controller';
@@ -25,6 +26,7 @@ export function buildRoutes(services: Services): Route[] {
   const student = makeStudentController({ student: services.student });
   const leader = makeLeaderController({ leader: services.leader });
   const prayer = makePrayerController({ prayer: services.prayer });
+  const newYouth = makeNewYouthController({ newYouth: services.newYouth });
   const connection = makeConnectionController({ connection: services.connection });
   const followup = makeFollowupController({ followup: services.followup });
   const overview = makeOverviewController({ overview: services.overview });
@@ -74,6 +76,9 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Settings -----
     { method: 'GET',   path: '/settings', auth: false, handler: (r) => settings.get(r) },
     { method: 'PATCH', path: '/settings', auth: true,  handler: (r) => settings.update(r) },
+
+    // ----- New youth forms (submits Citipointe's public Elvanto connect forms) -----
+    { method: 'POST', path: '/intake/new-youth', auth: true, handler: (r) => newYouth.send(r) },
 
     // ----- Manifest (dynamic — public/manifest.json was removed so this wins) -----
     { method: 'GET', path: '/manifest.json', auth: false, handler: (r) => manifest.get(r) },

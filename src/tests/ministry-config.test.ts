@@ -66,3 +66,30 @@ describe('branding.logoSvg (removed 2026-07-12)', () => {
     expect((merged.branding as Record<string, unknown>)['logoSvg']).toBeUndefined();
   });
 });
+
+describe('modules.newYouthForms (off / shadow / on)', () => {
+  const parseMode = (v: unknown) => MinistryConfigSchema.parse({ modules: { newYouthForms: v } }).modules.newYouthForms;
+  it('defaults to off', () => {
+    expect(MINISTRY_CONFIG_DEFAULTS.modules.newYouthForms).toBe('off');
+    expect(MinistryConfigSchema.parse({}).modules.newYouthForms).toBe('off');
+  });
+  it('accepts the three states and round-trips shadow', () => {
+    expect(parseMode('off')).toBe('off');
+    expect(parseMode('shadow')).toBe('shadow');
+    expect(parseMode('on')).toBe('on');
+    const again = MinistryConfigSchema.parse(MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow' } }));
+    expect(again.modules.newYouthForms).toBe('shadow');
+  });
+  it('still reads the old boolean: true -> on, false -> off', () => {
+    expect(parseMode(true)).toBe('on');
+    expect(parseMode(false)).toBe('off');
+  });
+  it('rejects junk, like any other bad enum value', () => {
+    expect(() => parseMode('admin only')).toThrow();
+    expect(() => parseMode(1)).toThrow();
+  });
+  it('a PATCH carrying the old boolean merges to the new state', () => {
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: true } } as any).modules.newYouthForms).toBe('on');
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: 'shadow' } }).modules.newYouthForms).toBe('shadow');
+  });
+});

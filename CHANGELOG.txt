@@ -4,6 +4,47 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+MORE MENU IN THE PRAYERS SPOT  (2026-10-12)
+-------------------------------------------------------------------------------
+- The Prayers button on the nav bar becomes "More" whenever a login has more
+  than one module to pick from. It opens a small sheet at the bottom of the
+  screen: Prayers, Bus Ministry (when it is on) and New person (when that
+  login may use it). Later: service check-in and the lifegroup report.
+- With Prayers as the only module, the button stays a plain Prayers tab.
+- New person no longer has a Home tile; it is reached from More only. Bus
+  Ministry keeps its Home tile as well.
+- Replaces the shadow-mode "Prayers / New person" chooser. SW cache ysc-v89.
+
+-------------------------------------------------------------------------------
+NEW PERSON: SHADOW MODE, NAME, NAV SWAP  (2026-10-11)
+-------------------------------------------------------------------------------
+- The "New youth" screen is now called "New person" (title, Home tile, buttons,
+  Youth Setup). Internal names are unchanged (route, page id, module key).
+- Youth Setup -> Modules: the control is now Off / Shadow mode (admin only) /
+  On. Shadow mode shows New person to the admin login only; every other login
+  gets the same "not available" answer from the server. Sending is unchanged
+  (live only where ELVANTO_FORMS_LIVE=1). The old tick-box value still reads.
+- In shadow mode the Prayers item in the nav opens a small Prayers / New person
+  chooser (admin only). Off and On: Prayers works as before.
+- Bottom nav: Prayers and My Connections swap places for grade logins
+  (Home | Health | My Connections | Prayers | Setup) and leader logins
+  (Home | Prayers | Health | My Connections | Birthdays).
+
+-------------------------------------------------------------------------------
+NEW YOUTH FORMS  (2026-10-11)
+-------------------------------------------------------------------------------
+- New "New youth" screen (Home tile, off by default: Youth Setup -> Modules).
+  A host types a new student and their parent once; the app sends Citipointe
+  Brisbane's two public Elvanto connect forms (student 1 of 2, parent 2 of 2).
+- No Elvanto login. Nothing is stored. Sends only where ELVANTO_FORMS_LIVE=1
+  (Vercel Production); everywhere else is test mode.
+- Until the live capture is done (plan Task 0), every send shows "check the
+  forms list in Elvanto" rather than "is in Elvanto". Student mobile is
+  required for now.
+- New API route /intake (router, vercel.json, sw.js API_RE).
+- SW cache bumped ysc-v87 -> ysc-v88.
+
+-------------------------------------------------------------------------------
 LOGIN-SCREEN "SAVE YOUR PASSWORD" HELP PAGE  (2026-07-30)
 -------------------------------------------------------------------------------
 - New static page public/save-password.html - step-by-step instructions for
