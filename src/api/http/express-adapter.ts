@@ -40,7 +40,7 @@ export const UNTIMED_ROUTES = new Set([
   'POST /audits/import-all',
   // Google gets up to GENERATE_SOLVE_BUDGET_MS (30s) here; the service's own 55s lock + Vercel's 60s cap bound it.
   'POST /bus/run/generate',
-  // New youth forms: the service bounds itself (5 s GETs + two 10 s POSTs). The 20 s guard's 503 "try again"
+  // New youth forms: the service bounds itself (8 s GETs + two 10 s POSTs). The 20 s guard's 503 "try again"
   // could land after the student form is already in Elvanto, and invite a duplicate.
   'POST /intake/new-youth',
 ]);
