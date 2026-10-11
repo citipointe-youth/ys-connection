@@ -867,6 +867,8 @@ const API = (() => {
         if (e.code === 'MUST_CHANGE_PASSWORD' && S.user && !S.user.mustChangePassword) {
           S.user.mustChangePassword = true; render();
         }
+        // Prayers was switched off after this login signed in: refresh settings and go home.
+        if (e.code === 'MODULE_DISABLED' && /^\/prayers/.test(path) && S.user) _moduleDisabledRefresh();
         if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
@@ -1351,7 +1353,25 @@ function _prefetch() {
   // pooler the real problem is that a page's fan-out multiplies serverless instances ->
   // pooler client connections (the EMAXCONN / 200 ceiling). Collapsing login's prefetch
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
-  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history', '/prayers']);
+  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'].concat(_prayersOn() ? ['/prayers'] : []));
+}
+// Prayers module switch (ministryConfig.modules.prayers, default on).
+function _prayersOn() {
+  const mc = (S.settings && S.settings.ministryConfig) || {};
+  return !(mc.modules && mc.modules.prayers === false);
+}
+// A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, go home.
+let _mdBusy = false;
+async function _moduleDisabledRefresh() {
+  if (_mdBusy) return;
+  _mdBusy = true;
+  try {
+    const before = _navSig();
+    Cache.del('/settings');
+    S.settings = await API.get('/settings');
+    if (_shellReady && _navSig() !== before) _initShell();
+    go('home');
+  } catch (e) {} finally { _mdBusy = false; }
 }
 
 // ============================================================
@@ -1878,18 +1898,26 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 // The More menu (2026-10-12): the modules this login can use right now, in a sheet at the bottom of the
 // screen. Later: service check-in, lifegroup report. Each entry has its page id and its entry call.
 function moreItems() {
-  const xs = [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }];
+  const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   return xs;
 }
-// Prayers' nav slot becomes More when there are 2+ modules to pick from; with Prayers alone it stays Prayers.
-function navItems() {
-  const items = _navItemsBase();
-  if (moreItems().length < 2) return items;
-  return items.map(it => it.id === 'prayers' ? { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' } : it);
+// The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
+function _navSlots() {
+  const more = moreItems();
+  return _navItemsBase().map(it => {
+    if (it.id !== 'prayers') return it;
+    if (more.length >= 2) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
+    if (more.length === 0) return null;
+    const m = more[0];
+    if (m.id === 'prayers') return it;
+    if (m.id === 'bus') return { id:'bus', ic:'bus', label:L('busMinistry') };
+    return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+  });
 }
+function navItems() { return _navSlots().filter(Boolean); }
 function openMore() {
   const rows = moreItems().map(m => `<button type="button" class="more-row${S.page === m.id ? ' on' : ''}" onclick="closeModal();${m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`).join('');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
@@ -1964,8 +1992,8 @@ function _navItemsBase() {
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
   ];
 }
-function bottomNavItems() { return navItems().slice(0, 5); }
-function quickActionItems() { return navItems().slice(5); }
+function bottomNavItems() { return _navSlots().slice(0, 5).filter(Boolean); }
+function quickActionItems() { return _navSlots().slice(5).filter(Boolean); }
 
 // shell() is kept for compatibility — the persistent shell is set up by _initShell().
 // All setApp(shell(x)) calls now just update <main id="page-main"> with x.
@@ -2014,6 +2042,7 @@ async function render() {
   // Junior leaders can only reach their own slim set of pages (§5.2) — bounce any
   // other route home (defence-in-depth; the server also scopes/403s their data).
   if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p)) { go('home'); return; }
+  if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
@@ -2211,7 +2240,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
@@ -2730,7 +2759,7 @@ async function renderLeaderHome() {
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
   /*BUS-HOOK*/ body += _busHomeTile();
   // The base list, so Prayers stays a plain button here even when the nav shows More.
-  const acts = _navItemsBase().filter(i => i.id !== 'home');
+  const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
@@ -3739,7 +3768,7 @@ async function renderMyStudents() {
     // Best-effort — a per-student prayer summary + quick-add is a nice-to-have,
     // not core to the screen, so a failed fetch just means no summary line shows.
     let prayers = [];
-    try { prayers = await API.get('/prayers'); } catch {}
+    if (_prayersOn()) try { prayers = await API.get('/prayers'); } catch {}
     const prayersByStudent = {};
     for (const p of prayers) {
       if (!p.student) continue;
@@ -3782,7 +3811,7 @@ async function renderMyStudents() {
             ${prayerSummary}
           </div>
           <div class="li-right">
-            <button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>
+            ${_prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : ''}
           </div>
         </div>`;
       }
@@ -4623,7 +4652,7 @@ async function showStudentDetail(id) {
     </div>`:''}
 
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-secondary btn-sm" onclick="openPrayerModal('${s.id}')">${icS('plus')} Prayer</button>
+      ${_prayersOn() ? `<button class="btn btn-secondary btn-sm" onclick="openPrayerModal('${s.id}')">${icS('plus')} Prayer</button>` : ''}
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
     </div>`);
   if (canEdit) sdLeaderSearch(id);
@@ -5751,7 +5780,7 @@ async function renderAdminView(settings, users, history) {
       </label>
       <div id="alloc-import-status" style="margin-top:8px"></div>
     </div>`;
-    body += `<div class="card">
+    if (_prayersOn()) body += `<div class="card">
       <div class="sh" style="margin-top:0">Prayers</div>
       <div class="help-text" style="margin-bottom:10px">Export every prayer request as a CSV (one row per prayer), edit it, then re-import. Import matches students by name and reports anything it can't match.</div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportPrayersCSV()">Export Prayers</button>
@@ -5934,6 +5963,9 @@ function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
 function renderNewYearWizard() {
   const caOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.connectionAudit === false);
   const skippedCard = `<div class="alert al-info">Skipped — Connection Audit is disabled for this deployment.</div>`;
+  const prayersOn = _prayersOn();
+  const prayersSkippedCard = `<div class="alert al-info">Skipped — Prayers is turned off.</div>`;
+  const prayersSatisfied = prayersOn ? _wiz.prayersExportDone : true;
   // When CA is off, steps 2 and 6 (audit backup/restore) count as satisfied
   // for gating purposes without any action — nothing to back up or restore.
   const step2Satisfied = caOn ? _wiz.step2Done : true;
@@ -5952,13 +5984,13 @@ function renderNewYearWizard() {
   // attached to, so they must be exported before it — same reasoning as allocations.
   b += _wizStepCard(2, 'Export Prayers',
     "Downloads a CSV of every prayer request (you'll re-import it in step 6, alongside allocations).",
-    `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>`,
-    _wiz.prayersExportDone, !_wiz.step1Done);
+    prayersOn ? `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>` : prayersSkippedCard,
+    prayersSatisfied, !_wiz.step1Done);
 
   b += _wizStepCard(3, 'Export Configuration Audit Data',
     "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 4. You'll re-load it in step 7, once the roster is rebuilt.",
     caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
-    step2Satisfied, !_wiz.prayersExportDone);
+    step2Satisfied, !prayersSatisfied);
 
   b += _wizStepCard(4, 'Full Reset',
     'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
@@ -5977,11 +6009,11 @@ function renderNewYearWizard() {
     `<label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="wizHandleAllocationImportFile(this)">
     </label>
-    <div id="alloc-import-status" style="margin-top:8px"></div>
+    <div id="alloc-import-status" style="margin-top:8px"></div>${prayersOn ? `
     <label class="btn btn-secondary btn-full" style="cursor:pointer;margin-top:8px">Import Prayers
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
     </label>
-    <div id="prayer-import-status" style="margin-top:8px"></div>`,
+    <div id="prayer-import-status" style="margin-top:8px"></div>` : ''}`,
     _wiz.step5Done, !_wiz.step4Ack);
 
   b += _wizStepCard(7, 'Re-import Configuration Audit Data',
@@ -6617,6 +6649,7 @@ function _youthSetupBody(settings, users) {
   b += _setupCard('modules', 'Modules & Import', `
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('connectionAudit')?'checked':''} onchange="_setupSet('modules.connectionAudit', this.checked)"> <span>Connection Audit ${helpTip('A yearly report (Data tab) showing how students move from first contact to committed. Needs extra uploads — a New Person form, a Decision form, and Student Team attendance — on top of normal attendance. Turn off if your ministry doesn\'t run those forms.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
     <div class="fg"><label class="fl" for="setup-ny">New person ${helpTip("Adds New person to the More menu (in the Prayers spot on the nav bar). Hosts type a new student and their parent once, and the app sends Citipointe Brisbane's two Elvanto connect forms. Shadow mode shows it to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
@@ -6833,6 +6866,19 @@ function _setupSet(path, val) {
   o[parts[parts.length - 1]] = val;
   _setupRerender();
 }
+// Turning Prayers off asks for an export first; turning it on needs no question.
+function _setupPrayersToggle(el) {
+  if (el.checked) { _setupSet('modules.prayers', true); return; }
+  el.checked = true;
+  modal(`<div class="mo-title">Export prayers first?</div>
+    <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">Turning Prayers off hides it from every login. Saved prayers are kept, but the export stops working while it is off.</div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button type="button" class="btn btn-secondary" onclick="exportPrayersCSV()">Download CSV</button>
+      <button type="button" class="btn btn-primary" onclick="_setupPrayersOff()">Turn off</button>
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+function _setupPrayersOff() { closeModal(); _setupSet('modules.prayers', false); }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
 // "Include Grade 6" toggle (bug 8 follow-up) replaces separate Lowest/Highest
 // grade number fields — the highest grade is always 12, so this is really
@@ -8524,7 +8570,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, cars: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
   hist: null, histErr: '', histSub: 'nights', histPeople: [],
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
@@ -8616,8 +8662,10 @@ async function busRefresh() {
     // Ministry load/poll stays one round trip pair instead of two serial ones — same
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
-      const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
-      if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
+      // The read-only All cars list is only fetched while that tab is open; a failure there keeps the last list.
+      const wantCars = BUS.tab === 'allcars';
+      const [view, myCar, cars] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car'), wantCars ? _busGet('/bus/run/cars').catch(() => null) : Promise.resolve(null)]);
+      if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; if (cars) BUS.cars = cars; BUS.failed = false; }
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
     } finally {
@@ -8921,6 +8969,7 @@ async function renderBus() {
   const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
   const tabs = [
     { id: 'mycar', label: 'My car' },
+    v.canSeeCars && { id: 'allcars', label: 'All cars' },
     canRoster && { id: 'roster', label: 'Students' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
     v.canCoordinate && { id: 'routes', label: 'Assign' },
@@ -8929,7 +8978,7 @@ async function renderBus() {
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, allcars: _busAllCarsHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -8938,10 +8987,31 @@ async function renderBus() {
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
-    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
+    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()${t.id === 'allcars' ? ';busRefresh()' : ''}">${esc(t.label)}</button>`).join('')}</div>
     ${isAdmin && v.google && v.google.state !== 'on' ? `<div class="alert al-warn">${esc(v.google.text)}</div>` : ''}
     ${last ? `<div class="bus-last">${last}</div>` : ''}
     ${body}</div>`);
+}
+
+// All cars (read-only): car, leaders, stop order, rider name, grade and suburb only.
+function _busAllCarsHtml() {
+  const d = BUS.cars;
+  if (!d) return `<div class="card-sub">Loading…</div>`;
+  if (!d.cars.length) return `<div class="card-sub">No cars are running tonight.</div>`;
+  const cards = d.cars.map((c) => {
+    const rows = c.stops.map((st) => `<div class="li" style="align-items:center;gap:8px">
+        <span style="font-weight:700;min-width:18px">${esc(String(st.stop))}</span>
+        <div class="li-body"><span class="li-title">${esc(st.name)}</span>
+          <span class="li-sub">${st.grade ? `<span class="chip c-neutral">Y${esc(String(st.grade))}</span> ` : ''}${esc(st.suburb)}</span></div>
+        ${st.dropped ? `<span class="bus-dropped-tick" style="color:var(--success)" aria-label="Dropped off">${icS('check')}</span>` : ''}
+      </div>`).join('');
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:12px;height:12px;border-radius:50%;flex:none;background:${_busCarColour(c.colourIndex)}"></span>
+        <span style="font-weight:700">${esc(c.name)}</span>${c.leaderNames.length ? `<span class="card-sub" style="margin-left:auto">${esc(c.leaderNames.join(', '))}</span>` : ''}</div>
+      ${rows || `<div class="card-sub">No riders yet.</div>`}
+    </div>`;
+  }).join('');
+  return `${cards}${d.unassigned ? `<div class="card-sub">${esc(String(d.unassigned))} not on a car yet.</div>` : ''}`;
 }
 
 function _busRosterHtml() {
