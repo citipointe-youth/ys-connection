@@ -1,0 +1,8 @@
+[
+  { "status": 401, "body": { "code": "UNAUTHORIZED", "message": "Missing or invalid sync token." } },
+  { "status": 503, "body": { "code": "LINK_OFF", "message": "The YS link is off." } },
+  { "status": 409, "body": { "code": "LINK_CONTRACT_MISMATCH", "message": "Contract version mismatch.", "expected": 1 } },
+  { "status": 400, "body": { "code": "VALIDATION_ERROR", "message": "Validation failed", "details": [] } },
+  { "status": 503, "body": { "code": "SERVICE_UNAVAILABLE", "message": "The service is temporarily unavailable. Please try again." } },
+  { "status": 503, "body": { "code": "REQUEST_TIMEOUT", "message": "This is taking longer than expected. Please try again." } }
+]

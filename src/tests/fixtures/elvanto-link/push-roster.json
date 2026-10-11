@@ -1,0 +1,11 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T08:30:00.000Z",
+  "rows": [
+    { "personId": "9e000000-0000-4000-8000-000000000001", "firstName": "Alex", "lastName": "Sample", "gender": "male", "grade": 9, "kind": "student" },
+    { "personId": "9e000000-0000-4000-8000-000000000002", "firstName": "Sam", "lastName": "Example", "gender": "female", "grade": null, "kind": "leader" },
+    { "personId": "9e000000-0000-4000-8000-000000000003", "firstName": "Jamie", "lastName": "Test", "gender": "female", "grade": 9, "kind": "student" },
+    { "personId": "9e000000-0000-4000-8000-000000000004", "firstName": "Casey", "lastName": "Other", "gender": null, "grade": null, "kind": "other" }
+  ]
+}

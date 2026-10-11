@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "results": [
+    { "id": "0a000000-0000-4000-8000-000000000001", "outcome": "sent", "sentLogKey": "checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000001" },
+    { "id": "0a000000-0000-4000-8000-000000000003", "outcome": "sent", "sentLogKey": "submitReport:lifegroup:6a000000-0000-4000-8000-000000000002:20261013", "reportId": "7e000000-0000-4000-8000-000000000003" },
+    { "id": "0a000000-0000-4000-8000-000000000006", "outcome": "sent", "sentLogKey": "checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000005", "personId": "9e000000-0000-4000-8000-000000000005" },
+    { "id": "0a000000-0000-4000-8000-000000000007", "outcome": "already" },
+    { "id": "0a000000-0000-4000-8000-000000000004", "outcome": "refused", "reason": "report-changed", "detail": "This report changed in Elvanto." },
+    { "id": "0a000000-0000-4000-8000-000000000008", "outcome": "unclear", "sentLogKey": "checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000003", "detail": "Elvanto may not have saved this." },
+    { "id": "0a000000-0000-4000-8000-000000000009", "outcome": "retry", "retrySeconds": 300, "reason": "awaiting-approval" },
+    { "id": "0a000000-0000-4000-8000-000000000005", "outcome": "shadowed", "sentLogKey": "complete:ys:f7000000-0000-4000-8000-000000000001" },
+    { "id": "0a000000-0000-4000-8000-00000000000a", "outcome": "resolved", "landed": true }
+  ]
+}

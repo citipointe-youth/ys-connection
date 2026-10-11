@@ -1,0 +1,35 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T08:30:00.000Z",
+  "rows": [
+    {
+      "groupId": "6a000000-0000-4000-8000-000000000001",
+      "name": "Grade 9 Girls Lifegroup",
+      "meets": "Mon 7:00 PM",
+      "members": [
+        { "personId": "9e000000-0000-4000-8000-000000000003", "name": "Jamie Test", "leader": false },
+        { "personId": "9e000000-0000-4000-8000-000000000002", "name": "Sam Example", "leader": true }
+      ],
+      "thisWeek": "reported",
+      "lastReport": {
+        "reportId": "7e000000-0000-4000-8000-000000000001", "date": "2026-10-12", "time": "7:00 PM", "didNotMeet": false,
+        "attendees": ["9e000000-0000-4000-8000-000000000003"], "guests": 0, "serviceTimeId": null, "editable": true, "blocked": null
+      }
+    },
+    {
+      "groupId": "6a000000-0000-4000-8000-000000000002",
+      "name": "Grade 9 Boys Lifegroup",
+      "meets": "Tue 6:30 PM",
+      "members": [
+        { "personId": "9e000000-0000-4000-8000-000000000001", "name": "Alex Sample", "leader": false },
+        { "personId": "9e000000-0000-4000-8000-000000000004", "name": "Casey Other", "leader": true }
+      ],
+      "thisWeek": "none",
+      "lastReport": {
+        "reportId": "7e000000-0000-4000-8000-000000000002", "date": "2026-10-06", "time": "6:30 PM", "didNotMeet": false,
+        "attendees": ["9e000000-0000-4000-8000-000000000001"], "guests": 0, "serviceTimeId": null, "editable": false, "blocked": "unkept-notes"
+      }
+    }
+  ]
+}

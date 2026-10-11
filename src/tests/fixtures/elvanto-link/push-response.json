@@ -1,0 +1,5 @@
+[
+  { "applied": true, "rows": 4, "matched": { "auto": 2, "ambiguous": 0 } },
+  { "applied": true, "rows": 1 },
+  { "applied": false }
+]

@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T08:30:00.000Z",
+  "rows": [
+    {
+      "rowId": "f7000000-0000-4000-8000-000000000001", "flowId": "f1000000-0000-4000-8000-000000000001", "flowName": "New Youth Follow Up",
+      "stepId": "f5000000-0000-4000-8000-000000000001", "stepName": "Call within a week", "stepOrder": 1,
+      "personId": "9e000000-0000-4000-8000-000000000001", "name": "Alex Sample", "due": "2026-10-20", "assignedTo": "Sam Example"
+    },
+    {
+      "rowId": "f7000000-0000-4000-8000-000000000002", "flowId": "f1000000-0000-4000-8000-000000000001", "flowName": "New Youth Follow Up",
+      "stepId": "f5000000-0000-4000-8000-000000000001", "stepName": "Call within a week", "stepOrder": 1,
+      "personId": null, "name": "Morgan Unlinked", "due": null, "assignedTo": ""
+    }
+  ]
+}
