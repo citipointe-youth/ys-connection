@@ -142,6 +142,56 @@ describe('NewYouthService.send', () => {
     expect(f.posts()).toHaveLength(2); // one student + one parent, from the first send only
   });
 
+  it('a second tap while the first is still fetching the forms is not posted again', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const calls: Call[] = [];
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url), method = init?.method ?? 'GET';
+      calls.push({ method, url: u, body: init?.body ? String(init.body) : '' });
+      if (method === 'GET') {
+        await gate; // the form pages are slow
+        return new Response(u.includes(EF.STUDENT_FORM_ID) ? studentHtml : parentHtml, { status: 200 });
+      }
+      return new Response('<p>OK-TEST</p>', { status: 200 });
+    }) as unknown as typeof fetch;
+    const svc = makeNewYouthService(await settingsWith(true), { fetchFn });
+    const first = svc.send(LEADER, INPUT);
+    await vi.waitFor(() => expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2)); // mid-GET
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, repeat: true });
+    release();
+    await first;
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(2); // one student + one parent, from the first send only
+  });
+
+  it('a GET failure clears the in-flight mark, so a retry goes through', async () => {
+    let down = true;
+    const f = fakeFetch();
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (down && (init?.method ?? 'GET') === 'GET') throw new Error('ECONNRESET');
+      return f.fetchFn(url, init);
+    }) as unknown as typeof fetch;
+    const svc = makeNewYouthService(await settingsWith(true), { fetchFn });
+    await expect(svc.send(LEADER, INPUT)).rejects.toMatchObject({ code: 'ELVANTO_UNREACHABLE' });
+    down = false;
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+  });
+
+  it('a changed form clears the in-flight mark', async () => {
+    let changed = true;
+    const f = fakeFetch();
+    const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (changed && (init?.method ?? 'GET') === 'GET' && String(url).includes(EF.STUDENT_FORM_ID)) {
+        return new Response(studentHtml.replace('name="submissions[0][birthday]"', 'name="x"'), { status: 200 });
+      }
+      return f.fetchFn(url, init);
+    }) as unknown as typeof fetch;
+    const svc = makeNewYouthService(await settingsWith(true), { fetchFn });
+    await expect(svc.send(LEADER, INPUT)).rejects.toMatchObject({ code: 'ELVANTO_FORM_CHANGED' });
+    changed = false;
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+  });
+
   it('a failed send is not remembered, so a fixed retry goes through', async () => {
     let reject = true;
     const f = fakeFetch(() => new Response(reject ? studentHtml : '<p>OK-TEST</p>', { status: 200 }));

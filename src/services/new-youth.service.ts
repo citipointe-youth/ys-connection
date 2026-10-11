@@ -136,19 +136,26 @@ export function makeNewYouthService(
         throw new AppError('RATE_LIMITED', 'Too many forms from this login. Try again in an hour.', 429);
       }
 
-      const [sHtml, pHtml] = await Promise.all([getForm(EF.STUDENT_FORM_ID), getForm(EF.PARENT_FORM_ID)]);
-      const sHp = EF.honeypotName(sHtml), pHp = EF.honeypotName(pHtml);
-      const sBody = EF.studentBody(y, sHp ?? 'elvanto-missing');
-      const pBody = EF.parentBody(y, pHp ?? 'elvanto-missing');
-      if (!sHp || !pHp || EF.shapeProblems(sHtml, sBody).length || EF.shapeProblems(pHtml, pBody).length) {
-        throw new AppError('ELVANTO_FORM_CHANGED', 'The Elvanto form has changed, so nothing was sent. Use the welcome-desk form and tell the admin.', 502);
+      // Remember the send BEFORE the form GETs (live mode only): a second tap while this one is still
+      // fetching or posting gets "unconfirmed" back instead of posting the same student again.
+      if (!opts.dryRun) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false } });
+
+      let sBody: URLSearchParams, pBody: URLSearchParams;
+      try {
+        const [sHtml, pHtml] = await Promise.all([getForm(EF.STUDENT_FORM_ID), getForm(EF.PARENT_FORM_ID)]);
+        const sHp = EF.honeypotName(sHtml), pHp = EF.honeypotName(pHtml);
+        sBody = EF.studentBody(y, sHp ?? 'elvanto-missing');
+        pBody = EF.parentBody(y, pHp ?? 'elvanto-missing');
+        if (!sHp || !pHp || EF.shapeProblems(sHtml, sBody).length || EF.shapeProblems(pHtml, pBody).length) {
+          throw new AppError('ELVANTO_FORM_CHANGED', 'The Elvanto form has changed, so nothing was sent. Use the welcome-desk form and tell the admin.', 502);
+        }
+      } catch (e) {
+        recent.delete(key); // nothing was posted: let a fixed retry through
+        throw e;
       }
 
       if (opts.dryRun) return { student: 'skipped', parent: 'skipped', dryRun: true };
 
-      // Remember the send BEFORE the first POST: a second tap while this one is still in flight gets
-      // "unconfirmed" back instead of posting the same student again.
-      recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false } });
       const student: EF.Outcome = data.send.includes('student') ? await post('student', sBody) : 'skipped';
       const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post('parent', pBody);
       const result: NewYouthResult = { student, parent, dryRun: false };
