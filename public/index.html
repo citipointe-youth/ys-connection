@@ -9094,8 +9094,14 @@ function _lkDay(ymd) {
     + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][p[1] - 1];
 }
 function _lkSvcLabel(s) { return s ? _lkDay(s.ymd) + ' · ' + (s.name || '') + ' ' + _lkTime(s.startsAt) : ''; }
-// The leader line for one action (contract §5.3 / §5.4, word for word). Two app-only statuses:
-// 'queued' (still on this phone) and 'mirror' (checked in on the kiosk; no app row).
+// The practice line by action type (contract X9).
+function _lkPracticeLine(type) {
+  if (type === 'checkOut') return 'Practice mode: not sent to Elvanto. Check out the usual way.';
+  if (type === 'submitReport' || type === 'editReport' || type === 'completeStep') return 'Practice mode: not sent to Elvanto. Do it in Elvanto as usual.';
+  return 'Practice mode: not sent to Elvanto. Check in the usual way.';
+}
+// The leader line for one action (contract §5.3 / §5.4, word for word; X9 picks some lines by type). Two app-only
+// statuses: 'queued' (still on this phone) and 'mirror' (checked in on the kiosk; no app row).
 function _lkStatusText(row, lastSeen) {
   if (!row) return '';
   const R = {
@@ -9128,9 +9134,11 @@ function _lkStatusText(row, lastSeen) {
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : '');
     case 'claimed': return 'Sending to Elvanto…';
-    case 'sent': return row.reason === 'already' ? 'Already in Elvanto' : 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
-    case 'shadowed': return 'Practice mode: not sent to Elvanto. Check in the usual way.';
-    case 'refused': return R[row.reason] || row.message || R.unknown;
+    case 'sent': if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
+      return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
+    case 'shadowed': return _lkPracticeLine(row.type);
+    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
+      return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
     case 'cancelled': return 'Cancelled.';
   }
@@ -9164,7 +9172,8 @@ function _lkBanner(types, st) {
   const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', firstTimerCheckIn: 'First-timer check-in' };
   if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkTime(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  if (types.some((t) => caps[t] === 'shadow')) out.push(['practice', 'Practice mode: not sent to Elvanto. Check in the usual way.']);
+  types.filter((t) => caps[t] === 'shadow').map(_lkPracticeLine)
+    .forEach((l) => { if (!out.some((x) => x[1] === l)) out.push(['practice', l]); });
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');

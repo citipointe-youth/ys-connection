@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
-  '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
+  '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkFlush', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
@@ -148,6 +148,34 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
     };
     for (const [reason, line] of Object.entries(lines)) expect(t({ status: 'refused', reason })).toBe(line);
     expect(t({ status: 'refused', reason: null, message: 'Do this in Elvanto for now.' })).toBe('Do this in Elvanto for now.');
+  });
+});
+
+describe('A3 / X9 lines by action type', () => {
+  const t = makeEnv().fns._lkStatusText;
+  it('shadowed: one line per type', () => {
+    expect(t({ status: 'shadowed', type: 'checkIn' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
+    expect(t({ status: 'shadowed', type: 'firstTimerCheckIn' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
+    expect(t({ status: 'shadowed', type: 'checkOut' })).toBe('Practice mode: not sent to Elvanto. Check out the usual way.');
+    for (const type of ['submitReport', 'editReport', 'completeStep']) {
+      expect(t({ status: 'shadowed', type })).toBe('Practice mode: not sent to Elvanto. Do it in Elvanto as usual.');
+    }
+  });
+  it('check-out no-room and flow-step already', () => {
+    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
+    expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe('No room for this person. Check in on the kiosk.');
+    expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
+    expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
+  });
+  it('the practice banner picks the line by the screen types', () => {
+    const st = (caps: any) => ({ console: { lastSeenAt: '2026-10-16T06:12:00.000Z', online: true, inWindow: true, pollSeconds: 60,
+      capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', ...caps }, consoles: 1 }, mirrors: {} });
+    const b = (types: string[], caps: any) => strip(makeEnv().fns._lkBanner(types, st(caps)));
+    expect(b(['checkIn', 'checkOut'], { checkOut: 'shadow' })).toContain('Check out the usual way.');
+    expect(b(['checkIn', 'checkOut'], { checkOut: 'shadow' })).not.toContain('Check in the usual way.');
+    expect(b(['completeStep'], { completeStep: 'shadow' })).toContain('Practice mode: not sent to Elvanto. Do it in Elvanto as usual.');
+    const both = b(['submitReport', 'editReport'], { submitReport: 'shadow', editReport: 'shadow' });
+    expect(both.split('Do it in Elvanto as usual.').length).toBe(2); // one line, not two
   });
 });
 
