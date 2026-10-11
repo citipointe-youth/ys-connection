@@ -15,7 +15,8 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
-  '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows'];
+  '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
+  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -936,5 +937,90 @@ describe('F3 flow steps', () => {
     const h = setup();
     h.get().LINK.status = { console: { capabilities: { completeStep: 'off' } } };
     expect(h.fns._lkFlowsHtml()).not.toContain('_lkOpenStep');
+  });
+});
+
+// ── F4.1 first-timer tick on the New person form ──
+describe('F4.1 first-timer check-in', () => {
+  const OK = { student: 'sent', parent: 'sent', dryRun: false };
+  it('_lkFirstTimerDecision: live send queues unless the student form failed or was not sent', () => {
+    const d = makeEnv().fns._lkFirstTimerDecision;
+    expect(d(OK, 'live', ['Ava', 'Example']).queue).toBe(true);
+    expect(d({ ...OK, student: 'unconfirmed' }, 'shadow', ['Ava', 'Example']).queue).toBe(true);
+    expect(d({ ...OK, student: 'failed' }, 'live', ['Ava', 'Example']).queue).toBe(false);
+    expect(d({ ...OK, student: 'skipped', parent: 'sent' }, 'live', ['Ava', 'Example']).queue).toBe(false); // a parent-only retry
+    expect(d(OK, 'off', ['Ava', 'Example']).queue).toBe(false);
+  });
+  it('_lkFirstTimerDecision: a dry run queues only when the capability is known and not live', () => {
+    const d = makeEnv().fns._lkFirstTimerDecision;
+    const dry = { student: 'skipped', parent: 'skipped', dryRun: true };
+    expect(d(dry, 'shadow', ['Ava', 'Example']).queue).toBe(true);
+    expect(d(dry, 'locked', ['Ava', 'Example']).queue).toBe(true);
+    expect(d(dry, 'live', ['Ava', 'Example']).queue).toBe(false);
+    expect(d(dry, null, ['Ava', 'Example']).queue).toBe(false);
+  });
+  it('_lkFirstTimerDecision: a name over 60 characters is skipped with a note', () => {
+    const d = makeEnv().fns._lkFirstTimerDecision;
+    const r = d(OK, 'live', ['A'.repeat(61), 'Example']);
+    expect(r.queue).toBe(false);
+    expect(r.note).toMatch(/too long/);
+    expect(d(OK, 'live', ['A'.repeat(60), 'B'.repeat(60)]).queue).toBe(true);
+    expect(d({ ...OK, student: 'failed' }, 'live', ['A'.repeat(61), 'x']).note).toBeNull();
+  });
+  it('_lkFirstTimerPayload: grade 7–12 to a number, gender f/m to female/male', () => {
+    const f = makeEnv().fns._lkFirstTimerPayload;
+    expect(f({ firstName: ' Ava ', lastName: 'Example', grade: '9', gender: 'f' }, SVC)).toEqual({ serviceTimeId: SVC.serviceTimeId,
+      serviceId: SVC.serviceId, firstName: 'Ava', lastName: 'Example', grade: 9, gender: 'female' });
+    expect(f({ firstName: 'Ben', lastName: 'Sample', grade: '12', gender: 'm' }, SVC)).toMatchObject({ grade: 12, gender: 'male' });
+    for (const g of ['7', '8', '10', '11']) expect(f({ firstName: 'a', lastName: 'b', grade: g, gender: 'm' }, SVC).grade).toBe(Number(g));
+    expect(f({ firstName: 'a', lastName: 'b', grade: '', gender: 'm' }, SVC).grade).toBeNull();
+  });
+  it('the tick: on by default when §2.3 gives a default; else a service select; nothing when the link is off', () => {
+    const h = makeEnv();
+    const L = h.get().LINK;
+    L.services = [{ ...SVC, name: 'Youth <b>' }, { ...SVC, serviceTimeId: P(5), ymd: '2026-10-11', name: 'Morning' }];
+    L.defaultSvc = SVC.serviceTimeId;
+    const on = h.fns._nyLinkHtml();
+    expect(on).toContain('type="checkbox" id="ny-lk-svc"');
+    expect(on).toContain(' checked');
+    expect(on).toContain('Check them in to Fri 16 Oct · Youth &lt;b&gt;');
+    expect(on).not.toContain('<b>');
+    L.defaultSvc = null;
+    const pick = h.fns._nyLinkHtml();
+    expect(pick).toContain('<select class="fs" id="ny-lk-svc">');
+    expect(pick).toContain('<option value="">Do not check in</option>');
+    expect(pick).not.toContain('checked');
+    L.status = { console: { capabilities: { firstTimerCheckIn: 'off' } } };
+    expect(h.fns._nyLinkHtml()).toBe('');
+    for (const [role, mode] of [['grade', 'off'], ['grade', 'shadow'], ['admin', 'off']]) {
+      const k = makeEnv({ role, mode });
+      k.get().LINK.services = [SVC]; k.get().LINK.defaultSvc = SVC.serviceTimeId;
+      expect(k.fns._nyLinkHtml()).toBe('');
+    }
+    expect(extractFn(html, 'renderNewYouth')).toContain("${typeof _nyLinkHtml === 'function' && _linkOn() ? `<div class=\"card\" id=\"ny-lk\">${_nyLinkHtml()}</div>` : ''}");
+  });
+  it('after the send: queues firstTimerCheckIn through the phone queue, once; the New person send is unchanged', () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ leaderId: 'L1' });
+    h.get().LINK.services = [SVC];
+    const mine: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'Ava', lastName: 'Example', grade: '8', gender: 'f' } };
+    h.fns._lkFirstTimerAfter(mine, OK);
+    const q = h.fns._lkQGet();
+    expect(q).toHaveLength(1);
+    expect(q[0]).toMatchObject({ kind: 'action', type: 'firstTimerCheckIn', note: null, leaderId: 'L1',
+      payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, firstName: 'Ava', lastName: 'Example', grade: 8, gender: 'female' } });
+    expect(mine.lkSvc).toBeNull();
+    expect(mine.lkNote).toContain('waiting to send');
+    h.fns._lkFirstTimerAfter(mine, OK); // a later retry on the same send never queues again
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    const long: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'A'.repeat(61), lastName: 'X', grade: '8', gender: 'f' } };
+    h.fns._lkFirstTimerAfter(long, OK);
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    expect(long.lkNote).toMatch(/too long/);
+    const send = extractFn(html, 'nySend');
+    expect(send).toContain("mine.lkSvc = send || typeof _nyLkRead !== 'function' ? null : _nyLkRead();");
+    expect(send).toContain("if (typeof _lkFirstTimerAfter === 'function') _lkFirstTimerAfter(mine, result);");
+    expect(send).toContain("API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000)");
+    expect(extractFn(html, 'renderNewYouth')).toContain('NY.lkNote');
   });
 });

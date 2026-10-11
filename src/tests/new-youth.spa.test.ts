@@ -68,23 +68,26 @@ describe('New youth SPA', () => {
 
 // Runs the REAL nySend / nyOpen / renderNewYouth etc. from index.html against minimal stubs.
 const FRESH = '{ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }';
-const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
-function harness(post: (path: string, body: any, ms?: number) => Promise<any>) {
+const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
+function harness(post: (path: string, body: any, ms?: number) => Promise<any>, hostName = 'H', picks: any[] = []) {
   const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
   const pages: string[] = [];
   const toasts: Array<[string, number | undefined]> = [];
   const scrolled: any[] = [];
   const button: any = { disabled: false, textContent: 'Send to Elvanto', isConnected: true };
   const errEl = { scrollIntoView: (o: any) => scrolled.push(o) };
-  const body = { host: 'H', firstName: 'A', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
+  const body = { host: hostName, firstName: 'A', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
   const ref: any = {};
   const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null) };
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
+    'getMyLeaderId', '_lkMyName', '_lkIamPick',
     `let NY = ${FRESH};
     ${FNS.map((n) => extractFn(html, n)).join('\n')}
     return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },
-    (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} }, () => ({ ...body }), [], []);
+    (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },
+    () => ({ ...body, host: ref.hostName }), [], [], () => (ref.hostName ? 'L1' : null), () => ref.hostName, (then: any) => picks.push(then));
+  ref.hostName = hostName;
   ref.h = h;
   return { h, S, pages, toasts, scrolled, button, body, last: () => pages[pages.length - 1] ?? '' };
 }
@@ -439,5 +442,43 @@ describe('"New person" is the name the host sees', () => {
   });
   it('Bus Ministry keeps its own New Person button', () => {
     expect(html).toMatch(/New Person/);
+  });
+});
+
+describe('the host is the "I am" leader (ledger 22)', () => {
+  it('no "Your name (host)" input and no ysc.nyHost; the form shows "Host: <leader>" with a Change control', () => {
+    expect(html).not.toContain('Your name (host)');
+    expect(html).not.toContain('ysc.nyHost');
+    const t = harness(async () => ({}), 'Cody <b>Cobb</b>');
+    t.h.renderNewYouth();
+    expect(t.last()).toContain('id="ny-hostc"');
+    expect(t.last()).not.toContain('id="ny-host"');
+    const host = new Function('S', 'esc', 'getMyLeaderId', '_lkMyName', `${extractFn(html, '_nyHost')}; ${extractFn(html, '_nyHostHtml')}; return _nyHostHtml;`);
+    const esc = (s: any) => String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const out = host({ user: { role: 'grade' } }, esc, () => 'L1', () => 'Cody <b>Cobb</b>')();
+    expect(out).toContain('Host: Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(out).toContain('_nyPickHost()');
+    expect(out).toContain('>Change<');
+    const none = host({ user: { role: 'grade' } }, esc, () => null, () => '')();
+    expect(none).toContain('>Pick<');
+    // a junior leader login uses its bound leader: no Change
+    const bound = host({ user: { role: 'leader', displayName: 'Dana' } }, esc, () => 'L9', () => '')();
+    expect(bound).toContain('Host: Dana');
+    expect(bound).not.toContain('_nyPickHost');
+    expect(extractFn(html, '_nyPickHost')).toContain('_lkIamPick(');
+    expect(extractFn(html, '_lkIamUse')).toContain('_lkSwitchLeader(id)');
+  });
+  it('no leader picked: the picker opens and nothing is sent; the leader name goes where the host name went', async () => {
+    const posts: any[] = [];
+    const picks: any[] = [];
+    const t = harness(async (_p, b) => { posts.push(b); return { student: 'sent', parent: 'sent', dryRun: false }; }, '', picks);
+    await t.h.nySend({ preventDefault() {} });
+    expect(posts).toHaveLength(0);
+    expect(picks).toHaveLength(1);
+    const k = harness(async (_p, b) => { posts.push(b); return { student: 'sent', parent: 'sent', dryRun: false }; }, 'Cody Cobb');
+    await k.h.nySend({ preventDefault() {} });
+    expect(posts).toHaveLength(1);
+    expect(posts[0].host).toBe('Cody Cobb');
+    expect(extractFn(html, '_nyRead')).toContain('host: _nyHost()');
   });
 });
