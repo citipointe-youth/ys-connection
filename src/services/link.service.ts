@@ -45,15 +45,18 @@ const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ActionFields = { id: Uuid, type: z.enum(ACTION_TYPES), payload: z.record(z.unknown()),
   note: z.string().nullable().optional(), leaderId: Uuid.nullable().optional() };
 const ActionItem = z.object(ActionFields);
+const BatchItem = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('action'), ...ActionFields }),
+  z.object({ kind: z.literal('cancel'), id: Uuid, leaderId: Uuid.nullable().optional() }),
+  z.object({ kind: z.literal('undo'), id: Uuid, leaderId: Uuid.nullable().optional(), newId: Uuid }),
+  z.object({ kind: z.literal('identity'), id: Uuid, at: z.string().datetime(), from: Uuid.nullable(), to: Uuid.nullable() }),
+]);
+/** Only the envelope fails the whole call (APP-17); each item is parsed in the loop and a bad one is refused alone. */
 const BatchBody = z.object({
   device: z.object({ id: z.string().max(100).nullable().optional(), label: z.string().max(100).nullable().optional() }).optional(),
-  items: z.array(z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('action'), ...ActionFields }),
-    z.object({ kind: z.literal('cancel'), id: Uuid, leaderId: Uuid.nullable().optional() }),
-    z.object({ kind: z.literal('undo'), id: Uuid, leaderId: Uuid.nullable().optional(), newId: Uuid }),
-    z.object({ kind: z.literal('identity'), id: Uuid, at: z.string().datetime(), from: Uuid.nullable(), to: Uuid.nullable() }),
-  ])).min(1).max(LINK_BATCH_MAX),
+  items: z.array(z.unknown()).min(1).max(LINK_BATCH_MAX),
 });
+const ITEM_KINDS = ['action', 'cancel', 'undo', 'identity'] as const;
 
 // ---------------------------------------------------------------- public shapes
 
@@ -514,13 +517,21 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     async batch(actor, body) {
       const c = context(actor, await gate(actor, 'link:use'));
-      const parsed = BatchBody.safeParse(body); // a bad envelope or item shape fails the whole call
+      const parsed = BatchBody.safeParse(body); // only a bad envelope fails the whole call
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400, { details: parsed.error.errors });
       const b = parsed.data;
       const device = dev(b.device ?? undefined);
       const results: BatchItemResult[] = [];
       const logs: LinkLogRow[] = [];
-      for (const it of b.items) {
+      for (const rawItem of b.items) {
+        const pi = BatchItem.safeParse(rawItem);
+        if (!pi.success) {
+          const o = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as { id?: unknown; kind?: unknown };
+          const kind = (ITEM_KINDS as readonly unknown[]).includes(o.kind) ? o.kind as ItemKind : 'action';
+          results.push(strip(refused(typeof o.id === 'string' ? o.id : '', kind, new AppError('VALIDATION_ERROR', 'Validation failed', 400))));
+          continue;
+        }
+        const it = pi.data;
         try {
           let out: { res: ItemResult; log: LinkLogRow | null };
           if (it.kind === 'action') {

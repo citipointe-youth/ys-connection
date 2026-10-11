@@ -557,14 +557,29 @@ describe('D3 cancel, undo, listActions', () => {
 
 // =====================================================================================================================
 describe('D4 batch and the action log', () => {
-  it('envelope: 0 or 51 items, or a bad item shape → 400 VALIDATION_ERROR', async () => {
+  it('envelope: 0 or 51 items, or no items array → 400 VALIDATION_ERROR', async () => {
     const h = await setup();
     expect(await code(h.svc.batch(GRADE, { device: DEV, items: [] }))).toBe('VALIDATION_ERROR');
     const many = Array.from({ length: 51 }, () => ({ kind: 'action', ...checkIn() }));
     expect(await code(h.svc.batch(GRADE, { device: DEV, items: many }))).toBe('VALIDATION_ERROR');
-    expect(await code(h.svc.batch(GRADE, { device: DEV, items: [{ kind: 'cancel', id: 'nope' }] }))).toBe('VALIDATION_ERROR');
+    expect(await code(h.svc.batch(GRADE, { device: DEV }))).toBe('VALIDATION_ERROR');
     const h2 = await setup('off');
     expect(await code(h2.svc.batch(GRADE, { device: DEV, items: [] }))).toBe('MODULE_DISABLED');
+  });
+
+  it('A7 / APP-17: a bad item is refused alone; one corrupt item in 40 leaves 39 saved', async () => {
+    const h = await setup();
+    const good = Array.from({ length: 39 }, (_, i) => ({ kind: 'action', v: 1, ...firstTimer(),
+      payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'New', lastName: `Kid${i}`, grade: 8, gender: 'male' } }));
+    const items: unknown[] = [...good.slice(0, 20), { kind: 'cancel', id: 'nope' }, ...good.slice(20)];
+    const r = await h.svc.batch(GRADE, { device: DEV, items });
+    expect(r.results).toHaveLength(40);
+    expect(r.results[20]).toMatchObject({ id: 'nope', kind: 'cancel', outcome: 'refused', code: 'VALIDATION_ERROR' });
+    expect(r.results.filter((x) => x.outcome === 'saved')).toHaveLength(39);
+    const odd = await h.svc.batch(GRADE, { device: DEV, items: [{ kind: 'weird', id: 7 }, null] });
+    expect(odd.results).toEqual([
+      expect.objectContaining({ id: '', kind: 'action', outcome: 'refused', code: 'VALIDATION_ERROR' }),
+      expect.objectContaining({ id: '', kind: 'action', outcome: 'refused', code: 'VALIDATION_ERROR' })]);
   });
 
   it('a mixed batch: one result per item, in order; a refusal does not stop the next', async () => {

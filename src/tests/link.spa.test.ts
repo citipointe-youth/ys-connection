@@ -6,7 +6,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkQueuedIdx', '_lkMerge', '_lkApply',
-  '_lkFlush', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
+  '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
@@ -321,6 +321,28 @@ describe('F1.2 queue', () => {
     await vi.advanceTimersByTimeAsync(60000); expect(h.calls.posts).toHaveLength(6);
     expect(h.fns._lkQGet()).toHaveLength(1);
   });
+  it('A7 / APP-17: 404 MODULE_DISABLED stops the retry, keeps the queue, says so and leaves the link page', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: () => Promise.reject(Object.assign(new Error('Not found'), { status: 404, code: 'MODULE_DISABLED' })) });
+    h.get().S.page = 'link-checkin';
+    const ci = (n: number) => ({ kind: 'action', v: 1, id: P(60 + n), type: 'checkIn', payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, personId: P(n) }, note: null, leaderId: null });
+    h.fns._lkQSet([ci(1), ci(2), { kind: 'identity', id: P(70), at: '2026-10-16T08:00:00.000Z', from: null, to: P(8) }]);
+    await h.fns._lkFlush();
+    expect(h.calls.toasts).toContain('Check-in is switched off. Use the kiosk. 2 taps were not sent.');
+    expect(h.calls.gos).toContain('home');
+    await vi.advanceTimersByTimeAsync(300000);
+    expect(h.calls.posts).toHaveLength(1);
+    expect(h.fns._lkQGet()).toHaveLength(3);
+    expect(h.get().LINK.red).toBe(false);
+  });
+  it('A7: queue items carry v: 1', () => {
+    vi.useFakeTimers();
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkIn');
+    h.fns.setMyLeaderId(P(8));
+    for (const it of h.fns._lkQGet()) expect(it.v).toBe(1);
+  });
   it('"All saved" once the queue empties', async () => {
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'logged' })) }) });
     h.fns._lkQSet([{ kind: 'identity', id: P(7), at: '2026-10-16T08:00:00.000Z', from: null, to: P(8) }]);
@@ -552,7 +574,7 @@ describe('F1.4 leader sheet', () => {
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(2);
     for (const it of q) {
-      expect(Object.keys(it).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type']);
+      expect(Object.keys(it).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
       expect(it).toMatchObject({ kind: 'action', type: 'checkIn', note: null, leaderId: P(77) });
       expect(Object.keys(it.payload).sort()).toEqual(['personId', 'serviceId', 'serviceTimeId']);
     }
@@ -771,7 +793,7 @@ describe('F2 lifegroup report', () => {
     h.fns._lkReportSend();
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(1);
-    expect(Object.keys(q[0]).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type']);
+    expect(Object.keys(q[0]).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
     expect(q[0]).toMatchObject({ kind: 'action', type: 'submitReport', note: 'Great night', leaderId: 'L1' });
     expect(q[0].payload).toEqual({ groupId: G(1), date: '2026-10-13', didNotMeet: false, attendees: [P(61)], guests: 99, notesPrivate: false, serviceTimeId: P(50) });
     expect(h.get().LINK.rf).toBeNull();
@@ -930,7 +952,7 @@ describe('F3 flow steps', () => {
     h.fns._lkStepSend();
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(1);
-    expect(Object.keys(q[0]).sort()).toEqual(['_f', 'id', 'kind', 'leaderId', 'note', 'payload', 'type']);
+    expect(Object.keys(q[0]).sort()).toEqual(['_f', 'id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
     expect(q[0]).toMatchObject({ kind: 'action', type: 'completeStep', note: 'Called, all good', leaderId: 'L1', _f: F(2) });
     expect(q[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: true });
     expect(h.calls.closed).toBe(1);

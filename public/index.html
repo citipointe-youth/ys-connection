@@ -9198,7 +9198,7 @@ function _lkUuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => { const r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 3 | 8)).toString(16); });
 }
 function _lkPush(item, soon) {
-  try { const q = _lkQGet(); q.push(item); _lkQSet(q); } catch (e) {}
+  try { const q = _lkQGet(); q.push(Object.assign({ v: 1 }, item)); _lkQSet(q); } catch (e) {}
   if (soon) _lkSchedule(300);
   _lkRefreshView();
 }
@@ -9250,10 +9250,32 @@ function _lkFlush() {
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
   const p = API.post('/link/batch', { device, items: send }, 20000)
     .then((res) => { _lkResults(items, (res && res.results) || []); return true; },
-      (err) => { if (!(err && err.status === 401)) _lkFailed(); return false; })
+      (err) => {
+        if (err && err.status === 404 && err.code === 'MODULE_DISABLED') _lkSwitchedOff();
+        else if (!(err && err.status === 401)) _lkFailed();
+        return false;
+      })
     .finally(() => { LINK.flushing = null; });
   LINK.flushing = p;
   return p;
+}
+// The switch went Off (or to Shadow for this login) mid-night: stop retrying, keep the queue, say so, refresh the
+// settings and leave the link page (APP-17). The next tap or a later boot tries again.
+function _lkSwitchedOff() {
+  if (LINK.timer) { clearTimeout(LINK.timer); LINK.timer = null; }
+  LINK.fails = 0; LINK.red = false;
+  let n = 0;
+  try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
+  toast('Check-in is switched off. Use the kiosk. ' + n + (n === 1 ? ' tap was' : ' taps were') + ' not sent.', 8000);
+  (async () => {
+    try {
+      const before = _navSig();
+      Cache.del('/settings');
+      S.settings = await API.get('/settings');
+      if (_shellReady && _navSig() !== before) _initShell();
+    } catch (e) {}
+  })();
+  if (S.page === 'link' || String(S.page || '').indexOf('link-') === 0) go('home');
 }
 function _lkFailed() {
   LINK.fails++;
@@ -9656,7 +9678,7 @@ function _lkLeadersSubmit() {
   let n = 0;
   _lkLeadersView().forEach((l) => {
     if (_lkLeaderState(l) !== 'tick' || !t[l.leaderId]) return;
-    q.push({ kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, personId: l.personId }, note: null, leaderId: lid });
+    q.push({ v: 1, kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, personId: l.personId }, note: null, leaderId: lid });
     n++;
   });
   if (!n) return;
