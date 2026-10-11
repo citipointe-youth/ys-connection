@@ -1,0 +1,247 @@
+// sync.service (spec 2026-10-12-elvanto-link-app-design.md §8.1; plan tasks C1, C2).
+// Replays the frozen fixtures in src/tests/fixtures/elvanto-link/ (read only, never edited).
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { makeSyncService } from '../services/sync.service';
+import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
+import { InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
+import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { ClaimResponse, PAYLOAD_SCHEMAS, PushResponse, ResultResponse } from '../core/link-contract';
+import { dedupeKey } from '../services/link-rules';
+import type { ActionType, NewOutboxRow } from '../core/link-types';
+
+// Every logger call made while this file runs (the service must make none with a body or a note).
+const logCalls = vi.hoisted(() => [] as unknown[][]);
+vi.mock('../utils/logger', () => {
+  const rec = (...a: unknown[]) => { logCalls.push(a); };
+  return { createLogger: () => ({ info: rec, warn: rec, error: rec }) };
+});
+
+const FIX = join(__dirname, 'fixtures/elvanto-link');
+const fx = (name: string) => JSON.parse(readFileSync(join(FIX, name), 'utf8'));
+const claimReq = fx('claim-request.json');
+const claimRes = fx('claim-response.json');
+const resultReq = fx('result-request.json');
+const resultRes = fx('result-response.json');
+const pushRes = fx('push-response.json');
+const CONSOLE = claimReq.consoleId as string;
+const CREATOR = 'c0000000-0000-4000-8000-0000000000aa';
+
+type Mode = 'off' | 'shadow' | 'on';
+
+async function setup(opts: { mode?: Mode; decrypt?: (n: string, id: string) => string } = {}) {
+  const link = new InMemoryLinkRepository({ decrypt: opts.decrypt });
+  const settings = new InMemorySettingsRepository();
+  await settings.init();
+  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
+    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: opts.mode ?? 'on' } } } as any);
+  const users = new InMemoryUserRepository();
+  await users.save({ id: CREATOR, displayName: 'Grade 9 Girls', email: 'grade9g', role: 'grade', status: 'active' } as any);
+  const students = new InMemoryStudentRepository();
+  const svc = makeSyncService({ link, settings, students, users });
+  return { link, settings, users, students, svc };
+}
+
+/** One outbox row per fixture claim row (same id, type, payload, note, serviceDate). */
+function rowFromFixture(r: any): NewOutboxRow {
+  return { id: r.id, type: r.type, payload: r.payload, note: r.note, dedupeKey: dedupeKey(r.type, r.payload),
+    serviceDate: r.serviceDate, studentId: null, personId: r.payload.personId ?? null, createdBy: CREATOR,
+    leaderId: null, leaderName: r.by.leaderName };
+}
+
+let spies: ReturnType<typeof vi.spyOn>[] = [];
+beforeEach(() => {
+  spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+});
+afterEach(() => { spies.forEach((s) => s.mockRestore()); });
+
+// ---------------- C1: version gate ----------------
+
+describe('sync.service version gate', () => {
+  const bodies = (v: unknown) => ({ ...claimReq, contractVersion: v });
+
+  it('contractVersion 2 → LinkContractMismatch (409, expected: 1), nothing applied', async () => {
+    const { svc, link } = await setup();
+    for (const call of [
+      () => svc.claim(bodies(2)),
+      () => svc.result({ ...resultReq, contractVersion: 2 }),
+      () => svc.push('roster', { ...fx('push-roster.json'), contractVersion: 2 }),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH', statusCode: 409, extra: { expected: 1 } });
+    }
+    expect(await link.listConsoles()).toEqual([]);
+    expect(await link.mirrorState()).toEqual([]);
+  });
+
+  it('missing or string contractVersion → SyncValidation (400)', async () => {
+    const { svc, link } = await setup();
+    const { contractVersion: _drop, ...noVersion } = claimReq;
+    for (const b of [noVersion, bodies('1'), null, 'x', []]) {
+      await expect(svc.claim(b)).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    }
+    expect(await link.listConsoles()).toEqual([]);
+  });
+
+  it('a Zod failure → SyncValidation (400), nothing applied', async () => {
+    const { svc, link } = await setup();
+    await expect(svc.claim({ ...claimReq, consoleId: 'not-a-uuid' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    await expect(svc.result({ ...resultReq, results: [] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    const roster = fx('push-roster.json');
+    await expect(svc.push('roster', { ...roster, rows: [...roster.rows, { personId: 'bad' }] }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(await link.listConsoles()).toEqual([]);
+    expect(await link.mirrorState()).toEqual([]);
+    expect(await link.roster()).toEqual([]);
+  });
+});
+
+// ---------------- C1: claim ----------------
+
+describe('sync.service claim', () => {
+  it('leases one row per type; reply parses; raw note; by.login = users.email; by.leaderName = snapshot', async () => {
+    const { svc, link } = await setup();
+    for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
+    const reply = await svc.claim(claimReq);
+    expect(ClaimResponse.parse(reply)).toBeTruthy();
+    expect(reply.contractVersion).toBe(1);
+    expect(reply.rows.map((r) => r.type).sort()).toEqual([...Object.keys(PAYLOAD_SCHEMAS)].sort());
+    for (const row of reply.rows) {
+      expect(PAYLOAD_SCHEMAS[row.type as ActionType].safeParse(row.payload).success).toBe(true);
+    }
+    // Same as the fixture, apart from the clock fields.
+    const strip = (r: any) => { const { createdAt: _c, ...rest } = r; return rest; };
+    expect(reply.rows.map(strip)).toEqual(claimRes.rows.map(strip));
+    // Decision 17: the app sends the raw note, never a "Self identified leader" prefix.
+    for (const row of reply.rows) if (row.note !== null) expect(row.note).not.toMatch(/Self identified leader/);
+    expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
+  });
+
+  it('mode off → nothing leased, but the console row is upserted and the sweep ran', async () => {
+    const { svc, link } = await setup({ mode: 'off' });
+    const fresh = rowFromFixture(claimRes.rows[0]);
+    const old = rowFromFixture(claimRes.rows[1]);
+    await link.insertAction(fresh);
+    await link.insertAction(old);
+    link._backdate('link_outbox', old.id, 'created_at', new Date(Date.now() - 4 * 86_400_000).toISOString());
+    const reply = await svc.claim(claimReq);
+    expect(reply.rows).toEqual([]);
+    expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
+    expect((await link.getAction(fresh.id))!.status).toBe('pending');
+    expect(await link.getAction(old.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+  });
+
+  it('shadow mode still leases (the /sync side ignores the switch except off)', async () => {
+    const { svc, link } = await setup({ mode: 'shadow' });
+    await link.insertAction(rowFromFixture(claimRes.rows[0]));
+    expect((await svc.claim(claimReq)).rows).toHaveLength(1);
+  });
+
+  it('an unreadable note → that row is left out and refused; the others are fine', async () => {
+    const bad = claimRes.rows[2].id as string; // submitReport, has a note
+    const { svc, link } = await setup({ decrypt: (n, id) => { if (id === bad) throw new Error('bad key'); return n; } });
+    for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
+    const reply = await svc.claim(claimReq);
+    expect(reply.rows.map((r) => r.id)).not.toContain(bad);
+    expect(reply.rows).toHaveLength(5);
+    expect(await link.getAction(bad)).toMatchObject({ status: 'refused', reason: 'note-unreadable' });
+  });
+
+  it('never logs the note or the body', async () => {
+    logCalls.length = 0;
+    const { svc, link } = await setup();
+    for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
+    await svc.claim(claimReq);
+    await svc.claim({ ...claimReq, contractVersion: 2 }).catch(() => {});
+    await svc.claim({ ...claimReq, consoleId: 'x' }).catch(() => {});
+    for (const calls of [...spies.map((s) => s.mock.calls), logCalls]) {
+      const text = JSON.stringify(calls);
+      expect(text).not.toContain('parable of the sower');
+      expect(text).not.toContain('Called, left a message');
+      expect(text).not.toContain(CONSOLE);
+    }
+  });
+});
+
+// ---------------- C1: result ----------------
+
+describe('sync.service result', () => {
+  it('replays result-request.json after leasing the fixture ids → result-response.json', async () => {
+    const { svc, link } = await setup();
+    const ids = resultReq.results.map((r: any) => r.id as string);
+    const byId = new Map<string, any>(claimRes.rows.map((r: any) => [r.id, r]));
+    let n = 0x20;
+    for (const id of ids) {
+      const f = byId.get(id);
+      if (f) { await link.insertAction(rowFromFixture(f)); continue; }
+      // Extra ids (07..0a) the claim fixture lacks: plain check-ins for distinct people.
+      const personId = `9e000000-0000-4000-8000-0000000000${(n++).toString(16)}`;
+      const payload = { serviceTimeId: claimRes.rows[0].payload.serviceTimeId, serviceId: claimRes.rows[0].payload.serviceId, personId };
+      await link.insertAction(rowFromFixture({ id, type: 'checkIn', payload, note: null, serviceDate: '2026-10-16', by: { leaderName: 'Test Leader' } }));
+    }
+    const leased = await svc.claim({ ...claimReq, max: 20 });
+    expect(leased.rows).toHaveLength(ids.length);
+    // The fixture's last item resolves an already-final row (a repeat): mark it sent first.
+    link._backdate('link_outbox', '0a000000-0000-4000-8000-00000000000a', 'status', 'sent');
+    const reply = await svc.result(resultReq);
+    expect(ResultResponse.parse(reply)).toBeTruthy();
+    expect(reply).toEqual(resultRes);
+    expect(await link.getAction('0a000000-0000-4000-8000-000000000009')).toMatchObject({ status: 'pending', leaseOwner: null });
+  });
+});
+
+// ---------------- C2: pushes ----------------
+
+describe('sync.service push', () => {
+  for (const kind of ['roster', 'services', 'groups', 'flows'] as const) {
+    it(`push-${kind}.json → applied, rows = row count; a repeat with the same takenAt is not applied`, async () => {
+      const { svc } = await setup();
+      const body = fx(`push-${kind}.json`);
+      const first = await svc.push(kind, body);
+      expect(PushResponse.parse(first)).toBeTruthy();
+      expect(first).toMatchObject({ applied: true, rows: body.rows.length });
+      if (kind !== 'roster') expect(first).toEqual({ applied: true, rows: body.rows.length });
+      const again = await svc.push(kind, body);
+      expect(PushResponse.parse(again)).toBeTruthy();
+      expect(again).toEqual({ applied: false });
+    });
+  }
+
+  it('groups get grade/gender from parseGroupName', async () => {
+    const { svc, link } = await setup();
+    const body = fx('push-groups.json');
+    body.rows[1] = { ...body.rows[1], name: 'Mixed Youth Group' }; // a copy in memory; the file is untouched
+    await svc.push('groups', body);
+    const groups = await link.groups();
+    expect(groups.find((g) => g.groupId === body.rows[0].groupId)).toMatchObject({ grade: 9, gender: 'female' });
+    expect(groups.find((g) => g.groupId === body.rows[1].groupId)).toMatchObject({ grade: null, gender: null });
+  });
+
+  it('roster → autoMatch against students.findAll(); reply matches push-response.json[0]', async () => {
+    const { svc, link, students } = await setup();
+    await students.save({ id: 's-alex', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);
+    await students.save({ id: 's-jamie', firstName: 'Jamie', lastName: 'Test', gender: 'female', grade: 9 } as any);
+    await students.save({ id: 's-other', firstName: 'Nobody', lastName: 'Here', gender: 'male', grade: 8 } as any);
+    const reply = await svc.push('roster', fx('push-roster.json'));
+    expect(PushResponse.parse(reply)).toBeTruthy();
+    expect(reply).toEqual(pushRes[0]);
+    const roster = await link.roster();
+    expect(roster.find((r) => r.firstName === 'Alex')).toMatchObject({ studentId: 's-alex', match: 'auto' });
+    expect(roster.find((r) => r.firstName === 'Jamie')).toMatchObject({ studentId: 's-jamie', match: 'auto' });
+    expect(roster.find((r) => r.firstName === 'Casey')).toMatchObject({ studentId: null, match: 'none' });
+  });
+
+  it('roster: an ambiguous name is counted', async () => {
+    const { svc, students } = await setup();
+    await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);
+    await students.save({ id: 's-a2', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 10 } as any);
+    expect(await svc.push('roster', fx('push-roster.json'))).toEqual({ applied: true, rows: 4, matched: { auto: 0, ambiguous: 1 } });
+  });
+
+  it('an unknown :kind → SyncValidation (400), nothing applied', async () => {
+    const { svc, link } = await setup();
+    await expect(svc.push('people', fx('push-roster.json'))).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    await expect(svc.push('__proto__', fx('push-roster.json'))).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(await link.mirrorState()).toEqual([]);
+  });
+});
