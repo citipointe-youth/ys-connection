@@ -63,15 +63,23 @@ export function suburbOf(address: string): string {
 }
 
 const STATES = 'QLD|NSW|VIC|SA|WA|TAS|NT|ACT';
-export const STREET_WORDS = /\b(st|street|rd|road|ave|avenue|ct|court|dr|drive|pde|parade|pl|place|cres|crescent|tce|terrace|hwy|highway|ln|lane|way|cl|close|cct|circuit|bvd|boulevard|esp|esplanade|unit|lot)\b/i;
-const SUBURB_PART = new RegExp(`^([A-Za-z][A-Za-z' .-]*?)\\s+(?:${STATES})\\s+\\d{4}$`);
+const STREET_WORDS = /\b(st|street|rd|road|ave|avenue|ct|court|dr|drive|pde|parade|pl|place|cres|crescent|tce|terrace|hwy|highway|ln|lane|way|cl|close|cct|circuit|bvd|boulevard|esp|esplanade|unit|lot)\b/i;
+// Real suburbs whose name holds a street word. Kept short and explicit: any other part with a
+// street word stays blank. A leading "St "/"Saint " (St Lucia, St Kilda) is handled separately.
+const STREET_WORD_SUBURBS = /^(petrie terrace|lane cove( north| west)?)$/i;
+// "Suburb STATE" with an optional postcode: the Places autocomplete text the app stores has no
+// postcode ("24 Wynnum Rd, Carina QLD, Australia").
+const SUBURB_PART = new RegExp(`^([A-Za-z][A-Za-z' .-]*?)\\s+(?:${STATES})(?:\\s+\\d{4})?$`);
 
 /** Strict suburb for logins that must never see a street: only a comma part shaped like
- *  "Suburb STATE 1234" with no digit or street word in the suburb. Unsure → "". */
+ *  "Suburb STATE" or "Suburb STATE 1234", with no digit or street word in the suburb. Unsure → "". */
 export function suburbOnly(address: string): string {
   for (const part of address.split(',').map((p) => p.trim())) {
     const m = SUBURB_PART.exec(part);
-    if (m && !/\d/.test(m[1]!) && !STREET_WORDS.test(m[1]!)) return m[1]!.trim();
+    if (!m) continue;
+    const sub = m[1]!.trim();
+    if (/\d/.test(sub)) continue;
+    if (STREET_WORD_SUBURBS.test(sub) || !STREET_WORDS.test(sub.replace(/^(St|Saint)\s+(?=[A-Z])/, ''))) return sub;
   }
   return '';
 }

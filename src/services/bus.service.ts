@@ -20,9 +20,8 @@ export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: str
 
 /** Read-only All cars view (October rework C). Allow-listed fields only: no ids, streets, phones or consent. */
 export interface BusCarsView {
-  serviceDate: string; version: number; readOnly: true;
   cars: { name: string; colourIndex: number; leaderNames: string[];
-          stops: { stop: number; name: string; grade: number | null; suburb: string; dropped: boolean }[] }[];
+          stops: { stop: number | null; name: string; grade: number | null; suburb: string; dropped: boolean }[] }[];
   unassigned: number;
 }
 
@@ -339,8 +338,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
   }
 
-  async function vehicleViews(runId: string, past = false): Promise<BusRunVehicleView[]> {
-    const [all, riders] = await Promise.all([leaders.findAll(), ridingOf(runId)]);
+  /** `ridersIn`: the caller's own ridingOf(runId) read, so one request reads the riders once. */
+  async function vehicleViews(runId: string, past = false, ridersIn?: Promise<BusRunRider[]>): Promise<BusRunVehicleView[]> {
+    const [all, riders] = await Promise.all([leaders.findAll(), ridersIn ?? ridingOf(runId)]);
     const byId = new Map(all.map((l) => [l.id, l]));
     // I7: count/name only leaders that still exist — a leader deleted mid-run must not show
     // as a "Leader" placeholder chip with an unknown-gender eligibility, or be deducted from
@@ -362,8 +362,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
+    const ridersP = ridingOf(run.id);
     const [vehicles, riders, active, prefs, fleet, consents] = await Promise.all([
-      vehicleViews(run.id, isPast(run, ctx, c)), ridingOf(run.id), leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
+      vehicleViews(run.id, isPast(run, ctx, c), ridersP), ridersP, leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
@@ -685,17 +686,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!modeAllows(ctx.actor, c.modules.newYouthForms)) throw new ModuleDisabledError('All cars');
       // ctx.asLeaderId is deliberately unused: everyone allowed sees the same view.
       const run = await ensureRun(ctx, c);
-      const [vehicles, riders] = await Promise.all([vehicleViews(run.id), ridingOf(run.id)]);
+      const ridersP = ridingOf(run.id);
+      const [vehicles, riders] = await Promise.all([vehicleViews(run.id, false, ridersP), ridersP]);
       const running = vehicles.filter((v) => v.running);
       const onCar = new Set(running.map((v) => v.id));
-      // Built field by field — never spread a repo object into this response.
+      // Built field by field — never spread a repo object into this response. A placed rider
+      // with no stopOrder sorts last with no number; the rest are numbered 1..n like Assign.
       return {
-        serviceDate: run.serviceDate, version: run.version, readOnly: true,
         cars: running.map((v) => ({
           name: v.name, colourIndex: v.colourIndex, leaderNames: [...v.leaderNames],
           stops: riders.filter((r) => r.runVehicleId === v.id)
-            .sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0))
-            .map((r) => ({ stop: r.stopOrder ?? 0, name: r.snapName, grade: r.snapGrade ?? null,
+            .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999))
+            .map((r, i) => ({ stop: r.stopOrder == null ? null : i + 1, name: r.snapName, grade: r.snapGrade ?? null,
               suburb: suburbOnly(r.snapAddress), dropped: !!r.droppedAt })),
         })),
         unassigned: riders.filter((r) => !r.runVehicleId || !onCar.has(r.runVehicleId)).length,

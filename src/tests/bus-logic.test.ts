@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, STREET_WORDS } from '../services/bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly } from '../services/bus-logic';
 
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
@@ -84,8 +84,26 @@ describe('suburbOnly (strict: blank when unsure, never a street)', () => {
   it('state is case-sensitive: lower-case state is unsure', () => expect(suburbOnly('8 Smith St, carina qld 4152')).toBe(''));
   it('multi-word suburb', () => expect(suburbOnly('8 Smith St, Mount Gravatt East QLD 4122, Australia')).toBe('Mount Gravatt East'));
   it('a part with a street word is rejected', () => expect(suburbOnly('Wynnum Rd QLD 4178')).toBe(''));
-  it('STREET_WORDS is exported', () => {
-    expect(STREET_WORDS.test('Wynnum Rd')).toBe(true);
-    expect(STREET_WORDS.test('Carina')).toBe(false);
-  });
+  // T11: the Places autocomplete text the app stores has no postcode (repo fixture
+  // routing.google-requests.test.ts: '24 Wynnum Rd, Carina QLD, Australia').
+  it.each([
+    ['24 Wynnum Rd, Carina QLD, Australia', 'Carina'],
+    ['3/24 Wynnum Rd, Carina QLD, Australia', 'Carina'],
+    ['Wynnum Rd, Carina QLD, Australia', 'Carina'],
+    ['Unit 3, 24 Wynnum Rd, Carina QLD, Australia', 'Carina'],
+    ['8 Smith St, Mount Gravatt East QLD, Australia', 'Mount Gravatt East'],
+    ['12 Hawken Dr, St Lucia QLD 4067, Australia', 'St Lucia'],
+    ['12 Hawken Dr, St Lucia QLD, Australia', 'St Lucia'],
+    ['5 Caxton St, Petrie Terrace QLD, Australia', 'Petrie Terrace'],
+    ['5 Caxton St, Petrie Terrace QLD 4000, Australia', 'Petrie Terrace'],
+  ])('no-postcode and street-word suburbs: %s -> %s', (addr, want) => expect(suburbOnly(addr)).toBe(want));
+  it.each([
+    '24 Wynnum Rd Carina QLD',
+    'Wynnum Rd QLD',
+    'Shop 2, Wynnum Rd QLD 4178, Australia',
+    'Lot 4 QLD, Australia',
+    '24 QLD, Australia',
+    'St Kilda Rd QLD, Australia',
+    'Australia',
+  ])('never a number or a street: %s -> ""', (addr) => expect(suburbOnly(addr)).toBe(''));
 });
