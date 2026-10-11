@@ -1,10 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { QUADS, quadLabelFor } from '../core/types/enums';
 
-const QL = `const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
-const SIMPLE_QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };`;
+// The REAL label maps from the shipped HTML (not copies), so a drift there fails these tests.
+const QL = (loadIndexHtml().match(/^const (?:SIMPLE_)?QUAD_LABELS = .*$/gm) ?? []).join('\n');
 
 describe('S1.1 quadLabel and _simpleLoginsOn', () => {
+  it('the client label maps are the real ones and match the server', () => {
+    expect(QL.split('\n')).toHaveLength(2);
+    const m = new Function(`${QL}\nreturn { QUAD_LABELS, SIMPLE_QUAD_LABELS };`)();
+    for (const q of QUADS) {
+      expect(m.SIMPLE_QUAD_LABELS[q]).toBe(quadLabelFor(q, true));
+      expect(m.QUAD_LABELS[q]).toBe(quadLabelFor(q, false));
+    }
+  });
   it('_simpleLoginsOn is false with an empty config', () => {
     const f = loadFns(['_simpleLoginsOn'], `const S = { settings: { ministryConfig: {} } };`);
     expect(f._simpleLoginsOn()).toBe(false);
@@ -89,9 +98,9 @@ let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
     expect(off.filter((t: any) => t.role === 'grade')).toHaveLength(12);
   });
 
-  it('saveMinistrySetup clears _setupDraft and toasts the renamed count', async () => {
-    const f = loadFns(['saveMinistrySetup'],
-      `let _setupDraft = { logins: { simple: true } }, _setupServiceMinAttendance = 100, _setupTermGapDays = 14;
+  it('saveMinistrySetup reseeds _setupDraft from the saved config and toasts the renamed count', async () => {
+    const f = loadFns(['_setupBaseOf', '_setupPatch', 'saveMinistrySetup'],
+      `let _setupDraft = { logins: { simple: true } }, _setupBase = { simple: false, prayers: true }, _setupServiceMinAttendance = 100, _setupTermGapDays = 14;
        const toasts = []; function toast(m) { toasts.push(m); }
        const S = {}; let _shellReady = false; function _navSig() { return ''; } function _initShell() {} function applyTheme() {}
        const Cache = { del() {} }; let _adminData = { users: [], history: [] };
@@ -100,27 +109,26 @@ let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
        function __d() { return __drafts; } function __t() { return toasts; } function __s() { return S; }`,
       ['saveMinistrySetup', '__d', '__t', '__s']);
     await f.saveMinistrySetup();
-    expect(f.__d()).toEqual([null]);
+    expect(f.__d()).toEqual([{ logins: { simple: true } }]);
     expect(f.__t().join(' ')).toMatch(/Renamed 4 quad logins/);
     expect(f.__s().settings.renamedQuads).toBeUndefined();
   });
 });
 
 describe('S1.3 grade filter core', () => {
-  const VG = ['_vgActive', '_vgLeader', '_vgGrades', '_vgSet', '_vgToggle', '_vgAll', '_vgMine', '_vgSave', '_vgReset', '_vgBar'];
+  // The real _simpleLoginsOn and quadGrades are loaded too (not copies).
+  const VG = ['_simpleLoginsOn', 'quadGrades', '_vgActive', '_vgLeader', '_vgGrades', '_vgSet', '_vgToggle', '_vgAll', '_vgMine', '_vgSave', '_vgReset', '_vgBar'];
   const prelude = (opts: { me?: string | null; role?: string; leaders?: any[]; preview?: boolean; simple?: boolean }) => `
     ${QL}
-    const S = { user: { role: ${JSON.stringify(opts.role ?? 'quad')}, quad: 'b79' }, settings: { ministryConfig: { logins: { simple: ${opts.simple ?? true} }, structure: {} } } };
-    function _simpleLoginsOn() { return !!S.settings.ministryConfig.logins.simple; }
+    const S = { page: 'at-risk', user: { role: ${JSON.stringify(opts.role ?? 'quad')}, quad: 'b79' }, settings: { ministryConfig: { logins: { simple: ${opts.simple ?? true} }, structure: {} } } };
     function getMyLeaderId() { return ${JSON.stringify(opts.me ?? null)}; }
-    function quadGrades(q) { return (q === 'g79' || q === 'b79') ? [7, 8, 9] : [10, 11, 12]; }
     function _gradeWord() { return 'Year'; }
     function esc(s) { return String(s); }
     const __leaders = ${JSON.stringify(opts.leaders ?? [])};
     const Cache = { getStale(k) { return k === '/leaders' ? __leaders : null; } };
     let _previewStash = ${opts.preview ? '{ token: 1 }' : 'null'};
     const __patches = []; const API = { patch: async (p, b) => { __patches.push([p, b]); return {}; } };
-    let __renders = 0; function render() { __renders++; }
+    let __renders = 0; function _vgRepaint() { __renders++; }
     let _vgLocal = {}, _vgTimer = null;
     function toast() {}
     function __p() { return __patches; }
@@ -130,7 +138,7 @@ describe('S1.3 grade filter core', () => {
   it('no I am pick: null (whole bracket) and the hint', () => {
     const f = load({ me: null });
     expect(f._vgGrades()).toBeNull();
-    expect(f._vgBar()).toContain('Pick who you are on Home to filter by your grades');
+    expect(f._vgBar()).toContain('Pick who you are on Home to use your grades');
   });
   it('non-quad login: null and no bar', () => {
     const f = load({ me: 'L1', role: 'director', leaders: [{ id: 'L1', grades: [8] }] });
@@ -223,10 +231,10 @@ describe('S1.3 grade filter core', () => {
     f.exitPreview();
     expect(store.yap_leader_id).toBeUndefined();
   });
-  it('doLogout leaves the view grades alone (they live on the server)', () => {
-
+  it('doLogout drops unsaved taps (_vgReset) but never writes the saved view grades', () => {
     const body = extractFn(loadIndexHtml(), 'doLogout');
-    expect(body).not.toMatch(/view-grades|viewGrades|_vg/);
+    expect(body).toContain('_vgReset()');
+    expect(body).not.toMatch(/view-grades|viewGrades/);
   });
 });
 

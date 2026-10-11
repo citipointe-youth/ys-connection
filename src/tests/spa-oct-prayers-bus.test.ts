@@ -29,10 +29,10 @@ function _prayersOn() { return ${p}; } function _busOn() { return true; } functi
     expect(calls[0]).toContain('/prayers');
     expect(calls[1]).not.toContain('/prayers');
   });
-  it('the MODULE_DISABLED handler refetches /settings, rebuilds the shell when the nav changed, then goes home', async () => {
+  it('the MODULE_DISABLED handler refetches /settings, rebuilds the shell when the nav changed, then leaves the prayers page', async () => {
     const log: string[] = [];
     (globalThis as any).__log = log;
-    const pre = `let sig = 'a'; let S = { settings: { old: 1 } }; let _shellReady = true; let _mdBusy = false;
+    const pre = `let sig = 'a'; let S = { page: 'prayers', settings: { old: 1 } }; let _shellReady = true; let _mdBusy = false;
 const Cache = { del: (k) => globalThis.__log.push('del ' + k) };
 const API = { get: async (p) => { globalThis.__log.push('get ' + p); sig = 'b'; return { fresh: 1 }; } };
 function _navSig() { return sig; } function _initShell() { globalThis.__log.push('shell'); } function go(p) { globalThis.__log.push('go ' + p); }
@@ -40,7 +40,7 @@ function __s() { return S; }`;
     const f = loadFns(['_moduleDisabledRefresh'], pre, ['_moduleDisabledRefresh', '__s']);
     await f._moduleDisabledRefresh();
     expect(log).toEqual(['del /settings', 'get /settings', 'shell', 'go home']);
-    expect(f.__s().settings).toEqual({ fresh: 1 });
+    expect(f.__s().settings).toEqual({ fresh: 1, }); expect(f.__s().page).toBe('prayers');
   });
   it('the API wrapper calls the handler on MODULE_DISABLED from a prayers path', () => {
     const html = loadIndexHtml();
@@ -51,7 +51,7 @@ function __s() { return S; }`;
     const calls: string[] = [];
     (globalThis as any).__k = calls;
     const pre = `function modal(h) { globalThis.__k.push('modal:' + h); } function closeModal() {}
-function _setupSet(p, v) { globalThis.__k.push('set ' + p + '=' + v); }`;
+function _setupSet(p, v) { globalThis.__k.push('set ' + p + '=' + v); } function _prayersOn() { return true; }`;
     const f = loadFns(['_setupPrayersToggle', '_setupPrayersOff'], pre);
     const el = { checked: false };
     f._setupPrayersToggle(el);
@@ -86,7 +86,7 @@ describe('S2.2 _navSlots', () => {
     return a.map(mk);
   };
   const run = (role: string, o: { prayers: boolean; bus: boolean; ny: boolean }) => {
-    const pre = `const S = { user: { role: '${role}' } }; function L(k) { return k; }
+    const pre = `const S = { user: { role: '${role}' } }; function L(k) { return k; } function esc(s) { return String(s); }
 function _prayersOn() { return ${o.prayers}; } function _busOn() { return ${o.bus}; } function _nyOn() { return ${o.ny}; }
 function _navItemsBase() { return ${JSON.stringify(base(role))}; }`;
     return loadFns(['moreItems', 'navItems', '_navSlots', 'bottomNavItems', 'quickActionItems'], pre);
@@ -141,7 +141,7 @@ describe('S2.3 Bus All cars', () => {
     expect(h).not.toMatch(/<button|onclick/);
   });
   it('_busAllCarsHtml shows a loading line before the data arrives', () => {
-    const g = loadFns(['_busAllCarsHtml'], `const BUS = { cars: null }; ${PRE}`);
+    const g = loadFns(['_busAllCarsHtml'], `const BUS = { cars: null, carsErr: false, carsLoading: null }; function busCarsRefresh() {} ${PRE}`);
     expect(g._busAllCarsHtml()).toContain('Loading');
   });
   it('renderBus lists allcars only when canSeeCars, right after My car', () => {
@@ -151,7 +151,7 @@ describe('S2.3 Bus All cars', () => {
     expect(src.indexOf("id: 'allcars'")).toBeLessThan(src.indexOf("id: 'roster'"));
     expect(src).toMatch(/allcars: _busAllCarsHtml/);
   });
-  it('busRefresh fetches /bus/run/cars only on the allcars tab and keeps it out of BUS.view', async () => {
+  it('busRefresh never fetches /bus/run/cars (All cars has its own fetch) and keeps it out of BUS.view', async () => {
     const calls: string[] = [];
     (globalThis as any).__bc = calls;
     const pre = `const BUS = { view: null, myCar: null, loading: null, loadingAs: null, gen: 0, failed: false, routeMin: {}, tab: 'allcars', cars: null, version: -1 };
@@ -161,8 +161,8 @@ async function _busGet(p) { globalThis.__bc.push(p); if (p === '/bus/run') retur
 function __b() { return BUS; }`;
     const f = loadFns(['busRefresh'], pre, ['busRefresh', '__b']);
     await f.busRefresh();
-    expect(calls).toContain('/bus/run/cars');
-    expect(f.__b().cars).toEqual({ cars: [] });
+    expect(calls).not.toContain('/bus/run/cars');
+    expect(f.__b().cars).toBeNull();
     expect(f.__b().view.cars).toBeUndefined();
     expect(f.__b().view.canSeeCars).toBe(true);
     calls.length = 0;

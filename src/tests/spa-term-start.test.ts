@@ -113,6 +113,7 @@ describe('auth expiry handling', () => {
       const localStorage = { removeItem: k => calls.push('rm:' + k) };
       const toast = () => calls.push('toast');
       const go = p => calls.push('go:' + p);
+      const setMyLeaderId = () => {}; const _vgReset = () => {};
       const render = () => calls.push('render');
       function __state() { return { S, calls, stash: _previewStash }; }
     `;
