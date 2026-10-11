@@ -529,7 +529,8 @@ describe('D3 cancel, undo, listActions', () => {
     expect(mine.map((r) => r.id)).toEqual([a.id]);
     expect(Object.keys(mine[0]!).sort()).toEqual(['createdAt', 'hasNote', 'id', 'leaderName', 'login', 'reason', 'resultAt',
       'status', 'type']);
-    expect(mine[0]).toMatchObject({ login: 'grade9g', leaderName: 'Dana Day' });
+    expect(mine[0]).toMatchObject({ login: 'grade9g', leaderName: 'Dana Day', hasNote: true });
+    expect(JSON.stringify(mine)).not.toContain('private words');
     const all = await h.svc.listActions(DIRECTOR, { ids });
     expect(all.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
     expect(all.find((r) => r.id === b.id)).toMatchObject({ detail: 'console sentence', login: 'g79', hasNote: false });

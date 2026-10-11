@@ -20,9 +20,9 @@ export interface LinkRosterPushRow { personId: string; firstName: string; lastNa
 export interface ILinkRepository {
   /** Throws LinkOpenDuplicate(existingId) when an open row (pending/claimed/unclear) has the same dedupeKey. */
   insertAction(row: NewOutboxRow): Promise<OutboxRow>;
-  /** note is always null here (never decrypted outside claim). */
+  /** note is always null here (never decrypted outside claim); hasNote says whether one is stored. */
   getAction(id: string): Promise<OutboxRow | null>;
-  /** Newest first. note is always null. */
+  /** Newest first. note is always null; hasNote says whether one is stored. */
   listActions(f: LinkActionFilter): Promise<OutboxRow[]>;
   /** true only when the row was pending (now cancelled). */
   cancelPending(id: string): Promise<boolean>;

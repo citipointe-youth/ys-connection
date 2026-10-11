@@ -89,6 +89,10 @@ export function makeSetupService(deps: {
           fix('setupCode', 'SETUP_CODE', 'Select Generate. Select Copy. In Vercel, add the value as SETUP_CODE. Then redeploy.', 'setupCode'));
       }
       checks.push({ id: 'google', label: googleStatusText(googleConfigStatus(env as NodeJS.ProcessEnv)), state: 'optional', link: GUIDE_GOOGLE });
+      // Elvanto link (spec §10.1): the length only, never the value. Same trim as readLinkSyncToken.
+      const linkLen = (env['LINK_SYNC_TOKEN'] ?? '').trim().length;
+      checks.push({ id: 'link', state: 'optional',
+        label: `Elvanto link token: ${linkLen === 0 ? 'not set' : linkLen < 32 ? 'too short (32+ characters)' : 'set'}` });
       return { needsAdmin: needs, checks };
     },
 

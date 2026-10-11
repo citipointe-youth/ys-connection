@@ -23,7 +23,7 @@ const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status'
 const fail = (k: string): never => { throw new Error(`applyResults: unexpected column ${k}`); };
 
 function toOutbox(r: Row, note: string | null): OutboxRow {
-  return { id: r.id, type: r.type as ActionType, payload: r.payload ?? {}, note, dedupeKey: r.dedupe_key,
+  return { id: r.id, type: r.type as ActionType, payload: r.payload ?? {}, note, hasNote: r.note != null, dedupeKey: r.dedupe_key,
     serviceDate: ymd(r.service_date)!, studentId: r.student_id ?? null, personId: r.person_id ?? null,
     createdBy: r.created_by, leaderId: r.leader_id ?? null, leaderName: r.leader_name, status: r.status as Status,
     reason: r.reason ?? null, detail: r.detail ?? null, attempts: r.attempts, retryAt: iso(r.retry_at),

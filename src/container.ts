@@ -18,6 +18,7 @@ import {
   InMemoryAuditRepository,
   InMemoryConnectionAuditRepository,
   InMemoryBusRepository,
+  InMemoryLinkRepository,
 } from './repositories/in-memory';
 import { JsonFilePersistence } from './repositories/persistence';
 import {
@@ -36,6 +37,7 @@ import {
   SupabaseAuditRepository,
   SupabaseConnectionAuditRepository,
   SupabaseBusRepository,
+  SupabaseLinkRepository,
   getSqlClient,
 } from './repositories/supabase/index';
 
@@ -56,6 +58,7 @@ import type {
   IConnectionAuditRepository,
   IBusRepository,
 } from './repositories/interfaces';
+import type { ILinkRepository } from './repositories/interfaces/link.repository';
 
 import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
@@ -75,6 +78,9 @@ import { makeConnectionAuditService, type ConnectionAuditService } from './servi
 import { makeNewYouthService, type NewYouthService } from './services/new-youth.service';
 import { makeBusService, type BusService } from './services/bus.service';
 import { makeSetupService, type SetupService } from './services/setup.service';
+import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from './services/link.service';
+import { makeSyncService, type SyncService } from './services/sync.service';
+import { RateLimiter } from './utils/rate-limiter';
 import { cachedProbe } from './utils/cached-probe';
 import { LATEST_MIGRATION } from './core/schema-version';
 import { routingFromEnv } from './services/routing/google-routing-provider';
@@ -95,6 +101,7 @@ export interface Repositories {
   audit: IAuditRepository;
   connectionAudits: IConnectionAuditRepository;
   bus: IBusRepository;
+  link: ILinkRepository;
 }
 
 export interface Services {
@@ -115,6 +122,8 @@ export interface Services {
   connectionAudit: ConnectionAuditService;
   bus: BusService;
   newYouth: NewYouthService;
+  link: LinkService;
+  sync: SyncService;
   users: IUserRepository;
   setup: SetupService;
   /** Cached (30 s) db + schema probe for GET /health. */
@@ -180,6 +189,8 @@ export async function buildContainer(): Promise<Container> {
     : new InMemoryConnectionAuditRepository(useJson ? makeJson('connection-audits.json') : undefined);
   // No json persistence — memory mode is dev-only.
   const bus: IBusRepository = useSupabase ? new SupabaseBusRepository(sql) : new InMemoryBusRepository();
+  // Elvanto link (memory mode is dev/test only, no json persistence).
+  const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
 
   // Home/Trends fan out to several endpoints in parallel that each independently
   // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
@@ -197,13 +208,14 @@ export async function buildContainer(): Promise<Container> {
     dedupeReads(lifegroupWeeks, 'lifegroupWeeks', ['findAll']);
     dedupeReads(lifegroupAttendance, 'lifegroupAttendance', ['findAll']);
     dedupeReads(settings, 'settings', ['getSettings']);
+    dedupeReads(link, 'link', ['roster', 'services', 'groups', 'flows', 'mirrorState', 'listConsoles']);
   }
 
   const repos: Repositories = {
     users, students, leaders, prayers, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, settings, audit, connectionAudits, bus,
+    imports, settings, audit, connectionAudits, bus, link,
   };
 
   // Init all repos
@@ -243,6 +255,9 @@ export async function buildContainer(): Promise<Container> {
   // Live POSTs to the church's Elvanto forms only where ELVANTO_FORMS_LIVE=1 is set: Vercel Production,
   // after Citipointe's approval. Local dev (any PERSISTENCE), tests and previews run dry.
   const newYouth = makeNewYouthService(settings, { live: env.ELVANTO_FORMS_LIVE });
+  const linkSvc = makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance,
+    limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS) });
+  const sync = makeSyncService({ link, settings, students, users });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;
@@ -271,6 +286,8 @@ export async function buildContainer(): Promise<Container> {
     importService, settings: settingsSvc, account, admin, connectionAudit,
     bus: busSvc,
     newYouth,
+    link: linkSvc,
+    sync,
     users,
     setup,
     health,

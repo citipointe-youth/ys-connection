@@ -20,6 +20,8 @@ import { makeConnectionAuditController } from '../controllers/connection-audit.c
 import { makeBatchController } from '../controllers/batch.controller';
 import { makeBusController } from '../controllers/bus.controller';
 import { makeSetupController } from '../controllers/setup.controller';
+import { makeLinkController } from '../controllers/link.controller';
+import { makeSyncController } from '../controllers/sync.controller';
 
 export function buildRoutes(services: Services): Route[] {
   const auth = makeAuthController({ auth: services.auth, users: services.users });
@@ -55,6 +57,8 @@ export function buildRoutes(services: Services): Route[] {
   });
   const busCtl = makeBusController({ bus: services.bus });
   const setupCtl = makeSetupController({ setup: services.setup });
+  const linkCtl = makeLinkController({ link: services.link });
+  const syncCtl = makeSyncController({ sync: services.sync });
 
   return [
     // ----- Batch (compose several read endpoints into one request; see batch.controller) -----
@@ -206,5 +210,24 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/bus/analysis/extra-cars', auth: true, handler: (r) => busCtl.extraCars(r) },
     { method: 'GET',    path: '/bus/history/:runId/map', auth: true, handler: (r) => busCtl.pastRunMap(r) },
     { method: 'GET',    path: '/bus/analysis/map',        auth: true, handler: (r) => busCtl.analysisMap(r) },
+
+    // ----- Elvanto link: leaders + admin (session) -----
+    { method: 'GET',    path: '/link/status',             auth: true, handler: (r) => linkCtl.status(r) },
+    { method: 'GET',    path: '/link/checkin',            auth: true, handler: (r) => linkCtl.checkin(r) },
+    { method: 'POST',   path: '/link/actions',            auth: true, handler: (r) => linkCtl.enqueue(r) },
+    { method: 'GET',    path: '/link/actions',            auth: true, handler: (r) => linkCtl.listActions(r) },
+    { method: 'DELETE', path: '/link/actions/:id',        auth: true, handler: (r) => linkCtl.cancel(r) },
+    { method: 'POST',   path: '/link/batch',              auth: true, handler: (r) => linkCtl.batch(r) },
+    { method: 'GET',    path: '/link/lifegroups',         auth: true, handler: (r) => linkCtl.lifegroups(r) },
+    { method: 'GET',    path: '/link/flows',              auth: true, handler: (r) => linkCtl.flows(r) },
+    { method: 'GET',    path: '/link/admin/roster',       auth: true, handler: (r) => linkCtl.roster(r) },
+    { method: 'POST',   path: '/link/admin/roster/:personId', auth: true, handler: (r) => linkCtl.setMatch(r) },
+    { method: 'GET',    path: '/link/admin/shadow-check', auth: true, handler: (r) => linkCtl.shadowCheck(r) },
+    { method: 'GET',    path: '/link/admin/log',          auth: true, handler: (r) => linkCtl.log(r) },
+
+    // ----- Elvanto link: the console (sync token, no session; checked in the adapter) -----
+    { method: 'POST',   path: '/sync/claim',              auth: false, sync: true, handler: (r) => syncCtl.claim(r) },
+    { method: 'POST',   path: '/sync/result',             auth: false, sync: true, handler: (r) => syncCtl.result(r) },
+    { method: 'POST',   path: '/sync/push/:kind',         auth: false, sync: true, handler: (r) => syncCtl.push(r) },
   ];
 }

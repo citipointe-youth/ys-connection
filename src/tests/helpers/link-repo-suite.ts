@@ -108,6 +108,15 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(await only({ ids: mine, groupId: grp })).toEqual([b.id]);
         for (const r of await repo.listActions({ ids: mine })) expect(r.note).toBeNull();
       });
+      it('hasNote says whether a note is stored, without returning it (getAction + listActions)', async () => {
+        const a = await repo.insertAction(newRow({ note: 'private words' }));
+        const b = await repo.insertAction(newRow({ note: null }));
+        const list = await repo.listActions({ ids: [a.id, b.id] });
+        expect(list.find((r) => r.id === a.id)).toMatchObject({ hasNote: true, note: null });
+        expect(list.find((r) => r.id === b.id)).toMatchObject({ hasNote: false, note: null });
+        expect(await repo.getAction(a.id)).toMatchObject({ hasNote: true, note: null });
+        expect(await repo.getAction(b.id)).toMatchObject({ hasNote: false, note: null });
+      });
     });
 
     describe('cancelPending', () => {

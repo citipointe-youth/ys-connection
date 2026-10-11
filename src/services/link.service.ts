@@ -504,9 +504,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         logins.set(id, (await d.users.findById(id))?.email ?? '')));
       return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
         ...(c.admin ? { detail: r.detail } : {}), createdAt: r.createdAt, resultAt: r.resultAt, leaderName: r.leaderName,
-        login: logins.get(r.createdBy) ?? '',
-        // The repo never returns the note outside a claim, so this is only true if a repo ever does (see report).
-        hasNote: r.note !== null }));
+        login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true }));
     },
 
     async batch(actor, body) {

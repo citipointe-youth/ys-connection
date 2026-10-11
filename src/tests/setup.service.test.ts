@@ -83,13 +83,13 @@ describe('createFirstAdmin', () => {
 });
 
 describe('status', () => {
-  const ids = ['persistence', 'database', 'databasePort', 'schema', 'sessionSecret', 'encryptionKey', 'appOrigin', 'setupCode', 'google'];
+  const ids = ['persistence', 'database', 'databasePort', 'schema', 'sessionSecret', 'encryptionKey', 'appOrigin', 'setupCode', 'google', 'link'];
   it('all ok rows, in order, while needsAdmin', async () => {
     const { s } = svc();
     const r = await s.status(null, 'https://church.vercel.app');
     expect(r.needsAdmin).toBe(true);
     expect(r.checks.map((c) => c.id)).toEqual(ids);
-    expect(r.checks.filter((c) => c.id !== 'google').every((c) => c.state === 'ok')).toBe(true);
+    expect(r.checks.filter((c) => c.id !== 'google' && c.id !== 'link').every((c) => c.state === 'ok')).toBe(true);
     expect(byId(r.checks, 'google').state).toBe('optional');
   });
   it('never returns env values or the DB host', async () => {
@@ -162,5 +162,23 @@ describe('status: review fixes', () => {
     expect(byId((await short.status(null, 'https://church.vercel.app')).checks, 'setupCode').state).toBe('fix');
     const ok = svc({ ...good, SETUP_CODE: 'ABCD-EFGH-JKMN-PQRS' }).s;    // 16 normalised
     expect(byId((await ok.status(null, 'https://church.vercel.app')).checks, 'setupCode').state).toBe('ok');
+  });
+});
+
+describe('status: Elvanto link token row', () => {
+  const TOKEN = 'Lk' + 'q7'.repeat(20);
+  const row = async (v: string | undefined) => byId((await svc({ ...good, LINK_SYNC_TOKEN: v }).s.status(null, 'https://church.vercel.app')).checks, 'link');
+  it('set / not set / too short, always optional', async () => {
+    expect(await row(TOKEN)).toEqual({ id: 'link', label: 'Elvanto link token: set', state: 'optional' });
+    expect(await row(undefined)).toEqual({ id: 'link', label: 'Elvanto link token: not set', state: 'optional' });
+    expect(await row('   ')).toMatchObject({ label: 'Elvanto link token: not set', state: 'optional' });
+    expect(await row('a'.repeat(31))).toEqual({ id: 'link', label: 'Elvanto link token: too short (32+ characters)', state: 'optional' });
+    expect(await row('a'.repeat(32))).toMatchObject({ label: 'Elvanto link token: set' });
+  });
+  it('never returns the value', async () => {
+    for (const v of [TOKEN, 'shortsecretvalue']) {
+      const text = JSON.stringify(await svc({ ...good, LINK_SYNC_TOKEN: v }).s.status(null, 'https://church.vercel.app'));
+      expect(text).not.toContain(v);
+    }
   });
 });

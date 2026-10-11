@@ -52,7 +52,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
 
   async getAction(id: string): Promise<OutboxRow | null> {
     const e = this.outbox.get(id);
-    return e ? { ...clone(e.row), note: null } : null;
+    return e ? { ...clone(e.row), note: null, hasNote: e.row.note !== null } : null;
   }
 
   async listActions(f: LinkActionFilter): Promise<OutboxRow[]> {
@@ -65,7 +65,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         (!f.personId || r.personId === f.personId) && (!f.serviceTimeId || p(r, 'serviceTimeId') === f.serviceTimeId) &&
         (!f.groupId || p(r, 'groupId') === f.groupId))
       .sort((a, b) => cmpDesc(a, b))
-      .map(({ row }) => ({ ...clone(row), note: null }));
+      .map(({ row }) => ({ ...clone(row), note: null, hasNote: row.note !== null }));
   }
 
   async cancelPending(id: string): Promise<boolean> {

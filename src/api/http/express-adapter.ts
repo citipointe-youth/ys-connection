@@ -1,7 +1,8 @@
 import express, { type Express, type Request, type Response } from 'express';
-import { env } from '../../config/env';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { env, readLinkSyncToken } from '../../config/env';
 import { isProductionEnv } from '../../config/is-production';
-import { RawResponse, type Route, type HttpRequest } from './types';
+import { RawResponse, StatusResponse, type Route, type HttpRequest } from './types';
 import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
 import { sendError } from '../middleware/error.middleware';
@@ -11,6 +12,7 @@ import { RateLimiter } from '../../utils/rate-limiter';
 import { withTimeout } from '../../utils/timeout';
 import { requestContext, type CancellableQuery } from '../../utils/request-context';
 import { generateId } from '../../utils/id';
+import { LinkOff } from '../../core/errors/link-errors';
 
 const logger = createLogger('http');
 
@@ -45,6 +47,22 @@ export const UNTIMED_ROUTES = new Set([
   'POST /intake/new-youth',
 ]);
 
+const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();
+
+/**
+ * The console's /sync gate (spec §10.1). The token is read per request (unset or < 32 chars → 503 LINK_OFF). The header
+ * must be exactly `Bearer <token>`: compared on the raw strings, timing-safe over sha256 digests (no case or dash
+ * folding). Never logs the header.
+ */
+function checkSyncToken(header: string | undefined): void {
+  const token = readLinkSyncToken();
+  if (!token) throw new LinkOff();
+  const given = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!timingSafeEqual(sha256(given), sha256(token)) || !given) throw new UnauthorizedError();
+}
+
+const deviceHeader = (v: string | string[] | undefined) => (typeof v === 'string' && v ? v.slice(0, 100) : undefined);
+
 export function createApp(routes: Route[], authService: AuthService, health?: () => Promise<Record<string, unknown>>): Express {
   const app = express();
   app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
@@ -78,7 +96,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
       res.setHeader('Access-Control-Allow-Origin', origin ?? '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Device-Id,X-Device-Label');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
     next();
@@ -127,9 +145,13 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
           }
         }
 
-        const ctx = await resolveContext(req.headers['authorization'], authService, route.auth);
-        if (route.auth && !ctx) throw new UnauthorizedError();
-        if (ctx?.mustChangePassword && !route.allowMustChangePassword) throw new MustChangePasswordError();
+        let ctx: HttpRequest['ctx'] = null;
+        if (route.sync) checkSyncToken(req.headers['authorization']);
+        else {
+          ctx = await resolveContext(req.headers['authorization'], authService, route.auth);
+          if (route.auth && !ctx) throw new UnauthorizedError();
+          if (ctx?.mustChangePassword && !route.allowMustChangePassword) throw new MustChangePasswordError();
+        }
 
         const httpReq: HttpRequest = {
           ctx,
@@ -138,12 +160,18 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
           body: req.body,
           origin: `${req.protocol}://${req.get('x-forwarded-host') ?? req.get('host') ?? ''}`,
         };
+        if (!route.sync) {
+          const deviceId = deviceHeader(req.headers['x-device-id']);
+          const deviceLabel = deviceHeader(req.headers['x-device-label']);
+          httpReq.headers = { ...(deviceId ? { deviceId } : {}), ...(deviceLabel ? { deviceLabel } : {}) };
+        }
 
         const untimed = UNTIMED_ROUTES.has(routeLabel);
         const result = untimed
           ? await route.handler(httpReq)
           : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
         if (result instanceof RawResponse) res.type(result.contentType).send(Buffer.from(result.body));
+        else if (result instanceof StatusResponse) res.status(result.status).json(result.body);
         else res.json(result);
       } catch (err) {
         sendError(res, err);

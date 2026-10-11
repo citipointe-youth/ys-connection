@@ -18,6 +18,8 @@ export type ResultReply = z.infer<typeof ResultResponseSchema>;
 export interface OutboxRow {
   id: string; type: ActionType; payload: Record<string, unknown>;
   note: string | null;              // plaintext in memory; the Supabase repo encrypts/decrypts
+  /** Set by getAction/listActions: a note is stored (note IS NOT NULL), without decrypting or returning it. */
+  hasNote?: boolean;
   dedupeKey: string; serviceDate: string; studentId: string | null; personId: string | null;
   createdBy: string; leaderId: string | null; leaderName: string;
   status: Status; reason: string | null; detail: string | null;
