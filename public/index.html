@@ -9537,6 +9537,7 @@ async function renderLinkCheckin() {
   if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); _lkPickService(); return; }
   if (!LINK.people[LINK.svc]) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
   _lkPaintDoor();
+  _lkRefreshView(); // fills an open leader sheet that was still loading (APP-56)
 }
 function _lkPaintDoor() {
   const s = _lkSvc();
@@ -9700,8 +9701,7 @@ async function _lkPickUse() {
 // ── Leader quick check-in (decision 20; mockup frame 3) ──
 function _lkOpenLeaders() {
   if (!LINK.svc || !_lkSvc()) { _lkPickService('leaders'); return; }
-  if (!LINK.people[LINK.svc]) return;
-  LINK.lq = {};
+  LINK.lq = {}; // still loading: the sheet says so and fills in when the list arrives (APP-56)
   modal(`<div id="lk-lq">${_lkLeadersHtml()}</div><div class="bus-sheet-actions" id="lk-lq-foot">${_lkLeadersFoot()}</div>`);
 }
 function _lkLeadersView() {
@@ -9717,6 +9717,7 @@ function _lkTickedCount() {
   return _lkLeadersView().filter((l) => _lkLeaderState(l) === 'tick' && t[l.leaderId]).length;
 }
 function _lkLeadersHtml() {
+  if (!LINK.people[LINK.svc]) return `<div class="mo-title">Check in leaders</div><p class="lk-hint">Loading…</p>`;
   const xs = _lkLeadersView(), t = LINK.lq || {};
   const tick = xs.filter((l) => _lkLeaderState(l) === 'tick');
   const allOn = tick.length > 0 && tick.every((l) => t[l.leaderId]);
@@ -9733,6 +9734,7 @@ function _lkLeadersHtml() {
   }).join('');
   return `<div class="mo-title">Check in leaders</div><p class="lk-sub">${esc(_lkSvcLabel(_lkSvc()))}</p>
     <div class="lk-lq-head"><span>${nDone} done · ${nNl} not linked</span>${tick.length ? `<button type="button" class="btn btn-ghost btn-sm lk-tickall" onclick="_lkTickAll()">${allOn ? 'Untick all' : 'Tick all'}</button>` : ''}</div>
+    ${nNl ? '<p class="lk-sub">Not linked: no Elvanto person has this exact name. Ask the admin to fix the name.</p>' : ''}
     <div class="lk-lq-list">${rows || '<p class="lk-sub">No active leaders.</p>'}</div>`;
 }
 function _lkLeadersFoot() {

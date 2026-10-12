@@ -738,6 +738,21 @@ describe('F1.4 leader sheet', () => {
   ];
   const setup = () => { const h = makeEnv({ leaderId: P(77) }); door(h, [], JSON.parse(JSON.stringify(leaders))); h.get().LINK.lq = {}; return h; };
   const rowsOf = (h: any) => h.fns._lkLeadersHtml().split('lk-lq-row').slice(1);
+  it('B11 / APP-56: one line when there are unlinked leaders; none when all are linked', () => {
+    const h = setup();
+    expect(strip(h.fns._lkLeadersHtml())).toContain('Not linked: no Elvanto person has this exact name. Ask the admin to fix the name.');
+    const h2 = makeEnv(); door(h2, [], [leaders[1]]); h2.get().LINK.lq = {};
+    expect(strip(h2.fns._lkLeadersHtml())).not.toContain('Not linked:');
+  });
+  it('B11 / APP-56: the sheet opens with "Loading…" until the leader list is loaded; Submit stays disabled', () => {
+    const h = makeEnv();
+    door(h);
+    delete h.get().LINK.people[SVC.serviceTimeId];
+    h.fns._lkOpenLeaders();
+    expect(h.calls.modals).toHaveLength(1);
+    expect(strip(h.calls.modals[0]!)).toContain('Loading…');
+    expect(h.calls.modals[0]).toMatch(/id="lk-lq-go" disabled/);
+  });
   it('lists leaders A–Z, name only', () => {
     const h = setup();
     const names = rowsOf(h).map((r: string) => strip('<' + r).trim());

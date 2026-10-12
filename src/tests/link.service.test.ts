@@ -300,6 +300,31 @@ describe('D1 checkin read', () => {
   });
 });
 
+describe('B11 / T-34 leader mapping and person kind (APP-10, APP-31, APP-55)', () => {
+  it('APP-10: an app leader with a same-name student and no leader row is Not linked', async () => {
+    const h = await setup();
+    await h.leaders.save(leader(u(305), 'Amy Adams', 'female') as never);
+    const r = await h.svc.checkin(QUAD, ST);
+    expect(r.leaders!.find((l) => l.leaderId === u(305))).toMatchObject({ personId: null, checkedIn: false });
+  });
+  it('APP-55: two active app leaders that fold to the same name are both Not linked', async () => {
+    const h = await setup();
+    await h.leaders.save(leader(u(306), 'cody cobb', 'male') as never);
+    const r = await h.svc.checkin(QUAD, ST);
+    expect(r.leaders!.filter((l) => l.name.toLowerCase().replace(/\s+/g, ' ') === 'cody cobb').map((l) => l.personId)).toEqual([null, null]);
+    await h.leaders.save(leader(u(306), 'cody cobb', 'male', false) as never); // an inactive namesake does not count
+    expect((await h.svc.checkin(QUAD, ST)).leaders!.find((l) => l.leaderId === L_CODY)!.personId).toBe(P_CODY);
+  });
+  it('APP-31: a check-in for an other-kind person is refused; a check-out is allowed', async () => {
+    const h = await setup();
+    expect(await h.svc.enqueue(GRADE, checkIn(P_PAT), DEV)).toMatchObject({ outcome: 'refused', httpStatus: 400,
+      message: 'Only youth and leaders can be checked in here.' });
+    await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z',
+      ymd: TODAY, rooms: [], checkedIn: [{ personId: P_PAT, roomId: ROOM }] }], { takenAt: '2026-10-16T08:50:00.000Z', consoleId: CONSOLE });
+    expect((await h.svc.enqueue(GRADE, checkOut(P_PAT), DEV)).outcome).toBe('saved');
+  });
+});
+
 // =====================================================================================================================
 describe('D2 enqueue', () => {
   it('saved: fills student_id from the roster match and service_date from the service', async () => {

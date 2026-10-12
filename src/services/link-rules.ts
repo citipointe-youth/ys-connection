@@ -68,6 +68,16 @@ export function lastMeetingDate(meets: string, today: string): string {
 
 // ---------------- Dedupe (contract §5.1) ----------------
 
+/**
+ * The one name fold (contract X8): Unicode NFKD with the accents removed, curly quotes made straight, lower case, no
+ * spaces round a hyphen, runs of spaces made one space, trimmed. A short name still does not match a full name.
+ */
+export function nameFold(s: string): string {
+  return s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'").replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+}
+
 const fold = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 
 export function dedupeKey(type: ActionType, payload: Record<string, unknown>): string {

@@ -28,7 +28,7 @@ import { isDbError } from '../utils/transient-db';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
-  serviceDay,
+  nameFold, serviceDay,
 } from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
@@ -161,13 +161,17 @@ function personVisible(a: Actor, r: LinkRosterRow | undefined, s: StructureScope
   if (!r) return isAdminRole(a);
   return canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null);
 }
-/** Read-time name match (decision 20): one active roster row with the folded name, preferring kind leader. */
-function rosterPersonOf(l: Leader, roster: LinkRosterRow[]): string | null {
-  const key = fold(l.fullName);
+/**
+ * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
+ * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
+ * both Not linked (APP-55).
+ */
+function rosterPersonOf(l: Leader, roster: LinkRosterRow[], appLeaders: Leader[]): string | null {
+  const key = nameFold(l.fullName);
+  if (appLeaders.filter((x) => x.active && nameFold(x.fullName) === key).length > 1) return null;
   const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
-  let hits = roster.filter((r) => r.active && fold(fullName(r)) === key && (!g || !r.gender || r.gender === g));
-  const leaders = hits.filter((r) => r.kind === 'leader');
-  if (leaders.length > 0) hits = leaders;
+  const hits = roster.filter((r) => r.active && r.kind === 'leader' && nameFold(fullName(r)) === key
+    && (!g || !r.gender || r.gender === g));
   return hits.length === 1 ? hits[0]!.personId : null;
 }
 
@@ -311,6 +315,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const r = roster.find((x) => x.personId === p.personId);
         if (r) Object.assign(tgt, { kind: 'person', id: r.personId, name: fullName(r) });
         if (!r || !r.active) throw new BadRequestError('This person is not on the list. Reload.');
+        // APP-31 (after APP-10): a parent or other adult is never checked in to the youth service; a check-out is
+        // still allowed so an existing check-in can be undone.
+        if (it.type === 'checkIn' && r.kind === 'other') throw new BadRequestError('Only youth and leaders can be checked in here.');
         personId = r.personId;
       }
     } else if (it.type === 'submitReport' || it.type === 'editReport') {
@@ -532,7 +539,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         .sort((a, b) => cmp(a.lastName, b.lastName) || cmp(a.firstName, b.firstName))
         .map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, leader: r.kind === 'leader', ...state(r.personId) }));
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
-        const personId = rosterPersonOf(l, roster);
+        const personId = rosterPersonOf(l, roster, leaders);
         return { leaderId: l.id, name: l.fullName, personId,
           ...(personId ? state(personId) : { checkedIn: false, practice: false, action: null, mine: false }) };
       });
