@@ -9166,7 +9166,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, ft: [], ftRows: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9467,9 +9467,7 @@ function _lkResults(items, results) {
         : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
       if (gid) { if (!LINK.gres) LINK.gres = {}; LINK.gres[gid] = ans; }
       else { if (!LINK.fres) LINK.fres = {}; LINK.fres[fr] = ans; }
-    } else if (it.kind === 'action' && it.type === 'firstTimerCheckIn') { // B17: the New person page shows it
-      LINK.ftRows[it.id] = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
-        : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
+    } else if (it.kind === 'action' && it.type === 'firstTimerCheckIn') { // a tap queued by an older build: nothing shows it now
     } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
       if (r.outcome === 'refused') {

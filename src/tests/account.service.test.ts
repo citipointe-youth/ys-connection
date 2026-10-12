@@ -253,7 +253,7 @@ describe('Account Service — cohort account layout (bug 8)', () => {
     await svc.applyCohortLayout(admin, 'grades-quads');
     const stillActive = await users.findByEmail('grade7g');
     expect(stillActive?.status).toBe('active');
-  });
+  }, 20000); // bcrypt for ~16 created accounts: over 5 s on a busy machine
 
   it('rejects a non-admin caller', async () => {
     const { svc } = await buildService();

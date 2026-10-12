@@ -60,7 +60,6 @@ function makeEnv(e: Partial<Env> = {}) {
     const icS = (k) => '<svg data-ic="' + k + '"></svg>';
     const L = (k) => k;
     const _busOn = () => false;
-    const _linkAdminOn = () => S.user.role === 'admin';
     const _prayersOn = () => true;
     const _deviceId = () => 'dev-1';
     const _deviceLabel = () => 'iPhone · Safari';
