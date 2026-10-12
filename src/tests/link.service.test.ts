@@ -588,7 +588,7 @@ describe('D2 enqueue', () => {
     await enq(h.svc, DIRECTOR, sub, DEV);
     const NEW_R = u(413);
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: NEW_R });
-    expect((await enq(h.svc, DIRECTOR, edit(), DEV)).code).toBe('BAD_REQUEST'); // R1 is no longer the last report
+    expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(998) }), DEV)).code).toBe('BAD_REQUEST'); // not in the group at all
     expect((await enq(h.svc, DIRECTOR, edit({ reportId: NEW_R, date: '2026-10-15',
       base: { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } }), DEV)).outcome).toBe('saved');
   });
@@ -1280,7 +1280,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const people = (await h.svc.checkin(GRADE, ST)).people!;
     expect(people.map((p) => p.name)).toEqual(['Amy Adams', 'Lee Avery', 'Ben Brown', 'Cody Cobb', 'Eve Evans', 'Eve Evans', 'Tom Ten', 'Zed Zulu']);
     expect(people.find((p) => p.personId === P_NEW)).toEqual({ personId: P_NEW, name: 'Zed Zulu', grade: null, leader: false,
-      checkedIn: true, action: null, mine: false });
+      checkedIn: true, action: null, mine: false, noRoster: true });
     expect(people.find((p) => p.personId === P_LEAD)!.leader).toBe(true);
     expect(people.some((p) => p.personId === P_ANON)).toBe(false);
   });
@@ -1366,5 +1366,58 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     await enq(h.svc, GRADE, sub, DEV);
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: u(418) });
     expect((await h.svc.lifegroups(GRADE)).groups[0]!.history.map((x) => x.reportId)).toEqual([u(418), R1, u(417)]);
+  });
+});
+
+// =====================================================================================================================
+describe('RFIX (review of the UX batch)', () => {
+  const META = (takenAt = '2026-10-16T08:30:00.000Z') => ({ takenAt, consoleId: CONSOLE });
+
+  it('T8: an older week can be edited (the 14-day rule is for submit only); submit still stops at 14 days', async () => {
+    const h = await setup();
+    const OLD = u(419), NEWER = u(420);
+    const oldRep = { reportId: OLD, date: '2026-09-22', time: '18:30', didNotMeet: false, attendees: [P_AMY], guests: 0,
+      serviceTimeId: null, editable: true, blocked: null };
+    const gs = await h.link.groups();
+    await h.link.replaceMirror('groups', gs.map((g) => (g.groupId === G9F
+      ? { ...g, history: [g.lastReport!, { ...oldRep, reportId: NEWER, date: '2026-10-06' }, oldRep] } : g)), META('2026-10-16T08:59:00.000Z'));
+    const oldEdit = edit({ reportId: OLD, date: '2026-09-22', attendees: [P_AMY, P_EVE1], guests: 0,
+      base: { date: '2026-09-22', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } });
+    expect((await enq(h.svc, DIRECTOR, oldEdit, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-22' }), DEV)).code).toBe('BAD_REQUEST'); // submit: still 14 days
+    // a report that is nowhere in the group is still refused
+    expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(999) }), DEV)).code).toBe('BAD_REQUEST');
+  });
+
+  it('T8: an older report whose base differs is refused as changed', async () => {
+    const h = await setup();
+    const OLD = u(419);
+    const gs = await h.link.groups();
+    await h.link.replaceMirror('groups', gs.map((g) => (g.groupId === G9F ? { ...g, history: [g.lastReport!, { ...g.lastReport!, reportId: OLD, date: '2026-10-06' }] } : g)),
+      META('2026-10-16T08:59:00.000Z'));
+    const bad = edit({ reportId: OLD, date: '2026-10-06', base: { date: '2026-10-06', didNotMeet: false, attendees: [P_AMY], guests: 5, serviceTimeId: null } });
+    expect((await enq(h.svc, DIRECTOR, bad, DEV)).code).toBe('BAD_REQUEST');
+  });
+
+  it('T3: a checked-in person with no roster row can be checked out, never checked in; strangers are refused', async () => {
+    const h = await setup();
+    const P_NEW = u(150), P_STR = u(153);
+    await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z',
+      ymd: TODAY, rooms: [{ id: ROOM, name: 'Youth Program' }],
+      checkedIn: [{ personId: P_NEW, roomId: ROOM, firstName: 'Zed', lastName: 'Zulu' }] }], META('2026-10-16T08:59:00.000Z'));
+    const v = (await h.svc.checkin(GRADE, ST)).people!.find((p) => p.personId === P_NEW)!;
+    expect(v).toMatchObject({ checkedIn: true, noRoster: true });
+    expect((await h.svc.checkin(GRADE, ST)).people!.find((p) => p.personId === P_AMY)).not.toHaveProperty('noRoster');
+    expect((await enq(h.svc, GRADE, checkOut(P_NEW), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, checkIn(P_NEW), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, GRADE, checkOut(P_STR), DEV)).code).toBe('BAD_REQUEST'); // not on the roster, not checked in
+  });
+
+  it('T6: assignFlow only takes a leader the login could pick in its "I am" list (gender scope)', async () => {
+    const h = await setup();
+    const a = (actor: Actor, leaderId: string) => code(h.svc.assignFlow(actor, { flowId: FLOW_B, personId: P_AMY, leaderId }));
+    expect(await a(GRADE, L_CODY)).toBe('BAD_REQUEST');   // Cody is male; GRADE is a girls login
+    expect(await a(GRADE, L_DANA)).toBe('ok');
+    expect(await a(ADMIN, L_CODY)).toBe('ok');            // admin picks anyone
   });
 });

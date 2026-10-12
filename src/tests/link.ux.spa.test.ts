@@ -102,6 +102,12 @@ describe('T8 week maths (Monday to Sunday, 8 weeks, newest first)', () => {
     expect(f._lkReportDateFor('Monday', w[3], '2026-10-14')).toEqual({ state: 'old', date: null });
     expect(f._lkReportDateFor('', w[1], '2026-10-14')).toEqual({ state: 'ok', date: '2026-10-11' }); // no day named: the week's last day
   });
+  it('RFIX: Tues, Weds, Thur and Thurs name their day, not the last day of the week', () => {
+    const w = f._lkWeeks('2026-10-18'); // Sun 18 Oct; w[0] = Mon 12 .. Sun 18
+    const day = (m: string) => f._lkReportDateFor(m, w[0], '2026-10-18').date;
+    expect([day('Tues 7pm'), day('Weds 7pm'), day('Thur 7pm'), day('Thurs 7pm'), day('Tuesday'), day('Wednesday'), day('Thursday'), day('Sat 5pm'), day('Sunday')])
+      .toEqual(['2026-10-13', '2026-10-14', '2026-10-15', '2026-10-15', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-17', '2026-10-18']);
+  });
 });
 
 describe('T9 console out of date line', () => {

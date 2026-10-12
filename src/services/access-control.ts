@@ -25,7 +25,7 @@ export type Action =
   | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
-  | 'link:admin';             // Elvanto link: matching, shadow check, log, detail, cancel anyone's
+  | 'link:admin';             // Elvanto link, admin only: matching, shadow check, log, detail, cancel anyone's
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected

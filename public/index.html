@@ -742,8 +742,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-filters .fs{flex:0 0 132px}
 .lk-filters.wrap{flex-wrap:wrap}.lk-filters.wrap .fi{min-width:0;flex:1 1 140px}
 .lk-sticky{position:sticky;top:var(--hdr-h,0px);z-index:50;background:var(--paper);padding:6px 0;margin-top:-6px}
-.lk-sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.lk-in{font-size:22px;font-weight:800;line-height:1.1}
 .lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
 .lk-row{padding:10px 12px;gap:10px;margin-bottom:6px}
 .lk-row[role=button]{cursor:pointer}
@@ -779,9 +777,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .lk-done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
 .lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
-.lk-wk{flex:none;font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap}
-.lk-wk.ok{background:var(--success-light);color:#047857}.lk-wk.wait{background:var(--warn-light);color:#92400e}
-.lk-wk.prac{background:var(--paper-dark);color:var(--ink-mid)}.lk-wk.bad{background:var(--danger-light);color:#b91c1c}
 .lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}
 .lk-kv span{color:var(--ink-mid);flex:none}.lk-kv b{font-weight:600;text-align:right;min-width:0}
 .lk-cand{align-items:center}.lk-cand span{flex:1 1 auto;min-width:0}.lk-cand .btn{flex:none}
@@ -791,7 +786,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
-.lk-step{font-size:13px;font-weight:700;color:var(--ink);margin:10px 2px 6px}
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
 .lk-dt{flex:1;min-width:0;font-size:14px;font-weight:700}
@@ -9165,7 +9159,7 @@ function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unk
 let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
-    q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
+    q: { search: '' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
@@ -9706,13 +9700,10 @@ function _lkSetSearch(v) {
   if (LINK.searchT) clearTimeout(LINK.searchT);
   LINK.searchT = setTimeout(() => { LINK.searchT = null; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }, 80);
 }
-// Search matches every typed word, in any order. Grade: 'all', '7'…'12' (students), or 'leaders'.
+// Search matches every typed word, in any order.
 function _lkFilter(list, q) {
   const toks = String((q && q.search) || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const g = (q && q.grade) || 'all';
   return list.filter((p) => {
-    if (g === 'leaders') { if (!p.leader) return false; }
-    else if (g !== 'all' && (p.leader || String(p.grade) !== g)) return false;
     const n = String(p.name || '').toLowerCase();
     return toks.every((t) => n.indexOf(t) >= 0);
   });
@@ -9759,9 +9750,11 @@ function _lkRowHtml(p) {
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
   if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkUndo('${pid}')">Undo</button>`;
+  // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
+  const canIn = !p.noRoster && !_lkCapOff('checkIn');
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
-  else if (!p.checkedIn && !undo && !_lkCapOff('checkIn')) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
-  const tap = !p.checkedIn && !undo && !_lkCapOff('checkIn') ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
+  else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
+  const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
 }
 // A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
@@ -10034,10 +10027,10 @@ function _lkWeekReport(g, w) {
 // The date a Submit in an empty week uses: the weekday in `meets` (else the week's last day), never after today, and only
 // within the 14 days the report form accepts. state: ok | later (day still ahead) | old (too old to send from here).
 function _lkReportDateFor(meets, w, today) {
-  const m = String(meets || '').toLowerCase().match(/\b(?:(sun|mon|tue|wed|thu|fri|sat)|(sun|mon|tues|wednes|thurs|fri|satur)days?)\b/);
+  const m = String(meets || '').toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:s|r|rs|day|sday|nesday|rsday|urday)?\b/);
   let d = w.end;
   if (m) {
-    const i = m[1] ? ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(m[1]) : ['sun', 'mon', 'tues', 'wednes', 'thurs', 'fri', 'satur'].indexOf(m[2]);
+    const i = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(m[1]);
     d = _lkAddDays(w.start, (i + 6) % 7);
     if (d > today) return { state: 'later', date: null };
   } else if (d > today) d = today;
@@ -10365,6 +10358,7 @@ async function _lkHomeFlows() {
   const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''; };
   draw();
   if (!_linkOn('flows') || !getMyLeaderId() || Date.now() - LINK.flowsAt < 30000) return;
+  LINK.flowsAt = Date.now(); // set before the load so a failure also waits 30 s (a success sets it again)
   if (await _lkLoadFlows(true)) draw();
 }
 // The detail sheet for one person on one step: text them, assign a leader, complete the step.
@@ -10484,7 +10478,7 @@ function _nyLinkLoad() {
   if (!_nyOn()) return;
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; _nyHostDraw(); }, () => {});
 }
-// ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin and director. ──
+// ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin only (T9). ──
 function _lkAdmFresh() {
   return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none', sDate: null, shadow: null, sErr: null,
     from: null, to: null, login: '', event: '', log: null, lErr: null };
@@ -10576,7 +10570,7 @@ function _lkAdmStatusHtml() {
     && Date.now() - Date.parse(a.createdAt) > 36e5);
   const rev = _lkRevLine(st);
   return `<div class="lk-sec">Status</div>${rev ? `<div class="lk-alert warn">${icS('info')}<div>${esc(rev)}</div></div>` : ''}${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
-    <p class="lk-sub">The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.</p>
+    <p class="lk-sub">Each link screen has its own switch in Youth Setup, Modules. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}

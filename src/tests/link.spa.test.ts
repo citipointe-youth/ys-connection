@@ -16,7 +16,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
-  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
+  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
@@ -243,6 +243,16 @@ describe('F1.1 _lkBanner', () => {
     h.get().LINK.svc = SVC.serviceTimeId;
     const row = h.fns._lkRowHtml({ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false });
     expect(row).not.toContain('Check in');
+  });
+  it('RFIX: a row shown from the pushed name only (noRoster) has Check out but never Check in', () => {
+    const h = makeEnv();
+    h.get().LINK.status = st({ capabilities: caps({}) });
+    h.get().LINK.svc = SVC.serviceTimeId;
+    const p = { personId: P(1), name: 'Zed Zulu', grade: null, leader: false, action: null, mine: false, noRoster: true };
+    expect(h.fns._lkRowHtml({ ...p, checkedIn: true })).toContain('Check out');
+    const out = h.fns._lkRowHtml({ ...p, checkedIn: false });
+    expect(out).not.toContain('Check in');
+    expect(out).not.toContain("_lkCheck('" + P(1) + "','checkIn')");
   });
   it('"2 consoles are running" for admin only', () => {
     expect(strip(makeEnv({ role: 'admin' }).fns._lkBanner(['checkIn'], st({ consoles: 2 })))).toContain('2 consoles are running');
@@ -726,11 +736,12 @@ describe('F1.3 door', () => {
     expect(f(people, { search: 'JANE  smi', grade: 'all' })).toHaveLength(1);
     expect(f(people, { search: 'ava zed', grade: 'all' })).toHaveLength(0);
   });
-  it('the grade select filters (All, 7–12, Leaders)', () => {
+  it('RFIX: the door filter is the search only (the grade select is gone)', () => {
     const f = makeEnv().fns._lkFilter;
-    expect(f(people, { search: '', grade: 'all' })).toHaveLength(6);
-    expect(f(people, { search: '', grade: '7' }).map((p: any) => p.personId)).toEqual([P(1), P(5)]);
-    expect(f(people, { search: '', grade: 'leaders' }).map((p: any) => p.personId)).toEqual([P(2)]);
+    expect(f(people, { search: '' })).toHaveLength(6);
+    expect(f(people, { search: '', grade: '7' })).toHaveLength(6); // a stale grade key does nothing
+    expect(extractFn(html, '_lkFilter')).not.toContain('grade');
+    expect(extractFn(html, '_lkFresh')).not.toContain("grade: 'all'");
   });
   it('T7: the door has a big search bar and no grade select; the leaders button comes after the list', () => {
     const f = extractFn(html, '_lkPaintDoor');
@@ -1453,6 +1464,12 @@ describe('F3 flow steps', () => {
     expect(setup(null).fns._lkHomeFlowsHtml()).toBe('');
     expect(setup('L9').fns._lkHomeFlowsHtml()).toBe('');
   });
+  it('RFIX: a failed Home flows load is not retried on every render', async () => {
+    let n = 0;
+    const h = makeEnv({ leaderId: 'L1', fresh: () => { n++; return Promise.reject(new Error('down')); } });
+    await h.fns._lkHomeFlows(); await h.fns._lkHomeFlows(); await h.fns._lkHomeFlows();
+    expect(n).toBe(1);
+  });
   it('a past due date is red; today or later is not', () => {
     const rows = setup().fns._lkFlowsHtml().split('lk-row').slice(1);
     const late = rows.find((r: string) => r.includes('Bo Follow-call'))!;
@@ -1647,7 +1664,7 @@ describe('F4.2 admin page', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.status = { console: { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 }, mirrors: {} };
     h.get().LINK.adm = h.fns._lkAdmFresh ? h.fns._lkAdmFresh() : { acts: [] };
-    expect(strip(h.fns._lkAdmStatusHtml())).toContain('The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.');
+    expect(strip(h.fns._lkAdmStatusHtml())).toContain('Each link screen has its own switch in Youth Setup, Modules. To stop all data flow, also Turn off the link on the console.');
   });
   it('B3 / T-7: an unclear check-in shows the name and "Check in" in the Today card, escaped', () => {
     const h = makeEnv({ role: 'admin' });

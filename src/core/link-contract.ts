@@ -31,6 +31,8 @@ const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Iso = z.string().datetime();
 const Name = z.string().trim().min(1).max(60);
 const Text = (max: number) => z.string().max(max);
+// Push tolerance: a value over the limit is cut, not a reason to refuse the whole push (optional, additive fields only).
+const Cut = (max: number) => z.string().transform((s) => s.slice(0, max));
 const Grade = z.number().int().min(6).max(12).nullable(); // T2: grade 6 since LINK_REV 2
 const LinkRev = z.number().int().min(1).optional();
 const Gender = z.enum(['male', 'female']);
@@ -98,7 +100,7 @@ const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string
 const ServiceRow = z.object({ serviceTimeId: Uuid, serviceId: Uuid, name: Text(120), startsAt: Iso, ymd: Ymd,
   rooms: z.array(z.object({ id: Uuid, name: Text(120) })),
   // T3: the names, so a checked-in person with no roster row still shows by name.
-  checkedIn: z.array(z.object({ personId: Uuid, roomId: Uuid, firstName: Text(60).optional(), lastName: Text(60).optional() })) });
+  checkedIn: z.array(z.object({ personId: Uuid, roomId: Uuid, firstName: Cut(60).optional(), lastName: Cut(60).optional() })) });
 const LastReport = z.object({ reportId: Uuid, date: Ymd, time: Text(10), didNotMeet: z.boolean(), attendees: z.array(Uuid).max(300),
   guests: z.number().int().min(0).max(999), serviceTimeId: Uuid.nullable(), editable: z.boolean(),
   blocked: z.enum(['multi-service', 'unkept-notes', 'member-left']).nullable() });
@@ -106,7 +108,7 @@ const GroupRow = z.object({ groupId: Uuid, name: Text(120), meets: Text(40),
   members: z.array(z.object({ personId: Uuid, name: Text(120), leader: z.boolean() })).max(300),
   thisWeek: z.enum(['reported', 'did-not-meet', 'none', 'later', 'unreadable']),
   lastReport: LastReport.nullable(),
-  history: z.array(LastReport).max(8).optional() }); // T8: newest first, 8 weeks back
+  history: z.array(LastReport).transform((h) => h.slice(0, 8)).optional() }); // T8: newest first; more than 8 keeps the newest 8
 const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120),
   stepOrder: z.number().int().min(0), personId: Uuid.nullable(), name: Text(120), due: Ymd.nullable(), assignedTo: Text(120),
   // T4: the person's own grade/gender, and their mobile as bare digits (else the parent's, mobileIsParent true).
