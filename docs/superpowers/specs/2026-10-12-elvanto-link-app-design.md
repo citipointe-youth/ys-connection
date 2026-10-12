@@ -672,7 +672,7 @@ door list, marked "Leader" = decision 13.)
 | I6 migration number / hazard | `0017` now; hazard rewritten; duplicate-number test (§2.5, §15) |
 | I7 mirror vs `sent` | `sent` wins only until a newer services push (§5.2) |
 | I8 Supabase repo tests | Shared suite, scratch-branch run, decrypt hook, SQL-text tests (§4.2) |
-| I9 rate limit / cancel | 300 items per 10 min per login; cancel same login + same "I am" or admin, logged (§8.2) |
+| I9 rate limit / cancel | 600 per 10 min per login, new inserts only (replays and duplicates never count; B12); cancel same login + same "I am" or admin, logged (§8.2) |
 | Decision 12 log | `link_log` in `0017`, write points, admin view, xlsx (§6) |
 | Decision 18 queue | Phone queue, `/link/batch`, per-item reply, same-action dedupe (§9, §8.2) |
 | Decision 20 leader quick check-in | `leaders` added to the check-in read (read-time name match, no migration); sheet with Tick all + sticky Submit (N) (§8.2, §11.1) |
