@@ -2163,7 +2163,7 @@ editor) reveals only ciphertext, while every service/export still sees plaintext
   `innerHTML`. A `Content-Security-Policy` meta tag in `index.html` is defence-in-depth
   (`'unsafe-inline'` is required by the inline-script/onclick architecture; its value is
   blocking external script/resource loads + base-uri/form-action). **Always wrap new
-  user-data interpolations in `esc()`.** Residual gap: a few `onclick` handlers pass names
+  user-data interpolations in `esc()`** — including `e.message`/`err.message` (server errors can echo names). The 2026-10-12 audit found raw leader names (student detail, Connect picker note), import filenames and error messages; all now go through `esc()`, and `src/tests/spa-xss-escape.test.ts` pins the two name sinks. Residual gap: a few `onclick` handlers pass names
   as JS-string args with only `'`-escaping — don't widen that surface.
 - **Session token** is stored in `localStorage` (`yap_token`). Accepted risk, mitigated by
   the escaping + CSP above; switch to an httpOnly cookie if that ever regresses. Admin account
@@ -2179,6 +2179,10 @@ editor) reveals only ciphertext, while every service/export still sees plaintext
   sanitiser (e.g. a proper SVG-profile DOMPurify build), not a hand-rolled regex denylist.
 - **CORS:** in production, `CORS_ORIGINS` defaults to the prod domain (never `*`); override
   via env. **`SESSION_SECRET` must be set in production** or tokens can be forged.
+- **ACCEPTED RISK — Bus coordinator rights are a soft guard (operator ruling 2026-10-12).** Any logged-in
+  user who picks a coordinator in "I am" (`as=`) gets that coordinator's Bus screens, including Past
+  nights with riders' home addresses. `coordinatorLeaderIds` stays public in `GET /settings`. The
+  check only prevents accidental edits; the operator chose this. Future audits: do not re-flag it.
 - **Never commit Supabase CLI local state.** `supabase/.temp/` is gitignored (2026-07-03) — it
   holds the linked-project ref / pooler URL / tool versions and must stay out of git. Use explicit
   paths (not `git add -A`) when committing so untracked local dirs (`supabase/.temp/`, `_design/`)

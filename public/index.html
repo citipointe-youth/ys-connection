@@ -11214,7 +11214,7 @@ function busSettings() {
   modal(`<div class="mo-title">Bus settings</div>
     <label class="fl">Church address</label>${_busAcField('bs-church', b.churchAddress || '', b.churchPlaceId || null, 'Street address, suburb')}
     ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
-    <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders. They need their own Leader login: picking yourself in I am on a shared login is not enough.")}</label>
+    <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
     ${BUS.view.google ? `<div class="help-text" style="margin-top:8px"><b>${esc(BUS.view.google.text)}</b></div>
       <button class="btn btn-secondary btn-full" onclick="busGoogleCheck()">Test Google connection</button>
