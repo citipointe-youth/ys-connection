@@ -553,6 +553,18 @@ describe('D3 cancel, undo, listActions', () => {
     expect(all.find((r) => r.id === b.id)).toMatchObject({ detail: 'console sentence', login: 'g79', hasNote: false });
     expect((await h.svc.listActions(DIRECTOR, { serviceDate: TODAY, type: 'checkIn' })).map((r) => r.id)).toEqual([b.id]);
   });
+  it('B3 / T-7: an unclear row carries the person for link:admin only; other rows and other roles never do', async () => {
+    const h = await setup();
+    const a = checkIn(P_BEN);
+    const b = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    await h.svc.enqueue(GRADE, b, DEV);
+    setRow(h.link, a.id, { status: 'unclear', reason: 'lease-lost' });
+    const all = await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'checkIn' });
+    expect(all.find((r) => r.id === a.id)).toMatchObject({ status: 'unclear', type: 'checkIn', name: 'Ben Brown' });
+    expect(all.find((r) => r.id === b.id)).not.toHaveProperty('name');
+    expect((await h.svc.listActions(GRADE, { ids: a.id }))[0]).not.toHaveProperty('name');
+  });
 });
 
 // =====================================================================================================================

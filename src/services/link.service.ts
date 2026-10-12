@@ -89,7 +89,9 @@ export interface CheckinLeader { leaderId: string; name: string; personId: strin
 export interface CheckinView { today: string; services: ServiceView[]; defaultServiceTimeId: string | null;
   people?: CheckinPerson[]; leaders?: CheckinLeader[] }
 export interface ActionListRow { id: string; type: ActionType; status: Status; reason: string | null; detail?: string | null;
-  createdAt: string; resultAt: string | null; leaderName: string; login: string; hasNote: boolean }
+  createdAt: string; resultAt: string | null; leaderName: string; login: string; hasNote: boolean;
+  /** B3 / T-7: the person (or group / flow row) of an `unclear` row, for link:admin only. */
+  name?: string | null }
 export interface LifegroupView { groupId: string; name: string; meets: string; members: LinkGroupRow['members'];
   thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null; defaultDate: string; openAction: ActionView | null }
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
@@ -540,9 +542,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const logins = new Map<string, string>();
       await Promise.all([...new Set(rows.map((r) => r.createdBy))].map(async (id) =>
         logins.set(id, (await d.users.findById(id))?.email ?? '')));
+      // The admin checks an unclear row in Elvanto, so it needs the person; the console must not log names (B3 / T-7).
+      const names = new Map<string, string | null>();
+      if (c.admin) {
+        for (const r of rows) if (r.status === 'unclear') names.set(r.id, (await targetOf(c, r)).name);
+      }
       return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
         ...(c.admin ? { detail: r.detail } : {}), createdAt: r.createdAt, resultAt: r.resultAt, leaderName: r.leaderName,
-        login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true }));
+        login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true, ...(names.has(r.id) ? { name: names.get(r.id) } : {}) }));
     },
 
     async batch(actor, body) {

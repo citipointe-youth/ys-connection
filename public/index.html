@@ -10191,7 +10191,12 @@ async function _lkLogExport() {
     XLSX.writeFile(wb, _lkLogFile(_lkToday()));
   } catch (e) { toast(e.message || 'Could not export.'); }
 }
-// Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows with detail.
+// The action as a verb, for the admin's unclear list ("Check in · Amy Adams · by Dana Day"; B3 / T-7).
+function _lkVerb(t) {
+  return { checkIn: 'Check in', checkOut: 'Check out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
+    editReport: 'Report edit', completeStep: 'Flow step' }[t] || t;
+}
+// Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows named with the action.
 function _lkAdmStatusHtml() {
   const st = LINK.status, c = st && st.console;
   if (!st) return '<div class="lk-sec">Status</div><p class="lk-hint">Loading...</p>';
@@ -10208,7 +10213,7 @@ function _lkAdmStatusHtml() {
     <p class="lk-sub">The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(k)}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
-    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkEvents()[a.type] || a.type)}</b> · ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}`;
+    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}`;
 }
 // Matching: Unmatched / Two possible / Set by hand. Candidates show grade and DOB.
 function _lkAdmMatchHtml() {

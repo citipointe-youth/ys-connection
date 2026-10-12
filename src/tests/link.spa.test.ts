@@ -18,7 +18,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -1118,6 +1118,16 @@ describe('F4.2 admin page', () => {
     h.get().LINK.status = { console: { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 }, mirrors: {} };
     h.get().LINK.adm = h.fns._lkAdmFresh ? h.fns._lkAdmFresh() : { acts: [] };
     expect(strip(h.fns._lkAdmStatusHtml())).toContain('The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.');
+  });
+  it('B3 / T-7: an unclear check-in shows the name and "Check in" in the Today card, escaped', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.status = { console: { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 }, mirrors: {} };
+    h.get().LINK.adm = h.fns._lkAdmFresh();
+    h.get().LINK.adm.acts = [{ id: P(1), type: 'checkIn', status: 'unclear', reason: 'lease-lost', detail: null, name: 'Amy <b>A</b>',
+      leaderName: 'Dana Day', login: 'grade9g' }, { id: P(2), type: 'checkIn', status: 'sent', reason: null }];
+    const out = h.fns._lkAdmStatusHtml();
+    expect(out).toContain('Amy &lt;b&gt;A&lt;/b&gt;');
+    expect(strip(out)).toContain('Check in · Amy &lt;b&gt;A&lt;/b&gt; · by Dana Day');
   });
   it('an identity row reads "Cody -> Sam (iPhone · Safari)" with an SVG arrow and all three values escaped', () => {
     const h = makeEnv({ role: 'admin' });
