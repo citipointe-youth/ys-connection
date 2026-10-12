@@ -17,6 +17,11 @@ export function brisbaneToday(now: Date): string {
   return new Date(now.getTime() + BRISBANE_MS).toISOString().slice(0, 10);
 }
 
+/** The service day (D3): the Brisbane day, or the previous day before 03:00 (check-outs after midnight on a Friday). */
+export function serviceDay(now: Date): string {
+  return brisbaneToday(new Date(now.getTime() - 3 * 3_600_000));
+}
+
 export function addDays(ymd: string, n: number): string {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 }

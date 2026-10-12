@@ -28,6 +28,7 @@ import { isDbError } from '../utils/transient-db';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
+  serviceDay,
 } from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
@@ -513,7 +514,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const list = pickList(services, c.today);
       const out: CheckinView = { today: c.today,
         services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd })),
-        defaultServiceTimeId: defaultService(c.today, services)?.serviceTimeId ?? null };
+        defaultServiceTimeId: defaultService(serviceDay(c.t), services)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
       if (!one) return out;
       const svc = services.find((s) => s.serviceTimeId === serviceTimeId);
       if (!svc) throw new BadRequestError('Pick a service from the list.');

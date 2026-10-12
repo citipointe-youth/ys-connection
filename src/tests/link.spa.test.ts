@@ -14,7 +14,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
@@ -214,6 +214,7 @@ describe('F1.1 _lkBanner', () => {
 function door(h: ReturnType<typeof makeEnv>, people: any[] = [], leaders: any[] = []) {
   const L = h.get().LINK;
   L.services = [SVC]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders };
+  L.okDay = { [SVC.serviceTimeId]: true }; // B9: the "Not today" confirm is tested on its own
 }
 
 describe('F1.2 queue', () => {
@@ -638,6 +639,68 @@ describe('F1.3 door', () => {
 });
 
 // ── F1.4 leader quick check-in ──
+describe('B9 / T-32 wrong service (D3)', () => {
+  const THU = { ...SVC, serviceTimeId: P(901), serviceId: P(902), name: 'Midweek', startsAt: '2026-10-15T08:30:00.000Z', ymd: '2026-10-15' };
+  const setupDay = (iso: string) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(iso));
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkTakeServices({ today: '2026-10-16', services: [SVC, THU], defaultServiceTimeId: SVC.serviceTimeId });
+    h.get().LINK.okDay = {};
+    return h;
+  };
+  it('the service day is the Brisbane day, the previous day before 03:00', () => {
+    expect(setupDay('2026-10-16T09:00:00.000Z').fns._lkSvcDay()).toBe('2026-10-16');
+    expect(setupDay('2026-10-16T14:30:00.000Z').fns._lkSvcDay()).toBe('2026-10-16'); // Sat 00:30
+    expect(setupDay('2026-10-16T17:00:00.000Z').fns._lkSvcDay()).toBe('2026-10-17');
+  });
+  it('an amber "Not today" chip on any other day, in the pick sheet and on the door line; none at 00:30 Saturday for Friday', () => {
+    const h = setupDay('2026-10-16T14:30:00.000Z');
+    h.get().LINK.pickSel = SVC.serviceTimeId;
+    const opts = h.fns._lkPickHtml().split('lk-opt').slice(1);
+    const fri = opts.find((o: string) => o.includes('Youth'))!, thu = opts.find((o: string) => o.includes('Midweek'))!;
+    expect(fri).not.toContain('Not today');
+    expect(thu).toContain('<span class="lk-tag amber">Not today</span>');
+    expect(h.fns._lkNotToday(THU)).toContain('Not today');
+    expect(h.fns._lkNotToday(SVC)).toBe('');
+    expect(html).toContain("${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}");
+  });
+  it('one confirm before the first check-in to a service that is not today', async () => {
+    const h = setupDay('2026-10-17T09:00:00.000Z'); // Saturday evening: Friday is not today
+    h.answers.push(true);
+    h.fns._lkCheck(P(1), 'checkIn');
+    expect(h.calls.asks).toHaveLength(1);
+    expect(h.calls.asks[0]).toContain('not today');
+    expect(h.fns._lkQGet()).toHaveLength(0);
+    await Promise.resolve(); await Promise.resolve();
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    h.fns._lkCheck(P(1), 'checkIn'); // removes the queued one: no question
+    h.fns._lkCheck(P(1), 'checkIn');
+    expect(h.calls.asks).toHaveLength(1);
+    expect(h.fns._lkQGet()).toHaveLength(1);
+  });
+  it('a pick made on day 1 and opened on day 8 drops the services, default, pick and people, and keeps the queue', () => {
+    const h = setupDay('2026-10-16T09:00:00.000Z');
+    h.fns._lkCheck(P(1), 'checkIn');
+    expect(h.fns._lkDayCheck()).toBe(false);
+    vi.setSystemTime(new Date('2026-10-23T09:00:00.000Z'));
+    expect(h.fns._lkDayCheck()).toBe(true);
+    const L = h.get().LINK;
+    expect(L).toMatchObject({ services: null, defaultSvc: null, svc: null, people: {} });
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    expect(html).toMatch(/async function renderLinkCheckin\(\) \{\r?\n  _lkDayCheck\(\);/);
+    expect(html).toMatch(/function _nyLinkLoad\(\) \{\r?\n  if \(!_linkOn\(\)\) return;\r?\n  _lkDayCheck\(\);/);
+    expect(html).toMatch(/if \(_lkOnPage\(\)\) \{ if \(_lkDayCheck\(\) && S\.page === 'link-checkin'\) renderLinkCheckin\(\);/);
+  });
+  it('no service today: "Tonight\u2019s service is not here yet" line (kiosk)', () => {
+    const h = setupDay('2026-10-17T09:00:00.000Z');
+    expect(strip(h.fns._lkNoTonight())).toContain("Tonight's service isn't here yet. Use the kiosk.");
+    const h2 = setupDay('2026-10-16T09:00:00.000Z');
+    expect(h2.fns._lkNoTonight()).toBe('');
+  });
+});
+
 describe('F1.4 leader sheet', () => {
   const leaders = [
     { leaderId: 'l3', name: 'Cal <i>Exampleleader</i>', personId: P(13), checkedIn: false, practice: false, action: null, mine: false },
@@ -703,9 +766,10 @@ describe('F1.4 leader sheet', () => {
   it('the sheet opens the Pick a service sheet first when no service is chosen', () => {
     const h = setup();
     h.get().LINK.svc = null;
-    // _lkPickService is not loaded here: the call proves the branch without a sheet of leaders.
-    expect(() => h.fns._lkOpenLeaders()).toThrow(/_lkPickService/);
-    expect(h.calls.modals).toEqual([]);
+    h.fns._lkOpenLeaders();
+    expect(h.calls.modals).toHaveLength(1);
+    expect(h.calls.modals[0]).toContain('Pick a service');
+    expect(h.get().LINK.pickThen).toBe('leaders');
   });
 });
 

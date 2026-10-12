@@ -236,6 +236,16 @@ describe('D1 checkin read', () => {
     expect(r.people).toBeUndefined();
   });
 
+  it('B9 / D3: at 00:30 on Saturday the default is still Friday\u2019s service; Sunday stays 10:15 only', async () => {
+    const h = await setup();
+    h.clock.now = new Date('2026-10-16T14:30:00.000Z'); // Sat 00:30 Brisbane
+    const r = await h.svc.checkin(GRADE);
+    expect(r.today).toBe('2026-10-17');
+    expect(r.defaultServiceTimeId).toBe(ST);
+    h.clock.now = new Date('2026-10-16T17:00:00.000Z'); // Sat 03:00
+    expect((await h.svc.checkin(GRADE)).defaultServiceTimeId).toBeNull();
+  });
+
   it('one service: active student + leader rows, sorted, name/grade/leader only', async () => {
     const h = await setup();
     const r = await h.svc.checkin(GRADE, ST);

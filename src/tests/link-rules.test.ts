@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
+  serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
   LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
@@ -54,6 +54,15 @@ describe('pickList', () => {
   it('same day: later start first', () => {
     const list = pickList([svc(1, '2026-10-18', '2026-10-18T00:15:00Z'), svc(2, '2026-10-18', '2026-10-18T07:00:00Z')], '2026-10-18');
     expect(list.map((s) => s.serviceTimeId)).toEqual([U(2), U(1)]);
+  });
+});
+
+describe('serviceDay (D3)', () => {
+  it('before 03:00 Brisbane the service day is the previous day', () => {
+    expect(serviceDay(new Date('2026-10-16T14:30:00Z'))).toBe('2026-10-16'); // Sat 00:30 Brisbane
+    expect(serviceDay(new Date('2026-10-16T16:59:00Z'))).toBe('2026-10-16'); // Sat 02:59
+    expect(serviceDay(new Date('2026-10-16T17:00:00Z'))).toBe('2026-10-17'); // Sat 03:00
+    expect(serviceDay(new Date('2026-10-16T09:00:00Z'))).toBe('2026-10-16'); // Fri 19:00
   });
 });
 

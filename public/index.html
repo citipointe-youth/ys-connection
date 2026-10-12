@@ -764,6 +764,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-opt-t{display:block}
 .lk-d{display:block;font-size:12px;color:var(--ink-mid)}
 .lk-tag{font-size:11px;font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px;flex:none}
+.lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
 .lk-lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;color:var(--ink-mid)}
 .lk-tickall{color:var(--accent)}
 .lk-lq-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;font-size:15px}
@@ -9076,7 +9077,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9096,6 +9097,23 @@ function _lkDay(ymd) {
     + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][p[1] - 1];
 }
 function _lkSvcLabel(s) { return s ? _lkDay(s.ymd) + ' · ' + (s.name || '') + ' ' + _lkTime(s.startsAt) : ''; }
+// The service day (D3, B9): the Brisbane day by this phone, or the previous day before 03:00 (UTC+10, no DST).
+function _lkSvcDay() { return new Date(Date.now() + 36e6 - 108e5).toISOString().slice(0, 10); }
+// An amber "Not today" chip for a service on another day (B9 / T-32).
+function _lkNotToday(s) { return s && s.ymd !== _lkSvcDay() ? '<span class="lk-tag amber">Not today</span>' : ''; }
+// No service for tonight in the mirror yet (the console pushes today-7 to today+7).
+function _lkNoTonight() {
+  const day = _lkSvcDay();
+  return LINK.services && !LINK.services.some((s) => s.ymd === day)
+    ? `<div class="lk-alert warn">${icS('info')}<div>${esc("Tonight's service isn't here yet. Use the kiosk.")}</div></div>` : '';
+}
+// The day changed since the services were loaded (the phone was left open): drop the services, default, pick and
+// people, keep the queue. True when something was dropped; the caller reloads.
+function _lkDayCheck() {
+  if (!LINK.pickDay || LINK.pickDay === _lkSvcDay()) return false;
+  Object.assign(LINK, { services: null, today: null, defaultSvc: null, svc: null, people: {}, pickDay: null, okDay: {}, pickSel: null });
+  return true;
+}
 // The practice line by action type (contract X9).
 function _lkPracticeLine(type) {
   if (type === 'checkOut') return 'Practice mode: not sent to Elvanto. Check out the usual way.';
@@ -9376,10 +9394,10 @@ async function _lkLogoutGuard() {
   if (!_lkQGet().filter((it) => it.kind !== 'identity').length) return true;
   return _lkAsk('They could not be sent.', "Log out anyway (they'll be lost)", 'Stay');
 }
-function _lkAsk(text, yes, no) {
+function _lkAsk(text, yes, no, title) {
   return new Promise((res) => {
     LINK.ask = res;
-    modal(`<div class="mo-title">Not sent yet</div><p style="margin-bottom:14px">${esc(text)}</p>
+    modal(`<div class="mo-title">${esc(title || 'Not sent yet')}</div><p style="margin-bottom:14px">${esc(text)}</p>
       <button type="button" class="btn btn-primary btn-full" onclick="_lkAnswer(true)">${esc(yes)}</button>
       <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="_lkAnswer(false)">${esc(no)}</button>`,
     () => { const f = LINK.ask; LINK.ask = null; if (f) f(false); });
@@ -9445,7 +9463,7 @@ try {
     if (document.visibilityState === 'hidden') { _lkTickStop(); return; }
     if (!S.user) return;
     _lkFlush();
-    if (_lkOnPage()) { _lkTickStart(); _lkStatusLoad(); }
+    if (_lkOnPage()) { if (_lkDayCheck() && S.page === 'link-checkin') renderLinkCheckin(); _lkTickStart(); _lkStatusLoad(); }
   });
 } catch (e) {}
 // Repaint the parts of a link screen that show queue or status state (never the inputs, so focus stays).
@@ -9485,7 +9503,7 @@ async function renderLink(p) {
 function _lkSvc() { return (LINK.services || []).find((s) => s.serviceTimeId === LINK.svc) || null; }
 function _lkTakeServices(r) {
   if (!r) return;
-  if (Array.isArray(r.services)) LINK.services = r.services;
+  if (Array.isArray(r.services)) { LINK.services = r.services; LINK.pickDay = _lkSvcDay(); }
   if (r.today) LINK.today = r.today;
   if (r.defaultServiceTimeId !== undefined) LINK.defaultSvc = r.defaultServiceTimeId || null;
 }
@@ -9500,6 +9518,7 @@ async function _lkLoadPeople(svc) {
 }
 // The door screen (mockup frame 1). Loads the pick list once, then one service's list once (60 s refresh).
 async function renderLinkCheckin() {
+  _lkDayCheck();
   if (!LINK.services) {
     setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
     try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = e.message || 'Could not load the services.'; }
@@ -9520,8 +9539,9 @@ function _lkPaintDoor() {
   const grades = [['all', 'All grades'], ['7', 'Grade 7'], ['8', 'Grade 8'], ['9', 'Grade 9'], ['10', 'Grade 10'], ['11', 'Grade 11'], ['12', 'Grade 12'], ['leaders', 'Leaders']];
   setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
-    <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}</div>
+    <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
+    ${_lkNoTonight()}
     ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
     ${s && !_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}
     ${s ? `<div class="lk-filters"><input class="fi" id="lk-search" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)">
@@ -9586,6 +9606,7 @@ function _lkCheck(pid, type) {
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
+    if (type === 'checkIn' && !_lkDayOk(s, () => _lkCheck(pid, type))) return;
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
   } catch (e) {}
@@ -9605,6 +9626,14 @@ function _lkUndo(pid) {
     else _lkPush({ kind: 'cancel', id: a.id, leaderId: lid, _s: svc, _p: pid }, true);
   } catch (e) {}
 }
+// One confirm before the first check-in to a service that is not on today's service day (B9 / T-32). False = asked;
+// then() runs again after a yes.
+function _lkDayOk(s, then) {
+  if (!s || s.ymd === _lkSvcDay() || LINK.okDay[s.serviceTimeId]) return true;
+  _lkAsk('This service is on ' + _lkDay(s.ymd) + ', not today. Check in to it anyway?', 'Check in', 'Cancel', 'Not today')
+    .then((ok) => { if (ok) { LINK.okDay[s.serviceTimeId] = true; then(); } });
+  return false;
+}
 // "Pick a service" sheet (mockup frame 2). then = 'leaders' opens the leader sheet after.
 function _lkPickService(then) {
   LINK.pickThen = then || null;
@@ -9613,10 +9642,10 @@ function _lkPickService(then) {
 }
 function _lkPickHtml() {
   const xs = LINK.services || [];
-  return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>
+  return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>${_lkNoTonight()}
     ${xs.length ? xs.map((s) => `<button type="button" class="lk-opt${s.serviceTimeId === LINK.pickSel ? ' on' : ''}" onclick="_lkPickSel('${esc(s.serviceTimeId)}')">
       <span><span class="lk-opt-t">${esc(_lkDay(s.ymd) + ' · ' + (s.name || ''))}</span><span class="lk-d">${esc(_lkTime(s.startsAt))}</span></span>
-      ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}</button>`).join('')
+      ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}${_lkNotToday(s)}</button>`).join('')
     : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'}`;
 }
 function _lkPickFoot() {
@@ -9698,6 +9727,7 @@ function _lkTickAll() {
 function _lkLeadersSubmit() {
   const s = _lkSvc();
   if (!s) return;
+  if (!_lkDayOk(s, _lkLeadersSubmit)) return;
   const t = LINK.lq || {}, lid = getMyLeaderId() || null, q = _lkQGet();
   let n = 0;
   _lkLeadersView().forEach((l) => {
@@ -10142,6 +10172,7 @@ function _nyLinkHtml() {
 // Load the pick list (and the console status) once, then fill the tick in place, so typed inputs stay.
 function _nyLinkLoad() {
   if (!_linkOn()) return;
+  _lkDayCheck();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; _nyHostDraw(); }, () => {});
   if (!LINK.statusAt) _lkStatusLoad();
   if (LINK.services) return;
