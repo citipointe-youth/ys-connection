@@ -55,30 +55,24 @@ describe('T1 Youth Setup sends a risky switch only when it changed, with expect'
   });
 });
 
-describe('T3 Youth Setup: Include Grade 6 and Junior/Senior logins lock each other', () => {
+describe('T3/T13 Youth Setup: Grade 6 no longer blocks Junior/Senior logins', () => {
   const { _setupLocks } = loadFns(['_setupLocks']);
-  it('Simple on in the draft locks Include Grade 6', () => {
-    const l = _setupLocks({ simpleOn: true, includeGrade6: false, cohort: 'grades-quads', quadOn: true });
-    expect(l.grade6).toMatch(/Years 7 to 12/);
-    expect(l.simple).toBe('');
-  });
-  it('Include Grade 6 on locks turning Simple on, and names the next step', () => {
-    const l = _setupLocks({ simpleOn: false, includeGrade6: true, cohort: 'grades-quads', quadOn: true });
-    expect(l.simple).toMatch(/Turn off Include Grade 6 first/);
-    expect(l.grade6).toBe('');
+  it('Include Grade 6 does not lock turning Simple on, and Simple on does not lock Include Grade 6', () => {
+    expect(_setupLocks({ simpleOn: false, includeGrade6: true, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
+    expect(_setupLocks({ simpleOn: true, includeGrade6: false, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
+    expect(_setupLocks({ simpleOn: true, includeGrade6: true, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
   });
   it('Simple model or Quad off locks turning Simple on with the right next step', () => {
-    expect(_setupLocks({ simpleOn: false, includeGrade6: false, cohort: 'none', quadOn: true }).simple).toMatch(/Complex cohort model and the Quad role/);
-    expect(_setupLocks({ simpleOn: false, includeGrade6: false, cohort: 'grades-quads', quadOn: false }).simple).toMatch(/Complex cohort model and the Quad role/);
+    expect(_setupLocks({ simpleOn: false, cohort: 'none', quadOn: true }).simple).toMatch(/Complex cohort model and the Quad role/);
+    expect(_setupLocks({ simpleOn: false, cohort: 'grades-quads', quadOn: false }).simple).toMatch(/Complex cohort model and the Quad role/);
   });
-  it('nothing locked in the normal Complex case', () => {
-    expect(_setupLocks({ simpleOn: false, includeGrade6: false, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '', grade6: '' });
-  });
-  it('_youthSetupBody greys both toggles from _setupLocks with a helpTip', () => {
-    const body = extractFn(loadIndexHtml(), '_youthSetupBody');
+  it('_youthSetupBody uses the Simple lock only, and no text says Years 7 to 12 only', () => {
+    const html = loadIndexHtml();
+    const body = extractFn(html, '_youthSetupBody');
     expect(body).toContain('_setupLocks(');
-    expect(body).toMatch(/locks\.grade6/);
-    expect(body).toMatch(/locks\.simple/);
+    expect(body).not.toMatch(/locks.grade6/);
+    expect(body).toMatch(/locks.simple/);
+    expect(html).not.toMatch(/Years 7 to 12/);
   });
 });
 
@@ -248,7 +242,7 @@ describe('T9 the Bus nav slot label is escaped and short on the bottom bar', () 
     const f = loadFns(['moreItems', '_navSlots'], `const S = { user: { role: 'admin' } };
       const _lbl = '<img src=x onerror=alert(1)>'; function L(k) { return k === 'busMinistry' ? _lbl : k; }
       function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-      function _prayersOn() { return false; } function _busOn() { return true; } function _nyOn() { return false; } function _linkOn() { return false; }
+      function _prayersOn() { return false; } function _busOn() { return true; } function _nyOn() { return false; } function _linkOn() { return false; } function _linkAdminOn() { return false; }
       function _navItemsBase() { return [{ id: 'home' }, { id: 'prayers' }]; }`);
     const slot = f._navSlots()[1];
     expect(slot.label).toBe('&lt;img src=x onerror=alert(1)&gt;');

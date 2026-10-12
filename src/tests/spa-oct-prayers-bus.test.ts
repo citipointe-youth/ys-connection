@@ -12,7 +12,7 @@ describe('S2.1 Prayers off', () => {
   });
   it('moreItems leaves Prayers out when off', () => {
     const pre = (p: boolean) => `${cfg({})}
-function _prayersOn() { return ${p}; } function _busOn() { return true; } function _nyOn() { return false; } function _linkOn() { return false; } function L(k) { return k; }`;
+function _prayersOn() { return ${p}; } function _busOn() { return true; } function _nyOn() { return false; } function _linkOn() { return false; } function _linkAdminOn() { return false; } function L(k) { return k; }`;
     expect(loadFns(['moreItems'], pre(true)).moreItems().map((m: any) => m.id)).toEqual(['prayers', 'bus']);
     expect(loadFns(['moreItems'], pre(false)).moreItems().map((m: any) => m.id)).toEqual(['bus']);
   });
@@ -87,7 +87,7 @@ describe('S2.2 _navSlots', () => {
   };
   const run = (role: string, o: { prayers: boolean; bus: boolean; ny: boolean; link?: boolean }) => {
     const pre = `const S = { user: { role: '${role}' } }; function L(k) { return k; } function esc(s) { return String(s); }
-function _prayersOn() { return ${o.prayers}; } function _busOn() { return ${o.bus}; } function _nyOn() { return ${o.ny}; } function _linkOn() { return ${!!o.link}; }
+function _prayersOn() { return ${o.prayers}; } function _busOn() { return ${o.bus}; } function _nyOn() { return ${o.ny}; } function _linkOn() { return ${!!o.link}; } function _linkAdminOn() { return ${!!o.link && role === 'admin'}; }
 function _navItemsBase() { return ${JSON.stringify(base(role))}; }`;
     return loadFns(['moreItems', 'navItems', '_navSlots', 'bottomNavItems', 'quickActionItems'], pre);
   };

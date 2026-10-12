@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
+const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId',
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
@@ -16,7 +16,6 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
-  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter', '_lkFtRow', '_nyFtLine', '_nyFtListHtml', '_lkFtLoad',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
 
@@ -30,7 +29,7 @@ const LK_DOOR_TYPES_SRC = loadIndexHtml().match(/^const LK_DOOR_TYPES = \[[^\]]*
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
   fresh?: (path: string) => Promise<any>;
-  role?: string; mode?: string; leaderId?: string | null; }
+  role?: string; mode?: string; modules?: Record<string, string>; leaderId?: string | null; }
 
 function makeEnv(e: Partial<Env> = {}) {
   const env: Env = { storage: e.storage ?? new Map(), ...e } as Env;
@@ -45,7 +44,7 @@ function makeEnv(e: Partial<Env> = {}) {
   };
   const prelude = `
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
-      settings: { ministryConfig: { modules: { newYouthForms: ${JSON.stringify(env.mode ?? 'on')} } } } };
+      settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } };
     let LINK = _lkFresh();
     ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
@@ -84,27 +83,53 @@ afterEach(() => { vi.useRealTimers(); });
 
 // ── F1.1 shared parts ──
 describe('F1.1 switch and More entries', () => {
-  it('_linkOn uses the New person rule: off nobody, shadow admin only, on everyone', () => {
+  it('_linkOn(): any link feature usable; a missing key inherits New person', () => {
     for (const role of ['admin', 'director', 'quad', 'grade', 'leader']) {
       expect(makeEnv({ role, mode: 'off' }).fns._linkOn()).toBe(false);
       expect(makeEnv({ role, mode: 'shadow' }).fns._linkOn()).toBe(role === 'admin');
       expect(makeEnv({ role, mode: 'on' }).fns._linkOn()).toBe(true);
+      for (const f of ['checkin', 'lifegroupReport', 'flows']) expect(makeEnv({ role, mode: 'on' }).fns._linkOn(f), f).toBe(true);
+    }
+  });
+  it('_linkOn(feature): each feature has its own switch; shadow is admin only', () => {
+    const on = (role: string, modules: Record<string, string>, f?: string) => makeEnv({ role, mode: 'off', modules }).fns._linkOn(f);
+    expect(on('grade', { checkin: 'on' }, 'checkin')).toBe(true);
+    expect(on('grade', { checkin: 'on' }, 'flows')).toBe(false);
+    expect(on('grade', { checkin: 'on' }, 'lifegroupReport')).toBe(false);
+    expect(on('grade', { checkin: 'on' })).toBe(true); // any
+    expect(on('grade', { flows: 'shadow' }, 'flows')).toBe(false);
+    expect(on('admin', { flows: 'shadow' }, 'flows')).toBe(true);
+    expect(on('admin', { lifegroupReport: 'off', flows: 'on' }, 'lifegroupReport')).toBe(false);
+    // an explicit off beats an inherited on
+    expect(makeEnv({ role: 'grade', mode: 'on', modules: { checkin: 'off' } }).fns._linkOn('checkin')).toBe(false);
+    expect(makeEnv({ role: 'grade', mode: 'on', modules: { checkin: 'off' } }).fns._linkOn('flows')).toBe(true);
+  });
+  it('_linkAdminOn: the admin login whatever the switches say, nobody else', () => {
+    for (const mode of ['off', 'shadow', 'on']) {
+      expect(makeEnv({ role: 'admin', mode }).fns._linkAdminOn(), mode).toBe(true);
+      for (const role of ['director', 'quad', 'grade', 'leader']) expect(makeEnv({ role, mode }).fns._linkAdminOn(), role + mode).toBe(false);
     }
   });
   it('moreItems per role and mode', () => {
-    const ids = (role: string, mode: string) => makeEnv({ role, mode }).fns.moreItems().map((m: any) => m.id).filter((id: string) => id.startsWith('link-'));
+    const ids = (role: string, mode: string, modules?: Record<string, string>) => makeEnv({ role, mode, modules }).fns.moreItems().map((m: any) => m.id).filter((id: string) => id.startsWith('link-'));
     expect(ids('admin', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows', 'link-admin']);
-    expect(ids('director', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows', 'link-admin']);
+    expect(ids('director', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('quad', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('grade', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('leader', 'on')).toEqual(['link-checkin']);
     expect(ids('admin', 'shadow')).toEqual(['link-checkin', 'link-groups', 'link-flows', 'link-admin']);
     for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'shadow')).toEqual([]);
-    for (const role of ['admin', 'director', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
+    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
+    expect(ids('admin', 'off')).toEqual(['link-admin']);
+    // each entry by its own switch
+    expect(ids('grade', 'off', { lifegroupReport: 'on' })).toEqual(['link-groups']);
+    expect(ids('grade', 'off', { flows: 'on', checkin: 'on' })).toEqual(['link-checkin', 'link-flows']);
+    expect(ids('leader', 'off', { lifegroupReport: 'on', flows: 'on' })).toEqual([]);
   });
-  it('Youth Setup control is relabelled "Elvanto features" with the spec help text; key unchanged', () => {
-    expect(html).toContain('<label class="fl" for="setup-ny">Elvanto features ${helpTip("Turns on the screens that send to Elvanto: New person, Check-in, Lifegroup report and Flow steps. Shadow mode shows them to the admin login only, for testing. Off by default.")}');
-    expect(html).toContain("_setupSet('modules.newYouthForms', this.value)");
+  it('Youth Setup shows four Off / Shadow / On selects with plain labels, and the draft keeps all four keys', () => {
+    expect(html).toContain("onchange=\"_setupSetModule('${k}', this.value)\"");
+    for (const label of ["'New person'", "'Check-in'", "'Lifegroup report'", "'Flow steps'"]) expect(html).toContain(label);
+    expect(html).toContain("checkin: 'off', lifegroupReport: 'off', flows: 'off'");
   });
   it('link pages are routed, and a junior leader may open the door screen only', () => {
     expect(html).toContain("else if (String(p).indexOf('link-') === 0) await renderLink(p);");
@@ -889,7 +914,6 @@ describe('B9 / T-32 wrong service (D3)', () => {
     expect(L).toMatchObject({ services: null, defaultSvc: null, svc: null, people: {} });
     expect(h.fns._lkQGet()).toHaveLength(1);
     expect(html).toMatch(/async function renderLinkCheckin\(\) \{\r?\n  _lkDayCheck\(\);/);
-    expect(html).toMatch(/function _nyLinkLoad\(\) \{\r?\n  if \(!_linkOn\(\)\) return;\r?\n  _lkDayCheck\(\);/);
     expect(html).toMatch(/if \(_lkOnPage\(\)\) \{ if \(_lkDayCheck\(\) && S\.page === 'link-checkin'\) renderLinkCheckin\(\);/);
   });
   it('no service today: "Tonight\u2019s service is not here yet" line (kiosk)', () => {
@@ -1387,85 +1411,18 @@ describe('F3 flow steps', () => {
   });
 });
 
-// ── F4.1 first-timer tick on the New person form ──
-describe('F4.1 first-timer check-in', () => {
-  const OK = { student: 'sent', parent: 'sent' };
-  it('_lkFirstTimerDecision: live send queues unless the student form failed or was not sent', () => {
-    const d = makeEnv().fns._lkFirstTimerDecision;
-    expect(d(OK, 'live', ['Ava', 'Example']).queue).toBe(true);
-    expect(d({ ...OK, student: 'unconfirmed' }, 'shadow', ['Ava', 'Example']).queue).toBe(true);
-    expect(d({ ...OK, student: 'failed' }, 'live', ['Ava', 'Example']).queue).toBe(false);
-    expect(d({ ...OK, student: 'skipped', parent: 'sent' }, 'live', ['Ava', 'Example']).queue).toBe(false); // a parent-only retry
-    expect(d(OK, 'off', ['Ava', 'Example']).queue).toBe(false);
-  });
-  it('_lkFirstTimerDecision: sends are always live, so a sent student queues whatever the console mode short of off', () => {
-    const d = makeEnv().fns._lkFirstTimerDecision;
-    for (const cap of ['live', 'shadow', 'locked', null]) expect(d(OK, cap, ['Ava', 'Example']).queue).toBe(true);
-  });
-  it('_lkFirstTimerDecision: a name over 60 characters is skipped with a note', () => {
-    const d = makeEnv().fns._lkFirstTimerDecision;
-    const r = d(OK, 'live', ['A'.repeat(61), 'Example']);
-    expect(r.queue).toBe(false);
-    expect(r.note).toMatch(/too long/);
-    expect(d(OK, 'live', ['A'.repeat(60), 'B'.repeat(60)]).queue).toBe(true);
-    expect(d({ ...OK, student: 'failed' }, 'live', ['A'.repeat(61), 'x']).note).toBeNull();
-  });
-  it('_lkFirstTimerPayload: grade 7–12 to a number, gender f/m to female/male', () => {
-    const f = makeEnv().fns._lkFirstTimerPayload;
-    expect(f({ firstName: ' Ava ', lastName: 'Example', grade: '9', gender: 'f' }, SVC)).toEqual({ serviceTimeId: SVC.serviceTimeId,
-      serviceId: SVC.serviceId, firstName: 'Ava', lastName: 'Example', grade: 9, gender: 'female' });
-    expect(f({ firstName: 'Ben', lastName: 'Sample', grade: '12', gender: 'm' }, SVC)).toMatchObject({ grade: 12, gender: 'male' });
-    for (const g of ['7', '8', '10', '11']) expect(f({ firstName: 'a', lastName: 'b', grade: g, gender: 'm' }, SVC).grade).toBe(Number(g));
-    expect(f({ firstName: 'a', lastName: 'b', grade: '', gender: 'm' }, SVC).grade).toBeNull();
-  });
-  it('the tick: on by default when §2.3 gives a default; else a service select; nothing when the link is off', () => {
-    const h = makeEnv();
-    const L = h.get().LINK;
-    L.services = [{ ...SVC, name: 'Youth <b>' }, { ...SVC, serviceTimeId: P(5), ymd: '2026-10-11', name: 'Morning' }];
-    L.defaultSvc = SVC.serviceTimeId;
-    const on = h.fns._nyLinkHtml();
-    expect(on).toContain('type="checkbox" id="ny-lk-svc"');
-    expect(on).toContain(' checked');
-    expect(on).toContain('Check them in to Fri 16 Oct · Youth &lt;b&gt;');
-    expect(on).not.toContain('<b>');
-    L.defaultSvc = null;
-    const pick = h.fns._nyLinkHtml();
-    expect(pick).toContain('<select class="fs" id="ny-lk-svc">');
-    expect(pick).toContain('<option value="">Do not check in</option>');
-    expect(pick).not.toContain('checked');
-    L.status = { console: { capabilities: { firstTimerCheckIn: 'off' } } };
-    expect(h.fns._nyLinkHtml()).toBe('');
-    for (const [role, mode] of [['grade', 'off'], ['grade', 'shadow'], ['admin', 'off']]) {
-      const k = makeEnv({ role, mode });
-      k.get().LINK.services = [SVC]; k.get().LINK.defaultSvc = SVC.serviceTimeId;
-      expect(k.fns._nyLinkHtml()).toBe('');
+// ── T11 (2026-10-12): the first-timer tick is gone from the New person form ──
+describe('T11 first-timer check-in removed from New person', () => {
+  it('no tick, no send path, no dead helpers', () => {
+    for (const name of ['_nyLinkHtml', '_nyLkRead', '_lkFirstTimerAfter', '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyFtLine', '_nyFtListHtml', '_lkFtLoad', '_lkFtRow']) {
+      expect(html, name).not.toContain('function ' + name + '(');
     }
-    expect(extractFn(html, 'renderNewYouth')).toContain("${typeof _nyLinkHtml === 'function' && _linkOn() ? `<div class=\"card\" id=\"ny-lk\">${_nyLinkHtml()}</div>` : ''}");
-  });
-  it('after the send: queues firstTimerCheckIn through the phone queue, once; the New person send is unchanged', () => {
-    vi.useFakeTimers();
-    const h = makeEnv({ leaderId: 'L1' });
-    h.get().LINK.services = [SVC];
-    const mine: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'Ava', lastName: 'Example', grade: '8', gender: 'f' } };
-    h.fns._lkFirstTimerAfter(mine, OK);
-    const q = h.fns._lkQGet();
-    expect(q).toHaveLength(1);
-    expect(q[0]).toMatchObject({ kind: 'action', type: 'firstTimerCheckIn', note: null, leaderId: 'L1',
-      payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, firstName: 'Ava', lastName: 'Example', grade: 8, gender: 'female' } });
-    expect(mine.lkSvc).toBeNull();
-    expect(mine.lkNote).toBe('Check-in for Fri 16 Oct · Youth 6:30 pm.'); // B17: the status line under it says "Waiting to send."
-    expect(mine.lkId).toBe(q[0].id);
-    h.fns._lkFirstTimerAfter(mine, OK); // a later retry on the same send never queues again
-    expect(h.fns._lkQGet()).toHaveLength(1);
-    const long: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'A'.repeat(61), lastName: 'X', grade: '8', gender: 'f' } };
-    h.fns._lkFirstTimerAfter(long, OK);
-    expect(h.fns._lkQGet()).toHaveLength(1);
-    expect(long.lkNote).toMatch(/too long/);
+    expect(html).not.toContain('ny-lk');
     const send = extractFn(html, 'nySend');
-    expect(send).toContain("mine.lkSvc = send || typeof _nyLkRead !== 'function' ? null : _nyLkRead();");
-    expect(send).toContain("if (typeof _lkFirstTimerAfter === 'function') _lkFirstTimerAfter(mine, result);");
+    expect(send).not.toContain('lkSvc');
+    expect(send).not.toContain('_lkFirstTimerAfter');
     expect(send).toContain("API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000)");
-    expect(extractFn(html, 'renderNewYouth')).toContain('NY.lkNote');
+    expect(extractFn(html, 'renderNewYouth')).not.toMatch(/NY\.lkNote|_nyFt|_nyLinkHtml/);
   });
 });
 
@@ -1479,44 +1436,7 @@ describe('B18 / T-8 an empty flows push', () => {
   });
 });
 
-describe('B17 / T-2 first-timer status for the door host (APP-32)', () => {
-  const OK = { student: 'sent', parent: 'sent' };
-  const queueOne = (h: any) => {
-    h.get().LINK.services = [SVC];
-    const mine: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'Ava', lastName: '<b>Ex</b>', grade: '8', gender: 'f' } };
-    h.fns._lkFirstTimerAfter(mine, OK);
-    return mine;
-  };
-  it('the result page line: queued, awaiting-approval, refused too-old', () => {
-    vi.useFakeTimers();
-    const h = makeEnv();
-    const mine = queueOne(h);
-    expect(mine.lkId).toBe(h.fns._lkQGet()[0].id);
-    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Waiting to send.');
-    h.fns._lkQSet([]);
-    h.get().LINK.ftRows[mine.lkId] = { id: mine.lkId, type: 'firstTimerCheckIn', status: 'pending', reason: 'awaiting-approval' };
-    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Waiting for the new-person form to be approved.');
-    h.get().LINK.ftRows[mine.lkId] = { id: mine.lkId, type: 'firstTimerCheckIn', status: 'refused', reason: 'too-old' };
-    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Too late to send. Do it in Elvanto.');
-    expect(extractFn(html, 'renderNewYouth')).toContain('_nyFtLine(NY.lkId)');
-  });
-  it('"New people tonight" lists this phone\'s first-timers with their status, names escaped; nothing when none', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
-    const asked: string[] = [];
-    const h = makeEnv({ fresh: (p) => { asked.push(p); return Promise.resolve([{ id: h.get().LINK.ft[0].id, type: 'firstTimerCheckIn',
-      status: 'pending', reason: 'awaiting-approval' }]); } });
-    expect(h.fns._nyFtListHtml()).toBe('');
-    const mine = queueOne(h);
-    h.fns._lkQSet([]);
-    await h.fns._lkFtLoad();
-    expect(asked).toEqual(['/link/actions?ids=' + mine.lkId]);
-    const out = h.fns._nyFtListHtml();
-    expect(strip(out)).toContain('New people tonight');
-    expect(out).toContain('Ava &lt;b&gt;Ex&lt;/b&gt;');
-    expect(strip(out)).toContain('Waiting for the new-person form to be approved.');
-    expect([...h.env.storage.values()].join('')).not.toContain('<b>Ex</b>'); // the name stays in memory
-  });
+describe('B17 / T-2 first-timer status on the admin page', () => {
   it('the admin page lists first-timers that have waited over 1 h', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-16T10:30:00.000Z'));

@@ -68,7 +68,7 @@ describe('New youth SPA', () => {
 
 // Runs the REAL nySend / nyOpen / renderNewYouth etc. from index.html against minimal stubs.
 const FRESH = '{ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }';
-const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
+const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
 function harness(post: (path: string, body: any, ms?: number) => Promise<any>, hostName = 'H', picks: any[] = []) {
   const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
   const pages: string[] = [];
@@ -298,7 +298,7 @@ describe('result page buttons (M3)', () => {
 // ---- Task 7: shadow mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
 const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page: 'home', settings: { ministryConfig: { modules: { newYouthForms: mode, busMinistry: bus } } } });
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
-const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
+const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
 type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; _isRootPage: (p: string) => boolean; openMore: () => void };
 const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, _isRootPage, openMore };`)(
   S, (k: string) => (k === 'busMinistry' ? 'Bus Ministry' : k), modal, (k: string) => `<i ${k}>`, (x: string) => x,
@@ -345,7 +345,8 @@ describe('bottom nav order', () => {
   it('quad, director and admin keep their order', () => {
     expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
     expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
-    expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);
+    // The admin login always has the Elvanto link entry (T9/T10), so its Prayers slot is More even with every module off.
+    expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'more', 'leaders', 'admin']);
   });
   it('the shell builds both navs from _navClick, so desktop and bottom agree', () => {
     const shell = extractFn(html, '_initShell');
@@ -358,7 +359,7 @@ describe('the More menu (in the Prayers slot)', () => {
   it('only Prayers available: the slot stays a plain Prayers tab', () => {
     for (const r of ROLES) {
       for (const mode of ['off', 'shadow']) {
-        if (mode === 'shadow' && r === 'admin') continue;
+        if (r === 'admin') continue; // admin always has the Elvanto link entry: see the next test
         const n = navFns(modeOf(mode, r));
         expect(ids(n.moreItems()), `${mode}/${r}`).toEqual(['prayers']);
         const p = n.navItems().find((i) => i.id === 'prayers')!;
@@ -366,6 +367,12 @@ describe('the More menu (in the Prayers slot)', () => {
         expect(n._navClick(p)).toBe("go('prayers')");
         expect(ids(n.navItems())).not.toContain('more');
       }
+    }
+  });
+  it('admin: the Elvanto link entry is there whatever the module states, and no other role gets it', () => {
+    for (const mode of ['off', 'shadow', 'on']) {
+      expect(ids(navFns(modeOf(mode, 'admin')).moreItems()), mode).toContain('link-admin');
+      for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
     }
   });
   it('Bus on: every role gets More in the Prayers slot, same position', () => {
@@ -376,7 +383,7 @@ describe('the More menu (in the Prayers slot)', () => {
       const m = n.navItems().find((i) => i.id === 'more')!;
       expect(m).toMatchObject({ ic: 'grid', label: 'More', mbl: 'More', action: 'openMore()' });
       expect(n._navClick(m)).toBe('openMore()');
-      expect(ids(n.moreItems())).toEqual(['prayers', 'bus']);
+      expect(noLink(ids(n.moreItems()))).toEqual(['prayers', 'bus']);
     }
   });
   it('shadow: New person is in More for the admin only', () => {
@@ -442,11 +449,12 @@ describe('"New person" is the name the host sees', () => {
     expect(extractFn(html, 'moreItems')).not.toMatch(/New youth/);
   });
   it('Youth Setup shows an Off / Shadow mode / On select and no checkbox for it', () => {
-    expect(html).toContain("_setupSet('modules.newYouthForms', this.value)");
+    // T10: four selects (New person, Check-in, Lifegroup report, Flow steps), written through _setupSetModule.
+    expect(html).toContain("onchange=\"_setupSetModule('${k}', this.value)\"");
     expect(html).not.toContain("_setupSet('modules.newYouthForms', this.checked)");
-    expect(html).toMatch(/Shadow mode \(admin only\)/);
+    expect(html).toMatch(/Shadow \(admin only\)/);
     expect(html).toMatch(/newYouthForms: 'off'/);
-    expect(html).toMatch(/Elvanto features \$\{helpTip\("Turns on the screens that send to Elvanto: New person, Check-in/);
+    expect(html).toMatch(/\['flows', 'Flow steps'/);
   });
   it('saving Youth Setup rebuilds the nav when the module state changed', () => {
     expect(extractFn(html, 'saveMinistrySetup')).toContain('_initShell()');

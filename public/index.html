@@ -1354,9 +1354,16 @@ function setApp(h) {
     // Preserve the scroll position when re-rendering the SAME page (e.g. opening a
     // dropdown), but reset to the top when navigating to a different page. The
     // window is the scroller, not .pg.
-    const keepY = (S.page === _lastRenderedPage) ? (window.scrollY || 0) : 0;
+    const same = S.page === _lastRenderedPage;
+    const keepY = same ? (window.scrollY || 0) : 0;
+    // The tab strips (.tbbar: Admin, Bus, ...) scroll sideways. A re-render builds a fresh strip at scrollLeft 0,
+    // so a tab tapped far along the strip jumped back to the start (T12): carry the offset over.
+    const bar = same && main.querySelector('.tbbar');
+    const keepX = bar ? bar.scrollLeft : 0;
     main.innerHTML = h;
     window.scrollTo(0, keepY);
+    const nbar = keepX && main.querySelector('.tbbar');
+    if (nbar) nbar.scrollLeft = keepX;
     _lastRenderedPage = S.page;
     _updateNavActive();
   } else {
@@ -1464,7 +1471,9 @@ function _simpleLoginsOn() {
   const lg = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.logins;
   return !!(lg && lg.simple);
 }
-function quadLabel(q) { return (_simpleLoginsOn() ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q]) || q; }
+// Grade 6 counts as a junior year when the ministry has it (structure.gradeMin 6): the junior quads cover 6-9.
+function _juniorMin() { return (_structure().gradeMin || 7) <= 6 ? 6 : 7; }
+function quadLabel(q) { return (_simpleLoginsOn() ? SIMPLE_QUAD_LABELS[q] : (QUAD_LABELS[q] || '').replace('Yr 7–9', 'Yr ' + _juniorMin() + '–9')) || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
@@ -1846,7 +1855,7 @@ function _relTime(iso) {
 }
 
 // Quad helpers (gender + year bracket) — mirror backend quadGenderOf/quadGradesOf
-function quadGrades(q) { return (q === 'g79' || q === 'b79') ? [7, 8, 9] : (q === 'g1012' || q === 'b1012') ? [10, 11, 12] : []; }
+function quadGrades(q) { return (q === 'g79' || q === 'b79') ? [6, 7, 8, 9].filter((g) => g >= _juniorMin()) : (q === 'g1012' || q === 'b1012') ? [10, 11, 12] : []; }
 function quadGender(q) { return (q === 'g79' || q === 'g1012') ? 'female' : (q === 'b79' || q === 'b1012') ? 'male' : null; }
 // The gender a login is scoped to: quad logins from their quad; grade logins from
 // the email convention (grade7g -> female, grade7b -> male). null = both (ungendered).
@@ -2005,12 +2014,12 @@ function moreItems() {
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
-  /*LINK*/ if (_linkOn()) {
+  /*LINK*/ {
     const r = S.user && S.user.role;
-    xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
-    if (r !== 'leader') xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
-    if (r !== 'leader') xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
-    if (r === 'admin' || r === 'director') xs.push({ id:'link-admin', ic:'link', label:'Elvanto link', open:"go('link-admin')" });
+    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
+    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
+    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
+    if (_linkAdminOn()) xs.push({ id:'link-admin', ic:'link', label:'Elvanto link', open:"go('link-admin')" });
   }
   return xs;
 }
@@ -2425,7 +2434,7 @@ async function submitMustChangePassword() {
 // ============================================================
 // Home/trends quad+grade dropdowns are pre-rendered collapsibles toggled in-DOM
 // via _drop() (see .drop CSS) — no expand-state vars / re-render needed.
-function _hQuadGrades(q) { return (q === 'g79' || q === 'b79') ? [7, 8, 9] : [10, 11, 12]; }
+function _hQuadGrades(q) { return quadGrades(q); }
 function _hGradeAvg(trends, g) { const x = ((trends && trends.byGrade) || []).find(y => y.grade === g); return x ? Math.round(x.averageAttendance) : 0; }
 // Gendered per-grade Svc/wk. trends.byGrade is whole-grade (both genders) for an
 // admin/director login, so the quad dropdown must NOT use it for a gendered grade
@@ -4086,7 +4095,7 @@ async function renderAtRisk() {
   _arScoped = scoped;
 
   const arGrades = u.role==='grade' ? [] : u.role==='quad'
-    ? (u.quad==='g79'||u.quad==='b79'?[7,8,9]:[10,11,12]) : _gradeList();
+    ? quadGrades(u.quad) : _gradeList();
   const arGenders = ['director','admin'].includes(u.role) ? ['male','female'] : [];
   const gChips = arGrades.map(g => `<button class="fc ${_arFilter.grade==g?'on':''}" onclick="setArFilter('grade',${g})">${g}</button>`).join('');
   const dChips = arGenders.map(g => `<button class="fc ${_arFilter.gender===g?'on':''}" onclick="setArFilter('gender','${g}')">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`).join('');
@@ -4647,7 +4656,7 @@ function renderStudentView() {
 
   const u = S.user;
   const ssGrades = u.role==='grade' ? [] : u.role==='quad'
-    ? (u.quad==='g79'||u.quad==='b79'?[7,8,9]:[10,11,12])
+    ? quadGrades(u.quad)
     : _gradeList();
   const ssGenders = ['director','admin'].includes(u.role) ? ['male','female'] : [];
   const gChips = ssGrades.map(g => `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleSF('g',${g})">${g}</button>`).join('');
@@ -5055,7 +5064,7 @@ async function renderTrends() {
       body += `<div class="sh">${esc(quadLabel(u.quad))}</div><div class="card">`;
       body += statCard([c.uniq, c.avg], ['Seen','Weekly'], _svcPrevSub(p));
       body += '<div class="sh" style="margin-top:10px">By Grade</div>';
-      const grades = u.quad==='g79'||u.quad==='b79' ? [7,8,9] : [10,11,12];
+      const grades = quadGrades(u.quad);
       for (const gr of grades) {
         const gl2 = students.filter(s => s.grade === gr);
         if (!gl2.length) continue;
@@ -5084,7 +5093,7 @@ async function renderTrends() {
         if (p.weeks>0) body += `<div style="font-size:11px;color:var(--ink-faint);padding-left:20px;margin-top:2px">prev term: ${p.uniq} seen · ${p.avg} weekly</div>`;
         body += `<div class="drop-body">`;
         {
-          const grades = q.quad==='g79'||q.quad==='b79' ? [7,8,9] : [10,11,12];
+          const grades = quadGrades(q.quad);
           for (const gr of grades) {
             const gl2 = students.filter(s => s.grade === gr && s.quad === q.quad);
             if (!gl2.length) continue;
@@ -5570,9 +5579,9 @@ async function previewServiceImport(filename, rows) {
     const key = `${(r.first_name||'').trim().toLowerCase()} ${(r.last_name||'').trim().toLowerCase()}`;
     if (key.trim() && !existing.has(key)) nu++;
     const g = parseInt(r.grade, 10);
-    if (r.grade != null && r.grade !== '') { if (g >= 7 && g <= 12) grades.add(g); else unknownGrade++; }
+    if (r.grade != null && r.grade !== '') { if (_gradeList().includes(g)) grades.add(g); else unknownGrade++; }
   }
-  const warn = unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside Yr 7–12.</div>` : '';
+  const warn = unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside Yr ${_gradeList()[0]}–${_gradeList().slice(-1)[0]}.</div>` : '';
   modal(`<div class="mo-title">Service import — confirm</div>
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.7">
       <div><strong>${rows.length}</strong> attendance rows</div>
@@ -6537,7 +6546,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', prayers: true },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', prayers: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
@@ -6626,14 +6635,12 @@ async function saveMinistrySetup() {
   } catch (e) { toast(e.message); }
 }
 
-// Junior/Senior logins and Include Grade 6 block each other (no quad bracket covers grade 6).
-// Returns the reason each toggle is greyed out, or '' when it is free. Mirrors the server 400s.
+// Returns the reason Junior/Senior logins is greyed out, or '' when it is free. Mirrors the server 400.
+// Grade 6 no longer blocks it (T13): grade 6 counts as a junior year.
 function _setupLocks(o) {
   const simple = o.simpleOn ? ''
-    : (o.cohort !== 'grades-quads' || !o.quadOn) ? 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.'
-    : o.includeGrade6 ? 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.' : '';
-  const grade6 = (o.simpleOn && !o.includeGrade6) ? 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.' : '';
-  return { simple, grade6 };
+    : (o.cohort !== 'grades-quads' || !o.quadOn) ? 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.' : '';
+  return { simple };
 }
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);
@@ -6666,7 +6673,7 @@ function _youthSetupBody(settings, users) {
   // replaced separate Lowest/Highest grade number fields).
   const gMax = 12;
   const includeGrade6 = gMin <= 6;
-  const locks = _setupLocks({ simpleOn, includeGrade6, cohort: st.cohortModel || dst.cohortModel, quadOn: roleEnabled('quad') });
+  const locks = _setupLocks({ simpleOn, cohort: st.cohortModel || dst.cohortModel, quadOn: roleEnabled('quad') });
   const gPolicy = st.genderPolicy || dst.genderPolicy;
   const svcDay = st.serviceDayOfWeek != null ? st.serviceDayOfWeek : dst.serviceDayOfWeek;
 
@@ -6704,7 +6711,7 @@ function _youthSetupBody(settings, users) {
     ? `<label class="fg" style="display:flex;align-items:center;gap:8px" title="${SIMPLE_LOCK_TIP}"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" ${k === 'quad' ? 'checked' : ''} disabled> <span>${esc(label)}</span></span> ${helpTip(hint + (k === 'grade' ? ' Off while Junior/Senior logins is on.' : ' On while Junior/Senior logins is on.'))}</label>`
     : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
-  const simpleTip = "Turns off the single-grade logins and renames the four quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each Junior/Senior login gets a Grades filter, saved for the name chosen in “I am…”. Bus is then run by admin, director and named Bus coordinators. Needs the Complex cohort model, the Quad role and Years 7 to 12 only. Turning it off brings the grade logins back.";
+  const simpleTip = "Turns off the single-grade logins and renames the four quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each Junior/Senior login gets a Grades filter, saved for the name chosen in “I am…”. Bus is then run by admin, director and named Bus coordinators. Needs the Complex cohort model and the Quad role. Grade 6, if included, joins the Junior logins. Turning it off brings the grade logins back.";
   const simpleToggleRow = locks.simple
     ? `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>Junior/Senior logins</span></span> ${helpTip(locks.simple)}</label>`
     : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${simpleOn?'checked':''} onchange="_setupSet('logins.simple', this.checked)"> <span>Junior/Senior logins ${helpTip(simpleTip)}</span></label>`;
@@ -6745,8 +6752,7 @@ function _youthSetupBody(settings, users) {
         <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
-    ${locks.grade6 ? `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>Include ${esc(gLabel)} 6 (kids-church intake)</span></span> ${helpTip(locks.grade6)}</label>` : ''}
-    <label class="fg" style="display:${locks.grade6 ? 'none' : 'flex'};align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
     <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders (the current setup). Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
@@ -6822,7 +6828,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
-    <div class="fg"><label class="fl" for="setup-ny">Elvanto features ${helpTip("Turns on the screens that send to Elvanto: New person, Check-in, Lifegroup report and Flow steps. Shadow mode shows them to the admin login only, for testing. Off by default.")}</label><select class="fs" id="setup-ny" onchange="_setupSet('modules.newYouthForms', this.value)">${[['off', 'Off'], ['shadow', 'Shadow mode (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_nyModeOf(mv('newYouthForms')) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${_setupElvantoModulesHtml(md)}
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
         ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
@@ -7050,6 +7056,27 @@ function _setupPrayersToggle(el) {
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     </div>`);
 }
+// Elvanto features (T10): four switches, each Off / Shadow (admin only) / On. A key that is not stored yet follows
+// New person, like the server. A change writes all four, so changing one never moves the others by inheritance.
+const _SETUP_ELVANTO = [
+  ['newYouthForms', 'New person', 'Adds a new student and parent to Elvanto from the app.'],
+  ['checkin', 'Check-in', 'Check students and leaders in to the service from the app.'],
+  ['lifegroupReport', 'Lifegroup report', 'Send the weekly lifegroup attendance report to Elvanto.'],
+  ['flows', 'Flow steps', 'See and complete the Elvanto flow steps for students.'],
+];
+function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
+function _setupElvantoModulesHtml(md) {
+  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Shadow mode shows it to the admin login only, for testing.')}</label>
+      <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['shadow', 'Shadow (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
+}
+function _setupSetModule(key, val) {
+  if (!_setupDraft) _setupDraft = {};
+  const md = _setupDraft.modules || (_setupDraft.modules = {});
+  const eff = {};
+  for (const [k] of _SETUP_ELVANTO) eff[k] = _setupModuleMode(md, k);
+  Object.assign(md, eff, { [key]: val });
+  _setupRerender();
+}
 function _setupPrayersOff() { closeModal(); _setupSet('modules.prayers', false); }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
 // "Include Grade 6" toggle (bug 8 follow-up) replaces separate Lowest/Highest
@@ -7098,6 +7125,7 @@ function _stripServerOwnedLogins(cfg) {
 function exportSettingsFile() {
   const cfg = _stripServerOwnedLogins(JSON.parse(JSON.stringify(_setupDraft || {})));
   delete cfg.busMinistry; // church address, coordinators: location-specific
+  if (cfg.modules) for (const [k] of _SETUP_ELVANTO) cfg.modules[k] = _setupModuleMode(cfg.modules, k); // write the inherited values out, so the file carries all four
   const file = { kind: 'ys-connection-settings', version: 1, ministryConfig: cfg,
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
   _downloadText('ys-connection-settings.json', JSON.stringify(file, null, 2), 'application/json');
@@ -7587,7 +7615,7 @@ function computeQuad(grade,gender){
   if(!grade)return null;
   const g=String(gender||'').toLowerCase();
   const isFemale=g==='female'||g==='f';
-  if(grade>=7&&grade<=9)return isFemale?'g79':'b79';
+  if(grade>=_juniorMin()&&grade<=9)return isFemale?'g79':'b79';
   if(grade>=10&&grade<=12)return isFemale?'g1012':'b1012';
   return null;
 }
@@ -8933,11 +8961,49 @@ function _nyErrorText(e) {
   if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED'].includes(e.code)) return { unsent: true, text: e.message };
   return { unsent: false, text: "We don't know if the forms went in. Check the forms list in Elvanto before sending again." };
 }
+// Date of birth (T11): typed as DD/MM/YYYY, slashes added as you type. The server still gets YYYY-MM-DD,
+// the same value the old date picker sent. Digits only are kept, so backspace works the normal way.
+function _nyDobMask(v) {
+  const d = String(v == null ? '' : v).replace(/\D/g, '').slice(0, 8);
+  return d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+}
+// 'DD/MM/YYYY' -> 'YYYY-MM-DD', or null when it is not a real date.
+function _nyDobIso(text) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(text || '').trim());
+  if (!m) return null;
+  const d = +m[1], mo = +m[2], y = +m[3], t = new Date(Date.UTC(y, mo - 1, d));
+  if (y < 1900 || t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
+  return m[3] + '-' + m[2] + '-' + m[1];
+}
+function _nyDobShow(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
+// '' while it is empty or still being typed; a message once ten characters are in and the date is impossible or in the future.
+// today is the Brisbane date as YYYY-MM-DD.
+function _nyDobError(text, today) {
+  const t = String(text || '');
+  if (t.length < 10) return '';
+  const iso = _nyDobIso(t);
+  if (!iso) return 'That date does not exist. Write it as DD/MM/YYYY.';
+  return iso > today ? 'The date of birth is in the future.' : '';
+}
+function _nyToday() { return new Date(Date.now() + 36e6).toISOString().slice(0, 10); } // Brisbane is UTC+10 all year
+function _nyDobInput(el) {
+  const v = _nyDobMask(el.value);
+  if (el.value !== v) el.value = v;
+  const msg = _nyDobError(v, _nyToday()), out = document.getElementById('ny-dob-err');
+  if (out) out.textContent = msg;
+  el.setAttribute('aria-invalid', msg ? 'true' : 'false');
+}
+// What stops a send because of the date: empty is left to the "Add the date of birth" check.
+function _nyDobProblem(text, today) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  return _nyDobError(t, today) || (t.length < 10 ? 'Write the date of birth as DD/MM/YYYY.' : '');
+}
 function _nyRead() {
   const g = (id) => ((document.getElementById('ny-' + id) || {}).value || '').trim();
   const ticked = (n) => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map((i) => i.value);
   const p = { host: _nyHost(), firstName: g('firstName'), lastName: g('lastName'),
-    dob: g('dob'), gender: g('gender'), grade: g('grade'), school: g('school'), mobile: g('mobile'),
+    dob: _nyDobIso(g('dob')) || '', gender: g('gender'), grade: g('grade'), school: g('school'), mobile: g('mobile'),
     allergies: ticked('ny-allergy'), conditions: ticked('ny-condition'), medicalNotes: g('medicalNotes'),
     parentFirst: g('parentFirst'), parentLast: g('parentLast'), parentMobile: g('parentMobile') };
   if (g('parentGender')) p.parentGender = g('parentGender');
@@ -8969,8 +9035,6 @@ function renderNewYouth() {
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
-      ${NY.lkNote ? `<div class="card"><p>${esc(NY.lkNote)}</p>${NY.lkId && typeof _nyFtLine === 'function' ? _nyFtLine(NY.lkId) : ''}</div>` : ''}
-      ${typeof _nyFtListHtml === 'function' && _linkOn() ? _nyFtListHtml() : ''}
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
       ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
       ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
@@ -8990,7 +9054,7 @@ function renderNewYouth() {
     <div class="card lk-svc" id="ny-hostc">${_nyHostHtml()}</div>
     <div class="card"><div class="sh">Student</div>
       ${input('firstName', 'First name', 'autocapitalize="words"')}${input('lastName', 'Last name', 'autocapitalize="words"')}
-      ${input('dob', 'Date of birth', 'type="date"')}
+      <div class="fg"><label class="fl" for="ny-dob">Date of birth</label><input class="fi" id="ny-dob" value="${esc(_nyDobShow(k.dob))}" inputmode="numeric" placeholder="DD/MM/YYYY" maxlength="10" autocomplete="off" aria-describedby="ny-dob-err" oninput="_nyDobInput(this)"><div class="fl" id="ny-dob-err" role="alert" style="color:var(--danger)"></div></div>
       ${sel('gender', 'Gender', [['', ''], ['f', 'Female'], ['m', 'Male']])}
       ${sel('grade', 'School grade', [['', ''], ...['7', '8', '9', '10', '11', '12'].map((g) => [g, g])])}
       ${input('school', 'School')}${input('mobile', 'Mobile', 'type="tel" inputmode="tel"')}
@@ -9011,11 +9075,9 @@ function renderNewYouth() {
       ${sel('parentGender', 'Gender (optional)', [['', ''], ['f', 'Female'], ['m', 'Male']])}
       <p class="fl">The student has texted or called their parent to say where they are.</p>
     </div>
-    ${typeof _nyLinkHtml === 'function' && _linkOn() ? `<div class="card" id="ny-lk">${_nyLinkHtml()}</div>` : ''}
     ${NY.error ? `<div class="card" id="ny-err" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
     <button class="btn btn-primary btn-full" id="ny-send" type="submit">Send to Elvanto</button>
-    </form>
-    ${typeof _nyFtListHtml === 'function' && _linkOn() ? _nyFtListHtml() : ''}`));
+    </form>`));
   // setApp keeps the scroll position, and a failed send leaves the host at the bottom: bring the card into view.
   const errEl = NY.error && document.getElementById('ny-err');
   if (errEl && errEl.scrollIntoView) errEl.scrollIntoView({ block: 'center' });
@@ -9029,6 +9091,8 @@ async function nySend(ev, send) {
   // APP-69: the leaders list (the host's name) may still be loading: wait for it before deciding.
   if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) { await _lkLoadLeaders(); p.host = _nyHost(); }
   if (!send && !p.host) { _nyPickHost(() => nySend()); return; }
+  const dobBad = send ? '' : _nyDobProblem((document.getElementById('ny-dob') || {}).value, _nyToday());
+  if (dobBad) { toast(dobBad); return; }
   const need = [['firstName', 'first name'], ['lastName', 'last name'],
     ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
@@ -9038,7 +9102,6 @@ async function nySend(ev, send) {
   const mine = NY;
   mine.last = p;
   mine.sending = true; mine.error = null;
-  mine.lkSvc = send || typeof _nyLkRead !== 'function' ? null : _nyLkRead(); /*LINK: the first-timer tick, read before the form can change*/
   const here = () => NY === mine && S.page === 'new-youth';
   const btn = document.getElementById('ny-send');
   const label = btn ? btn.textContent : '';
@@ -9048,7 +9111,6 @@ async function nySend(ev, send) {
     const result = await API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000);
     mine.sending = false; // before drawing: renderNewYouth shows a Sending page while it is set
     mine.result = result;
-    if (typeof _lkFirstTimerAfter === 'function') _lkFirstTimerAfter(mine, result); /*LINK*/
     if (here()) renderNewYouth();
     else toast(_nyMessage(result).lines.join(' '), 8000); // the host left the screen: still tell them
   } catch (e) {
@@ -9098,7 +9160,21 @@ function _lkFresh() {
     groups: null, gErr: null, gid: null, rf: null, gres: {}, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
-function _linkOn() { return _nyOn(); }
+// Elvanto features (T10, 2026-10-12): each has its own Off / Shadow / On switch under ministryConfig.modules.
+// A stored config without the key inherits the New person value (same rule as the server).
+function _linkModeOf(feature) {
+  const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
+  return _nyModeOf(m[feature] != null ? m[feature] : m.newYouthForms);
+}
+// _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (shadow = admin only).
+// No argument: any of the three is usable. The admin page is separate: _linkAdminOn.
+function _linkOn(feature) {
+  if (!feature) return ['checkin', 'lifegroupReport', 'flows'].some((f) => _linkOn(f));
+  const m = _linkModeOf(feature);
+  return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin');
+}
+// The Elvanto link admin page: the admin login only, whatever the module switches say.
+function _linkAdminOn() { return !!S.user && S.user.role === 'admin'; }
 // Brisbane is UTC+10 all year (no daylight saving).
 function _lkTime(iso) {
   const t = Date.parse(iso);
@@ -10265,112 +10341,11 @@ async function renderLinkFlows() {
   _lkPaintFlows();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (LINK.fs) _lkStepDraw(); }, () => {});
 }
-// ── First-timer check-in on the New person form (F4.1; spec §11.4 first bullet) ──
-// Queue after a New person send (always live since 2026-10-12, ledger 23): when the student form went (sent or
-// unconfirmed) and the console has not turned firstTimerCheckIn off. The shared switch is checked by the caller.
-function _lkFirstTimerDecision(result, capability, names) {
-  const r = result || {};
-  if (r.student === 'failed' || capability === 'off') return { queue: false, note: null };
-  if (r.student !== 'sent' && r.student !== 'unconfirmed') return { queue: false, note: null };
-  if ((names || []).some((n) => String(n || '').trim().length > 60)) {
-    return { queue: false, note: 'Not checked in: the name is too long for the check-in. Check them in on the kiosk.' };
-  }
-  return { queue: true, note: null };
-}
-function _lkFirstTimerPayload(p, s) {
-  const g = Number(p.grade);
-  return { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, firstName: String(p.firstName || '').trim(), lastName: String(p.lastName || '').trim(),
-    grade: Number.isInteger(g) && g >= 7 && g <= 12 ? g : null, gender: p.gender === 'f' ? 'female' : 'male' };
-}
-// The tick on the form: on by default for the §2.3 default service, else a service select. Nothing when the link is off.
-function _nyLinkHtml() {
-  if (!_linkOn() || _lkCapOff('firstTimerCheckIn')) return '';
-  const xs = LINK.services;
-  if (!xs) return '<p class="lk-sub">Loading services...</p>';
-  if (!xs.length) return '';
-  const def = xs.find((s) => s.serviceTimeId === LINK.defaultSvc);
-  if (def) return `<label class="lk-chk"><input type="checkbox" id="ny-lk-svc" value="${esc(def.serviceTimeId)}" checked> Check them in to ${esc(_lkSvcLabel(def))}</label>`;
-  return `<div class="fg"><label class="fl" for="ny-lk-svc">Check them in</label><select class="fs" id="ny-lk-svc"><option value="">Do not check in</option>
-    ${xs.map((s) => `<option value="${esc(s.serviceTimeId)}">${esc(_lkSvcLabel(s))}</option>`).join('')}</select></div>`;
-}
-// Load the pick list (and the console status) once, then fill the tick in place, so typed inputs stay.
+// New person: only the host picker's leaders list loads here. The first-timer check-in tick is gone (T11):
+// the student has no Elvanto profile until intake approves, so there is nobody to check in.
 function _nyLinkLoad() {
-  if (!_linkOn()) return;
-  _lkDayCheck();
-  _lkFtLoad();
+  if (!_nyOn()) return;
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; _nyHostDraw(); }, () => {});
-  if (!LINK.statusAt) _lkStatusLoad();
-  if (LINK.services) return;
-  API.fresh('/link/checkin').then((r) => { _lkTakeServices(r); }, () => {}).then(() => {
-    const el = document.getElementById('ny-lk');
-    if (el) el.innerHTML = LINK.services ? _nyLinkHtml() : '';
-  });
-}
-function _nyLkRead() {
-  const el = document.getElementById('ny-lk-svc');
-  if (!el) return null;
-  return el.type === 'checkbox' ? (el.checked ? el.value : null) : (el.value || null);
-}
-// Hooked after the New person send. Goes through the phone queue, so it still sends if the host left the screen.
-function _lkFirstTimerAfter(mine, result) {
-  try {
-    const id = mine.lkSvc;
-    mine.lkSvc = null; // once per send: a parent-only retry never queues it again
-    mine.lkNote = null;
-    if (!id || !_linkOn()) return;
-    const s = (LINK.services || []).find((x) => x.serviceTimeId === id);
-    const p = mine.last || {};
-    if (!s) return;
-    const d = _lkFirstTimerDecision(result, _lkCap('firstTimerCheckIn'), [p.firstName, p.lastName]);
-    mine.lkNote = d.note;
-    if (!d.queue) return;
-    const aid = _lkUuid(), payload = _lkFirstTimerPayload(p, s);
-    _lkPush({ kind: 'action', id: aid, type: 'firstTimerCheckIn', payload, note: null, leaderId: getMyLeaderId() || null }, true);
-    mine.lkNote = 'Check-in for ' + _lkSvcLabel(s) + '.';
-    mine.lkId = aid;
-    // B17: the door host sees what happens to it ("New people tonight"); the name stays in memory only.
-    LINK.ft.push({ id: aid, name: payload.firstName + ' ' + payload.lastName, day: _lkSvcDay() });
-  } catch (e) {}
-}
-// ── First-timer status for the door host (B17 / T-2; APP-32) ──
-// The row as this phone knows it: still queued here, else the server's last answer.
-function _lkFtRow(id) {
-  let queued = false;
-  try { queued = _lkQGet().some((it) => it.kind === 'action' && it.id === id); } catch (e) {}
-  if (queued) return { id, type: 'firstTimerCheckIn', status: 'queued', reason: null };
-  return LINK.ftRows[id] || { id, type: 'firstTimerCheckIn', status: 'pending', reason: null };
-}
-// The status line under the New person result (awaiting-approval, too-old and the rest, as on the door).
-function _nyFtLine(id) {
-  if (!id) return '';
-  const r = _lkFtRow(id);
-  return `<div class="lk-st ${_lkStatusTone(r)}" id="ny-ft-${esc(id)}">${_lkStatusHtml(r, _lkLastSeen())}</div>`;
-}
-// "New people tonight": this phone's first-timers for tonight's service day, each with its status.
-function _nyFtListHtml() {
-  const day = _lkSvcDay(), xs = (LINK.ft || []).filter((f) => f.day === day);
-  if (!xs.length) return '';
-  return `<div class="card" id="ny-ft-list"><div class="lk-sec">New people tonight</div>${xs.map((f) => {
-    const r = _lkFtRow(f.id);
-    return `<div class="lk-kv"><span>${esc(f.name)}</span><span class="lk-st ${_lkStatusTone(r)}">${_lkStatusHtml(r, _lkLastSeen())}</span></div>`;
-  }).join('')}</div>`;
-}
-// One GET /link/actions?ids= for the sent ones; repaints the list and the result line in place.
-async function _lkFtLoad() {
-  const day = _lkSvcDay();
-  let q = [];
-  try { q = _lkQGet(); } catch (e) {}
-  const ids = (LINK.ft || []).filter((f) => f.day === day && !q.some((it) => it.id === f.id)).map((f) => f.id).slice(0, 50);
-  if (!ids.length) return;
-  try {
-    const rows = await API.fresh('/link/actions?ids=' + ids.join(','));
-    (Array.isArray(rows) ? rows : []).forEach((r) => { LINK.ftRows[r.id] = { id: r.id, type: r.type, status: r.status, reason: r.reason, resultAt: r.resultAt }; });
-  } catch (e) { return; }
-  try {
-    const el = document.getElementById('ny-ft-list');
-    if (el) el.outerHTML = _nyFtListHtml();
-    ids.forEach((id) => { const x = document.getElementById('ny-ft-' + id); if (x) x.outerHTML = _nyFtLine(id); });
-  } catch (e) {}
 }
 // ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin and director. ──
 function _lkAdmFresh() {
