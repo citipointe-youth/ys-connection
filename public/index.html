@@ -9163,7 +9163,7 @@ function _lkStatusText(row, lastSeen) {
     case 'queued': return 'Waiting to send.';
     case 'mirror': return 'In Elvanto.';
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
-      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : '');
+      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Goes to Elvanto within 15 minutes.' : '');
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
@@ -9190,10 +9190,21 @@ function _lkCap(type) {
 }
 // A type the console reports 'off' is hidden from the screens.
 function _lkCapOff(type) { return _lkCap(type) === 'off'; }
-// "Console last seen 7:02 pm" only while the console is offline.
+// "Console last seen 7:02 pm" only while the console is offline; the day too when it is not today (T-17 / APP-52).
 function _lkLastSeen() {
   const c = LINK.status && LINK.status.console;
-  return c && !c.online && c.lastSeenAt ? _lkTime(c.lastSeenAt) : '';
+  return c && !c.online && c.lastSeenAt ? _lkSeen(c.lastSeenAt) : '';
+}
+function _lkSeen(iso) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return '';
+  const day = (ms) => new Date(ms + 36e6).toISOString().slice(0, 10);
+  return day(t) === day(Date.now()) ? _lkTime(iso) : _lkAt(iso);
+}
+// Online but outside its window, the console polls about every 15 minutes (X14 / T-17).
+function _lkOutsideWindow() {
+  const c = LINK.status && LINK.status.console;
+  return !!(c && c.online && !c.inWindow);
 }
 // The banner above a link screen, from GET /link/status. types = the action types this screen sends.
 function _lkBanner(types, st) {
@@ -9202,7 +9213,7 @@ function _lkBanner(types, st) {
   const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
   const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', firstTimerCheckIn: 'First-timer check-in' };
   if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkTime(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   types.filter((t) => caps[t] === 'shadow').map(_lkPracticeLine)
     .forEach((l) => { if (!out.some((x) => x[1] === l)) out.push(['practice', l]); });
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
-  '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
+  '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
@@ -190,7 +190,19 @@ describe('F1.1 _lkBanner', () => {
     capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live' }, consoles: 1, ...c }, mirrors: {} });
   const caps = (x: any) => ({ checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', ...x });
   it('offline shows the last-seen time', () => {
-    expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('The console was last seen 4:12 pm. Actions are queued, not in Elvanto yet. Use the kiosk too.');
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
+    try {
+      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('The console was last seen 4:12 pm. Actions are queued, not in Elvanto yet. Use the kiosk too.');
+    } finally { vi.useRealTimers(); }
+  });
+  it('T-17 / APP-52: a last-seen time on another day carries the day', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T00:00:00.000Z')); // Mon 10:00 Brisbane
+    try {
+      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('The console was last seen Fri 16 Oct 4:12 pm.');
+      const h = makeEnv();
+      h.get().LINK.status = st({ online: false });
+      expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct 4:12 pm');
+    } finally { vi.useRealTimers(); }
   });
   it('practice mode, check-out locked, off hides', () => {
     const b = strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkIn: 'shadow', checkOut: 'locked' }) })));
@@ -1597,5 +1609,20 @@ describe('F4.2 admin page', () => {
     expect(out).not.toContain('Done Already');
     h.get().LINK.adm.mf = 'ambiguous';
     expect(h.fns._lkAdmMatchHtml()).toContain('Bo Two');
+  });
+});
+
+describe('T-17 / X14 outside the window a pending row says when it goes', () => {
+  const st = (c: any) => ({ console: { lastSeenAt: '2026-10-16T06:12:00.000Z', online: true, inWindow: false, pollSeconds: 900,
+    capabilities: null, consoles: 1, ...c }, mirrors: {} });
+  it('online, outside the window: "Goes to Elvanto within 15 minutes."; inside the window or offline: not', () => {
+    const h = makeEnv();
+    h.get().LINK.status = st({});
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Goes to Elvanto within 15 minutes.');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
+    h.get().LINK.status = st({ inWindow: true });
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console.');
+    h.get().LINK.status = st({ online: false });
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null }, '4:12 pm')).toBe('Waiting for the console. Console last seen 4:12 pm');
   });
 });
