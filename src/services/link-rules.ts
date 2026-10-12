@@ -226,13 +226,17 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
 
 export interface CheckState { in: boolean; practice: boolean; row: OutboxRow | null; source: 'row' | 'mirror'; }
 
+/** X11 (T-21): a sent row still decides for this long after the mirror's takenAt (the two clocks can disagree). */
+export const SENT_GRACE_MS = 120_000;
+
 /** One person and one service. `rows` = their checkIn/checkOut rows, newest first. */
 export function effectiveCheckState(a: { mirrorIn: boolean; mirrorTakenAt: string | null; rows: OutboxRow[] }): CheckState {
   const newest = a.rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused') ?? null;
   if (newest) {
     const s = newest.status;
     const decides = s === 'pending' || s === 'claimed' || s === 'unclear' || s === 'shadowed'
-      || (s === 'sent' && (a.mirrorTakenAt == null || (newest.resultAt != null && Date.parse(newest.resultAt) > Date.parse(a.mirrorTakenAt))));
+      || (s === 'sent' && (a.mirrorTakenAt == null
+        || (newest.resultAt != null && Date.parse(newest.resultAt) + SENT_GRACE_MS > Date.parse(a.mirrorTakenAt))));
     if (decides) return { in: newest.type === 'checkIn', practice: s === 'shadowed', row: newest, source: 'row' };
   }
   return { in: a.mirrorIn, practice: false, row: null, source: 'mirror' };

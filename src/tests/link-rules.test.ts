@@ -342,6 +342,11 @@ describe('effectiveCheckState (spec 5.2)', () => {
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] }).source).toBe('mirror');
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: null, rows: [r] }).source).toBe('row');
   });
+  it('T-21 / X11: a sent row still decides while resultAt + 120 s > takenAt (clock skew)', () => {
+    const r = row({ type: 'checkIn', status: 'sent', resultAt: T1 });
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: '2026-10-16T09:06:59Z', rows: [r] }).in).toBe(true);
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: '2026-10-16T09:07:00Z', rows: [r] }).in).toBe(false);
+  });
   it('cancelled and refused are ignored', () => {
     const cancelled = row({ type: 'checkOut', status: 'cancelled' });
     const pendingIn = row({ id: U(2), type: 'checkIn', status: 'pending' });
