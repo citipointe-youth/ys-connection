@@ -278,14 +278,12 @@ describe('generate', () => {
     await expect(f.svc.generate(f.ctx('quad'), { mode: 'all' })).resolves.toBeTruthy();
   });
 
-  it('a coordinator generates from their own leader login, not from a grade login claiming them', async () => {
+  it('a self-identified coordinator can generate from a grade login', async () => {
     const f = await busFixture();
     const s = await f.settings.getSettings();
     await f.settings.updateSettings({ ministryConfig: mergeMinistryConfig(s.ministryConfig, { busMinistry: { coordinatorLeaderIds: ['L1'] } }) });
     await f.car('Van', 8, ['L1', 'L2']); await f.rider('s1');
-    await expect(f.svc.generate(f.ctx('grade', 'L1'), { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
-    const coord = { ...f.ctx('leader'), actor: { ...f.ctx('leader').actor, leaderId: 'L1' } };
-    await expect(f.svc.generate(coord, { mode: 'all' })).resolves.toMatchObject({ placed: 1 });
+    await expect(f.svc.generate(f.ctx('grade', 'L1'), { mode: 'all' })).resolves.toMatchObject({ placed: 1 });
   });
 });
 

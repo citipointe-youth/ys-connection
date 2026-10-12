@@ -5,8 +5,8 @@ import { UnauthorizedError } from '../../core/errors/app-error';
 
 export function makeSettingsController(deps: { settings: SettingsService; setup?: SetupService }) {
   return {
-    async get(req: HttpRequest) {
-      return { ...(await deps.settings.get(req.ctx)), needsAdmin: deps.setup ? await deps.setup.needsAdmin() : false };
+    async get(_req: HttpRequest) {
+      return { ...(await deps.settings.get()), needsAdmin: deps.setup ? await deps.setup.needsAdmin() : false };
     },
 
     async update(req: HttpRequest) {

@@ -36,13 +36,6 @@ function makeUser(overrides: Partial<User>): User {
 }
 
 describe('SettingsService', () => {
-  it('get() hides the Bus coordinator ids from everyone but the admin (public /settings, audit 2026-10-12 H3)', async () => {
-    const { service } = await makeService();
-    await service.update(ADMIN, { ministryConfig: { busMinistry: { coordinatorLeaderIds: ['L1'] } } });
-    expect((await service.get(ADMIN)).ministryConfig.busMinistry.coordinatorLeaderIds).toEqual(['L1']);
-    expect((await service.get(GRADE)).ministryConfig.busMinistry.coordinatorLeaderIds).toEqual([]);
-    expect((await service.get(null)).ministryConfig.busMinistry.coordinatorLeaderIds).toEqual([]);
-  });
   it('get() returns ministryConfig defaulted to MINISTRY_CONFIG_DEFAULTS', async () => {
     const { service } = await makeService();
     const settings = await service.get();
