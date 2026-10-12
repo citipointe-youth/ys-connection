@@ -215,6 +215,7 @@ describe('T7/T8 grade filter repaints from the cache', () => {
       const API = { get: async (p) => { calls.push(p); return null; } };
       function helpTip() { return ''; } function esc(s) { return String(s); } function _serviceDayName() { return 'Friday'; } function _fridayLabel() { return ''; }
       function L(k) { return k; } function _followupListHtml(t) { return '[' + t + ']'; } function _smsTemplateBoxHtml() { return ''; }
+      function _lkHomeFlows() {}
       function __s() { return { host, calls }; }`, ['renderHomeFollowup', '__s']);
     await f.renderHomeFollowup(true);
     expect(f.__s().calls).toEqual([]);
