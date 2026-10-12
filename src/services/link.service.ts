@@ -167,22 +167,16 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
 }
 /**
  * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/director only, through
- * canAccessGrade). Step 0, the lowest stepOrder in its flow, is admin/director only.
- * ponytail: "lowest" is among the pushed rows (people waiting), so an empty first step makes the next one step 0.
+ * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is
+ * admin/director only.
  */
-function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, step0: Map<string, number>,
-  s: StructureScope): boolean {
-  if (f.stepOrder === step0.get(f.flowId) && !isAdminRole(a)) return false;
+function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope): boolean {
+  if (f.stepOrder <= 1 && !isAdminRole(a)) return false;
   const r = f.personId ? roster.get(f.personId) : undefined;
   const grade = f.grade ?? r?.grade ?? null;
   const gender = f.gender ?? r?.gender ?? null;
   return canAccessGrade(a, grade, s) && (gender ? canAccessGender(a, gender, s) : genderScopeOf(a, s) == null);
 }
-const lowestSteps = (flows: LinkFlowRow[]) => {
-  const m = new Map<string, number>();
-  for (const f of flows) m.set(f.flowId, Math.min(m.get(f.flowId) ?? Infinity, f.stepOrder));
-  return m;
-};
 /**
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
  * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
@@ -420,7 +414,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (row.flowId !== sp.flowId || row.stepId !== sp.stepId || row.personId !== sp.personId) {
         throw new BadRequestError('This step changed. Reload.');
       }
-      if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), lowestSteps(await c.flows()), c.structure)) {
+      if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure)) {
         throw new ForbiddenError('This person is not one of yours.');
       }
       personId = row.personId;
@@ -767,9 +761,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const [flows, roster, open, assigns, leaders] = await Promise.all([c.flows(), c.roster(),
         d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders()]);
       const byId = new Map(roster.map((r) => [r.personId, r]));
-      const step0 = lowestSteps(flows);
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
-      const rows = flows.filter((f) => flowRowVisible(actor, f, byId, step0, c.structure))
+      const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure))
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder)
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
@@ -792,7 +785,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const rows = flows.filter((f) => f.flowId === b.flowId && f.personId === b.personId);
       if (!rows.length) throw new BadRequestError('This person is not in this flow any more. Reload.');
       const byId = new Map(roster.map((r) => [r.personId, r]));
-      if (!rows.some((f) => flowRowVisible(actor, f, byId, lowestSteps(flows), c.structure))) {
+      if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure))) {
         throw new ForbiddenError('This person is not one of yours.');
       }
       if (b.leaderId !== null && !(await c.leaders()).some((l) => l.id === b.leaderId && l.active)) {

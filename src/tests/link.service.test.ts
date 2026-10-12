@@ -121,11 +121,11 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
     group({ groupId: GX, name: 'Connect group', meets: '', members: [], thisWeek: 'none', lastReport: null }),
   ], meta('2026-10-16T08:00:00.000Z'));
   await link.replaceMirror('flows', [
-    { rowId: FR1, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP1, stepName: 'Welcome call', stepOrder: 1, personId: P_AMY,
+    { rowId: FR1, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP1, stepName: 'Welcome call', stepOrder: 2, personId: P_AMY,
       name: 'Amy Adams', due: null, assignedTo: 'Admin' },
-    { rowId: FR2, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP2, stepName: 'Follow up', stepOrder: 2, personId: null,
+    { rowId: FR2, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP2, stepName: 'Follow up', stepOrder: 3, personId: null,
       name: 'Unknown Kid', due: null, assignedTo: 'Admin' },
-    { rowId: FR0B, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP0B, stepName: 'Intake', stepOrder: 0, personId: P_BEN,
+    { rowId: FR0B, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP0B, stepName: 'Intake', stepOrder: 1, personId: P_BEN,
       name: 'Ben Brown', due: null, assignedTo: '' },
     { rowId: FR0A, flowId: FLOW_A, flowName: 'Alpha', stepId: STEP0A, stepName: 'Intake', stepOrder: 1, personId: null,
       name: 'Pre Kid', due: null, assignedTo: '' },
@@ -1303,7 +1303,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const P_UNK = u(160);
     await h.link.replaceMirror('flows', [
       ...flows.map((f) => (f.rowId === FR1 ? { ...f, grade: 10, gender: 'male' } : f)), // the row of Amy says Year 10 boy
-      { rowId: u(506), flowId: FLOW_B, flowName: 'Bravo', stepId: STEP1, stepName: 'Welcome call', stepOrder: 1, personId: P_UNK,
+      { rowId: u(506), flowId: FLOW_B, flowName: 'Bravo', stepId: STEP1, stepName: 'Welcome call', stepOrder: 2, personId: P_UNK,
         name: 'Una Known', due: null, assignedTo: '', grade: 9, gender: 'female', mobile: '0411111111', mobileIsParent: true },
     ], META('2026-10-16T08:59:00.000Z'));
     expect(await ids(GRADE)).toEqual([u(506)]);               // not in the roster, but its own grade/gender match
