@@ -1417,6 +1417,16 @@ describe('F4.1 first-timer check-in', () => {
   });
 });
 
+describe('B18 / T-8 an empty flows push', () => {
+  it('an empty list reads "No flow steps for this login." with no rows', () => {
+    const h = makeEnv();
+    h.get().LINK.flows = [];
+    const out = h.fns._lkFlowsHtml();
+    expect(strip(out)).toBe('No flow steps for this login.');
+    expect(out).not.toContain('lk-row');
+  });
+});
+
 describe('B17 / T-2 first-timer status for the door host (APP-32)', () => {
   const OK = { student: 'sent', parent: 'sent' };
   const queueOne = (h: any) => {

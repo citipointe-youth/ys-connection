@@ -992,6 +992,15 @@ describe('D5 lifegroups and flows', () => {
 });
 
 // =====================================================================================================================
+describe('B18 / T-8 an empty flows push', () => {
+  it('after a push of [] the flows screen shows none', async () => {
+    const h = await setup();
+    expect((await h.svc.flows(ADMIN)).rows.length).toBeGreaterThan(0);
+    await h.link.replaceMirror('flows', [], { takenAt: '2026-10-16T08:59:00.000Z', consoleId: CONSOLE });
+    expect(await h.svc.flows(ADMIN)).toEqual({ rows: [] });
+  });
+});
+
 describe('D6 admin: matching, shadow check, log', () => {
   let h: H;
   beforeEach(async () => { h = await setup(); });

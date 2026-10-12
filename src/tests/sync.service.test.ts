@@ -235,6 +235,18 @@ describe('sync.service push', () => {
     });
   }
 
+  it('B18 / X10: flows push of two rows, then rows: [] replaces the mirror with nothing', async () => {
+    const { svc, link } = await setup();
+    const body = fx('push-flows.json');
+    const two = { ...body, rows: [body.rows[0], { ...body.rows[0], rowId: '7f000000-0000-4000-8000-0000000000ff' }] };
+    expect(await svc.push('flows', two)).toEqual({ applied: true, rows: 2 });
+    expect(await link.flows()).toHaveLength(2);
+    const later = new Date(Date.parse(body.takenAt) + 60_000).toISOString();
+    expect(await svc.push('flows', { ...body, takenAt: later, rows: [] })).toEqual({ applied: true, rows: 0 });
+    expect(await link.flows()).toEqual([]);
+    expect((await link.mirrorState()).find((m) => m.kind === 'flows')).toMatchObject({ takenAt: later, rowCount: 0 });
+  });
+
   it('groups get grade/gender from parseGroupName', async () => {
     const { svc, link } = await setup();
     const body = fx('push-groups.json');

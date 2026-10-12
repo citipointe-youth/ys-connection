@@ -377,6 +377,10 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
           expect(typeof s.appliedAt).toBe('string');
         }
         expect(st.find((x) => x.kind === 'roster')).toBeUndefined();
+        // B18 / X10: rows: [] is a full replace that means "none now"
+        expect(await repo.replaceMirror('flows', [], { takenAt: '2026-10-16T10:00:00.000Z', consoleId: c })).toEqual({ applied: true, rows: 0 });
+        expect(await repo.flows()).toEqual([]);
+        expect((await repo.mirrorState()).find((x) => x.kind === 'flows')).toMatchObject({ rowCount: 0 });
       });
     });
 
