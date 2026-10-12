@@ -741,9 +741,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-filters{display:flex;gap:8px;margin-bottom:10px}
 .lk-filters .fs{flex:0 0 132px}
 .lk-sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.lk-big{text-align:right;line-height:1}
-.lk-big b{display:block;font-size:24px;font-weight:800;color:var(--warn)}
-.lk-big span{font-size:11px;color:var(--ink-mid)}
+.lk-in{font-size:22px;font-weight:800;line-height:1.1}
 .lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
 .lk-row{padding:10px 12px;gap:10px;margin-bottom:6px}
 .lk-row[role=button]{cursor:pointer}
@@ -912,8 +910,9 @@ const API = (() => {
   // move to an httpOnly cookie. (See CLAUDE.md → Security notes.)
   let _t = localStorage.getItem('yap_token') || null;
   const hdr = () => ({ 'Content-Type': 'application/json', ...(_t ? { Authorization: `Bearer ${_t}` } : {}) });
-  async function r(method, path, body, timeoutMs) {
-    _npStart();
+  // quiet: a background call (the link queue flush, status and 60 s refresh) never shows the loading bar (APP-75).
+  async function r(method, path, body, timeoutMs, quiet) {
+    if (!quiet) _npStart();
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(new Error('Request timed out')), timeoutMs || 25000);
     try {
@@ -951,7 +950,7 @@ const API = (() => {
       return res.json();
     } finally {
       clearTimeout(timer);
-      _npDone();
+      if (!quiet) _npDone();
     }
   }
   const _inflight = new Map();
@@ -999,10 +998,10 @@ const API = (() => {
       }
       return Promise.all(jobs);
     },
-    post: (p, b, timeoutMs) => r('POST', p, b, timeoutMs),
+    post: (p, b, timeoutMs, quiet) => r('POST', p, b, timeoutMs, quiet),
     patch: (p, b) => r('PATCH', p, b),
     del: (p) => r('DELETE', p),
-    /*BUS-HOOK*/ fresh: (p) => r('GET', p), // uncached GET — Bus Ministry data must never come from the 30s cache
+    /*BUS-HOOK*/ fresh: (p, quiet) => r('GET', p, undefined, undefined, quiet), // uncached GET — Bus Ministry data must never come from the 30s cache
   };
 })();
 
@@ -9087,7 +9086,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, loadGen: 0, resGen: 0, ft: [], ftRows: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, ft: [], ftRows: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9318,7 +9317,7 @@ function _lkFlush() {
   const send = items.map((it) => { const o = {}; Object.keys(it).forEach((k) => { if (k[0] !== '_') o[k] = it[k]; }); if (it._at) o.queuedAt = it._at; return o; });
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
-  const p = API.post('/link/batch', { device, sentAt: new Date().toISOString(), items: send }, 20000)
+  const p = API.post('/link/batch', { device, sentAt: new Date().toISOString(), items: send }, 20000, true)
     .then((res) => { if (!S.user || S.user.id !== uid) return false; _lkResults(items, (res && res.results) || []); return true; },
       (err) => {
         if (!S.user || S.user.id !== uid) return false;
@@ -9495,44 +9494,22 @@ function _lkSoftReset() {
 // ── Status and refresh (only while a link page is visible) ──
 function _lkOnPage() { return !!S.user && String(S.page || '').indexOf('link-') === 0; }
 function _lkStatusLoad() {
-  return API.fresh('/link/status').then((st) => { LINK.status = st; LINK.statusAt = Date.now(); _lkRefreshView(); }).catch(() => {});
+  return API.fresh('/link/status', true).then((st) => { LINK.status = st; LINK.statusAt = Date.now(); _lkRefreshView(); }).catch(() => {});
 }
 function _lkTickStart() {
   if (LINK.tick) return;
   LINK.ticks = 0;
-  LINK.tick = setInterval(_lkTick, 15000);
+  LINK.tick = setInterval(_lkTick, 60000);
 }
 function _lkTickStop() { if (LINK.tick) clearInterval(LINK.tick); LINK.tick = null; }
 function _lkTick() {
   if (!_lkOnPage() || document.visibilityState === 'hidden') { _lkTickStop(); return; }
   LINK.ticks++;
-  if (LINK.ticks % 4 === 0) { // every 60 s: the console status and the door list
-    _lkStatusLoad();
-    if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc).then((ok) => { if (ok) _lkRefreshView(); });
-    if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups().then((ok) => { if (ok) _lkRefreshView(); });
-    if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows().then((ok) => { if (ok) _lkRefreshView(); });
-  } else if (S.page === 'link-checkin') _lkPollOpen(); // every 15 s: my own open rows
-}
-function _lkPollOpen() {
-  const d = LINK.people[LINK.svc];
-  if (!d) return;
-  const ids = [];
-  [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
-    const a = p.action;
-    if (p.mine && a && a.id && ['pending', 'claimed', 'unclear'].includes(a.status) && !ids.includes(a.id)) ids.push(a.id);
-  }));
-  if (!ids.length) return;
-  API.fresh('/link/actions?ids=' + ids.slice(0, 50).join(',')).then((rows) => {
-    const by = {};
-    (Array.isArray(rows) ? rows : (rows && rows.actions) || []).forEach((r) => { by[r.id] = r; });
-    [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
-      const r = p.action && by[p.action.id];
-      if (!r) return;
-      p.action = Object.assign({}, p.action, { status: r.status, reason: r.reason, resultAt: r.resultAt });
-      if (!['refused', 'cancelled'].includes(r.status)) p.checkedIn = p.action.type === 'checkIn';
-    }));
-    _lkRefreshView();
-  }).catch(() => {});
+  // Every 60 s: the console status and the page list, which carries my rows' statuses too (APP-44: no 15 s poll).
+  _lkStatusLoad();
+  if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc, true).then((ok) => { if (ok) _lkRefreshView(); });
+  if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups(true).then((ok) => { if (ok) _lkRefreshView(); });
+  if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows(true).then((ok) => { if (ok) _lkRefreshView(); });
 }
 try {
   window.addEventListener('online', () => { if (S.user) _lkFlush(); });
@@ -9584,10 +9561,10 @@ function _lkTakeServices(r) {
   if (r.today) LINK.today = r.today;
   if (r.defaultServiceTimeId !== undefined) LINK.defaultSvc = r.defaultServiceTimeId || null;
 }
-async function _lkLoadPeople(svc) {
+async function _lkLoadPeople(svc, quiet) {
   const gen = ++LINK.loadGen;
   try {
-    const r = await API.fresh('/link/checkin?serviceTime=' + encodeURIComponent(svc));
+    const r = await API.fresh('/link/checkin?serviceTime=' + encodeURIComponent(svc), quiet);
     // B15 / APP-23: a load that started before the latest batch answer would put older rows back over it; drop it
     // (the next refresh brings the server's newer state).
     if (gen <= LINK.resGen && LINK.people[svc]) return false;
@@ -9632,7 +9609,12 @@ function _lkPaintDoor() {
       <div id="lk-list">${_lkListHtml()}</div>
       <p class="lk-hint">Tap a name to check in. Tap Check out when they leave.</p>` : ''}`));
 }
-function _lkSetSearch(v) { LINK.q.search = v; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }
+// APP-74: one repaint after an 80 ms pause in typing, not one per key.
+function _lkSetSearch(v) {
+  LINK.q.search = v;
+  if (LINK.searchT) clearTimeout(LINK.searchT);
+  LINK.searchT = setTimeout(() => { LINK.searchT = null; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }, 80);
+}
 function _lkSetGrade(v) { LINK.q.grade = v; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }
 // Search matches every typed word, in any order. Grade: 'all', '7'…'12' (students), or 'leaders'.
 function _lkFilter(list, q) {
@@ -9645,19 +9627,31 @@ function _lkFilter(list, q) {
     return toks.every((t) => n.indexOf(t) >= 0);
   });
 }
-function _lkListHtml() {
+// The door list split in two, after the queue merge and the filters (null while it loads).
+function _lkLists() {
   const d = LINK.people[LINK.svc];
-  if (!d) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : '<p class="lk-hint">Loading…</p>';
+  if (!d) return null;
   let all = d.people;
   try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
   const list = _lkFilter(all, LINK.q);
-  const due = list.filter((p) => !p.checkedIn), done = list.filter((p) => p.checkedIn);
-  return `<div class="card lk-sum"><div><b>In ${done.length}</b> · Still to come ${due.length}</div>
-      <div class="lk-big"><b>${due.length}</b><span>not yet in</span></div></div>
+  return { due: list.filter((p) => !p.checkedIn), done: list.filter((p) => p.checkedIn) };
+}
+// APP-35: "In N" only. APP-74: the "Checked in" rows are built only while that list is open.
+function _lkListHtml() {
+  const l = _lkLists();
+  if (!l) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : '<p class="lk-hint">Loading…</p>';
+  return `<div class="card lk-sum"><b class="lk-in">In ${l.done.length}</b></div>
     <div class="lk-sec">Still to come</div>
-    ${due.map(_lkRowHtml).join('') || '<p class="lk-hint">Nobody left to check in.</p>'}
-    <details class="lk-done"${LINK.doneOpen ? ' open' : ''} ontoggle="LINK.doneOpen=this.open"><summary><span>Checked in · ${done.length}</span>${icS('chevd')}</summary>
-    ${done.map(_lkRowHtml).join('')}</details>`;
+    ${l.due.map(_lkRowHtml).join('') || '<p class="lk-hint">Nobody left to check in.</p>'}
+    <details class="lk-done"${LINK.doneOpen ? ' open' : ''} ontoggle="_lkDoneToggle(this.open)"><summary><span>Checked in · ${l.done.length}</span>${icS('chevd')}</summary>
+    <div id="lk-done-rows">${LINK.doneOpen ? l.done.map(_lkRowHtml).join('') : ''}</div></details>`;
+}
+function _lkDoneRowsHtml() { const l = _lkLists(); return l ? l.done.map(_lkRowHtml).join('') : ''; }
+function _lkDoneToggle(open) {
+  if (LINK.doneOpen === open) return; // a repaint with the open attribute fires toggle again
+  LINK.doneOpen = open;
+  const el = document.getElementById('lk-done-rows');
+  if (el) el.innerHTML = open ? _lkDoneRowsHtml() : '';
 }
 // One door row: a grade chip (neutral) or a Leader chip, the name, a status line and one button.
 function _lkRowHtml(p) {
@@ -10012,9 +10006,9 @@ function _lkPaintGroups() {
       + (LINK.rf ? _lkFormHtml() : `<div id="lk-gpage">${_lkGroupHtml(g)}</div>`);
   setApp(shell(`<div class="ph"><h1>Lifegroup report</h1></div><div id="lk-top">${_lkTop(['submitReport', 'editReport'])}</div>${body}`));
 }
-async function _lkLoadGroups() {
+async function _lkLoadGroups(quiet) {
   try {
-    const [r, c] = await Promise.all([API.fresh('/link/lifegroups'), LINK.services ? null : API.fresh('/link/checkin').catch(() => null)]);
+    const [r, c] = await Promise.all([API.fresh('/link/lifegroups', quiet), LINK.services ? null : API.fresh('/link/checkin', quiet).catch(() => null)]);
     LINK.groups = (r && r.groups) || [];
     if (c) _lkTakeServices(c); // APP-42: one services list for the door, reports and the admin page
     // The server's open row is the truth again; keep only this phone's final answers.
@@ -10230,9 +10224,9 @@ function _lkStepCancel(id) {
 function _lkPaintFlows() {
   setApp(shell(`<div class="ph"><h1>Flow steps</h1></div><div id="lk-top">${_lkTop(['completeStep'])}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
 }
-async function _lkLoadFlows() {
+async function _lkLoadFlows(quiet) {
   try {
-    const r = await API.fresh('/link/flows');
+    const r = await API.fresh('/link/flows', quiet);
     LINK.flows = (r && r.rows) || [];
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
@@ -10491,9 +10485,8 @@ function _lkAdmDraw(id, html) { const el = document.getElementById(id); if (el) 
 async function _lkAdmLoadActs() {
   const today = _lkToday();
   try {
-    const xs = await Promise.all(['checkIn', 'checkOut', 'firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep']
-      .map((t) => API.fresh('/link/actions?serviceDate=' + today + '&type=' + t)));
-    LINK.adm.acts = [].concat(...xs.map((x) => (Array.isArray(x) ? x : [])));
+    const x = await API.fresh('/link/actions?serviceDate=' + today); // APP-21: one call; the card groups by status
+    LINK.adm.acts = Array.isArray(x) ? x : [];
     LINK.adm.aErr = null;
   } catch (e) { LINK.adm.aErr = e.message || 'Could not load the actions.'; }
   _lkAdmDraw('lk-adm-status', _lkAdmStatusHtml());

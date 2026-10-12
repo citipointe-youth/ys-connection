@@ -7,7 +7,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
-  '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
+  '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
@@ -709,11 +709,49 @@ describe('F1.3 door', () => {
     for (const g of ['7', '8', '9', '10', '11', '12']) expect(html).toContain(`['${g}', 'Grade ${g}']`);
     expect(html).toContain("['leaders', 'Leaders']");
   });
-  it('summary reads "In N · Still to come M"', () => {
+  it('APP-35: the summary shows "In N" only (every active youth counted as "still to come" was noise)', () => {
     const h = setup();
-    expect(strip(h.fns._lkListHtml())).toContain('In 3 · Still to come 3');
+    expect(strip(h.fns._lkListHtml())).toContain('In 3');
+    expect(strip(h.fns._lkListHtml())).not.toMatch(/Still to come \d|not yet in/);
     h.get().LINK.q.grade = '7';
-    expect(strip(h.fns._lkListHtml())).toContain('In 1 · Still to come 1');
+    expect(strip(h.fns._lkListHtml())).toContain('In 1');
+  });
+  it('APP-74: the "Checked in" rows are built only while that list is open', () => {
+    const h = setup();
+    expect(strip(h.fns._lkListHtml())).toContain('Checked in · 3');
+    expect(h.fns._lkListHtml()).not.toContain('Hana Invented');
+    h.fns._lkDoneToggle(true);
+    expect(h.get().LINK.doneOpen).toBe(true);
+    expect(h.fns._lkListHtml()).toContain('Hana Invented');
+    expect(h.fns._lkDoneRowsHtml()).toContain('Hana Invented');
+    h.fns._lkDoneToggle(false);
+    expect(h.fns._lkListHtml()).not.toContain('Hana Invented');
+  });
+  it('APP-74: search repaints after an 80 ms pause; the filter value is kept at once', () => {
+    const h = setup();
+    h.fns._lkSetSearch('ava');
+    expect(h.get().LINK.q.search).toBe('ava');
+    expect(extractFn(html, '_lkSetSearch')).toMatch(/setTimeout\([^]*, 80\)/);
+  });
+  it('APP-75: background link calls are quiet (no loading bar): the flush, the status and the 60 s refresh', () => {
+    expect(html).toMatch(/async function r\(method, path, body, timeoutMs, quiet\) \{\r?\n    if \(!quiet\) _npStart\(\);/);
+    expect(html).toMatch(/if \(!quiet\) _npDone\(\);/);
+    expect(html).toContain("post: (p, b, timeoutMs, quiet) => r('POST', p, b, timeoutMs, quiet),");
+    expect(extractFn(html, '_lkFlush')).toContain('20000, true)');
+    expect(extractFn(html, '_lkStatusLoad')).toContain("API.fresh('/link/status', true)");
+    const tick = extractFn(html, '_lkTick');
+    for (const c of ['_lkLoadPeople(LINK.svc, true)', '_lkLoadGroups(true)', '_lkLoadFlows(true)']) expect(tick).toContain(c);
+  });
+  it('APP-21: the admin Today card makes one /link/actions call for the day, not one per type', () => {
+    const f = extractFn(html, '_lkAdmLoadActs');
+    expect(f.match(/API\.fresh\(/g)).toHaveLength(1);
+    expect(f).toContain("API.fresh('/link/actions?serviceDate=' + today)");
+    expect(f).not.toContain('&type=');
+  });
+  it('APP-44: no 15 s poll of my open rows; the 60 s refresh carries the statuses', () => {
+    expect(html).not.toContain('function _lkPollOpen');
+    expect(extractFn(html, '_lkTickStart')).toContain('setInterval(_lkTick, 60000)');
+    expect(extractFn(html, '_lkTick')).not.toContain('% 4');
   });
   it('a row whose newest action is mine shows Undo; others show Check in / Check out', () => {
     const h = setup();
