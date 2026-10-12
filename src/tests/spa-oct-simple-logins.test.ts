@@ -227,7 +227,7 @@ describe('S1.3 grade filter core', () => {
       const localStorage = { setItem(k, v) { store[k] = v; }, removeItem(k) { delete store[k]; } };
       const store = globalThis.__store; let _previewStash = { token: 't', user: {} };
       const API = { setToken() {} }; const S = {}; const Cache = { clear() {} }; let _shellReady = true;
-      function go() {} function _vgReset() {}`, ['exitPreview']);
+      function go() {} function _vgReset() {} function _lkSoftReset() {}`, ['exitPreview']);
     f.exitPreview();
     expect(store.yap_leader_id).toBeUndefined();
   });
