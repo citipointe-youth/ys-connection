@@ -9076,7 +9076,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9206,6 +9206,15 @@ function _lkSchedule(ms) {
   if (LINK.timer) clearTimeout(LINK.timer);
   LINK.timer = setTimeout(() => { LINK.timer = null; _lkFlush(); }, ms);
 }
+// B7 / T-38: an action already on the wire can't be taken back here; a second tap queues an undo (check-in) or a
+// cancel (anything else) after it instead. Returns true when the item was in flight.
+function _lkTakeBack(it, extra) {
+  if (!it || it.kind !== 'action' || !(LINK.inflight || {})[it.id]) return false;
+  const base = { id: it.id, leaderId: it.leaderId == null ? null : it.leaderId };
+  if (it.type === 'checkIn') _lkPush(Object.assign({ kind: 'undo', newId: _lkUuid() }, base, extra || {}), true);
+  else _lkPush(Object.assign({ kind: 'cancel' }, base, extra || {}), true);
+  return true;
+}
 // The index of the queued check-in / check-out / undo for one person and service, or -1.
 function _lkQueuedIdx(q, svc, pid) {
   for (let i = q.length - 1; i >= 0; i--) {
@@ -9246,6 +9255,8 @@ function _lkFlush() {
   const q = _lkQGet();
   if (!q.length || !S.user) return Promise.resolve(true);
   const items = q.slice(0, 50);
+  LINK.inflight = {};
+  items.forEach((it) => { if (it.kind === 'action') LINK.inflight[it.id] = true; });
   const send = items.map((it) => { const o = {}; Object.keys(it).forEach((k) => { if (k[0] !== '_') o[k] = it[k]; }); return o; });
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
@@ -9256,7 +9267,7 @@ function _lkFlush() {
         else if (!(err && err.status === 401)) _lkFailed();
         return false;
       })
-    .finally(() => { LINK.flushing = null; });
+    .finally(() => { LINK.flushing = null; LINK.inflight = {}; });
   LINK.flushing = p;
   return p;
 }
@@ -9317,7 +9328,10 @@ function _lkResults(items, results) {
       }
     } else if (it.kind === 'undo') {
       if (r.outcome === 'cancelled') _lkApply(it._s, it._p, { id: it.id, type: 'checkIn', status: 'cancelled', reason: null });
-      else if (r.outcome === 'saved') _lkApply(it._s, it._p, Object.assign({ id: it.newId, type: 'checkOut', status: 'pending', reason: null }, r.action || {}));
+      // replay (a lost reply) and duplicate (the check-out already waits) mean the same as saved (B7 / APP-51).
+      else if (r.outcome === 'saved' || r.outcome === 'replay' || r.outcome === 'duplicate') {
+        _lkApply(it._s, it._p, Object.assign({ id: r.existingId || it.newId, type: 'checkOut', status: 'pending', reason: null }, r.action || {}));
+      }
       else if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
       else if (r.outcome === 'refused') say = r.message || say;
     } else if (it.kind === 'cancel') {
@@ -9568,6 +9582,7 @@ function _lkCheck(pid, type) {
     if (!svc || !s) return;
     delete LINK.refusals[svc + ':' + pid];
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
+    if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
@@ -9577,6 +9592,7 @@ function _lkCheck(pid, type) {
 function _lkUndo(pid) {
   try {
     const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
+    if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
     const d = LINK.people[svc];
     const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === pid);
@@ -9957,7 +9973,10 @@ function _lkReportUndo() {
   const q = _lkQGet();
   for (let i = q.length - 1; i >= 0; i--) {
     const it = q[i];
-    if (it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload && it.payload.groupId === g.groupId) { q.splice(i, 1); _lkQSet(q); break; }
+    if (it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload && it.payload.groupId === g.groupId) {
+      if (_lkTakeBack(it, { _g: g.groupId })) return;
+      q.splice(i, 1); _lkQSet(q); break;
+    }
   }
   _lkRefreshView();
 }
@@ -10059,7 +10078,10 @@ function _lkStepUndo(id) {
   const q = _lkQGet();
   for (let i = q.length - 1; i >= 0; i--) {
     const it = q[i];
-    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === id) { q.splice(i, 1); _lkQSet(q); break; }
+    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === id) {
+      if (_lkTakeBack(it, { _f: id })) return;
+      q.splice(i, 1); _lkQSet(q); break;
+    }
   }
   _lkRefreshView();
 }

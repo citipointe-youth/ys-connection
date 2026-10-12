@@ -5,7 +5,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
-  '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkQueuedIdx', '_lkMerge', '_lkApply',
+  '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
@@ -376,6 +376,55 @@ describe('F1.2 queue', () => {
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._s).toBeUndefined();
     expect(h.get().LINK.people[SVC.serviceTimeId].people[0]).toMatchObject({ checkedIn: false, action: { status: 'cancelled' } });
+  });
+  it('B7 / T-38: a tap on an item in flight queues an undo; it resolves saved and the undo stays queued', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const h = makeEnv({ post: (_p, b) => new Promise((r) => { release = () => r({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind,
+      outcome: 'saved', action: { id: i.id, type: i.type, status: 'pending', reason: null }, mine: true })) }); }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkIn');
+    const first = h.fns._lkQGet()[0];
+    const f = h.fns._lkFlush();
+    h.fns._lkCheck(P(1), 'checkIn'); // the second tap lands while the first is on the wire
+    release();
+    await f;
+    const q = h.fns._lkQGet();
+    expect(q).toHaveLength(1);
+    expect(q[0]).toMatchObject({ kind: 'undo', id: first.id });
+    // the row shows the queued check-out, not "in"
+    const merged = h.fns._lkMerge(h.get().LINK.people[SVC.serviceTimeId].people, q, SVC.serviceTimeId);
+    expect(merged[0]).toMatchObject({ checkedIn: false, queued: true });
+  });
+  it('B7: a report or step in flight gets a cancel item instead of being removed', async () => {
+    let release!: () => void;
+    const h = makeEnv({ post: () => new Promise((r) => { release = () => r({ results: [] }); }) });
+    h.get().LINK.gid = P(9);
+    h.get().LINK.groups = [{ groupId: P(9), name: 'G', meets: '', members: [], thisWeek: 'none', lastReport: null, openAction: null }];
+    h.fns._lkQSet([{ v: 1, kind: 'action', id: P(70), type: 'submitReport', payload: { groupId: P(9) }, note: null, leaderId: P(5) },
+      { v: 1, kind: 'action', id: P(71), type: 'completeStep', payload: { rowId: P(8) }, note: null, leaderId: P(5), _f: P(8) }]);
+    const f = h.fns._lkFlush();
+    h.fns._lkReportUndo();
+    h.fns._lkStepUndo(P(8));
+    release(); await f;
+    const q = h.fns._lkQGet();
+    expect(q.filter((x: any) => x.kind === 'cancel')).toEqual([
+      expect.objectContaining({ kind: 'cancel', id: P(70), leaderId: P(5), _g: P(9) }),
+      expect.objectContaining({ kind: 'cancel', id: P(71), leaderId: P(5), _f: P(8) })]);
+  });
+  it('B7 / APP-51: an undo answered replay or duplicate is handled like saved', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [
+      { id: b.items[0].id, kind: 'undo', outcome: 'replay', action: { id: P(91), type: 'checkOut', status: 'pending', reason: null } },
+      { id: b.items[1].id, kind: 'undo', outcome: 'duplicate', existingId: P(92), action: { id: P(92), type: 'checkOut', status: 'claimed', reason: null } },
+    ] }) });
+    door(h, [1, 2].map((n) => ({ personId: P(n), name: 'P' + n, grade: 7, leader: false, checkedIn: true, mine: true,
+      action: { id: P(40 + n), type: 'checkIn', status: 'pending', reason: null } })));
+    h.fns._lkUndo(P(1)); h.fns._lkUndo(P(2));
+    await h.fns._lkFlush();
+    const d = h.get().LINK.people[SVC.serviceTimeId].people;
+    expect(d[0]).toMatchObject({ checkedIn: false, action: { id: P(91), type: 'checkOut' } });
+    expect(d[1]).toMatchObject({ checkedIn: false, action: { id: P(92), type: 'checkOut', status: 'claimed' } });
   });
   it('too-late on a cancel says so; LINK_NOT_YOURS shows its message', async () => {
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'cancel', outcome: 'too-late' }] }) });
