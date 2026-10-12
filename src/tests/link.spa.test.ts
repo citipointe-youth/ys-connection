@@ -10,12 +10,12 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
-  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
+  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
-  '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
+  '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter', '_lkFtRow', '_nyFtLine', '_nyFtListHtml', '_lkFtLoad',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
@@ -706,7 +706,7 @@ describe('F1.3 door', () => {
     expect(f(people, { search: '', grade: 'all' })).toHaveLength(6);
     expect(f(people, { search: '', grade: '7' }).map((p: any) => p.personId)).toEqual([P(1), P(5)]);
     expect(f(people, { search: '', grade: 'leaders' }).map((p: any) => p.personId)).toEqual([P(2)]);
-    for (const g of ['7', '8', '9', '10', '11', '12']) expect(html).toContain(`['${g}', 'Grade ${g}']`);
+    expect(extractFn(html, '_lkPaintDoor')).toContain("_gradeList().map((g) => [String(g), 'Yr ' + g])"); // APP-36
     expect(html).toContain("['leaders', 'Leaders']");
   });
   it('APP-35: the summary shows "In N" only (every active youth counted as "still to come" was noise)', () => {
@@ -1326,8 +1326,8 @@ describe('F3 flow steps', () => {
     const sheet = h.calls.modals[0]!;
     expect(sheet).toContain('maxlength="1800"');
     expect(strip(sheet)).toContain('Keep note private');
-    expect(strip(sheet)).toContain("Completing may send this step's message.");
-    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send this step's message."`);
+    expect(strip(sheet)).toContain("Completing may send Elvanto's email or text for this step.");
+    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send Elvanto's email or text for this step."`);
     const el = { value: 'y'.repeat(2500) };
     h.fns._lkStepNote(el);
     expect(el.value).toHaveLength(1800);
@@ -1662,5 +1662,88 @@ describe('T-17 / X14 outside the window a pending row says when it goes', () => 
     expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console.');
     h.get().LINK.status = st({ online: false });
     expect(h.fns._lkStatusText({ status: 'pending', reason: null }, '4:12 pm')).toBe('Waiting for the console. Console last seen 4:12 pm');
+  });
+});
+
+describe('T-46 UI minors', () => {
+  it('APP-57/58/59: the retry pill, the tick rows and the Checked in summary are 40 px touch targets', () => {
+    expect(html).toMatch(/\.lk-pill\.bad\{[^}]*min-height:40px;padding:8px 14px/);
+    expect(html).toMatch(/\.lk-chk\{[^}]*min-height:40px/);
+    expect(html).toMatch(/\.lk-done summary\{[^}]*min-height:40px/);
+  });
+  it('APP-61/62: the Activity date row wraps; the door search and grade stay on screen while scrolling', () => {
+    expect(html).toMatch(/\.lk-filters\.wrap\{flex-wrap:wrap\}/);
+    expect(extractFn(html, '_lkAdmLogHtml')).toContain('<div class="lk-filters wrap"><input type="date"');
+    expect(html).toMatch(/\.lk-sticky\{position:sticky;top:var\(--hdr-h,0px\)/);
+    expect(extractFn(html, '_lkPaintDoor')).toContain('<div class="lk-filters lk-sticky">');
+    expect(extractFn(html, '_positionNprog')).toContain("setProperty('--hdr-h'");
+  });
+  it('APP-36: the door grade filter comes from _gradeList() and says "Yr N" like the row chip', () => {
+    const f = extractFn(html, '_lkPaintDoor');
+    expect(f).toContain('_gradeList()');
+    expect(f).toContain("'Yr ' + g");
+    expect(f).not.toContain("'Grade 7'");
+  });
+  it('APP-63: the admin page words modes, statuses, lists and outcomes (no raw codes)', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.status = { console: { lastSeenAt: '2026-10-16T08:00:00.000Z', online: true, inWindow: true, pollSeconds: 60,
+      capabilities: { checkIn: 'live', checkOut: 'locked', submitReport: 'shadow', editReport: 'shadow', completeStep: 'off', firstTimerCheckIn: 'live' }, consoles: 1 },
+      mirrors: { roster: { takenAt: null, ageSeconds: 120 } } };
+    h.get().LINK.adm = h.fns._lkAdmFresh();
+    h.get().LINK.adm.acts = [{ id: P(1), type: 'checkIn', status: 'pending' }, { id: P(2), type: 'checkIn', status: 'claimed' }, { id: P(3), type: 'checkIn', status: 'sent' }];
+    const out = strip(h.fns._lkAdmStatusHtml());
+    for (const w of ['Live', 'Not connected', 'Practice', 'Off', 'People list', 'Waiting', 'Sending', 'Saved']) expect(out).toContain(w);
+    for (const raw of ['shadow', 'locked', 'Mirror: roster', 'pending', 'claimed']) expect(out).not.toContain(raw);
+    const row = (o: string) => strip(h.fns._lkLogRowHtml({ id: P(9), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'g', deviceId: 'd', deviceLabel: 'p',
+      event: 'checkIn', leaderId: null, leaderName: null, prevLeaderId: null, prevLeaderName: null, targetKind: 'person', targetId: null, targetName: 'Ava', outboxId: null, outcome: o }));
+    expect(row('saved')).toContain('Saved');
+    expect(row('replay')).toContain('Already sent');
+    expect(row('refused:LINK_ID_REUSED')).toContain('Refused: id used for another action');
+    expect(row('refused:LINK_ID_REUSED')).not.toContain('LINK_ID_REUSED');
+    expect(row('refused:SOMETHING_NEW')).toContain('Refused: SOMETHING_NEW');
+  });
+  it('APP-64: the activity Export button has no upload icon', () => {
+    expect(extractFn(html, '_lkAdmLogHtml')).not.toContain("icS('upload')");
+  });
+  it('APP-65: "Who are you?" has a sticky Cancel, and a name filter when over 12 leaders', () => {
+    const many = Array.from({ length: 14 }, (_, i) => ({ id: 'L' + i, fullName: (i === 3 ? 'Zed <b>Z</b>' : 'Leader ' + i), active: true }));
+    const h = makeEnv();
+    h.get().LINK.ldrs = many;
+    h.fns._lkIamPick(() => {});
+    const m = h.calls.modals[0]!;
+    expect(m).toContain('<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>');
+    expect(m).toContain('oninput="_lkIamFilter(this.value)"');
+    expect(h.fns._lkIamListHtml('zed')).toContain('Zed &lt;b&gt;Z&lt;/b&gt;');
+    expect(h.fns._lkIamListHtml('zed')).not.toContain('Leader 1');
+    const k = makeEnv();
+    k.get().LINK.ldrs = many.slice(0, 5);
+    k.fns._lkIamPick(() => {});
+    expect(k.calls.modals[0]).not.toContain('_lkIamFilter');
+  });
+  it('APP-66: the Complete sheet keeps its buttons outside #lk-fs (sticky, full width)', () => {
+    expect(extractFn(html, '_lkStepHtml')).not.toContain('bus-sheet-actions');
+    expect(extractFn(html, '_lkOpenStep')).toContain('modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`');
+    expect(extractFn(html, '_lkStepActions')).toContain('bus-sheet-actions');
+  });
+  it('APP-67: the "already a report" warning has an Edit the last report button when it can be edited', () => {
+    const f = extractFn(html, '_lkFormHtml');
+    expect(f).toContain('onclick="_lkEditReport()">Edit the last report</button>');
+  });
+  it('APP-68: group names drop the prefix; flow rows show a chevron; ticks are a plain tick; the Complete line', () => {
+    expect(extractFn(html, '_lkGroupsHtml')).toContain('lgDisplayName(g.name)');
+    expect(extractFn(html, '_lkGroupHtml')).toContain('lgDisplayName(g.name)');
+    expect(extractFn(html, '_lkFormHtml')).toContain('lgDisplayName(g.name)');
+    expect(extractFn(html, '_lkFlowsHtml')).toContain("icS('chevr')");
+    expect(html).toMatch(/^  tick: +'<polyline points="20 6 9 17 4 12"\/>',/m);
+    expect(extractFn(html, '_lkLeadersHtml')).toContain("icS('tick')");
+    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send Elvanto's email or text for this step."`);
+  });
+  it('APP-69: Send waits for the leaders list before deciding the host; the loader keeps one list', async () => {
+    expect(extractFn(html, 'nySend')).toMatch(/if \(!send && !p\.host && getMyLeaderId\(\) && !LINK\.ldrs\) \{ await _lkLoadLeaders\(\); p\.host = _nyHost\(\); \}/);
+    const h = makeEnv();
+    expect(await h.fns._lkLoadLeaders()).toEqual([]); // the stub API.get rejects: an empty list, nothing kept
+    expect(h.get().LINK.ldrs).toBeNull();
+    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'A' }];
+    expect(await h.fns._lkLoadLeaders()).toEqual([{ id: 'L1', fullName: 'A' }]);
   });
 });

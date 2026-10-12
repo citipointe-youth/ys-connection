@@ -728,7 +728,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;margin-bottom:10px;border:none;font-family:inherit}
 .lk-pill.wait{background:var(--warn-light);color:#92400e}
 .lk-pill.ok{background:var(--success-light);color:#047857}
-.lk-pill.bad{background:var(--danger-light);color:#b91c1c;cursor:pointer}
+.lk-pill.bad{background:var(--danger-light);color:#b91c1c;cursor:pointer;min-height:40px;padding:8px 14px}
 .lk-pill.fade{animation:lkfade 3s forwards}
 @keyframes lkfade{0%,60%{opacity:1}100%{opacity:0}}
 .lk-alert{padding:10px 12px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
@@ -740,6 +740,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-mb{margin-bottom:10px}
 .lk-filters{display:flex;gap:8px;margin-bottom:10px}
 .lk-filters .fs{flex:0 0 132px}
+.lk-filters.wrap{flex-wrap:wrap}.lk-filters.wrap .fi{min-width:0;flex:1 1 140px}
+.lk-sticky{position:sticky;top:var(--hdr-h,0px);z-index:50;background:var(--paper);padding:6px 0;margin-top:-6px}
 .lk-sum{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .lk-in{font-size:22px;font-weight:800;line-height:1.1}
 .lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
@@ -753,7 +755,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-st.wait{color:#b45309}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
-.lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
 .lk-hint{font-size:12px;color:var(--ink-faint);text-align:center;margin:12px 4px}
 .lk-sub{margin:0 0 12px;font-size:13px;color:var(--ink-mid)}
@@ -786,7 +788,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
 .lk-row-act{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
-.lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer}
+.lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-step{font-size:13px;font-weight:700;color:var(--ink);margin:10px 2px 6px}
@@ -844,7 +846,9 @@ function _npDone() {
 function _positionNprog() {
   const el = document.getElementById('nprog'); if (!el) return;
   const hdr = document.querySelector('.hdr');
-  el.style.top = (hdr ? hdr.getBoundingClientRect().height : 0) + 'px';
+  const hh = hdr ? hdr.getBoundingClientRect().height : 0;
+  el.style.top = hh + 'px';
+  try { document.documentElement.style.setProperty('--hdr-h', hh + 'px'); } catch (e) {} // sticky bars sit under the header
 }
 window.addEventListener('resize', _positionNprog);
 
@@ -1937,6 +1941,7 @@ const IC = {
   logout:   '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
   target:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
   check:    '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  tick:     '<polyline points="20 6 9 17 4 12"/>',
   key:      '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
   info:     '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
   clipboard:'<path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>',
@@ -9020,6 +9025,8 @@ async function nySend(ev, send) {
   if (NY.sending) return;
   const p = send ? NY.last : _nyRead();
   // No "I am" yet (ledger 22): the picker opens first, then the send carries on.
+  // APP-69: the leaders list (the host's name) may still be loading: wait for it before deciding.
+  if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) { await _lkLoadLeaders(); p.host = _nyHost(); }
   if (!send && !p.host) { _nyPickHost(() => nySend()); return; }
   const need = [['firstName', 'first name'], ['lastName', 'last name'],
     ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
@@ -9596,7 +9603,8 @@ async function renderLinkCheckin() {
 }
 function _lkPaintDoor() {
   const s = _lkSvc();
-  const grades = [['all', 'All grades'], ['7', 'Grade 7'], ['8', 'Grade 8'], ['9', 'Grade 9'], ['10', 'Grade 10'], ['11', 'Grade 11'], ['12', 'Grade 12'], ['leaders', 'Leaders']];
+  // APP-36: the grades in this ministry's range, worded like the row chip.
+  const grades = [['all', 'All grades']].concat(_gradeList().map((g) => [String(g), 'Yr ' + g]), [['leaders', 'Leaders']]);
   setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
     <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
@@ -9604,7 +9612,7 @@ function _lkPaintDoor() {
     ${_lkNoTonight()}
     ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
     ${s && !_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}
-    ${s ? `<div class="lk-filters"><input class="fi" id="lk-search" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)">
+    ${s ? `<div class="lk-filters lk-sticky"><input class="fi" id="lk-search" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)">
       <select class="fs" onchange="_lkSetGrade(this.value)">${grades.map((g) => `<option value="${g[0]}"${LINK.q.grade === g[0] ? ' selected' : ''}>${g[1]}</option>`).join('')}</select></div>
       <div id="lk-list">${_lkListHtml()}</div>
       <p class="lk-hint">Tap a name to check in. Tap Check out when they leave.</p>` : ''}`));
@@ -9802,7 +9810,7 @@ function _lkLeadersHtml() {
     }
     if (st === 'nl') return `<div class="lk-lq-row dis"><span class="lk-box-sp"></span><div class="lk-nm">${esc(l.name)}</div><span class="lk-nl">Not linked</span></div>`;
     const on = !!t[l.leaderId];
-    return `<div class="lk-lq-row" role="button" onclick="_lkTickLeader('${esc(l.leaderId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('check') : ''}</span><div class="lk-nm">${esc(l.name)}</div></div>`;
+    return `<div class="lk-lq-row" role="button" onclick="_lkTickLeader('${esc(l.leaderId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><div class="lk-nm">${esc(l.name)}</div></div>`;
   }).join('');
   return `<div class="mo-title">Check in leaders</div><p class="lk-sub">${esc(_lkSvcLabel(_lkSvc()))}</p>
     <div class="lk-lq-head"><span>${nDone} done · ${nNl} not linked</span>${tick.length ? `<button type="button" class="btn btn-ghost btn-sm lk-tickall" onclick="_lkTickAll()">${allOn ? 'Untick all' : 'Tick all'}</button>` : ''}</div>
@@ -9870,15 +9878,29 @@ async function _lkSwitchLeader(id) {
 function _lkIamPick(then) {
   LINK.iamThen = then || null;
   const show = (ls) => {
-    const xs = (ls || []).filter((l) => l && l.active !== false).slice()
-      .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
+    const n = (ls || []).filter((l) => l && l.active !== false).length;
+    // APP-65: a name filter above 12 leaders; Cancel sticks to the bottom of the sheet.
     modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name first. Elvanto shows it on the report.</p>
-      ${xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
-        : '<p class="lk-sub">No leaders found.</p>'}
-      <button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button>`, () => { LINK.iamThen = null; });
+      ${n > 12 ? '<input class="fi lk-mb" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_lkIamFilter(this.value)">' : ''}
+      <div id="lk-iam-list">${_lkIamListHtml('', ls)}</div>
+      <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>`, () => { LINK.iamThen = null; });
   };
   if (LINK.ldrs) { show(LINK.ldrs); return; }
-  API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; show(LINK.ldrs); }, () => show([]));
+  _lkLoadLeaders().then(show);
+}
+function _lkIamListHtml(q, ls) {
+  const toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false)
+    .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
+    .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
+  return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
+    : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found.'}</p>`;
+}
+function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
+// The app's leaders, loaded once (the "I am" names come from it). A failed load keeps nothing and gives [].
+function _lkLoadLeaders() {
+  if (LINK.ldrs) return Promise.resolve(LINK.ldrs);
+  return API.get('/leaders').then((ls) => (LINK.ldrs = Array.isArray(ls) ? ls : []), () => []);
 }
 async function _lkIamUse(id) {
   const then = LINK.iamThen;
@@ -9927,7 +9949,7 @@ function _lkGroupsHtml() {
   if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.</p>';
   return gs.map((g) => {
     const a = _lkGroupAct(g);
-    return `<div class="li lk-row" role="button" onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(g.name)}</div>
+    return `<div class="li lk-row" role="button" onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
       <div class="lk-d">${esc(g.meets)}</div>${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${_lkWeekChip(g.thisWeek)}</div>`;
   }).join('');
 }
@@ -9957,7 +9979,7 @@ function _lkGroupHtml(g) {
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportUndo()">Undo</button>`;
   else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel</button>`;
   const line = a ? `<div class="lk-row-act"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
-  return `<div class="card"><div class="lk-svc"><div><div class="lk-svc-t">${esc(g.name)}</div><div class="lk-d">${esc(g.meets)}</div></div>${_lkWeekChip(g.thisWeek)}</div>${line}</div>
+  return `<div class="card"><div class="lk-svc"><div><div class="lk-svc-t">${esc(lgDisplayName(g.name))}</div><div class="lk-d">${esc(g.meets)}</div></div>${_lkWeekChip(g.thisWeek)}</div>${line}</div>
     ${_lkLastHtml(g)}
     ${_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-primary btn-full" onclick="_lkNewReport()">${icS('plus')} New report</button>`}`;
 }
@@ -9978,7 +10000,7 @@ function _lkFormHtml() {
     const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
     body = `<div class="fg"><label class="fl">Who was there</label><div class="lk-lq-list">${(g.members || []).map((m) => {
         const on = !!f.ticks[m.personId];
-        return `<div class="lk-lq-row" role="button" onclick="_lkRfTick('${esc(m.personId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('check') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
+        return `<div class="lk-lq-row" role="button" onclick="_lkRfTick('${esc(m.personId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
       }).join('') || '<p class="lk-sub">No members.</p>'}</div></div>
       <div class="fg"><label class="fl">Guests</label><input type="number" class="fi" min="0" max="99" inputmode="numeric" value="${esc(f.guests)}" oninput="_lkRfGuests(this.value)"></div>
       <div class="fg"><label class="fl">Service</label><select class="fs" onchange="_lkRfSvc(this.value)">
@@ -9986,9 +10008,9 @@ function _lkFormHtml() {
         ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
         ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Older services are not listed. Pick No service, or do it in Elvanto.</p>' : ''}</div>`;
   }
-  return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(g.name)}</p>
+  return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
     <div class="fg"><label class="fl">Date</label>${date}</div>
-    ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}</div></div>` : ''}
+    ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable ? '<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport()">Edit the last report</button></div>' : ''}</div></div>` : ''}
     <label class="lk-chk"><input type="checkbox"${f.didNotMeet ? ' checked' : ''} onchange="_lkRfDnm(this.checked)"> Group did not meet</label>
     ${body}
     <div class="fg"><label class="fl">Note</label><textarea class="fi" rows="4" maxlength="1800" oninput="_lkRfNote(this)">${esc(f.note)}</textarea>
@@ -10151,7 +10173,7 @@ function _lkFlowsHtml() {
     else if (a && a.status === 'pending' && LINK.fres && LINK.fres[r.rowId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepCancel('${rid}')">Cancel</button>`;
     const tap = !open && !off ? ` role="button" onclick="_lkOpenStep('${rid}')"` : '';
     out += `<div class="li lk-row"${tap}><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
-      ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}</div>`;
+      ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${tap ? icS('chevr') : ''}</div>`;
   });
   return out;
 }
@@ -10163,7 +10185,7 @@ function _lkOpenStep(id) {
   if (a && !['refused', 'cancelled'].includes(a.status)) return;
   if (!getMyLeaderId()) { _lkIamPick(() => _lkOpenStep(id)); return; }
   if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false };
-  modal(`<div id="lk-fs">${_lkStepHtml()}</div>`, () => { LINK.fs = null; });
+  modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`, () => { LINK.fs = null; });
 }
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
@@ -10174,8 +10196,11 @@ function _lkStepHtml() {
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>
     <p class="lk-sub">${name ? 'Elvanto will show: Self identified leader: ' + esc(name) : 'Pick who you are before you complete.'}</p>
-    <p class="lk-sub">${esc("Completing may send this step's message.")}</p>
-    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <p class="lk-sub">${esc("Completing may send Elvanto's email or text for this step.")}</p>`;
+}
+// The sheet's buttons sit outside #lk-fs so they stick to the bottom of the sheet (APP-66).
+function _lkStepActions() {
+  return `<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} Complete</button></div>`;
 }
 function _lkStepDraw() { const b = document.getElementById('lk-fs'); if (b) b.innerHTML = _lkStepHtml(); }
@@ -10374,7 +10399,7 @@ function _lkLogRowHtml(r) {
   const target = r.event === 'identity' ? '' : (r.targetName || r.targetId || '');
   return `<div class="lk-log-row"><div class="lk-log-top"><b>${esc(_lkEvents()[r.event] || r.event)}</b><span class="lk-d">${esc(_lkAt(r.at))}</span></div>
     <div class="lk-d">${esc(r.login)}${r.event === 'identity' ? '' : ' · ' + esc(r.deviceLabel || 'Unknown device')}</div>
-    <div>${_lkLogWho(r)}${target ? ' · ' + esc(target) : ''}</div><div class="lk-d">${esc(r.outcome)}</div></div>`;
+    <div>${_lkLogWho(r)}${target ? ' · ' + esc(target) : ''}</div><div class="lk-d">${esc(_lkWord('outcome', r.outcome))}</div></div>`;
 }
 function _lkLogFile(ymd) { return 'elvanto-activity-' + ymd + '.xlsx'; }
 // One sheet, the list's columns plus the device id. Plain values (SheetJS writes text, not HTML).
@@ -10400,6 +10425,21 @@ function _lkVerb(t) {
   return { checkIn: 'Check in', checkOut: 'Check out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
     editReport: 'Report edit', completeStep: 'Flow step' }[t] || t;
 }
+// APP-63: words for the admin page, never raw codes (an unknown code still shows as itself).
+function _lkWord(kind, v) {
+  const W = {
+    mode: { live: 'Live', shadow: 'Practice', locked: 'Not connected', off: 'Off' },
+    status: { pending: 'Waiting', claimed: 'Sending', unclear: 'Not sure', sent: 'Saved', shadowed: 'Practice', refused: 'Refused', cancelled: 'Cancelled' },
+    list: { roster: 'People list', services: 'Services list', groups: 'Lifegroups list', flows: 'Flow steps list' },
+    outcome: { saved: 'Saved', replay: 'Already sent', duplicate: 'Already waiting', cancelled: 'Cancelled', 'too-late': 'Too late', logged: 'Logged' },
+    code: { LINK_ID_REUSED: 'id used for another action', RATE_LIMITED: 'too many taps', LINK_STALE: 'changed by someone else',
+      LINK_TOO_OLD: 'too old', LINK_NOT_YOURS: 'not theirs', LINK_UNAVAILABLE: 'switched off on the console', LINK_STILL_SENDING: 'still sending',
+      LINK_EDIT_IN_ELVANTO: 'edit in Elvanto', BAD_REQUEST: 'not valid', VALIDATION_ERROR: 'not valid', FORBIDDEN: 'not allowed',
+      NOT_FOUND: 'not found', INTERNAL: 'error' },
+  };
+  if (kind === 'outcome' && String(v).indexOf('refused:') === 0) { const c = String(v).slice(8); return 'Refused: ' + (W.code[c] || c); }
+  return (W[kind] && W[kind][v]) || String(v == null ? '' : v);
+}
 // Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows named with the action.
 function _lkAdmStatusHtml() {
   const st = LINK.status, c = st && st.console;
@@ -10407,8 +10447,8 @@ function _lkAdmStatusHtml() {
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};
-  Object.keys(_lkEvents()).filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], caps[k]]));
-  Object.keys(st.mirrors || {}).forEach((k) => { const m = st.mirrors[k]; kv.push(['Mirror: ' + k, m && m.ageSeconds != null ? Math.round(m.ageSeconds / 60) + ' min old' : 'None yet']); });
+  Object.keys(_lkEvents()).filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], _lkWord('mode', caps[k])]));
+  Object.keys(st.mirrors || {}).forEach((k) => { const m = st.mirrors[k]; kv.push([_lkWord('list', k), m && m.ageSeconds != null ? Math.round(m.ageSeconds / 60) + ' min old' : 'None yet']); });
   const acts = LINK.adm.acts || [];
   const counts = {};
   acts.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
@@ -10419,7 +10459,7 @@ function _lkAdmStatusHtml() {
   return `<div class="lk-sec">Status</div>${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
     <p class="lk-sub">The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
-      : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(k)}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
+      : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
@@ -10468,12 +10508,12 @@ function _lkAdmLogHtml() {
   const A = LINK.adm, today = _lkToday();
   const ev = [['', 'All events']].concat(Object.keys(_lkEvents()).map((k) => [k, _lkEvents()[k]]));
   return `<div class="lk-sec">Activity</div>
-    <div class="lk-filters"><input type="date" class="fi" value="${esc(A.from || _lkAddDays(today, -6))}" onchange="LINK.adm.from=this.value">
+    <div class="lk-filters wrap"><input type="date" class="fi" value="${esc(A.from || _lkAddDays(today, -6))}" onchange="LINK.adm.from=this.value">
       <input type="date" class="fi" value="${esc(A.to || today)}" onchange="LINK.adm.to=this.value"></div>
     <div class="lk-filters"><input class="fi" placeholder="Login" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(A.login)}" oninput="LINK.adm.login=this.value">
       <select class="fs" onchange="LINK.adm.event=this.value">${ev.map((e) => `<option value="${e[0]}"${A.event === e[0] ? ' selected' : ''}>${esc(e[1])}</option>`).join('')}</select></div>
     <div class="lk-acts lk-mb"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmLoadLog()">Show</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkLogExport()">${icS('upload')} Export</button></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkLogExport()">Export</button></div>
     <div id="lk-adm-loglist">${_lkAdmLogListHtml()}</div>`;
 }
 function _lkAdminHtml() {
