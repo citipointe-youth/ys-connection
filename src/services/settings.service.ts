@@ -38,7 +38,8 @@ const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 export type SettingsUpdateResult = AppSettings & { renamedQuads?: number };
 
 export interface SettingsService {
-  get(): Promise<AppSettings>;
+  /** GET /settings is public, so only the admin (who edits them) gets the Bus coordinator ids. */
+  get(actor?: Actor | null): Promise<AppSettings>;
   update(actor: Actor, input: unknown): Promise<SettingsUpdateResult>;
 }
 
@@ -62,8 +63,10 @@ export function makeSettingsService(
   }
 
   return {
-    async get() {
-      return repo.getSettings();
+    async get(actor) {
+      const s = await repo.getSettings();
+      if (actor?.role === 'admin') return s;
+      return { ...s, ministryConfig: { ...s.ministryConfig, busMinistry: { ...s.ministryConfig.busMinistry, coordinatorLeaderIds: [] } } };
     },
 
     async update(actor, input) {

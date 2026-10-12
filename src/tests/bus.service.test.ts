@@ -183,12 +183,16 @@ describe('vehicles + move', () => {
     expect(m2.stopOrder).toBe(2);
     await expect(t.svc.moveRider(t.ctx('quad'), t.c.id, { runVehicleId: t.rvId })).rejects.toThrow('Big Bus is full');
   });
-  it('grade login cannot move; a self-identified coordinator can', async () => {
+  it('grade login cannot move, even claiming a coordinator with as=; a coordinator leader login can', async () => {
     const t = await withFleet();
     await expect(t.svc.moveRider(t.ctx('grade'), t.a.id, { runVehicleId: t.rvId })).rejects.toMatchObject({ statusCode: 403 });
     const s = await t.settings.getSettings();
     await t.settings.updateSettings({ ministryConfig: { ...s.ministryConfig, busMinistry: { ...s.ministryConfig.busMinistry, coordinatorLeaderIds: ['L2'] } } });
-    await expect(t.svc.moveRider(t.ctx('grade', 'L2'), t.a.id, { runVehicleId: t.rvId })).resolves.toBeTruthy();
+    // Audit 2026-10-12 H3: the coordinator ids are public, so as= must never elevate.
+    await expect(t.svc.moveRider(t.ctx('grade', 'L2'), t.a.id, { runVehicleId: t.rvId })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.history(t.ctx('grade', 'L2'))).rejects.toMatchObject({ statusCode: 403 }); // Past nights carry full home addresses
+    const bound: BusCtx = { actor: actor('leader', { leaderId: 'L2' }), asLeaderId: null, localNow: FRI_7PM };
+    await expect(t.svc.moveRider(bound, t.a.id, { runVehicleId: t.rvId })).resolves.toBeTruthy();
   });
 });
 
@@ -924,11 +928,11 @@ describe('quad loses bus:coordinate under Simple logins (October rework E2)', ()
     await expect(t.svc.generate(t.ctx('quad'), { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
     await expect(t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
   });
-  it('Simple on, quad as a coordinator leader: coordinates', async () => {
+  it('Simple on, quad claiming a coordinator leader with as=: still cannot coordinate', async () => {
     const t = await withFleet();
     await simple(t, true, ['L2']);
-    expect((await t.svc.getRun(t.ctx('quad', 'L2'))).canCoordinate).toBe(true);
-    await expect(t.svc.generate(t.ctx('quad', 'L2'), { mode: 'all' })).resolves.toBeTruthy();
+    expect((await t.svc.getRun(t.ctx('quad', 'L2'))).canCoordinate).toBe(false);
+    await expect(t.svc.generate(t.ctx('quad', 'L2'), { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
   });
   it('Simple off, quad: unchanged (coordinates)', async () => {
     const t = await withFleet();

@@ -237,11 +237,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
   function selfLeaderId(ctx: BusCtx): string | null {
     // A junior-leader login is locked to its own record; everyone else self-identifies (spoofable by design — spec §4).
+    // Identity only (which car is "mine", who did it): never a permission — see allowed().
     return ctx.actor.role === 'leader' ? ctx.actor.leaderId ?? null : ctx.asLeaderId;
   }
   function allowed(ctx: BusCtx, c: MinistryConfig, action: Action): boolean {
     if (canWithConfig(ctx.actor, action, c)) return true;
-    const me = selfLeaderId(ctx);
+    // Coordinator elevation trusts only the session-bound leader (a junior-leader login), never `as=`:
+    // the coordinator ids are public via GET /settings, so a shared login could claim one (audit 2026-10-12 H3).
+    const me = ctx.actor.role === 'leader' ? ctx.actor.leaderId ?? null : null;
     const coordinator = !!me && c.busMinistry.coordinatorLeaderIds.includes(me);
     return coordinator && (action === 'bus:use' || action === 'bus:roster' || action === 'bus:coordinate');
   }

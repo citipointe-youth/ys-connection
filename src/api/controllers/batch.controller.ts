@@ -26,8 +26,8 @@ export function makeBatchController(deps: {
   settings: SettingsService;
   leader: LeaderService;
 }) {
-  // key -> the same call the standalone controller makes. `settings` ignores the
-  // actor (its standalone route is public), the rest are actor-scoped.
+  // key -> the same call the standalone controller makes. `settings` uses the actor
+  // only to keep the Bus coordinator ids admin-only; the rest are actor-scoped.
   const handlers: Record<string, (ctx: Actor) => Promise<unknown>> = {
     overview: (ctx) => deps.overview.getStats(ctx),
     trends: (ctx) => deps.trends.get(ctx),
@@ -35,7 +35,7 @@ export function makeBatchController(deps: {
     lifegroupStats: (ctx) => deps.lifegroupStats.get(ctx),
     connections: (ctx) => deps.connection.listAll(ctx),
     atRisk: (ctx) => deps.atRisk.list(ctx),
-    settings: () => deps.settings.get(),
+    settings: (ctx) => deps.settings.get(ctx),
     leaders: (ctx) => deps.leader.list(ctx),
     // Connect Setup's own widened fetch — see student.service.ts's list() `crossGrade`
     // comment for why this needs to be a separate section, not a swap-in-place for
