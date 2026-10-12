@@ -14,7 +14,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
@@ -27,6 +27,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
+  fresh?: (path: string) => Promise<any>;
   role?: string; mode?: string; leaderId?: string | null; }
 
 function makeEnv(e: Partial<Env> = {}) {
@@ -36,6 +37,7 @@ function makeEnv(e: Partial<Env> = {}) {
     getItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); return env.storage.has(k) ? env.storage.get(k)! : null; },
     setItem: (k: string, v: string) => { if (env.failStorage) throw new Error('blocked'); if (env.quota) throw new Error('QuotaExceededError'); env.storage.set(k, String(v)); },
     key: (i: number) => [...env.storage.keys()][i] ?? null,
+    __fresh: (p: string) => (env.fresh ? env.fresh(p) : Promise.reject(new Error('no'))),
     get length() { return env.storage.size; },
     removeItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.delete(k); },
   };
@@ -47,7 +49,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const localStorage = __ls;
     const navigator = { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1' };
     const document = { getElementById: () => null, visibilityState: 'visible' };
-    const API = { post: (p, b, ms) => __post(p, b, ms), fresh: () => Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
+    const API = { post: (p, b, ms) => __post(p, b, ms), fresh: (p) => __ls.__fresh ? __ls.__fresh(p) : Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
     const setApp = (h) => __calls.apps.push(h);
     const go = (p) => __calls.gos.push(p);
     const shell = (h) => h;
@@ -550,6 +552,30 @@ describe('B13 / T-37 the phone queue belongs to one login (APP-13, APP-33, APP-7
   });
   it('the comment no longer claims minors names never reach localStorage', () => {
     expect(html).not.toContain('kept in memory only, never in localStorage');
+  });
+});
+
+describe('B15 / T-45 a stale refresh (APP-23)', () => {
+  it('an older refresh reply that lands after a confirmed tap does not revert it; a later load is kept', async () => {
+    const replies: ((v: any) => void)[] = [];
+    const h = makeEnv({
+      fresh: () => new Promise((r) => { replies.push(r); }),
+      post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved', mine: true,
+        action: { id: b.items[0].id, type: 'checkIn', status: 'pending', reason: null } }] }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    const before = h.fns._lkLoadPeople(SVC.serviceTimeId); // the 60 s refresh starts before the tap
+    h.fns._lkCheck(P(1), 'checkIn');
+    await h.fns._lkFlush();
+    const row = () => h.get().LINK.people[SVC.serviceTimeId].people[0];
+    expect(row()).toMatchObject({ checkedIn: true, action: { status: 'pending' } });
+    replies[0]!({ people: [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }], leaders: [] });
+    expect(await before).toBe(false);
+    expect(row()).toMatchObject({ checkedIn: true, action: { status: 'pending' } });
+    const after = h.fns._lkLoadPeople(SVC.serviceTimeId);
+    replies[1]!({ people: [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true,
+      action: { id: P(5), type: 'checkIn', status: 'sent', reason: null }, mine: true }], leaders: [] });
+    expect(await after).toBe(true);
+    expect(row()).toMatchObject({ action: { status: 'sent' } });
   });
 });
 

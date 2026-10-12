@@ -9085,7 +9085,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9343,6 +9343,7 @@ function _lkFailed() {
 }
 function _lkRetry() { LINK.fails = Math.min(LINK.fails, 3); _lkFlush(); }
 function _lkResults(items, results) {
+  LINK.resGen = LINK.loadGen; // any list load already on the wire is now older than these answers (B15)
   const by = {};
   results.forEach((r) => { by[r.kind + ':' + r.id] = r; });
   const unanswered = items.some((it) => !by[it.kind + ':' + it.id]);
@@ -9568,8 +9569,12 @@ function _lkTakeServices(r) {
   if (r.defaultServiceTimeId !== undefined) LINK.defaultSvc = r.defaultServiceTimeId || null;
 }
 async function _lkLoadPeople(svc) {
+  const gen = ++LINK.loadGen;
   try {
     const r = await API.fresh('/link/checkin?serviceTime=' + encodeURIComponent(svc));
+    // B15 / APP-23: a load that started before the latest batch answer would put older rows back over it; drop it
+    // (the next refresh brings the server's newer state).
+    if (gen <= LINK.resGen && LINK.people[svc]) return false;
     _lkTakeServices(r);
     LINK.people[svc] = { people: (r && r.people) || [], leaders: (r && r.leaders) || [] };
     LINK.loadErr = null;
