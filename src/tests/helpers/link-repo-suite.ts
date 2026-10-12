@@ -36,7 +36,7 @@ export function newRow(over: Partial<NewOutboxRow> = {}): NewOutboxRow {
 }
 export function claimArgs(over: Partial<ClaimArgs> = {}, consoleId = randomUUID()): ClaimArgs {
   return { console: { consoleId, label: 'Desk', contractVersion: 1, consoleVersion: '1.0.0', inWindow: true,
-    pollSeconds: 60, capabilities: { ...ALL_LIVE } }, max: 20, leaseSeconds: 180, cutoffDays: 3,
+    pollSeconds: 60, capabilities: { ...ALL_LIVE }, linkRev: 1 }, max: 20, leaseSeconds: 180, cutoffDays: 3,
     leaseLostMs: 3_600_000, ...over };
 }
 function logRow(over: Partial<LinkLogRow> = {}): LinkLogRow {
@@ -157,7 +157,9 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         await repo.claim({ ...args, console: { ...args.console, label: 'Desk 2', pollSeconds: 900 } });
         const all = (await repo.listConsoles()).filter((x) => x.consoleId === args.console.consoleId);
         expect(all).toHaveLength(1);
-        expect(all[0]).toMatchObject({ label: 'Desk 2', pollSeconds: 900 });
+        expect(all[0]).toMatchObject({ label: 'Desk 2', pollSeconds: 900, linkRev: 1 });
+        await repo.claim({ ...args, console: { ...args.console, linkRev: 2 } }); // T1: the console's rev rides the heartbeat
+        expect((await repo.listConsoles()).find((x) => x.consoleId === args.console.consoleId)!.linkRev).toBe(2);
       });
       it('leases oldest first, at most max; sets claimed, owner, lease, attempts + 1; returns the note', async () => {
         const rows = [];
@@ -355,11 +357,11 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const svc = (id: string): LinkServiceRow => ({ serviceTimeId: id, serviceId: randomUUID(), name: 'Friday Night',
           startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16', rooms: [{ id: randomUUID(), name: 'Main' }],
           checkedIn: [{ personId: randomUUID(), roomId: randomUUID() }] });
-        const grp = (id: string): LinkGroupRow => ({ groupId: id, name: 'Year 9 Girls', grade: 9, gender: 'female',
+        const grp = (id: string): Omit<LinkGroupRow, 'history'> => ({ groupId: id, name: 'Year 9 Girls', grade: 9, gender: 'female',
           meets: 'Monday', members: [{ personId: randomUUID(), name: 'Alex Sample', leader: false }], thisWeek: 'none',
           lastReport: { reportId: randomUUID(), date: '2026-10-12', time: '18:30', didNotMeet: false, attendees: [],
             guests: 0, serviceTimeId: null, editable: true, blocked: null } });
-        const flow = (id: string): LinkFlowRow => ({ rowId: id, flowId: randomUUID(), flowName: 'New people', stepId: randomUUID(),
+        const flow = (id: string): Omit<LinkFlowRow, 'grade' | 'gender' | 'mobile' | 'mobileIsParent'> => ({ rowId: id, flowId: randomUUID(), flowName: 'New people', stepId: randomUUID(),
           stepName: 'Call', stepOrder: 1, personId: randomUUID(), name: 'Alex Sample', due: '2026-10-20', assignedTo: 'Sam' });
         const [s1, s2, g1, g2, f1, f2] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
         const s1Row = svc(s1); const g1Row = grp(g1); const f1Row = { ...flow(f1), due: null, personId: null };
@@ -367,8 +369,9 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         await repo.replaceMirror('groups', [g1Row], { takenAt: '2026-10-16T08:00:00.000Z', consoleId: c });
         await repo.replaceMirror('flows', [f1Row], { takenAt: '2026-10-16T08:00:00.000Z', consoleId: c });
         expect(await repo.services()).toEqual([s1Row]);
-        expect(await repo.groups()).toEqual([g1Row]);
-        expect(await repo.flows()).toEqual([f1Row]);
+        // A push without the UX-batch fields (an older console) reads back with their empty values.
+        expect(await repo.groups()).toEqual([{ ...g1Row, history: [] }]);
+        expect(await repo.flows()).toEqual([{ ...f1Row, grade: null, gender: null, mobile: null, mobileIsParent: false }]);
         await repo.replaceMirror('services', [svc(s2)], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
         await repo.replaceMirror('groups', [{ ...grp(g2), grade: null, gender: null, lastReport: null }], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
         await repo.replaceMirror('flows', [flow(f2)], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
@@ -383,6 +386,17 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
           expect(typeof s.appliedAt).toBe('string');
         }
         expect(st.find((x) => x.kind === 'roster')).toBeUndefined();
+        // UX batch: history, flow grade/gender/mobile (encrypted at rest in Supabase) and checked-in names round-trip
+        const lr = g1Row.lastReport!;
+        const g3 = { ...grp(randomUUID()), history: [lr, { ...lr, reportId: randomUUID(), date: '2026-10-05' }] };
+        const f3 = { ...flow(randomUUID()), grade: 6, gender: 'female' as const, mobile: '0412345678', mobileIsParent: true };
+        const s3 = { ...svc(randomUUID()), checkedIn: [{ personId: randomUUID(), roomId: randomUUID(), firstName: 'Jo', lastName: 'Ng' }] };
+        await repo.replaceMirror('groups', [g3], { takenAt: '2026-10-16T09:30:00.000Z', consoleId: c });
+        await repo.replaceMirror('flows', [f3], { takenAt: '2026-10-16T09:30:00.000Z', consoleId: c });
+        await repo.replaceMirror('services', [s3], { takenAt: '2026-10-16T09:30:00.000Z', consoleId: c });
+        expect(await repo.groups()).toEqual([g3]);
+        expect(await repo.flows()).toEqual([f3]);
+        expect(await repo.services()).toEqual([s3]);
         // B18 / X10: rows: [] is a full replace that means "none now"
         expect(await repo.replaceMirror('flows', [], { takenAt: '2026-10-16T10:00:00.000Z', consoleId: c })).toEqual({ applied: true, rows: 0 });
         expect(await repo.flows()).toEqual([]);

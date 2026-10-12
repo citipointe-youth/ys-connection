@@ -2,7 +2,7 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { ClaimRequest, LINK_CONTRACT_VERSION, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { ClaimRequest, LINK_CONTRACT_VERSION, LINK_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { PushKind, ResultReply } from '../core/link-types';
@@ -41,7 +41,7 @@ export function makeSyncService(d: SyncDeps) {
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,
-          capabilities: req.capabilities },
+          capabilities: req.capabilities, linkRev: req.linkRev ?? 1 },
         max, leaseSeconds: req.leaseSeconds, cutoffDays: LINK_CUTOFF_DAYS, leaseLostMs: LEASE_LOST_MS,
       });
       const ok = claimed.filter((c) => !c.noteUnreadable); // the repo already stored those as refused
@@ -59,6 +59,7 @@ export function makeSyncService(d: SyncDeps) {
           // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
           note: ATTRIBUTED_TYPES.includes(row.type) ? attributedNote(row.leaderName, row.note) : row.note,
         })),
+        linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
       };
     },
 

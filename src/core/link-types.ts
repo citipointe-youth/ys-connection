@@ -30,7 +30,9 @@ export interface OutboxRow {
 export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 'dedupeKey' | 'serviceDate' |
   'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'>;
 export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: string; contractVersion: number;
-  consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities; }
+  consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities;
+  /** T1: the console's LINK_REV from its last claim (missing = 1). */
+  linkRev: number; }
 export interface ClaimArgs { console: Omit<ConsoleRow, 'lastSeenAt'>; max: number; leaseSeconds: number;
   cutoffDays: number; leaseLostMs: number; }
 export interface ClaimedRow { row: OutboxRow; reclaimed: boolean; noteUnreadable: boolean; }
@@ -39,15 +41,22 @@ export interface LinkRosterRow { personId: string; firstName: string; lastName: 
   grade: number | null; kind: 'student' | 'leader' | 'other'; active: boolean; studentId: string | null; match: Match;
   updatedAt: string; }
 export interface LinkServiceRow { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string;
-  rooms: { id: string; name: string }[]; checkedIn: { personId: string; roomId: string }[]; }
+  rooms: { id: string; name: string }[];
+  checkedIn: { personId: string; roomId: string; firstName?: string; lastName?: string }[]; } // T3: names when pushed
 export interface LinkLastReport { reportId: string; date: string; time: string; didNotMeet: boolean; attendees: string[];
   guests: number; serviceTimeId: string | null; editable: boolean;
   blocked: 'multi-service' | 'unkept-notes' | 'member-left' | null; }
 export interface LinkGroupRow { groupId: string; name: string; grade: number | null; gender: 'male' | 'female' | null;
   meets: string; members: { personId: string; name: string; leader: boolean }[];
-  thisWeek: 'reported' | 'did-not-meet' | 'none' | 'later' | 'unreadable'; lastReport: LinkLastReport | null; }
+  thisWeek: 'reported' | 'did-not-meet' | 'none' | 'later' | 'unreadable'; lastReport: LinkLastReport | null;
+  /** T8: newest first, at most 8 ([] from an older console). */
+  history: LinkLastReport[]; }
+/** T4: grade/gender/mobile are the person's own (null/false from an older console); mobile is plaintext here. */
 export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; stepId: string; stepName: string;
-  stepOrder: number; personId: string | null; name: string; due: string | null; assignedTo: string; }
+  stepOrder: number; personId: string | null; name: string; due: string | null; assignedTo: string;
+  grade: number | null; gender: 'male' | 'female' | null; mobile: string | null; mobileIsParent: boolean; }
+/** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */
+export interface LinkFlowAssign { flowId: string; personId: string; leaderId: string; assignedBy: string; assignedAt: string; }
 export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo';
 export interface LinkLogRow { id: string; at: string; userId: string; login: string; deviceId: string | null;
   deviceLabel: string | null; event: LogEvent; leaderId: string | null; leaderName: string | null;

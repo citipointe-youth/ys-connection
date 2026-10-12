@@ -62,7 +62,8 @@ const leader = (id: string, fullName: string, gender: 'male' | 'female' | null, 
   id, fullName, gender, grades: [], active, createdByGrade: null, smsTemplate: null, createdAt: T0, updatedAt: T0,
 });
 
-const group = (g: Omit<LinkGroupRow, 'grade' | 'gender'>): LinkGroupRow => ({ ...g, ...parseGroupName(g.name) });
+const group = (g: Omit<LinkGroupRow, 'grade' | 'gender' | 'history'> & Partial<Pick<LinkGroupRow, 'history'>>): LinkGroupRow =>
+  ({ history: [], ...g, ...parseGroupName(g.name) });
 
 type Modes = Partial<Record<'newYouthForms' | 'checkin' | 'lifegroupReport' | 'flows', Mode>>;
 async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: Partial<Capabilities>; limiter?: { isBlocked(k: string): boolean } } = {}): Promise<H> {
@@ -132,9 +133,9 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
   return { svc, link, clock, sessions, attendance, leaders };
 }
 
-async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60) {
+async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60, linkRev = 1) {
   await link.claim({ console: { consoleId, label: 'Office PC', contractVersion: 1, consoleVersion: '1.0', inWindow: true,
-    pollSeconds, capabilities }, max: 0, leaseSeconds: 180, cutoffDays: 3, leaseLostMs: 3_600_000 });
+    pollSeconds, capabilities, linkRev }, max: 0, leaseSeconds: 180, cutoffDays: 3, leaseLostMs: 3_600_000 });
 }
 
 const setRow = (link: InMemoryLinkRepository, id: string, cols: Record<string, string>) => {
