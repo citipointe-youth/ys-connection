@@ -9228,13 +9228,14 @@ function _lkMerge(serverPeople, queue, svc) {
       action: { id: q.id, type: q.type, status: 'queued', reason: null } }) : p;
   });
 }
-// Write a server answer into the cached lists, so the row keeps it until the next refresh.
-function _lkApply(svc, pid, act) {
+// Write a server answer into the cached lists, so the row keeps it until the next refresh. mine comes from the
+// server (false on a duplicate: someone else's row; B6 / APP-50).
+function _lkApply(svc, pid, act, mine) {
   const d = LINK.people[svc];
   if (!d || !pid) return;
   [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
     if (p.personId !== pid) return;
-    p.action = act; p.mine = true;
+    p.action = act; p.mine = mine !== false;
     if (act.status === 'cancelled') { if (act.type === 'checkIn') p.checkedIn = false; }
     else if (act.status !== 'refused') { p.checkedIn = act.type === 'checkIn'; p.practice = act.status === 'shadowed'; }
   }));
@@ -9312,7 +9313,7 @@ function _lkResults(items, results) {
         const act = Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
         if (r.outcome === 'duplicate' && r.existingId) act.id = r.existingId;
         else if (r.outcome === 'duplicate' && !r.action) act.status = 'mirror'; // in by the kiosk
-        _lkApply(svc, pid, act);
+        _lkApply(svc, pid, act, r.mine !== undefined ? r.mine : r.outcome !== 'duplicate');
       }
     } else if (it.kind === 'undo') {
       if (r.outcome === 'cancelled') _lkApply(it._s, it._p, { id: it.id, type: 'checkIn', status: 'cancelled', reason: null });
@@ -9549,12 +9550,14 @@ function _lkRowHtml(p) {
   if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
   else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
   const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${_lkStatusHtml(line, _lkLastSeen())}</div>` : '';
-  const undo = p.mine && act && act.status !== 'refused' && act.status !== 'cancelled'
-    && (act.status === 'queued' || (p.checkedIn && act.type === 'checkIn'));
+  // B6 / T-30: Undo only while the tap is still on this phone or the check-in is still pending (a cancel); every
+  // checked-in row (not just queued) also offers Check out, which anyone on the door may do.
+  const queued = !!act && act.status === 'queued';
+  const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
   if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkUndo('${pid}')">Undo</button>`;
-  else if (p.checkedIn) { if (!_lkCapOff('checkOut')) btn = `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
-  else if (!_lkCapOff('checkIn')) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
+  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
+  else if (!p.checkedIn && !undo && !_lkCapOff('checkIn')) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && !_lkCapOff('checkIn') ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name)}</div>${lineHtml}</div>${btn}</div>`;
 }

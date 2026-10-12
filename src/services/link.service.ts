@@ -73,6 +73,8 @@ export type ItemOutcome = 'saved' | 'replay' | 'duplicate' | 'refused' | 'cancel
 export interface ItemResult {
   id: string; kind: ItemKind; outcome: ItemOutcome; httpStatus: number;
   existingId?: string; code?: string; message?: string; reason?: string; action?: ActionView;
+  /** B6 / APP-50: true when this call stored (or replayed) the row; false on duplicate (someone else's row). */
+  mine?: boolean;
 }
 export type BatchItemResult = Omit<ItemResult, 'httpStatus'>;
 
@@ -249,9 +251,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   // ---- enqueue (spec §8.2 steps 1–6). Throws AppError for a refusal; the caller turns it into a result.
   async function enqueueChecked(c: Ctx, it: z.infer<typeof ActionItem>, tgt: Target, who: Who): Promise<ItemResult> {
     const ok = (row: OutboxRow, outcome: 'saved' | 'replay'): ItemResult =>
-      ({ id: it.id, kind: 'action', outcome, httpStatus: outcome === 'saved' ? 201 : 200, action: view(row) });
+      ({ id: it.id, kind: 'action', outcome, httpStatus: outcome === 'saved' ? 201 : 200, action: view(row), mine: true });
     const dup = (row: OutboxRow): ItemResult =>
-      ({ id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId: row.id, action: view(row) });
+      ({ id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId: row.id, action: view(row), mine: false });
 
     // Replay (same id, same type + payload + note-or-not + "I am") or id reuse (APP-30). The log target comes from the
     // stored row, so a retried item still names its person.
@@ -361,7 +363,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           rows = await checkRows(personId!, svc!.serviceTimeId);
           const open = rows.find((r) => r.type === 'checkIn' && r.status !== 'cancelled' && r.status !== 'refused');
           if (open) return dup(open);
-          return { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409 }; // in by the kiosk (the mirror)
+          return { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, mine: false }; // in by the kiosk (the mirror)
         }
       }
       const mirror = { mirrorIn: svc!.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: takenAt(await c.mirror(), 'services') };
@@ -390,7 +392,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (e instanceof LinkOpenDuplicate) {
         const existingId = String(e.extra?.existingId);
         const row = await d.link.getAction(existingId);
-        return row ? dup(row) : { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId };
+        return row ? dup(row) : { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId, mine: false };
       }
       throw e;
     }
@@ -452,9 +454,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const row = await d.link.getAction(id);
       if (!row) return refused(id, 'undo', new NotFoundError('This action is not on the server.'));
       if (row.type !== 'checkIn') return refused(id, 'undo', new BadRequestError('Only a check-in can be undone.'));
-      if (!owns(c, row, leaderId)) return refused(id, 'undo', new LinkNotYours());
-      if (row.status === 'cancelled' || (row.status === 'pending' && await d.link.cancelPending(id))) {
-        return { id, kind: 'undo', outcome: 'cancelled', httpStatus: 200 };
+      if (row.status === 'cancelled') return { id, kind: 'undo', outcome: 'cancelled', httpStatus: 200 };
+      // B6 / APP-5: the owner rule applies only to a cancel (the check-in is still pending). Past that, Undo is a
+      // plain check-out, which anyone on the door may do (a shared login has several "I am" leaders).
+      if (row.status === 'pending') {
+        if (!owns(c, row, leaderId)) return refused(id, 'undo', new LinkNotYours());
+        if (await d.link.cancelPending(id)) return { id, kind: 'undo', outcome: 'cancelled', httpStatus: 200 };
       }
       const p = row.payload as { serviceTimeId: string; personId: string };
       const out = await enqueueItem(c, { id: newId, type: 'checkOut', payload: { serviceTimeId: p.serviceTimeId, personId: p.personId },

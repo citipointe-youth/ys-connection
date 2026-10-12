@@ -514,6 +514,7 @@ describe('F1.3 door', () => {
   it('a row whose newest action is mine shows Undo; others show Check in / Check out', () => {
     const h = setup();
     expect(strip(h.fns._lkRowHtml(people[2]))).toContain('Undo');
+    expect(strip(h.fns._lkRowHtml(people[2]))).toContain('Check out'); // B6: every checked-in row
     expect(strip(h.fns._lkRowHtml(people[4]))).toContain('Check out');
     expect(strip(h.fns._lkRowHtml(people[0]))).toContain('Check in');
     h.fns._lkCheck(P(1), 'checkIn');
@@ -521,6 +522,32 @@ describe('F1.3 door', () => {
     const row = strip(h.fns._lkRowHtml(merged[0]));
     expect(row).toContain('Undo');
     expect(row).toContain('Waiting to send.');
+  });
+  it('B6 / T-30: Undo only while queued or pending; a sent check-in (mine) shows Check out only', () => {
+    const h = setup();
+    const sent = { ...people[2], action: { id: P(30), type: 'checkIn', status: 'sent', reason: null, resultAt: '2026-10-16T09:02:00.000Z' } };
+    const row = strip(h.fns._lkRowHtml(sent));
+    expect(row).not.toContain('Undo');
+    expect(row).toContain('Check out');
+    const claimed = strip(h.fns._lkRowHtml({ ...people[2]!, action: { ...people[2]!.action, status: 'claimed' } }));
+    expect(claimed).not.toContain('Undo');
+    expect(claimed).toContain('Check out');
+    h.fns._lkCheck(P(1), 'checkIn');
+    const merged = h.fns._lkMerge(h.get().LINK.people[SVC.serviceTimeId].people, h.fns._lkQGet(), SVC.serviceTimeId);
+    const q = strip(h.fns._lkRowHtml(merged[0]));
+    expect(q).toContain('Undo');
+    expect(q).not.toContain('Check out'); // queued: Undo removes it here
+  });
+  it('B6 / APP-50: a duplicate answer is not mine (no Undo offered)', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'duplicate',
+      existingId: P(77), mine: false, action: { id: P(77), type: 'checkIn', status: 'pending', reason: null } }] }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkIn');
+    await h.fns._lkFlush();
+    const p = h.get().LINK.people[SVC.serviceTimeId].people[0];
+    expect(p).toMatchObject({ checkedIn: true, mine: false, action: { id: P(77) } });
+    expect(strip(h.fns._lkRowHtml(p))).not.toContain('Undo');
   });
   it('practice rows show the practice line; a kiosk check-in reads "In Elvanto."', () => {
     const h = setup();

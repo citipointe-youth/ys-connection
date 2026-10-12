@@ -510,6 +510,31 @@ describe('B5 / T-11 a shadowed row is not "in" for the duplicate check (APP-46; 
   });
 });
 
+describe('B6 / T-30 undo and ownership (APP-5, APP-50)', () => {
+  it('two "I am" leaders on one login: the second can check out (and Undo) the first leader sent check-in', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY, { leaderId: L_DANA });
+    await h.svc.enqueue(GRADE, a, DEV);
+    expect(await h.svc.undo(GRADE, a.id, L_CODY, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' }); // pending: a cancel
+    setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
+    const newId = nid();
+    expect(await h.svc.undo(GRADE, a.id, L_CODY, newId, DEV)).toMatchObject({ outcome: 'saved',
+      action: { id: newId, type: 'checkOut', status: 'pending' }, mine: true });
+    const b = checkIn(P_TOM, { leaderId: L_DANA });
+    await h.svc.enqueue(GRADE, b, DEV);
+    setRow(h.link, b.id, { status: 'sent', result_at: NOW.toISOString() });
+    expect((await h.svc.enqueue(GRADE2, checkOut(P_TOM, { leaderId: L_CODY }), DEV)).outcome).toBe('saved');
+  });
+  it('mine comes from the server: true on saved and replay, false on duplicate', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    expect((await h.svc.enqueue(GRADE, a, DEV)).mine).toBe(true);
+    expect((await h.svc.enqueue(GRADE, a, DEV)).mine).toBe(true); // replay
+    const r = await h.svc.batch(QUAD, { items: [{ kind: 'action', ...checkIn(P_AMY) }] });
+    expect(r.results[0]).toMatchObject({ outcome: 'duplicate', existingId: a.id, mine: false });
+  });
+});
+
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
     const h = await setup();
@@ -604,7 +629,8 @@ describe('D3 cancel, undo, listActions', () => {
     const newId = nid();
     expect(await h.svc.undo(GRADE, b.id, null, newId, DEV)).toMatchObject({ outcome: 'saved', httpStatus: 201,
       action: { id: newId, type: 'checkOut', status: 'pending' } });
-    expect(await h.svc.undo(QUAD, b.id, null, nid(), DEV)).toMatchObject({ code: 'LINK_NOT_YOURS' });
+    // B6: past pending, Undo is a plain check-out (no owner rule); the check-out already waits, so a duplicate
+    expect(await h.svc.undo(QUAD, b.id, null, nid(), DEV)).toMatchObject({ outcome: 'duplicate', existingId: newId });
     const c = step();
     await h.svc.enqueue(GRADE, c, DEV);
     expect((await h.svc.undo(GRADE, c.id, L_DANA, nid(), DEV)).httpStatus).toBe(400);
