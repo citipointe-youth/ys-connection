@@ -8964,7 +8964,8 @@ function renderNewYouth() {
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
-      ${NY.lkNote ? `<div class="card"><p>${esc(NY.lkNote)}</p></div>` : ''}
+      ${NY.lkNote ? `<div class="card"><p>${esc(NY.lkNote)}</p>${NY.lkId && typeof _nyFtLine === 'function' ? _nyFtLine(NY.lkId) : ''}</div>` : ''}
+      ${typeof _nyFtListHtml === 'function' && _linkOn() ? _nyFtListHtml() : ''}
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
       ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
       ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
@@ -9008,7 +9009,8 @@ function renderNewYouth() {
     ${typeof _nyLinkHtml === 'function' && _linkOn() ? `<div class="card" id="ny-lk">${_nyLinkHtml()}</div>` : ''}
     ${NY.error ? `<div class="card" id="ny-err" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
     <button class="btn btn-primary btn-full" id="ny-send" type="submit">Send to Elvanto</button>
-    </form>`));
+    </form>
+    ${typeof _nyFtListHtml === 'function' && _linkOn() ? _nyFtListHtml() : ''}`));
   // setApp keeps the scroll position, and a failed send leaves the host at the bottom: bring the card into view.
   const errEl = NY.error && document.getElementById('ny-err');
   if (errEl && errEl.scrollIntoView) errEl.scrollIntoView({ block: 'center' });
@@ -9085,7 +9087,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, loadGen: 0, resGen: 0, ft: [], ftRows: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9361,6 +9363,9 @@ function _lkResults(items, results) {
         : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
       if (gid) { if (!LINK.gres) LINK.gres = {}; LINK.gres[gid] = ans; }
       else { if (!LINK.fres) LINK.fres = {}; LINK.fres[fr] = ans; }
+    } else if (it.kind === 'action' && it.type === 'firstTimerCheckIn') { // B17: the New person page shows it
+      LINK.ftRows[it.id] = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
+        : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
     } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
       if (r.outcome === 'refused') {
@@ -10267,6 +10272,7 @@ function _nyLinkHtml() {
 function _nyLinkLoad() {
   if (!_linkOn()) return;
   _lkDayCheck();
+  _lkFtLoad();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; _nyHostDraw(); }, () => {});
   if (!LINK.statusAt) _lkStatusLoad();
   if (LINK.services) return;
@@ -10293,8 +10299,52 @@ function _lkFirstTimerAfter(mine, result) {
     const d = _lkFirstTimerDecision(result, _lkCap('firstTimerCheckIn'), [p.firstName, p.lastName]);
     mine.lkNote = d.note;
     if (!d.queue) return;
-    _lkPush({ kind: 'action', id: _lkUuid(), type: 'firstTimerCheckIn', payload: _lkFirstTimerPayload(p, s), note: null, leaderId: getMyLeaderId() || null }, true);
-    mine.lkNote = 'Check-in for ' + _lkSvcLabel(s) + ' is waiting to send.';
+    const aid = _lkUuid(), payload = _lkFirstTimerPayload(p, s);
+    _lkPush({ kind: 'action', id: aid, type: 'firstTimerCheckIn', payload, note: null, leaderId: getMyLeaderId() || null }, true);
+    mine.lkNote = 'Check-in for ' + _lkSvcLabel(s) + '.';
+    mine.lkId = aid;
+    // B17: the door host sees what happens to it ("New people tonight"); the name stays in memory only.
+    LINK.ft.push({ id: aid, name: payload.firstName + ' ' + payload.lastName, day: _lkSvcDay() });
+  } catch (e) {}
+}
+// ── First-timer status for the door host (B17 / T-2; APP-32) ──
+// The row as this phone knows it: still queued here, else the server's last answer.
+function _lkFtRow(id) {
+  let queued = false;
+  try { queued = _lkQGet().some((it) => it.kind === 'action' && it.id === id); } catch (e) {}
+  if (queued) return { id, type: 'firstTimerCheckIn', status: 'queued', reason: null };
+  return LINK.ftRows[id] || { id, type: 'firstTimerCheckIn', status: 'pending', reason: null };
+}
+// The status line under the New person result (awaiting-approval, too-old and the rest, as on the door).
+function _nyFtLine(id) {
+  if (!id) return '';
+  const r = _lkFtRow(id);
+  return `<div class="lk-st ${_lkStatusTone(r)}" id="ny-ft-${esc(id)}">${_lkStatusHtml(r, _lkLastSeen())}</div>`;
+}
+// "New people tonight": this phone's first-timers for tonight's service day, each with its status.
+function _nyFtListHtml() {
+  const day = _lkSvcDay(), xs = (LINK.ft || []).filter((f) => f.day === day);
+  if (!xs.length) return '';
+  return `<div class="card" id="ny-ft-list"><div class="lk-sec">New people tonight</div>${xs.map((f) => {
+    const r = _lkFtRow(f.id);
+    return `<div class="lk-kv"><span>${esc(f.name)}</span><span class="lk-st ${_lkStatusTone(r)}">${_lkStatusHtml(r, _lkLastSeen())}</span></div>`;
+  }).join('')}</div>`;
+}
+// One GET /link/actions?ids= for the sent ones; repaints the list and the result line in place.
+async function _lkFtLoad() {
+  const day = _lkSvcDay();
+  let q = [];
+  try { q = _lkQGet(); } catch (e) {}
+  const ids = (LINK.ft || []).filter((f) => f.day === day && !q.some((it) => it.id === f.id)).map((f) => f.id).slice(0, 50);
+  if (!ids.length) return;
+  try {
+    const rows = await API.fresh('/link/actions?ids=' + ids.join(','));
+    (Array.isArray(rows) ? rows : []).forEach((r) => { LINK.ftRows[r.id] = { id: r.id, type: r.type, status: r.status, reason: r.reason, resultAt: r.resultAt }; });
+  } catch (e) { return; }
+  try {
+    const el = document.getElementById('ny-ft-list');
+    if (el) el.outerHTML = _nyFtListHtml();
+    ids.forEach((id) => { const x = document.getElementById('ny-ft-' + id); if (x) x.outerHTML = _nyFtLine(id); });
   } catch (e) {}
 }
 // ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin and director. ──
@@ -10364,11 +10414,15 @@ function _lkAdmStatusHtml() {
   const counts = {};
   acts.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
   const unclear = acts.filter((a) => a.status === 'unclear');
+  // B17: first-timers still not in Elvanto an hour after the tap (the console gives up at 24 h, X7).
+  const waiting = acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
+    && Date.now() - Date.parse(a.createdAt) > 36e5);
   return `<div class="lk-sec">Status</div>${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
     <p class="lk-sub">The link screens share the New person switch. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(k)}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
-    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}`;
+    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}
+    ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
 // Matching: Unmatched / Two possible / Set by hand. Candidates show grade and DOB.
 function _lkAdmMatchHtml() {

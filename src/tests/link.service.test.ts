@@ -753,6 +753,13 @@ describe('D3 cancel, undo, listActions', () => {
     expect(all.find((r) => r.id === b.id)).not.toHaveProperty('name');
     expect((await h.svc.listActions(GRADE, { ids: a.id }))[0]).not.toHaveProperty('name');
   });
+  it('B17: a first-timer row carries its name for link:admin (the waiting list), never for others', async () => {
+    const h = await setup();
+    const f = firstTimer();
+    await h.svc.enqueue(GRADE, f, DEV);
+    expect((await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'firstTimerCheckIn' }))[0]).toMatchObject({ name: 'New Kid' });
+    expect((await h.svc.listActions(GRADE, { ids: f.id }))[0]).not.toHaveProperty('name');
+  });
 });
 
 // =====================================================================================================================

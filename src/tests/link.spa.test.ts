@@ -16,7 +16,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
-  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
+  '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter', '_lkFtRow', '_nyFtLine', '_nyFtListHtml', '_lkFtLoad',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
 
@@ -1401,7 +1401,8 @@ describe('F4.1 first-timer check-in', () => {
     expect(q[0]).toMatchObject({ kind: 'action', type: 'firstTimerCheckIn', note: null, leaderId: 'L1',
       payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, firstName: 'Ava', lastName: 'Example', grade: 8, gender: 'female' } });
     expect(mine.lkSvc).toBeNull();
-    expect(mine.lkNote).toContain('waiting to send');
+    expect(mine.lkNote).toBe('Check-in for Fri 16 Oct · Youth 6:30 pm.'); // B17: the status line under it says "Waiting to send."
+    expect(mine.lkId).toBe(q[0].id);
     h.fns._lkFirstTimerAfter(mine, OK); // a later retry on the same send never queues again
     expect(h.fns._lkQGet()).toHaveLength(1);
     const long: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'A'.repeat(61), lastName: 'X', grade: '8', gender: 'f' } };
@@ -1413,6 +1414,62 @@ describe('F4.1 first-timer check-in', () => {
     expect(send).toContain("if (typeof _lkFirstTimerAfter === 'function') _lkFirstTimerAfter(mine, result);");
     expect(send).toContain("API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000)");
     expect(extractFn(html, 'renderNewYouth')).toContain('NY.lkNote');
+  });
+});
+
+describe('B17 / T-2 first-timer status for the door host (APP-32)', () => {
+  const OK = { student: 'sent', parent: 'sent' };
+  const queueOne = (h: any) => {
+    h.get().LINK.services = [SVC];
+    const mine: any = { lkSvc: SVC.serviceTimeId, last: { firstName: 'Ava', lastName: '<b>Ex</b>', grade: '8', gender: 'f' } };
+    h.fns._lkFirstTimerAfter(mine, OK);
+    return mine;
+  };
+  it('the result page line: queued, awaiting-approval, refused too-old', () => {
+    vi.useFakeTimers();
+    const h = makeEnv();
+    const mine = queueOne(h);
+    expect(mine.lkId).toBe(h.fns._lkQGet()[0].id);
+    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Waiting to send.');
+    h.fns._lkQSet([]);
+    h.get().LINK.ftRows[mine.lkId] = { id: mine.lkId, type: 'firstTimerCheckIn', status: 'pending', reason: 'awaiting-approval' };
+    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Waiting for the new-person form to be approved.');
+    h.get().LINK.ftRows[mine.lkId] = { id: mine.lkId, type: 'firstTimerCheckIn', status: 'refused', reason: 'too-old' };
+    expect(strip(h.fns._nyFtLine(mine.lkId))).toContain('Too late to send. Do it in Elvanto.');
+    expect(extractFn(html, 'renderNewYouth')).toContain('_nyFtLine(NY.lkId)');
+  });
+  it('"New people tonight" lists this phone\'s first-timers with their status, names escaped; nothing when none', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
+    const asked: string[] = [];
+    const h = makeEnv({ fresh: (p) => { asked.push(p); return Promise.resolve([{ id: h.get().LINK.ft[0].id, type: 'firstTimerCheckIn',
+      status: 'pending', reason: 'awaiting-approval' }]); } });
+    expect(h.fns._nyFtListHtml()).toBe('');
+    const mine = queueOne(h);
+    h.fns._lkQSet([]);
+    await h.fns._lkFtLoad();
+    expect(asked).toEqual(['/link/actions?ids=' + mine.lkId]);
+    const out = h.fns._nyFtListHtml();
+    expect(strip(out)).toContain('New people tonight');
+    expect(out).toContain('Ava &lt;b&gt;Ex&lt;/b&gt;');
+    expect(strip(out)).toContain('Waiting for the new-person form to be approved.');
+    expect([...h.env.storage.values()].join('')).not.toContain('<b>Ex</b>'); // the name stays in memory
+  });
+  it('the admin page lists first-timers that have waited over 1 h', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T10:30:00.000Z'));
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.status = { console: { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 }, mirrors: {} };
+    h.get().LINK.adm = h.fns._lkAdmFresh();
+    h.get().LINK.adm.acts = [
+      { id: P(1), type: 'firstTimerCheckIn', status: 'pending', reason: 'awaiting-approval', createdAt: '2026-10-16T09:00:00.000Z', name: 'Old <i>One</i>', leaderName: 'Dana' },
+      { id: P(2), type: 'firstTimerCheckIn', status: 'pending', reason: null, createdAt: '2026-10-16T10:00:00.000Z', name: 'New One', leaderName: 'Dana' },
+      { id: P(3), type: 'firstTimerCheckIn', status: 'sent', reason: null, createdAt: '2026-10-16T08:00:00.000Z', name: 'Done One', leaderName: 'Dana' }];
+    const out = strip(h.fns._lkAdmStatusHtml());
+    expect(out).toContain('First-timers waiting over 1 hour');
+    expect(out).toContain('Old &lt;i&gt;One&lt;/i&gt;');
+    expect(out).not.toContain('New One');
+    expect(out).not.toContain('Done One');
   });
 });
 
