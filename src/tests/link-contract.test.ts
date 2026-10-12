@@ -101,6 +101,11 @@ describe('link contract: bad requests are rejected', () => {
     const rows = clone(load('claim-response.json')); rows.rows[0].type = 'bogus'; rejects(C.ClaimResponse, rows);
     const roster = clone(load('push-roster.json')); roster.rows[0].kind = 'bogus'; rejects(C.PUSH_SCHEMAS.roster, roster);
   });
+  it('B16: a roster lastName is trimmed', () => {
+    const roster = clone(load('push-roster.json'));
+    roster.rows[0].lastName = '  Sample  ';
+    expect(C.PUSH_SCHEMAS.roster.parse(roster).rows[0]!.lastName).toBe('Sample');
+  });
   it('a push over 5,000 rows is rejected', () => {
     const roster = load('push-roster.json');
     rejects(C.PUSH_SCHEMAS.roster, { ...roster, rows: Array(5001).fill(roster.rows[0]) });

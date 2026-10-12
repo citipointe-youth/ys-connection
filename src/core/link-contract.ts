@@ -87,7 +87,7 @@ export const ResultResponse = z.object({
 });
 
 // ---- POST /sync/push/:kind (spec 3.4). One bad row rejects the whole push.
-const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: Text(60), gender: Gender.nullable(), grade: Grade,
+const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string().trim().max(60), gender: Gender.nullable(), grade: Grade,
   kind: z.enum(['student', 'leader', 'other']) });
 const ServiceRow = z.object({ serviceTimeId: Uuid, serviceId: Uuid, name: Text(120), startsAt: Iso, ymd: Ymd,
   rooms: z.array(z.object({ id: Uuid, name: Text(120) })), checkedIn: z.array(z.object({ personId: Uuid, roomId: Uuid })) });

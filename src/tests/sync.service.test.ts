@@ -262,8 +262,15 @@ describe('sync.service push', () => {
   it('roster: an ambiguous name is counted', async () => {
     const { svc, students } = await setup();
     await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);
-    await students.save({ id: 's-a2', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 10 } as any);
+    await students.save({ id: 's-a2', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any); // same grade: no tie-break (B16)
     expect(await svc.push('roster', fx('push-roster.json'))).toEqual({ applied: true, rows: 4, matched: { auto: 0, ambiguous: 1 } });
+  });
+
+  it('B16: grade breaks the tie when exactly one same-name student has the roster grade', async () => {
+    const { svc, students } = await setup();
+    await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);
+    await students.save({ id: 's-a2', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 10 } as any);
+    expect(await svc.push('roster', fx('push-roster.json'))).toEqual({ applied: true, rows: 4, matched: { auto: 1, ambiguous: 0 } });
   });
 
   it('an unknown :kind → SyncValidation (400), nothing applied', async () => {

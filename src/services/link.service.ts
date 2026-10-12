@@ -137,7 +137,7 @@ export interface LinkServiceDeps {
 
 // ---------------------------------------------------------------- helpers
 
-const fold = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
+const fold = nameFold; // X8 (B16): the admin's candidate list uses the same fold as the auto-match
 const fullName = (r: { firstName: string; lastName: string }) => `${r.firstName} ${r.lastName}`.trim();
 const view = (r: OutboxRow): ActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason });
 const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';

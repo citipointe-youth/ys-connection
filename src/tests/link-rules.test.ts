@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
+ nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
   LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
@@ -214,7 +214,44 @@ function ros(n: number, first: string, last: string, gender: 'male' | 'female' |
   return { personId: U(n), firstName: first, lastName: last, gender, grade: 9, kind: 'student', active: true, studentId: null,
     match: 'none', updatedAt: '2026-10-01T00:00:00Z', ...over };
 }
-const stu = (id: string, firstName: string, lastName: string, gender: 'male' | 'female' | 'other') => ({ id, firstName, lastName, gender });
+const stu = (id: string, firstName: string, lastName: string, gender: 'male' | 'female' | 'other', grade: number | null = 9) =>
+  ({ id, firstName, lastName, gender, grade });
+
+describe('B16 / X8 one name fold', () => {
+  it('accents, curly quotes, spaces round a hyphen, double spaces, case, trim', () => {
+    expect(nameFold('  Zo\u00eb  O\u2019Brien-  Smith ')).toBe("zoe o'brien-smith");
+    expect(nameFold('Ren\u00e9e Mary - Jane')).toBe('renee mary-jane');
+    expect(nameFold('Jos\u0065\u0301')).toBe('jose');
+    expect(nameFold('Josh')).not.toBe(nameFold('Joshua')); // a short name still does not match a full name
+  });
+  it('the first-timer dedupe key uses the fold', () => {
+    const st = U(4);
+    expect(dedupeKey('firstTimerCheckIn', { serviceTimeId: st, firstName: 'Zo\u00eb', lastName: 'O\u2019Brien - Smith' }))
+      .toBe(`first:${st}:zoe o'brien-smith`);
+  });
+  it('autoMatch folds both sides: curly apostrophe, accent, hyphen spaces, double spaces', () => {
+    expect(autoMatch([ros(1, 'Zo\u00eb', 'O\u2019Brien', 'female'), ros(2, 'Mary  Jane', 'Lee - Ross', 'female')],
+      [stu('s1', 'Zoe', "O'Brien", 'female'), stu('s2', 'Mary Jane', 'Lee-Ross', 'female')]))
+      .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }, { personId: U(2), studentId: 's2', match: 'auto' }]);
+  });
+  it('two Josh Smiths: grade breaks the tie only when exactly one candidate grade matches', () => {
+    const students = [stu('s8', 'Josh', 'Smith', 'male', 8), stu('s11', 'Josh', 'Smith', 'male', 11)];
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: 8 }), ros(2, 'Josh', 'Smith', 'male', { grade: 11 })], students))
+      .toEqual([{ personId: U(1), studentId: 's8', match: 'auto' }, { personId: U(2), studentId: 's11', match: 'auto' }]);
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: 8 })], students))
+      .toEqual([{ personId: U(1), studentId: 's8', match: 'auto' }]);
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: 9 })], students))
+      .toEqual([{ personId: U(1), studentId: null, match: 'ambiguous' }]);
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: null })], students))
+      .toEqual([{ personId: U(1), studentId: null, match: 'ambiguous' }]);
+    // two roster rows in the same grade: no tie-break for either
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: 8 }), ros(2, 'Josh', 'Smith', 'male', { grade: 8 })], students))
+      .toEqual([{ personId: U(1), studentId: null, match: 'ambiguous' }, { personId: U(2), studentId: null, match: 'ambiguous' }]);
+    // two students in the same grade: no tie-break
+    expect(autoMatch([ros(1, 'Josh', 'Smith', 'male', { grade: 8 })], [...students, stu('s8b', 'Josh', 'Smith', 'male', 8)]))
+      .toEqual([{ personId: U(1), studentId: null, match: 'ambiguous' }]);
+  });
+});
 
 describe('autoMatch (contract 6)', () => {
   it('name key + equal gender, one student -> auto', () => {

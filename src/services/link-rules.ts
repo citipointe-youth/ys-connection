@@ -78,8 +78,6 @@ export function nameFold(s: string): string {
     .toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
 }
 
-const fold = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
-
 export function dedupeKey(type: ActionType, payload: Record<string, unknown>): string {
   const p = payload as Record<string, string>;
   switch (type) {
@@ -88,7 +86,7 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'submitReport':
     case 'editReport': return `report:${p.groupId}:${p.date}`;
     case 'completeStep': return `complete:${p.rowId}`;
-    case 'firstTimerCheckIn': return `first:${p.serviceTimeId}:${fold(`${p.firstName ?? ''} ${p.lastName ?? ''}`)}`;
+    case 'firstTimerCheckIn': return `first:${p.serviceTimeId}:${nameFold(p.firstName ?? '')} ${nameFold(p.lastName ?? '')}`;
   }
 }
 
@@ -162,10 +160,10 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 
 // ---------------- Auto-match (contract §6) ----------------
 
-export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; }
+export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; grade?: number | null; }
 export interface MatchChange { personId: string; studentId: string | null; match: Match; }
 
-const nameKey = (first: string, last: string) => `${first.toLowerCase()} ${last.toLowerCase()}`;
+const nameKey = (first: string, last: string) => `${nameFold(first)} ${nameFold(last)}`; // X8 (B16)
 
 /**
  * The changes to write after a roster push. Resets a dead studentId to none and releases an `auto` row that is no
@@ -182,10 +180,12 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
   }
   const eligible = (r: LinkRosterRow) => r.active && r.kind === 'student';
   const rosterKeyCount = new Map<string, number>();
+  const rosterKeyGrade = new Map<string, number>(); // same name AND same grade (the grade tie-break needs it unique)
   for (const r of roster) {
     if (!r.active) continue;
     const k = nameKey(r.firstName, r.lastName);
     rosterKeyCount.set(k, (rosterKeyCount.get(k) ?? 0) + 1);
+    rosterKeyGrade.set(`${k}|${r.grade}`, (rosterKeyGrade.get(`${k}|${r.grade}`) ?? 0) + 1);
   }
   const state = roster.map((r) => {
     let studentId = r.studentId;
@@ -204,8 +204,13 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
     if (eligible(r) && (match === 'none' || match === 'ambiguous')) {
       const k = nameKey(r.firstName, r.lastName);
       const hits = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && !taken.has(s.id));
-      if ((rosterKeyCount.get(k) ?? 0) > 1 && hits.length > 0) { studentId = null; match = 'ambiguous'; }
-      else if (hits.length > 1) { studentId = null; match = 'ambiguous'; }
+      // B16: grade breaks an ambiguous tie only when exactly one candidate's grade matches (and no other roster row
+      // has the same name and grade).
+      const sameGrade = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && r.grade != null && s.grade === r.grade);
+      const tie = (rosterKeyCount.get(k) ?? 0) > 1 ? hits.length > 0 : hits.length > 1;
+      if (tie && sameGrade.length === 1 && !taken.has(sameGrade[0]!.id) && rosterKeyGrade.get(`${k}|${r.grade}`) === 1) {
+        studentId = sameGrade[0]!.id; match = 'auto'; taken.add(studentId);
+      } else if (tie) { studentId = null; match = 'ambiguous'; }
       else if (hits.length === 1) { studentId = hits[0]!.id; match = 'auto'; taken.add(studentId); }
       else { studentId = null; match = 'none'; }
     }
