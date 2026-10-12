@@ -25,6 +25,8 @@ const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: 
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
+// APP-49: the real constant, read from the page (a copy here would hide a change).
+const LK_DOOR_TYPES_SRC = loadIndexHtml().match(/^const LK_DOOR_TYPES = \[[^\]]*\];/m)![0];
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
   fresh?: (path: string) => Promise<any>;
@@ -45,7 +47,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
       settings: { ministryConfig: { modules: { newYouthForms: ${JSON.stringify(env.mode ?? 'on')} } } } };
     let LINK = _lkFresh();
-    const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
+    ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
     const navigator = { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1' };
     const document = { getElementById: () => null, visibilityState: 'visible' };

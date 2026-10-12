@@ -7,7 +7,8 @@ import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
 
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
-const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled'];
+// APP-84: not link-rules FINAL (that one includes unclear); these rows may lose their note after 30 days.
+const PURGEABLE: Status[] = ['sent', 'refused', 'shadowed', 'cancelled'];
 const DAY = 86_400_000;
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -93,7 +94,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
       if (!r.active && (r.match === 'none' || r.match === 'ignored') && Date.parse(r.updatedAt) < now - 90 * DAY) this.rosterRows.delete(k);
     }
     for (const { row } of this.outbox.values()) {
-      if (FINAL.includes(row.status) && row.note !== null && Date.parse(row.createdAt) < now - 30 * DAY) row.note = null;
+      if (PURGEABLE.includes(row.status) && row.note !== null && Date.parse(row.createdAt) < now - 30 * DAY) row.note = null;
     }
     this.log = this.log.filter((l) => Date.parse(l.at) >= now - 400 * DAY);
     // lease
