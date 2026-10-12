@@ -269,6 +269,26 @@ describe('F1.2 queue', () => {
     await a;
     expect(h.fns._lkQGet()).toHaveLength(10);
   });
+  it('B8 / T-39: each queued item is stamped _at; the flush sends it as queuedAt, with sentAt on the envelope', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkIn');
+    expect(h.fns._lkQGet()[0]._at).toBe('2026-10-16T09:00:00.000Z');
+    h.fns._lkQSet([...h.fns._lkQGet(), { v: 1, kind: 'action', id: P(60), type: 'checkIn', payload: {}, note: null, leaderId: null }]);
+    vi.setSystemTime(new Date('2026-10-16T09:30:00.000Z'));
+    await h.fns._lkFlush();
+    const b = h.calls.posts[0].b;
+    expect(b.sentAt).toBe('2026-10-16T09:30:00.000Z');
+    expect(b.items[0].queuedAt).toBe('2026-10-16T09:00:00.000Z');
+    expect(b.items[0]._at).toBeUndefined();
+    expect('queuedAt' in b.items[1]).toBe(false); // an old item with no _at counts as now on the server
+  });
+  it('B8: a stale refusal reads "Someone else changed this after your tap. Reload."', () => {
+    const t = makeEnv().fns._lkStatusText;
+    expect(t({ status: 'refused', reason: 'stale' })).toBe('Someone else changed this after your tap. Reload.');
+  });
   it('saved/replay take the server status; duplicate adopts existingId', async () => {
     const people = [1, 2, 3].map((n) => ({ personId: P(n), name: 'P' + n, grade: 8, leader: false, checkedIn: false, action: null, mine: false }));
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [
@@ -666,7 +686,7 @@ describe('F1.4 leader sheet', () => {
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(2);
     for (const it of q) {
-      expect(Object.keys(it).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
+      expect(Object.keys(it).sort()).toEqual(['_at', 'id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
       expect(it).toMatchObject({ kind: 'action', type: 'checkIn', note: null, leaderId: P(77) });
       expect(Object.keys(it.payload).sort()).toEqual(['personId', 'serviceId', 'serviceTimeId']);
     }
@@ -885,7 +905,7 @@ describe('F2 lifegroup report', () => {
     h.fns._lkReportSend();
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(1);
-    expect(Object.keys(q[0]).sort()).toEqual(['id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
+    expect(Object.keys(q[0]).sort()).toEqual(['_at', 'id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
     expect(q[0]).toMatchObject({ kind: 'action', type: 'submitReport', note: 'Great night', leaderId: 'L1' });
     expect(q[0].payload).toEqual({ groupId: G(1), date: '2026-10-13', didNotMeet: false, attendees: [P(61)], guests: 99, notesPrivate: false, serviceTimeId: P(50) });
     expect(h.get().LINK.rf).toBeNull();
@@ -1044,7 +1064,7 @@ describe('F3 flow steps', () => {
     h.fns._lkStepSend();
     const q = h.fns._lkQGet();
     expect(q).toHaveLength(1);
-    expect(Object.keys(q[0]).sort()).toEqual(['_f', 'id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
+    expect(Object.keys(q[0]).sort()).toEqual(['_at', '_f', 'id', 'kind', 'leaderId', 'note', 'payload', 'type', 'v']);
     expect(q[0]).toMatchObject({ kind: 'action', type: 'completeStep', note: 'Called, all good', leaderId: 'L1', _f: F(2) });
     expect(q[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: true });
     expect(h.calls.closed).toBe(1);

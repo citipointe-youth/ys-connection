@@ -20,13 +20,14 @@ import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
 import {
-  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStillSending, LinkUnavailable,
+  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStale, LinkStillSending, LinkTooOld,
+  LinkUnavailable,
 } from '../core/errors/link-errors';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
-  addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
+  LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
 } from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
@@ -50,15 +51,18 @@ const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ActionFields = { id: Uuid, type: z.enum(ACTION_TYPES), payload: z.record(z.unknown()),
   note: z.string().nullable().optional(), leaderId: Uuid.nullable().optional() };
 const ActionItem = z.object(ActionFields);
+/** B8 / T-39: the phone's tap time (its own clock); the envelope's sentAt maps it onto the server clock. */
+const QueuedAt = z.string().datetime().optional();
 const BatchItem = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('action'), ...ActionFields }),
-  z.object({ kind: z.literal('cancel'), id: Uuid, leaderId: Uuid.nullable().optional() }),
-  z.object({ kind: z.literal('undo'), id: Uuid, leaderId: Uuid.nullable().optional(), newId: Uuid }),
+  z.object({ kind: z.literal('action'), ...ActionFields, queuedAt: QueuedAt }),
+  z.object({ kind: z.literal('cancel'), id: Uuid, leaderId: Uuid.nullable().optional(), queuedAt: QueuedAt }),
+  z.object({ kind: z.literal('undo'), id: Uuid, leaderId: Uuid.nullable().optional(), newId: Uuid, queuedAt: QueuedAt }),
   z.object({ kind: z.literal('identity'), id: Uuid, at: z.string().datetime(), from: Uuid.nullable(), to: Uuid.nullable() }),
 ]);
 /** Only the envelope fails the whole call (APP-17); each item is parsed in the loop and a bad one is refused alone. */
 const BatchBody = z.object({
   device: z.object({ id: z.string().max(100).nullable().optional(), label: z.string().max(100).nullable().optional() }).optional(),
+  sentAt: z.string().datetime().optional(),
   items: z.array(z.unknown()).min(1).max(LINK_BATCH_MAX),
 });
 const ITEM_KINDS = ['action', 'cancel', 'undo', 'identity'] as const;
@@ -170,6 +174,8 @@ const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, 
   code: e.code, message: e.message, ...(typeof e.extra?.reason === 'string' ? { reason: e.extra.reason } : {}) });
 
 interface Target { kind: LinkLogRow['targetKind']; id: string | null; name: string | null }
+/** B8: when the tap happened (server clock) and the ids of the batch it came in (they never make each other stale). */
+interface Tap { at: Date; batchIds: Set<string> }
 interface Who { id: string | null; name: string | null }
 
 // ---------------------------------------------------------------- service
@@ -249,7 +255,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     d.link.listActions({ personId, serviceTimeId, types: CHECK_TYPES });
 
   // ---- enqueue (spec §8.2 steps 1–6). Throws AppError for a refusal; the caller turns it into a result.
-  async function enqueueChecked(c: Ctx, it: z.infer<typeof ActionItem>, tgt: Target, who: Who): Promise<ItemResult> {
+  async function enqueueChecked(c: Ctx, it: z.infer<typeof ActionItem>, tgt: Target, who: Who, tap?: Tap): Promise<ItemResult> {
     const ok = (row: OutboxRow, outcome: 'saved' | 'replay'): ItemResult =>
       ({ id: it.id, kind: 'action', outcome, httpStatus: outcome === 'saved' ? 201 : 200, action: view(row), mine: true });
     const dup = (row: OutboxRow): ItemResult =>
@@ -274,6 +280,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     // 3. capability off on the newest console (none seen yet → allowed)
     const con = newest(await c.consoles());
     if (con && con.capabilities[it.type] === 'off') throw new LinkUnavailable();
+    // 3b. the 3-day cut-off counts from the tap, not from when the phone got a signal (B8 / APP-16 A)
+    if (tap && tap.at.getTime() < c.t.getTime() - LINK_CUTOFF_DAYS * 86_400_000) throw new LinkTooOld();
     // 4. type checks, note, "I am"
     const parsed = PAYLOAD_SCHEMAS[it.type].safeParse(it.payload);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
@@ -351,6 +359,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     if (it.type === 'checkIn' || it.type === 'checkOut') {
       let rows = await checkRows(personId!, svc!.serviceTimeId);
       const opposite = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
+      // B8 / APP-16 B: someone else changed this person after the tap (a late flush must not undo a newer action).
+      const other = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused' && !tap?.batchIds.has(r.id));
+      if (tap && other && Date.parse(other.createdAt) > tap.at.getTime()) throw new LinkStale();
       if (opposite && opposite.type !== it.type) {
         if (opposite.status === 'claimed' || opposite.status === 'unclear') throw new LinkStillSending();
         // The opposite row has not gone yet: cancel it instead of queueing both (the console could run them in the
@@ -399,7 +410,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
 
   /** One action item: never throws for a refusal; non-AppErrors propagate (the batch turns them into a 503). */
-  async function enqueueItem(c: Ctx, raw: unknown): Promise<{ res: ItemResult; type: ActionType | null; tgt: Target; who: Who }> {
+  async function enqueueItem(c: Ctx, raw: unknown, tap?: Tap): Promise<{ res: ItemResult; type: ActionType | null; tgt: Target; who: Who }> {
     const tgt: Target = { kind: null, id: null, name: null };
     const who: Who = { id: null, name: null };
     const it = ActionItem.safeParse(raw);
@@ -409,7 +420,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     }
     who.id = it.data.leaderId ?? null;
     try {
-      return { res: await enqueueChecked(c, it.data, tgt, who), type: it.data.type, tgt, who };
+      return { res: await enqueueChecked(c, it.data, tgt, who, tap), type: it.data.type, tgt, who };
     } catch (e) {
       if (e instanceof AppError) return { res: refused(it.data.id, 'action', e), type: it.data.type, tgt, who };
       throw e;
@@ -417,8 +428,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
   const outcomeText = (r: ItemResult) => (r.outcome === 'refused' ? `refused:${r.code}` : r.outcome);
 
-  async function doEnqueue(c: Ctx, raw: unknown, device: Device): Promise<{ res: ItemResult; log: LinkLogRow | null }> {
-    const { res, type, tgt, who } = await enqueueItem(c, raw);
+  async function doEnqueue(c: Ctx, raw: unknown, device: Device, tap?: Tap): Promise<{ res: ItemResult; log: LinkLogRow | null }> {
+    const { res, type, tgt, who } = await enqueueItem(c, raw, tap);
     if (!type) return { res, log: null };
     const outboxId = res.outcome === 'saved' || res.outcome === 'replay' ? res.id : res.existingId ?? null;
     const log = await logRow(c, device, { event: type, leaderId: who.id, leaderName: who.name ?? await leaderName(c, who.id),
@@ -447,7 +458,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     return { res, log };
   }
 
-  async function doUndo(c: Ctx, id: string, leaderId: string | null, newId: string, device: Device):
+  async function doUndo(c: Ctx, id: string, leaderId: string | null, newId: string, device: Device, tap?: Tap):
     Promise<{ res: ItemResult; log: LinkLogRow }> {
     let outboxId: string | null = id;
     const res = await (async (): Promise<ItemResult> => {
@@ -463,7 +474,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       const p = row.payload as { serviceTimeId: string; personId: string };
       const out = await enqueueItem(c, { id: newId, type: 'checkOut', payload: { serviceTimeId: p.serviceTimeId, personId: p.personId },
-        note: null, leaderId });
+        note: null, leaderId }, tap);
       if (out.res.outcome !== 'refused') outboxId = out.res.existingId ?? newId;
       return { ...out.res, id, kind: 'undo' };
     })();
@@ -585,6 +596,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const device = dev(b.device ?? undefined);
       const results: BatchItemResult[] = [];
       const logs: LinkLogRow[] = [];
+      // B8 / T-39: tapAt = queuedAt + (serverNow - sentAt), never in the future; no queuedAt = now.
+      const skew = b.sentAt ? c.t.getTime() - Date.parse(b.sentAt) : 0;
+      const batchIds = new Set<string>();
+      for (const x of b.items) {
+        const o = (x && typeof x === 'object' ? x : {}) as { id?: unknown; newId?: unknown };
+        for (const v of [o.id, o.newId]) if (typeof v === 'string') batchIds.add(v);
+      }
+      const tapOf = (queuedAt: string | undefined): Tap => ({ batchIds,
+        at: new Date(queuedAt ? Math.min(c.t.getTime(), Date.parse(queuedAt) + skew) : c.t.getTime()) });
       for (const rawItem of b.items) {
         const pi = BatchItem.safeParse(rawItem);
         if (!pi.success) {
@@ -597,10 +617,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         try {
           let out: { res: ItemResult; log: LinkLogRow | null };
           if (it.kind === 'action') {
-            const { kind: _k, ...raw } = it;
-            out = await doEnqueue(c, raw, device);
+            const { kind: _k, queuedAt, ...raw } = it;
+            out = await doEnqueue(c, raw, device, tapOf(queuedAt));
           } else if (it.kind === 'cancel') out = await doCancel(c, it.id, it.leaderId ?? null, device);
-          else if (it.kind === 'undo') out = await doUndo(c, it.id, it.leaderId ?? null, it.newId, device);
+          else if (it.kind === 'undo') out = await doUndo(c, it.id, it.leaderId ?? null, it.newId, device, tapOf(it.queuedAt));
           else {
             const atMs = Date.parse(it.at);
             const at = atMs <= c.t.getTime() && atMs >= c.t.getTime() - 3 * 86_400_000 ? new Date(atMs).toISOString() : c.t.toISOString();

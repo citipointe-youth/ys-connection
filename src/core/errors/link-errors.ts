@@ -38,6 +38,16 @@ export class LinkStillSending extends AppError {
   constructor() { super('LINK_STILL_SENDING', 'Still sending, try again in a minute.', 409); }
 }
 
+/** B8 / T-39: the tap is older than the 3-day cut-off (APP-16). /link/batch only. */
+export class LinkTooOld extends AppError {
+  constructor() { super('LINK_TOO_OLD', 'Too late to send. Do it in Elvanto.', 409, { reason: 'too-old' }); }
+}
+
+/** B8 / T-39: someone else changed this person's check state after this tap. App-only reason `stale`. */
+export class LinkStale extends AppError {
+  constructor() { super('LINK_STALE', 'Someone else changed this after your tap. Reload.', 409, { reason: 'stale' }); }
+}
+
 export class LinkNotYours extends AppError {
   constructor() { super('LINK_NOT_YOURS', 'Only the leader who sent this can undo it.', 403); }
 }

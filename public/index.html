@@ -9129,6 +9129,7 @@ function _lkStatusText(row, lastSeen) {
     'unknown': "The console couldn't do this. Do it in Elvanto.",
     'lease-lost': 'Not sure it saved. The admin is checking Elvanto.',
     'note-unreadable': "This note couldn't be read. Do it in Elvanto.",
+    'stale': 'Someone else changed this after your tap. Reload.',
   };
   switch (row.status) {
     case 'queued': return 'Waiting to send.';
@@ -9198,7 +9199,7 @@ function _lkUuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => { const r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 3 | 8)).toString(16); });
 }
 function _lkPush(item, soon) {
-  try { const q = _lkQGet(); q.push(Object.assign({ v: 1 }, item)); _lkQSet(q); } catch (e) {}
+  try { const q = _lkQGet(); q.push(Object.assign({ v: 1, _at: new Date().toISOString() }, item)); _lkQSet(q); } catch (e) {}
   if (soon) _lkSchedule(300);
   _lkRefreshView();
 }
@@ -9257,10 +9258,11 @@ function _lkFlush() {
   const items = q.slice(0, 50);
   LINK.inflight = {};
   items.forEach((it) => { if (it.kind === 'action') LINK.inflight[it.id] = true; });
-  const send = items.map((it) => { const o = {}; Object.keys(it).forEach((k) => { if (k[0] !== '_') o[k] = it[k]; }); return o; });
+  // _at (the tap time, B8 / T-39) goes as queuedAt; sentAt lets the server map the phone clock onto its own.
+  const send = items.map((it) => { const o = {}; Object.keys(it).forEach((k) => { if (k[0] !== '_') o[k] = it[k]; }); if (it._at) o.queuedAt = it._at; return o; });
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
-  const p = API.post('/link/batch', { device, items: send }, 20000)
+  const p = API.post('/link/batch', { device, sentAt: new Date().toISOString(), items: send }, 20000)
     .then((res) => { _lkResults(items, (res && res.results) || []); return true; },
       (err) => {
         if (err && err.status === 404 && err.code === 'MODULE_DISABLED') _lkSwitchedOff();
@@ -9700,7 +9702,7 @@ function _lkLeadersSubmit() {
   let n = 0;
   _lkLeadersView().forEach((l) => {
     if (_lkLeaderState(l) !== 'tick' || !t[l.leaderId]) return;
-    q.push({ v: 1, kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, personId: l.personId }, note: null, leaderId: lid });
+    q.push({ v: 1, _at: new Date().toISOString(), kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, personId: l.personId }, note: null, leaderId: lid });
     n++;
   });
   if (!n) return;

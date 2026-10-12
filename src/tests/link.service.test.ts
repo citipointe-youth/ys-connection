@@ -535,6 +535,50 @@ describe('B6 / T-30 undo and ownership (APP-5, APP-50)', () => {
   });
 });
 
+describe('B8 / T-39 tap time (APP-16), /link/batch only', () => {
+  const at = (iso: string) => new Date(iso);
+  it('APP-16 A: a queue opened 6 days later is refused too-old (tap time, not arrival time)', async () => {
+    const h = await setup();
+    h.clock.now = at('2026-10-22T09:00:00.000Z'); // Thu next week; last Friday is still in the pick list
+    const old = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T08:40:00.000Z' };
+    const fresh = { kind: 'action', ...checkIn(P_TOM), queuedAt: '2026-10-22T08:59:00.000Z' };
+    const r = await h.svc.batch(GRADE, { device: DEV, sentAt: '2026-10-22T09:00:00.000Z', items: [old, fresh] });
+    expect(r.results[0]).toMatchObject({ outcome: 'refused', code: 'LINK_TOO_OLD', reason: 'too-old',
+      message: 'Too late to send. Do it in Elvanto.' });
+    expect(r.results[1]).toMatchObject({ outcome: 'saved' });
+    expect(await h.link.getAction(old.id)).toBeNull();
+  });
+  it('APP-16 B: A taps in at 7:00 offline; B checks in at 7:01 and out at 9:00; A flushes at 9:30 → stale', async () => {
+    const h = await setup();
+    h.clock.now = at('2026-10-16T09:01:00.000Z');
+    const b1 = checkIn(P_AMY);
+    await h.svc.enqueue(QUAD, b1, DEV);
+    setRow(h.link, b1.id, { status: 'sent', result_at: '2026-10-16T09:02:00.000Z' });
+    h.clock.now = at('2026-10-16T11:00:00.000Z');
+    expect((await h.svc.enqueue(QUAD, checkOut(P_AMY), DEV)).outcome).toBe('saved');
+    h.clock.now = at('2026-10-16T11:30:00.000Z');
+    // A's phone clock runs 1 h slow: tapped at its 08:00 (server 09:00), sent at its 10:30 (server 11:30)
+    const a = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T08:00:00.000Z' };
+    const r = await h.svc.batch(GRADE, { device: DEV, sentAt: '2026-10-16T10:30:00.000Z', items: [a] });
+    expect(r.results[0]).toMatchObject({ outcome: 'refused', code: 'LINK_STALE', reason: 'stale',
+      message: 'Someone else changed this after your tap. Reload.' });
+  });
+  it('items of the same batch never make each other stale; no queuedAt counts as now; the single routes are unchanged', async () => {
+    const h = await setup();
+    const inn = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T08:00:00.000Z' };
+    const out = { kind: 'action', ...checkOut(P_TOM), queuedAt: '2026-10-16T08:10:00.000Z' };
+    const tomIn = { kind: 'action', ...checkIn(P_TOM), queuedAt: '2026-10-16T08:05:00.000Z' };
+    // Tom: in then out within one batch (B4 cancels the pending check-in)
+    const r = await h.svc.batch(GRADE, { device: DEV, sentAt: NOW.toISOString(), items: [inn, tomIn, out] });
+    expect(r.results.map((x) => x.outcome)).toEqual(['saved', 'saved', 'cancelled']);
+    const plain = { kind: 'action', ...checkIn(P_EVE1) };
+    expect((await h.svc.batch(GRADE, { device: DEV, items: [plain] })).results[0]!.outcome).toBe('saved');
+    // a future tap (phone clock ahead) is clamped to now
+    const ahead = { kind: 'action', ...checkIn(P_EVE2), queuedAt: '2026-10-17T09:00:00.000Z' };
+    expect((await h.svc.batch(GRADE, { device: DEV, sentAt: NOW.toISOString(), items: [ahead] })).results[0]!.outcome).toBe('saved');
+  });
+});
+
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
     const h = await setup();
