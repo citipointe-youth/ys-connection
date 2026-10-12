@@ -32,7 +32,7 @@ export function computeQuad(grade: number | null, gender: string): Quad | null {
   if (!grade) return null;
   const g = gender.toLowerCase();
   const isFemale = g === 'female' || g === 'f';
-  if (grade >= 7 && grade <= 9) return isFemale ? 'g79' : 'b79';
+  if (grade >= 6 && grade <= 9) return isFemale ? 'g79' : 'b79'; // T13: grade 6 is junior
   if (grade >= 10 && grade <= 12) return isFemale ? 'g1012' : 'b1012';
   return null;
 }

@@ -258,8 +258,6 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
   const OFF = { ministryConfig: { logins: { simple: false } } };
   const MSG = 'Turn off Junior/Senior logins first';
   const NEEDS = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
-  const G6 = 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.';
-  const G6_ON = 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.';
 
   async function fixture() {
     const f = await makeService();
@@ -383,20 +381,20 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     expect(r.renamedQuads).toBeUndefined();
     expect((await users.findById('q1'))!.displayName).toBe('Girls Yr 7–9');
   });
-  // T3: grade 6 has no quad bracket, so Simple logins needs gradeMin >= 7.
-  it('T3: turning Simple on with Include Grade 6 is 400 (turn off Grade 6 first)', async () => {
-    const { service, users } = await fixture();
+  // T13 (2026-10-12): grade 6 joins the junior quads, so Include Grade 6 no longer blocks Simple logins.
+  it('T13: turning Simple on with Include Grade 6 is allowed', async () => {
+    const { service, repo, users } = await fixture();
     await service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } });
-    await expect(service.update(ADMIN, ON)).rejects.toMatchObject({ statusCode: 400, message: G6 });
-    expect(await status(users, 'g7')).toBe('active');
+    await service.update(ADMIN, ON);
+    expect((await repo.getSettings()).ministryConfig.logins.simple).toBe(true);
+    expect(await status(users, 'g7')).toBe('inactive');
   });
 
-  it('T3: turning Include Grade 6 on while Simple is on is 400 (turn off Simple first)', async () => {
+  it('T13: turning Include Grade 6 on while Simple is on is allowed', async () => {
     const { service, repo } = await fixture();
     await service.update(ADMIN, ON);
-    await expect(service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } }))
-      .rejects.toMatchObject({ statusCode: 400, message: G6_ON });
-    expect((await repo.getSettings()).ministryConfig.structure.gradeMin).toBe(7);
+    await service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } });
+    expect((await repo.getSettings()).ministryConfig.structure.gradeMin).toBe(6);
   });
 
   // T1: a stale draft must not flip Simple logins / Prayers.
@@ -489,5 +487,18 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     await expect(service.update(ADMIN, ON)).rejects.toThrow();
     spy.mockRestore();
     expect((await overviewSvc.getStats(ADMIN)).ministryTotal).toBe(1);
+  });
+});
+
+describe('T10 link module keys through PATCH /settings (the settings file is a GET + PATCH round trip)', () => {
+  it('saves each key on its own and a downloaded ministryConfig loads back unchanged', async () => {
+    const { service } = await makeService();
+    await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: 'shadow', checkin: 'on', lifegroupReport: 'off', flows: 'shadow' } } });
+    const file = JSON.parse(JSON.stringify((await service.get()).ministryConfig));
+    expect([file.modules.checkin, file.modules.lifegroupReport, file.modules.flows]).toEqual(['on', 'off', 'shadow']);
+    const fresh = await makeService();
+    await fresh.service.update(ADMIN, { ministryConfig: file });
+    expect((await fresh.service.get()).ministryConfig.modules).toMatchObject({ newYouthForms: 'shadow', checkin: 'on', lifegroupReport: 'off', flows: 'shadow' });
+    await expect(service.update(ADMIN, { ministryConfig: { modules: { flows: 'sometimes' } } })).rejects.toBeTruthy();
   });
 });

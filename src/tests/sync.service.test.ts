@@ -30,12 +30,13 @@ const CREATOR = 'c0000000-0000-4000-8000-0000000000aa';
 
 type Mode = 'off' | 'shadow' | 'on';
 
-async function setup(opts: { mode?: Mode; decrypt?: (n: string, id: string) => string } = {}) {
+async function setup(opts: { mode?: Mode; modules?: Record<string, Mode>; decrypt?: (n: string, id: string) => string } = {}) {
+  const m = opts.mode ?? 'on';
   const link = new InMemoryLinkRepository({ decrypt: opts.decrypt });
   const settings = new InMemorySettingsRepository();
   await settings.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
-    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: opts.mode ?? 'on' } } } as any);
+    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: m, checkin: m, lifegroupReport: m, flows: m, ...opts.modules } } } as any);
   const users = new InMemoryUserRepository();
   await users.save({ id: CREATOR, displayName: 'Grade 9 Girls', email: 'grade9g', role: 'grade', status: 'active' } as any);
   const students = new InMemoryStudentRepository();
@@ -157,6 +158,15 @@ describe('sync.service claim', () => {
     expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
     expect((await link.getAction(fresh.id))!.status).toBe('pending');
     expect(await link.getAction(old.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+  });
+
+  it('T10: off means every link screen off: New person on alone leases nothing; one screen on leases', async () => {
+    const off = await setup({ mode: 'off', modules: { newYouthForms: 'on' } });
+    await off.link.insertAction(rowFromFixture(claimRes.rows[0]));
+    expect((await off.svc.claim(claimReq)).rows).toEqual([]);
+    const one = await setup({ mode: 'off', modules: { flows: 'shadow' } });
+    await one.link.insertAction(rowFromFixture(claimRes.rows[0]));
+    expect((await one.svc.claim(claimReq)).rows).toHaveLength(1);
   });
 
   it('shadow mode still leases (the /sync side ignores the switch except off)', async () => {

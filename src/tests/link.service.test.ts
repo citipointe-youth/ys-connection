@@ -64,7 +64,10 @@ const leader = (id: string, fullName: string, gender: 'male' | 'female' | null, 
 
 const group = (g: Omit<LinkGroupRow, 'grade' | 'gender'>): LinkGroupRow => ({ ...g, ...parseGroupName(g.name) });
 
-async function setup(mode: Mode = 'on', o: { console?: boolean; caps?: Partial<Capabilities>; limiter?: { isBlocked(k: string): boolean } } = {}): Promise<H> {
+type Modes = Partial<Record<'newYouthForms' | 'checkin' | 'lifegroupReport' | 'flows', Mode>>;
+async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: Partial<Capabilities>; limiter?: { isBlocked(k: string): boolean } } = {}): Promise<H> {
+  const modes = typeof mode === 'string' ? { newYouthForms: mode, checkin: mode, lifegroupReport: mode, flows: mode }
+    : { newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', ...mode };
   const clock = { now: NOW };
   const link = new InMemoryLinkRepository({ now: () => clock.now });
   const settings = new InMemorySettingsRepository();
@@ -75,7 +78,7 @@ async function setup(mode: Mode = 'on', o: { console?: boolean; caps?: Partial<C
   const attendance = new InMemoryServiceAttendanceRepository();
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
-    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: mode } } } as never);
+    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...modes } } } as never);
   for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [QUAD_ID, 'g79', 'quad'],
     [GRADE_ID, 'grade9g', 'grade'], [LEAD_ID, 'cody', 'leader'], [GRADE2_ID, 'grade9b', 'grade'], [QB_ID, 'b1012', 'quad']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
@@ -190,28 +193,57 @@ describe('D1 the switch (every public method)', () => {
   ];
   const everyone = [ADMIN, DIRECTOR, QUAD, GRADE, LEADER];
 
-  it('off: 404 MODULE_DISABLED for every role, admin included', async () => {
+  // T9: the admin page (status, listActions, cancel via batch, the admin routes) works for the admin in every module state.
+  const adminAlways = new Set(['status', 'listActions', 'enqueue', 'cancel', 'undo', 'batch']);
+
+  it('off: 404 MODULE_DISABLED for every role; the admin keeps its page (T9); admin routes 403 for the rest', async () => {
     const h = await setup('off');
-    for (const [name, f] of [...use, ...adm]) for (const a of everyone) {
-      expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:MODULE_DISABLED`);
+    for (const [name, f] of use) for (const a of everyone) {
+      const want = a === ADMIN && adminAlways.has(name) ? 'ok' : 'MODULE_DISABLED';
+      expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${want}`);
+    }
+    for (const [name, f] of adm) for (const a of everyone) {
+      expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${a === ADMIN ? 'ok' : 'FORBIDDEN'}`);
     }
   });
 
-  it('shadow: admin only; everyone else 404', async () => {
+  it('shadow: admin only; everyone else 404 (403 on the admin routes)', async () => {
     const h = await setup('shadow');
     for (const [name, f] of [...use, ...adm]) {
       expect(`${name}:${await code(f(h.svc, ADMIN))}`).toBe(`${name}:ok`);
-      for (const a of [DIRECTOR, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:MODULE_DISABLED`);
+      const want = adm.some(([n]) => n === name) ? 'FORBIDDEN' : 'MODULE_DISABLED';
+      for (const a of [DIRECTOR, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${want}`);
     }
   });
 
-  it('on: link:use for every role; link:admin 403 for quad/grade/leader', async () => {
+  it('on: link:use for every role; link:admin 403 for everyone but the admin (T9: directors too)', async () => {
     const h = await setup('on');
     for (const [name, f] of use) for (const a of everyone) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:ok`);
     for (const [name, f] of adm) {
-      for (const a of [ADMIN, DIRECTOR]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:ok`);
-      for (const a of [QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:FORBIDDEN`);
+      expect(`${name}:admin:${await code(f(h.svc, ADMIN))}`).toBe(`${name}:admin:ok`);
+      for (const a of [DIRECTOR, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:FORBIDDEN`);
     }
+  });
+
+  it('T10: each screen follows its own module; /link/checkin serves check-in or the report form', async () => {
+    const only = async (m: Modes) => {
+      const h = await setup(m);
+      return Object.fromEntries(await Promise.all([...use].map(async ([n, f]) => [n, await code(f(h.svc, GRADE))])));
+    };
+    const ok = (names: string[]) => Object.fromEntries(use.map(([n]) => [n, names.includes(n) ? 'ok' : 'MODULE_DISABLED']));
+    // batch-borne names (enqueue/cancel/undo/batch) pass the envelope when any link screen is usable; items are checked alone.
+    const shared = ['status', 'listActions', 'enqueue', 'cancel', 'undo', 'batch'];
+    expect(await only({ checkin: 'on' })).toEqual(ok([...shared, 'checkin']));
+    expect(await only({ lifegroupReport: 'on' })).toEqual(ok([...shared, 'checkin', 'lifegroups']));
+    expect(await only({ flows: 'on' })).toEqual(ok([...shared, 'flows']));
+    expect(await only({ newYouthForms: 'on' })).toEqual(ok([])); // New person alone opens no link screen
+  });
+
+  it('T10: a batch item is refused when its own module is off (report off, check-in on)', async () => {
+    const h = await setup({ checkin: 'on' });
+    expect(await enq(h.svc, GRADE, report(), DEV)).toMatchObject({ outcome: 'refused', code: 'MODULE_DISABLED' });
+    expect(await enq(h.svc, GRADE, step(), DEV)).toMatchObject({ outcome: 'refused', code: 'MODULE_DISABLED' });
+    expect((await enq(h.svc, GRADE, checkIn(), DEV)).outcome).toBe('saved');
   });
 });
 
@@ -783,11 +815,12 @@ describe('D3 cancel, undo, listActions', () => {
     expect((await cancel(h.svc, GRADE, b.id, null, DEV)).outcome).toBe('cancelled');
   });
 
-  it('director/admin (On) can cancel anyone\'s; not pending → too-late', async () => {
+  it('admin (On) can cancel anyone\'s, a director no longer can (T9); not pending → too-late', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
     await enq(h.svc, GRADE, a, DEV);
-    expect((await cancel(h.svc, DIRECTOR, a.id, null, DEV)).outcome).toBe('cancelled');
+    expect(await cancel(h.svc, DIRECTOR, a.id, null, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
+    expect((await cancel(h.svc, ADMIN, a.id, null, DEV)).outcome).toBe('cancelled');
     const b = report();
     await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, b.id, { status: 'claimed' });
@@ -826,10 +859,11 @@ describe('D3 cancel, undo, listActions', () => {
       'status', 'type']);
     expect(mine[0]).toMatchObject({ login: 'grade9g', leaderName: 'Dana Day', hasNote: true });
     expect(JSON.stringify(mine)).not.toContain('private words');
-    const all = await h.svc.listActions(DIRECTOR, { ids });
+    expect(await h.svc.listActions(DIRECTOR, { ids })).toEqual([]); // T9: a director sees its own rows only
+    const all = await h.svc.listActions(ADMIN, { ids });
     expect(all.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
     expect(all.find((r) => r.id === b.id)).toMatchObject({ detail: 'console sentence', login: 'g79', hasNote: false });
-    expect((await h.svc.listActions(DIRECTOR, { serviceDate: TODAY, type: 'checkIn' })).map((r) => r.id)).toEqual([b.id]);
+    expect((await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'checkIn' })).map((r) => r.id)).toEqual([b.id]);
   });
   it('B3 / T-7: an unclear row carries the person for link:admin only; other rows and other roles never do', async () => {
     const h = await setup();
@@ -1179,7 +1213,7 @@ describe('D6 admin: matching, shadow check, log', () => {
     const tom = await mk(P_TOM, 'sent');        // not attended → sent-not-imported
     const eve = await mk(P_EVE1, 'shadowed');   // no student → no-student
     const cody = await mk(P_CODY, 'pending');   // pending: not checked
-    const r = await h.svc.shadowCheck(DIRECTOR, TODAY);
+    const r = await h.svc.shadowCheck(ADMIN, TODAY);
     expect(r.imported).toBe(true);
     const v = Object.fromEntries(r.rows.map((x) => [x.id, x.verdict]));
     expect(v).toEqual({ [amy]: 'matched', [tom]: 'sent-not-imported', [eve]: 'no-student' });

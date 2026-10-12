@@ -34,8 +34,10 @@ export function makeSyncService(d: SyncDeps) {
     async claim(body: unknown): Promise<z.infer<typeof ClaimResponse>> {
       const req = parseBody(ClaimRequest, body);
       const settings = await d.settings.getSettings();
-      // Off is the stop button: heartbeat + sweep still run, nothing is leased.
-      const max = settings.ministryConfig.modules.newYouthForms === 'off' ? 0 : req.max;
+      // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
+      // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
+      const m = settings.ministryConfig.modules;
+      const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off') ? 0 : req.max;
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,

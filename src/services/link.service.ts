@@ -1,5 +1,6 @@
 // Elvanto link, app side: the leader + admin service (spec 2026-10-12-elvanto-link-app-design.md §2, §6, §8.2, §9.1;
-// contract 2026-10-11 §4, §5). Every method starts with the one switch (modules.newYouthForms) + RBAC.
+// contract 2026-10-11 §4, §5). Every method starts with gate(): its module (T10: modules.checkin / lifegroupReport /
+// flows) + RBAC; the admin routes are the admin login's in every module state (T9).
 // Never logs: no note text, phone or address goes into a reply or a link_log row.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -183,6 +184,15 @@ function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l:
   };
 }
 
+/** T10: the three link screens, each its own module mode (ministryConfig.modules). */
+type Feature = 'checkin' | 'lifegroupReport' | 'flows';
+const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
+const FEATURE_OF: Record<ActionType, Feature> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
+  submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows' };
+/** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
+const usable = (a: Actor, s: AppSettings, f: Feature) =>
+  can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
+
 const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused',
   code: e.code, message: e.message, ...(typeof e.extra?.reason === 'string' ? { reason: e.extra.reason } : {}) });
 
@@ -196,14 +206,20 @@ interface Who { id: string | null; name: string | null }
 export function makeLinkService(d: LinkServiceDeps): LinkService {
   const clock = d.now ?? (() => new Date());
 
-  /** The switch, then RBAC: a mode miss is 404 for everyone; a link:admin miss under the mode is 403. */
-  async function gate(actor: Actor, action: 'link:use' | 'link:admin'): Promise<AppSettings> {
+  /**
+   * T9/T10: 'admin' = link:admin (the admin login only), in every module state, else 403. A feature list passes when
+   * any of those screens is usable (its own mode, then link:use), else 404. 'any' = any link screen, and the admin
+   * always (its page reads status and actions, and cancels through the batch).
+   */
+  async function gate(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await d.settings.getSettings();
-    if (!modeAllows(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('Elvanto link');
-    if (!can(actor, action)) {
-      if (action === 'link:admin') throw new ForbiddenError('Only the director or admin can do this.');
-      throw new ModuleDisabledError('Elvanto link');
+    const admin = can(actor, 'link:admin');
+    if (need === 'admin') {
+      if (!admin) throw new ForbiddenError('Only the admin can do this.');
+      return settings;
     }
+    if (need === 'any' && admin) return settings;
+    if (!(need === 'any' ? FEATURES : need).some((f) => usable(actor, settings, f))) throw new ModuleDisabledError('Elvanto link');
     return settings;
   }
 
@@ -213,7 +229,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const memo = <T>(f: () => Promise<T>) => { let p: Promise<T> | undefined; return () => (p ??= f()); };
     const t = clock();
     return {
-      actor, t, today: brisbaneToday(t), structure: settings.ministryConfig.structure as StructureScope,
+      actor, settings, t, today: brisbaneToday(t), structure: settings.ministryConfig.structure as StructureScope,
       admin: can(actor, 'link:admin'),
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
@@ -297,6 +313,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       Object.assign(tgt, await targetOf(c, prev));
       return ok(prev, 'replay');
     };
+    // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is)
+    if (!usable(c.actor, c.settings, FEATURE_OF[it.type])) throw new ModuleDisabledError('Elvanto link');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -544,7 +562,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
   return {
     async status(actor) {
-      await gate(actor, 'link:use');
+      await gate(actor, 'any');
       const t = clock().getTime();
       const [consoles, mirrors] = await Promise.all([d.link.listConsoles(), d.link.mirrorState()]);
       const n = newest(consoles);
@@ -561,7 +579,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async checkin(actor, serviceTimeId) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, ['checkin', 'lifegroupReport'])); // T10: the report form picks its service here
       const one = typeof serviceTimeId === 'string' && serviceTimeId !== '';
       const services = await c.services();
       const svc = one ? services.find((s) => s.serviceTimeId === serviceTimeId) : undefined;
@@ -599,7 +617,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async listActions(actor, q) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, 'any'));
       const Q = z.object({ ids: z.union([z.string(), z.array(z.string())]).optional(), serviceDate: Ymd.optional(),
         type: z.enum(ACTION_TYPES).optional() });
       const f = Q.parse(q ?? {});
@@ -623,7 +641,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async batch(actor, body) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, 'any')); // T10: each action item is checked against its own module
       const parsed = BatchBody.safeParse(body); // only a bad envelope fails the whole call
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400, { details: parsed.error.errors });
       const b = parsed.data;
@@ -691,7 +709,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async lifegroups(actor) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, ['lifegroupReport']));
       const [groups, mirrors, sent, open] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN })]);
@@ -704,7 +722,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async flows(actor) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, ['flows']));
       const [flows, roster, open] = await Promise.all([c.flows(), c.roster(),
         d.link.listActions({ types: ['completeStep'], statuses: OPEN })]);
       const byId = new Map(roster.map((r) => [r.personId, r]));
@@ -719,7 +737,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async rosterForMatching(actor, q) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
       const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
       // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
@@ -744,7 +762,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async setMatch(actor, personId, body) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const b = z.object({ studentId: Uuid.nullable(), ignore: z.literal(true).optional() }).parse(body ?? {});
       const roster = await d.link.roster();
       if (!roster.some((r) => r.personId === personId)) throw new NotFoundError('This person is not in the roster.');
@@ -764,7 +782,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async shadowCheck(actor, date) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const day = Ymd.parse(date);
       const sessions = (await d.serviceSessions.findAll()).filter((s) => s.sessionDate.slice(0, 10) === day);
       if (sessions.length === 0) return { date: day, imported: false, rows: [], unlinkedAttenders: 0 };
@@ -788,7 +806,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async log(actor, q) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const f = z.object({ from: Ymd.optional(), to: Ymd.optional(), login: z.string().max(200).optional(),
         event: z.enum(LOG_EVENTS).optional() }).parse(q ?? {});
       const to = f.to ?? brisbaneToday(clock());

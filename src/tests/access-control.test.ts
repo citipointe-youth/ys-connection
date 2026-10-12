@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { quadGradesOf } from '../services/access-control';
+import { computeQuad } from '../core/types/enums';
 import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canWithConfig, modeAllows, canSetViewGrades, type Action } from '../services/access-control';
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
@@ -181,8 +183,8 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
   it.each(roles)('link:use: %s can', (role) => {
     expect(can(actor(role), 'link:use')).toBe(true);
   });
-  it.each(roles)('link:admin: only director and admin (%s)', (role) => {
-    expect(can(actor(role), 'link:admin')).toBe(role === 'director' || role === 'admin');
+  it.each(roles)('link:admin: admin only, directors lose it too (T9) (%s)', (role) => {
+    expect(can(actor(role), 'link:admin')).toBe(role === 'admin');
   });
   it.each(roles)('modeAllows: on -> all, shadow -> admin only, off -> none (%s)', (role) => {
     expect(modeAllows(actor(role), 'on')).toBe(true);
@@ -260,5 +262,18 @@ describe('RBAC — canSetViewGrades', () => {
   });
   it('grade cannot write', () => {
     expect(canSetViewGrades(actor('grade', { grade: 9 }), 'L1')).toBe(false);
+  });
+});
+
+describe('T13 grade 6 is junior', () => {
+  it('computeQuad puts grade 6 in the junior quads', () => {
+    expect(computeQuad(6, 'female')).toBe('g79');
+    expect(computeQuad(6, 'male')).toBe('b79');
+    expect(computeQuad(5, 'male')).toBeNull();
+  });
+  it('a junior quad login sees grade 6; a senior one does not', () => {
+    expect(canAccessGrade(actor('quad', { quad: 'g79' }), 6)).toBe(true);
+    expect(canAccessGrade(actor('quad', { quad: 'b1012' }), 6)).toBe(false);
+    expect(quadGradesOf('b79')).toEqual([6, 7, 8, 9]);
   });
 });

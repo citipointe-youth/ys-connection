@@ -65,28 +65,21 @@ function assertSafeSuburb(s: string) {
   if (s !== 'Petrie Terrace') expect(STREET.test(s), s).toBe(false);
 }
 
-describe('GET /bus/run/cars gating by the newYouthForms mode', () => {
-  it("off → 404 for admin", async () => {
-    const w = await world('off');
-    await expect(w.svc.carsView(roleCtx('admin'))).rejects.toMatchObject({ statusCode: 404 });
-  });
-  it('shadow → admin only', async () => {
-    const w = await world('shadow');
-    await expect(w.svc.carsView(roleCtx('admin'))).resolves.toBeTruthy();
-    for (const role of ['director', 'quad', 'grade', 'leader'])
-      await expect(w.svc.carsView(roleCtx(role))).rejects.toMatchObject({ statusCode: 404 });
-  });
-  it('on → every bus:use login', async () => {
-    const w = await world('on');
-    for (const role of ROLES) await expect(w.svc.carsView(roleCtx(role))).resolves.toBeTruthy();
-  });
-  it('GET /bus/run canSeeCars follows the same table', async () => {
-    const want: Record<NewYouthMode, string[]> = { off: [], shadow: ['admin'], on: [...ROLES] };
+describe('GET /bus/run/cars follows the Bus module only (T10), not newYouthForms', () => {
+  it('every bus:use login, in every newYouthForms mode; canSeeCars agrees', async () => {
     for (const mode of ['off', 'shadow', 'on'] as const) {
       const w = await world(mode);
-      for (const role of ROLES)
-        expect((await w.svc.getRun(roleCtx(role))).canSeeCars, `${mode}/${role}`).toBe(want[mode].includes(role));
+      for (const role of ROLES) {
+        await expect(w.svc.carsView(roleCtx(role)), `${mode}/${role}`).resolves.toBeTruthy();
+        expect((await w.svc.getRun(roleCtx(role))).canSeeCars, `${mode}/${role}`).toBe(true);
+      }
     }
+  });
+  it('Bus off → 404', async () => {
+    const w = await world('on');
+    const cur = (await w.settings.getSettings()).ministryConfig;
+    await w.settings.updateSettings({ ministryConfig: { ...cur, modules: { ...cur.modules, busMinistry: false } } });
+    await expect(w.svc.carsView(roleCtx('admin'))).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

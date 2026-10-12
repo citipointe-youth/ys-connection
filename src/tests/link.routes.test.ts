@@ -71,7 +71,7 @@ describe('link + sync live (memory)', () => {
     admin = (await c.services.setup.createFirstAdmin({ code: CODE, displayName: 'Pat', password: 'longenough' })).token;
     const s = await c.repos.settings.getSettings();
     await c.repos.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
-      modules: { ...s.ministryConfig.modules, newYouthForms: 'shadow' } } });
+      modules: { ...s.ministryConfig.modules, newYouthForms: 'shadow', checkin: 'shadow', lifegroupReport: 'shadow', flows: 'shadow' } } });
   });
   afterAll(() => {
     server.close();
