@@ -1016,6 +1016,30 @@ describe('D5 lifegroups and flows', () => {
     expect((await h.svc.lifegroups(GRADE)).groups[0]!.lastReport!.reportId).toBe(R1);
   });
 
+  it('T-27 / APP-29: the overlay is the newest sent submit OR edit, by report date then resultAt', async () => {
+    const h = await setup();
+    // submit D1 (newer date) sent, then an older-date submit D0 sent later: D1 stays the last report
+    const s1 = report({ date: '2026-10-15', guests: 3 });
+    const s0 = report({ date: '2026-10-14', guests: 7 });
+    await enq(h.svc, GRADE, s1, DEV);
+    await enq(h.svc, GRADE, s0, DEV);
+    const R_S1 = u(415), R_S0 = u(416);
+    setRow(h.link, s1.id, { status: 'sent', result_at: '2026-10-16T08:40:00.000Z', report_id: R_S1 });
+    setRow(h.link, s0.id, { status: 'sent', result_at: '2026-10-16T08:50:00.000Z', report_id: R_S0 });
+    let g = (await h.svc.lifegroups(GRADE)).groups[0]!;
+    expect(g.lastReport).toMatchObject({ reportId: R_S1, date: '2026-10-15', guests: 3 });
+    // an edit of D1 is sent: its values are the last report (same reportId), not the submit's
+    const e1 = edit({ reportId: R_S1, date: '2026-10-15', guests: 5,
+      base: { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY], guests: 3, serviceTimeId: null } });
+    expect((await enq(h.svc, DIRECTOR, e1, DEV)).outcome).toBe('saved');
+    setRow(h.link, e1.id, { status: 'sent', result_at: '2026-10-16T08:55:00.000Z' });
+    g = (await h.svc.lifegroups(GRADE)).groups[0]!;
+    expect(g.lastReport).toMatchObject({ reportId: R_S1, date: '2026-10-15', guests: 5, attendees: [P_AMY, P_EVE1], editable: true });
+    // a second edit is checked against the first edit's values
+    const e2base = { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY, P_EVE1], guests: 5, serviceTimeId: null };
+    expect((await enq(h.svc, DIRECTOR, edit({ reportId: R_S1, date: '2026-10-15', guests: 6, base: e2base }), DEV)).outcome).toBe('saved');
+  });
+
   it('flows: scoped by the roster grade/gender, unknown person for director/admin, ordered by flow then step', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);

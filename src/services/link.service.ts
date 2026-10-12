@@ -227,15 +227,27 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     return l ? { id: l.id, name: l.fullName } : { id: null, name: c.actor.displayName };
   }
 
-  /** The group's last report: the mirror's, or the overlay (newest sent submit with a reportId after the groups push). */
-  function lastReportOf(g: LinkGroupRow, sentSubmits: OutboxRow[], groupsTakenAt: string | null): LinkLastReport | null {
-    const ov = sentSubmits.find((r) => (r.payload as { groupId?: string }).groupId === g.groupId && r.reportId && r.resultAt &&
-      (!groupsTakenAt || Date.parse(r.resultAt) > Date.parse(groupsTakenAt)));
+  /**
+   * The group's last report: the mirror's, or the overlay. T-27 / APP-29: the overlay is the newest sent submitReport
+   * or editReport sent after the groups push, by report date then resultAt (an edit carries its reportId in the
+   * payload). Editable while the console confirms link-sent reports stay editable (its T-27 test).
+   */
+  type RP = { groupId?: string; reportId?: string; date: string; didNotMeet: boolean; attendees: string[]; guests: number;
+    serviceTimeId: string | null };
+  function lastReportOf(g: LinkGroupRow, sentReports: OutboxRow[], groupsTakenAt: string | null): LinkLastReport | null {
+    const rid = (r: OutboxRow) => r.reportId ?? (r.payload as RP).reportId ?? null;
+    const ov = sentReports
+      .filter((r) => (r.payload as RP).groupId === g.groupId && rid(r) && r.resultAt &&
+        (!groupsTakenAt || Date.parse(r.resultAt) > Date.parse(groupsTakenAt)))
+      .sort((a, b) => ((b.payload as RP).date.localeCompare((a.payload as RP).date))
+        || Date.parse(b.resultAt!) - Date.parse(a.resultAt!))[0];
     if (!ov) return g.lastReport;
-    const p = ov.payload as { date: string; didNotMeet: boolean; attendees: string[]; guests: number; serviceTimeId: string | null };
-    return { reportId: ov.reportId!, date: p.date, time: '', didNotMeet: p.didNotMeet, attendees: p.attendees, guests: p.guests,
+    const p = ov.payload as RP;
+    if (g.lastReport && g.lastReport.date > p.date) return g.lastReport;
+    return { reportId: rid(ov)!, date: p.date, time: '', didNotMeet: p.didNotMeet, attendees: p.attendees, guests: p.guests,
       serviceTimeId: p.serviceTimeId, editable: true, blocked: null };
   }
+  const REPORT_TYPES: ActionType[] = ['submitReport', 'editReport'];
 
   /** The log target of a stored row (APP-30): person, group or flow row. */
   async function targetOf(c: Ctx, r: OutboxRow): Promise<Target> {
@@ -333,7 +345,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       if (it.type === 'editReport') {
         const [sent, ms] = await Promise.all([
-          d.link.listActions({ groupId: g.groupId, types: ['submitReport'], statuses: ['sent'] }), c.mirror()]);
+          d.link.listActions({ groupId: g.groupId, types: REPORT_TYPES, statuses: ['sent'] }), c.mirror()]);
         const last = lastReportOf(g, sent, takenAt(ms, 'groups'));
         if (!last || last.reportId !== rp.reportId) throw new BadRequestError('Only the last report can be edited. Reload.');
         if (!last.editable) throw new LinkEditInElvanto(last.blocked ?? 'unknown');
@@ -650,7 +662,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async lifegroups(actor) {
       const c = context(actor, await gate(actor, 'link:use'));
       const [groups, mirrors, sent, open] = await Promise.all([c.groups(), c.mirror(),
-        d.link.listActions({ types: ['submitReport'], statuses: ['sent'] }),
+        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN })]);
       const gAt = takenAt(mirrors, 'groups');
       return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).map((g) => {
