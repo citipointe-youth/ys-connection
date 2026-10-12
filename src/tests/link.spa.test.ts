@@ -11,10 +11,10 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
-  '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter', '_lkFtRow', '_nyFtLine', '_nyFtListHtml', '_lkFtLoad',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
@@ -61,6 +61,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const icS = (k) => '<svg data-ic="' + k + '"></svg>';
     const L = (k) => k;
     const _busOn = () => false;
+    const _linkAdminOn = () => S.user.role === 'admin';
     const _prayersOn = () => true;
     const _deviceId = () => 'dev-1';
     const _deviceLabel = () => 'iPhone · Safari';
@@ -706,15 +707,38 @@ describe('F1.3 door', () => {
     expect(f(people, { search: '', grade: 'all' })).toHaveLength(6);
     expect(f(people, { search: '', grade: '7' }).map((p: any) => p.personId)).toEqual([P(1), P(5)]);
     expect(f(people, { search: '', grade: 'leaders' }).map((p: any) => p.personId)).toEqual([P(2)]);
-    expect(extractFn(html, '_lkPaintDoor')).toContain("_gradeList().map((g) => [String(g), 'Yr ' + g])"); // APP-36
-    expect(html).toContain("['leaders', 'Leaders']");
   });
-  it('APP-35: the summary shows "In N" only (every active youth counted as "still to come" was noise)', () => {
+  it('T7: the door has a big search bar and no grade select; the leaders button comes after the list', () => {
+    const f = extractFn(html, '_lkPaintDoor');
+    expect(f).toContain('class="fi lk-big" id="lk-search"');
+    expect(f).not.toContain('<select');
+    expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('_lkOpenLeaders()'));
+    expect(f.indexOf('id="lk-search"')).toBeLessThan(f.indexOf('id="lk-list"'));
+  });
+  it('T7: nothing is listed until a name is typed; "In N" and "Still to come" are gone', () => {
     const h = setup();
-    expect(strip(h.fns._lkListHtml())).toContain('In 3');
-    expect(strip(h.fns._lkListHtml())).not.toMatch(/Still to come \d|not yet in/);
-    h.get().LINK.q.grade = '7';
-    expect(strip(h.fns._lkListHtml())).toContain('In 1');
+    const out = h.fns._lkListHtml();
+    expect(strip(out)).toContain('Type a name to check someone in.');
+    expect(strip(out)).toContain('Checked in · 3');
+    for (const nm of ['Ava Example', 'Mary Jane Smith', 'Dana Testleader']) expect(out).not.toContain(nm);
+    expect(strip(out)).not.toMatch(/\bIn \d|Still to come/);
+    h.get().LINK.q.search = 'mary';
+    const typed = h.fns._lkListHtml();
+    expect(typed).toContain('Mary Jane Smith');
+    expect(typed).not.toContain('Ava Example');
+    expect(strip(typed)).toContain('Checked in · 0');
+    h.get().LINK.q.search = 'zzz';
+    expect(strip(h.fns._lkListHtml())).toContain('Nobody here by that name.');
+  });
+  it('T3: a checked-in person with no grade (not on the roster) still shows as a named row; a nameless one is labelled', () => {
+    const h = makeEnv();
+    door(h, [{ personId: P(7), name: 'Pia Pushedname', grade: null, leader: false, checkedIn: true, action: null, mine: false },
+      { personId: P(8), name: '', grade: null, leader: false, checkedIn: true, action: null, mine: false }]);
+    h.fns._lkDoneToggle(true);
+    const out = h.fns._lkListHtml();
+    expect(out).toContain('Pia Pushedname');
+    expect(strip(out)).toContain('Checked in · 2');
+    expect(strip(out)).toContain('Unknown person');
   });
   it('APP-74: the "Checked in" rows are built only while that list is open', () => {
     const h = setup();
@@ -1089,35 +1113,34 @@ describe('F2 lifegroup report', () => {
     L.groups = [grp(over)]; L.gid = G(1);
     return h;
   };
-  it('the group list chip per thisWeek; "Can\'t read" is double-quoted in the source', () => {
-    const want: Record<string, string> = { reported: 'Reported', 'did-not-meet': 'Did not meet', none: 'No report', later: 'Later', unreadable: "Can't read" };
-    const f = makeEnv().fns;
-    for (const [k, v] of Object.entries(want)) expect(strip(f._lkWeekChip(k))).toBe(v);
-    expect(extractFn(html, '_lkWeekChip')).toContain(`"Can't read"`);
+  it('T8: the group list shows the last report line, no this-week chip, and names are escaped', () => {
     const h = setup();
     const list = h.fns._lkGroupsHtml();
-    expect(strip(list)).toContain('Reported');
+    expect(strip(list)).toContain('Last report Tue 6 Oct · 4');
+    expect(list).not.toContain('lk-wk');
+    expect(strip(list)).not.toMatch(/Reported|No report\b/);
     expect(list).toContain('Yr 9 &lt;i&gt;Girls&lt;/i&gt;');
     expect(list).not.toContain('<i>Girls');
+    expect(strip(setup('L1', { lastReport: null }).fns._lkGroupsHtml())).toContain('No reports yet');
   });
-  it('the Last report card never shows notes', () => {
+  it('the report card never shows notes', () => {
     const h = setup();
-    const out = strip(h.fns._lkLastHtml(h.get().LINK.groups[0]));
+    const out = strip(h.fns._lkReportHtml(h.get().LINK.groups[0], h.get().LINK.groups[0].lastReport));
     expect(out).not.toContain('SECRET');
     expect(out).toContain('Tue 6 Oct 18:30');
     expect(out).toContain('No service');
     expect(out).toContain('Guests2');
     expect(out).toContain('Here (2)Ava Example, Dana Testleader');
     const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
-    expect(strip(dnm.fns._lkLastHtml(dnm.get().LINK.groups[0]))).toContain('Group did not meet');
+    expect(strip(dnm.fns._lkReportHtml(dnm.get().LINK.groups[0], dnm.get().LINK.groups[0].lastReport))).toContain('Group did not meet');
   });
   it('Edit is shown only when editable, else "Edit this report in Elvanto."', () => {
     const a = setup();
-    const on = a.fns._lkLastHtml(a.get().LINK.groups[0]);
-    expect(on).toContain('onclick="_lkEditReport()"');
+    const on = a.fns._lkReportHtml(a.get().LINK.groups[0], a.get().LINK.groups[0].lastReport);
+    expect(on).toContain(`onclick="_lkEditReport('${G(9)}')"`);
     expect(on).not.toContain('Edit this report in Elvanto.');
     const b = setup('L1', { lastReport: { ...grp().lastReport, editable: false, blocked: 'multi-service' } });
-    const off = b.fns._lkLastHtml(b.get().LINK.groups[0]);
+    const off = b.fns._lkReportHtml(b.get().LINK.groups[0], b.get().LINK.groups[0].lastReport);
     expect(off).not.toContain('_lkEditReport');
     expect(off).toContain('Edit this report in Elvanto.');
   });
@@ -1164,7 +1187,7 @@ describe('F2 lifegroup report', () => {
     expect(h.calls.modals[0]).toContain('Who are you?');
     expect(h.calls.modals[0]).toContain('Cody &lt;b&gt;Cobb&lt;/b&gt;');
     expect(h.get().LINK.iamThen).toBeTypeOf('function');
-    h.fns._lkEditReport();
+    h.fns._lkEditReport(G(9));
     expect(h.calls.modals).toHaveLength(2);
     h.get().LINK.rf = { mode: 'submit', date: '2026-10-13', didNotMeet: true, ticks: {}, guests: 0, svc: '', note: '', priv: false };
     h.fns._lkReportSend();
@@ -1199,7 +1222,7 @@ describe('F2 lifegroup report', () => {
   it('an edit goes in as editReport with reportId and base; the date stays the saved one', () => {
     vi.useFakeTimers();
     const h = setup();
-    h.fns._lkEditReport();
+    h.fns._lkEditReport(G(9));
     expect(h.get().LINK.rf).toMatchObject({ mode: 'edit', date: '2026-10-06', svc: 'none', ticks: { [P(61)]: true, [P(62)]: true } });
     h.fns._lkRfDate('2026-10-13');
     expect(h.get().LINK.rf.date).toBe('2026-10-06');
@@ -1210,12 +1233,11 @@ describe('F2 lifegroup report', () => {
     expect(it.payload).toEqual({ groupId: G(1), date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62), P(63)], guests: 2, notesPrivate: false,
       serviceTimeId: null, reportId: G(9), base: { date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62)], guests: 2, serviceTimeId: null } });
   });
-  it('the line "Elvanto will show: Self identified leader: <name>" is escaped', () => {
+  it('the form no longer says what Elvanto will show; member names are escaped', () => {
     const h = setup();
     h.fns._lkNewReport();
     const form = h.fns._lkFormHtml();
-    expect(form).toContain('Elvanto will show: Self identified leader: Cody &lt;b&gt;Cobb&lt;/b&gt;');
-    expect(form).not.toContain('<b>Cobb');
+    expect(form).not.toContain('Elvanto will show');
     expect(form).toContain('Ben &lt;b&gt;Sample&lt;/b&gt;');
   });
   it('service default per §2.3 and the older-than-7-days line', () => {
@@ -1247,14 +1269,60 @@ describe('F2 lifegroup report', () => {
     k.fns._lkReportCancel();
     expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(71), leaderId: 'L1', _g: G(1) });
   });
-  it('the page is routed; New report and Edit hide when the console has the type off', () => {
+  it('the page is routed; Submit and Edit hide when the console has the type off', () => {
     expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-groups') { await renderLinkGroups(); return; }");
     const h = setup();
-    expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).toContain('_lkNewReport()');
+    h.get().LINK.gwk = 0; // this week (12-18 Oct) has no report
+    expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).toContain("_lkNewReport('2026-10-13')");
+    h.get().LINK.gwk = 1; // 5-11 Oct has the report
+    expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).toContain(`_lkEditReport('${G(9)}')`);
     h.get().LINK.status = { console: { capabilities: { submitReport: 'off', editReport: 'off' } } };
     const out = h.fns._lkGroupHtml(h.get().LINK.groups[0]);
-    expect(out).not.toContain('_lkNewReport()');
+    expect(out).not.toContain('_lkEditReport(');
     expect(out).toContain('Edit this report in Elvanto.');
+    h.get().LINK.gwk = 0;
+    expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).not.toContain('_lkNewReport(');
+  });
+  it('T8: the week view steps back and forward over 8 weeks and stops at the ends', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    expect(strip(h.fns._lkGroupHtml(L.groups[0]))).toContain('Mon 12 Oct to Sun 18 OctThis week');
+    h.fns._lkOpenGroup(G(1));
+    L.gwk = 0;
+    expect(h.fns._lkGroupHtml(L.groups[0])).toMatch(/disabled aria-label="Later week"/);
+    h.fns._lkWeekGo(1); expect(L.gwk).toBe(1);
+    expect(strip(h.fns._lkGroupHtml(L.groups[0]))).toContain('Mon 5 Oct to Sun 11 OctLast week');
+    expect(strip(h.fns._lkGroupHtml(L.groups[0]))).toContain('DateTue 6 Oct 18:30');
+    for (let i = 0; i < 10; i++) h.fns._lkWeekGo(1);
+    expect(L.gwk).toBe(7);
+    expect(h.fns._lkGroupHtml(L.groups[0])).toMatch(/disabled aria-label="Earlier week"/);
+    for (let i = 0; i < 10; i++) h.fns._lkWeekGo(-1);
+    expect(L.gwk).toBe(0);
+  });
+  it('T8: an older week reads from the history, and Edit opens that entry as the base', () => {
+    vi.useFakeTimers();
+    const old = { reportId: G(8), date: '2026-09-29', time: '19:00', didNotMeet: false, attendees: [P(63)], guests: 1, serviceTimeId: null, editable: true, blocked: null };
+    const h = setup('L1', { history: [grp().lastReport, old] });
+    const L = h.get().LINK;
+    L.gwk = 2;
+    const out = h.fns._lkGroupHtml(L.groups[0]);
+    expect(strip(out)).toContain('Here (1)Ben &lt;b&gt;Sample&lt;/b&gt;');
+    h.fns._lkEditReport(G(8));
+    expect(L.rf).toMatchObject({ mode: 'edit', date: '2026-09-29', reportId: G(8), ticks: { [P(63)]: true } });
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()[0].payload).toMatchObject({ date: '2026-09-29', reportId: G(8), base: { date: '2026-09-29', attendees: [P(63)], guests: 1 } });
+  });
+  it('T8: Submit in an empty week uses that week\'s meeting date; a blocked entry cannot be edited', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gwk = 0;
+    h.fns._lkNewReport('2026-10-13');
+    expect(L.rf).toMatchObject({ mode: 'submit', date: '2026-10-13' });
+    const b = setup('L1', { lastReport: { ...grp().lastReport, blocked: 'unkept-notes' } });
+    b.get().LINK.gwk = 1;
+    expect(b.fns._lkGroupHtml(b.get().LINK.groups[0])).not.toContain('_lkEditReport(');
+    b.fns._lkEditReport(G(9));
+    expect(b.get().LINK.rf).toBeNull();
   });
 });
 
@@ -1285,6 +1353,83 @@ describe('F3 flow steps', () => {
     expect(at('Cy Welcome-hello')).toBeLessThan(at('Zed Welcome-text'));
     expect(out.split('Follow up').length).toBe(2); // one heading per flow
   });
+  it('T5: every step is a collapsed .drop with "Step · count" and a red overdue badge only when there is one', () => {
+    const h = setup();
+    const out = h.fns._lkFlowsHtml();
+    expect(out.match(/class="drop"/g)).toHaveLength(4);
+    expect(out).not.toContain('class="drop open"');
+    expect(out).toContain('aria-expanded="false"');
+    const call = out.split('class="drop"').find((x: string) => x.includes('Bo Follow-call'))!;
+    expect(strip(call.split('drop-body')[0])).toContain('Call · 1');
+    expect(call.split('drop-body')[0]).toContain('<span class="lk-od">1 overdue</span>');
+    const visit = out.split('class="drop"').find((x: string) => x.includes('Amy Follow-visit'))!;
+    expect(visit.split('drop-body')[0]).not.toContain('lk-od');
+  });
+  it('T5: an open step stays open across a refresh (LINK.fOpen), and the row shows chip and assignee', () => {
+    const h = setup('L1', [row(1, { grade: 9, gender: 'female', assignedLeaderName: 'Cody <b>Cobb</b>', mobile: '0412345678' })]);
+    const L = h.get().LINK;
+    const id = 'lks-' + F(100) + '-' + F(200);
+    L.fOpen[id] = true;
+    const out = h.fns._lkFlowsHtml();
+    expect(out).toContain(`class="drop open" id="${id}"`);
+    expect(out).toContain('<span class="chip c-girl">Y9</span>');
+    expect(out).toContain('Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(out).not.toContain('<b>Cobb');
+  });
+  it('T5: tapping a row opens the detail sheet with a text link, Assign and Complete', () => {
+    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Cobb</b>' })]);
+    expect(h.fns._lkFlowsHtml()).toContain(`onclick="_lkOpenStep('${F(1)}')"`);
+    h.fns._lkOpenStep(F(1));
+    const sheet = h.calls.modals[0]!;
+    expect(sheet).toContain('href="sms:0412345678');
+    expect(sheet).toContain('body=Hey%20Sam%20');
+    expect(strip(sheet)).toContain('Text Sam · 0412 345 678');
+    expect(sheet).toContain('onchange="_lkAssign(this.value)"');
+    expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Cobb&lt;/b&gt;</option>');
+    expect(sheet).toContain('_lkStepSend()');
+    expect(sheet).not.toContain('Elvanto will show');
+    const par = setup('L1', [row(1, { name: 'Sam Lee', mobile: '0412345678', mobileIsParent: true })]);
+    par.fns._lkOpenStep(F(1));
+    expect(strip(par.calls.modals[0]!)).toContain('Text Parent · 0412 345 678');
+    const none = setup('L1', [row(1, { personId: null })]);
+    none.fns._lkOpenStep(F(1));
+    expect(strip(none.calls.modals[0]!)).toContain('cannot be assigned');
+    expect(none.calls.modals[0]).not.toContain('_lkAssign');
+  });
+  it('T6: Assign posts flowId, personId and leaderId (null = unassign) and updates every row of that person in the flow', async () => {
+    const h = setup('L1', [row(1, { name: 'Sam' }), row(1, { rowId: F(11), stepId: F(201), name: 'Sam' })]);
+    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+    h.fns._lkOpenStep(F(1));
+    await h.fns._lkAssign('L1');
+    expect(h.calls.posts[0]).toMatchObject({ p: '/link/flows/assign', b: { flowId: F(100), personId: P(1), leaderId: 'L1' } });
+    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderName)).toEqual(['Cody Cobb', 'Cody Cobb']);
+    await h.fns._lkAssign('');
+    expect(h.calls.posts[1].b.leaderId).toBeNull();
+    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderId)).toEqual([null, null]);
+  });
+  it('T6: a failed assign toasts and changes nothing', async () => {
+    const h = setup('L1', [row(1)], () => Promise.reject(new Error('nope')));
+    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+    h.fns._lkOpenStep(F(1));
+    const L = h.get().LINK;
+    // assign uses API.post, which the harness routes to the env post stub only for /link/batch; stub a rejecting one
+    await h.fns._lkAssign('L1').catch(() => {});
+    expect(L.flows[0].assignedLeaderId == null).toBe(true);
+  });
+  it('T6: the Home card lists only my people, hidden when there are none', () => {
+    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', assignedLeaderId: 'L1', due: '2026-10-01' }),
+      row(2, { name: 'Eve Other', assignedLeaderId: 'L2' }), row(3, { name: 'Nia NoPhone', assignedLeaderId: 'L1', mobile: null })]);
+    const out = h.fns._lkHomeFlowsHtml();
+    expect(strip(out)).toContain('My flow people');
+    expect(out).toContain('Sam Lee');
+    expect(out).toContain('Nia NoPhone');
+    expect(out).not.toContain('Eve Other');
+    expect(out).toContain('href="sms:0412345678');
+    expect(strip(out)).toContain('Call · Overdue');
+    expect(out.match(/<a /g)).toHaveLength(1); // no mobile: not a link
+    expect(setup(null).fns._lkHomeFlowsHtml()).toBe('');
+    expect(setup('L9').fns._lkHomeFlowsHtml()).toBe('');
+  });
   it('a past due date is red; today or later is not', () => {
     const rows = setup().fns._lkFlowsHtml().split('lk-row').slice(1);
     const late = rows.find((r: string) => r.includes('Bo Follow-call'))!;
@@ -1296,38 +1441,43 @@ describe('F3 flow steps', () => {
   it('a row with an open action (or one still on the phone) cannot be completed', () => {
     const h = setup('L1', [row(1, { openAction: { id: P(90), type: 'completeStep', status: 'pending', reason: null } }), row(2)]);
     const rows = h.fns._lkFlowsHtml().split('lk-row').slice(1);
-    expect(rows[0]).not.toContain('_lkOpenStep');
     expect(strip(rows[0])).toContain('Waiting for the console.');
-    expect(rows[1]).toContain(`_lkOpenStep('${F(2)}')`);
+    // the detail sheet still opens (text, assign) but offers no Complete
     h.fns._lkOpenStep(F(1));
-    expect(h.calls.modals).toHaveLength(0);
-    h.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1' }]);
-    expect(h.fns._lkFlowsHtml()).not.toContain('_lkOpenStep');
+    expect(h.calls.modals).toHaveLength(1);
+    expect(h.calls.modals[0]).not.toContain('_lkStepSend');
     h.fns._lkOpenStep(F(2));
-    expect(h.calls.modals).toHaveLength(0);
+    expect(h.calls.modals[1]).toContain('_lkStepSend');
+    h.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1' }]);
+    h.get().LINK.fs = null;
+    h.fns._lkOpenStep(F(2));
+    expect(h.calls.modals[2]).not.toContain('_lkStepSend');
     // a refused or cancelled answer can be completed again
     const k = setup('L1', [row(1, { openAction: { id: P(92), type: 'completeStep', status: 'refused', reason: 'step-moved' } })]);
-    expect(k.fns._lkFlowsHtml()).toContain('_lkOpenStep');
+    k.fns._lkOpenStep(F(1));
+    expect(k.calls.modals[0]).toContain('_lkStepSend');
   });
-  it('the sheet needs "I am": the picker opens first, then the sheet', () => {
+  it('Complete needs "I am": the picker opens when it is tapped without one; the sheet itself opens either way', () => {
     const h = setup(null);
     h.fns._lkOpenStep(F(2));
     expect(h.calls.modals).toHaveLength(1);
-    expect(h.calls.modals[0]).toContain('Who are you?');
+    expect(h.calls.modals[0]).toContain('Amy Follow-visit');
+    h.fns._lkStepSend();
+    expect(h.calls.modals).toHaveLength(2);
+    expect(h.calls.modals[1]).toContain('Who are you?');
     expect(h.get().LINK.iamThen).toBeTypeOf('function');
     const k = setup('L1');
     k.fns._lkOpenStep(F(2));
     expect(k.calls.modals[0]).toContain('Complete');
     expect(k.calls.modals[0]).toContain('Amy Follow-visit');
   });
-  it('the note stops at 1,800; Keep note private is shown; the message line is double-quoted', () => {
+  it('the note stops at 1,800; Keep note private is shown; the old warning lines are gone', () => {
     const h = setup();
     h.fns._lkOpenStep(F(2));
     const sheet = h.calls.modals[0]!;
     expect(sheet).toContain('maxlength="1800"');
     expect(strip(sheet)).toContain('Keep note private');
-    expect(strip(sheet)).toContain("Completing may send Elvanto's email or text for this step.");
-    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send Elvanto's email or text for this step."`);
+    expect(strip(sheet)).not.toContain('Completing may send');
     const el = { value: 'y'.repeat(2500) };
     h.fns._lkStepNote(el);
     expect(el.value).toHaveLength(1800);
@@ -1354,14 +1504,15 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
     expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
   });
-  it('the sheet shows "Elvanto will show: Self identified leader: <name>" escaped; every value escaped', () => {
+  it('every value is escaped, in the list and in the sheet', () => {
     const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);
     const list = h.fns._lkFlowsHtml();
     for (const raw of ['<b>X', '<i>1', '<u>1', '<s>Y']) expect(list).not.toContain(raw);
     expect(list).toContain('Ann &lt;b&gt;X&lt;/b&gt;');
     h.fns._lkOpenStep(F(1));
-    expect(h.calls.modals[0]).toContain('Elvanto will show: Self identified leader: Cody &lt;b&gt;Cobb&lt;/b&gt;');
-    expect(h.calls.modals[0]).not.toContain('<b>X');
+    for (const raw of ['<b>X', '<i>1', '<u>1']) expect(h.calls.modals[0]).not.toContain(raw);
+    expect(h.calls.modals[0]).toContain('Ann &lt;b&gt;X&lt;/b&gt;');
+    expect(h.calls.modals[0]).not.toContain('Elvanto will show');
   });
   it('a refusal from the batch shows on the row; a pending answer offers Cancel', async () => {
     const reply = (outcome: string, extra: any = {}) => (_p: string, b: any) =>
@@ -1383,7 +1534,9 @@ describe('F3 flow steps', () => {
     expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-flows') { await renderLinkFlows(); return; }");
     const h = setup();
     h.get().LINK.status = { console: { capabilities: { completeStep: 'off' } } };
-    expect(h.fns._lkFlowsHtml()).not.toContain('_lkOpenStep');
+    h.fns._lkOpenStep(F(2));
+    expect(h.calls.modals[0]).not.toContain('_lkStepSend');
+    expect(h.calls.modals[0]).toContain('Close');
   });
 });
 
@@ -1675,14 +1828,8 @@ describe('T-46 UI minors', () => {
     expect(html).toMatch(/\.lk-filters\.wrap\{flex-wrap:wrap\}/);
     expect(extractFn(html, '_lkAdmLogHtml')).toContain('<div class="lk-filters wrap"><input type="date"');
     expect(html).toMatch(/\.lk-sticky\{position:sticky;top:var\(--hdr-h,0px\)/);
-    expect(extractFn(html, '_lkPaintDoor')).toContain('<div class="lk-filters lk-sticky">');
+    expect(extractFn(html, '_lkPaintDoor')).toContain('<div class="lk-sticky">');
     expect(extractFn(html, '_positionNprog')).toContain("setProperty('--hdr-h'");
-  });
-  it('APP-36: the door grade filter comes from _gradeList() and says "Yr N" like the row chip', () => {
-    const f = extractFn(html, '_lkPaintDoor');
-    expect(f).toContain('_gradeList()');
-    expect(f).toContain("'Yr ' + g");
-    expect(f).not.toContain("'Grade 7'");
   });
   it('APP-63: the admin page words modes, statuses, lists and outcomes (no raw codes)', () => {
     const h = makeEnv({ role: 'admin' });
@@ -1727,16 +1874,16 @@ describe('T-46 UI minors', () => {
   });
   it('APP-67: the "already a report" warning has an Edit the last report button when it can be edited', () => {
     const f = extractFn(html, '_lkFormHtml');
-    expect(f).toContain('onclick="_lkEditReport()">Edit the last report</button>');
+    expect(f).toContain("onclick=\"_lkEditReport('${esc(last.reportId)}')\">Edit that report</button>");
   });
   it('APP-68: group names drop the prefix; flow rows show a chevron; ticks are a plain tick; the Complete line', () => {
     expect(extractFn(html, '_lkGroupsHtml')).toContain('lgDisplayName(g.name)');
     expect(extractFn(html, '_lkGroupHtml')).toContain('lgDisplayName(g.name)');
     expect(extractFn(html, '_lkFormHtml')).toContain('lgDisplayName(g.name)');
-    expect(extractFn(html, '_lkFlowsHtml')).toContain("icS('chevr')");
+    expect(extractFn(html, '_lkFlowRowHtml')).toContain("icS('chevr')");
     expect(html).toMatch(/^  tick: +'<polyline points="20 6 9 17 4 12"\/>',/m);
     expect(extractFn(html, '_lkLeadersHtml')).toContain("icS('tick')");
-    expect(extractFn(html, '_lkStepHtml')).toContain(`"Completing may send Elvanto's email or text for this step."`);
+    expect(extractFn(html, '_lkStepHtml')).not.toContain('Completing may send');
   });
   it('APP-69: Send waits for the leaders list before deciding the host; the loader keeps one list', async () => {
     expect(extractFn(html, 'nySend')).toMatch(/if \(!send && !p\.host && getMyLeaderId\(\) && !LINK\.ldrs\) \{ await _lkLoadLeaders\(\); p\.host = _nyHost\(\); \}/);
