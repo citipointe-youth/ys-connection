@@ -19,8 +19,8 @@ const corsDefault = isProductionEnv(process.env) ? (process.env['APP_ORIGIN'] ??
 // (same pattern as SESSION_SECRET) — not re-exported here. Required whenever PERSISTENCE=supabase;
 // encrypts/decrypts students.mobile/students.parent_phone. See
 // docs/superpowers/specs/2026-07-18-phone-field-encryption-design.md.
-// The Elvanto console's bearer token for /sync/*. Trimmed; shorter than 32 characters counts as unset. Callers that
-// must see test changes (the adapter, setup) call this per request instead of reading env.LINK_SYNC_TOKEN.
+// The Elvanto console's bearer token for /sync/*. Trimmed; shorter than 32 characters counts as unset. Read per
+// request (the adapter, setup), so a rotated token takes effect on the next deploy without a stale copy here.
 export function readLinkSyncToken(e: Record<string, string | undefined> = process.env): string | undefined {
   const t = (e['LINK_SYNC_TOKEN'] ?? '').trim();
   return t.length >= 32 ? t : undefined;
@@ -34,5 +34,4 @@ export const env = {
   CORS_ORIGINS: getEnv('CORS_ORIGINS', corsDefault).split(','),
   APP_ORIGIN: process.env['APP_ORIGIN'],
   DATABASE_URL: process.env['DATABASE_URL'],
-  LINK_SYNC_TOKEN: readLinkSyncToken(),
 };

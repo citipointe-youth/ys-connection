@@ -154,11 +154,6 @@ export function canSetViewGrades(actor: Actor, leaderId: string): boolean {
   return false;
 }
 
-// The Elvanto link (also gated by modules.newYouthForms): the role's link:* permission plus modeAllows.
-export function canUseLink(actor: Actor, mode: NewYouthMode, action: 'link:use' | 'link:admin'): boolean {
-  return can(actor, action) && modeAllows(actor, mode);
-}
-
 export function assertCan(actor: Actor, action: Action): void {
   if (!can(actor, action)) {
     throw new ForbiddenError(`Role '${actor.role}' cannot perform '${action}'`);

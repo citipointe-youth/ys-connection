@@ -10,6 +10,7 @@ import { generateId } from '../utils/id';
 import { isEncryptionKeyValid } from '../utils/field-crypto';
 import { LATEST_MIGRATION } from '../core/schema-version';
 import { googleConfigStatus, googleStatusText } from './routing/google-config';
+import { readLinkSyncToken } from '../config/env';
 import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from '../core/errors/app-error';
 
 export interface SetupCheck {
@@ -92,10 +93,11 @@ export function makeSetupService(deps: {
           fix('setupCode', 'SETUP_CODE', 'Select Generate. Select Copy. In Vercel, add the value as SETUP_CODE. Then redeploy.', 'setupCode'));
       }
       checks.push({ id: 'google', label: googleStatusText(googleConfigStatus(env as NodeJS.ProcessEnv)), state: 'optional', link: GUIDE_GOOGLE });
-      // Elvanto link (spec §10.1): the length only, never the value. Same trim as readLinkSyncToken.
-      const linkLen = (env['LINK_SYNC_TOKEN'] ?? '').trim().length;
+      // Elvanto link (spec §10.1): never the value. readLinkSyncToken is the one rule (APP-39).
+      const linkSet = readLinkSyncToken(env) !== undefined;
+      const linkBlank = (env['LINK_SYNC_TOKEN'] ?? '').trim() === '';
       checks.push({ id: 'link', state: 'optional',
-        label: `Elvanto link token: ${linkLen === 0 ? 'not set' : linkLen < 32 ? 'too short (32+ characters)' : 'set'}` });
+        label: `Elvanto link token: ${linkSet ? 'set' : linkBlank ? 'not set' : 'too short (32+ characters)'}` });
       return { needsAdmin: needs, checks };
     },
 

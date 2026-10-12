@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canWithConfig, modeAllows, canSetViewGrades, canUseLink, type Action } from '../services/access-control';
+import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canWithConfig, modeAllows, canSetViewGrades, type Action } from '../services/access-control';
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
 import { ForbiddenError } from '../core/errors/app-error';
@@ -188,18 +188,6 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
     expect(modeAllows(actor(role), 'on')).toBe(true);
     expect(modeAllows(actor(role), 'shadow')).toBe(role === 'admin');
     expect(modeAllows(actor(role), 'off')).toBe(false);
-  });
-  const modes = ['off', 'shadow', 'on'] as const;
-  const actions = ['link:use', 'link:admin'] as const;
-  for (const role of roles) for (const mode of modes) for (const action of actions) {
-    const allowed = (action === 'link:use' || role === 'director' || role === 'admin')
-      && (mode === 'on' || (mode === 'shadow' && role === 'admin'));
-    it(`canUseLink: ${role} / ${mode} / ${action} -> ${allowed}`, () => {
-      expect(canUseLink(actor(role), mode, action)).toBe(allowed);
-    });
-  }
-  it('shadow + director + link:admin -> false', () => {
-    expect(canUseLink(actor('director'), 'shadow', 'link:admin')).toBe(false);
   });
 });
 
