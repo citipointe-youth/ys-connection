@@ -1,6 +1,6 @@
 // link.service (lane D, plan Tasks D1–D6; spec 2026-10-12-elvanto-link-app-design.md §6, §8.2, §9.1).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { makeLinkService, type LinkService } from '../services/link.service';
+import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
@@ -125,7 +125,7 @@ async function setup(mode: Mode = 'on', o: { console?: boolean; caps?: Partial<C
   if (o.console !== false) await registerConsole(link, CONSOLE, { ...CAPS, ...o.caps });
 
   const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions,
-    serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(300, 10 * 60_000), now: () => clock.now });
+    serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => clock.now });
   return { svc, link, clock, sessions, attendance, leaders };
 }
 
@@ -338,11 +338,18 @@ describe('D2 enqueue', () => {
       leaderId: null, leaderName: 'grade login', dedupeKey: `checkIn:${ST}:${P_AMY}` });
   });
 
-  it('rate limit: the 301st item in 10 min is refused RATE_LIMITED', async () => {
+  it('B12 / T-36: 600 new inserts per login in 10 min; the 601st is refused RATE_LIMITED; replays and duplicates never count', async () => {
+    expect(LINK_RATE_MAX).toBe(600);
+    expect(LINK_RATE_WINDOW_MS).toBe(600_000);
     const h = await setup();
     const it1 = checkIn(P_AMY);
-    for (let i = 0; i < 300; i++) expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).not.toBe('refused');
-    expect(await h.svc.enqueue(GRADE, it1, DEV)).toMatchObject({ outcome: 'refused', code: 'RATE_LIMITED', httpStatus: 429 });
+    for (let i = 0; i < 300; i++) expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).not.toBe('refused'); // 1 insert + 299 replays
+    for (let i = 0; i < 50; i++) expect((await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV)).outcome).toBe('duplicate');
+    const ft = (i: number) => firstTimer({ payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'New', lastName: `Kid${i}`, grade: 8, gender: 'male' } });
+    for (let i = 0; i < 599; i++) expect((await h.svc.enqueue(GRADE, ft(i), DEV)).outcome).toBe('saved');
+    expect(await h.svc.enqueue(GRADE, ft(999), DEV)).toMatchObject({ outcome: 'refused', code: 'RATE_LIMITED', httpStatus: 429 });
+    expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).toBe('replay'); // still answered after the limit
+    expect((await h.svc.enqueue(QUAD, ft(1000), DEV)).outcome).toBe('saved'); // per login
   });
 
   it('replay (same id, same body) returns the row; same id, other body → LINK_ID_REUSED', async () => {

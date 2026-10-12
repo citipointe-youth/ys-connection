@@ -33,7 +33,7 @@ import {
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
-export const LINK_RATE_MAX = 300;          // items per login …
+export const LINK_RATE_MAX = 600;          // new outbox rows per login … (B12 / T-36: replays and duplicates never count)
 export const LINK_RATE_WINDOW_MS = 600_000; // … per 10 minutes (container builds the RateLimiter with these)
 const LOG_MAX = 2000;
 const logger = createLogger('link');
@@ -277,8 +277,6 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       Object.assign(tgt, await targetOf(c, prev));
       return ok(prev, 'replay');
     };
-    // 1. rate limit
-    if (d.limiter.isBlocked(c.actor.id)) throw new TooManyRequestsError('Too many taps. Wait a minute.');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -397,7 +395,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (it.type === 'checkOut' && !st.in) throw new BadRequestError('Not checked in to this service.');
     }
 
-    // 6. insert
+    // 6. rate limit (B12 / T-36), then insert. Only a new row counts: it bounds how many live Elvanto writes a runaway
+    // phone can make, and a busy door's retries and duplicates never stall it.
+    if (d.limiter.isBlocked(c.actor.id)) throw new TooManyRequestsError('Too many taps. Wait a minute.');
     const studentId = personId ? roster.find((x) => x.personId === personId)?.studentId ?? null : null;
     try {
       const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: dedupeKey(it.type, p),
