@@ -104,6 +104,14 @@ describe('lastMeetingDate', () => {
     expect(lastMeetingDate('', '2026-10-16')).toBe('2026-10-16');
     expect(lastMeetingDate('7:00 PM', '2026-10-16')).toBe('2026-10-16');
   });
+  it('T-49 / APP-48: only full day names or exact 3-letter forms count', () => {
+    expect(lastMeetingDate('Monthly', '2026-10-16')).toBe('2026-10-16');
+    expect(lastMeetingDate('Sunset group, Wed', '2026-10-16')).toBe('2026-10-14');
+    expect(lastMeetingDate('Tues 6pm', '2026-10-16')).toBe('2026-10-16');
+    expect(lastMeetingDate('Every WEDNESDAY night', '2026-10-16')).toBe('2026-10-14');
+    expect(lastMeetingDate('Thursdays', '2026-10-16')).toBe('2026-10-15'); // a full name's plural
+    expect(lastMeetingDate('Sat.', '2026-10-16')).toBe('2026-10-10');
+  });
 });
 
 describe('dedupeKey (contract 5.1)', () => {

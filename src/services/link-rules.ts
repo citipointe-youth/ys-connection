@@ -56,12 +56,15 @@ export function defaultService(day: string, services: LinkServiceRow[]): LinkSer
 }
 
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+/** A full day name (or its plural) or the exact 3-letter form (T-49): "Monthly" and "Sunset" are not days. */
+const DAY_RE = /\b(?:(sun|mon|tue|wed|thu|fri|sat)|(sun|mon|tues|wednes|thurs|fri|satur)days?)\b/;
+const LONG = ['sun', 'mon', 'tues', 'wednes', 'thurs', 'fri', 'satur'];
 
 /** The latest date ≤ today on the weekday named in `meets` ("Tue 6:30 PM", "Tuesday"); today if none. */
 export function lastMeetingDate(meets: string, today: string): string {
-  const m = meets.toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/);
+  const m = meets.toLowerCase().match(DAY_RE);
   if (!m) return today;
-  const target = WEEKDAYS.indexOf(m[1]!);
+  const target = m[1] ? WEEKDAYS.indexOf(m[1]) : LONG.indexOf(m[2]!);
   const back = (weekdayOf(today) - target + 7) % 7;
   return addDays(today, -back);
 }
