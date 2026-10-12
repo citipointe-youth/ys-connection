@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -82,36 +82,66 @@ describe('SupabaseLinkRepository SQL text', () => {
   });
 });
 
-// DB block: a scratch database only (never prod). Skipped unless LINK_TEST_DATABASE_URL is set.
+// DB block (ledger 24, V2): run ONCE by the operator on the real database, only in the window after the prod build
+// has applied 0017 and before the New person switch leaves Off (the link tables are empty until the practice Friday).
+// Skipped unless LINK_TEST_DATABASE_URL is set. It never runs a migration, refuses production unless
+// LINK_TEST_ALLOW_PROD=1, refuses unless all 8 link tables are empty, truncates only those 8 tables (before each test
+// and once more at the end), and holds at most 2 connections. No other table is read or written.
 const URL = process.env['LINK_TEST_DATABASE_URL'];
 const PROD_REF = 'ltcblcudlzlzfcyzlhpc';
-if (URL && URL.includes(PROD_REF)) throw new Error('LINK_TEST_DATABASE_URL points at production. Refusing to run.');
+if (URL && URL.includes(PROD_REF) && process.env['LINK_TEST_ALLOW_PROD'] !== '1') {
+  throw new Error('LINK_TEST_DATABASE_URL points at production. Set LINK_TEST_ALLOW_PROD=1 to run V2 there (ledger 24: only '
+    + 'after 0017 has landed and before the switch leaves Off).');
+}
 const TABLES = ['link_outbox', 'link_roster', 'link_services', 'link_groups', 'link_flow_people', 'link_console',
-  'link_mirror_state', 'link_log'];
+  'link_mirror_state', 'link_log'] as const;
 const KEY: Record<string, string> = { link_outbox: 'id', link_roster: 'person_id', link_log: 'id' };
 
 if (URL) {
   process.env['FIELD_ENCRYPTION_KEY'] ??= randomBytes(32).toString('base64');
-  let migrated = false;
-  describeLinkRepo('supabase', async (opts) => {
-    const sql = postgres(URL, { max: 2, prepare: false, onnotice: () => {} });
-    if (!migrated) { await sql.unsafe(migration); migrated = true; }
-    await sql.unsafe(`truncate ${TABLES.join(', ')}`);
-    const base = (n: string, id: string) => maybeDecrypt(n, 'link_outbox.note:' + id)!;
-    const repo = new SupabaseLinkRepository(sql, opts?.decrypt
-      ? { decrypt: (n, id) => opts.decrypt!(base(n, id), id) } : {});
-    return {
-      repo,
-      backdate: async (table, id, column, iso) => {
-        await sql`update ${sql(table)} set ${sql(column)} = ${iso} where ${sql(KEY[table]!)} = ${id}`;
-      },
-      peekNote: async (id) => {
-        const [r] = await sql`select note from link_outbox where id = ${id}`;
-        return r?.note == null ? null : base(r.note as string, id);
-      },
-      cleanup: async () => { await sql.end({ timeout: 5 }); },
-    };
+  // One client for the whole run (max 2 connections), shared by every harness.
+  const sql = postgres(URL, { max: 2, prepare: false, onnotice: () => {} });
+  const truncate = () => sql.unsafe(`truncate ${TABLES.join(', ')}`);
+  let ready = false; // set only once every check passed: nothing is ever truncated before that
+
+  describe('ILinkRepository on a real database (V2)', () => {
+    beforeAll(async () => {
+      for (const t of TABLES) {
+        const [r] = await sql`select to_regclass(${'public.' + t}) is not null as ok`;
+        if (!r?.ok) throw new Error(`0017 not applied: table ${t} is missing. Push so the prod build applies 0017, then run again.`);
+      }
+      for (const t of TABLES) {
+        const [r] = await sql`select exists (select 1 from ${sql(t)}) as used`;
+        if (r?.used) {
+          throw new Error(`${t} is not empty. Refusing to run: this run is only for the empty window after 0017 lands and `
+            + 'before the practice Friday (the switch still Off). Nothing was changed.');
+        }
+      }
+      ready = true;
+    }, 30_000);
+    afterAll(async () => {
+      try { if (ready) await truncate(); } finally { await sql.end({ timeout: 5 }); }
+    }, 30_000);
+
+    describeLinkRepo('supabase', async (opts) => {
+      if (!ready) throw new Error('V2 checks did not pass; not touching the database.');
+      await truncate();
+      const base = (n: string, id: string) => maybeDecrypt(n, 'link_outbox.note:' + id)!;
+      const repo = new SupabaseLinkRepository(sql, opts?.decrypt
+        ? { decrypt: (n, id) => opts.decrypt!(base(n, id), id) } : {});
+      return {
+        repo,
+        backdate: async (table, id, column, iso) => {
+          await sql`update ${sql(table)} set ${sql(column)} = ${iso} where ${sql(KEY[table]!)} = ${id}`;
+        },
+        peekNote: async (id) => {
+          const [r] = await sql`select note from link_outbox where id = ${id}`;
+          return r?.note == null ? null : base(r.note as string, id);
+        },
+        cleanup: async () => {}, // the shared client is ended once, after the last test
+      };
+    });
   });
 } else {
-  describe.skip('ILinkRepository (supabase) — set LINK_TEST_DATABASE_URL to a scratch database', () => { it('skipped', () => {}); });
+  describe.skip('ILinkRepository (supabase) - set LINK_TEST_DATABASE_URL to run V2 (ledger 24)', () => { it('skipped', () => {}); });
 }
