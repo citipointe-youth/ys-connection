@@ -10,7 +10,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
-  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkHHMM', '_lkDefaultSvcFor',
+  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
@@ -1021,8 +1021,8 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
 describe('F2 lifegroup report', () => {
   const G = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
   const RSVC = [
-    { serviceTimeId: P(50), serviceId: P(51), name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' },
-    { serviceTimeId: P(52), serviceId: P(53), name: 'Morning', startsAt: '2026-10-11T00:15:00.000Z', ymd: '2026-10-11' },
+    { serviceTimeId: P(50), serviceId: P(51), name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16', isDefault: true },
+    { serviceTimeId: P(52), serviceId: P(53), name: 'Morning', startsAt: '2026-10-11T00:15:00.000Z', ymd: '2026-10-11', isDefault: true },
   ];
   const grp = (over: any = {}) => ({ groupId: G(1), name: 'Yr 9 <i>Girls</i>', meets: 'Tue 6:30 PM',
     members: [{ personId: P(61), name: 'Ava Example', leader: false }, { personId: P(62), name: 'Dana Testleader', leader: true },
@@ -1033,7 +1033,7 @@ describe('F2 lifegroup report', () => {
   const setup = (leaderId: string | null = 'L1', over: any = {}, post?: Env['post']) => {
     const h = makeEnv({ leaderId, post });
     const L = h.get().LINK;
-    L.rToday = '2026-10-16'; L.rServices = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
+    L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
     L.groups = [grp(over)]; L.gid = G(1);
     return h;
   };
@@ -1171,7 +1171,7 @@ describe('F2 lifegroup report', () => {
     expect(f._lkDefaultSvcFor('2026-10-16', RSVC)).toBe(P(50));
     expect(f._lkDefaultSvcFor('2026-10-11', RSVC)).toBe(P(52));
     expect(f._lkDefaultSvcFor('2026-10-13', RSVC)).toBeNull();
-    expect(f._lkDefaultSvcFor('2026-10-16', [...RSVC, { ...RSVC[0], serviceTimeId: P(54) }])).toBeNull();
+    expect(f._lkDefaultSvcFor('2026-10-16', [{ ...RSVC[0], isDefault: false }, RSVC[1]])).toBeNull(); // the server decides (APP-43)
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfDate('2026-10-16');

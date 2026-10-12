@@ -247,6 +247,17 @@ describe('D1 checkin read', () => {
     expect(r.people).toBeUndefined();
   });
 
+  it('APP-43: each pick-list service says whether it is its own day’s default (Friday; Sunday 10:15 only)', async () => {
+    const h = await setup();
+    await h.link.replaceMirror('services', [
+      { serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: TODAY, rooms: [], checkedIn: [] },
+      { serviceTimeId: ST_SUN, serviceId: SVC_SUN, name: 'Connect', startsAt: '2026-10-11T00:15:00.000Z', ymd: '2026-10-11', rooms: [], checkedIn: [] },
+      { serviceTimeId: ST_OLD, serviceId: SVC_OLD, name: 'Evening', startsAt: '2026-10-11T08:00:00.000Z', ymd: '2026-10-11', rooms: [], checkedIn: [] },
+    ], { takenAt: '2026-10-16T08:59:00.000Z', consoleId: CONSOLE });
+    const r = await h.svc.checkin(GRADE);
+    expect(Object.fromEntries(r.services.map((s) => [s.serviceTimeId, s.isDefault]))).toEqual({ [ST]: true, [ST_SUN]: true, [ST_OLD]: false });
+  });
+
   it('B9 / D3: at 00:30 on Saturday the default is still Friday\u2019s service; Sunday stays 10:15 only', async () => {
     const h = await setup();
     h.clock.now = new Date('2026-10-16T14:30:00.000Z'); // Sat 00:30 Brisbane

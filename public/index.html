@@ -9088,7 +9088,7 @@ function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, loadGen: 0, resGen: 0, ft: [], ftRows: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
-    groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
+    groups: null, gErr: null, gid: null, rf: null, gres: {}, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 function _linkOn() { return _nyOn(); }
@@ -9598,8 +9598,9 @@ async function renderLinkCheckin() {
         <button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>`));
       return;
     }
-    if (!LINK.svc) LINK.svc = LINK.defaultSvc;
   }
+  // The services may already be here from the reports page (APP-42): the default still applies.
+  if (!LINK.svc) LINK.svc = LINK.defaultSvc;
   if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); _lkPickService(); return; }
   if (!LINK.people[LINK.svc]) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
   _lkPaintDoor();
@@ -9891,17 +9892,10 @@ function _lkAddDays(ymd, n) {
   const t = Date.parse(String(ymd || '') + 'T00:00:00Z');
   return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : '';
 }
-// Brisbane wall-clock "HH:MM" (UTC+10, no daylight saving).
-function _lkHHMM(iso) { const t = Date.parse(iso); return isFinite(t) ? new Date(t + 36e6).toISOString().slice(11, 16) : ''; }
-// §2.3 for a report date: Friday = the day's only service; Sunday = the day's only 10:15 service; else none.
+// §2.3 for a report date: the server marks each day's default service (APP-43: the rule lives in link-rules only).
 function _lkDefaultSvcFor(day, services) {
-  const t = Date.parse(String(day || '') + 'T00:00:00Z');
-  if (!isFinite(t)) return null;
-  const wd = new Date(t).getUTCDay();
-  let xs = (services || []).filter((s) => s.ymd === day);
-  if (wd === 0) xs = xs.filter((s) => _lkHHMM(s.startsAt) === '10:15');
-  else if (wd !== 5) return null;
-  return xs.length === 1 ? xs[0].serviceTimeId : null;
+  const s = (services || []).find((x) => x.ymd === day && x.isDefault);
+  return s ? s.serviceTimeId : null;
 }
 function _lkWeekChip(w) {
   const m = { reported: ['ok', 'Reported'], 'did-not-meet': ['prac', 'Did not meet'], none: ['wait', 'No report'],
@@ -9934,7 +9928,7 @@ function _lkGroupsHtml() {
 }
 function _lkSvcName(id) {
   if (!id) return 'No service';
-  const s = (LINK.rServices || []).find((x) => x.serviceTimeId === id);
+  const s = (LINK.services || []).find((x) => x.serviceTimeId === id);
   return s ? _lkSvcLabel(s) : 'A service more than 7 days ago';
 }
 // The Last report card: date, service, did-not-meet, guests, ticked members. Never notes.
@@ -9966,7 +9960,7 @@ function _lkNoteCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','
 function _lkFormHtml() {
   const f = LINK.rf, g = _lkGroup();
   if (!f || !g) return '';
-  const today = LINK.rToday || f.date, min = _lkAddDays(today, -14);
+  const today = LINK.today || f.date, min = _lkAddDays(today, -14);
   const last = g.lastReport;
   const clash = f.mode === 'submit' && last && last.date === f.date;
   const name = _lkMyName();
@@ -9974,7 +9968,7 @@ function _lkFormHtml() {
     : `<input type="date" class="fi" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)">`;
   let body = '';
   if (!f.didNotMeet) {
-    const svcs = (LINK.rServices || []).slice();
+    const svcs = (LINK.services || []).slice();
     if (f.svc && f.svc !== 'none' && !svcs.some((s) => s.serviceTimeId === f.svc)) svcs.push({ serviceTimeId: f.svc, _saved: true });
     const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
     body = `<div class="fg"><label class="fl">Who was there</label><div class="lk-lq-list">${(g.members || []).map((m) => {
@@ -10009,9 +10003,9 @@ function _lkPaintGroups() {
 }
 async function _lkLoadGroups() {
   try {
-    const [r, c] = await Promise.all([API.fresh('/link/lifegroups'), LINK.rServices ? null : API.fresh('/link/checkin').catch(() => null)]);
+    const [r, c] = await Promise.all([API.fresh('/link/lifegroups'), LINK.services ? null : API.fresh('/link/checkin').catch(() => null)]);
     LINK.groups = (r && r.groups) || [];
-    if (c) { LINK.rServices = Array.isArray(c.services) ? c.services : []; LINK.rToday = c.today || null; }
+    if (c) _lkTakeServices(c); // APP-42: one services list for the door, reports and the admin page
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.gres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.gres[k].status)) delete LINK.gres[k]; });
     LINK.gErr = null;
@@ -10040,8 +10034,8 @@ function _lkFormOpen(mode) {
     LINK.rf = { mode, date: r.date, didNotMeet: base.didNotMeet, ticks, guests: Math.min(base.guests, 99), svc: base.didNotMeet ? '' : (base.serviceTimeId || 'none'),
       svcSet: true, note: '', priv: false, reportId: r.reportId, base, err: '' };
   } else {
-    const date = g.defaultDate || LINK.rToday || '';
-    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.rServices) || '', svcSet: false,
+    const date = g.defaultDate || LINK.today || '';
+    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.services) || '', svcSet: false,
       note: '', priv: false, reportId: null, base: null, err: '' };
   }
   _lkPaintGroups();
@@ -10050,7 +10044,7 @@ function _lkRfDate(v) {
   const f = LINK.rf;
   if (!f || f.mode === 'edit') return;
   f.date = String(v || ''); f.err = '';
-  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.rServices) || '';
+  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || '';
   _lkPaintGroups();
 }
 // Group did not meet: clears and hides the ticks and the service.
@@ -10059,7 +10053,7 @@ function _lkRfDnm(on) {
   if (!f) return;
   f.didNotMeet = !!on; f.err = '';
   if (on) { f.ticks = {}; f.svc = ''; f.svcSet = false; }
-  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.rServices) || '';
+  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || '';
   _lkPaintGroups();
 }
 function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; _lkPaintGroups(); }
@@ -10081,7 +10075,7 @@ function _lkReportSend() {
   if (!f || !g) return;
   const lid = getMyLeaderId();
   if (!lid) { _lkIamPick(_lkReportSend); return; }
-  const today = LINK.rToday || f.date;
+  const today = LINK.today || f.date;
   let err = '';
   if (f.mode === 'submit' && g.lastReport && g.lastReport.date === f.date) err = "There's already a report for that date. Edit it.";
   else if (!f.date || f.date > today || f.date < _lkAddDays(today, -14)) err = 'The date must be in the last 14 days.';
@@ -10118,7 +10112,7 @@ function _lkReportCancel() {
 }
 // ── Flow steps (F3; spec §11.3) ──
 // Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
-function _lkToday() { return LINK.today || LINK.rToday || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
+function _lkToday() { return LINK.today || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
 function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
 // The step's action: still on this phone, else this phone's last answer, else the server's open row.
 function _lkFlowAct(r) {
@@ -10527,7 +10521,6 @@ async function _lkAdmLoadLog() {
 }
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
-  if (!LINK.today) { try { _lkTakeServices(await API.fresh('/link/checkin')); } catch (e) {} if (S.page !== 'link-admin') return; }
   setApp(shell(`<div class="ph"><h1>Elvanto link</h1></div><div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster(); if (!LINK.adm.log) _lkAdmLoadLog();
 }

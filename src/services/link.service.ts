@@ -88,7 +88,8 @@ export interface LinkStatus {
     capabilities: Capabilities | null; consoles: number };
   mirrors: Record<PushKind, { takenAt: string | null; ageSeconds: number | null }>;
 }
-export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string }
+/** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
+export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
 export interface CheckinPerson { personId: string; name: string; grade: number | null; leader: boolean; checkedIn: boolean;
   action: ActionView | null; mine: boolean }
 export interface CheckinLeader { leaderId: string; name: string; personId: string | null; checkedIn: boolean;
@@ -162,15 +163,24 @@ function personVisible(a: Actor, r: LinkRosterRow | undefined, s: StructureScope
 /**
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
  * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
- * both Not linked (APP-55).
+ * both Not linked (APP-55). APP-79: the folded names are indexed once per call, not once per leader.
  */
-function rosterPersonOf(l: Leader, roster: LinkRosterRow[], appLeaders: Leader[]): string | null {
-  const key = nameFold(l.fullName);
-  if (appLeaders.filter((x) => x.active && nameFold(x.fullName) === key).length > 1) return null;
-  const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
-  const hits = roster.filter((r) => r.active && r.kind === 'leader' && nameFold(fullName(r)) === key
-    && (!g || !r.gender || r.gender === g));
-  return hits.length === 1 ? hits[0]!.personId : null;
+function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l: Leader) => string | null {
+  const appCount = new Map<string, number>();
+  for (const x of appLeaders) if (x.active) { const k = nameFold(x.fullName); appCount.set(k, (appCount.get(k) ?? 0) + 1); }
+  const byName = new Map<string, LinkRosterRow[]>();
+  for (const r of roster) {
+    if (!r.active || r.kind !== 'leader') continue;
+    const k = nameFold(fullName(r));
+    byName.set(k, [...(byName.get(k) ?? []), r]);
+  }
+  return (l) => {
+    const key = nameFold(l.fullName);
+    if ((appCount.get(key) ?? 0) > 1) return null;
+    const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
+    const hits = (byName.get(key) ?? []).filter((r) => !g || !r.gender || r.gender === g);
+    return hits.length === 1 ? hits[0]!.personId : null;
+  };
 }
 
 const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused',
@@ -538,15 +548,19 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async checkin(actor, serviceTimeId) {
       const c = context(actor, await gate(actor, 'link:use'));
       const one = typeof serviceTimeId === 'string' && serviceTimeId !== '';
-      const [services, roster, mirrors, rows, leaders] = await Promise.all([c.services(), one ? c.roster() : [], c.mirror(),
-        one ? d.link.listActions({ serviceTimeId, types: CHECK_TYPES }) : [], one ? c.leaders() : []]);
+      const services = await c.services();
+      const svc = one ? services.find((s) => s.serviceTimeId === serviceTimeId) : undefined;
+      if (one && !svc) throw new BadRequestError('Pick a service from the list.');
+      // APP-77: the service's own day narrows the outbox read to one day's rows (link_outbox_date_idx).
+      const [roster, mirrors, rows, leaders] = await Promise.all([svc ? c.roster() : [], c.mirror(),
+        svc ? d.link.listActions({ serviceTimeId, types: CHECK_TYPES, serviceDateFrom: svc.ymd, serviceDateTo: svc.ymd }) : [],
+        svc ? c.leaders() : []]);
       const list = pickList(services, c.today);
       const out: CheckinView = { today: c.today,
-        services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd })),
+        services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd,
+          isDefault: defaultService(s.ymd, services)?.serviceTimeId === s.serviceTimeId })),
         defaultServiceTimeId: defaultService(serviceDay(c.t), services)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
-      if (!one) return out;
-      const svc = services.find((s) => s.serviceTimeId === serviceTimeId);
-      if (!svc) throw new BadRequestError('Pick a service from the list.');
+      if (!svc) return out;
       const svcAt = takenAt(mirrors, 'services');
       const byPerson = new Map<string, OutboxRow[]>();
       for (const r of rows) if (r.personId) byPerson.set(r.personId, [...(byPerson.get(r.personId) ?? []), r]);
@@ -560,8 +574,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       out.people = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
         .sort((a, b) => cmp(a.lastName, b.lastName) || cmp(a.firstName, b.firstName))
         .map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, leader: r.kind === 'leader', ...state(r.personId) }));
+      const personOf = rosterPersonMatcher(roster, leaders);
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
-        const personId = rosterPersonOf(l, roster, leaders);
+        const personId = personOf(l);
         return { leaderId: l.id, name: l.fullName, personId,
           ...(personId ? state(personId) : { checkedIn: false, action: null, mine: false }) };
       });
