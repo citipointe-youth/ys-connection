@@ -16,6 +16,7 @@ export function makeLinkController(deps: { link: LinkService }) {
     batch: (r: HttpRequest) => L.batch(actor(r), r.body),
     lifegroups: (r: HttpRequest) => L.lifegroups(actor(r)),
     flows: (r: HttpRequest) => L.flows(actor(r)),
+    assignFlow: (r: HttpRequest) => L.assignFlow(actor(r), r.body),
     roster: (r: HttpRequest) => L.rosterForMatching(actor(r), r.query),
     setMatch: (r: HttpRequest) => L.setMatch(actor(r), r.params['personId']!, r.body),
     shadowCheck: (r: HttpRequest) => L.shadowCheck(actor(r), r.query['date']),

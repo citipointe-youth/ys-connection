@@ -25,6 +25,8 @@ const ST = u(201), ST_SUN = u(202), ST_OLD = u(203), SVC = u(211), SVC_SUN = u(2
 const L_CODY = u(301), L_DANA = u(302), L_EVE = u(303), L_FAY = u(304);
 const G9F = u(401), G10M = u(402), GX = u(403), R1 = u(411), R2 = u(412);
 const FR1 = u(501), FR2 = u(502), FR3 = u(503), FLOW_A = u(511), FLOW_B = u(512), STEP1 = u(521), STEP2 = u(522), STEP3 = u(523);
+// T4: each flow's lowest step is "step 0" (admin/director only), so each flow gets one ahead of the steps tested here.
+const FR0B = u(504), FR0A = u(505), STEP0B = u(524), STEP0A = u(525);
 const CONSOLE = u(601), CONSOLE2 = u(602);
 const S_AMY = u(701), S_BEN = u(702), S_TOM = u(703);
 
@@ -123,7 +125,11 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
       name: 'Amy Adams', due: null, assignedTo: 'Admin' },
     { rowId: FR2, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP2, stepName: 'Follow up', stepOrder: 2, personId: null,
       name: 'Unknown Kid', due: null, assignedTo: 'Admin' },
-    { rowId: FR3, flowId: FLOW_A, flowName: 'Alpha', stepId: STEP3, stepName: 'Coffee', stepOrder: 0, personId: P_TOM,
+    { rowId: FR0B, flowId: FLOW_B, flowName: 'Bravo', stepId: STEP0B, stepName: 'Intake', stepOrder: 0, personId: P_BEN,
+      name: 'Ben Brown', due: null, assignedTo: '' },
+    { rowId: FR0A, flowId: FLOW_A, flowName: 'Alpha', stepId: STEP0A, stepName: 'Intake', stepOrder: 1, personId: null,
+      name: 'Pre Kid', due: null, assignedTo: '' },
+    { rowId: FR3, flowId: FLOW_A, flowName: 'Alpha', stepId: STEP3, stepName: 'Coffee', stepOrder: 2, personId: P_TOM,
       name: 'Tom Ten', due: '2026-10-20', assignedTo: 'Admin' },
   ], meta('2026-10-16T08:00:00.000Z'));
   if (o.console !== false) await registerConsole(link, CONSOLE, { ...CAPS, ...o.caps });
@@ -1081,7 +1087,8 @@ describe('D5 lifegroups and flows', () => {
     const open = report({ date: '2026-10-15' });
     await enq(h.svc, GRADE, open, DEV);
     const g = (await h.svc.lifegroups(GRADE)).groups[0]!;
-    expect(Object.keys(g).sort()).toEqual(['defaultDate', 'groupId', 'lastReport', 'meets', 'members', 'name', 'openAction', 'thisWeek']);
+    expect(Object.keys(g).sort()).toEqual(['defaultDate', 'gender', 'grade', 'groupId', 'history', 'lastReport', 'meets', 'members',
+      'name', 'openAction', 'thisWeek']);
     expect(g).toMatchObject({ defaultDate: '2026-10-13', thisWeek: 'reported', lastReport: { reportId: R1, editable: true },
       openAction: { id: open.id, type: 'submitReport', status: 'pending', reason: null } });
     expect(JSON.stringify(g.lastReport)).not.toMatch(/note/i);
@@ -1128,7 +1135,7 @@ describe('D5 lifegroups and flows', () => {
   it('flows: scoped by the roster grade/gender, unknown person for director/admin, ordered by flow then step', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
-    expect(await ids(DIRECTOR)).toEqual([FR3, FR1, FR2]);
+    expect(await ids(DIRECTOR)).toEqual([FR0A, FR3, FR0B, FR1, FR2]);
     expect(await ids(GRADE)).toEqual([FR1]);
     expect(await ids(QUAD_B)).toEqual([FR3]);
     expect(await ids(LEADER)).toEqual([]);
@@ -1245,5 +1252,119 @@ describe('D6 admin: matching, shadow check, log', () => {
     expect((await h.svc.log(ADMIN, { login: 'nobody' })).rows).toEqual([]);
     await h.link.addLog(Array.from({ length: 2005 }, () => at('2026-10-14T05:00:00.000Z')));
     expect((await h.svc.log(ADMIN, {})).rows).toHaveLength(2000);
+  });
+});
+
+// =====================================================================================================================
+describe('UX batch 2026-10-12 (lane Y1)', () => {
+  const META = (takenAt = '2026-10-16T08:30:00.000Z') => ({ takenAt, consoleId: CONSOLE });
+
+  it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
+    const h = await setup();
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 2 });
+    await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
+    expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
+    const none = await setup('on', { console: false });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 2 });
+  });
+
+  it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
+    const h = await setup();
+    const P_NEW = u(150), P_LEAD = u(151), P_ANON = u(152), LROOM = u(222);
+    await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z',
+      ymd: TODAY, rooms: [{ id: ROOM, name: 'Youth Program' }, { id: LROOM, name: 'Kids/Youth Leaders' }],
+      checkedIn: [{ personId: P_BEN, roomId: ROOM, firstName: 'Ben', lastName: 'Brown' },
+        { personId: P_NEW, roomId: ROOM, firstName: 'Zed', lastName: 'Zulu' },
+        { personId: P_LEAD, roomId: LROOM, firstName: 'Lee', lastName: 'Avery' },
+        { personId: P_ANON, roomId: ROOM }] }], META('2026-10-16T08:59:00.000Z'));
+    const people = (await h.svc.checkin(GRADE, ST)).people!;
+    expect(people.map((p) => p.name)).toEqual(['Amy Adams', 'Lee Avery', 'Ben Brown', 'Cody Cobb', 'Eve Evans', 'Eve Evans', 'Tom Ten', 'Zed Zulu']);
+    expect(people.find((p) => p.personId === P_NEW)).toEqual({ personId: P_NEW, name: 'Zed Zulu', grade: null, leader: false,
+      checkedIn: true, action: null, mine: false });
+    expect(people.find((p) => p.personId === P_LEAD)!.leader).toBe(true);
+    expect(people.some((p) => p.personId === P_ANON)).toBe(false);
+  });
+
+  it('T4: flow rows carry grade, gender, mobile, mobileIsParent and the assignee', async () => {
+    const h = await setup();
+    const r = (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FR1)!;
+    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'due', 'flowId', 'flowName',
+      'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'openAction', 'personId', 'rowId', 'stepId', 'stepName', 'stepOrder']);
+    expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
+  });
+
+  it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 is admin/director only', async () => {
+    const h = await setup();
+    const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
+    expect(await ids(GRADE2)).toEqual([]);                    // Ben (9 boy) sits in the step 0 of Bravo
+    expect(await ids(ADMIN)).toContain(FR0B);
+    expect(await ids(DIRECTOR)).toContain(FR0B);
+    const flows = await h.link.flows();
+    const P_UNK = u(160);
+    await h.link.replaceMirror('flows', [
+      ...flows.map((f) => (f.rowId === FR1 ? { ...f, grade: 10, gender: 'male' } : f)), // the row of Amy says Year 10 boy
+      { rowId: u(506), flowId: FLOW_B, flowName: 'Bravo', stepId: STEP1, stepName: 'Welcome call', stepOrder: 1, personId: P_UNK,
+        name: 'Una Known', due: null, assignedTo: '', grade: 9, gender: 'female', mobile: '0411111111', mobileIsParent: true },
+    ], META('2026-10-16T08:59:00.000Z'));
+    expect(await ids(GRADE)).toEqual([u(506)]);               // not in the roster, but its own grade/gender match
+    expect(await ids(QUAD_B)).toEqual([FR3, FR1]);
+    expect((await h.svc.flows(GRADE)).rows[0]).toMatchObject({ grade: 9, gender: 'female', mobile: '0411111111', mobileIsParent: true });
+  });
+
+  it('T4: a step-0 row cannot be completed by a login that cannot see it', async () => {
+    const h = await setup();
+    const s = step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN });
+    expect((await enq(h.svc, GRADE2, s, DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, DIRECTOR, { ...s, id: nid() }, DEV)).outcome).toBe('saved');
+  });
+
+  it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {
+    const h = await setup();
+    const row = async (a: Actor) => (await h.svc.flows(a)).rows.find((r) => r.rowId === FR1)!;
+    expect(await h.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true });
+    expect(await row(GRADE)).toMatchObject({ assignedLeaderId: L_DANA, assignedLeaderName: 'Dana Day' });
+    expect((await h.link.flowAssignments())[0]).toMatchObject({ assignedBy: 'grade9g' });
+    await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_EVE });
+    expect(await row(ADMIN)).toMatchObject({ assignedLeaderId: L_EVE, assignedLeaderName: 'Eve Evans' });
+    await h.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: null });
+    expect(await row(GRADE)).toMatchObject({ assignedLeaderId: null, assignedLeaderName: null });
+  });
+
+  it('T6: 404 module off, 403 outside scope or step 0, 400 unknown/inactive leader or no such person', async () => {
+    const h = await setup();
+    const a = (actor: Actor, b: object) => code(h.svc.assignFlow(actor, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA, ...b }));
+    expect(await a(GRADE2, {})).toBe('FORBIDDEN');                            // Amy is a Year 9 girl
+    expect(await a(GRADE, { personId: P_BEN })).toBe('FORBIDDEN');            // Ben: step 0
+    expect(await a(GRADE, { leaderId: u(399) })).toBe('BAD_REQUEST');         // unknown leader
+    expect(await a(GRADE, { leaderId: L_FAY })).toBe('BAD_REQUEST');          // inactive leader
+    expect(await a(GRADE, { personId: P_TOM })).toBe('BAD_REQUEST');          // not in this flow
+    expect(await a(GRADE, { personId: null })).toBe('VALIDATION_ERROR');      // a row with no person cannot be assigned
+    const off = await setup({ checkin: 'on', lifegroupReport: 'on' });
+    expect(await code(off.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA }))).toBe('MODULE_DISABLED');
+  });
+
+  it('T8: lifegroups carry grade, gender and history (overlay first), sorted 6..12, girls then boys, no grade last', async () => {
+    const h = await setup();
+    const gs0 = await h.link.groups();
+    const lr = gs0.find((g) => g.groupId === G9F)!.lastReport!;
+    const old = { ...lr, reportId: u(417), date: '2026-10-06' };
+    await h.link.replaceMirror('groups', [...gs0.map((g) => (g.groupId === G9F ? { ...g, history: [lr, old] } : g)),
+      group({ groupId: u(431), name: 'Grade 9 Boys', meets: '', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(432), name: 'Grade 7 Girls', meets: '', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(433), name: 'Grade 6 Boys', meets: '', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(434), name: 'Grade 6 Girls', meets: '', members: [], thisWeek: 'none', lastReport: null }),
+    ], META('2026-10-16T08:30:00.000Z'));
+    const r = await h.svc.lifegroups(DIRECTOR);
+    expect(r.groups.map((g) => g.name)).toEqual(['Grade 6 Girls', 'Grade 6 Boys', 'Grade 7 Girls', 'Grade 9 Girls', 'Grade 9 Boys',
+      'Grade 10 Boys', 'Connect group']);
+    const g9 = r.groups.find((g) => g.groupId === G9F)!;
+    expect(g9).toMatchObject({ grade: 9, gender: 'female' });
+    expect(g9.history.map((x) => x.reportId)).toEqual([R1, u(417)]);
+    expect(r.groups.find((g) => g.groupId === GX)!.history).toEqual([]);
+    // a report sent after the push leads the history
+    const sub = report({ date: '2026-10-15', guests: 3 });
+    await enq(h.svc, GRADE, sub, DEV);
+    setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: u(418) });
+    expect((await h.svc.lifegroups(GRADE)).groups[0]!.history.map((x) => x.reportId)).toEqual([u(418), R1, u(417)]);
   });
 });
