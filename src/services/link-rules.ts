@@ -116,9 +116,10 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 
   if (item.outcome === 'resolved') {
     if (row.status === 'unclear') {
+      // X5 (B2): resolved clears the unclear row's detail; landed also clears the reason. No ids on resolved.
       return { next: item.landed
-        ? { status: 'sent', resultAt: at, updatedAt: at }
-        : { status: 'refused', reason: 'not-landed', resultAt: at, updatedAt: at } };
+        ? { status: 'sent', reason: null, detail: null, resultAt: at, updatedAt: at }
+        : { status: 'refused', reason: 'not-landed', detail: null, resultAt: at, updatedAt: at } };
     }
     // An unclear row that was already resolved the same way: idempotent.
     if ((row.status === 'sent' || row.status === 'refused') && row.status === target) return { ignored: 'already-final' };

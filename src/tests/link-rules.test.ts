@@ -135,7 +135,9 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
   });
   it('sent stores sentLogKey, reportId, personId, resultAt', () => {
     const r = applyOutcome(row({ type: 'submitReport' }), { id: U(1), outcome: 'sent', sentLogKey: 'submitReport:lifegroup:x:20261013', reportId: U(7), personId: U(8) }, CONSOLE, NOW);
-    expect(r).toEqual({ next: expect.objectContaining({ status: 'sent', sentLogKey: 'submitReport:lifegroup:x:20261013', reportId: U(7), personId: U(8), resultAt: nowIso, updatedAt: nowIso }) });
+    // B2: exact match, so a stray column fails the test.
+    expect(r).toEqual({ next: { status: 'sent', reason: null, detail: null, sentLogKey: 'submitReport:lifegroup:x:20261013',
+      reportId: U(7), personId: U(8), resultAt: nowIso, updatedAt: nowIso } });
   });
   it('sent without personId keeps the row personId', () => {
     const r = applyOutcome(row({ personId: U(3) }), { id: U(1), outcome: 'sent', sentLogKey: 'k1' }, CONSOLE, NOW);
@@ -162,11 +164,12 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
     expect(r).toEqual({ next: expect.objectContaining({ status: 'pending', reason: 'awaiting-approval',
       retryAt: '2026-10-16T09:05:00.000Z', leaseOwner: null, leaseUntil: null }) });
   });
-  it('resolved from unclear by any console', () => {
-    const landed = applyOutcome(row({ status: 'unclear', leaseOwner: CONSOLE }), { id: U(1), outcome: 'resolved', landed: true }, OTHER, NOW);
-    expect(landed).toEqual({ next: expect.objectContaining({ status: 'sent', resultAt: nowIso }) });
-    const notLanded = applyOutcome(row({ status: 'unclear' }), { id: U(1), outcome: 'resolved', landed: false }, OTHER, NOW);
-    expect(notLanded).toEqual({ next: expect.objectContaining({ status: 'refused', reason: 'not-landed' }) });
+  it('B2 / X5: resolved from unclear by any console; reason and detail cleared, no ids', () => {
+    const unclear = row({ status: 'unclear', leaseOwner: CONSOLE, reason: 'lease-lost', detail: 'Maybe.', sentLogKey: 'k9' });
+    const landed = applyOutcome(unclear, { id: U(1), outcome: 'resolved', landed: true }, OTHER, NOW);
+    expect(landed).toEqual({ next: { status: 'sent', reason: null, detail: null, resultAt: nowIso, updatedAt: nowIso } });
+    const notLanded = applyOutcome(unclear, { id: U(1), outcome: 'resolved', landed: false }, OTHER, NOW);
+    expect(notLanded).toEqual({ next: { status: 'refused', reason: 'not-landed', detail: null, resultAt: nowIso, updatedAt: nowIso } });
   });
   it('claimed row counts for the lease owner even when the lease expired', () => {
     const r = applyOutcome(row({ leaseUntil: '2026-10-16T08:00:00Z' }), { id: U(1), outcome: 'already' }, CONSOLE, NOW);
