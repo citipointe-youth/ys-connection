@@ -2471,6 +2471,13 @@ holds the binding rulings). Contract: `docs/superpowers/specs/2026-10-11-elvanto
 X1-X17); app spec: `docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md`. The other half is Project 11.1, the
 Elvanto Sync Console on the office PC, which talks to Elvanto; this app never does.
 
+**2026-10-12 afternoon:** the console is connected to prod and **all six action types are Live** (owner ruling: "shadow"
+means the app's admin-only menus, `modules.newYouthForms = shadow`, not practice sends). Same day fix: the Lifegroup
+report screen sat on "Loading..." forever because `lgDisplayName` was declared inside the Connection Audit IIFE, so the
+first group painted threw a `ReferenceError` (an unhandled rejection; the 25 s request timeout never fires because the
+request already succeeded). It now sits above `/* ── CA MODULE START ── */`; `src/tests/link-globals.test.ts` guards it.
+**A helper the link block calls must be global: nothing inside `const CA=(()=>{ … })()` is reachable from outside.**
+
 **Architecture**
 - **Phone → app:** a tap goes into a per-login queue in localStorage (`ysc.lkq.<user id>`, try/catch, memory-only after
   a storage error) and is flushed in batches of up to 50 to `POST /link/batch` (right away, on `online`, on
@@ -2493,8 +2500,9 @@ Elvanto Sync Console on the office PC, which talks to Elvanto; this app never do
 - **The switch:** the link screens share the **New person switch** (`modules.newYouthForms` Off / Shadow (admin only) /
   On); there is no `modules.elvantoLink` (D1, revisit before leaders get access). Off is the stop button for the
   screens: `/link/*` answers 404 and the claim leases nothing, but mirrors still arrive. To stop all data flow, also
-  turn off the link on the console. Live versus practice (shadow) per action type is the console's call
-  (`capabilities`).
+  turn off the link on the console. Live versus practice per action type is the console's call (`capabilities`; the
+  console's own setting is named `ysLink.shadow`, which is NOT this app's Shadow mode). Practice shows the grey
+  "Practice mode: not sent to Elvanto" banner; Live sends.
 - **Routes:** the house checklist applies: `/link` and `/sync` are in `router.ts`, the `vercel.json` regex and `sw.js`
   `API_RE`. The `/sync` routes are `sync: true` in the route table (no session; the adapter checks the token, exact and
   timing-safe, never logged).
