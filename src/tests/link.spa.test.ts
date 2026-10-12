@@ -6,7 +6,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
-  '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
+  '_lkBoot', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
@@ -26,7 +26,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 
-interface Env { storage: Map<string, string>; failStorage?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
+interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
   role?: string; mode?: string; leaderId?: string | null; }
 
 function makeEnv(e: Partial<Env> = {}) {
@@ -34,7 +34,9 @@ function makeEnv(e: Partial<Env> = {}) {
   const calls = { posts: [] as any[], toasts: [] as string[], modals: [] as string[], closed: 0, asks: [] as string[], apps: [] as string[], gos: [] as string[] };
   const ls = {
     getItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); return env.storage.has(k) ? env.storage.get(k)! : null; },
-    setItem: (k: string, v: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.set(k, String(v)); },
+    setItem: (k: string, v: string) => { if (env.failStorage) throw new Error('blocked'); if (env.quota) throw new Error('QuotaExceededError'); env.storage.set(k, String(v)); },
+    key: (i: number) => [...env.storage.keys()][i] ?? null,
+    get length() { return env.storage.size; },
     removeItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.delete(k); },
   };
   const prelude = `
@@ -488,6 +490,66 @@ describe('F1.2 queue', () => {
     expect(m[0]).toMatchObject({ checkedIn: true, queued: true, mine: true, action: { id: P(70), status: 'queued' } });
     expect(m[1]).toBe(server[1]);
     expect(m[2]).toMatchObject({ checkedIn: false, queued: true, action: { id: P(72), type: 'checkOut', status: 'queued' } });
+  });
+});
+
+describe('B13 / T-37 the phone queue belongs to one login (APP-13, APP-33, APP-73)', () => {
+  const item = (n: number) => ({ v: 1, kind: 'action', id: P(n), type: 'checkIn',
+    payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, personId: P(1) }, note: null, leaderId: null });
+  it('preview with a queued item: nothing is flushed under the previewed token; the admin queue stays', async () => {
+    const h = makeEnv({ role: 'admin' });
+    h.fns._lkQSet([item(1)]);
+    const { S } = h.get();
+    S.user = { id: 'u2', role: 'grade' }; // enterPreview swaps the token and the user, then resets LINK
+    h.fns._lkSoftReset();
+    await h.fns._lkFlush();
+    expect(h.calls.posts).toHaveLength(0);
+    S.user = { id: 'u1', role: 'admin' };
+    h.fns._lkSoftReset();
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    for (const f of ['enterPreview', 'exitPreview', '_handleAuthExpired']) {
+      expect(extractFn(html, f)).toMatch(/API\.setToken\([^)]*\);[\s\S]*_lkSoftReset\(\);/);
+    }
+  });
+  it('a flush in flight when the login changes is ignored (its queue is not touched)', async () => {
+    let release!: (v: any) => void;
+    const h = makeEnv({ post: (_p, b) => new Promise((r) => { release = () => r({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'saved' })) }); }) });
+    h.fns._lkQSet([item(1)]);
+    const f = h.fns._lkFlush();
+    const { S } = h.get();
+    S.user = { id: 'u2', role: 'grade' };
+    h.fns._lkSoftReset();
+    h.fns._lkQSet([item(2)]);
+    release(null);
+    await f;
+    expect(h.fns._lkQGet().map((x: any) => x.id)).toEqual([P(2)]);
+    S.user = { id: 'u1', role: 'grade' };
+    expect(h.fns._lkQGet().map((x: any) => x.id)).toEqual([P(1)]); // replays next time: nothing lost
+  });
+  it('a quota error removes the stored key and keeps the queue in memory for that login only', () => {
+    const h = makeEnv();
+    h.fns._lkQSet([item(1)]);
+    h.env.quota = true;
+    h.fns._lkQSet([item(1), item(2)]);
+    expect(h.env.storage.has('ysc.lkq.u1')).toBe(false);
+    expect(h.fns._lkQGet()).toHaveLength(2);
+    h.get().S.user = { id: 'u2', role: 'grade' };
+    expect(h.fns._lkQGet()).toHaveLength(0);
+  });
+  it('a stored queue is stamped; on login, other logins older than 3 days are dropped', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
+    const h = makeEnv();
+    h.fns._lkQSet([item(1)]);
+    expect(JSON.parse(h.env.storage.get('ysc.lkq.u1')!)).toEqual({ at: '2026-10-16T09:00:00.000Z', q: [item(1)] });
+    h.env.storage.set('ysc.lkq.u9', JSON.stringify({ at: '2026-10-12T08:00:00.000Z', q: [item(9)] }));
+    h.env.storage.set('ysc.lkq.u8', JSON.stringify({ at: '2026-10-14T08:00:00.000Z', q: [item(8)] }));
+    h.env.storage.set('ysc.lkq.u7', JSON.stringify([item(7)])); // an old bare array with no stamp: kept
+    h.fns._lkBoot();
+    expect([...h.env.storage.keys()].filter((k) => k.startsWith('ysc.lkq.')).sort()).toEqual(['ysc.lkq.u1', 'ysc.lkq.u7', 'ysc.lkq.u8']);
+  });
+  it('the comment no longer claims minors names never reach localStorage', () => {
+    expect(html).not.toContain('kept in memory only, never in localStorage');
   });
 });
 

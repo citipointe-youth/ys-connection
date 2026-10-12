@@ -7517,6 +7517,7 @@ async function enterPreview(id) {
     setMyLeaderId(null); _vgReset(); // the admin's "I am…" pick and grade taps never carry into a preview
     API.setToken(res.token);
     S.user = res.user;
+    _lkSoftReset(); /*LINK: the previewed login never sees or sends the admin's queue (B13) */
     Cache.clear();
     _shellReady = false;
     go('home');
@@ -7527,6 +7528,7 @@ function exitPreview() {
   if (!_previewStash) return;
   API.setToken(_previewStash.token);
   S.user = _previewStash.user;
+  _lkSoftReset(); /*LINK (B13) */
   _previewStash = null;
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   setMyLeaderId(null); _vgReset(); // preview-only taps are dropped, never saved
@@ -9075,11 +9077,13 @@ function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unk
 
 /* ── LINK MODULE ── Elvanto link screens (spec 2026-10-12-elvanto-link-app-design.md §9.2, §11).
    Same switch as New person (modules.newYouthForms). A tap never waits for the network: it goes into a
-   per-login queue in localStorage and is sent in batches to POST /link/batch. The door list (minors' names)
-   is kept in memory only, never in localStorage. Helpers are _lk*; the state object is LINK. */
+   per-login queue in localStorage and is sent in batches to POST /link/batch. The door list is kept in memory
+   only, but a queued item can hold a first-timer's name or a leader's note until it is sent. The queue is per
+   login: logout drops it, and other logins' queues older than 3 days are dropped at login (B13 / APP-33).
+   Helpers are _lk*; the state object is LINK. */
 let LINK = _lkFresh();
 function _lkFresh() {
-  return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
+  return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
@@ -9205,16 +9209,32 @@ function _lkBanner(types, st) {
 }
 // ── The phone queue (§9.2): localStorage['ysc.lkq.' + login id], every access in try/catch. ──
 function _lkKey() { return 'ysc.lkq.' + ((S.user && S.user.id) || ''); }
+// Stored as { at, q } (at = when it was last written); an older bare array still reads. LINK.mem (keyed by login) is
+// used only once localStorage has thrown (LINK.memOnly), so one login can never read another's queue (B13 / APP-13).
 function _lkQGet() {
-  try {
-    const raw = localStorage.getItem(_lkKey());
-    if (raw) { const q = JSON.parse(raw); if (Array.isArray(q)) return q; }
-  } catch (e) {}
-  return LINK.mem.slice();
+  if (!LINK.memOnly) {
+    try {
+      const raw = localStorage.getItem(_lkKey());
+      if (!raw) return [];
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v : (v && Array.isArray(v.q) ? v.q : []);
+    } catch (e) { LINK.memOnly = true; }
+  }
+  return (LINK.mem[_lkKey()] || []).slice();
 }
 function _lkQSet(q) {
-  LINK.mem = q.slice();
-  try { if (q.length) localStorage.setItem(_lkKey(), JSON.stringify(q)); else localStorage.removeItem(_lkKey()); } catch (e) {}
+  if (!LINK.memOnly) {
+    try {
+      if (q.length) localStorage.setItem(_lkKey(), JSON.stringify({ at: new Date().toISOString(), q }));
+      else localStorage.removeItem(_lkKey());
+      return;
+    } catch (e) {
+      // Full or blocked: drop the stored copy (an old queue must not come back on a reload) and keep it in memory.
+      try { localStorage.removeItem(_lkKey()); } catch (e2) {}
+      LINK.memOnly = true;
+    }
+  }
+  LINK.mem[_lkKey()] = q.slice();
 }
 function _lkUuid() {
   try { const c = globalThis.crypto; if (c && c.randomUUID) return c.randomUUID(); } catch (e) {}
@@ -9277,6 +9297,7 @@ function _lkFlush() {
   if (LINK.flushing) return LINK.flushing;
   const q = _lkQGet();
   if (!q.length || !S.user) return Promise.resolve(true);
+  const uid = S.user.id; // the answer is for this login's queue only (a preview or a new login may come in between)
   const items = q.slice(0, 50);
   LINK.inflight = {};
   items.forEach((it) => { if (it.kind === 'action') LINK.inflight[it.id] = true; });
@@ -9285,8 +9306,9 @@ function _lkFlush() {
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
   const p = API.post('/link/batch', { device, sentAt: new Date().toISOString(), items: send }, 20000)
-    .then((res) => { _lkResults(items, (res && res.results) || []); return true; },
+    .then((res) => { if (!S.user || S.user.id !== uid) return false; _lkResults(items, (res && res.results) || []); return true; },
       (err) => {
+        if (!S.user || S.user.id !== uid) return false;
         if (err && err.status === 404 && err.code === 'MODULE_DISABLED') _lkSwitchedOff();
         else if (!(err && err.status === 401)) _lkFailed();
         return false;
@@ -9385,6 +9407,18 @@ function _lkPill() {
 function _lkBoot() {
   if (LINK.booted || !S.user) return;
   LINK.booted = true;
+  // Other logins' queues older than 3 days would be refused too-old anyway: drop them (B13 / APP-33).
+  try {
+    const old = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf('ysc.lkq.') !== 0 || k === _lkKey()) continue;
+      let at = null;
+      try { const v = JSON.parse(localStorage.getItem(k)); at = v && !Array.isArray(v) ? Date.parse(v.at) : null; } catch (e) {}
+      if (at != null && !(at >= Date.now() - 3 * 864e5)) old.push(k);
+    }
+    old.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {}
   try { if (_lkQGet().length) _lkSchedule(1000); } catch (e) {}
 }
 // Logout with unsent items: ask, send (wait up to 10 s), then offer to log out anyway. False = stay.
@@ -9411,13 +9445,18 @@ function _lkAnswer(v) { const f = LINK.ask; LINK.ask = null; closeModal(); if (f
 // After logout (phones are shared): drop the queue and everything in memory.
 function _lkClear() {
   try { localStorage.removeItem(_lkKey()); } catch (e) {}
+  delete LINK.mem[_lkKey()];
   _lkSoftReset();
 }
-// Session gone (expired, logout): forget the lists in memory; the queue stays for the same login.
+// Session gone (expired, logout) or the login swapped (preview): forget the lists in memory; each login's queue
+// stays under its own key (the memory-only copy too).
 function _lkSoftReset() {
   if (LINK.timer) clearTimeout(LINK.timer);
   if (LINK.tick) clearInterval(LINK.tick);
+  if (LINK.toastT) clearTimeout(LINK.toastT);
+  const keep = { mem: LINK.mem, memOnly: LINK.memOnly };
   LINK = _lkFresh();
+  Object.assign(LINK, keep);
 }
 // ── Status and refresh (only while a link page is visible) ──
 function _lkOnPage() { return !!S.user && String(S.page || '').indexOf('link-') === 0; }
@@ -12059,6 +12098,7 @@ function _handleAuthExpired() {
   if (_previewStash) {
     API.setToken(_previewStash.token);
     S.user = _previewStash.user;
+    _lkSoftReset(); /*LINK (B13) */
     _previewStash = null;
     try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
     setMyLeaderId(null); _vgReset(); // as exitPreview: the preview's "I am" pick and taps stay behind
