@@ -7544,6 +7544,20 @@ function exitPreview() {
 // ============================================================
 // BOOT
 // ============================================================
+// Display-only shortening for named lifegroups: strips any configured prefix
+// (labels.groupNameStrip, default ["Brisbane - YS - "]) and a trailing
+// smallGroup-label suffix ("Lifegroup" by default) when present, exact match
+// only. Underlying data/exports are untouched — this only affects what's rendered.
+// Global, not inside CA: the link's Lifegroup report screens call it too.
+function lgDisplayName(name){
+  let n=String(name||'');
+  const labels=(S.settings&&S.settings.ministryConfig&&S.settings.ministryConfig.labels)||{};
+  const prefixes=labels.groupNameStrip||['Brisbane - YS - '];
+  for(const p of prefixes){ if(n.startsWith(p)){ n=n.slice(p.length); break; } }
+  const suffix=L('smallGroup');
+  if(n.endsWith(suffix))n=n.slice(0,-suffix.length);
+  return n.trim()||String(name||'');
+}
 /* ── CA MODULE START ── */
 // Connection Audit — ported from the canonical demo (youth app demo/allocation-platform.html).
 // Same module contract: remove by deleting this block, the CA MODULE CSS block, and every /*CA-HOOK*/ line.
@@ -7576,19 +7590,6 @@ function computeQuad(grade,gender){
   if(grade>=7&&grade<=9)return isFemale?'g79':'b79';
   if(grade>=10&&grade<=12)return isFemale?'g1012':'b1012';
   return null;
-}
-// Display-only shortening for named lifegroups: strips any configured prefix
-// (labels.groupNameStrip, default ["Brisbane - YS - "]) and a trailing
-// smallGroup-label suffix ("Lifegroup" by default) when present, exact match
-// only. Underlying data/exports are untouched — this only affects what's rendered.
-function lgDisplayName(name){
-  let n=String(name||'');
-  const labels=(S.settings&&S.settings.ministryConfig&&S.settings.ministryConfig.labels)||{};
-  const prefixes=labels.groupNameStrip||['Brisbane - YS - '];
-  for(const p of prefixes){ if(n.startsWith(p)){ n=n.slice(p.length); break; } }
-  const suffix=L('smallGroup');
-  if(n.endsWith(suffix))n=n.slice(0,-suffix.length);
-  return n.trim()||String(name||'');
 }
 function fmtD(iso){if(!iso)return'—';const d=new Date(iso);return isNaN(d)?'—':d.getUTCDate()+'/'+(d.getUTCMonth()+1);}
 
