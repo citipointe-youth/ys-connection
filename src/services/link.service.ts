@@ -24,6 +24,7 @@ import {
   LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStale, LinkStillSending, LinkTooOld,
   LinkUnavailable,
 } from '../core/errors/link-errors';
+import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
@@ -94,7 +95,7 @@ export interface LinkStatus {
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
 export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
 export interface CheckinPerson { personId: string; name: string; grade: number | null; leader: boolean; checkedIn: boolean;
-  action: ActionView | null; mine: boolean }
+  action: ActionView | null; mine: boolean; /** T3: shown from the pushed check-in name only: check out works, check in does not. */ noRoster?: true }
 export interface CheckinLeader { leaderId: string; name: string; personId: string | null; checkedIn: boolean;
   action: ActionView | null; mine: boolean }
 export interface CheckinView { today: string; services: ServiceView[]; defaultServiceTimeId: string | null;
@@ -370,12 +371,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         Object.assign(tgt, { kind: 'person', name: `${String(p.firstName)} ${String(p.lastName)}` });
       } else {
         const r = roster.find((x) => x.personId === p.personId);
+        // T3: someone shown from the pushed check-in names alone (no roster row yet) can still be checked out.
+        const pushed = it.type === 'checkOut' && (!r || !r.active) ? svc.checkedIn.find((x) => x.personId === p.personId) : undefined;
         if (r) Object.assign(tgt, { kind: 'person', id: r.personId, name: fullName(r) });
-        if (!r || !r.active) throw new BadRequestError('This person is not on the list. Reload.');
+        else if (pushed) Object.assign(tgt, { kind: 'person', id: pushed.personId, name: `${pushed.firstName ?? ''} ${pushed.lastName ?? ''}`.trim() || null });
+        if (!pushed && (!r || !r.active)) throw new BadRequestError('This person is not on the list. Reload.');
         // APP-31 (after APP-10): a parent or other adult is never checked in to the youth service; a check-out is
         // still allowed so an existing check-in can be undone.
-        if (it.type === 'checkIn' && r.kind === 'other') throw new BadRequestError('Only youth and leaders can be checked in here.');
-        personId = r.personId;
+        if (it.type === 'checkIn' && r!.kind === 'other') throw new BadRequestError('Only youth and leaders can be checked in here.');
+        personId = pushed ? pushed.personId : r!.personId;
       }
     } else if (it.type === 'submitReport' || it.type === 'editReport') {
       const rp = p as unknown as { groupId: string; date: string; attendees: string[]; serviceTimeId: string | null;
@@ -385,7 +389,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!g) throw new BadRequestError('This group is not in the list. Reload.');
       Object.assign(tgt, { kind: 'group', id: g.groupId, name: g.name });
       if (!groupVisible(c.actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
-      if (rp.date > c.today || rp.date < addDays(c.today, -REPORT_BACK_DAYS)) {
+      // The 14-day window is for a new report only; an edit keeps its own (older) report's date.
+      if (rp.date > c.today || (it.type === 'submitReport' && rp.date < addDays(c.today, -REPORT_BACK_DAYS))) {
         throw new BadRequestError('The date must be in the last 14 days.');
       }
       const members = new Set(g.members.map((m) => m.personId));
@@ -396,12 +401,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (it.type === 'editReport') {
         const [sent, ms] = await Promise.all([
           d.link.listActions({ groupId: g.groupId, types: REPORT_TYPES, statuses: ['sent'] }), c.mirror()]);
-        const last = lastReportOf(g, sent, takenAt(ms, 'groups'));
-        if (!last || last.reportId !== rp.reportId) throw new BadRequestError('Only the last report can be edited. Reload.');
-        if (!last.editable) throw new LinkEditInElvanto(last.blocked ?? 'unknown');
+        // Any report in the group's history can be edited (the console reads that report's own form); the app's
+        // newest (an overlay) leads, then the mirror's last report and its history.
+        const at = lastReportOf(g, sent, takenAt(ms, 'groups'));
+        const base0 = [at, g.lastReport, ...g.history].find((x) => x && x.reportId === rp.reportId);
+        if (!base0) throw new BadRequestError('This report is not in the list. Reload.');
+        if (!base0.editable) throw new LinkEditInElvanto(base0.blocked ?? 'unknown');
         const b = rp.base!;
-        const same = b.date === last.date && b.didNotMeet === last.didNotMeet && b.guests === last.guests &&
-          b.serviceTimeId === last.serviceTimeId && stable([...b.attendees].sort()) === stable([...last.attendees].sort());
+        const same = b.date === base0.date && b.didNotMeet === base0.didNotMeet && b.guests === base0.guests &&
+          b.serviceTimeId === base0.serviceTimeId && stable([...b.attendees].sort()) === stable([...base0.attendees].sort());
         if (!same) throw new BadRequestError('This report changed. Reload and try again.');
         if (rp.date !== b.date) throw new BadRequestError('The date of a report cannot be changed here.');
       }
@@ -620,7 +628,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         return { checkedIn: st.in, action: top ? view(top) : null, mine: top?.createdBy === actor.id };
       };
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
-      const listed = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
+      const listed: { first: string; last: string; grade: number | null; leader: boolean; personId: string; noRoster?: true }[] = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
         .map((r) => ({ first: r.firstName, last: r.lastName, grade: r.grade, leader: r.kind === 'leader', personId: r.personId }));
       // T3: a checked-in person the roster does not list (not pushed yet, inactive, other) still shows, by the name the
       // console pushed with the check-in; a leader when the room's name says so. No name (an older console): not shown.
@@ -631,10 +639,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (seen.has(x.personId) || !`${x.firstName ?? ''}${x.lastName ?? ''}`.trim()) continue;
         seen.add(x.personId);
         listed.push({ first: x.firstName ?? '', last: x.lastName ?? '', grade: byId.get(x.personId)?.grade ?? null,
-          leader: /leader/i.test(roomName.get(x.roomId) ?? ''), personId: x.personId });
+          leader: /leader/i.test(roomName.get(x.roomId) ?? ''), personId: x.personId, noRoster: true });
       }
       out.people = listed.sort((a, b) => cmp(a.last, b.last) || cmp(a.first, b.first))
-        .map((p) => ({ personId: p.personId, name: `${p.first} ${p.last}`.trim(), grade: p.grade, leader: p.leader, ...state(p.personId) }));
+        .map((p) => ({ personId: p.personId, name: `${p.first} ${p.last}`.trim(), grade: p.grade, leader: p.leader, ...(p.noRoster ? { noRoster: true as const } : {}), ...state(p.personId) }));
       const personOf = rosterPersonMatcher(roster, leaders);
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
         const personId = personOf(l);
@@ -788,7 +796,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure))) {
         throw new ForbiddenError('This person is not one of yours.');
       }
-      if (b.leaderId !== null && !(await c.leaders()).some((l) => l.id === b.leaderId && l.active)) {
+      // Only a leader this login could pick in its "I am" list (same scope as GET /leaders).
+      if (b.leaderId !== null && !(await makeLeaderService(d.leaders).list(actor)).some((l) => l.id === b.leaderId)) {
         throw new BadRequestError('Pick a leader from the list.');
       }
       await d.link.setFlowAssign({ ...b, assignedBy: await c.login() });

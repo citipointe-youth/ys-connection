@@ -67,7 +67,11 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(src).not.toContain('::jsonb');
     expect(src).not.toContain('JSON.stringify(');
   });
-  it('never logs', () => expect(src).not.toMatch(/console\.|logger\./));
+  it('never logs a value: one warn line, a row id only', () => {
+    expect(src).not.toMatch(/console\./);
+    expect(src.match(/logger\.\w+\(/g)).toEqual(['logger.warn(']);
+    expect(src).toContain("logger.warn('flow mobile unreadable', { rowId: r.row_id })");
+  });
   it('applyResults: one transaction, row locked, applyOutcome, guarded update', () => {
     const body = flat(method('applyResults'));
     expect(body).toContain('.begin(');
@@ -83,7 +87,8 @@ describe('SupabaseLinkRepository SQL text', () => {
   it('T4: a flow mobile is encrypted on write and decrypted on read, bound to its row', () => {
     expect(src).toContain("const mobileAad = (rowId: string) => 'link_flow_people.mobile:' + rowId;");
     expect(flat(method('replaceMirror'))).toContain('mobile: maybeEncrypt(f.mobile ?? null, mobileAad(f.rowId))');
-    expect(flat(method('flows'))).toContain('mobile: maybeDecrypt(r.mobile, mobileAad(r.row_id))');
+    expect(flat(method('flows'))).toContain('mobile: readMobile(r)');
+    expect(src).toContain('maybeDecrypt(r.mobile, mobileAad(r.row_id))');
   });
   it('T6: the flows push drops assignments whose (flow, person) it no longer carries, in the same transaction', () => {
     expect(flat(method('replaceMirror'))).toMatch(/delete from link_flow_assign a where not exists \( select 1 from link_flow_people f where f\.flow_id = a\.flow_id and f\.person_id = a\.person_id\)/);

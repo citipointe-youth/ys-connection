@@ -1,6 +1,6 @@
 // Supabase Elvanto link repo (spec 2026-10-12-elvanto-link-app-design.md §4.1). Tables from migration 0017, all RLS.
 // Every time compare uses the DB clock (now()). jsonb is written only via sql.json(). Notes are encrypted at rest with
-// the AAD 'link_outbox.note:' + id and decrypted only inside claim(), row by row. Nothing here logs.
+// the AAD 'link_outbox.note:' + id and decrypted only inside claim(), row by row. The one log line names a row id, never a value.
 import type { SqlClient } from './client';
 import { toIso } from './client';
 import { chunk } from './bulk';
@@ -11,13 +11,19 @@ import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkF
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
+import { createLogger } from '../../utils/logger';
 
 type Row = Record<string, any>;
 const iso = (v: unknown) => (v == null ? null : toIso(v));
 const ymd = (v: unknown) => (v == null ? null : typeof v === 'string' ? v.slice(0, 10) : toIso(v).slice(0, 10));
+const logger = createLogger('link');
 const noteAad = (id: string) => 'link_outbox.note:' + id;
 /** T4: a flow person's mobile is encrypted at rest like students.mobile, bound to its row. */
 const mobileAad = (rowId: string) => 'link_flow_people.mobile:' + rowId;
+/** One mobile that cannot be decrypted (key change, bad row) reads as none; it must not fail every flows read. */
+function readMobile(r: Row): string | null {
+  try { return maybeDecrypt(r.mobile, mobileAad(r.row_id)); } catch { logger.warn('flow mobile unreadable', { rowId: r.row_id }); return null; }
+}
 /** The columns applyOutcome may change. Anything else in its patch is a bug, not a silent write. */
 const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status', reason: 'reason', detail: 'detail',
   retryAt: 'retry_at', leaseOwner: 'lease_owner', leaseUntil: 'lease_until', resultAt: 'result_at',
@@ -312,7 +318,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
     return (await this.sql`select * from link_flow_people order by flow_name, step_order, name, row_id`).map((r) => ({
       rowId: r.row_id, flowId: r.flow_id, flowName: r.flow_name, stepId: r.step_id, stepName: r.step_name,
       stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to,
-      grade: r.grade ?? null, gender: r.gender ?? null, mobile: maybeDecrypt(r.mobile, mobileAad(r.row_id)),
+      grade: r.grade ?? null, gender: r.gender ?? null, mobile: readMobile(r),
       mobileIsParent: r.mobile_is_parent ?? false }));
   }
 

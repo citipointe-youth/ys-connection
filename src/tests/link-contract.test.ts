@@ -165,14 +165,20 @@ describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSIO
     const svc = clone(load('push-services.json'));
     svc.rows[0].checkedIn[0] = { ...svc.rows[0].checkedIn[0], firstName: 'Jamie', lastName: 'Test' };
     expect(C.PUSH_SCHEMAS.services.parse(svc).rows[0]!.checkedIn[0]).toMatchObject({ firstName: 'Jamie', lastName: 'Test' });
-    svc.rows[0].checkedIn[0].lastName = 'x'.repeat(61); rejects(C.PUSH_SCHEMAS.services, svc);
+    // too long: cut to 60 instead of refusing the whole push
+    svc.rows[0].checkedIn[0].lastName = 'x'.repeat(61); svc.rows[0].checkedIn[0].firstName = 'y'.repeat(200);
+    const cut = C.PUSH_SCHEMAS.services.parse(svc).rows[0]!.checkedIn[0]!;
+    expect(cut.lastName).toBe('x'.repeat(60)); expect(cut.firstName).toBe('y'.repeat(60));
   });
   it('T8: a group may carry history, at most 8, each shaped like lastReport', () => {
     const groups = clone(load('push-groups.json'));
     const lr = groups.rows[0].lastReport;
     groups.rows[0].history = [lr, { ...lr, reportId: '7e000000-0000-4000-8000-000000000009', date: '2026-10-05' }];
     expect(C.PUSH_SCHEMAS.groups.parse(groups).rows[0]!.history).toHaveLength(2);
-    groups.rows[0].history = Array(9).fill(lr); rejects(C.PUSH_SCHEMAS.groups, groups);
+    // more than 8: the newest 8 (newest first) are kept instead of refusing the whole push
+    groups.rows[0].history = Array.from({ length: 10 }, (_, i) => ({ ...lr, date: `2026-10-${String(20 - i).padStart(2, '0')}` }));
+    const kept = C.PUSH_SCHEMAS.groups.parse(groups).rows[0]!.history!;
+    expect(kept).toHaveLength(8); expect(kept[0]!.date).toBe('2026-10-20'); expect(kept[7]!.date).toBe('2026-10-13');
     groups.rows[0].history = [{ ...lr, editable: undefined }]; rejects(C.PUSH_SCHEMAS.groups, groups);
   });
   it('T4: a flow row may carry grade, gender, a bare-digit mobile and mobileIsParent', () => {
