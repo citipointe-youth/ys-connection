@@ -9305,10 +9305,13 @@ function _lkResults(items, results) {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
       if (r.outcome === 'refused') {
         if (svc && pid) LINK.refusals[svc + ':' + pid] = { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' };
-        else say = r.message || say;
+        // A refused check-out leaves the row "in", where the row line is not shown: say why (B4).
+        if (!(svc && pid) || it.type === 'checkOut') say = r.message || say;
       } else if (svc && pid) {
+        // cancelled (B4): a check-out met a pending check-in, and r.action is that check-in, now cancelled.
         const act = Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
         if (r.outcome === 'duplicate' && r.existingId) act.id = r.existingId;
+        else if (r.outcome === 'duplicate' && !r.action) act.status = 'mirror'; // in by the kiosk
         _lkApply(svc, pid, act);
       }
     } else if (it.kind === 'undo') {

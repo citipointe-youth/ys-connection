@@ -197,6 +197,29 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(got).toContain(due.id);
         expect(got).not.toContain(later.id);
       });
+      it('B4 / APP-3 C: a checkOut is not leased while an older checkIn for the same person and service is pending or claimed', async () => {
+        const st = randomUUID(), person = randomUUID();
+        const inRow = (over: Partial<NewOutboxRow> = {}) => newRow({ type: 'checkIn', personId: person,
+          payload: { serviceTimeId: st, serviceId: randomUUID(), personId: person }, ...over });
+        const outRow = (over: Partial<NewOutboxRow> = {}) => newRow({ type: 'checkOut', personId: person,
+          payload: { serviceTimeId: st, personId: person }, ...over });
+        const i1 = await repo.insertAction(inRow());
+        const o1 = await repo.insertAction(outRow());
+        await h.backdate('link_outbox', i1.id, 'created_at', ago(120_000));
+        await h.backdate('link_outbox', o1.id, 'created_at', ago(60_000));
+        const c1 = claimArgs();
+        const first = (await repo.claim(c1)).map((g) => g.row.id);
+        expect(first).toContain(i1.id);
+        expect(first).not.toContain(o1.id); // the check-in is pending in the same pick
+        expect((await repo.claim(claimArgs())).map((g) => g.row.id)).not.toContain(o1.id); // console 2: check-in claimed
+        // another service or another person does not block
+        const other = await repo.insertAction(newRow({ type: 'checkOut', personId: person,
+          payload: { serviceTimeId: randomUUID(), personId: person } }));
+        expect((await repo.claim(claimArgs())).map((g) => g.row.id)).toContain(other.id);
+        // once the check-in is final the check-out goes
+        await repo.applyResults(c1.console.consoleId, [{ id: i1.id, outcome: 'sent', sentLogKey: 'k' }], new Date());
+        expect((await repo.claim(claimArgs())).map((g) => g.row.id)).toContain(o1.id);
+      });
       it('re-leases a claimed row with an ended lease only to the same console', async () => {
         const a = await repo.insertAction(newRow({ note: 'again' }));
         const mine = claimArgs();

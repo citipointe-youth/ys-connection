@@ -449,10 +449,10 @@ describe('D2 enqueue', () => {
     expect(log[0]).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
   });
 
-  it('checkOut after a pending and after a shadowed check-in → saved; with no check-in → 400', async () => {
+  it('checkOut after a pending check-in → cancelled (B4); after a shadowed check-in → saved; with no check-in → 400', async () => {
     const h = await setup();
     await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV);
-    expect((await h.svc.enqueue(GRADE, checkOut(P_AMY), DEV)).outcome).toBe('saved');
+    expect((await h.svc.enqueue(GRADE, checkOut(P_AMY), DEV)).outcome).toBe('cancelled');
     const c = checkIn(P_TOM);
     await h.svc.enqueue(GRADE, c, DEV);
     setRow(h.link, c.id, { status: 'shadowed', result_at: NOW.toISOString() });
@@ -493,6 +493,65 @@ describe('D2 enqueue', () => {
 });
 
 // =====================================================================================================================
+describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
+  it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'claimed' });
+    expect(await h.svc.enqueue(QUAD, checkOut(P_AMY), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING',
+      httpStatus: 409, message: 'Still sending, try again in a minute.' });
+    setRow(h.link, a.id, { status: 'pending', retry_at: '2026-10-16T09:01:00.000Z' }); // the console answered retry
+    const out = checkOut(P_AMY);
+    expect(await h.svc.enqueue(QUAD, out, DEV)).toMatchObject({ outcome: 'cancelled', httpStatus: 200,
+      action: { id: a.id, type: 'checkIn', status: 'cancelled' } });
+    expect((await h.link.getAction(a.id))!.status).toBe('cancelled');
+    expect(await h.link.getAction(out.id)).toBeNull();
+  });
+  it('APP-3 B: Undo of a claimed check-in is refused (still sending); once it is pending again the Undo cancels it', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'claimed' });
+    expect(await h.svc.undo(GRADE, a.id, null, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING' });
+    setRow(h.link, a.id, { status: 'pending' });
+    expect((await h.svc.undo(GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
+    expect(await h.link.listActions({ personId: P_AMY, types: ['checkOut'] })).toHaveLength(0);
+  });
+  it('an unclear opposite row refuses both ways', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'unclear' });
+    expect(await h.svc.enqueue(GRADE, checkOut(P_AMY), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
+    const b = checkIn(P_TOM);
+    await h.svc.enqueue(GRADE, b, DEV);
+    setRow(h.link, b.id, { status: 'sent', result_at: NOW.toISOString() });
+    const o = checkOut(P_TOM);
+    await h.svc.enqueue(GRADE, o, DEV);
+    setRow(h.link, o.id, { status: 'claimed' });
+    expect(await h.svc.enqueue(GRADE, checkIn(P_TOM), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
+  });
+  it('APP-45 in-out-in: a checkIn over a pending check-out cancels the check-out and returns the open check-in as duplicate', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await h.svc.enqueue(GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
+    const o = checkOut(P_AMY);
+    expect((await h.svc.enqueue(QUAD, o, DEV)).outcome).toBe('saved');
+    expect(await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id,
+      action: { id: a.id, type: 'checkIn', status: 'sent' } });
+    expect((await h.link.getAction(o.id))!.status).toBe('cancelled');
+    // console offline the whole time: in (pending), out cancels it, in again is a fresh check-in
+    const b = checkIn(P_TOM);
+    await h.svc.enqueue(GRADE, b, DEV);
+    expect((await h.svc.enqueue(QUAD, checkOut(P_TOM), DEV)).outcome).toBe('cancelled');
+    const c = checkIn(P_TOM);
+    expect((await h.svc.enqueue(GRADE, c, DEV)).outcome).toBe('saved');
+    expect((await h.link.listActions({ personId: P_TOM, statuses: ['pending'] })).map((r) => r.id)).toEqual([c.id]);
+  });
+});
+
 describe('D3 cancel, undo, listActions', () => {
   it('cancel: same login + same "I am" → cancelled; other "I am" or other login → LINK_NOT_YOURS; null/null is the same', async () => {
     const h = await setup();

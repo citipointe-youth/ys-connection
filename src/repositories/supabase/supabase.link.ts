@@ -151,11 +151,17 @@ export class SupabaseLinkRepository implements ILinkRepository {
       // lease
       const types = (Object.keys(c.capabilities) as ActionType[]).filter((t) => c.capabilities[t] !== 'off');
       if (a.max <= 0 || !types.length) return [];
+      // A checkOut waits while an older checkIn for the same person and service is pending or claimed (B4 / APP-3).
       const picked = await tx`
-        select id, status from link_outbox
+        select id, status from link_outbox o
         where type in ${tx(types)} and (
           (status = 'pending' and (retry_at is null or retry_at <= now()))
           or (status = 'claimed' and lease_until < now() and lease_owner = ${c.consoleId}))
+          and not (o.type = 'checkOut' and exists (
+            select 1 from link_outbox i
+            where i.type = 'checkIn' and i.person_id = o.person_id
+              and i.payload->>'serviceTimeId' = o.payload->>'serviceTimeId'
+              and i.status in ('pending','claimed') and (i.created_at, i.id) < (o.created_at, o.id)))
         order by created_at, id
         limit ${a.max}
         for update skip locked`;

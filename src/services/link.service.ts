@@ -20,7 +20,7 @@ import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
 import {
-  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkUnavailable,
+  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStillSending, LinkUnavailable,
 } from '../core/errors/link-errors';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
@@ -345,9 +345,25 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       personId = row.personId;
     }
 
-    // 5. same-action dedupe (decision 18), then the check-out rule (spec §2.4)
+    // 5. ordering (B4 / T-24), same-action dedupe (decision 18), then the check-out rule (spec §2.4)
     if (it.type === 'checkIn' || it.type === 'checkOut') {
-      const rows = await checkRows(personId!, svc!.serviceTimeId);
+      let rows = await checkRows(personId!, svc!.serviceTimeId);
+      const opposite = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
+      if (opposite && opposite.type !== it.type) {
+        if (opposite.status === 'claimed' || opposite.status === 'unclear') throw new LinkStillSending();
+        // The opposite row has not gone yet: cancel it instead of queueing both (the console could run them in the
+        // wrong order). A check-out answers `cancelled`; a check-in answers with the open check-in as `duplicate`.
+        if (opposite.status === 'pending') {
+          if (!(await d.link.cancelPending(opposite.id))) throw new LinkStillSending(); // picked up meanwhile
+          if (it.type === 'checkOut') {
+            return { id: it.id, kind: 'action', outcome: 'cancelled', httpStatus: 200, action: { ...view(opposite), status: 'cancelled' } };
+          }
+          rows = await checkRows(personId!, svc!.serviceTimeId);
+          const open = rows.find((r) => r.type === 'checkIn' && r.status !== 'cancelled' && r.status !== 'refused');
+          if (open) return dup(open);
+          return { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409 }; // in by the kiosk (the mirror)
+        }
+      }
       const st = effectiveCheckState({ mirrorIn: svc!.checkedIn.some((x) => x.personId === personId),
         mirrorTakenAt: takenAt(await c.mirror(), 'services'), rows });
       const live = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');

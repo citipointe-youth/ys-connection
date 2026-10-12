@@ -33,6 +33,11 @@ export class LinkTooLate extends AppError {
   constructor() { super('LINK_TOO_LATE', 'Too late: this has already been picked up.', 409); }
 }
 
+/** B4 / T-24: the opposite check row is still with the console (claimed or unclear). */
+export class LinkStillSending extends AppError {
+  constructor() { super('LINK_STILL_SENDING', 'Still sending, try again in a minute.', 409); }
+}
+
 export class LinkNotYours extends AppError {
   constructor() { super('LINK_NOT_YOURS', 'Only the leader who sent this can undo it.', 403); }
 }

@@ -98,7 +98,12 @@ export class InMemoryLinkRepository implements ILinkRepository {
     this.log = this.log.filter((l) => Date.parse(l.at) >= now - 400 * DAY);
     // lease
     const caps = a.console.capabilities;
-    const due = [...this.outbox.values()].filter(({ row: r }) => caps[r.type] !== 'off' && (
+    // B4 / APP-3: a checkOut waits while an older checkIn for the same person and service is pending or claimed.
+    const blocked = (e: { row: OutboxRow; seq: number }) => e.row.type === 'checkOut' && [...this.outbox.values()].some((i) =>
+      i.row.type === 'checkIn' && i.row.personId === e.row.personId
+      && (i.row.payload as { serviceTimeId?: string }).serviceTimeId === (e.row.payload as { serviceTimeId?: string }).serviceTimeId
+      && (i.row.status === 'pending' || i.row.status === 'claimed') && cmpDesc(i, e) > 0);
+    const due = [...this.outbox.values()].filter((e) => !blocked(e)).filter(({ row: r }) => caps[r.type] !== 'off' && (
       (r.status === 'pending' && (r.retryAt === null || Date.parse(r.retryAt) <= now)) ||
       (r.status === 'claimed' && r.leaseOwner === a.console.consoleId && r.leaseUntil !== null && Date.parse(r.leaseUntil) < now)))
       .sort((x, y) => -cmpDesc(x, y))

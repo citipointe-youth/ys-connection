@@ -44,6 +44,9 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(c).toMatch(/order by created_at, id limit \$\{a\.max\} for update skip locked/);
     expect(c).toContain('lease_until = now() + make_interval(secs => ');
   });
+  it('B4 / APP-3: claim does not lease a checkOut while an older checkIn for the same person and service is open', () => {
+    expect(flat(method('claim'))).toMatch(/and not \(o\.type = 'checkOut' and exists \( select 1 from link_outbox i where i\.type = 'checkIn' and i\.person_id = o\.person_id and i\.payload->>'serviceTimeId' = o\.payload->>'serviceTimeId' and i\.status in \('pending','claimed'\) and \(i\.created_at, i\.id\) < \(o\.created_at, o\.id\)\)\)/);
+  });
   it('insertAction: on conflict (id) do nothing, the open-row predicate exactly as the link_outbox_open_uq index', () => {
     const pred = "status in ('pending','claimed','unclear')";
     expect(migration).toContain(`link_outbox_open_uq on link_outbox(dedupe_key)\n  where ${pred}`);

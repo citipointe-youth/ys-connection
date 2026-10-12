@@ -286,6 +286,22 @@ describe('F1.2 queue', () => {
     expect(d[1]).toMatchObject({ checkedIn: true, action: { status: 'sent' } });
     expect(d[2]).toMatchObject({ checkedIn: true, action: { id: P(999), type: 'checkIn' } });
   });
+  it('B4: a check-out answered cancelled shows the row out; a refused check-out says why (the row stays in)', async () => {
+    const people = [1, 2].map((n) => ({ personId: P(n), name: 'P' + n, grade: 8, leader: false, checkedIn: true,
+      action: { id: P(500 + n), type: 'checkIn', status: 'pending', reason: null }, mine: false }));
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [
+      { id: b.items[0].id, kind: 'action', outcome: 'cancelled', action: { id: P(501), type: 'checkIn', status: 'cancelled', reason: null } },
+      { id: b.items[1].id, kind: 'action', outcome: 'refused', code: 'LINK_STILL_SENDING', message: 'Still sending, try again in a minute.' },
+    ] }) });
+    door(h, people);
+    vi.useFakeTimers();
+    h.fns._lkCheck(P(1), 'checkOut'); h.fns._lkCheck(P(2), 'checkOut');
+    await h.fns._lkFlush();
+    const d = h.get().LINK.people[SVC.serviceTimeId].people;
+    expect(d[0]).toMatchObject({ checkedIn: false, action: { id: P(501), status: 'cancelled' } });
+    expect(d[1]).toMatchObject({ checkedIn: true });
+    expect(h.calls.toasts).toContain('Still sending, try again in a minute.');
+  });
   it('RATE_LIMITED stays queued and toasts; a final refusal shows the reason on the row', async () => {
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [
       { id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'RATE_LIMITED', message: 'slow down' },
