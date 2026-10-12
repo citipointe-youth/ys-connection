@@ -324,12 +324,13 @@ export class SupabaseLinkRepository implements ILinkRepository {
     }
   }
 
-  async listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; limit: number }): Promise<LinkLogRow[]> {
+  async listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; outboxId?: string; limit: number }): Promise<LinkLogRow[]> {
     const s = this.sql; const none = s``;
     return (await s`
       select * from link_log where at >= ${f.from} and at < ${f.to}
         ${f.userId ? s`and user_id = ${f.userId}` : none}
         ${f.event ? s`and event = ${f.event}` : none}
+        ${f.outboxId ? s`and outbox_id = ${f.outboxId}` : none}
       order by at desc, id desc limit ${f.limit}`).map(toLog);
   }
 }

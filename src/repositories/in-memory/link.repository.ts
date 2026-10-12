@@ -197,10 +197,11 @@ export class InMemoryLinkRepository implements ILinkRepository {
     for (const r of rows) if (!this.log.some((l) => l.id === r.id)) this.log.push(clone(r));
   }
 
-  async listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; limit: number }): Promise<LinkLogRow[]> {
+  async listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; outboxId?: string; limit: number }): Promise<LinkLogRow[]> {
     const from = Date.parse(f.from); const to = Date.parse(f.to);
     return clone(this.log
-      .filter((l) => { const t = Date.parse(l.at); return t >= from && t < to && (!f.userId || l.userId === f.userId) && (!f.event || l.event === f.event); })
+      .filter((l) => { const t = Date.parse(l.at); return t >= from && t < to && (!f.userId || l.userId === f.userId) && (!f.event || l.event === f.event)
+        && (!f.outboxId || l.outboxId === f.outboxId); })
       .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
       .slice(0, f.limit));
   }

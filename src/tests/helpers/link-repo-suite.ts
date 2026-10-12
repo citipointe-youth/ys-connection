@@ -504,6 +504,10 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect((await repo.listLog({ ...range, userId: u })).map((l) => l.id)).toEqual([b.id, a.id]);
         expect((await repo.listLog({ ...range, event: 'identity' })).map((l) => l.id)).toEqual([a.id]);
         expect((await repo.listLog({ ...range, limit: 1 })).map((l) => l.id)).toEqual([c.id]);
+        const ob = randomUUID();
+        const e = logRow({ at: '2026-10-16T11:00:00.000Z', outboxId: ob });
+        await repo.addLog([e]);
+        expect((await repo.listLog({ ...range, outboxId: ob })).map((l) => l.id)).toEqual([e.id]); // B8 follow-up
       });
     });
   });

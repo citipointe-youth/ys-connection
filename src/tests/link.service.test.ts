@@ -605,6 +605,37 @@ describe('B8 / T-39 tap time (APP-16), /link/batch only', () => {
     expect(r.results[0]).toMatchObject({ outcome: 'refused', code: 'LINK_STALE', reason: 'stale',
       message: 'Someone else changed this after your tap. Reload.' });
   });
+  it('B8 follow-up: a phone\u2019s own earlier batch never makes its later item stale; another phone\u2019s newer row does', async () => {
+    const h = await setup();
+    const at = (iso: string) => new Date(iso);
+    const PHONE_A = { id: 'dev-a', label: 'iPhone · Safari' }, PHONE_B = { id: 'dev-b', label: 'Android · Chrome' };
+    // batch 1 (a full batch of 50) lands at 09:10; Amy's check-in was tapped at 09:00
+    h.clock.now = at('2026-10-16T09:10:00.000Z');
+    const amyIn = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T09:00:00.000Z' };
+    const fill = Array.from({ length: 49 }, (_, i) => ({ kind: 'action', ...firstTimer({ payload: { serviceTimeId: ST, serviceId: SVC,
+      firstName: 'New', lastName: `Kid${i}`, grade: 8, gender: 'male' } }), queuedAt: '2026-10-16T09:00:00.000Z' }));
+    const r1 = await h.svc.batch(GRADE, { device: PHONE_A, sentAt: '2026-10-16T09:10:00.000Z', items: [amyIn, ...fill] });
+    expect(r1.results.every((x) => x.outcome === 'saved')).toBe(true);
+    setRow(h.link, amyIn.id, { status: 'sent', result_at: '2026-10-16T09:11:00.000Z' });
+    // batch 2 from the same phone: Amy's check-out was tapped at 09:05, before batch 1 reached the server
+    h.clock.now = at('2026-10-16T09:12:00.000Z');
+    const amyOut = { kind: 'action', ...checkOut(P_AMY), queuedAt: '2026-10-16T09:05:00.000Z' };
+    expect((await h.svc.batch(GRADE, { device: PHONE_A, sentAt: '2026-10-16T09:12:00.000Z', items: [amyOut] })).results[0])
+      .toMatchObject({ outcome: 'saved' });
+    // another phone (same shared login): Tom checked in at 09:20 by phone B; phone A's check-out tapped at 09:15 is stale
+    h.clock.now = at('2026-10-16T09:20:00.000Z');
+    const tomIn = { kind: 'action', ...checkIn(P_TOM) };
+    await h.svc.batch(GRADE, { device: PHONE_B, items: [tomIn] });
+    setRow(h.link, tomIn.id, { status: 'sent', result_at: '2026-10-16T09:21:00.000Z' });
+    h.clock.now = at('2026-10-16T09:30:00.000Z');
+    const tomOut = { kind: 'action', ...checkOut(P_TOM), queuedAt: '2026-10-16T09:15:00.000Z' };
+    expect((await h.svc.batch(GRADE, { device: PHONE_A, sentAt: '2026-10-16T09:30:00.000Z', items: [tomOut] })).results[0])
+      .toMatchObject({ outcome: 'refused', code: 'LINK_STALE' });
+    // and a phone with no device id gets no exemption
+    const tomOut2 = { kind: 'action', ...checkOut(P_TOM), queuedAt: '2026-10-16T09:15:00.000Z' };
+    expect((await h.svc.batch(GRADE, { sentAt: '2026-10-16T09:30:00.000Z', items: [tomOut2] })).results[0])
+      .toMatchObject({ code: 'LINK_STALE' });
+  });
   it('items of the same batch never make each other stale; no queuedAt counts as now; the single routes are unchanged', async () => {
     const h = await setup();
     const inn = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T08:00:00.000Z' };

@@ -40,5 +40,5 @@ export interface ILinkRepository {
   setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void>;
   addLog(rows: LinkLogRow[]): Promise<void>;
   /** from inclusive, to exclusive (ISO instants); newest first; at most `limit` rows. */
-  listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; limit: number }): Promise<LinkLogRow[]>;
+  listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; outboxId?: string; limit: number }): Promise<LinkLogRow[]>;
 }

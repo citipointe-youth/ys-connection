@@ -180,7 +180,7 @@ const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, 
 
 interface Target { kind: LinkLogRow['targetKind']; id: string | null; name: string | null }
 /** B8: when the tap happened (server clock) and the ids of the batch it came in (they never make each other stale). */
-interface Tap { at: Date; batchIds: Set<string> }
+interface Tap { at: Date; batchIds: Set<string>; deviceId: string | null }
 interface Who { id: string | null; name: string | null }
 
 // ---------------------------------------------------------------- service
@@ -366,8 +366,21 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       let rows = await checkRows(personId!, svc!.serviceTimeId);
       const opposite = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
       // B8 / APP-16 B: someone else changed this person after the tap (a late flush must not undo a newer action).
-      const other = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused' && !tap?.batchIds.has(r.id));
-      if (tap && other && Date.parse(other.createdAt) > tap.at.getTime()) throw new LinkStale();
+      // A row this same phone wrote never counts (B8 follow-up): same batch, or same login + same device id. The
+      // outbox has no device column; the row's own link_log line (written with each batch) carries the device id.
+      const own = async (r: OutboxRow) => {
+        if (tap!.batchIds.has(r.id)) return true;
+        if (!tap!.deviceId || r.createdBy !== c.actor.id) return false;
+        const logs = await d.link.listLog({ from: r.createdAt, to: new Date(Date.parse(r.createdAt) + 86_400_000).toISOString(),
+          outboxId: r.id, userId: c.actor.id, limit: 5 });
+        return logs.some((l) => l.deviceId === tap!.deviceId && (l.event === r.type || l.event === 'undo'));
+      };
+      if (tap) {
+        for (const r of rows) {
+          if (r.status === 'cancelled' || r.status === 'refused' || Date.parse(r.createdAt) <= tap.at.getTime()) continue;
+          if (!(await own(r))) throw new LinkStale();
+        }
+      }
       if (opposite && opposite.type !== it.type) {
         if (opposite.status === 'claimed' || opposite.status === 'unclear') throw new LinkStillSending();
         // The opposite row has not gone yet: cancel it instead of queueing both (the console could run them in the
@@ -612,7 +625,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const o = (x && typeof x === 'object' ? x : {}) as { id?: unknown; newId?: unknown };
         for (const v of [o.id, o.newId]) if (typeof v === 'string') batchIds.add(v);
       }
-      const tapOf = (queuedAt: string | undefined): Tap => ({ batchIds,
+      // A real per-phone id only (the SPA sends 'unknown' when it has none): that never exempts anything.
+      const deviceId = device.id && device.id !== 'unknown' ? device.id : null;
+      const tapOf = (queuedAt: string | undefined): Tap => ({ batchIds, deviceId,
         at: new Date(queuedAt ? Math.min(c.t.getTime(), Date.parse(queuedAt) + skew) : c.t.getTime()) });
       for (const rawItem of b.items) {
         const pi = BatchItem.safeParse(rawItem);
