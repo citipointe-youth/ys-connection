@@ -493,6 +493,23 @@ describe('D2 enqueue', () => {
 });
 
 // =====================================================================================================================
+describe('B5 / T-11 a shadowed row is not "in" for the duplicate check (APP-46; X13)', () => {
+  it('shadowed at 6:45 pm, the type goes live, a re-tap is saved; the door still shows the practice tick', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    h.clock.now = new Date('2026-10-16T08:45:00.000Z');
+    await h.svc.enqueue(GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'shadowed', result_at: '2026-10-16T08:46:00.000Z' });
+    const view1 = await h.svc.checkin(GRADE, ST);
+    expect(view1.people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, practice: true });
+    h.clock.now = NOW;
+    const b = checkIn(P_AMY);
+    expect(await h.svc.enqueue(GRADE, b, DEV)).toMatchObject({ outcome: 'saved', action: { id: b.id, status: 'pending' } });
+    // and a second live tap is the duplicate
+    expect(await h.svc.enqueue(QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: b.id });
+  });
+});
+
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
     const h = await setup();

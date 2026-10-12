@@ -364,11 +364,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           return { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409 }; // in by the kiosk (the mirror)
         }
       }
-      const st = effectiveCheckState({ mirrorIn: svc!.checkedIn.some((x) => x.personId === personId),
-        mirrorTakenAt: takenAt(await c.mirror(), 'services'), rows });
-      const live = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
+      const mirror = { mirrorIn: svc!.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: takenAt(await c.mirror(), 'services') };
+      const st = effectiveCheckState({ ...mirror, rows });
+      // A shadowed row is practice: it shows on the door, but it is not "in" for the duplicate check, so a re-tap
+      // once the type is live is sent for real (B5 / APP-46).
+      const real = rows.filter((r) => r.status !== 'shadowed');
+      const realIn = effectiveCheckState({ ...mirror, rows: real }).in;
+      const live = real.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
       // Same type AND the person is still in that state: a kiosk check-out after a sent check-in allows a new one.
-      if (live && live.type === it.type && st.in === (it.type === 'checkIn')) return dup(live);
+      if (live && live.type === it.type && realIn === (it.type === 'checkIn')) return dup(live);
       if (it.type === 'checkOut' && !st.in) throw new BadRequestError('Not checked in to this service.');
     }
 
