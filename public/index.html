@@ -9345,6 +9345,7 @@ function _lkRetry() { LINK.fails = Math.min(LINK.fails, 3); _lkFlush(); }
 function _lkResults(items, results) {
   const by = {};
   results.forEach((r) => { by[r.kind + ':' + r.id] = r; });
+  const unanswered = items.some((it) => !by[it.kind + ':' + it.id]);
   const done = {};
   let rate = false, say = '';
   items.forEach((it) => {
@@ -9392,7 +9393,9 @@ function _lkResults(items, results) {
   LINK.fails = 0; LINK.red = false;
   if (rate) toast('Too many taps. Wait a minute.', 4000);
   else if (say) toast(say, 5000);
-  if (left.length) _lkSchedule(15000);
+  // A good batch with more left (none rate-limited, all answered) goes again in 300 ms: a 160-tap backlog drains in
+  // about a second, not 15 s steps (B14 / APP-22).
+  if (left.length) _lkSchedule(rate || unanswered ? 15000 : 300);
   else LINK.flash = true;
   _lkRefreshView();
 }
@@ -9421,16 +9424,30 @@ function _lkBoot() {
   } catch (e) {}
   try { if (_lkQGet().length) _lkSchedule(1000); } catch (e) {}
 }
-// Logout with unsent items: ask, send (wait up to 10 s), then offer to log out anyway. False = stay.
+// Flush again and again until the queue is empty, a flush fails or makes no progress, or ms pass (B14 / APP-22).
+async function _lkDrain(ms) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const before = _lkQGet().length;
+    if (!before) return true;
+    const left = end - Date.now();
+    if (left <= 0) return false;
+    const ok = await Promise.race([_lkFlush(), new Promise((r) => setTimeout(() => r(false), left))]);
+    if (!ok || _lkQGet().length >= before) return !_lkQGet().length;
+  }
+}
+function _lkActions(n) { return n === 1 ? '1 action is' : n + ' actions are'; }
+// Logout with unsent items: ask, send (up to 10 s), then offer to log out anyway. False = stay. A queue holding only
+// "I am" switches gets one silent flush first, so the identity log still has them (APP-34).
 async function _lkLogoutGuard() {
-  let n = 0;
-  try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
-  if (!n) return true;
-  const what = n === 1 ? "1 check-in hasn't" : n + " check-ins haven't";
-  if (!(await _lkAsk(what + ' been sent yet. Send them now?', 'Send now', 'Stay'))) return false;
-  await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 10000))]);
-  if (!_lkQGet().filter((it) => it.kind !== 'identity').length) return true;
-  return _lkAsk('They could not be sent.', "Log out anyway (they'll be lost)", 'Stay');
+  let n = 0, all = 0;
+  try { const q = _lkQGet(); all = q.length; n = q.filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
+  if (!n) { if (all) await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 5000))]); return true; }
+  if (!(await _lkAsk(_lkActions(n) + ' waiting to send. Send ' + (n === 1 ? 'it' : 'them') + ' now?', 'Send now', 'Stay'))) return false;
+  await _lkDrain(10000);
+  const m = _lkQGet().filter((it) => it.kind !== 'identity').length;
+  if (!m) return true;
+  return _lkAsk(_lkActions(m) + ' still waiting to send.', 'Log out anyway (they may not be sent)', 'Stay');
 }
 function _lkAsk(text, yes, no, title) {
   return new Promise((res) => {
@@ -9824,7 +9841,7 @@ async function _lkSwitchGuard(id) {
   if (!n) return true;
   const text = n === 1 ? '1 action is still waiting to send. Send it first?' : n + ' actions are still waiting to send. Send them first?';
   if (!(await _lkAsk(text, 'Send first', 'Cancel'))) return false;
-  await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 10000))]);
+  await _lkDrain(10000); // unsent items keep their own "I am", so switching after 10 s loses nothing
   return true;
 }
 // True when "I am" was changed (setMyLeaderId stays synchronous; the guard runs first).

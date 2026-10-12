@@ -6,7 +6,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'setMyLeaderId',
   '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
-  '_lkBoot', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
+  '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkListHtml', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
@@ -565,7 +565,7 @@ describe('F1.2 logout guard', () => {
     h.fns._lkQSet([item]);
     h.answers.push(true);
     expect(await h.fns._lkLogoutGuard()).toBe(true);
-    expect(h.calls.asks[0]).toBe("1 check-in hasn't been sent yet. Send them now? | Send now | Stay");
+    expect(h.calls.asks[0]).toBe('1 action is waiting to send. Send it now? | Send now | Stay');
     expect(h.calls.posts).toHaveLength(1);
   });
   it('Stay keeps the login', async () => {
@@ -575,7 +575,7 @@ describe('F1.2 logout guard', () => {
     expect(await h.fns._lkLogoutGuard()).toBe(false);
     expect(h.calls.posts).toHaveLength(0);
   });
-  it('a send that does not finish within 10 s offers "Log out anyway (they\'ll be lost)"', async () => {
+  it('B14: a send that does not finish within 10 s offers "Log out anyway (they may not be sent)"', async () => {
     vi.useFakeTimers();
     const h = makeEnv({ post: () => new Promise(() => {}) });
     h.fns._lkQSet([item, item]);
@@ -583,8 +583,40 @@ describe('F1.2 logout guard', () => {
     const p = h.fns._lkLogoutGuard();
     await vi.advanceTimersByTimeAsync(10000);
     expect(await p).toBe(true);
-    expect(h.calls.asks[0]).toMatch(/^2 check-ins haven't been sent yet/);
-    expect(h.calls.asks[1]).toBe("They could not be sent. | Log out anyway (they'll be lost) | Stay");
+    expect(h.calls.asks[0]).toMatch(/^2 actions are waiting to send/);
+    expect(h.calls.asks[1]).toBe('2 actions are still waiting to send. | Log out anyway (they may not be sent) | Stay');
+  });
+  it('B14 / APP-22: 160 queued items drain in under 2 s on a good network (300 ms between batches)', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'saved' })) }) });
+    h.fns._lkQSet(Array.from({ length: 160 }, (_, i) => ({ ...item, id: P(1000 + i) })));
+    h.fns._lkFlush();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.fns._lkQGet()).toHaveLength(0);
+    expect(h.calls.posts).toHaveLength(4);
+  });
+  it('B14: rate-limited leftovers wait 15 s, not 300 ms', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'refused', code: 'RATE_LIMITED' })) }) });
+    h.fns._lkQSet([item]);
+    await h.fns._lkFlush();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(h.calls.posts).toHaveLength(1);
+  });
+  it('B14: the logout guard keeps flushing until the queue is empty (more than one batch)', async () => {
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'saved' })) }) });
+    h.fns._lkQSet(Array.from({ length: 120 }, (_, i) => ({ ...item, id: P(2000 + i) })));
+    h.answers.push(true);
+    expect(await h.fns._lkLogoutGuard()).toBe(true);
+    expect(h.calls.asks).toHaveLength(1);
+    expect(h.fns._lkQGet()).toHaveLength(0);
+  });
+  it('B14 / APP-34: an identity-only queue gets one silent flush before it is cleared; no question', async () => {
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'logged' })) }) });
+    h.fns._lkQSet([{ v: 1, kind: 'identity', id: P(3000), at: '2026-10-16T09:00:00.000Z', from: null, to: P(5) }]);
+    expect(await h.fns._lkLogoutGuard()).toBe(true);
+    expect(h.calls.asks).toEqual([]);
+    expect(h.calls.posts).toHaveLength(1);
   });
   it('_lkClear drops the queue and LINK; doLogout runs the guard before anything is cleared', () => {
     const h = makeEnv();
