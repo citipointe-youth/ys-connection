@@ -74,14 +74,14 @@ export interface Device { id: string | null; label: string | null }
 export interface ActionView { id: string; type: ActionType; status: Status; reason: string | null }
 export type ItemKind = 'action' | 'cancel' | 'undo' | 'identity';
 export type ItemOutcome = 'saved' | 'replay' | 'duplicate' | 'refused' | 'cancelled' | 'too-late' | 'logged';
-/** One item's result (spec §9.1). `httpStatus` is for the single routes; batch replies leave it out. */
+/** One item's result in a /link/batch reply (spec §9.1). */
 export interface ItemResult {
-  id: string; kind: ItemKind; outcome: ItemOutcome; httpStatus: number;
+  id: string; kind: ItemKind; outcome: ItemOutcome;
   existingId?: string; code?: string; message?: string; reason?: string; action?: ActionView;
   /** B6 / APP-50: true when this call stored (or replayed) the row; false on duplicate (someone else's row). */
   mine?: boolean;
 }
-export type BatchItemResult = Omit<ItemResult, 'httpStatus'>;
+export type BatchItemResult = ItemResult;
 
 export interface LinkStatus {
   console: { lastSeenAt: string | null; online: boolean; inWindow: boolean; pollSeconds: number | null;
@@ -115,9 +115,6 @@ export interface ShadowCheck { date: string; imported: boolean; message?: string
 export interface LinkService {
   status(actor: Actor): Promise<LinkStatus>;
   checkin(actor: Actor, serviceTimeId?: string): Promise<CheckinView>;
-  enqueue(actor: Actor, item: unknown, device: Partial<Device>): Promise<ItemResult>;
-  cancel(actor: Actor, id: string, leaderId: string | null, device: Partial<Device>): Promise<ItemResult>;
-  undo(actor: Actor, id: string, leaderId: string | null, newId: string, device: Partial<Device>): Promise<ItemResult>;
   listActions(actor: Actor, q: unknown): Promise<ActionListRow[]>;
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
@@ -175,7 +172,7 @@ function rosterPersonOf(l: Leader, roster: LinkRosterRow[], appLeaders: Leader[]
   return hits.length === 1 ? hits[0]!.personId : null;
 }
 
-const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused', httpStatus: e.statusCode,
+const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused',
   code: e.code, message: e.message, ...(typeof e.extra?.reason === 'string' ? { reason: e.extra.reason } : {}) });
 
 interface Target { kind: LinkLogRow['targetKind']; id: string | null; name: string | null }
@@ -262,9 +259,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   // ---- enqueue (spec §8.2 steps 1–6). Throws AppError for a refusal; the caller turns it into a result.
   async function enqueueChecked(c: Ctx, it: z.infer<typeof ActionItem>, tgt: Target, who: Who, tap?: Tap): Promise<ItemResult> {
     const ok = (row: OutboxRow, outcome: 'saved' | 'replay'): ItemResult =>
-      ({ id: it.id, kind: 'action', outcome, httpStatus: outcome === 'saved' ? 201 : 200, action: view(row), mine: true });
+      ({ id: it.id, kind: 'action', outcome, action: view(row), mine: true });
     const dup = (row: OutboxRow): ItemResult =>
-      ({ id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId: row.id, action: view(row), mine: false });
+      ({ id: it.id, kind: 'action', outcome: 'duplicate', existingId: row.id, action: view(row), mine: false });
 
     // Replay (same id, same type + payload + note-or-not + "I am") or id reuse (APP-30). The log target comes from the
     // stored row, so a retried item still names its person.
@@ -388,12 +385,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (opposite.status === 'pending') {
           if (!(await d.link.cancelPending(opposite.id))) throw new LinkStillSending(); // picked up meanwhile
           if (it.type === 'checkOut') {
-            return { id: it.id, kind: 'action', outcome: 'cancelled', httpStatus: 200, action: { ...view(opposite), status: 'cancelled' } };
+            return { id: it.id, kind: 'action', outcome: 'cancelled', action: { ...view(opposite), status: 'cancelled' } };
           }
           rows = await checkRows(personId!, svc!.serviceTimeId);
           const open = rows.find((r) => r.type === 'checkIn' && r.status !== 'cancelled' && r.status !== 'refused');
           if (open) return dup(open);
-          return { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, mine: false }; // in by the kiosk (the mirror)
+          return { id: it.id, kind: 'action', outcome: 'duplicate', mine: false }; // in by the kiosk (the mirror)
         }
       }
       const mirror = { mirrorIn: svc!.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: takenAt(await c.mirror(), 'services') };
@@ -424,7 +421,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (e instanceof LinkOpenDuplicate) {
         const existingId = String(e.extra?.existingId);
         const row = await d.link.getAction(existingId);
-        return row ? dup(row) : { id: it.id, kind: 'action', outcome: 'duplicate', httpStatus: 409, existingId, mine: false };
+        return row ? dup(row) : { id: it.id, kind: 'action', outcome: 'duplicate', existingId, mine: false };
       }
       throw e;
     }
@@ -469,8 +466,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const row = await d.link.getAction(id);
       if (!row) return refused(id, 'cancel', new NotFoundError('This action is not on the server.'));
       if (!owns(c, row, leaderId)) return refused(id, 'cancel', new LinkNotYours());
-      if (row.status === 'cancelled' || await d.link.cancelPending(id)) return { id, kind: 'cancel', outcome: 'cancelled', httpStatus: 200 };
-      return { id, kind: 'cancel', outcome: 'too-late', httpStatus: 409, code: 'LINK_TOO_LATE',
+      if (row.status === 'cancelled' || await d.link.cancelPending(id)) return { id, kind: 'cancel', outcome: 'cancelled' };
+      return { id, kind: 'cancel', outcome: 'too-late', code: 'LINK_TOO_LATE',
         message: 'Too late: this has already been picked up.' };
     })();
     const me = iAm(c, leaderId);
@@ -486,12 +483,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const row = await d.link.getAction(id);
       if (!row) return refused(id, 'undo', new NotFoundError('This action is not on the server.'));
       if (row.type !== 'checkIn') return refused(id, 'undo', new BadRequestError('Only a check-in can be undone.'));
-      if (row.status === 'cancelled') return { id, kind: 'undo', outcome: 'cancelled', httpStatus: 200 };
+      if (row.status === 'cancelled') return { id, kind: 'undo', outcome: 'cancelled' };
       // B6 / APP-5: the owner rule applies only to a cancel (the check-in is still pending). Past that, Undo is a
       // plain check-out, which anyone on the door may do (a shared login has several "I am" leaders).
       if (row.status === 'pending') {
         if (!owns(c, row, leaderId)) return refused(id, 'undo', new LinkNotYours());
-        if (await d.link.cancelPending(id)) return { id, kind: 'undo', outcome: 'cancelled', httpStatus: 200 };
+        if (await d.link.cancelPending(id)) return { id, kind: 'undo', outcome: 'cancelled' };
       }
       const p = row.payload as { serviceTimeId: string; personId: string };
       const out = await enqueueItem(c, { id: newId, type: 'checkOut', payload: { serviceTimeId: p.serviceTimeId, personId: p.personId },
@@ -506,7 +503,6 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
 
   const dev = (x: Partial<Device> | undefined): Device => ({ id: x?.id ?? null, label: x?.label ?? null });
-  const strip = ({ httpStatus: _h, ...r }: ItemResult): BatchItemResult => r;
 
   return {
     async status(actor) {
@@ -559,33 +555,6 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return out;
     },
 
-    async enqueue(actor, item, device) {
-      const c = context(actor, await gate(actor, 'link:use'));
-      const { res, log } = await doEnqueue(c, item, dev(device));
-      if (log) await d.link.addLog([log]);
-      return res;
-    },
-
-    async cancel(actor, id, leaderId, device) {
-      const c = context(actor, await gate(actor, 'link:use'));
-      if (!Uuid.safeParse(id).success || (leaderId != null && !Uuid.safeParse(leaderId).success)) {
-        return refused(String(id), 'cancel', new AppError('VALIDATION_ERROR', 'Validation failed', 400));
-      }
-      const { res, log } = await doCancel(c, id, leaderId ?? null, dev(device));
-      await d.link.addLog([log]);
-      return res;
-    },
-
-    async undo(actor, id, leaderId, newId, device) {
-      const c = context(actor, await gate(actor, 'link:use'));
-      if (![id, newId].every((x) => Uuid.safeParse(x).success) || (leaderId != null && !Uuid.safeParse(leaderId).success)) {
-        return refused(String(id), 'undo', new AppError('VALIDATION_ERROR', 'Validation failed', 400));
-      }
-      const { res, log } = await doUndo(c, id, leaderId ?? null, newId, dev(device));
-      await d.link.addLog([log]);
-      return res;
-    },
-
     async listActions(actor, q) {
       const c = context(actor, await gate(actor, 'link:use'));
       const Q = z.object({ ids: z.union([z.string(), z.array(z.string())]).optional(), serviceDate: Ymd.optional(),
@@ -634,7 +603,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (!pi.success) {
           const o = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as { id?: unknown; kind?: unknown };
           const kind = (ITEM_KINDS as readonly unknown[]).includes(o.kind) ? o.kind as ItemKind : 'action';
-          results.push(strip(refused(typeof o.id === 'string' ? o.id : '', kind, new AppError('VALIDATION_ERROR', 'Validation failed', 400))));
+          results.push(refused(typeof o.id === 'string' ? o.id : '', kind, new AppError('VALIDATION_ERROR', 'Validation failed', 400)));
           continue;
         }
         const it = pi.data;
@@ -648,15 +617,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           else {
             const atMs = Date.parse(it.at);
             const at = atMs <= c.t.getTime() && atMs >= c.t.getTime() - 3 * 86_400_000 ? new Date(atMs).toISOString() : c.t.toISOString();
-            out = { res: { id: it.id, kind: 'identity', outcome: 'logged', httpStatus: 200 },
+            out = { res: { id: it.id, kind: 'identity', outcome: 'logged' },
               // The item id is the log id, so a retried identity item is written once (APP-71).
               log: await logRow(c, device, { id: it.id, at, event: 'identity', prevLeaderId: it.from, prevLeaderName: await leaderName(c, it.from),
                 leaderId: it.to, leaderName: await leaderName(c, it.to), outcome: 'logged' }) };
           }
-          results.push(strip(out.res));
+          results.push(out.res);
           if (out.log) logs.push(out.log);
         } catch (e) {
-          if (e instanceof AppError) { results.push(strip(refused(it.id, it.kind, e))); continue; }
+          if (e instanceof AppError) { results.push(refused(it.id, it.kind, e)); continue; }
           const er = e instanceof Error ? e : new Error(String(e));
           logger.error('batch item failed', { kind: it.kind, name: er.name, message: er.message, stack: er.stack }); // never the body
           if (isDbError(e)) {
@@ -667,7 +636,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           }
           // Any other fault refuses this item alone (APP-7).
           const res = refused(it.id, it.kind, new AppError('INTERNAL', 'Something went wrong. Do it in Elvanto.', 500));
-          results.push(strip(res));
+          results.push(res);
           try {
             logs.push(await logRow(c, device, { event: it.kind === 'action' ? it.type : it.kind,
               outboxId: it.kind === 'identity' ? null : it.id, outcome: outcomeText(res) }));

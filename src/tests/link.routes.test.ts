@@ -18,7 +18,7 @@ const j = async (r: Response): Promise<any> => r.json();
 
 const SPEC_ROUTES = [
   'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind',
-  'GET /link/status', 'GET /link/checkin', 'POST /link/actions', 'GET /link/actions', 'DELETE /link/actions/:id',
+  'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
 ];
@@ -60,7 +60,7 @@ describe('link + sync live (memory)', () => {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const sync = (path: string, body: unknown) => call('POST', path, body, { authorization: `Bearer ${TOKEN}` });
   const asAdmin = (method: string, path: string, body?: unknown) =>
-    call(method, path, body, { authorization: `Bearer ${admin}`, 'x-device-id': 'd1', 'x-device-label': 'Test phone' });
+    call(method, path, body, { authorization: `Bearer ${admin}` });
 
   beforeAll(async () => {
     process.env['LINK_SYNC_TOKEN'] = TOKEN;
@@ -114,28 +114,10 @@ describe('link + sync live (memory)', () => {
     expect((await j(r)).applied).toBe(true);
   });
 
-  it('POST /link/actions: saved → 201, replay → 200, duplicate → 409 LINK_DUPLICATE + existingId', async () => {
+  it('the single write routes are gone (T-42): POST and DELETE /link/actions are not routes', async () => {
     const item = { id: randomUUID(), type: 'checkIn', payload: { serviceTimeId: svcTime, serviceId: svcId, personId: alex } };
-    const a = await asAdmin('POST', '/link/actions', item);
-    expect(a.status).toBe(201);
-    expect((await j(a)).action).toMatchObject({ id: item.id, type: 'checkIn', status: 'pending' });
-    const b = await asAdmin('POST', '/link/actions', item);
-    expect(b.status).toBe(200);
-    expect((await j(b)).outcome).toBe('replay');
-    const d = await asAdmin('POST', '/link/actions', { ...item, id: randomUUID() });
-    expect(d.status).toBe(409);
-    expect(await j(d)).toMatchObject({ code: 'LINK_DUPLICATE', existingId: item.id });
-  });
-
-  it('DELETE /link/actions/:id cancels a pending row; a bad id → 400 with the error shape', async () => {
-    const item = { id: randomUUID(), type: 'checkIn', payload: { serviceTimeId: svcTime, serviceId: svcId, personId: jamie } };
-    expect((await asAdmin('POST', '/link/actions', item)).status).toBe(201);
-    const r = await asAdmin('DELETE', `/link/actions/${item.id}`);
-    expect(r.status).toBe(200);
-    expect((await j(r)).outcome).toBe('cancelled');
-    const bad = await asAdmin('DELETE', '/link/actions/not-a-uuid');
-    expect(bad.status).toBe(400);
-    expect((await j(bad)).code).toBe('VALIDATION_ERROR');
+    expect((await asAdmin('POST', '/link/actions', item)).status).toBe(404);
+    expect((await asAdmin('DELETE', `/link/actions/${item.id}`)).status).toBe(404);
   });
 
   it('/link/batch as admin in Shadow, mixed batch → 200, one result per item, in order', async () => {
@@ -157,7 +139,7 @@ describe('link + sync live (memory)', () => {
     expect(results.every((x: object) => !('httpStatus' in x))).toBe(true);
   });
 
-  it('the device headers reach the action log', async () => {
+  it('the batch device reaches the action log', async () => {
     const r = await asAdmin('GET', '/link/admin/log');
     expect(r.status).toBe(200);
     const { rows } = await j(r);

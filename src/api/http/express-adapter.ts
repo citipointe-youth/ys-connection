@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { env, readLinkSyncToken } from '../../config/env';
 import { isProductionEnv } from '../../config/is-production';
-import { RawResponse, StatusResponse, type Route, type HttpRequest } from './types';
+import { RawResponse, type Route, type HttpRequest } from './types';
 import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
 import { sendError } from '../middleware/error.middleware';
@@ -61,8 +61,6 @@ function checkSyncToken(header: string | undefined): void {
   if (!timingSafeEqual(sha256(given), sha256(token)) || !given) throw new UnauthorizedError();
 }
 
-const deviceHeader = (v: string | string[] | undefined) => (typeof v === 'string' && v ? v.slice(0, 100) : undefined);
-
 export function createApp(routes: Route[], authService: AuthService, health?: () => Promise<Record<string, unknown>>): Express {
   const app = express();
   app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
@@ -96,7 +94,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
       res.setHeader('Access-Control-Allow-Origin', origin ?? '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Device-Id,X-Device-Label');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
     next();
@@ -160,18 +158,12 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
           body: req.body,
           origin: `${req.protocol}://${req.get('x-forwarded-host') ?? req.get('host') ?? ''}`,
         };
-        if (!route.sync) {
-          const deviceId = deviceHeader(req.headers['x-device-id']);
-          const deviceLabel = deviceHeader(req.headers['x-device-label']);
-          httpReq.headers = { ...(deviceId ? { deviceId } : {}), ...(deviceLabel ? { deviceLabel } : {}) };
-        }
 
         const untimed = UNTIMED_ROUTES.has(routeLabel);
         const result = untimed
           ? await route.handler(httpReq)
           : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
         if (result instanceof RawResponse) res.type(result.contentType).send(Buffer.from(result.body));
-        else if (result instanceof StatusResponse) res.status(result.status).json(result.body);
         else res.json(result);
       } catch (err) {
         sendError(res, err);

@@ -158,14 +158,25 @@ const firstTimer = (extra: Record<string, unknown> = {}) => ({ id: nid(), type: 
   payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'New', lastName: 'Kid', grade: 8, gender: 'male' }, note: null,
   leaderId: null, ...extra });
 
+// Writes go through /link/batch only (T-42): one item per call here, the result is that item's result.
+type Dev = { id: string | null; label: string | null };
+/** The outcome, or the code of a refusal. */
+const oc = (r: { outcome: string; code?: string }) => (r.outcome === 'refused' ? r.code : r.outcome);
+const one = async (s: LinkService, a: Actor, item: object, device: Dev) => (await s.batch(a, { device, items: [item] })).results[0]!;
+const enq = (s: LinkService, a: Actor, item: object, device: Dev) => one(s, a, { kind: 'action', ...item }, device);
+const cancel = (s: LinkService, a: Actor, id: string, leaderId: string | null, device: Dev) =>
+  one(s, a, { kind: 'cancel', id, leaderId }, device);
+const undo = (s: LinkService, a: Actor, id: string, leaderId: string | null, newId: string, device: Dev) =>
+  one(s, a, { kind: 'undo', id, leaderId, newId }, device);
+
 // =====================================================================================================================
 describe('D1 the switch (every public method)', () => {
   const use: [string, (s: LinkService, a: Actor) => Promise<unknown>][] = [
     ['status', (s, a) => s.status(a)],
     ['checkin', (s, a) => s.checkin(a)],
-    ['enqueue', (s, a) => s.enqueue(a, checkIn(), DEV)],
-    ['cancel', (s, a) => s.cancel(a, u(8888), null, DEV)],
-    ['undo', (s, a) => s.undo(a, u(8888), null, u(8889), DEV)],
+    ['enqueue', (s, a) => enq(s, a, checkIn(), DEV)],
+    ['cancel', (s, a) => cancel(s, a, u(8888), null, DEV)],
+    ['undo', (s, a) => undo(s, a, u(8888), null, u(8889), DEV)],
     ['listActions', (s, a) => s.listActions(a, { ids: u(8888) })],
     ['batch', (s, a) => s.batch(a, { device: DEV, items: [{ kind: 'identity', id: nid(), at: NOW.toISOString(), from: null, to: L_CODY }] })],
     ['lifegroups', (s, a) => s.lifegroups(a)],
@@ -261,7 +272,7 @@ describe('D1 checkin read', () => {
   it('action is the newest row by any login; mine is createdBy === actor', async () => {
     const h = await setup();
     const it1 = checkIn(P_AMY);
-    expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, it1, DEV)).outcome).toBe('saved');
     const mine = (await h.svc.checkin(GRADE, ST)).people!.find((p) => p.personId === P_AMY)!;
     expect(mine).toMatchObject({ checkedIn: true, mine: true, action: { id: it1.id, type: 'checkIn', status: 'pending', reason: null } });
     const theirs = (await h.svc.checkin(ADMIN, ST)).people!.find((p) => p.personId === P_AMY)!;
@@ -284,7 +295,7 @@ describe('D1 checkin read', () => {
   it('a linked leader checked in by a shadowed row shows practice', async () => {
     const h = await setup();
     const it1 = checkIn(P_CODY);
-    await h.svc.enqueue(ADMIN, it1, DEV);
+    await enq(h.svc, ADMIN, it1, DEV);
     setRow(h.link, it1.id, { status: 'shadowed', result_at: NOW.toISOString() });
     const r = await h.svc.checkin(GRADE, ST);
     expect(r.leaders!.find((l) => l.leaderId === L_CODY)).toMatchObject({ checkedIn: true, practice: true,
@@ -317,11 +328,11 @@ describe('B11 / T-34 leader mapping and person kind (APP-10, APP-31, APP-55)', (
   });
   it('APP-31: a check-in for an other-kind person is refused; a check-out is allowed', async () => {
     const h = await setup();
-    expect(await h.svc.enqueue(GRADE, checkIn(P_PAT), DEV)).toMatchObject({ outcome: 'refused', httpStatus: 400,
+    expect(await enq(h.svc, GRADE, checkIn(P_PAT), DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST',
       message: 'Only youth and leaders can be checked in here.' });
     await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z',
       ymd: TODAY, rooms: [], checkedIn: [{ personId: P_PAT, roomId: ROOM }] }], { takenAt: '2026-10-16T08:50:00.000Z', consoleId: CONSOLE });
-    expect((await h.svc.enqueue(GRADE, checkOut(P_PAT), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, checkOut(P_PAT), DEV)).outcome).toBe('saved');
   });
 });
 
@@ -330,8 +341,8 @@ describe('D2 enqueue', () => {
   it('saved: fills student_id from the roster match and service_date from the service', async () => {
     const h = await setup();
     const it1 = checkIn(P_AMY);
-    const r = await h.svc.enqueue(GRADE, it1, DEV);
-    expect(r).toMatchObject({ id: it1.id, kind: 'action', outcome: 'saved', httpStatus: 201,
+    const r = await enq(h.svc, GRADE, it1, DEV);
+    expect(r).toMatchObject({ id: it1.id, kind: 'action', outcome: 'saved',
       action: { id: it1.id, type: 'checkIn', status: 'pending', reason: null } });
     const row = (await h.link.getAction(it1.id))!;
     expect(row).toMatchObject({ studentId: S_AMY, personId: P_AMY, serviceDate: TODAY, createdBy: GRADE_ID,
@@ -343,69 +354,69 @@ describe('D2 enqueue', () => {
     expect(LINK_RATE_WINDOW_MS).toBe(600_000);
     const h = await setup();
     const it1 = checkIn(P_AMY);
-    for (let i = 0; i < 300; i++) expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).not.toBe('refused'); // 1 insert + 299 replays
-    for (let i = 0; i < 50; i++) expect((await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV)).outcome).toBe('duplicate');
+    for (let i = 0; i < 300; i++) expect((await enq(h.svc, GRADE, it1, DEV)).outcome).not.toBe('refused'); // 1 insert + 299 replays
+    for (let i = 0; i < 50; i++) expect((await enq(h.svc, GRADE, checkIn(P_AMY), DEV)).outcome).toBe('duplicate');
     const ft = (i: number) => firstTimer({ payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'New', lastName: `Kid${i}`, grade: 8, gender: 'male' } });
-    for (let i = 0; i < 599; i++) expect((await h.svc.enqueue(GRADE, ft(i), DEV)).outcome).toBe('saved');
-    expect(await h.svc.enqueue(GRADE, ft(999), DEV)).toMatchObject({ outcome: 'refused', code: 'RATE_LIMITED', httpStatus: 429 });
-    expect((await h.svc.enqueue(GRADE, it1, DEV)).outcome).toBe('replay'); // still answered after the limit
-    expect((await h.svc.enqueue(QUAD, ft(1000), DEV)).outcome).toBe('saved'); // per login
+    for (let i = 0; i < 599; i++) expect((await enq(h.svc, GRADE, ft(i), DEV)).outcome).toBe('saved');
+    expect(await enq(h.svc, GRADE, ft(999), DEV)).toMatchObject({ outcome: 'refused', code: 'RATE_LIMITED' });
+    expect((await enq(h.svc, GRADE, it1, DEV)).outcome).toBe('replay'); // still answered after the limit
+    expect((await enq(h.svc, QUAD, ft(1000), DEV)).outcome).toBe('saved'); // per login
   });
 
   it('replay (same id, same body) returns the row; same id, other body → LINK_ID_REUSED', async () => {
     const h = await setup();
     const it1 = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, it1, DEV);
-    expect(await h.svc.enqueue(GRADE, { ...it1, payload: { personId: P_AMY, serviceId: SVC, serviceTimeId: ST } }, DEV))
-      .toMatchObject({ outcome: 'replay', httpStatus: 200, action: { id: it1.id, status: 'pending' } });
-    expect(await h.svc.enqueue(GRADE, { ...it1, payload: { ...it1.payload, personId: P_BEN } }, DEV))
-      .toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED', httpStatus: 409 });
+    await enq(h.svc, GRADE, it1, DEV);
+    expect(await enq(h.svc, GRADE, { ...it1, payload: { personId: P_AMY, serviceId: SVC, serviceTimeId: ST } }, DEV))
+      .toMatchObject({ outcome: 'replay', action: { id: it1.id, status: 'pending' } });
+    expect(await enq(h.svc, GRADE, { ...it1, payload: { ...it1.payload, personId: P_BEN } }, DEV))
+      .toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
   });
 
   it('LINK_UNAVAILABLE when the newest console has the type off; no console → allowed', async () => {
     const h = await setup('on', { caps: { checkIn: 'off' } });
-    expect(await h.svc.enqueue(GRADE, checkIn(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_UNAVAILABLE', httpStatus: 409 });
+    expect(await enq(h.svc, GRADE, checkIn(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_UNAVAILABLE' });
     const h2 = await setup('on', { console: false });
-    expect((await h2.svc.enqueue(GRADE, checkIn(), DEV)).outcome).toBe('saved');
+    expect((await enq(h2.svc, GRADE, checkIn(), DEV)).outcome).toBe('saved');
   });
 
   it('check-in type checks: service not in the pick list, wrong serviceId, person inactive or unknown', async () => {
     const h = await setup();
-    const bad = async (it: object) => (await h.svc.enqueue(GRADE, it, DEV)).httpStatus;
-    expect(await bad(checkIn(P_AMY, { payload: { serviceTimeId: ST_OLD, serviceId: SVC_OLD, personId: P_AMY } }))).toBe(400);
-    expect(await bad(checkIn(P_AMY, { payload: { serviceTimeId: ST, serviceId: SVC_SUN, personId: P_AMY } }))).toBe(400);
-    expect(await bad(checkIn(P_OLD))).toBe(400);
-    expect(await bad(checkIn(u(999)))).toBe(400);
-    expect(await bad({ id: nid(), type: 'checkIn', payload: { serviceTimeId: ST } })).toBe(400); // Zod
+    const bad = async (it: object) => oc(await enq(h.svc, GRADE, it, DEV));
+    expect(await bad(checkIn(P_AMY, { payload: { serviceTimeId: ST_OLD, serviceId: SVC_OLD, personId: P_AMY } }))).toBe('BAD_REQUEST');
+    expect(await bad(checkIn(P_AMY, { payload: { serviceTimeId: ST, serviceId: SVC_SUN, personId: P_AMY } }))).toBe('BAD_REQUEST');
+    expect(await bad(checkIn(P_OLD))).toBe('BAD_REQUEST');
+    expect(await bad(checkIn(u(999)))).toBe('BAD_REQUEST');
+    expect(await bad({ id: nid(), type: 'checkIn', payload: { serviceTimeId: ST } })).toBe('VALIDATION_ERROR'); // Zod
   });
 
   it('report type checks: date window, attendees ⊆ members, didNotMeet, serviceTimeId in link_services', async () => {
     const h = await setup();
-    const st = async (it: object) => (await h.svc.enqueue(DIRECTOR, it, DEV)).httpStatus;
-    expect(await st(report({ date: '2026-10-17' }))).toBe(400);                   // > today
-    expect(await st(report({ date: '2026-10-01' }))).toBe(400);                   // < today − 14
-    expect(await st(report({ date: '2026-10-02' }))).toBe(201);                   // = today − 14
-    expect(await st(report({ date: '2026-10-03', attendees: [P_BEN] }))).toBe(400); // not a member
-    expect(await st(report({ date: '2026-10-04', didNotMeet: true }))).toBe(400);  // attendees with didNotMeet
-    expect(await st(report({ date: '2026-10-05', serviceTimeId: u(998) }))).toBe(400);
-    expect(await st(report({ date: '2026-10-06', serviceTimeId: ST_OLD }))).toBe(201); // in link_services, not the pick list
-    expect(await st(report({ date: '2026-10-07', groupId: u(997) }))).toBe(400);
+    const st = async (it: object) => oc(await enq(h.svc, DIRECTOR, it, DEV));
+    expect(await st(report({ date: '2026-10-17' }))).toBe('BAD_REQUEST');                   // > today
+    expect(await st(report({ date: '2026-10-01' }))).toBe('BAD_REQUEST');                   // < today − 14
+    expect(await st(report({ date: '2026-10-02' }))).toBe('saved');                   // = today − 14
+    expect(await st(report({ date: '2026-10-03', attendees: [P_BEN] }))).toBe('BAD_REQUEST'); // not a member
+    expect(await st(report({ date: '2026-10-04', didNotMeet: true }))).toBe('VALIDATION_ERROR');  // attendees with didNotMeet
+    expect(await st(report({ date: '2026-10-05', serviceTimeId: u(998) }))).toBe('BAD_REQUEST');
+    expect(await st(report({ date: '2026-10-06', serviceTimeId: ST_OLD }))).toBe('saved'); // in link_services, not the pick list
+    expect(await st(report({ date: '2026-10-07', groupId: u(997) }))).toBe('BAD_REQUEST');
   });
 
   it('report scope: a group out of scope is 403', async () => {
     const h = await setup();
-    expect(await h.svc.enqueue(GRADE, report({ groupId: G10M, attendees: [P_TOM] }), DEV))
-      .toMatchObject({ outcome: 'refused', code: 'FORBIDDEN', httpStatus: 403 });
+    expect(await enq(h.svc, GRADE, report({ groupId: G10M, attendees: [P_TOM] }), DEV))
+      .toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
   });
 
   it('flow step checks: unknown row, step moved, out of scope', async () => {
     const h = await setup();
-    expect((await h.svc.enqueue(DIRECTOR, step({ rowId: u(996) }), DEV)).httpStatus).toBe(400);
-    expect((await h.svc.enqueue(DIRECTOR, step({ stepId: STEP2 }), DEV)).httpStatus).toBe(400);
-    expect((await h.svc.enqueue(GRADE2, step(), DEV)).httpStatus).toBe(403);
-    expect((await h.svc.enqueue(GRADE, step({ rowId: FR2, stepId: STEP2, personId: null }), DEV)).httpStatus).toBe(403);
+    expect((await enq(h.svc, DIRECTOR, step({ rowId: u(996) }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, DIRECTOR, step({ stepId: STEP2 }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, GRADE2, step(), DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, GRADE, step({ rowId: FR2, stepId: STEP2, personId: null }), DEV)).code).toBe('FORBIDDEN');
     const ok = step();
-    expect(await h.svc.enqueue(GRADE, ok, DEV)).toMatchObject({ outcome: 'saved' });
+    expect(await enq(h.svc, GRADE, ok, DEV)).toMatchObject({ outcome: 'saved' });
     expect(await h.link.getAction(ok.id)).toMatchObject({ serviceDate: TODAY, personId: P_AMY, studentId: S_AMY });
   });
 
@@ -413,31 +424,31 @@ describe('D2 enqueue', () => {
     const h = await setup();
     const it1 = firstTimer();
     (it1.payload as Record<string, unknown>).firstName = 'x'.repeat(61);
-    expect((await h.svc.enqueue(GRADE, it1, DEV)).httpStatus).toBe(400);
+    expect((await enq(h.svc, GRADE, it1, DEV)).code).toBe('VALIDATION_ERROR');
     const ok = firstTimer();
-    expect(await h.svc.enqueue(GRADE, ok, DEV)).toMatchObject({ outcome: 'saved' });
+    expect(await enq(h.svc, GRADE, ok, DEV)).toMatchObject({ outcome: 'saved' });
     expect(await h.link.getAction(ok.id)).toMatchObject({ personId: null, studentId: null, serviceDate: TODAY });
   });
 
   it('notes: only on note types; 1,800 ok, 1,801 refused', async () => {
     const h = await setup();
-    expect((await h.svc.enqueue(GRADE, checkIn(P_AMY, { note: 'hi' }), DEV)).httpStatus).toBe(400);
-    expect((await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1801) }), DEV)).httpStatus).toBe(400);
-    expect((await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1800) }), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, checkIn(P_AMY, { note: 'hi' }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, GRADE, step({}, { note: 'x'.repeat(1801) }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, GRADE, step({}, { note: 'x'.repeat(1800) }), DEV)).outcome).toBe('saved');
   });
 
   it('notes: the leader note is capped so "Self identified leader: <name> — <note>" fits 1,900 (X1)', async () => {
     const h = await setup();
-    const r1900 = await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(1900) }), DEV);
-    expect(r1900).toMatchObject({ outcome: 'refused', httpStatus: 400, message: 'A note can be up to 1800 characters.' });
+    const r1900 = await enq(h.svc, GRADE, step({}, { note: 'x'.repeat(1900) }), DEV);
+    expect(r1900).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'A note can be up to 1800 characters.' });
     const LONG = 'c0000000-0000-4000-8000-00000000abcd';
     const name = 'N'.repeat(90);
     await h.leaders.save(leader(LONG, name, 'female') as never);
     const room = 1900 - 'Self identified leader: '.length - name.length - ' — '.length; // 1783
-    const over = await h.svc.enqueue(GRADE, step({}, { note: 'x'.repeat(room + 1), leaderId: LONG }), DEV);
-    expect(over).toMatchObject({ outcome: 'refused', httpStatus: 400, message: `A note can be up to ${room} characters.` });
+    const over = await enq(h.svc, GRADE, step({}, { note: 'x'.repeat(room + 1), leaderId: LONG }), DEV);
+    expect(over).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: `A note can be up to ${room} characters.` });
     const fits = step({}, { note: 'x'.repeat(room), leaderId: LONG });
-    expect((await h.svc.enqueue(GRADE, fits, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, fits, DEV)).outcome).toBe('saved');
     // The stored note stays the leader's own words.
     expect(h.link._peekNote(fits.id)).toBe('x'.repeat(room));
   });
@@ -445,91 +456,90 @@ describe('D2 enqueue', () => {
   it('"I am" is required for reports and flow steps', async () => {
     const h = await setup();
     for (const it of [report({}, { leaderId: null }), edit({}, { leaderId: u(995) }), step({}, { leaderId: undefined })]) {
-      expect(await h.svc.enqueue(DIRECTOR, it, DEV)).toMatchObject({ outcome: 'refused', httpStatus: 400, message: 'Pick who you are first.' });
+      expect(await enq(h.svc, DIRECTOR, it, DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
     }
   });
 
   it('a junior leader login always gets its bound leaderId; other types fall back to the login name', async () => {
     const h = await setup();
     const it1 = checkIn(P_AMY, { leaderId: L_DANA });
-    await h.svc.enqueue(LEADER, it1, DEV);
+    await enq(h.svc, LEADER, it1, DEV);
     expect(await h.link.getAction(it1.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
     const it2 = checkIn(P_BEN, { leaderId: L_DANA });
-    await h.svc.enqueue(GRADE, it2, DEV);
+    await enq(h.svc, GRADE, it2, DEV);
     expect(await h.link.getAction(it2.id)).toMatchObject({ leaderId: L_DANA, leaderName: 'Dana Day' });
     const it3 = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, it3, DEV);
+    await enq(h.svc, GRADE, it3, DEV);
     expect(await h.link.getAction(it3.id)).toMatchObject({ leaderId: null, leaderName: 'grade login' });
   });
 
   it('same-action dedupe: a second checkIn from another login → duplicate + existingId, one row', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() }); // not open any more
-    expect(await h.svc.enqueue(QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id,
-      httpStatus: 409, action: { id: a.id, status: 'sent' } });
+    expect(await enq(h.svc, QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id, action: { id: a.id, status: 'sent' } });
     expect(await h.link.listActions({ personId: P_AMY })).toHaveLength(1);
   });
 
   it('a sent check-in then a kiosk check-out (newer mirror, out) allows a new check-in', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'sent', result_at: '2026-10-16T08:40:00.000Z' });
     await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z',
       ymd: TODAY, rooms: [], checkedIn: [] }], { takenAt: '2026-10-16T08:50:00.000Z', consoleId: CONSOLE });
-    expect((await h.svc.enqueue(QUAD, checkIn(P_AMY), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, QUAD, checkIn(P_AMY), DEV)).outcome).toBe('saved');
   });
 
   it('a junior leader\'s cancel is owned and logged under its bound leader', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(LEADER, a, DEV);
-    expect((await h.svc.cancel(LEADER, a.id, L_DANA, DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, LEADER, a, DEV);
+    expect((await cancel(h.svc, LEADER, a.id, L_DANA, DEV)).outcome).toBe('cancelled');
     const log = await h.link.listLog({ from: T0, to: '2026-11-01T00:00:00.000Z', event: 'cancel', limit: 5 });
     expect(log[0]).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
   });
 
   it('checkOut after a pending check-in → cancelled (B4); after a shadowed check-in → saved; with no check-in → 400', async () => {
     const h = await setup();
-    await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV);
-    expect((await h.svc.enqueue(GRADE, checkOut(P_AMY), DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, GRADE, checkIn(P_AMY), DEV);
+    expect((await enq(h.svc, GRADE, checkOut(P_AMY), DEV)).outcome).toBe('cancelled');
     const c = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, c, DEV);
+    await enq(h.svc, GRADE, c, DEV);
     setRow(h.link, c.id, { status: 'shadowed', result_at: NOW.toISOString() });
-    expect((await h.svc.enqueue(GRADE, checkOut(P_TOM), DEV)).outcome).toBe('saved');
-    expect((await h.svc.enqueue(GRADE, checkOut(P_EVE1), DEV)).httpStatus).toBe(400);
-    expect((await h.svc.enqueue(GRADE, checkOut(P_BEN), DEV)).outcome).toBe('saved'); // in by the mirror
+    expect((await enq(h.svc, GRADE, checkOut(P_TOM), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, checkOut(P_EVE1), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, GRADE, checkOut(P_BEN), DEV)).outcome).toBe('saved'); // in by the mirror
   });
 
   it('report duplicate by key → duplicate + existingId', async () => {
     const h = await setup();
     const a = report({ date: '2026-10-14' });
-    await h.svc.enqueue(DIRECTOR, a, DEV);
-    expect(await h.svc.enqueue(GRADE, report({ date: '2026-10-14' }), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id });
+    await enq(h.svc, DIRECTOR, a, DEV);
+    expect(await enq(h.svc, GRADE, report({ date: '2026-10-14' }), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id });
   });
 
   it('editReport: last report, editable, base, date', async () => {
     const h = await setup();
-    const st = async (it: object, a: Actor = DIRECTOR) => h.svc.enqueue(a, it, DEV);
-    expect((await st(edit({ reportId: u(994) }))).httpStatus).toBe(400);
+    const st = async (it: object, a: Actor = DIRECTOR) => enq(h.svc, a, it, DEV);
+    expect((await st(edit({ reportId: u(994) }))).code).toBe('BAD_REQUEST');
     expect(await st(edit({ groupId: G10M, reportId: R2, date: '2026-10-14', attendees: [P_TOM],
       base: { date: '2026-10-14', didNotMeet: false, attendees: [P_TOM], guests: 0, serviceTimeId: null } })))
-      .toMatchObject({ outcome: 'refused', code: 'LINK_EDIT_IN_ELVANTO', reason: 'multi-service', httpStatus: 409 });
-    expect((await st(edit({ base: { date: '2026-10-13', didNotMeet: false, attendees: [P_AMY], guests: 2, serviceTimeId: null } }))).httpStatus).toBe(400);
-    expect((await st(edit({ date: '2026-10-12' }))).httpStatus).toBe(400);
+      .toMatchObject({ outcome: 'refused', code: 'LINK_EDIT_IN_ELVANTO', reason: 'multi-service' });
+    expect((await st(edit({ base: { date: '2026-10-13', didNotMeet: false, attendees: [P_AMY], guests: 2, serviceTimeId: null } }))).code).toBe('BAD_REQUEST');
+    expect((await st(edit({ date: '2026-10-12' }))).code).toBe('BAD_REQUEST');
     expect((await st(edit())).outcome).toBe('saved');
   });
 
   it('editReport: the overlay (newest sent submit with report_id after the groups push) is the last report', async () => {
     const h = await setup();
     const sub = report({ date: '2026-10-15' });
-    await h.svc.enqueue(DIRECTOR, sub, DEV);
+    await enq(h.svc, DIRECTOR, sub, DEV);
     const NEW_R = u(413);
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: NEW_R });
-    expect((await h.svc.enqueue(DIRECTOR, edit(), DEV)).httpStatus).toBe(400); // R1 is no longer the last report
-    expect((await h.svc.enqueue(DIRECTOR, edit({ reportId: NEW_R, date: '2026-10-15',
+    expect((await enq(h.svc, DIRECTOR, edit(), DEV)).code).toBe('BAD_REQUEST'); // R1 is no longer the last report
+    expect((await enq(h.svc, DIRECTOR, edit({ reportId: NEW_R, date: '2026-10-15',
       base: { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } }), DEV)).outcome).toBe('saved');
   });
 });
@@ -540,15 +550,15 @@ describe('B5 / T-11 a shadowed row is not "in" for the duplicate check (APP-46; 
     const h = await setup();
     const a = checkIn(P_AMY);
     h.clock.now = new Date('2026-10-16T08:45:00.000Z');
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'shadowed', result_at: '2026-10-16T08:46:00.000Z' });
     const view1 = await h.svc.checkin(GRADE, ST);
     expect(view1.people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, practice: true });
     h.clock.now = NOW;
     const b = checkIn(P_AMY);
-    expect(await h.svc.enqueue(GRADE, b, DEV)).toMatchObject({ outcome: 'saved', action: { id: b.id, status: 'pending' } });
+    expect(await enq(h.svc, GRADE, b, DEV)).toMatchObject({ outcome: 'saved', action: { id: b.id, status: 'pending' } });
     // and a second live tap is the duplicate
-    expect(await h.svc.enqueue(QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: b.id });
+    expect(await enq(h.svc, QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: b.id });
   });
 });
 
@@ -556,22 +566,22 @@ describe('B6 / T-30 undo and ownership (APP-5, APP-50)', () => {
   it('two "I am" leaders on one login: the second can check out (and Undo) the first leader sent check-in', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
-    await h.svc.enqueue(GRADE, a, DEV);
-    expect(await h.svc.undo(GRADE, a.id, L_CODY, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' }); // pending: a cancel
+    await enq(h.svc, GRADE, a, DEV);
+    expect(await undo(h.svc, GRADE, a.id, L_CODY, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' }); // pending: a cancel
     setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
     const newId = nid();
-    expect(await h.svc.undo(GRADE, a.id, L_CODY, newId, DEV)).toMatchObject({ outcome: 'saved',
+    expect(await undo(h.svc, GRADE, a.id, L_CODY, newId, DEV)).toMatchObject({ outcome: 'saved',
       action: { id: newId, type: 'checkOut', status: 'pending' }, mine: true });
     const b = checkIn(P_TOM, { leaderId: L_DANA });
-    await h.svc.enqueue(GRADE, b, DEV);
+    await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, b.id, { status: 'sent', result_at: NOW.toISOString() });
-    expect((await h.svc.enqueue(GRADE2, checkOut(P_TOM, { leaderId: L_CODY }), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE2, checkOut(P_TOM, { leaderId: L_CODY }), DEV)).outcome).toBe('saved');
   });
   it('mine comes from the server: true on saved and replay, false on duplicate', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    expect((await h.svc.enqueue(GRADE, a, DEV)).mine).toBe(true);
-    expect((await h.svc.enqueue(GRADE, a, DEV)).mine).toBe(true); // replay
+    expect((await enq(h.svc, GRADE, a, DEV)).mine).toBe(true);
+    expect((await enq(h.svc, GRADE, a, DEV)).mine).toBe(true); // replay
     const r = await h.svc.batch(QUAD, { items: [{ kind: 'action', ...checkIn(P_AMY) }] });
     expect(r.results[0]).toMatchObject({ outcome: 'duplicate', existingId: a.id, mine: false });
   });
@@ -594,10 +604,10 @@ describe('B8 / T-39 tap time (APP-16), /link/batch only', () => {
     const h = await setup();
     h.clock.now = at('2026-10-16T09:01:00.000Z');
     const b1 = checkIn(P_AMY);
-    await h.svc.enqueue(QUAD, b1, DEV);
+    await enq(h.svc, QUAD, b1, DEV);
     setRow(h.link, b1.id, { status: 'sent', result_at: '2026-10-16T09:02:00.000Z' });
     h.clock.now = at('2026-10-16T11:00:00.000Z');
-    expect((await h.svc.enqueue(QUAD, checkOut(P_AMY), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, QUAD, checkOut(P_AMY), DEV)).outcome).toBe('saved');
     h.clock.now = at('2026-10-16T11:30:00.000Z');
     // A's phone clock runs 1 h slow: tapped at its 08:00 (server 09:00), sent at its 10:30 (server 11:30)
     const a = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T08:00:00.000Z' };
@@ -656,13 +666,12 @@ describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'claimed' });
-    expect(await h.svc.enqueue(QUAD, checkOut(P_AMY), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING',
-      httpStatus: 409, message: 'Still sending, try again in a minute.' });
+    expect(await enq(h.svc, QUAD, checkOut(P_AMY), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING', message: 'Still sending, try again in a minute.' });
     setRow(h.link, a.id, { status: 'pending', retry_at: '2026-10-16T09:01:00.000Z' }); // the console answered retry
     const out = checkOut(P_AMY);
-    expect(await h.svc.enqueue(QUAD, out, DEV)).toMatchObject({ outcome: 'cancelled', httpStatus: 200,
+    expect(await enq(h.svc, QUAD, out, DEV)).toMatchObject({ outcome: 'cancelled',
       action: { id: a.id, type: 'checkIn', status: 'cancelled' } });
     expect((await h.link.getAction(a.id))!.status).toBe('cancelled');
     expect(await h.link.getAction(out.id)).toBeNull();
@@ -670,43 +679,43 @@ describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 B: Undo of a claimed check-in is refused (still sending); once it is pending again the Undo cancels it', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'claimed' });
-    expect(await h.svc.undo(GRADE, a.id, null, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING' });
+    expect(await undo(h.svc, GRADE, a.id, null, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING' });
     setRow(h.link, a.id, { status: 'pending' });
-    expect((await h.svc.undo(GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
+    expect((await undo(h.svc, GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
     expect(await h.link.listActions({ personId: P_AMY, types: ['checkOut'] })).toHaveLength(0);
   });
   it('an unclear opposite row refuses both ways', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'unclear' });
-    expect(await h.svc.enqueue(GRADE, checkOut(P_AMY), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
+    expect(await enq(h.svc, GRADE, checkOut(P_AMY), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
     const b = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, b, DEV);
+    await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, b.id, { status: 'sent', result_at: NOW.toISOString() });
     const o = checkOut(P_TOM);
-    await h.svc.enqueue(GRADE, o, DEV);
+    await enq(h.svc, GRADE, o, DEV);
     setRow(h.link, o.id, { status: 'claimed' });
-    expect(await h.svc.enqueue(GRADE, checkIn(P_TOM), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
+    expect(await enq(h.svc, GRADE, checkIn(P_TOM), DEV)).toMatchObject({ code: 'LINK_STILL_SENDING' });
   });
   it('APP-45 in-out-in: a checkIn over a pending check-out cancels the check-out and returns the open check-in as duplicate', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
     const o = checkOut(P_AMY);
-    expect((await h.svc.enqueue(QUAD, o, DEV)).outcome).toBe('saved');
-    expect(await h.svc.enqueue(GRADE, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id,
+    expect((await enq(h.svc, QUAD, o, DEV)).outcome).toBe('saved');
+    expect(await enq(h.svc, GRADE, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id,
       action: { id: a.id, type: 'checkIn', status: 'sent' } });
     expect((await h.link.getAction(o.id))!.status).toBe('cancelled');
     // console offline the whole time: in (pending), out cancels it, in again is a fresh check-in
     const b = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, b, DEV);
-    expect((await h.svc.enqueue(QUAD, checkOut(P_TOM), DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, GRADE, b, DEV);
+    expect((await enq(h.svc, QUAD, checkOut(P_TOM), DEV)).outcome).toBe('cancelled');
     const c = checkIn(P_TOM);
-    expect((await h.svc.enqueue(GRADE, c, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, c, DEV)).outcome).toBe('saved');
     expect((await h.link.listActions({ personId: P_TOM, statuses: ['pending'] })).map((r) => r.id)).toEqual([c.id]);
   });
 });
@@ -715,50 +724,50 @@ describe('D3 cancel, undo, listActions', () => {
   it('cancel: same login + same "I am" → cancelled; other "I am" or other login → LINK_NOT_YOURS; null/null is the same', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
-    await h.svc.enqueue(GRADE, a, DEV);
-    expect(await h.svc.cancel(GRADE, a.id, L_CODY, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS', httpStatus: 403 });
-    expect(await h.svc.cancel(GRADE2, a.id, L_DANA, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
-    expect(await h.svc.cancel(GRADE, a.id, L_DANA, DEV)).toMatchObject({ outcome: 'cancelled', httpStatus: 200 });
+    await enq(h.svc, GRADE, a, DEV);
+    expect(await cancel(h.svc, GRADE, a.id, L_CODY, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
+    expect(await cancel(h.svc, GRADE2, a.id, L_DANA, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
+    expect(await cancel(h.svc, GRADE, a.id, L_DANA, DEV)).toMatchObject({ outcome: 'cancelled' });
     const b = checkIn(P_BEN);
-    await h.svc.enqueue(GRADE, b, DEV);
-    expect((await h.svc.cancel(GRADE, b.id, null, DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, GRADE, b, DEV);
+    expect((await cancel(h.svc, GRADE, b.id, null, DEV)).outcome).toBe('cancelled');
   });
 
   it('director/admin (On) can cancel anyone\'s; not pending → too-late', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
-    await h.svc.enqueue(GRADE, a, DEV);
-    expect((await h.svc.cancel(DIRECTOR, a.id, null, DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, GRADE, a, DEV);
+    expect((await cancel(h.svc, DIRECTOR, a.id, null, DEV)).outcome).toBe('cancelled');
     const b = report();
-    await h.svc.enqueue(GRADE, b, DEV);
+    await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, b.id, { status: 'claimed' });
-    expect(await h.svc.cancel(GRADE, b.id, L_DANA, DEV)).toMatchObject({ outcome: 'too-late', code: 'LINK_TOO_LATE', httpStatus: 409 });
+    expect(await cancel(h.svc, GRADE, b.id, L_DANA, DEV)).toMatchObject({ outcome: 'too-late', code: 'LINK_TOO_LATE' });
   });
 
   it('undo: pending check-in → cancelled; sent check-in → a new checkOut; non-check-in → 400', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
-    expect((await h.svc.undo(GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
+    await enq(h.svc, GRADE, a, DEV);
+    expect((await undo(h.svc, GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
     const b = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, b, DEV);
+    await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, b.id, { status: 'sent', result_at: NOW.toISOString() });
     const newId = nid();
-    expect(await h.svc.undo(GRADE, b.id, null, newId, DEV)).toMatchObject({ outcome: 'saved', httpStatus: 201,
+    expect(await undo(h.svc, GRADE, b.id, null, newId, DEV)).toMatchObject({ outcome: 'saved',
       action: { id: newId, type: 'checkOut', status: 'pending' } });
     // B6: past pending, Undo is a plain check-out (no owner rule); the check-out already waits, so a duplicate
-    expect(await h.svc.undo(QUAD, b.id, null, nid(), DEV)).toMatchObject({ outcome: 'duplicate', existingId: newId });
+    expect(await undo(h.svc, QUAD, b.id, null, nid(), DEV)).toMatchObject({ outcome: 'duplicate', existingId: newId });
     const c = step();
-    await h.svc.enqueue(GRADE, c, DEV);
-    expect((await h.svc.undo(GRADE, c.id, L_DANA, nid(), DEV)).httpStatus).toBe(400);
+    await enq(h.svc, GRADE, c, DEV);
+    expect((await undo(h.svc, GRADE, c.id, L_DANA, nid(), DEV)).code).toBe('BAD_REQUEST');
   });
 
   it('listActions: own rows only for non-admins; detail for link:admin only; contract shape', async () => {
     const h = await setup();
     const a = step({}, { note: 'private words' });
     const b = checkIn(P_BEN);
-    await h.svc.enqueue(GRADE, a, DEV);
-    await h.svc.enqueue(QUAD, b, DEV);
+    await enq(h.svc, GRADE, a, DEV);
+    await enq(h.svc, QUAD, b, DEV);
     setRow(h.link, b.id, { detail: 'console sentence' });
     const ids = [a.id, b.id].join(',');
     const mine = await h.svc.listActions(GRADE, { ids });
@@ -776,8 +785,8 @@ describe('D3 cancel, undo, listActions', () => {
     const h = await setup();
     const a = checkIn(P_BEN);
     const b = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
-    await h.svc.enqueue(GRADE, b, DEV);
+    await enq(h.svc, GRADE, a, DEV);
+    await enq(h.svc, GRADE, b, DEV);
     setRow(h.link, a.id, { status: 'unclear', reason: 'lease-lost' });
     const all = await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'checkIn' });
     expect(all.find((r) => r.id === a.id)).toMatchObject({ status: 'unclear', type: 'checkIn', name: 'Ben Brown' });
@@ -787,7 +796,7 @@ describe('D3 cancel, undo, listActions', () => {
   it('B17: a first-timer row carries its name for link:admin (the waiting list), never for others', async () => {
     const h = await setup();
     const f = firstTimer();
-    await h.svc.enqueue(GRADE, f, DEV);
+    await enq(h.svc, GRADE, f, DEV);
     expect((await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'firstTimerCheckIn' }))[0]).toMatchObject({ name: 'New Kid' });
     expect((await h.svc.listActions(GRADE, { ids: f.id }))[0]).not.toHaveProperty('name');
   });
@@ -823,7 +832,7 @@ describe('D4 batch and the action log', () => {
   it('a mixed batch: one result per item, in order; a refusal does not stop the next', async () => {
     const h = await setup();
     const pend = checkIn(P_TOM);
-    await h.svc.enqueue(GRADE, pend, DEV);
+    await enq(h.svc, GRADE, pend, DEV);
     const a = checkIn(P_AMY), dup = checkIn(P_AMY), bad = checkIn(P_OLD), undoNew = nid(), ident = nid();
     const r = await h.svc.batch(GRADE, { device: DEV, items: [
       { kind: 'action', ...a },
@@ -905,13 +914,13 @@ describe('D4 batch and the action log', () => {
   it('A8 / APP-30: replay equality includes the note and the leader; a replay log row names the person', async () => {
     const h = await setup();
     const s = step({}, { note: 'first' });
-    expect((await h.svc.enqueue(GRADE, s, DEV)).outcome).toBe('saved');
-    expect((await h.svc.enqueue(GRADE, s, DEV)).outcome).toBe('replay');
-    expect(await h.svc.enqueue(GRADE, { ...s, note: null }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
-    expect(await h.svc.enqueue(GRADE, { ...s, leaderId: L_EVE }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
+    expect((await enq(h.svc, GRADE, s, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, GRADE, s, DEV)).outcome).toBe('replay');
+    expect(await enq(h.svc, GRADE, { ...s, note: null }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
+    expect(await enq(h.svc, GRADE, { ...s, leaderId: L_EVE }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, DEV);
-    await h.svc.enqueue(GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
+    await enq(h.svc, GRADE, a, DEV);
     const log = await h.link.listLog({ from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 50 });
     const rep = log.filter((l) => l.event === 'checkIn' && l.outcome === 'replay');
     expect(rep).toHaveLength(1);
@@ -962,8 +971,8 @@ describe('D4 batch and the action log', () => {
   it('the single routes (enqueue, cancel, undo) write one log row each with the device given', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
-    await h.svc.enqueue(GRADE, a, { id: 'hdr-dev', label: 'Pixel · Chrome' });
-    await h.svc.cancel(GRADE, a.id, null, { id: 'hdr-dev', label: null });
+    await enq(h.svc, GRADE, a, { id: 'hdr-dev', label: 'Pixel · Chrome' });
+    await cancel(h.svc, GRADE, a.id, null, { id: 'hdr-dev', label: null });
     const log = await h.link.listLog({ from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', limit: 10 });
     expect(log.map((l) => `${l.event}:${l.outcome}:${l.deviceId}`).sort()).toEqual(['cancel:cancelled:hdr-dev', 'checkIn:saved:hdr-dev']);
   });
@@ -985,7 +994,7 @@ describe('D5 lifegroups and flows', () => {
   it('row shape: defaultDate from meets, lastReport, openAction', async () => {
     const h = await setup();
     const open = report({ date: '2026-10-15' });
-    await h.svc.enqueue(GRADE, open, DEV);
+    await enq(h.svc, GRADE, open, DEV);
     const g = (await h.svc.lifegroups(GRADE)).groups[0]!;
     expect(Object.keys(g).sort()).toEqual(['defaultDate', 'groupId', 'lastReport', 'meets', 'members', 'name', 'openAction', 'thisWeek']);
     expect(g).toMatchObject({ defaultDate: '2026-10-13', thisWeek: 'reported', lastReport: { reportId: R1, editable: true },
@@ -996,7 +1005,7 @@ describe('D5 lifegroups and flows', () => {
   it('the overlay: newest sent submit with report_id after the groups push → lastReport, editable', async () => {
     const h = await setup();
     const sub = report({ date: '2026-10-15', guests: 3 });
-    await h.svc.enqueue(GRADE, sub, DEV);
+    await enq(h.svc, GRADE, sub, DEV);
     const NEW_R = u(414);
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: NEW_R });
     const g = (await h.svc.lifegroups(GRADE)).groups[0]!;
@@ -1015,7 +1024,7 @@ describe('D5 lifegroups and flows', () => {
     expect(await ids(QUAD_B)).toEqual([FR3]);
     expect(await ids(LEADER)).toEqual([]);
     const s = step();
-    await h.svc.enqueue(GRADE, s, DEV);
+    await enq(h.svc, GRADE, s, DEV);
     const r = (await h.svc.flows(GRADE)).rows[0]!;
     expect(r).toMatchObject({ rowId: FR1, flowId: FLOW_B, stepId: STEP1, flowName: 'Bravo', stepName: 'Welcome call',
       name: 'Amy Adams', personId: P_AMY, openAction: { id: s.id, type: 'completeStep', status: 'pending' } });
@@ -1091,7 +1100,7 @@ describe('D6 admin: matching, shadow check, log', () => {
       { studentId: S_BEN, sessionId: 'sess1', attended: true }, { studentId: 'other', sessionId: 'sess1', attended: false }]);
     await h.link.setMatches([{ personId: P_BEN, studentId: S_BEN, match: 'manual' }]);
     const mk = async (person: string, status: string) => {
-      const it = checkIn(person); await h.svc.enqueue(ADMIN, it, DEV); setRow(h.link, it.id, { status }); return it.id;
+      const it = checkIn(person); await enq(h.svc, ADMIN, it, DEV); setRow(h.link, it.id, { status }); return it.id;
     };
     const amy = await mk(P_AMY, 'sent');        // attended → matched
     const tom = await mk(P_TOM, 'sent');        // not attended → sent-not-imported
@@ -1105,7 +1114,7 @@ describe('D6 admin: matching, shadow check, log', () => {
     expect(r.unlinkedAttenders).toBe(1); // Ben attended, no link row
     expect(cody).toBeTruthy();
     // practice verdicts
-    const ben = checkIn(P_BEN); await h.svc.enqueue(ADMIN, ben, DEV); setRow(h.link, ben.id, { status: 'shadowed' });
+    const ben = checkIn(P_BEN); await enq(h.svc, ADMIN, ben, DEV); setRow(h.link, ben.id, { status: 'shadowed' });
     setRow(h.link, tom, { status: 'shadowed' });
     const r2 = await h.svc.shadowCheck(ADMIN, TODAY);
     const v2 = Object.fromEntries(r2.rows.map((x) => [x.id, x.verdict]));

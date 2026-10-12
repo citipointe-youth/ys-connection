@@ -216,9 +216,7 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Elvanto link: leaders + admin (session) -----
     { method: 'GET',    path: '/link/status',             auth: true, handler: (r) => linkCtl.status(r) },
     { method: 'GET',    path: '/link/checkin',            auth: true, handler: (r) => linkCtl.checkin(r) },
-    { method: 'POST',   path: '/link/actions',            auth: true, handler: (r) => linkCtl.enqueue(r) },
     { method: 'GET',    path: '/link/actions',            auth: true, handler: (r) => linkCtl.listActions(r) },
-    { method: 'DELETE', path: '/link/actions/:id',        auth: true, handler: (r) => linkCtl.cancel(r) },
     { method: 'POST',   path: '/link/batch',              auth: true, handler: (r) => linkCtl.batch(r) },
     { method: 'GET',    path: '/link/lifegroups',         auth: true, handler: (r) => linkCtl.lifegroups(r) },
     { method: 'GET',    path: '/link/flows',              auth: true, handler: (r) => linkCtl.flows(r) },

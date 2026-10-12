@@ -26,7 +26,7 @@ const routes: Route[] = [
   { method: 'POST', path: '/sync/boom', auth: false, sync: true,
     handler: async () => { throw new Error('boom'); } },
   { method: 'GET', path: '/s', auth: true,
-    handler: async (r) => { seen.session.push(r); return { headers: r.headers ?? null }; } },
+    handler: async (r) => { seen.session.push(r); return { ok: true }; } },
 ];
 
 const mustChange: Actor = { id: 'u1', role: 'admin', email: 'a', displayName: 'A', mustChangePassword: true } as unknown as Actor;
@@ -141,18 +141,5 @@ describe('sync routes: token gate', () => {
     const out = JSON.stringify(spies.flatMap((s) => s.mock.calls));
     expect(out).not.toContain(TOKEN);
     expect(out).not.toContain(SECRET_BODY);
-  });
-});
-
-describe('session routes: device headers', () => {
-  it('x-device-id and x-device-label reach req.headers', async () => {
-    const r = await fetch(base + '/s', { headers: { authorization: 'Bearer ok', 'x-device-id': 'dev-1', 'x-device-label': 'iPhone · Safari' } });
-    expect(r.status).toBe(200);
-    expect((await j(r)).headers).toEqual({ deviceId: 'dev-1', deviceLabel: 'iPhone · Safari' });
-  });
-
-  it('missing device headers → undefined fields', async () => {
-    const r = await fetch(base + '/s', { headers: { authorization: 'Bearer ok' } });
-    expect((await j(r)).headers).toEqual({});
   });
 });

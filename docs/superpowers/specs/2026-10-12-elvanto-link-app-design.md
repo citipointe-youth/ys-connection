@@ -305,12 +305,12 @@ data).
 ### 6.2 Write points (all server-side, in `link.service`)
 
 - Every batch item (§9.1): actions (`saved`, `replay`, `duplicate`, `refused:<CODE>`), `cancel`, `undo`, and
-  `identity`. Also the single routes (`POST /link/actions`, `DELETE /link/actions/:id`). One `addLog` call per batch.
+  `identity`. One `addLog` call per batch. (The single `POST /link/actions` / `DELETE /link/actions/:id` routes were
+  removed, X14 / T-42.)
 - **The "I am" switch:** the shared picker `setMyLeaderId()` (used by Home, My Students, Bus, link screens) queues an
   `identity` item `{ from, to, at }` whenever the value changes and `_linkOn()` is true. It goes up with the next
   flush. While the switch is Off nothing is logged (no link actions exist then).
-- The device comes from the batch envelope (`device: { id, label }`); single routes take it from headers
-  `X-Device-Id` / `X-Device-Label` (optional).
+- The device comes from the batch envelope (`device: { id, label }`).
 
 ### 6.3 Admin view and export (`link:admin`)
 
@@ -370,7 +370,7 @@ method first does `canUseLink` → 404 `MODULE_DISABLED` when false.
   migration): the folded, lower-cased `fullName` equals an active roster row's `first + ' ' + last` (prefer kind
   `leader`; genders must agree when both are known). Exactly one hit → that `personId`; none or several → `null`
   ("Not linked"). Linked leaders get `checkedIn`/`practice`/`action`/`mine` exactly as in `people`. Name only.
-- `enqueue(actor, item, device)` — the one code path for `POST /link/actions` and batch `action` items:
+- `enqueue` (private) — the one code path for batch `action` items:
   1. Rate limit: `limiter` = `RateLimiter(300, 10 min)` keyed by `actor.id`, one hit per item. Over →
      `refused:RATE_LIMITED` (the phone keeps it queued and retries later).
   2. Replay (same id, same type + payload) → `replay`; same id, other body → `LINK_ID_REUSED`.
@@ -477,7 +477,7 @@ method first does `canUseLink` → 404 `MODULE_DISABLED` when false.
 | Route | Auth |
 |---|---|
 | `POST /sync/claim`, `POST /sync/result`, `POST /sync/push/:kind` | `sync: true`, `auth: false` |
-| `GET /link/status`, `GET /link/checkin`, `POST /link/actions`, `GET /link/actions`, `DELETE /link/actions/:id`, `POST /link/batch`, `GET /link/lifegroups`, `GET /link/flows` | session |
+| `GET /link/status`, `GET /link/checkin`, `GET /link/actions`, `POST /link/batch`, `GET /link/lifegroups`, `GET /link/flows` | session |
 | `GET /link/admin/roster`, `POST /link/admin/roster/:personId`, `GET /link/admin/shadow-check?date=`, `GET /link/admin/log` | session |
 
 `/link/batch`, `/link/admin/shadow-check` and `/link/admin/log` are app-only additions (not in contract §4).

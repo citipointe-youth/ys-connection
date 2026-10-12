@@ -7,13 +7,6 @@ export interface HttpRequest {
   body: unknown;
   /** Request origin (scheme://host), from X-Forwarded-Host when present. */
   origin?: string;
-  /** Session routes only: the phone's X-Device-Id / X-Device-Label (the link action log). */
-  headers?: { deviceId?: string; deviceLabel?: string };
-}
-
-/** A JSON result with a status other than 200 (e.g. 201 Created). */
-export class StatusResponse {
-  constructor(readonly status: number, readonly body: unknown) {}
 }
 
 /** A non-JSON route result (e.g. an image). The adapter sends the bytes as-is; errors stay JSON. */
