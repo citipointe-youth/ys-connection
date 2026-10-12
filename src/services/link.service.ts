@@ -90,9 +90,9 @@ export interface LinkStatus {
 }
 export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string }
 export interface CheckinPerson { personId: string; name: string; grade: number | null; leader: boolean; checkedIn: boolean;
-  practice: boolean; action: ActionView | null; mine: boolean }
+  action: ActionView | null; mine: boolean }
 export interface CheckinLeader { leaderId: string; name: string; personId: string | null; checkedIn: boolean;
-  practice: boolean; action: ActionView | null; mine: boolean }
+  action: ActionView | null; mine: boolean }
 export interface CheckinView { today: string; services: ServiceView[]; defaultServiceTimeId: string | null;
   people?: CheckinPerson[]; leaders?: CheckinLeader[] }
 export interface ActionListRow { id: string; type: ActionType; status: Status; reason: string | null; detail?: string | null;
@@ -553,7 +553,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const pr = byPerson.get(personId) ?? [];
         const st = effectiveCheckState({ mirrorIn: svc.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: svcAt, rows: pr });
         const top = pr[0] ?? null;
-        return { checkedIn: st.in, practice: st.practice, action: top ? view(top) : null, mine: top?.createdBy === actor.id };
+        return { checkedIn: st.in, action: top ? view(top) : null, mine: top?.createdBy === actor.id };
       };
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
       out.people = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
@@ -562,7 +562,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
         const personId = rosterPersonOf(l, roster, leaders);
         return { leaderId: l.id, name: l.fullName, personId,
-          ...(personId ? state(personId) : { checkedIn: false, practice: false, action: null, mine: false }) };
+          ...(personId ? state(personId) : { checkedIn: false, action: null, mine: false }) };
       });
       return out;
     },

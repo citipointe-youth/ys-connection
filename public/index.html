@@ -9278,7 +9278,7 @@ function _lkMerge(serverPeople, queue, svc) {
   });
   return (serverPeople || []).map((p) => {
     const q = p.personId ? last[p.personId] : null;
-    return q ? Object.assign({}, p, { checkedIn: q.type === 'checkIn', practice: false, mine: true, queued: true,
+    return q ? Object.assign({}, p, { checkedIn: q.type === 'checkIn', mine: true, queued: true,
       action: { id: q.id, type: q.type, status: 'queued', reason: null } }) : p;
   });
 }
@@ -9291,7 +9291,7 @@ function _lkApply(svc, pid, act, mine) {
     if (p.personId !== pid) return;
     p.action = act; p.mine = mine !== false;
     if (act.status === 'cancelled') { if (act.type === 'checkIn') p.checkedIn = false; }
-    else if (act.status !== 'refused') { p.checkedIn = act.type === 'checkIn'; p.practice = act.status === 'shadowed'; }
+    else if (act.status !== 'refused') p.checkedIn = act.type === 'checkIn';
   }));
 }
 // One flush at a time; up to 50 items per POST; 20 s client timeout. Fields starting with _ stay on the phone.
@@ -9518,7 +9518,7 @@ function _lkPollOpen() {
       const r = p.action && by[p.action.id];
       if (!r) return;
       p.action = Object.assign({}, p.action, { status: r.status, reason: r.reason, resultAt: r.resultAt });
-      if (!['refused', 'cancelled'].includes(r.status)) { p.checkedIn = p.action.type === 'checkIn'; p.practice = r.status === 'shadowed'; }
+      if (!['refused', 'cancelled'].includes(r.status)) p.checkedIn = p.action.type === 'checkIn';
     }));
     _lkRefreshView();
   }).catch(() => {});

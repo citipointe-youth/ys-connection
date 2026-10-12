@@ -324,23 +324,22 @@ describe('effectiveCheckState (spec 5.2)', () => {
   const T1 = '2026-10-16T09:05:00Z';
   const T2 = '2026-10-16T09:10:00Z';
   it('no rows -> mirror', () => {
-    expect(effectiveCheckState({ mirrorIn: true, mirrorTakenAt: T0, rows: [] })).toEqual({ in: true, practice: false, row: null, source: 'mirror' });
+    expect(effectiveCheckState({ mirrorIn: true, mirrorTakenAt: T0, rows: [] })).toEqual({ in: true });
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: null, rows: [] }).in).toBe(false);
   });
   it.each(['pending', 'claimed', 'unclear'] as const)('newest %s row decides', (status) => {
     const r = row({ type: 'checkIn', status });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true, practice: false, row: r, source: 'row' });
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
   });
-  it('shadowed decides with practice', () => {
+  it('shadowed decides (APP-38: the view has no practice flag; the action status says it)', () => {
     const r = row({ type: 'checkIn', status: 'shadowed', resultAt: T0 });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true, practice: true, row: r, source: 'row' });
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
   });
   it('sent decides only while resultAt > mirrorTakenAt', () => {
     const r = row({ type: 'checkIn', status: 'sent', resultAt: T1 });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [r] }).source).toBe('row');
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [r] }).in).toBe(true);
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] }).source).toBe('mirror');
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: null, rows: [r] }).source).toBe('row');
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] }).in).toBe(false); // the mirror decides
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: null, rows: [r] }).in).toBe(true);
   });
   it('T-21 / X11: a sent row still decides while resultAt + 120 s > takenAt (clock skew)', () => {
     const r = row({ type: 'checkIn', status: 'sent', resultAt: T1 });
@@ -352,9 +351,8 @@ describe('effectiveCheckState (spec 5.2)', () => {
     const pendingIn = row({ id: U(2), type: 'checkIn', status: 'pending' });
     const s = effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [cancelled, pendingIn] });
     expect(s.in).toBe(true);
-    expect(s.row).toBe(pendingIn);
     const refused = row({ type: 'checkIn', status: 'refused' });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [refused] }).source).toBe('mirror');
+    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [refused] }).in).toBe(false); // the mirror decides
   });
   it('sent check-in, then a kiosk check-out (newer mirror says out) -> out', () => {
     const r = row({ type: 'checkIn', status: 'sent', resultAt: T1 });

@@ -262,10 +262,10 @@ describe('D1 checkin read', () => {
     const r = await h.svc.checkin(GRADE, ST);
     expect(r.people!.map((p) => p.name)).toEqual(['Amy Adams', 'Ben Brown', 'Cody Cobb', 'Eve Evans', 'Eve Evans', 'Tom Ten']);
     for (const p of r.people!) {
-      expect(Object.keys(p).sort()).toEqual(['action', 'checkedIn', 'grade', 'leader', 'mine', 'name', 'personId', 'practice']);
+      expect(Object.keys(p).sort()).toEqual(['action', 'checkedIn', 'grade', 'leader', 'mine', 'name', 'personId']);
     }
     const ben = r.people!.find((p) => p.personId === P_BEN)!;
-    expect(ben).toMatchObject({ checkedIn: true, practice: false, action: null, mine: false, grade: 9, leader: false });
+    expect(ben).toMatchObject({ checkedIn: true, action: null, mine: false, grade: 9, leader: false });
     expect(r.people!.find((p) => p.personId === P_CODY)!.leader).toBe(true);
   });
 
@@ -284,7 +284,7 @@ describe('D1 checkin read', () => {
     const r = await h.svc.checkin(QUAD, ST);
     expect(r.leaders!.map((l) => l.name)).toEqual(['Cody  Cobb', 'Dana Day', 'Eve Evans']); // Fay is inactive
     for (const l of r.leaders!) {
-      expect(Object.keys(l).sort()).toEqual(['action', 'checkedIn', 'leaderId', 'mine', 'name', 'personId', 'practice']);
+      expect(Object.keys(l).sort()).toEqual(['action', 'checkedIn', 'leaderId', 'mine', 'name', 'personId']);
     }
     const by = Object.fromEntries(r.leaders!.map((l) => [l.leaderId, l]));
     expect(by[L_CODY]!.personId).toBe(P_CODY);        // one match (spaces folded)
@@ -292,13 +292,13 @@ describe('D1 checkin read', () => {
     expect(by[L_EVE]).toMatchObject({ personId: null, checkedIn: false, action: null });  // two roster rows
   });
 
-  it('a linked leader checked in by a shadowed row shows practice', async () => {
+  it('a linked leader checked in by a shadowed row shows the shadowed action (practice)', async () => {
     const h = await setup();
     const it1 = checkIn(P_CODY);
     await enq(h.svc, ADMIN, it1, DEV);
     setRow(h.link, it1.id, { status: 'shadowed', result_at: NOW.toISOString() });
     const r = await h.svc.checkin(GRADE, ST);
-    expect(r.leaders!.find((l) => l.leaderId === L_CODY)).toMatchObject({ checkedIn: true, practice: true,
+    expect(r.leaders!.find((l) => l.leaderId === L_CODY)).toMatchObject({ checkedIn: true,
       action: { id: it1.id, status: 'shadowed' }, mine: false });
   });
 
@@ -553,7 +553,7 @@ describe('B5 / T-11 a shadowed row is not "in" for the duplicate check (APP-46; 
     await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'shadowed', result_at: '2026-10-16T08:46:00.000Z' });
     const view1 = await h.svc.checkin(GRADE, ST);
-    expect(view1.people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, practice: true });
+    expect(view1.people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, action: { id: a.id, status: 'shadowed' } });
     h.clock.now = NOW;
     const b = checkIn(P_AMY);
     expect(await enq(h.svc, GRADE, b, DEV)).toMatchObject({ outcome: 'saved', action: { id: b.id, status: 'pending' } });

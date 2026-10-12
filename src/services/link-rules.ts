@@ -224,7 +224,7 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
 
 // ---------------- Effective check state (spec §5.2) ----------------
 
-export interface CheckState { in: boolean; practice: boolean; row: OutboxRow | null; source: 'row' | 'mirror'; }
+export interface CheckState { in: boolean }
 
 /** X11 (T-21): a sent row still decides for this long after the mirror's takenAt (the two clocks can disagree). */
 export const SENT_GRACE_MS = 120_000;
@@ -237,7 +237,7 @@ export function effectiveCheckState(a: { mirrorIn: boolean; mirrorTakenAt: strin
     const decides = s === 'pending' || s === 'claimed' || s === 'unclear' || s === 'shadowed'
       || (s === 'sent' && (a.mirrorTakenAt == null
         || (newest.resultAt != null && Date.parse(newest.resultAt) + SENT_GRACE_MS > Date.parse(a.mirrorTakenAt))));
-    if (decides) return { in: newest.type === 'checkIn', practice: s === 'shadowed', row: newest, source: 'row' };
+    if (decides) return { in: newest.type === 'checkIn' };
   }
-  return { in: a.mirrorIn, practice: false, row: null, source: 'mirror' };
+  return { in: a.mirrorIn };
 }

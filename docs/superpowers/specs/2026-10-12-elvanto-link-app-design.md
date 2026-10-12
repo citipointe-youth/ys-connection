@@ -265,11 +265,12 @@ plus a term, for any look-back).
   `already-final`; else `unknown-id` / `not-leased` / `bad-transition`.
 - `autoMatch(roster, students)` → contract §6 changes (reset dead `student_id`s; name key + equal gender; one →
   `auto`; several, or a twin roster key → `ambiguous`; none stays `none`; never touches `manual`/`auto`/`ignored`).
-- `effectiveCheckState({ mirrorIn, mirrorTakenAt, rows })` → `{ in, practice, row, source: 'row' | 'mirror' }` for
+- `effectiveCheckState({ mirrorIn, mirrorTakenAt, rows })` → `{ in }` for
   one person and service. `rows` = that person's `checkIn`/`checkOut` rows for the service, newest first, without
   `cancelled` and `refused`. The newest row decides when it is `pending`, `claimed` or `unclear` (not yet known in
-  Elvanto); when it is `shadowed` (practice never reaches Elvanto, so the mirror can never show it; marked
-  `practice`); or when it is `sent` **and** `resultAt > mirrorTakenAt` (the mirror has not caught up yet).
+  Elvanto); when it is `shadowed` (practice never reaches Elvanto, so the mirror can never show it; the door
+  reads practice from `action.status`, APP-38); or when it is `sent` **and** `resultAt + 120 s > mirrorTakenAt`
+  (the mirror has not caught up yet; X11 / T-21 allows for the two clocks).
   Otherwise the mirror decides. Tests cover both orders (sent then kiosk check-out; sent check-out then kiosk
   check-in).
 
@@ -358,18 +359,18 @@ method first does `canUseLink` → 404 `MODULE_DISABLED` when false.
 - `status(actor)` → contract §4 shape. Online = seen within `2 × pollSeconds + 60 s`; capabilities from the newest
   console; `consoles` = seen in the last 10 min.
 - `checkin(actor, serviceTimeId?)` → `{ today, services: pickList, defaultServiceTimeId }` and, for one service,
-  `people: [{ personId, name, grade, leader, checkedIn, practice, action, mine }]`: roster `active` rows of kind
+  `people: [{ personId, name, grade, leader, checkedIn, action, mine }]`: roster `active` rows of kind
   `student` and `leader`, both genders, sorted by last then first name. **Name, grade and the Leader mark only**
   (decision 13; no gender, phone or student id). `action` = newest row for that person and service, any login's
-  (`{ id, type, status, reason }`); `mine` = `createdBy === actor.id`. `checkedIn`/`practice` from
+  (`{ id, type, status, reason }`); `mine` = `createdBy === actor.id`. `checkedIn` from
   `effectiveCheckState`. All reads in one `Promise.all`.
   **Also `leaders` (leader quick check-in, decision 20).** `people` is not enough: it holds Elvanto roster
   leaders, not the app's Leader records, and nothing links the two (roster matching links students only). So the
-  read (for one service) adds `leaders: [{ leaderId, name, personId, checkedIn, practice, action, mine }]`: every
+  read (for one service) adds `leaders: [{ leaderId, name, personId, checkedIn, action, mine }]`: every
   **active** app `Leader`, A–Z by `fullName`. `personId` comes from a read-time name match (no new column, no
   migration): the folded, lower-cased `fullName` equals an active roster row's `first + ' ' + last` (prefer kind
   `leader`; genders must agree when both are known). Exactly one hit → that `personId`; none or several → `null`
-  ("Not linked"). Linked leaders get `checkedIn`/`practice`/`action`/`mine` exactly as in `people`. Name only.
+  ("Not linked"). Linked leaders get `checkedIn`/`action`/`mine` exactly as in `people`. Name only.
 - `enqueue` (private) — the one code path for batch `action` items:
   1. Rate limit: `limiter` = `RateLimiter(300, 10 min)` keyed by `actor.id`, one hit per item. Over →
      `refused:RATE_LIMITED` (the phone keeps it queued and retries later).

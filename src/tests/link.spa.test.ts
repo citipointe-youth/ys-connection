@@ -662,12 +662,12 @@ describe('F1.2 logout guard', () => {
 // ── F1.3 the door screen ──
 describe('F1.3 door', () => {
   const people = [
-    { personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, practice: false, action: null, mine: false },
-    { personId: P(2), name: 'Dana Testleader', grade: null, leader: true, checkedIn: false, practice: false, action: null, mine: false },
-    { personId: P(3), name: 'Ben <b>Sample</b>', grade: 9, leader: false, checkedIn: true, practice: false, action: { id: P(30), type: 'checkIn', status: 'pending', reason: null }, mine: true },
-    { personId: P(4), name: 'Gus Notreal', grade: 11, leader: false, checkedIn: true, practice: true, action: { id: P(31), type: 'checkIn', status: 'shadowed', reason: null }, mine: false },
-    { personId: P(5), name: 'Hana Invented', grade: 7, leader: false, checkedIn: true, practice: false, action: null, mine: false },
-    { personId: P(6), name: 'Mary Jane Smith', grade: 10, leader: false, checkedIn: false, practice: false, action: null, mine: false },
+    { personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false },
+    { personId: P(2), name: 'Dana Testleader', grade: null, leader: true, checkedIn: false, action: null, mine: false },
+    { personId: P(3), name: 'Ben <b>Sample</b>', grade: 9, leader: false, checkedIn: true, action: { id: P(30), type: 'checkIn', status: 'pending', reason: null }, mine: true },
+    { personId: P(4), name: 'Gus Notreal', grade: 11, leader: false, checkedIn: true, action: { id: P(31), type: 'checkIn', status: 'shadowed', reason: null }, mine: false },
+    { personId: P(5), name: 'Hana Invented', grade: 7, leader: false, checkedIn: true, action: null, mine: false },
+    { personId: P(6), name: 'Mary Jane Smith', grade: 10, leader: false, checkedIn: false, action: null, mine: false },
   ];
   const setup = () => { const h = makeEnv(); door(h, JSON.parse(JSON.stringify(people))); return h; };
   it('rows have no gender word, gender class or gender colour', () => {
@@ -851,10 +851,10 @@ describe('B9 / T-32 wrong service (D3)', () => {
 // ── F1.4 leader quick check-in ──
 describe('F1.4 leader sheet', () => {
   const leaders = [
-    { leaderId: 'l3', name: 'Cal <i>Exampleleader</i>', personId: P(13), checkedIn: false, practice: false, action: null, mine: false },
-    { leaderId: 'l1', name: 'Alex Testleader', personId: P(11), checkedIn: false, practice: false, action: null, mine: false },
-    { leaderId: 'l2', name: 'Bea Sampleleader', personId: P(12), checkedIn: true, practice: false, action: { id: P(90), type: 'checkIn', status: 'sent', reason: null }, mine: false },
-    { leaderId: 'l5', name: 'Eve Mockleader', personId: null, checkedIn: false, practice: false, action: null, mine: false },
+    { leaderId: 'l3', name: 'Cal <i>Exampleleader</i>', personId: P(13), checkedIn: false, action: null, mine: false },
+    { leaderId: 'l1', name: 'Alex Testleader', personId: P(11), checkedIn: false, action: null, mine: false },
+    { leaderId: 'l2', name: 'Bea Sampleleader', personId: P(12), checkedIn: true, action: { id: P(90), type: 'checkIn', status: 'sent', reason: null }, mine: false },
+    { leaderId: 'l5', name: 'Eve Mockleader', personId: null, checkedIn: false, action: null, mine: false },
   ];
   const setup = () => { const h = makeEnv({ leaderId: P(77) }); door(h, [], JSON.parse(JSON.stringify(leaders))); h.get().LINK.lq = {}; return h; };
   const rowsOf = (h: any) => h.fns._lkLeadersHtml().split('lk-lq-row').slice(1);
