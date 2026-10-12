@@ -68,7 +68,7 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 | Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed; returns `{ ok, token }` — a freshly-issued session token, since `mustChangePassword` is baked into the token at login and this is the one write that needs the caller's own token refreshed — see "Forced password change" gotcha below), `POST /accounts/cohort-layout/preview` / `POST /accounts/cohort-layout/apply` (admin-only "Apply account layout" dry-run/apply pair — see "Admin bug/improvement batch" below) |
 | New youth forms | `POST /intake/new-youth` (`intake:write`, module `newYouthForms` off / shadow / on, off by default; always live since 2026-10-12) — submits Citipointe's two public Elvanto connect forms; see "New youth forms" below |
-| Elvanto link (session) | `GET /link/status`, `GET /link/checkin` (`?serviceTime=` adds that service's people and leaders), `GET /link/actions` (`?ids=` or `?serviceDate=`), `POST /link/batch` (every write: actions, cancel, undo, identity), `GET /link/lifegroups`, `GET /link/flows`; admin/director: `GET /link/admin/roster`, `POST /link/admin/roster/:personId`, `GET /link/admin/shadow-check`, `GET /link/admin/log`. Behind the New person switch; see "Elvanto link (app side)" below |
+| Elvanto link (session) | `GET /link/status`, `GET /link/checkin` (`?serviceTime=` adds that service's people and leaders), `GET /link/actions` (`?ids=` or `?serviceDate=`), `POST /link/batch` (every write: actions, cancel, undo, identity), `GET /link/lifegroups` (groups carry `grade`, `gender`, `history` <= 8, sorted 6-12 girls then boys), `GET /link/flows` (rows add `grade`, `gender`, `mobile`, `mobileIsParent`, `assignedLeaderId`, `assignedLeaderName`), `POST /link/flows/assign` (`{flowId, personId, leaderId|null}` -> `{ok}`; 404 module off, 403 out of scope, 400 unknown leader); **admin only** (`link:admin`; directors lost it): `GET /link/admin/roster`, `POST /link/admin/roster/:personId`, `GET /link/admin/shadow-check`, `GET /link/admin/log`; `GET /link/status` adds `consoleLinkRev` / `appLinkRev`. Each screen is behind its own module switch (check-in / lifegroup report / flows); see "UX batch (2026-10-12)" |
 | Elvanto link (console) | `POST /sync/claim`, `POST /sync/result`, `POST /sync/push/:kind` — no session: `Authorization: Bearer <LINK_SYNC_TOKEN>`, checked in the adapter. 503 `LINK_OFF` while the token is unset |
 
 **Checklist: adding a new top-level API route.** This has caused two separate production
@@ -112,7 +112,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0018` (`0017` = Elvanto link tables; `0016` = `leaders.view_grades`; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0019` (`0018` = UX batch: `link_console.link_rev`, `link_flow_people` grade/gender/encrypted mobile, `link_flow_assign`, `link_groups.history`; `0017` = Elvanto link tables; `0016` = `leaders.view_grades`; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 **Migrations now apply automatically in the Vercel production build** (`scripts/migrate.ts`, `npm run migrate`, `vercel-build`): it records versions in `schema_migrations`, baselines `<= 0014` once for a database that already has `users` + `bus_run_edits` (Citipointe), holds an advisory lock, and prints `Database up to date — N of N changes applied (K new).` Rules: files stay additive; no `create index concurrently`; never edit a shipped file (`0003` was the one exception, now an empty comment); bump `LATEST_MIGRATION` in `src/core/schema-version.ts` with every new file (a test enforces it).
 
@@ -163,8 +163,8 @@ to add, and still appear if already assigned.
 ## Quads
 
 Four quads group students by age bracket + gender:
-- `g79` — Girls Year 7–9
-- `b79` — Boys Year 7–9
+- `g79` — Girls Year 7–9 (Grade 6 joins when Include Grade 6 is on)
+- `b79` — Boys Year 7–9 (same)
 - `g1012` — Girls Year 10–12
 - `b1012` — Boys Year 10–12
 
@@ -2497,9 +2497,9 @@ request already succeeded). It now sits above `/* ── CA MODULE START ── 
 - **Rules worth knowing:** "I am" (the self-identified leader) is required for reports and flow steps; a check-in tap
   older than 3 days is refused (`LINK_TOO_OLD`, counted from the tap); a late item changed by someone else after the tap
   is `LINK_STALE`; rate limit 600 new rows per 10 min per login; dedupe by (person, service, type).
-- **The switch:** the link screens share the **New person switch** (`modules.newYouthForms` Off / Shadow (admin only) /
-  On); there is no `modules.elvantoLink` (D1, revisit before leaders get access). Off is the stop button for the
-  screens: `/link/*` answers 404 and the claim leases nothing, but mirrors still arrive. To stop all data flow, also
+- **The switch:** since 2026-10-12 each screen has its own switch (`modules.newYouthForms`, `checkin`, `lifegroupReport`,
+  `flows`; Off / Shadow (admin only) / On; see "UX batch"); there is no `modules.elvantoLink`. Off is the stop button for that
+  screen: `/link/*` answers 404 and the claim leases nothing, but mirrors still arrive. To stop all data flow, also
   turn off the link on the console. Live versus practice per action type is the console's call (`capabilities`; the
   console's own setting is named `ysLink.shadow`, which is NOT this app's Shadow mode). Practice shows the grey
   "Practice mode: not sent to Elvanto" banner; Live sends.
@@ -2521,6 +2521,39 @@ request already succeeded). It now sits above `/* ── CA MODULE START ── 
      and backs off; nothing is lost.
   4. Check: the admin Elvanto link page shows the console Online within a poll or two.
   5. A leaked token: do steps 1-4 at once. The old token stops working when the new build is promoted.
+
+## UX batch (2026-10-12)
+
+**▶ Resume here** (branch `fix/ux-batch-2026-10-12`, 1813 tests pass, SW `ysc-v97`, migration `0018`, nothing pushed). Spec `docs/superpowers/specs/2026-10-12-ux-batch.md` (T1-T15). Console side (Project 11.1) is built: roster push (people the link has seen: ~10 weeks of check-ins, YS lifegroup members, flow people; Youth/YASplus demographic; grade -> student else leader), names on check-ins, flow person grade/gender/mobile, group history 8, `linkRev` handshake, and a "YS app out of date" warning on its Setup row.
+**Operator rollout, in order:** push master -> read the build log for `Database up to date` counting `0018` -> owner promotes in Vercel -> `curl -s -X POST https://ys-connection.vercel.app/link/flows/assign` must be a JSON 401 -> merge + restart the console well before Friday's service (first roster build takes minutes; keep it outside the service window) -> Youth Setup: New person On; Check-in / Lifegroup report / Flow steps stay Shadow for Friday 16 Oct.
+
+**Why:** prod `link_services` held Fri 9 Oct (255 checked in) and Sun 11 Oct (40) but `link_roster` had 0 rows (W7 never built) and the app named people only through the roster, so past check-ins showed nobody; the same empty roster hid every flow from grade/quad logins. See debug.md "Elvanto link: UX batch incidents".
+
+**What shipped (by T-number)**
+- T1 `LINK_REV = 2` both sides, `LINK_CONTRACT_VERSION` still 1, every addition optional (`linkRev`, `checkedIn[].firstName/lastName` cut to 60, `GroupRow.history` newest 8, `FlowRow` grade/gender/mobile/mobileIsParent). Admin Elvanto link page shows "Console out of date" when `consoleLinkRev < appLinkRev`.
+- T2 `Grade` accepts 6..12. T3 a checked-in person with no roster row is listed from the pushed name (`noRoster: true`); door check-in stays unscoped.
+- T4 flows: own grade/gender first, then the roster; mobile encrypted at rest (AAD `link_flow_people.mobile:<row_id>`; a decrypt failure reads as null and logs the row id only). T5 flow steps UI: collapsed per step, counts + overdue, A-Z, grade chip, tap row -> sheet with `sms:` link (`Hey <first name> `), warnings removed.
+- T6 flow assignment (app only, never sent to Elvanto): table `link_flow_assign`, pruned by each flows push; Home card "My flow people". Leader must exist and be active in `makeLeaderService(...).list(actor)`.
+- T7 check-in: big search, nothing listed until typing, collapsed "Checked in · N", "Check in leaders" at the bottom. T8 lifegroup report: history 8, week view back/forward, Edit or Submit per week, "Last report" label.
+- T9 Elvanto link admin: admin only, header tooltips. T10 modules. T11 New person: "check them in" card removed, DOB free text DD/MM/YYYY (sends YYYY-MM-DD). T12 admin tab strip keeps `scrollLeft` (fixed in `setApp`). T13 grade 6 junior. T15 grade 6 accepted wherever a grade is entered.
+- Post-merge `f401e4e` removed dead first-timer state; the flaky bcrypt cohort test got a 20 s timeout.
+
+**Rules worth knowing**
+- **Modules per feature:** `modules.newYouthForms` (New person), `checkin`, `lifegroupReport`, `flows`, each off | shadow | on. A stored config without the new keys inherits `newYouthForms` (prod shadow -> nothing changes on deploy). Bus "All cars" follows the Bus module only. `gate(actor, features)` in `link.service.ts`: `/link/checkin` = checkin OR lifegroupReport; `/link/lifegroups` = lifegroupReport; flows + assign = flows; each batch item is refused `MODULE_DISABLED` when its own screen is off; the claim leases nothing only when all three are off. SPA: `_linkOn(feature)`, `_linkAdminOn()`; the no-arg `_linkOn()` = any usable. `renderLink` guards per page.
+- **`link:admin` is admin only**, whatever the module states (directors see only their own rows in `/link/actions`, cannot cancel others'). Admin therefore always has a More entry.
+- **Step 0 = `stepOrder <= 1`** (the console numbers every Elvanto step from 1, empty ones included): admin and director only, filtered server-side and refused (403) on complete/assign.
+- **Grade 6:** junior (quads g79/b79, `computeQuad` 6..9) and the Simple-logins Grade 6 lock is gone. One entry rule, `assertGradesInRange(structure, grades)` in `ministry-config.ts` (uses `gradeRange`): grade 6 is accepted only when Include Grade 6 is on, in student/account/leader create + update, `PATCH /leaders/:id/grades` and New person (Elvanto option `807c9c80-3825-11e1-9229-ea942707ad51`). Zod floors widened 7 -> 6; the range check enforces.
+- **Check-out for no-roster people:** `checkOut` is accepted for a personId in that service's pushed `checkedIn` list even with no roster row; `checkIn` for them stays refused.
+- **Edit of an older week's report:** `editReport` finds its base by `reportId` in [overlay last, mirror lastReport, history]; the 14-day rule is for submit only.
+- **Push tolerance:** an over-long pushed name/history is cut, not a 400 for the whole push. Old console + new app and new console + old app both work (everything optional, missing `linkRev` = 1; the console sends grade 6 only when the app's rev >= 2).
+
+**Deferred / open**
+- Connection Audit CSV builder (`attendance-build.ts`) and the SPA CA loop (`gr=7..12`) still refuse grade 6 (not config-aware).
+- Review NITs skipped: `FEATURES` list duplicated in `sync.service.ts` and the SPA; ~25 lines of trims.
+- A group-history edit that swaps who came without changing counts shows late on the app until the console restarts.
+- V2 (real-Postgres suite) does not cover `link_flow_assign`; 0018 is covered by SQL-text tests only.
+- A lifegroupReport-only login gets the full door list from `/link/checkin` (spec-allowed).
+- Browser checks (DOB mask, tab-strip scroll, flow sheet, week view) are the operator's.
 
 ## October rework (2026-10-12)
 
