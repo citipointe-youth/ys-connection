@@ -14,7 +14,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkOn', 'moreItems', 'se
   '_lkWeekChip', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkLastHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowsHtml', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows',
   '_lkFirstTimerDecision', '_lkFirstTimerPayload', '_nyLinkHtml', '_lkFirstTimerAfter',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
@@ -638,7 +638,34 @@ describe('F1.3 door', () => {
   });
 });
 
-// ── F1.4 leader quick check-in ──
+describe('B10 / T-33 the tap toast (APP-9)', () => {
+  it('a check-in tap shows "Checked in <name> · Undo" for 5 s; its Undo removes the queued item here', () => {
+    vi.useFakeTimers();
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava <b>E</b>', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkIn');
+    const t = h.get().LINK.toast;
+    expect(t.html).toContain('Checked in Ava &lt;b&gt;E&lt;/b&gt; · ');
+    expect(t.html).toContain('>Undo</button>');
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()).toHaveLength(0);
+    expect(h.get().LINK.toast).toBeNull();
+    h.fns._lkCheck(P(1), 'checkIn');
+    vi.advanceTimersByTime(5001);
+    expect(h.get().LINK.toast).toBeNull();
+    h.fns._lkToastUndo(); // too late: nothing happens
+    expect(h.fns._lkQGet()).toHaveLength(1);
+  });
+  it('a check-out tap shows no toast', () => {
+    vi.useFakeTimers();
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    expect(h.get().LINK.toast).toBeNull();
+  });
+});
+
 describe('B9 / T-32 wrong service (D3)', () => {
   const THU = { ...SVC, serviceTimeId: P(901), serviceId: P(902), name: 'Midweek', startsAt: '2026-10-15T08:30:00.000Z', ymd: '2026-10-15' };
   const setupDay = (iso: string) => {
@@ -701,6 +728,7 @@ describe('B9 / T-32 wrong service (D3)', () => {
   });
 });
 
+// ── F1.4 leader quick check-in ──
 describe('F1.4 leader sheet', () => {
   const leaders = [
     { leaderId: 'l3', name: 'Cal <i>Exampleleader</i>', personId: P(13), checkedIn: false, practice: false, action: null, mine: false },

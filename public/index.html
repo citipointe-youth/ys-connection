@@ -764,6 +764,10 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-opt-t{display:block}
 .lk-d{display:block;font-size:12px;color:var(--ink-mid)}
 .lk-tag{font-size:11px;font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px;flex:none}
+.lk-toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
+.lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lk-toast .btn{background:#fff;color:#111827;flex:none}
+@media(min-width:768px){.lk-toast{bottom:24px}}
 .lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
 .lk-lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;color:var(--ink-mid)}
 .lk-tickall{color:var(--accent)}
@@ -9077,7 +9081,7 @@ let LINK = _lkFresh();
 function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: [],
     q: { search: '', grade: 'all' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
-    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
+    tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
     groups: null, gErr: null, gid: null, rf: null, gres: {}, rToday: null, rServices: null, ldrs: null, iamThen: null, flows: null, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh() };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
@@ -9609,7 +9613,34 @@ function _lkCheck(pid, type) {
     if (type === 'checkIn' && !_lkDayOk(s, () => _lkCheck(pid, type))) return;
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
+    if (type === 'checkIn') _lkTapToast(svc, pid);
   } catch (e) {}
+}
+// B10 / T-33: every check-in tap shows who was ticked for 5 s, with an Undo (a quick second tap on the next row is
+// easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here.
+function _lkTapToast(svc, pid) {
+  const d = LINK.people[svc];
+  const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === pid);
+  const html = `<span>Checked in ${esc((p && p.name) || '')} · </span><button type="button" class="btn btn-sm" onclick="_lkToastUndo()">Undo</button>`;
+  if (LINK.toastT) clearTimeout(LINK.toastT);
+  LINK.toast = { svc, pid, html };
+  LINK.toastT = setTimeout(() => { LINK.toast = null; LINK.toastT = null; _lkToastDraw(); }, 5000);
+  _lkToastDraw();
+}
+function _lkToastDraw() {
+  try {
+    let el = document.getElementById('lk-toast');
+    if (!el && LINK.toast && document.createElement) { el = document.createElement('div'); el.id = 'lk-toast'; el.className = 'lk-toast'; document.body.appendChild(el); }
+    if (!el) return;
+    if (LINK.toast) { el.innerHTML = LINK.toast.html; el.classList.add('show'); } else el.classList.remove('show');
+  } catch (e) {}
+}
+function _lkToastUndo() {
+  const t = LINK.toast;
+  if (LINK.toastT) clearTimeout(LINK.toastT);
+  LINK.toast = null; LINK.toastT = null;
+  _lkToastDraw();
+  if (t && t.svc === LINK.svc) _lkUndo(t.pid);
 }
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {
