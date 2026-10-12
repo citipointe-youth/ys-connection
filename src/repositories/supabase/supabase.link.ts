@@ -108,9 +108,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
     return rows.map((r) => toOutbox(r, null));
   }
 
-  async cancelPending(id: string): Promise<boolean> {
+  async cancelPending(id: string, by?: string): Promise<boolean> {
     const r = await this.sql`
-      update link_outbox set status = 'cancelled', updated_at = now() where id = ${id} and status = 'pending' returning id`;
+      update link_outbox set status = 'cancelled', updated_at = now(),
+        detail = coalesce(${by ? `cancelled-by:${by}` : null}::text, detail) where id = ${id} and status = 'pending' returning id`;
     return r.length > 0;
   }
 

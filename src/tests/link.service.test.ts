@@ -729,6 +729,45 @@ describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
     expect((await enq(h.svc, GRADE, c, DEV)).outcome).toBe('saved');
     expect((await h.link.listActions({ personId: P_TOM, statuses: ['pending'] })).map((r) => r.id)).toEqual([c.id]);
   });
+  it('smoke-2: a re-sent check-out that cancelled a pending check-in answers cancelled again (same id only)', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    const o = checkOut(P_AMY);
+    const items = [{ kind: 'action', ...a }, { kind: 'action', ...o }];
+    const first = (await h.svc.batch(QUAD, { device: DEV, items })).results;
+    expect(first.map(oc)).toEqual(['saved', 'cancelled']);
+    const again = (await h.svc.batch(QUAD, { device: DEV, items })).results; // lost reply: the phone re-sends
+    expect(again.map(oc)).toEqual(['replay', 'cancelled']);
+    expect(again[1]).toMatchObject({ id: o.id, action: { id: a.id, type: 'checkIn', status: 'cancelled' } });
+    expect(await h.link.getAction(o.id)).toBeNull();
+    // precise: a NEW check-out (other id) is still refused, the person is not in
+    expect(await enq(h.svc, QUAD, checkOut(P_AMY), DEV)).toMatchObject({ outcome: 'refused', message: 'Not checked in to this service.' });
+    // the same id as a different type is id reuse, not a replay
+    expect(await enq(h.svc, QUAD, { ...checkIn(P_AMY), id: o.id }, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_ID_REUSED' });
+  });
+  it('smoke-2 mirror: a re-sent check-in that cancelled a pending check-out answers the same duplicate', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await enq(h.svc, GRADE, a, DEV);
+    setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
+    const o = checkOut(P_AMY);
+    expect((await enq(h.svc, QUAD, o, DEV)).outcome).toBe('saved');
+    const b = checkIn(P_AMY);
+    const want = { outcome: 'duplicate', existingId: a.id, action: { id: a.id, type: 'checkIn', status: 'sent' } };
+    expect(await enq(h.svc, GRADE, b, DEV)).toMatchObject(want);
+    // the person is then checked out at the kiosk (a sent check-out); the lost-reply re-send must not check them in again
+    const k = checkOut(P_AMY);
+    await enq(h.svc, QUAD, k, DEV);
+    setRow(h.link, k.id, { status: 'sent', result_at: NOW.toISOString() });
+    expect(await enq(h.svc, GRADE, b, DEV)).toMatchObject({ outcome: 'duplicate' });
+    expect(await h.link.getAction(b.id)).toBeNull();
+  });
+  it('a check-in without serviceId gets a specific message', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    delete (a.payload as Record<string, unknown>).serviceId;
+    expect(await enq(h.svc, GRADE, a, DEV)).toMatchObject({ outcome: 'refused', message: 'A check-in needs the service (serviceId).' });
+  });
 });
 
 describe('D3 cancel, undo, listActions', () => {

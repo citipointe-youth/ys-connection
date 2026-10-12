@@ -69,10 +69,11 @@ export class InMemoryLinkRepository implements ILinkRepository {
       .map(({ row }) => ({ ...clone(row), note: null, hasNote: row.note !== null }));
   }
 
-  async cancelPending(id: string): Promise<boolean> {
+  async cancelPending(id: string, by?: string): Promise<boolean> {
     const e = this.outbox.get(id);
     if (!e || e.row.status !== 'pending') return false;
     e.row.status = 'cancelled';
+    if (by) e.row.detail = `cancelled-by:${by}`;
     e.row.updatedAt = this.nowIso();
     return true;
   }

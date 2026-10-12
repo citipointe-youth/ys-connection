@@ -138,6 +138,12 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect((await repo.getAction(b.id))!.status).toBe('claimed');
         expect(await repo.cancelPending(randomUUID())).toBe(false);
       });
+      it('records the id of the tap that cancelled it (smoke-2: a re-sent tap answers the same)', async () => {
+        const a = await repo.insertAction(newRow());
+        const by = randomUUID();
+        expect(await repo.cancelPending(a.id, by)).toBe(true);
+        expect((await repo.getAction(a.id))!.detail).toBe(`cancelled-by:${by}`);
+      });
     });
 
     describe('claim', () => {

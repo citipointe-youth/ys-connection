@@ -307,7 +307,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     if (tap && tap.at.getTime() < c.t.getTime() - LINK_CUTOFF_DAYS * 86_400_000) throw new LinkTooOld();
     // 4. type checks, note, "I am"
     const parsed = PAYLOAD_SCHEMAS[it.type].safeParse(it.payload);
-    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
+    if (!parsed.success) {
+      if (it.type === 'checkIn' && it.payload.serviceId === undefined) {
+        throw new AppError('VALIDATION_ERROR', 'A check-in needs the service (serviceId).', 400);
+      }
+      throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
+    }
     const p = parsed.data as Record<string, unknown> & { serviceTimeId?: string; personId?: string | null };
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
@@ -384,6 +389,16 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     // 5. ordering (B4 / T-24), same-action dedupe (decision 18), then the check-out rule (spec §2.4)
     if (it.type === 'checkIn' || it.type === 'checkOut') {
       let rows = await checkRows(personId!, svc!.serviceTimeId);
+      // smoke-2: this tap already cancelled the pending opposite row (its id is on that row), so it is a re-send
+      // after a lost reply: answer the same, never "Not checked in" or a fresh check-in.
+      const undone = rows.find((r) => r.status === 'cancelled' && r.detail === `cancelled-by:${it.id}`);
+      if (undone) {
+        if (undone.type === it.type) throw new LinkIdReused();
+        if (it.type === 'checkOut') return { id: it.id, kind: 'action', outcome: 'cancelled', action: view(undone) };
+        const open = rows.filter((r) => r.type === 'checkIn' && r.status !== 'cancelled' && r.status !== 'refused'
+          && r.createdAt <= undone.createdAt).sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0]; // open then
+        return open ? dup(open) : { id: it.id, kind: 'action', outcome: 'duplicate', mine: false };
+      }
       const opposite = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
       // B8 / APP-16 B: someone else changed this person after the tap (a late flush must not undo a newer action).
       // A row this same phone wrote never counts (B8 follow-up): same batch, or same login + same device id. The
@@ -406,7 +421,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // The opposite row has not gone yet: cancel it instead of queueing both (the console could run them in the
         // wrong order). A check-out answers `cancelled`; a check-in answers with the open check-in as `duplicate`.
         if (opposite.status === 'pending') {
-          if (!(await d.link.cancelPending(opposite.id))) throw new LinkStillSending(); // picked up meanwhile
+          if (!(await d.link.cancelPending(opposite.id, it.id))) throw new LinkStillSending(); // picked up meanwhile
           if (it.type === 'checkOut') {
             return { id: it.id, kind: 'action', outcome: 'cancelled', action: { ...view(opposite), status: 'cancelled' } };
           }

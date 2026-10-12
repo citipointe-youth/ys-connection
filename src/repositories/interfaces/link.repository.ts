@@ -25,7 +25,8 @@ export interface ILinkRepository {
   /** Newest first. note is always null; hasNote says whether one is stored. */
   listActions(f: LinkActionFilter): Promise<OutboxRow[]>;
   /** true only when the row was pending (now cancelled). */
-  cancelPending(id: string): Promise<boolean>;
+  /** `by`: the id of the opposite check tap that cancelled it, kept in `detail` as `cancelled-by:<id>` (a re-send replays). */
+  cancelPending(id: string, by?: string): Promise<boolean>;
   /** ONE transaction, DB clock: console upsert + sweep + purge + lease. */
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
   applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply>;
