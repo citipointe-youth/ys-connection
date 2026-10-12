@@ -68,6 +68,8 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 | Connection audits | `POST/GET /audits`, `GET/DELETE /audits/:year`, `GET /audits/export-all` / `POST /audits/import-all` (admin-only full-table backup/restore — see "New Year Refresh wizard" below; registered before `/audits/:year` since Express matches route registration order) |
 | Accounts | `GET/POST /accounts/users`, `PATCH /accounts/users/:id`, `POST /accounts/users/password` (admin resets another account), `POST /accounts/me/password` (self-service, requires current password — distinct endpoint, no admin:manage needed; returns `{ ok, token }` — a freshly-issued session token, since `mustChangePassword` is baked into the token at login and this is the one write that needs the caller's own token refreshed — see "Forced password change" gotcha below), `POST /accounts/cohort-layout/preview` / `POST /accounts/cohort-layout/apply` (admin-only "Apply account layout" dry-run/apply pair — see "Admin bug/improvement batch" below) |
 | New youth forms | `POST /intake/new-youth` (`intake:write`, module `newYouthForms` off / shadow / on, off by default; always live since 2026-10-12) — submits Citipointe's two public Elvanto connect forms; see "New youth forms" below |
+| Elvanto link (session) | `GET /link/status`, `GET /link/checkin` (`?serviceTime=` adds that service's people and leaders), `GET /link/actions` (`?ids=` or `?serviceDate=`), `POST /link/batch` (every write: actions, cancel, undo, identity), `GET /link/lifegroups`, `GET /link/flows`; admin/director: `GET /link/admin/roster`, `POST /link/admin/roster/:personId`, `GET /link/admin/shadow-check`, `GET /link/admin/log`. Behind the New person switch; see "Elvanto link (app side)" below |
+| Elvanto link (console) | `POST /sync/claim`, `POST /sync/result`, `POST /sync/push/:kind` — no session: `Authorization: Bearer <LINK_SYNC_TOKEN>`, checked in the adapter. 503 `LINK_OFF` while the token is unset |
 
 **Checklist: adding a new top-level API route.** This has caused two separate production
 incidents (`/manifest.json` 2026-07-11, `/prayers` 2026-07-18) from the same root cause. The
@@ -325,6 +327,7 @@ SESSION_SECRET=<random>  # REQUIRED in production, or session tokens can be forg
 SETUP_CODE=<16+ chars>   # first-run admin creation (setup screen); ignored once an admin exists
 GOOGLE_SA_JSON=<key file as one line>   # Bus; replaces the three GOOGLE_SA_* vars (they still work; JSON wins if both set)
 GOOGLE_MAPS_API_KEY=<key>               # Bus; always required
+LINK_SYNC_TOKEN=<32+ chars>             # Elvanto link console (/sync/*); unset or shorter = /sync answers 503 LINK_OFF
 
 # Required whenever PERSISTENCE=supabase — read directly from process.env by
 # src/utils/field-crypto.ts, NOT via src/config/env.ts. Encrypts students.mobile and
@@ -2458,6 +2461,58 @@ A host types a new student and one parent into the **New person** screen (its us
 - **SW cache** `ysc-v87` → `ysc-v88` → `ysc-v89` (More menu).
 - **Going live (operator, plan Task 6):** first run on a preview deployment in dry run. Then, **only when Task 0 is done** (`capture.md` written, `SUCCESS` pasted into `elvanto-forms.ts`, captured-reply test green), **Citipointe has approved (given) and the owner has promoted the build**, set `ELVANTO_FORMS_LIVE=1` for Production only and redeploy. Pushing `master` does not promote prod: the owner promotes.
 - **Tests:** `elvanto-forms.test.ts`, `new-youth.service.test.ts`, `new-youth.controller.test.ts`, `new-youth.spa.test.ts`, plus `access-control.test.ts` and `ministry-config.test.ts`. 1047 tests pass in total (74 files).
+
+## Elvanto link (app side) (2026-10-12)
+
+**State:** pushed to master `cbe0255`, migration `0017` applied on prod; V2 (the real-Postgres repository suite)
+passed on prod 41/41 on 2026-10-12 with the 8 link tables empty before and after. Triage sections A, B and C done
+(`docs/superpowers/elvanto-link-progress.md` is the ledger; `docs/superpowers/reviews/2026-10-12-link-review-outcomes-app.md`
+holds the binding rulings). Contract: `docs/superpowers/specs/2026-10-11-elvanto-link-contract.md` (v1, text amendments
+X1-X17); app spec: `docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md`. The other half is Project 11.1, the
+Elvanto Sync Console on the office PC, which talks to Elvanto; this app never does.
+
+**Architecture**
+- **Phone → app:** a tap goes into a per-login queue in localStorage (`ysc.lkq.<user id>`, try/catch, memory-only after
+  a storage error) and is flushed in batches of up to 50 to `POST /link/batch` (right away, on `online`, on
+  `visibilitychange`, on the next tap). Every item has a client UUID, so a retry is a `replay`. There are no single write
+  routes any more (T-42). The SPA block is `/* ── LINK MODULE ── */` in `public/index.html` (`_lk*`, state `LINK`):
+  door check-in (`link-checkin`), leader quick check-in, lifegroup reports (`link-groups`), flow steps (`link-flows`), the
+  admin page (`link-admin`), and the first-timer tick on New person.
+- **App → Elvanto:** the console polls `POST /sync/claim` (heartbeat + lease of pending outbox rows), reports
+  `POST /sync/result`, and pushes mirrors (`roster`, `services`, `groups`, `flows`) with `POST /sync/push/:kind`.
+  `link.service.ts` (leaders/admin), `sync.service.ts` (console), pure `link-rules.ts` (service day, dedupe, outbox state
+  machine, auto-match, effective check state), `core/link-contract.ts` (Zod, frozen fixtures in
+  `src/tests/fixtures/elvanto-link/`, LF-only via `.gitattributes`), `ILinkRepository` (in-memory + `supabase.link.ts`).
+- **Data:** migration `0017` = 8 tables `link_outbox`, `link_roster`, `link_services`, `link_groups`, `link_flow_people`,
+  `link_console`, `link_mirror_state`, `link_log`. Notes in `link_outbox.note` are encrypted with
+  `FIELD_ENCRYPTION_KEY` (AAD `link_outbox.note:<id>`). `link_log` is the identity + action log (admin view and xlsx
+  export). The claim note carries `Self identified leader: <name> — <note>` (X1).
+- **Rules worth knowing:** "I am" (the self-identified leader) is required for reports and flow steps; a check-in tap
+  older than 3 days is refused (`LINK_TOO_OLD`, counted from the tap); a late item changed by someone else after the tap
+  is `LINK_STALE`; rate limit 600 new rows per 10 min per login; dedupe by (person, service, type).
+- **The switch:** the link screens share the **New person switch** (`modules.newYouthForms` Off / Shadow (admin only) /
+  On); there is no `modules.elvantoLink` (D1, revisit before leaders get access). Off is the stop button for the
+  screens: `/link/*` answers 404 and the claim leases nothing, but mirrors still arrive. To stop all data flow, also
+  turn off the link on the console. Live versus practice (shadow) per action type is the console's call
+  (`capabilities`).
+- **Routes:** the house checklist applies: `/link` and `/sync` are in `router.ts`, the `vercel.json` regex and `sw.js`
+  `API_RE`. The `/sync` routes are `sync: true` in the route table (no session; the adapter checks the token, exact and
+  timing-safe, never logged).
+
+**`LINK_SYNC_TOKEN`** (Vercel, Production only; the same value in the console's link settings).
+- `/sync/*` refuses with 503 `LINK_OFF` while the token is unset or under 32 characters (after trimming), so the
+  console cannot claim or push until it is set. A wrong token is 401. Admin → System check shows the token row
+  (set / too short / not set; never the value).
+- The adapter reads it per request (`readLinkSyncToken`), so a new value takes effect as soon as the deploy carrying it
+  is promoted.
+- **Set or rotate it** (outside the service window; queued rows just wait):
+  1. Make a token: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` (43 characters).
+  2. Vercel → Settings → Environment Variables → `LINK_SYNC_TOKEN` (Production) → paste → redeploy. The owner
+     promotes the build (pushes and redeploys do not move `ys-connection.vercel.app` on their own).
+  3. Paste the same token into the console's link settings (Project 11.1). Between steps 2 and 3 the console gets 401
+     and backs off; nothing is lost.
+  4. Check: the admin Elvanto link page shows the console Online within a poll or two.
+  5. A leaked token: do steps 1-4 at once. The old token stops working when the new build is promoted.
 
 ## October rework (2026-10-12)
 

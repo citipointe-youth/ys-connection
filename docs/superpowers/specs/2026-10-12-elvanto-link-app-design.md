@@ -358,7 +358,8 @@ method first does `canUseLink` → 404 `MODULE_DISABLED` when false.
 
 - `status(actor)` → contract §4 shape. Online = seen within `2 × pollSeconds + 60 s`; capabilities from the newest
   console; `consoles` = seen in the last 10 min.
-- `checkin(actor, serviceTimeId?)` → `{ today, services: pickList, defaultServiceTimeId }` and, for one service,
+- `checkin(actor, serviceTimeId?)` → `{ today, services: pickList, defaultServiceTimeId }` (each service carries
+  `isDefault`, the default of its own day, so the report form needs no copy of §2.3; APP-43) and, for one service,
   `people: [{ personId, name, grade, leader, checkedIn, action, mine }]`: roster `active` rows of kind
   `student` and `leader`, both genders, sorted by last then first name. **Name, grade and the Leader mark only**
   (decision 13; no gender, phone or student id). `action` = newest row for that person and service, any login's
