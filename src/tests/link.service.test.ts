@@ -1113,8 +1113,7 @@ describe('D6 admin: matching, shadow check, log', () => {
   });
 
   it('shadowCheck: no service_sessions row → "Not in the import"', async () => {
-    expect(await h.svc.shadowCheck(ADMIN, TODAY)).toEqual({ date: TODAY, imported: false, message: 'Not in the import',
-      rows: [], unlinkedAttenders: 0 });
+    expect(await h.svc.shadowCheck(ADMIN, TODAY)).toEqual({ date: TODAY, imported: false, rows: [], unlinkedAttenders: 0 });
   });
 
   it('shadowCheck: verdicts for sent/shadowed check-ins, plus imported attenders with no link row', async () => {
@@ -1134,7 +1133,7 @@ describe('D6 admin: matching, shadow check, log', () => {
     expect(r.imported).toBe(true);
     const v = Object.fromEntries(r.rows.map((x) => [x.id, x.verdict]));
     expect(v).toEqual({ [amy]: 'matched', [tom]: 'sent-not-imported', [eve]: 'no-student' });
-    expect(r.rows.find((x) => x.id === tom)!.message).toBe('In Elvanto; in YS attendance after the next import.');
+    expect(r.rows.every((x) => !('message' in x))).toBe(true); // APP-41: the SPA words the verdict
     expect(r.unlinkedAttenders).toBe(1); // Ben attended, no link row
     expect(cody).toBeTruthy();
     // practice verdicts

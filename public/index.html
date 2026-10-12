@@ -10451,9 +10451,9 @@ function _lkAdmShadowHtml() {
   const A = LINK.adm, r = A.shadow;
   let body = '';
   if (A.sErr) body = `<p class="lk-sub">${esc(A.sErr)}</p>`;
-  else if (r && !r.imported) body = `<p class="lk-sub">${esc(r.message || 'Not in the import')}</p>`;
+  else if (r && !r.imported) body = '<p class="lk-sub">Not in the import</p>';
   else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
-    + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(x.message || V[x.verdict] || x.verdict)}</b></div>`).join('');
+    + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(V[x.verdict] || x.verdict)}</b></div>`).join('');
   return `<div class="lk-sec">Shadow check</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
     <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
     <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;

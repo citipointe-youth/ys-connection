@@ -108,9 +108,10 @@ export interface MatchCandidate { studentId: string; name: string; grade: number
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
   active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[] }
 export type ShadowVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
+/** The SPA words each verdict (APP-41: no server message). */
 export interface ShadowRow { id: string; personId: string | null; name: string | null; status: Status; studentId: string | null;
-  verdict: ShadowVerdict; message?: string }
-export interface ShadowCheck { date: string; imported: boolean; message?: string; rows: ShadowRow[]; unlinkedAttenders: number }
+  verdict: ShadowVerdict }
+export interface ShadowCheck { date: string; imported: boolean; rows: ShadowRow[]; unlinkedAttenders: number }
 
 export interface LinkService {
   status(actor: Actor): Promise<LinkStatus>;
@@ -736,7 +737,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       await gate(actor, 'link:admin');
       const day = Ymd.parse(date);
       const sessions = (await d.serviceSessions.findAll()).filter((s) => s.sessionDate.slice(0, 10) === day);
-      if (sessions.length === 0) return { date: day, imported: false, message: 'Not in the import', rows: [], unlinkedAttenders: 0 };
+      if (sessions.length === 0) return { date: day, imported: false, rows: [], unlinkedAttenders: 0 };
       const [att, roster, rows] = await Promise.all([
         Promise.all(sessions.map((s) => d.serviceAttendance.findBySession(s.id))).then((x) => x.flat()),
         d.link.roster(),
@@ -751,8 +752,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const verdict: ShadowVerdict = !studentId ? 'no-student'
           : r.status === 'sent' ? (attended.has(studentId) ? 'matched' : 'sent-not-imported')
             : (attended.has(studentId) ? 'practice-matched' : 'practice-missing');
-        return { id: r.id, personId: r.personId, name: p ? fullName(p) : null, status: r.status, studentId, verdict,
-          ...(verdict === 'sent-not-imported' ? { message: 'In Elvanto; in YS attendance after the next import.' } : {}) };
+        return { id: r.id, personId: r.personId, name: p ? fullName(p) : null, status: r.status, studentId, verdict };
       });
       return { date: day, imported: true, rows: out, unlinkedAttenders: [...attended].filter((s) => !linked.has(s)).length };
     },
