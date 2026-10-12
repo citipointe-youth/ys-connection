@@ -101,7 +101,7 @@ One pure helper (§5.1). "The day" is today for check-ins and first-timers, and 
 - The old draft path keeps a one-line file: `-- Moved to supabase/migrations/0017_elvanto_link.sql (2026-10-12).`
 - `src/tests/link-contract.test.ts` "draft SQL" block reads `supabase/migrations/*_elvanto_link.sql` and asserts
   **exactly one** match. The RLS rule test then also covers `link_log`.
-- **New test** `src/tests/migration-numbers.test.ts`: fails when two files in `supabase/migrations/` share a 4-digit
+- **Test** (in `src/tests/migrate-runner.test.ts`, "duplicate migration versions"): fails when two files in `supabase/migrations/` share a 4-digit
   prefix (the runner records numbers only, so a duplicate is skipped forever with no error).
 - **Hazard (corrected):** preview builds never migrate (`shouldRun` needs `VERCEL_ENV=production` and
   `PERSISTENCE=supabase`). **A merge to `master` migrates prod at build time, before the owner promotes.** The
@@ -589,7 +589,7 @@ unsent items; `setMyLeaderId` queues an identity item only when `_linkOn()`.
 | Lane | Files (only these) | Needs |
 |---|---|---|
 | **T** types | `src/core/link-types.ts`, `src/core/errors/link-errors.ts`, `src/core/errors/app-error.ts`, `src/api/middleware/error.middleware.ts` | — |
-| **A** data | `supabase/migrations/0017_elvanto_link.sql`, the old draft path (pointer line), `src/core/schema-version.ts`, `src/tests/link-contract.test.ts` (SQL path only), `src/tests/migration-numbers.test.ts`, `src/repositories/interfaces/link.repository.ts`, `src/repositories/in-memory/link.repository.ts`, `src/repositories/supabase/supabase.link.ts`, `src/repositories/{interfaces,in-memory,supabase}/index.ts`, `src/tests/helpers/link-repo-suite.ts`, `src/tests/link.repository.test.ts`, `src/tests/link.repository.supabase.test.ts` | T; `applyOutcome` (B) for its tests |
+| **A** data | `supabase/migrations/0017_elvanto_link.sql`, the old draft path (pointer line), `src/core/schema-version.ts`, `src/tests/link-contract.test.ts` (SQL path only), `src/tests/migrate-runner.test.ts` (duplicate numbers), `src/repositories/interfaces/link.repository.ts`, `src/repositories/in-memory/link.repository.ts`, `src/repositories/supabase/supabase.link.ts`, `src/repositories/{interfaces,in-memory,supabase}/index.ts`, `src/tests/helpers/link-repo-suite.ts`, `src/tests/link.repository.test.ts`, `src/tests/link.repository.supabase.test.ts` | T; `applyOutcome` (B) for its tests |
 | **B** rules | `src/services/link-rules.ts`, `src/services/access-control.ts`, `src/services/import.service.ts` (export only), `src/config/env.ts`, `src/tests/link-rules.test.ts`, `src/tests/access-control.test.ts` | T |
 | **C** sync | `src/services/sync.service.ts`, `src/tests/sync.service.test.ts` | A, B |
 | **D** link | `src/services/link.service.ts`, `src/tests/link.service.test.ts` | A, B |
