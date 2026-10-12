@@ -2359,7 +2359,7 @@ async function doLogin() {
     // imperceptible either way; harmless no-op for browsers that already
     // handled saving via the Credential Management call above.
     setTimeout(() => go('home'), 150);
-  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 async function doLogout() {
@@ -2429,7 +2429,7 @@ async function submitMustChangePassword() {
     S.user.mustChangePassword = false;
     _offerSaveCredential(S.user.email, pw1);
     toast('Password updated'); render();
-  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 // ============================================================
@@ -2533,7 +2533,7 @@ function HOME_PATHS() {
 }
 function _homeError(err) {
   const msg = err instanceof Error ? err.message : String(err);
-  setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${msg}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
+  setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${esc(msg)}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
   console.error('[renderHome]', err);
 }
 // Returns home from cache without ever blocking on a spinner when we have data:
@@ -3125,7 +3125,7 @@ async function submitAddLeader() {
     await API.post('/leaders', { fullName:name, gender, grades });
     Cache.del('/leaders', '/connections', '/overview');
     closeModal(); toast('Leader added'); await renderConnect();
-  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 async function showEditLeader(id) {
@@ -3185,7 +3185,7 @@ async function submitEditLeader(id) {
     }
     Cache.del('/leaders', '/overview');
     closeModal(); toast('Leader updated'); await renderConnect();
-  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 function confirmDelLeader(id, name) {
@@ -3606,7 +3606,7 @@ function filterPicker() {
 function pickerRow(s, isAssigned, note) {
   const pct = svcPct(s);
   const rise = isRising(s) ? _qualChip('Rising', 'rising') : '';
-  const noteHtml = note ? `<div class="picker-item-meta" style="color:var(--accent-dark)">${note}</div>` : '';
+  const noteHtml = note ? `<div class="picker-item-meta" style="color:var(--accent-dark)">${esc(note)}</div>` : '';
   if (isAssigned) {
     return `<div class="picker-item assigned">
       <div>
@@ -4754,7 +4754,7 @@ async function showStudentDetail(id) {
 
   const assignedHtml = myAllocs.length
     ? myAllocs.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--paper-dark)">
-        <span style="font-size:13px;font-weight:600">${a.leaderName}</span>
+        <span style="font-size:13px;font-weight:600">${esc(a.leaderName)}</span>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;color:var(--danger)" onclick="unassignSD('${s.id}','${a.leaderId}')">Remove</button>` : '<span class="chip c-accent">assigned</span>'}
       </div>`).join('')
     : '<p style="color:var(--ink-faint);font-size:13px;padding:8px 0">Not connected yet</p>';
@@ -5281,7 +5281,7 @@ function _importBodyHtml(history) {
       const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
       body += `<div class="li" style="cursor:default" id="ih-${h.id}">
         <div class="li-body">
-          <div class="li-title">${h.filename}</div>
+          <div class="li-title">${esc(h.filename)}</div>
           <div class="li-sub">${dateStr} · ${h.rowCount} rows · ${h.studentsAdded} added, ${h.studentsUpdated} updated, ${h.sessionsAdded} sessions</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -5414,7 +5414,7 @@ function processAllocationImport(file, onDone) {
     let rows;
     try {
       rows = isExcel ? parseAllocationCSV(rowsToCsv(await readXlsx(e.target.result))) : parseAllocationCSV(e.target.result);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
     if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
     try {
@@ -5424,14 +5424,13 @@ function processAllocationImport(file, onDone) {
       statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Imported: ${report.connectionsAdded} added, ${report.connectionsRemoved} removed, ${report.connectionsUnchanged} unchanged</div>`;
       showAllocationReport(report);
       if (onDone) onDone(report);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${esc(err.message)}</div>`; }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
 }
 
 // Result modal — counts plus collapsible lists of anything not fully applied.
 function showAllocationReport(r) {
-  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const sec = (id, title, items, render) => {
     if (!items.length) return '';
     return `<div class="card drop" id="${id}" style="margin-bottom:8px;padding:11px">
@@ -5463,7 +5462,6 @@ function showAllocationReport(r) {
 // called when there's something to show — a clean import just gets the
 // existing inline "Import complete" alert.
 function showImportReport(report) {
-  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const sec = (id, title, items, render) => {
     if (!items.length) return '';
     return `<div class="card drop" id="${id}" style="margin-bottom:8px;padding:11px">
@@ -5508,7 +5506,7 @@ function processPrayerImport(file) {
     let rows;
     try {
       rows = isExcel ? parseAllocationCSV(rowsToCsv(await readXlsx(e.target.result))) : parseAllocationCSV(e.target.result);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
     if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
     try {
@@ -5516,7 +5514,7 @@ function processPrayerImport(file) {
       Cache.del('/prayers');
       statusEl.innerHTML = `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Imported: ${report.added} added, ${report.skippedDuplicates} duplicate${report.skippedDuplicates === 1 ? '' : 's'} skipped</div>`;
       showPrayerImportReport(report);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${err.message}</div>`; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">Import failed: ${esc(err.message)}</div>`; }
   };
   if (isExcel) reader.readAsArrayBuffer(file); else reader.readAsText(file);
 }
@@ -5554,7 +5552,7 @@ async function detectAndPreview(file) {
   try {
     if (isExcel) text = rowsToCsv(await readXlsx(await file.arrayBuffer()));
     else text = await file.text();
-  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
 
   // Group exports have DD/MM/YYYY date-column headers + group-name header rows;
   // parseGroupCSV returns null when that structure is absent → treat as Service.
@@ -5642,7 +5640,7 @@ async function uploadServiceImport(filename) {
       <div style="font-size:12px;color:var(--ink-mid)">Tip: last-term comparisons refresh on the next service import — re-upload if last term's numbers look off.</div>
       ${issueCount ? `<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="showImportReport(_lastImportReport)">${icS('info')} View import report (${issueCount} item${issueCount === 1 ? '' : 's'})</button>` : ''}
     </div>`);
-  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${err.message}</div>`); }
+  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${esc(err.message)}</div>`); }
   finally { _importBusy = false; }
 }
 
@@ -5663,7 +5661,7 @@ async function uploadGroupImport(filename) {
       <div style="display:flex;align-items:center;gap:6px">${icS('check')} Import complete: ${result.groupsAdded} groups created, ${result.studentsAdded} students added, ${result.studentsUpdated} updated, ${result.weeksAdded} weeks</div>
       ${issueCount ? `<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="showImportReport(_lastImportReport)">${icS('info')} View import report (${issueCount} item${issueCount === 1 ? '' : 's'})</button>` : ''}
     </div>`);
-  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${err.message}</div>`); }
+  } catch (err) { _setImportStatus(`<div class="alert al-err">Import failed: ${esc(err.message)}</div>`); }
   finally { _importBusy = false; }
 }
 
@@ -6233,7 +6231,7 @@ function wizHandleAuditImportFile(input) {
       const parsed = JSON.parse(e.target.result);
       audits = Array.isArray(parsed) ? parsed : parsed.audits;
       if (!Array.isArray(audits)) throw new Error('Not a Connection Audit backup file');
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${(err && err.message) || 'Could not read this file'}</div>`; return; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${audits.length} audit year${audits.length !== 1 ? 's' : ''}. Importing…</div>`;
     try {
       const { imported } = await API.post('/audits/import-all', audits, 90000);
@@ -6241,7 +6239,7 @@ function wizHandleAuditImportFile(input) {
       statusEl.innerHTML = `<div class="alert al-ok">✓ Restored ${imported} audit year${imported !== 1 ? 's' : ''}</div>`;
       _wiz.step6Done = true;
       renderWizard();
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${err.message}</div>`; }
+    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc(err.message)}</div>`; }
   };
   reader.readAsText(f);
 }
@@ -7353,7 +7351,7 @@ async function submitAddUser() {
     _adminData.users = [..._adminData.users, created];
     closeModal(); toast('Account created');
     renderAdminView(_adminData.settings, _adminData.users);
-  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 async function showEditUser(id) {
@@ -7425,7 +7423,7 @@ async function submitEditUser(id) {
     _adminData.users = _adminData.users.map(u => u.id === id ? updated : u);
     closeModal(); toast('Account updated');
     renderAdminView(_adminData.settings, _adminData.users);
-  } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 function showSetPassword(id) {
@@ -7455,7 +7453,7 @@ async function submitSetPassword(id) {
         <button class="btn btn-primary" style="flex:1" onclick="copyText(document.getElementById('u-newpw-reveal').value)">Copy</button>
         <button class="btn btn-secondary" onclick="closeModal()">Done</button>
       </div>`);
-  } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { document.getElementById('uerr').innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 function copyText(text) {
@@ -7499,7 +7497,7 @@ async function submitChangeOwnPassword() {
     if (res && res.token) API.setToken(res.token);
     _offerSaveCredential(S.user && S.user.email, pw1);
     closeModal(); toast('Password updated');
-  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${e.message}</div>`; }
+  } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
 async function toggleUserStatus(id, currentStatus) {
@@ -11216,7 +11214,7 @@ function busSettings() {
   modal(`<div class="mo-title">Bus settings</div>
     <label class="fl">Church address</label>${_busAcField('bs-church', b.churchAddress || '', b.churchPlaceId || null, 'Street address, suburb')}
     ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
-    <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
+    <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders. They need their own Leader login: picking yourself in I am on a shared login is not enough.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
     ${BUS.view.google ? `<div class="help-text" style="margin-top:8px"><b>${esc(BUS.view.google.text)}</b></div>
       <button class="btn btn-secondary btn-full" onclick="busGoogleCheck()">Test Google connection</button>

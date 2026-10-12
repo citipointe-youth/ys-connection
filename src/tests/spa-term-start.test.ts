@@ -183,6 +183,7 @@ describe('import busy flag', () => {
       const toast = () => {};
       const Cache = { clear() {} };
       const icS = () => '';
+      const esc = (s) => String(s);
       const API = { post: async () => { throw new Error('boom'); } };
       function __busy() { return _importBusy; }
     `;
