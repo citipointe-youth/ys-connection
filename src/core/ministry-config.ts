@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BadRequestError } from './errors/app-error';
 
 // Per-deployment configuration: branding, terminology, structure, roles, modules,
 // and import dialect. An empty/absent value at any level always means "YS
@@ -174,6 +175,14 @@ export function gradeRange(structure: { gradeMin: number; gradeMax: number }): n
   const out: number[] = [];
   for (let g = structure.gradeMin; g <= structure.gradeMax; g++) out.push(g);
   return out;
+}
+
+// The one grade-range rule for manual entry points (student, account, leader, New person):
+// Zod widens to 6..12, this refuses grades outside the configured range (grade 6 only when
+// "Include Grade 6" is on).
+export function assertGradesInRange(structure: { gradeMin: number; gradeMax: number }, grades: Iterable<number | null | undefined>): void {
+  const ok = gradeRange(structure);
+  for (const g of grades) if (g != null && !ok.includes(g)) throw new BadRequestError(`Grade ${g} is outside this ministry's grade range`);
 }
 
 // Applying the schema to {} yields every default in one nested object — this IS

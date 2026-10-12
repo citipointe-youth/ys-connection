@@ -80,13 +80,13 @@ function harness(post: (path: string, body: any, ms?: number) => Promise<any>, h
   const ref: any = {};
   const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null) };
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
-    'getMyLeaderId', '_lkMyName', '_lkIamPick',
+    'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList',
     `let NY = ${FRESH};
     ${FNS.map((n) => extractFn(html, n)).join('\n')}
     return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },
     (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },
-    () => ({ ...body, host: ref.hostName }), [], [], () => (ref.hostName ? 'L1' : null), () => ref.hostName, (then: any) => picks.push(then));
+    () => ({ ...body, host: ref.hostName }), [], [], () => (ref.hostName ? 'L1' : null), () => ref.hostName, (then: any) => picks.push(then), () => [7, 8, 9, 10, 11, 12]);
   ref.hostName = hostName;
   ref.h = h;
   return { h, S, pages, toasts, scrolled, button, body, last: () => pages[pages.length - 1] ?? '' };

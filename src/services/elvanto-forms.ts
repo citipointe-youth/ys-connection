@@ -58,6 +58,7 @@ const OPT = {
 } as const;
 
 export const GRADES: Record<string, string> = {
+  '6': '807c9c80-3825-11e1-9229-ea942707ad51', // only offered when "Include Grade 6" is on (new-youth.service)
   '7': '807cac70-3825-11e1-9229-ea942707ad51',
   '8': '807cbbb6-3825-11e1-9229-ea942707ad51',
   '9': '807ccf48-3825-11e1-9229-ea942707ad51',

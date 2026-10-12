@@ -9066,7 +9066,7 @@ function renderNewYouth() {
       ${input('firstName', 'First name', 'autocapitalize="words"')}${input('lastName', 'Last name', 'autocapitalize="words"')}
       <div class="fg"><label class="fl" for="ny-dob">Date of birth</label><input class="fi" id="ny-dob" value="${esc(_nyDobShow(k.dob))}" inputmode="numeric" placeholder="DD/MM/YYYY" maxlength="10" autocomplete="off" aria-describedby="ny-dob-err" oninput="_nyDobInput(this)"><div class="fl" id="ny-dob-err" role="alert" style="color:var(--danger)"></div></div>
       ${sel('gender', 'Gender', [['', ''], ['f', 'Female'], ['m', 'Male']])}
-      ${sel('grade', 'School grade', [['', ''], ...['7', '8', '9', '10', '11', '12'].map((g) => [g, g])])}
+      ${sel('grade', 'School grade', [['', ''], ..._gradeList().map(String).map((g) => [g, g])])}
       ${input('school', 'School')}${input('mobile', 'Mobile', 'type="tel" inputmode="tel"')}
       <details id="ny-addr"><summary>Address (optional)</summary>
         <div class="fg"><input class="fi" id="ny-street" placeholder="Street" value="${esc(addr.street || '')}"></div>

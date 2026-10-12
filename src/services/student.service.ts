@@ -6,14 +6,14 @@ import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
 import type { AtRiskStatus } from '../core/types/enums';
 import { computeQuad } from '../core/types/enums';
-import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-config';
 import { NotFoundError, BadRequestError } from '../core/errors/app-error';
 
 const CreateStudentSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   gender: z.enum(['male', 'female', 'other']),
-  grade: z.number().int().min(7).max(12).nullable().optional(),
+  grade: z.number().int().min(6).max(12).nullable().optional(),
   mobile: z.string().nullable().optional(),
   parentPhone: z.string().nullable().optional(),
   dateOfBirth: z.string().nullable().optional(),
@@ -130,6 +130,7 @@ export function makeStudentService(
     async create(actor, input) {
       assertCan(actor, 'student:write');
       const data = CreateStudentSchema.parse(input);
+      assertGradesInRange((settingsRepo ? (await settingsRepo.getSettings()).ministryConfig : MINISTRY_CONFIG_DEFAULTS).structure, [data.grade]);
       const now = new Date().toISOString();
       const student: Student = {
         id: generateId(),
@@ -163,6 +164,7 @@ export function makeStudentService(
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Student not found');
       const patch = CreateStudentSchema.partial().parse(input);
+      assertGradesInRange((settingsRepo ? (await settingsRepo.getSettings()).ministryConfig : MINISTRY_CONFIG_DEFAULTS).structure, [patch.grade]);
       const gender = patch.gender ?? existing.gender;
       const grade = patch.grade !== undefined ? (patch.grade ?? null) : existing.grade;
       return repo.save({

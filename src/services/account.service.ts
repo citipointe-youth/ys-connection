@@ -8,6 +8,7 @@ import type { User, SafeUser } from '../core/entities/user';
 import type { Actor } from '../core/entities/user';
 import type { UserRole, Grade, Quad } from '../core/types/enums';
 import { NotFoundError, BadRequestError, ConflictError, UnauthorizedError } from '../core/errors/app-error';
+import { assertGradesInRange } from '../core/ministry-config';
 import { planCohortAccountLayout, type CohortLayoutPlan } from './cohort-account-layout';
 
 const CohortModelSchema = z.enum(['grades-quads', 'none']);
@@ -20,10 +21,10 @@ export const CreateUserSchema = z.object({
   // For a `leader` (junior leader) account — the Leader record it is bound to.
   leaderId: z.string().nullable().optional(),
   // Legacy single-grade field (back-compat). New account forms send `grades`.
-  grade: z.number().int().min(7).max(12).nullable().optional(),
+  grade: z.number().int().min(6).max(12).nullable().optional(),
   // Multi-grade grade accounts (§5.1a): one or more grades. When present it is
   // authoritative and `grade` is derived from it.
-  grades: z.array(z.number().int().min(7).max(12)).nullable().optional(),
+  grades: z.array(z.number().int().min(6).max(12)).nullable().optional(),
   // Explicit gender scope for a grade login (null = both). Required in practice
   // for a >1-grade account; optional for single-grade ones (email convention).
   gender: z.enum(['male', 'female']).nullable().optional(),
@@ -129,6 +130,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
     async create(actor, input) {
       assertCan(actor, 'admin:manage');
       const data = CreateUserSchema.parse(input);
+      assertGradesInRange((await settings.getSettings()).ministryConfig.structure, [data.grade, ...(data.grades ?? [])]);
       if (data.role === 'grade' && (await simpleOn())) throw new BadRequestError(SIMPLE_ON_MSG);
       const existing = await users.findByEmail(data.email);
       if (existing) throw new ConflictError('Username already in use');
@@ -175,6 +177,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       if (!existing) throw new NotFoundError('User not found');
       if (existing.role === 'admin') await guardAdmin(id, 'modify');
       const patch = CreateUserSchema.omit({ password: true }).partial().parse(input);
+      assertGradesInRange((await settings.getSettings()).ministryConfig.structure, [patch.grade, ...(patch.grades ?? [])]);
       // The protected admin account's username is its stable login identity — it
       // can never be changed, unlike its display name (see isProtectedAdmin above).
       if (isProtectedAdmin(existing) && patch.email !== undefined && patch.email !== existing.email) {

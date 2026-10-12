@@ -5,6 +5,7 @@ import type { ISettingsRepository } from '../repositories/interfaces/entity-repo
 import { AppError, BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
 import { RateLimiter } from '../utils/rate-limiter';
 import { assertCan, canUseNewYouth } from './access-control';
+import { gradeRange } from '../core/ministry-config';
 import * as EF from './elvanto-forms';
 
 export interface NewYouthResult {
@@ -125,6 +126,7 @@ export function makeNewYouthService(
         const field = String(parsed.error.issues[0]?.path[0] ?? 'request');
         throw new BadRequestError(`Check the ${LABELS[field] ?? 'details'}`);
       }
+      if (!gradeRange(settings.ministryConfig.structure).includes(Number(parsed.data.grade))) throw new BadRequestError(`Check the ${LABELS.grade}`); // grade 6 only when "Include Grade 6" is on
       const data = parsed.data; // z.object strips unknown keys, so a stray `attending` is dropped here
       const y: EF.NewYouth = data;
 

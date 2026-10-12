@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
 import type { ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
-import { MINISTRY_CONFIG_DEFAULTS, gradeRange } from '../core/ministry-config';
+import { MINISTRY_CONFIG_DEFAULTS, gradeRange, assertGradesInRange } from '../core/ministry-config';
 import type { Leader } from '../core/entities/leader';
 import type { Actor } from '../core/entities/user';
 import type { Grade } from '../core/types/enums';
@@ -11,7 +11,7 @@ import { NotFoundError, ForbiddenError, BadRequestError } from '../core/errors/a
 const CreateLeaderSchema = z.object({
   fullName: z.string().min(1).max(100),
   gender: z.enum(['male', 'female', 'other']).nullable().optional(),
-  grades: z.array(z.number().int().min(7).max(12)).optional(),
+  grades: z.array(z.number().int().min(6).max(12)).optional(),
   smsTemplate: z.string().max(500).nullable().optional(),
 });
 
@@ -52,6 +52,8 @@ function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
 // settings is optional for tests (container.ts always wires it);
 // without it the grade range is the default structure (7-12).
 export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsRepository): LeaderService {
+  const assertInRange = async (grades: number[]) =>
+    assertGradesInRange((settings ? (await settings.getSettings()).ministryConfig : MINISTRY_CONFIG_DEFAULTS).structure, grades);
   return {
     async list(actor) {
       assertCan(actor, 'leader:read');
@@ -92,6 +94,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
     async create(actor, input) {
       assertCan(actor, 'leader:write');
       const data = CreateLeaderSchema.parse(input);
+      await assertInRange(data.grades ?? []);
 
       // Grade login: leader is automatically scoped to their grade
       let grades: Grade[];
@@ -145,6 +148,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       }
 
       const patch = CreateLeaderSchema.extend({ active: z.boolean().optional() }).partial().parse(input);
+      await assertInRange(patch.grades ?? []);
       let nextGender: Leader['gender'] =
         patch.gender !== undefined ? ((patch.gender ?? null) as Leader['gender']) : existing.gender;
       let nextGrades: Grade[] = patch.grades !== undefined ? (patch.grades as Grade[]) : existing.grades;
@@ -206,7 +210,8 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       assertCan(actor, 'leader:write');
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
-      const parsed = z.array(z.number().int().min(7).max(12)).parse(grades);
+      const parsed = z.array(z.number().int().min(6).max(12)).parse(grades);
+      await assertInRange(parsed);
       const updated: Leader = { ...existing, grades: parsed as Grade[], updatedAt: new Date().toISOString() };
       return repo.save(updated);
     },
