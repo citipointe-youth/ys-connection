@@ -59,8 +59,8 @@ describe('oct rework routes (memory mode, seeded)', () => {
     expect(r.status).toBe(401);
     expect((await j(r)).code).toBe('UNAUTHORIZED');
   });
-  it('GET /bus/run/cars: admin 200, quad 404 in Shadow', async () => {
+  it('GET /bus/run/cars: admin and quad 200 (T10: All cars follows the Bus module only, not New person Shadow)', async () => {
     expect((await cars(tokens['admin']!)).status).toBe(200);
-    expect((await cars(tokens['g79']!)).status).toBe(404);
+    expect((await cars(tokens['g79']!)).status).toBe(200);
   });
 });

@@ -6,7 +6,7 @@ import { toIso } from './client';
 import { chunk } from './bulk';
 import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
-import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLogRow,
+import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow,
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -16,6 +16,8 @@ type Row = Record<string, any>;
 const iso = (v: unknown) => (v == null ? null : toIso(v));
 const ymd = (v: unknown) => (v == null ? null : typeof v === 'string' ? v.slice(0, 10) : toIso(v).slice(0, 10));
 const noteAad = (id: string) => 'link_outbox.note:' + id;
+/** T4: a flow person's mobile is encrypted at rest like students.mobile, bound to its row. */
+const mobileAad = (rowId: string) => 'link_flow_people.mobile:' + rowId;
 /** The columns applyOutcome may change. Anything else in its patch is a bug, not a silent write. */
 const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status', reason: 'reason', detail: 'detail',
   retryAt: 'retry_at', leaseOwner: 'lease_owner', leaseUntil: 'lease_until', resultAt: 'result_at',
@@ -34,7 +36,7 @@ function toOutbox(r: Row, note: string | null): OutboxRow {
 function toConsole(r: Row): ConsoleRow {
   return { consoleId: r.console_id, label: r.label, lastSeenAt: toIso(r.last_seen_at), contractVersion: r.contract_version,
     consoleVersion: r.console_version, inWindow: r.in_window, pollSeconds: r.poll_seconds,
-    capabilities: r.capabilities as Capabilities };
+    capabilities: r.capabilities as Capabilities, linkRev: r.link_rev ?? 1 };
 }
 function toRoster(r: Row): LinkRosterRow {
   return { personId: r.person_id, firstName: r.first_name, lastName: r.last_name, gender: r.gender ?? null,
@@ -121,12 +123,13 @@ export class SupabaseLinkRepository implements ILinkRepository {
       // console upsert
       await tx`
         insert into link_console (console_id, label, last_seen_at, contract_version, console_version, in_window,
-                                  poll_seconds, capabilities)
+                                  poll_seconds, capabilities, link_rev)
         values (${c.consoleId}, ${c.label}, now(), ${c.contractVersion}, ${c.consoleVersion}, ${c.inWindow},
-                ${c.pollSeconds}, ${this.j(c.capabilities)})
+                ${c.pollSeconds}, ${this.j(c.capabilities)}, ${c.linkRev})
         on conflict (console_id) do update set label = excluded.label, last_seen_at = now(),
           contract_version = excluded.contract_version, console_version = excluded.console_version,
-          in_window = excluded.in_window, poll_seconds = excluded.poll_seconds, capabilities = excluded.capabilities`;
+          in_window = excluded.in_window, poll_seconds = excluded.poll_seconds, capabilities = excluded.capabilities,
+          link_rev = excluded.link_rev`;
       // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2).
       // lease-lost skips this console's own rows: it reclaims them below and its sent-log decides (B1 / X6).
       await tx`
@@ -262,15 +265,22 @@ export class SupabaseLinkRepository implements ILinkRepository {
         for (const b of chunk(rows as LinkGroupRow[])) {
           await tx`insert into link_groups ${tx(b.map((g) => ({ group_id: g.groupId, name: g.name,
             grade: g.grade ?? null, gender: g.gender ?? null, meets: g.meets, members: this.j(g.members),
-            this_week: g.thisWeek, last_report: g.lastReport == null ? null : this.j(g.lastReport) })))}`;
+            this_week: g.thisWeek, last_report: g.lastReport == null ? null : this.j(g.lastReport),
+            history: this.j(g.history ?? []) })))}`;
         }
       } else {
         await tx`delete from link_flow_people`;
         for (const b of chunk(rows as LinkFlowRow[])) {
           await tx`insert into link_flow_people ${tx(b.map((f) => ({ row_id: f.rowId, flow_id: f.flowId,
             flow_name: f.flowName, step_id: f.stepId, step_name: f.stepName, step_order: f.stepOrder,
-            person_id: f.personId, name: f.name, due: f.due, assigned_to: f.assignedTo })))}`;
+            person_id: f.personId, name: f.name, due: f.due, assigned_to: f.assignedTo, grade: f.grade ?? null,
+            gender: f.gender ?? null, mobile: maybeEncrypt(f.mobile ?? null, mobileAad(f.rowId)),
+            mobile_is_parent: f.mobileIsParent ?? false })))}`;
         }
+        // T6: an assignment lasts while its person is still in that flow.
+        await tx`
+          delete from link_flow_assign a where not exists (
+            select 1 from link_flow_people f where f.flow_id = a.flow_id and f.person_id = a.person_id)`;
       }
       await tx`
         insert into link_mirror_state (kind, taken_at, console_id, row_count, applied_at)
@@ -296,12 +306,30 @@ export class SupabaseLinkRepository implements ILinkRepository {
   async groups(): Promise<LinkGroupRow[]> {
     return (await this.sql`select * from link_groups order by name, group_id`).map((r) => ({ groupId: r.group_id,
       name: r.name, grade: r.grade ?? null, gender: r.gender ?? null, meets: r.meets, members: r.members ?? [],
-      thisWeek: r.this_week, lastReport: r.last_report ?? null }));
+      thisWeek: r.this_week, lastReport: r.last_report ?? null, history: r.history ?? [] }));
   }
   async flows(): Promise<LinkFlowRow[]> {
     return (await this.sql`select * from link_flow_people order by flow_name, step_order, name, row_id`).map((r) => ({
       rowId: r.row_id, flowId: r.flow_id, flowName: r.flow_name, stepId: r.step_id, stepName: r.step_name,
-      stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to }));
+      stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to,
+      grade: r.grade ?? null, gender: r.gender ?? null, mobile: maybeDecrypt(r.mobile, mobileAad(r.row_id)),
+      mobileIsParent: r.mobile_is_parent ?? false }));
+  }
+
+  async flowAssignments(): Promise<LinkFlowAssign[]> {
+    return (await this.sql`select * from link_flow_assign order by flow_id, person_id`).map((r) => ({ flowId: r.flow_id,
+      personId: r.person_id, leaderId: r.leader_id, assignedBy: r.assigned_by, assignedAt: toIso(r.assigned_at) }));
+  }
+  async setFlowAssign(a: { flowId: string; personId: string; leaderId: string | null; assignedBy: string }): Promise<void> {
+    if (a.leaderId === null) {
+      await this.sql`delete from link_flow_assign where flow_id = ${a.flowId} and person_id = ${a.personId}`;
+      return;
+    }
+    await this.sql`
+      insert into link_flow_assign (flow_id, person_id, leader_id, assigned_by, assigned_at)
+      values (${a.flowId}, ${a.personId}, ${a.leaderId}, ${a.assignedBy}, now())
+      on conflict (flow_id, person_id) do update set leader_id = excluded.leader_id, assigned_by = excluded.assigned_by,
+        assigned_at = now()`;
   }
 
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {

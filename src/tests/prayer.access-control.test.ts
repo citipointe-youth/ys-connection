@@ -24,7 +24,7 @@ describe('Prayer RBAC', () => {
 describe('generalPrayerCreatorScope', () => {
   it('grade/quad creators get their own bracket+gender; admin/director/leader get no boundary', () => {
     expect(generalPrayerCreatorScope(A('grade', { grade: 9, gender: 'female' }))).toEqual({ grades: [9], gender: 'female' });
-    expect(generalPrayerCreatorScope(A('quad', { quad: 'b79' }))).toEqual({ grades: [7, 8, 9], gender: 'male' });
+    expect(generalPrayerCreatorScope(A('quad', { quad: 'b79' }))).toEqual({ grades: [6, 7, 8, 9], gender: 'male' }) // T13: grade 6 is junior;
     expect(generalPrayerCreatorScope(A('admin'))).toEqual({ grades: null, gender: null });
     expect(generalPrayerCreatorScope(A('director'))).toEqual({ grades: null, gender: null });
     expect(generalPrayerCreatorScope(A('leader'))).toEqual({ grades: null, gender: null });

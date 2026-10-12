@@ -86,7 +86,7 @@ export interface BusRunView {
   availablePoolLeaderIds: ID[];
   fleet: BusVehicle[];
   canCoordinate: boolean;
-  canSeeCars: boolean;               // October rework: All cars tab (newYouthForms mode: on = all, shadow = admin)
+  canSeeCars: boolean;               // October rework: All cars tab (T10: always true; follows the Bus module only)
   pendingNewPeople: number | null;   // null unless director/admin
   pastRiders: BusPastRiderView[];    // [] unless bus:roster; capped ~50, most recent first
   // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car

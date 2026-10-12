@@ -1,5 +1,6 @@
 // Elvanto link, app side: the leader + admin service (spec 2026-10-12-elvanto-link-app-design.md §2, §6, §8.2, §9.1;
-// contract 2026-10-11 §4, §5). Every method starts with the one switch (modules.newYouthForms) + RBAC.
+// contract 2026-10-11 §4, §5). Every method starts with gate(): its module (T10: modules.checkin / lifegroupReport /
+// flows) + RBAC; the admin routes are the admin login's in every module state (T9).
 // Never logs: no note text, phone or address goes into a reply or a link_log row.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -15,7 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, OutboxRow, PushKind, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, PAYLOAD_SCHEMAS, PUSH_KINDS } from '../core/link-contract';
+import { ACTION_TYPES, LINK_REV, PAYLOAD_SCHEMAS, PUSH_KINDS } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -87,6 +88,8 @@ export interface LinkStatus {
   console: { lastSeenAt: string | null; online: boolean; inWindow: boolean; pollSeconds: number | null;
     capabilities: Capabilities | null; consoles: number };
   mirrors: Record<PushKind, { takenAt: string | null; ageSeconds: number | null }>;
+  /** T1: the newest console's LINK_REV (null = no console yet) and this app's; the admin page warns when lower. */
+  consoleLinkRev: number | null; appLinkRev: number;
 }
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
 export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
@@ -100,10 +103,15 @@ export interface ActionListRow { id: string; type: ActionType; status: Status; r
   createdAt: string; resultAt: string | null; leaderName: string; login: string; hasNote: boolean;
   /** B3 / T-7, B17: the person (or group / flow row) of an `unclear` row or a first-timer, for link:admin only. */
   name?: string | null }
-export interface LifegroupView { groupId: string; name: string; meets: string; members: LinkGroupRow['members'];
-  thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null; defaultDate: string; openAction: ActionView | null }
+/** T8: `history` newest first (<= 8, the last report included); the list comes sorted grade, girls then boys. */
+export interface LifegroupView { groupId: string; name: string; grade: number | null; gender: LinkGroupRow['gender'];
+  meets: string; members: LinkGroupRow['members']; thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null;
+  history: LinkLastReport[]; defaultDate: string; openAction: ActionView | null }
+/** T4/T6: the person's own grade/gender/mobile (decrypted, bare digits) and the app-side assignee. */
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
-  personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null }
+  personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null;
+  grade: number | null; gender: LinkFlowRow['gender']; mobile: string | null; mobileIsParent: boolean;
+  assignedLeaderId: string | null; assignedLeaderName: string | null }
 export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
@@ -121,6 +129,7 @@ export interface LinkService {
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   flows(actor: Actor): Promise<{ rows: FlowView[] }>;
+  assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
   shadowCheck(actor: Actor, date: unknown): Promise<ShadowCheck>;
@@ -156,9 +165,17 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
   if (g.grade == null) return isAdminRole(a);
   return canAccessGrade(a, g.grade, s) && (g.gender ? canAccessGender(a, g.gender, s) : true);
 }
-function personVisible(a: Actor, r: LinkRosterRow | undefined, s: StructureScope): boolean {
-  if (!r) return isAdminRole(a);
-  return canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null);
+/**
+ * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/director only, through
+ * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is
+ * admin/director only.
+ */
+function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope): boolean {
+  if (f.stepOrder <= 1 && !isAdminRole(a)) return false;
+  const r = f.personId ? roster.get(f.personId) : undefined;
+  const grade = f.grade ?? r?.grade ?? null;
+  const gender = f.gender ?? r?.gender ?? null;
+  return canAccessGrade(a, grade, s) && (gender ? canAccessGender(a, gender, s) : genderScopeOf(a, s) == null);
 }
 /**
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
@@ -183,6 +200,15 @@ function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l:
   };
 }
 
+/** T10: the three link screens, each its own module mode (ministryConfig.modules). */
+type Feature = 'checkin' | 'lifegroupReport' | 'flows';
+const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
+const FEATURE_OF: Record<ActionType, Feature> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
+  submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows' };
+/** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
+const usable = (a: Actor, s: AppSettings, f: Feature) =>
+  can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
+
 const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused',
   code: e.code, message: e.message, ...(typeof e.extra?.reason === 'string' ? { reason: e.extra.reason } : {}) });
 
@@ -196,14 +222,20 @@ interface Who { id: string | null; name: string | null }
 export function makeLinkService(d: LinkServiceDeps): LinkService {
   const clock = d.now ?? (() => new Date());
 
-  /** The switch, then RBAC: a mode miss is 404 for everyone; a link:admin miss under the mode is 403. */
-  async function gate(actor: Actor, action: 'link:use' | 'link:admin'): Promise<AppSettings> {
+  /**
+   * T9/T10: 'admin' = link:admin (the admin login only), in every module state, else 403. A feature list passes when
+   * any of those screens is usable (its own mode, then link:use), else 404. 'any' = any link screen, and the admin
+   * always (its page reads status and actions, and cancels through the batch).
+   */
+  async function gate(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await d.settings.getSettings();
-    if (!modeAllows(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('Elvanto link');
-    if (!can(actor, action)) {
-      if (action === 'link:admin') throw new ForbiddenError('Only the director or admin can do this.');
-      throw new ModuleDisabledError('Elvanto link');
+    const admin = can(actor, 'link:admin');
+    if (need === 'admin') {
+      if (!admin) throw new ForbiddenError('Only the admin can do this.');
+      return settings;
     }
+    if (need === 'any' && admin) return settings;
+    if (!(need === 'any' ? FEATURES : need).some((f) => usable(actor, settings, f))) throw new ModuleDisabledError('Elvanto link');
     return settings;
   }
 
@@ -213,7 +245,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const memo = <T>(f: () => Promise<T>) => { let p: Promise<T> | undefined; return () => (p ??= f()); };
     const t = clock();
     return {
-      actor, t, today: brisbaneToday(t), structure: settings.ministryConfig.structure as StructureScope,
+      actor, settings, t, today: brisbaneToday(t), structure: settings.ministryConfig.structure as StructureScope,
       admin: can(actor, 'link:admin'),
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
@@ -297,6 +329,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       Object.assign(tgt, await targetOf(c, prev));
       return ok(prev, 'replay');
     };
+    // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is)
+    if (!usable(c.actor, c.settings, FEATURE_OF[it.type])) throw new ModuleDisabledError('Elvanto link');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -380,7 +414,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (row.flowId !== sp.flowId || row.stepId !== sp.stepId || row.personId !== sp.personId) {
         throw new BadRequestError('This step changed. Reload.');
       }
-      if (!personVisible(c.actor, roster.find((x) => x.personId === row.personId), c.structure)) {
+      if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure)) {
         throw new ForbiddenError('This person is not one of yours.');
       }
       personId = row.personId;
@@ -544,7 +578,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
   return {
     async status(actor) {
-      await gate(actor, 'link:use');
+      await gate(actor, 'any');
       const t = clock().getTime();
       const [consoles, mirrors] = await Promise.all([d.link.listConsoles(), d.link.mirrorState()]);
       const n = newest(consoles);
@@ -557,11 +591,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const at = takenAt(mirrors, k);
         return [k, { takenAt: at, ageSeconds: at ? Math.round((t - Date.parse(at)) / 1000) : null }];
       })) as LinkStatus['mirrors'];
-      return { console, mirrors: m };
+      return { console, mirrors: m, consoleLinkRev: n?.linkRev ?? null, appLinkRev: LINK_REV };
     },
 
     async checkin(actor, serviceTimeId) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, ['checkin', 'lifegroupReport'])); // T10: the report form picks its service here
       const one = typeof serviceTimeId === 'string' && serviceTimeId !== '';
       const services = await c.services();
       const svc = one ? services.find((s) => s.serviceTimeId === serviceTimeId) : undefined;
@@ -586,9 +620,21 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         return { checkedIn: st.in, action: top ? view(top) : null, mine: top?.createdBy === actor.id };
       };
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
-      out.people = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
-        .sort((a, b) => cmp(a.lastName, b.lastName) || cmp(a.firstName, b.firstName))
-        .map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, leader: r.kind === 'leader', ...state(r.personId) }));
+      const listed = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
+        .map((r) => ({ first: r.firstName, last: r.lastName, grade: r.grade, leader: r.kind === 'leader', personId: r.personId }));
+      // T3: a checked-in person the roster does not list (not pushed yet, inactive, other) still shows, by the name the
+      // console pushed with the check-in; a leader when the room's name says so. No name (an older console): not shown.
+      const seen = new Set(listed.map((p) => p.personId));
+      const byId = new Map(roster.map((r) => [r.personId, r]));
+      const roomName = new Map(svc.rooms.map((r) => [r.id, r.name]));
+      for (const x of svc.checkedIn) {
+        if (seen.has(x.personId) || !`${x.firstName ?? ''}${x.lastName ?? ''}`.trim()) continue;
+        seen.add(x.personId);
+        listed.push({ first: x.firstName ?? '', last: x.lastName ?? '', grade: byId.get(x.personId)?.grade ?? null,
+          leader: /leader/i.test(roomName.get(x.roomId) ?? ''), personId: x.personId });
+      }
+      out.people = listed.sort((a, b) => cmp(a.last, b.last) || cmp(a.first, b.first))
+        .map((p) => ({ personId: p.personId, name: `${p.first} ${p.last}`.trim(), grade: p.grade, leader: p.leader, ...state(p.personId) }));
       const personOf = rosterPersonMatcher(roster, leaders);
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
         const personId = personOf(l);
@@ -599,7 +645,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async listActions(actor, q) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, 'any'));
       const Q = z.object({ ids: z.union([z.string(), z.array(z.string())]).optional(), serviceDate: Ymd.optional(),
         type: z.enum(ACTION_TYPES).optional() });
       const f = Q.parse(q ?? {});
@@ -623,7 +669,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async batch(actor, body) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, 'any')); // T10: each action item is checked against its own module
       const parsed = BatchBody.safeParse(body); // only a bad envelope fails the whole call
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400, { details: parsed.error.errors });
       const b = parsed.data;
@@ -691,35 +737,66 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async lifegroups(actor) {
-      const c = context(actor, await gate(actor, 'link:use'));
+      const c = context(actor, await gate(actor, ['lifegroupReport']));
       const [groups, mirrors, sent, open] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN })]);
       const gAt = takenAt(mirrors, 'groups');
-      return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).map((g) => {
+      // T8: grade 6..12, girls then boys within a grade, no grade last; then by name.
+      const rank = (g: LinkGroupRow) => [g.grade ?? 99, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2] as const;
+      const order = (a: LinkGroupRow, b: LinkGroupRow) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1] || a.name.localeCompare(b.name);
+      return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).sort(order).map((g) => {
         const o = open.find((r) => (r.payload as { groupId?: string }).groupId === g.groupId);
-        return { groupId: g.groupId, name: g.name, meets: g.meets, members: g.members, thisWeek: g.thisWeek,
-          lastReport: lastReportOf(g, sent, gAt), defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null };
+        const last = lastReportOf(g, sent, gAt);
+        // The last report (an app overlay included) leads the history; an edit replaces its own entry.
+        const history = [...(last ? [last] : []), ...g.history.filter((h) => h.reportId !== last?.reportId)]
+          .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+        return { groupId: g.groupId, name: g.name, grade: g.grade, gender: g.gender, meets: g.meets, members: g.members,
+          thisWeek: g.thisWeek, lastReport: last, history, defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null };
       }) };
     },
 
     async flows(actor) {
-      const c = context(actor, await gate(actor, 'link:use'));
-      const [flows, roster, open] = await Promise.all([c.flows(), c.roster(),
-        d.link.listActions({ types: ['completeStep'], statuses: OPEN })]);
+      const c = context(actor, await gate(actor, ['flows']));
+      const [flows, roster, open, assigns, leaders] = await Promise.all([c.flows(), c.roster(),
+        d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders()]);
       const byId = new Map(roster.map((r) => [r.personId, r]));
-      const rows = flows.filter((f) => personVisible(actor, f.personId ? byId.get(f.personId) : undefined, c.structure))
+      const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
+      const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure))
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder)
-        .map((f: LinkFlowRow) => {
+        .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
+          const l = f.personId ? assigned.get(`${f.flowId}:${f.personId}`) : undefined; // a deleted leader reads as none
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
-            stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null };
+            stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
+            grade: f.grade, gender: f.gender, mobile: f.mobile, mobileIsParent: f.mobileIsParent,
+            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null };
         });
       return { rows };
     },
 
+    /** T6: give a flow person to a leader (app only, never sent to Elvanto). Any login that sees the person may. */
+    async assignFlow(actor, body) {
+      const c = context(actor, await gate(actor, ['flows']));
+      const parsed = z.object({ flowId: Uuid, personId: Uuid, leaderId: Uuid.nullable() }).safeParse(body ?? {});
+      if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
+      const b = parsed.data;
+      const [flows, roster] = await Promise.all([c.flows(), c.roster()]);
+      const rows = flows.filter((f) => f.flowId === b.flowId && f.personId === b.personId);
+      if (!rows.length) throw new BadRequestError('This person is not in this flow any more. Reload.');
+      const byId = new Map(roster.map((r) => [r.personId, r]));
+      if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure))) {
+        throw new ForbiddenError('This person is not one of yours.');
+      }
+      if (b.leaderId !== null && !(await c.leaders()).some((l) => l.id === b.leaderId && l.active)) {
+        throw new BadRequestError('Pick a leader from the list.');
+      }
+      await d.link.setFlowAssign({ ...b, assignedBy: await c.login() });
+      return { ok: true };
+    },
+
     async rosterForMatching(actor, q) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
       const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
       // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
@@ -744,7 +821,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async setMatch(actor, personId, body) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const b = z.object({ studentId: Uuid.nullable(), ignore: z.literal(true).optional() }).parse(body ?? {});
       const roster = await d.link.roster();
       if (!roster.some((r) => r.personId === personId)) throw new NotFoundError('This person is not in the roster.');
@@ -764,7 +841,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async shadowCheck(actor, date) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const day = Ymd.parse(date);
       const sessions = (await d.serviceSessions.findAll()).filter((s) => s.sessionDate.slice(0, 10) === day);
       if (sessions.length === 0) return { date: day, imported: false, rows: [], unlinkedAttenders: 0 };
@@ -788,7 +865,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async log(actor, q) {
-      await gate(actor, 'link:admin');
+      await gate(actor, 'admin');
       const f = z.object({ from: Ymd.optional(), to: Ymd.optional(), login: z.string().max(200).optional(),
         event: z.enum(LOG_EVENTS).optional() }).parse(q ?? {});
       const to = f.to ?? brisbaneToday(clock());

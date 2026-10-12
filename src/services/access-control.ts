@@ -95,7 +95,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:analysis',
     'intake:write',
     'link:use',
-    'link:admin',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -136,7 +135,7 @@ export function canWithConfig(actor: Actor, action: Action, cfg: Pick<MinistryCo
 }
 
 // The off / shadow / on module mode (newYouthForms): 'on' = everyone, 'shadow' = the
-// admin login only, 'off' = nobody. Used by New person and the Bus All cars tab.
+// admin login only, 'off' = nobody. Used by New person and the link screens (T10).
 export function modeAllows(actor: Actor, mode: NewYouthMode): boolean {
   return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
 }
@@ -221,7 +220,7 @@ export function canAccessGrade(actor: Actor, grade: number | null, structure?: S
       return grade != null && actorGrades(actor).includes(grade);
     case 'quad': {
       if (!actor.quad || grade == null) return false;
-      const isJunior = grade >= 7 && grade <= 9;
+      const isJunior = grade >= 6 && grade <= 9; // T13: grade 6 is junior
       const isSenior = grade >= 10 && grade <= 12;
       if (actor.quad === 'g79' || actor.quad === 'b79') return isJunior;
       if (actor.quad === 'g1012' || actor.quad === 'b1012') return isSenior;
@@ -251,7 +250,7 @@ export function quadGenderOf(quad: string | null | undefined): 'male' | 'female'
 
 /** The year bracket a quad login is scoped to. */
 export function quadGradesOf(quad: string | null | undefined): number[] {
-  if (quad === 'g79' || quad === 'b79') return [7, 8, 9];
+  if (quad === 'g79' || quad === 'b79') return [6, 7, 8, 9];
   if (quad === 'g1012' || quad === 'b1012') return [10, 11, 12];
   return [];
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { can, canWithConfig, modeAllows, canAccessStudent, type Action } from './access-control';
+import { can, canWithConfig, canAccessStudent, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
 import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
@@ -390,7 +390,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       })) : riderViews,
       leaders: isRedactedLeader ? [] : leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: isRedactedLeader ? [] : fleet.filter((v) => !v.archived), canCoordinate,
-      canSeeCars: modeAllows(ctx.actor, c.modules.newYouthForms),
+      canSeeCars: true, // T10: All cars follows the Bus module only (gate() above)
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
       onCarLeaders: await onCarLeaderList(run.id),
@@ -683,7 +683,6 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async carsView(ctx) {
       const c = await gate(ctx, 'bus:use');
-      if (!modeAllows(ctx.actor, c.modules.newYouthForms)) throw new ModuleDisabledError('All cars');
       // ctx.asLeaderId is deliberately unused: everyone allowed sees the same view.
       const run = await ensureRun(ctx, c);
       const ridersP = ridingOf(run.id);

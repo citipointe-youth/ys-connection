@@ -80,6 +80,19 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(src).toContain('throw new Error(`applyResults: unexpected column ${k}`)');
     expect(flat(method('applyResults'))).toContain('RESULT_COLS[k as keyof OutboxRow] ?? fail(k)');
   });
+  it('T4: a flow mobile is encrypted on write and decrypted on read, bound to its row', () => {
+    expect(src).toContain("const mobileAad = (rowId: string) => 'link_flow_people.mobile:' + rowId;");
+    expect(flat(method('replaceMirror'))).toContain('mobile: maybeEncrypt(f.mobile ?? null, mobileAad(f.rowId))');
+    expect(flat(method('flows'))).toContain('mobile: maybeDecrypt(r.mobile, mobileAad(r.row_id))');
+  });
+  it('T6: the flows push drops assignments whose (flow, person) it no longer carries, in the same transaction', () => {
+    expect(flat(method('replaceMirror'))).toMatch(/delete from link_flow_assign a where not exists \( select 1 from link_flow_people f where f\.flow_id = a\.flow_id and f\.person_id = a\.person_id\)/);
+  });
+  it('0018 is additive and turns RLS on for link_flow_assign', () => {
+    const m = readFileSync(join(ROOT, 'supabase', 'migrations', '0018_link_ux_batch.sql'), 'utf8');
+    expect(m).not.toMatch(/\b(drop|rename|alter column)\b/i);
+    expect(m).toMatch(/alter table link_flow_assign enable row level security/);
+  });
 });
 
 // DB block (ledger 24, V2): run ONCE by the operator on the real database, only in the window after the prod build

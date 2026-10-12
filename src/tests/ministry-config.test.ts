@@ -94,6 +94,26 @@ describe('modules.newYouthForms (off / shadow / on)', () => {
   });
 });
 
+describe('T10 link modules checkin / lifegroupReport / flows (off / shadow / on)', () => {
+  const KEYS = ['checkin', 'lifegroupReport', 'flows'] as const;
+  it('a stored config without them inherits newYouthForms (prod is shadow: nothing changes on deploy)', () => {
+    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow' } }).modules;
+    for (const k of KEYS) expect(m[k], k).toBe('shadow');
+    const legacy = MinistryConfigSchema.parse({ modules: { newYouthForms: true } }).modules;
+    for (const k of KEYS) expect(legacy[k], k).toBe('on');
+    for (const k of KEYS) expect(MINISTRY_CONFIG_DEFAULTS.modules[k], k).toBe('off');
+  });
+  it('each key is independent once set, and survives a re-parse and a merge', () => {
+    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'off', checkin: 'on', lifegroupReport: 'shadow' } }).modules;
+    expect([m.checkin, m.lifegroupReport, m.flows]).toEqual(['on', 'shadow', 'off']);
+    const again = MinistryConfigSchema.parse(MinistryConfigSchema.parse({ modules: m }));
+    expect(again.modules.lifegroupReport).toBe('shadow');
+    const merged = mergeMinistryConfig(again, { modules: { newYouthForms: 'on' } });
+    expect([merged.modules.newYouthForms, merged.modules.checkin, merged.modules.flows]).toEqual(['on', 'on', 'off']);
+    expect(() => MinistryConfigSchema.parse({ modules: { flows: true } })).toThrow();
+  });
+});
+
 describe('logins and modules.prayers (October rework)', () => {
   it('parses {} with Simple logins off and Prayers on', () => {
     const cfg = MinistryConfigSchema.parse({});

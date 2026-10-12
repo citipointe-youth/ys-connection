@@ -19,7 +19,7 @@ const j = async (r: Response): Promise<any> => r.json();
 const SPEC_ROUTES = [
   'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind',
   'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
-  'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows',
+  'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
 ];
 
@@ -71,7 +71,7 @@ describe('link + sync live (memory)', () => {
     admin = (await c.services.setup.createFirstAdmin({ code: CODE, displayName: 'Pat', password: 'longenough' })).token;
     const s = await c.repos.settings.getSettings();
     await c.repos.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
-      modules: { ...s.ministryConfig.modules, newYouthForms: 'shadow' } } });
+      modules: { ...s.ministryConfig.modules, newYouthForms: 'shadow', checkin: 'shadow', lifegroupReport: 'shadow', flows: 'shadow' } } });
   });
   afterAll(() => {
     server.close();
@@ -153,5 +153,12 @@ describe('link + sync live (memory)', () => {
       const r = await asAdmin('GET', p);
       expect([p, r.status]).toEqual([p, 200]);
     }
+  });
+  it('T6: POST /link/flows/assign is routed (JSON 400 for a person not in the flow; 401 with no token)', async () => {
+    const body = { flowId: 'f1000000-0000-4000-8000-0000000000ff', personId: '9e000000-0000-4000-8000-0000000000ff', leaderId: null };
+    const r = await asAdmin('POST', '/link/flows/assign', body);
+    expect(r.status).toBe(400);
+    expect((await j(r)).code).toBe('BAD_REQUEST');
+    expect((await call('POST', '/link/flows/assign', body)).status).toBe(401);
   });
 });

@@ -105,11 +105,11 @@ export function makeOverviewService(
           // A leader can appear in up to 2 quads (male and female for a grade)
           // but in practice is gender-scoped. Use leader gender if set.
           if (l.gender === 'female' || l.gender == null) {
-            const q = g >= 7 && g <= 9 ? 'g79' : g >= 10 && g <= 12 ? 'g1012' : null;
+            const q = g >= 6 && g <= 9 ? 'g79' : g >= 10 && g <= 12 ? 'g1012' : null;
             if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
           }
           if (l.gender === 'male' || l.gender == null) {
-            const q = g >= 7 && g <= 9 ? 'b79' : g >= 10 && g <= 12 ? 'b1012' : null;
+            const q = g >= 6 && g <= 9 ? 'b79' : g >= 10 && g <= 12 ? 'b1012' : null;
             if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
           }
         }

@@ -30,12 +30,13 @@ const CREATOR = 'c0000000-0000-4000-8000-0000000000aa';
 
 type Mode = 'off' | 'shadow' | 'on';
 
-async function setup(opts: { mode?: Mode; decrypt?: (n: string, id: string) => string } = {}) {
+async function setup(opts: { mode?: Mode; modules?: Record<string, Mode>; decrypt?: (n: string, id: string) => string } = {}) {
+  const m = opts.mode ?? 'on';
   const link = new InMemoryLinkRepository({ decrypt: opts.decrypt });
   const settings = new InMemorySettingsRepository();
   await settings.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
-    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: opts.mode ?? 'on' } } } as any);
+    modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: m, checkin: m, lifegroupReport: m, flows: m, ...opts.modules } } } as any);
   const users = new InMemoryUserRepository();
   await users.save({ id: CREATOR, displayName: 'Grade 9 Girls', email: 'grade9g', role: 'grade', status: 'active' } as any);
   const students = new InMemoryStudentRepository();
@@ -157,6 +158,15 @@ describe('sync.service claim', () => {
     expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
     expect((await link.getAction(fresh.id))!.status).toBe('pending');
     expect(await link.getAction(old.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+  });
+
+  it('T10: off means every link screen off: New person on alone leases nothing; one screen on leases', async () => {
+    const off = await setup({ mode: 'off', modules: { newYouthForms: 'on' } });
+    await off.link.insertAction(rowFromFixture(claimRes.rows[0]));
+    expect((await off.svc.claim(claimReq)).rows).toEqual([]);
+    const one = await setup({ mode: 'off', modules: { flows: 'shadow' } });
+    await one.link.insertAction(rowFromFixture(claimRes.rows[0]));
+    expect((await one.svc.claim(claimReq)).rows).toHaveLength(1);
   });
 
   it('shadow mode still leases (the /sync side ignores the switch except off)', async () => {
@@ -290,5 +300,59 @@ describe('sync.service push', () => {
     await expect(svc.push('people', fx('push-roster.json'))).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
     await expect(svc.push('__proto__', fx('push-roster.json'))).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(await link.mirrorState()).toEqual([]);
+  });
+});
+
+describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune, T8 history)', () => {
+  const later = (b: any, takenAt: string) => ({ ...b, takenAt });
+  it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
+    const { svc, link } = await setup();
+    const old = await svc.claim(claimReq);
+    expect(old.linkRev).toBe(2);
+    expect((await link.listConsoles())[0]!.linkRev).toBe(1);
+    await svc.claim({ ...claimReq, linkRev: 2 });
+    expect((await link.listConsoles())[0]!.linkRev).toBe(2);
+    expect(ClaimResponse.parse(old).linkRev).toBe(2);
+  });
+  it('T2: a roster push with a grade-6 student is applied', async () => {
+    const { svc, link } = await setup();
+    const b = fx('push-roster.json');
+    b.rows[0].grade = 6;
+    expect((await svc.push('roster', b)).applied).toBe(true);
+    expect((await link.roster()).find((r) => r.personId === b.rows[0].personId)!.grade).toBe(6);
+  });
+  it('T8: groups keep the pushed history (none = [])', async () => {
+    const { svc, link } = await setup();
+    const b = fx('push-groups.json');
+    const lr = b.rows[0].lastReport;
+    b.rows[0].history = [lr];
+    await svc.push('groups', b);
+    const gs = await link.groups();
+    expect(gs.find((g) => g.groupId === b.rows[0].groupId)!.history).toEqual([lr]);
+    expect(gs.find((g) => g.groupId === b.rows[1].groupId)!.history).toEqual([]);
+  });
+  it('T4: flows keep grade, gender, mobile, mobileIsParent (absent = null/false)', async () => {
+    const { svc, link } = await setup();
+    const b = fx('push-flows.json');
+    Object.assign(b.rows[0], { grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: true });
+    await svc.push('flows', b);
+    const fs = await link.flows();
+    expect(fs.find((f) => f.rowId === b.rows[0].rowId)).toMatchObject({ grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: true });
+    expect(fs.find((f) => f.rowId === b.rows[1].rowId)).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false });
+  });
+  it('T6: a flows push drops the assignments of people no longer in that flow, keeps the rest', async () => {
+    const { svc, link } = await setup();
+    const b = fx('push-flows.json');
+    const flowId = b.rows[0].flowId as string;
+    const kept = b.rows[0].personId as string;
+    const gone = 'ee000000-0000-4000-8000-000000000001';
+    const leaderId = 'ee000000-0000-4000-8000-0000000000aa';
+    await svc.push('flows', b);
+    await link.setFlowAssign({ flowId, personId: kept, leaderId, assignedBy: 'admin' });
+    await link.setFlowAssign({ flowId, personId: gone, leaderId, assignedBy: 'admin' });
+    await svc.push('flows', later(b, '2026-10-16T09:30:00.000Z'));
+    expect((await link.flowAssignments()).map((a) => a.personId)).toEqual([kept]);
+    await link.setFlowAssign({ flowId, personId: kept, leaderId: null, assignedBy: 'admin' });
+    expect(await link.flowAssignments()).toEqual([]);
   });
 });

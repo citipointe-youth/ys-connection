@@ -1,8 +1,9 @@
 // In-memory Elvanto link repo (spec 2026-10-12-elvanto-link-app-design.md §4.1). Used for `memory` and `json`
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
-import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow, LinkServiceRow,
-  LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem, ResultReply, Status } from '../../core/link-types';
+import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow,
+  LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem, ResultReply, Status,
+} from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
 
@@ -26,6 +27,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private serviceRows: LinkServiceRow[] = [];
   private groupRows: LinkGroupRow[] = [];
   private flowRows: LinkFlowRow[] = [];
+  private assigns = new Map<string, LinkFlowAssign>(); // key flowId:personId
   private mirror = new Map<PushKind, MirrorStateRow>();
   private log: LinkLogRow[] = [];
   private decrypt: (note: string, id: string) => string;
@@ -160,9 +162,13 @@ export class InMemoryLinkRepository implements ILinkRepository {
     } else if (kind === 'services') {
       this.serviceRows = clone(rows as LinkServiceRow[]);
     } else if (kind === 'groups') {
-      this.groupRows = (rows as LinkGroupRow[]).map((g) => ({ ...clone(g), grade: g.grade ?? null, gender: g.gender ?? null }));
+      this.groupRows = (rows as LinkGroupRow[]).map((g) => ({ ...clone(g), grade: g.grade ?? null, gender: g.gender ?? null,
+        history: clone(g.history ?? []) }));
     } else {
-      this.flowRows = clone(rows as LinkFlowRow[]);
+      this.flowRows = (rows as LinkFlowRow[]).map((f) => ({ ...clone(f), grade: f.grade ?? null, gender: f.gender ?? null,
+        mobile: f.mobile ?? null, mobileIsParent: f.mobileIsParent ?? false }));
+      const keep = new Set(this.flowRows.map((f) => `${f.flowId}:${f.personId}`));
+      for (const k of this.assigns.keys()) if (!keep.has(k)) this.assigns.delete(k);
     }
     this.mirror.set(kind, { kind, takenAt: meta.takenAt, consoleId: meta.consoleId, rowCount: rows.length, appliedAt: now });
     return { applied: true, rows: rows.length };
@@ -193,6 +199,13 @@ export class InMemoryLinkRepository implements ILinkRepository {
       }
       Object.assign(r, { studentId: c.studentId, match: c.match, updatedAt: now });
     }
+  }
+
+  async flowAssignments(): Promise<LinkFlowAssign[]> { return clone([...this.assigns.values()]); }
+  async setFlowAssign(a: { flowId: string; personId: string; leaderId: string | null; assignedBy: string }): Promise<void> {
+    const k = `${a.flowId}:${a.personId}`;
+    if (a.leaderId === null) this.assigns.delete(k);
+    else this.assigns.set(k, { flowId: a.flowId, personId: a.personId, leaderId: a.leaderId, assignedBy: a.assignedBy, assignedAt: this.nowIso() });
   }
 
   async addLog(rows: LinkLogRow[]): Promise<void> { // on conflict (id) do nothing

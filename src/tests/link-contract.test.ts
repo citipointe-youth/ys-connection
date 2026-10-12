@@ -141,3 +141,46 @@ describe('link contract: decisions 2026-10-12', () => {
     expect(C.REASONS).not.toContain('pick-service' as never);
   });
 });
+
+describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
+  it('LINK_REV is 2 and the contract version is still 1 (old fixtures above still parse)', () => {
+    expect(C.LINK_REV).toBe(2);
+    expect(C.LINK_CONTRACT_VERSION).toBe(1);
+  });
+  it('claim: linkRev is an optional int >= 1 both ways', () => {
+    expect(C.ClaimRequest.parse(load('claim-request.json')).linkRev).toBeUndefined();
+    expect(C.ClaimRequest.parse({ ...load('claim-request.json'), linkRev: 2 }).linkRev).toBe(2);
+    rejects(C.ClaimRequest, { ...load('claim-request.json'), linkRev: 0 });
+    rejects(C.ClaimRequest, { ...load('claim-request.json'), linkRev: 1.5 });
+    expect(C.ClaimResponse.parse({ ...load('claim-response.json'), linkRev: 2 }).linkRev).toBe(2);
+  });
+  it('T2: grade is 6..12 (a grade-6 roster row no longer rejects the whole push)', () => {
+    const roster = clone(load('push-roster.json'));
+    roster.rows[0].grade = 6;
+    expect(C.PUSH_SCHEMAS.roster.parse(roster).rows[0]!.grade).toBe(6);
+    roster.rows[0].grade = 5; rejects(C.PUSH_SCHEMAS.roster, roster);
+    roster.rows[0].grade = 13; rejects(C.PUSH_SCHEMAS.roster, roster);
+  });
+  it('T3: a checked-in item may carry firstName/lastName (<= 60), kept by the parse', () => {
+    const svc = clone(load('push-services.json'));
+    svc.rows[0].checkedIn[0] = { ...svc.rows[0].checkedIn[0], firstName: 'Jamie', lastName: 'Test' };
+    expect(C.PUSH_SCHEMAS.services.parse(svc).rows[0]!.checkedIn[0]).toMatchObject({ firstName: 'Jamie', lastName: 'Test' });
+    svc.rows[0].checkedIn[0].lastName = 'x'.repeat(61); rejects(C.PUSH_SCHEMAS.services, svc);
+  });
+  it('T8: a group may carry history, at most 8, each shaped like lastReport', () => {
+    const groups = clone(load('push-groups.json'));
+    const lr = groups.rows[0].lastReport;
+    groups.rows[0].history = [lr, { ...lr, reportId: '7e000000-0000-4000-8000-000000000009', date: '2026-10-05' }];
+    expect(C.PUSH_SCHEMAS.groups.parse(groups).rows[0]!.history).toHaveLength(2);
+    groups.rows[0].history = Array(9).fill(lr); rejects(C.PUSH_SCHEMAS.groups, groups);
+    groups.rows[0].history = [{ ...lr, editable: undefined }]; rejects(C.PUSH_SCHEMAS.groups, groups);
+  });
+  it('T4: a flow row may carry grade, gender, a bare-digit mobile and mobileIsParent', () => {
+    const flows = clone(load('push-flows.json'));
+    Object.assign(flows.rows[0], { grade: 6, gender: 'female', mobile: '0412345678', mobileIsParent: true });
+    expect(C.PUSH_SCHEMAS.flows.parse(flows).rows[0]).toMatchObject({ grade: 6, gender: 'female', mobile: '0412345678', mobileIsParent: true });
+    Object.assign(flows.rows[1], { grade: null, gender: null, mobile: null });
+    C.PUSH_SCHEMAS.flows.parse(flows);
+    flows.rows[0].mobile = '0412 345 678'; rejects(C.PUSH_SCHEMAS.flows, flows);
+  });
+});

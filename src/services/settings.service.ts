@@ -32,8 +32,6 @@ const SettingsPatchSchema = z.object({
 
 const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
 const SIMPLE_NEEDS_MSG = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
-const SIMPLE_G6_MSG = 'Junior/Senior logins only cover Years 7 to 12. Turn off Include Grade 6 first.';
-const SIMPLE_G6_ON_MSG = 'Junior/Senior logins only cover Years 7 to 12. Turn off Junior/Senior logins first.';
 const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
@@ -138,14 +136,11 @@ export function makeSettingsService(
         simpleOnNow = isOn;
         simpleFlip = wasOn !== isOn;
         if (isOn) {
-          // The rule: Simple logins needs the Complex cohort model and the Quad role, and no
-          // grade 6 (no quad bracket covers it). The message names the step that fixes it:
+          // The rule: Simple logins needs the Complex cohort model and the Quad role (grade 6 is
+          // junior since T13, so Include Grade 6 is fine). The message names the step that fixes it:
           // undo the change that broke a valid stored state, else fix the missing piece.
           const valid = (m: typeof cur) => m.structure.cohortModel === 'grades-quads' && m.roles.enabled.quad;
           if (!valid(merged)) throw new BadRequestError(wasOn && valid(cur) ? SIMPLE_ON_MSG : SIMPLE_NEEDS_MSG);
-          if (merged.structure.gradeMin < 7) {
-            throw new BadRequestError(wasOn && cur.structure.gradeMin >= 7 ? SIMPLE_G6_ON_MSG : SIMPLE_G6_MSG);
-          }
           merged.roles.enabled.grade = false;
           // Every active grade login is retired and listed (normally none while on).
           retire = (await users.findByRole('grade')).filter((u) => u.status === 'active');
