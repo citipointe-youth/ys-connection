@@ -2568,7 +2568,7 @@ request already succeeded). It now sits above `/* ── CA MODULE START ── 
 - Cleanup: P7 `_ikPast` inflector; P8 `_ikReasons` duplicates the console DETAIL; P12 six UUID regex copies in the console; P13 `ys-intake.js` re-derives the Brisbane day; P14 `REASONS = Object.keys(DETAIL)`; P15 `isLive` alias in `ys-link.js`.
 - UI: U15 member rows nest buttons inside `role=button` (Keep missing on a pending remove when add is off); U16 Add queues on one tap, `youthErr` has no Retry; U18 console `appAnswersLine` shows time only (add weekday).
 - Open from lanes: the real-DB V2 suite lacks `error_log` and the intake tables; the ">3 days old" intake warning needs a parseable date; the client rate limit is in-memory per instance; `LINK_SYNC_TOKEN` unset makes a `LINK_OFF` row increment each poll; a 503 can be up to 2 s slower when the DB is down; unknown person id retries `cannot-read`; form `at` not built.
-- Note: the review plan called for an SW bump to `ysc-v100`; `public/sw.js` on this branch still reads `ysc-v99`. Bump it before promote if installed copies must pick up the SPA changes.
+- SW cache: this branch bumps `ysc-v98` (live) to `ysc-v99` once for the whole batch; no further bump needed unless more SPA changes land after a release.
 
 ## UX batch (2026-10-12)
 
