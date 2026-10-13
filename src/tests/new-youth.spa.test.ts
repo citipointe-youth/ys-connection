@@ -78,7 +78,7 @@ function harness(post: (path: string, body: any, ms?: number) => Promise<any>, h
   const errEl = { scrollIntoView: (o: any) => scrolled.push(o) };
   const body = { host: hostName, firstName: 'A', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
   const ref: any = {};
-  const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null) };
+  const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null), querySelector: () => null };
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS',
     `let NY = ${FRESH};

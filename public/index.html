@@ -195,7 +195,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .la-never{color:var(--danger,#c0392b);font-weight:600}
 .el-row{border:1px solid var(--paper-dark,#ddd);border-radius:10px;margin-bottom:6px;background:#fff;padding:10px 12px}
 .el-row.ign{opacity:.6}
-.el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px}
+.el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px;width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;padding:0}
+.ny-err{font-size:13px;font-weight:400;text-transform:none;color:var(--danger);margin-top:4px}
+.bus-allsum{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .el-msg{flex:1;font-weight:600;font-size:14px}
 .el-new{background:#fde2e2;color:#a61b1b}
 .el-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
@@ -783,7 +785,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-lq-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;font-size:15px}
 .lk-lq-row[role=button]{cursor:pointer}
 .lk-lq-row.dis{color:var(--ink-faint)}
-.lk-mem>summary{cursor:pointer}
+.lk-mem>summary{cursor:pointer;padding:12px 2px;min-height:44px}
 .lk-box,.lk-box-sp{width:22px;height:22px;flex:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center}
 .lk-box{border:2px solid #b8c2d3}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -813,8 +815,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-log-row .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 /* T4 Intake */
-.ik-grey{opacity:.55}
-.ik-v{background:none;border:none;padding:0;font:inherit;font-weight:600;color:var(--accent);text-decoration:underline dotted;cursor:pointer;text-align:right}
+.ik-grey{background:var(--paper-dark,#eee);border-color:var(--paper-dark,#eee)}
+.ik-v{background:none;border:none;padding:10px 4px;min-height:44px;font:inherit;font-weight:600;color:var(--accent);text-decoration:underline dotted;cursor:pointer;text-align:right}
 .ik-role{font-size:12px;font-weight:700;color:var(--ink-mid);margin:8px 0 2px}
 .ik-step{font-size:14px;padding:3px 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .ik-step .ic-s{width:14px;height:14px}.ik-step.ok .ic-s{color:#047857}
@@ -1705,6 +1707,10 @@ function execUndo() {
   if (_undo.pending) { _undo.pending(); _undo.pending = null; }
 }
 
+// Enter/Space on a focused [role=button] clicks it (div-buttons are keyboard reachable).
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.getAttribute && e.target.getAttribute('role') === 'button') { e.preventDefault(); e.target.click(); }
+});
 // ── ESCAPE KEY CLOSES MODALS ──
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
@@ -6157,7 +6163,7 @@ function _elRowHtml(r, seenAt) {
   const cls = 'el-row' + (r.ignored ? ' ign' : '');
   const chips = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
     + `<span class="chip" style="background:var(--paper-dark,#eee)">×${Number(r.count) || 0}</span>`;
-  const top = `<div class="el-top" onclick="elFlag('${id}',{minimised:${!r.minimised}})"><span class="el-msg">${esc(r.message)}</span>${chips}</div>`;
+  const top = `<button type="button" class="el-top" aria-expanded="${!r.minimised}" onclick="elFlag('${id}',{minimised:${!r.minimised}})"><span class="el-msg">${esc(r.message)}</span>${chips}</button>`;
   const when = `<div class="la-meta">${esc(EL_CATS[r.category] || r.category)} · last ${esc(_laRelTime(r.lastSeen))}</div>`;
   if (r.minimised) return `<div class="${cls}">${top}${when}</div>`;
   return `<div class="${cls}">${top}${when}
@@ -6190,7 +6196,7 @@ function _elPaint() {
 async function _elLoad() {
   let d;
   try { d = await API.fresh('/admin/errors'); }
-  catch (e) { const el = document.getElementById('err-log'); if (el) el.innerHTML = `<div class="alert al-warn">${esc(e.message)}</div>`; return; }
+  catch (e) { const el = document.getElementById('err-log'); if (el) el.innerHTML = `<div class="alert al-warn">${esc(e.message)}</div><button class="btn btn-secondary btn-sm" onclick="_elLoad()">Try again</button>`; return; }
   try { _elSeenAt = Number(localStorage.getItem('yap_errlog_seen')) || 0; localStorage.setItem('yap_errlog_seen', String(Date.now())); } catch (e) {}
   _elRows = d.rows || [];
   _elPaint();
@@ -6201,6 +6207,7 @@ async function elFlag(id, flags) {
   try { await API.patch('/admin/errors/' + encodeURIComponent(id), flags); } catch (e) { toast(e.message); return; }
   const r = (_elRows || []).find(x => x.id === id);
   if (r) Object.assign(r, flags);
+  if (flags.ignored === true) toast('Ignored. Use Show ignored to undo.');
   _elPaint();
 }
 // Two-tap confirm (no native confirm() — matches the rest of the app).
@@ -6213,7 +6220,7 @@ async function elDelete(id) {
 }
 async function elDeleteAll() {
   const btn = document.getElementById('el-delall');
-  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, _elCat, true).length; return; }
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, _elCat, true).length + ' (' + (_elRows || []).filter(x => x.ignored && (!_elCat || x.category === _elCat)).length + " ignored). This can't be undone."; return; }
   let d;
   try { d = await API.del('/admin/errors' + (_elCat ? '?category=' + encodeURIComponent(_elCat) : '')); } catch (e) { toast(e.message); return; }
   _elRows = (_elRows || []).filter(x => _elCat && x.category !== _elCat);
@@ -9175,11 +9182,11 @@ function _nyFieldMsgs(p) {
   if (p.parentMobile && !toAuMobile(p.parentMobile)) m.block.parentMobile = 'Check the parent mobile: it should be 10 digits starting 04.';
   if (p.postcode && !/^\d{4}$/.test(p.postcode.trim())) m.block.postcode = 'Check the postcode: it should be 4 digits.';
   const same = (a, b) => a && b && tidyName(a).toLowerCase() === tidyName(b).toLowerCase();
-  if (same(p.firstName, p.parentFirst) && same(p.lastName, p.parentLast)) m.block.parentFirst = 'The parent name is the same as the student name. Check the parent name.';
+  if (same(p.firstName, p.parentFirst) && same(p.lastName, p.parentLast)) m.block.parentFirst = m.block.parentLast = 'The parent name is the same as the student name. Check the parent name.';
   if (!m.block.mobile && !m.block.parentMobile && p.mobile && p.parentMobile && toAuMobile(p.mobile) === toAuMobile(p.parentMobile)) m.warn.parentMobile = 'The parent mobile is the same as the student mobile. Is that right?';
   return m;
 }
-const NY_ERR_IDS = ['mobile', 'parentMobile', 'postcode', 'parentFirst'];
+const NY_ERR_IDS = ['mobile', 'parentMobile', 'postcode', 'parentFirst', 'parentLast'];
 function _nyRaw() {
   const g = (id) => ((document.getElementById('ny-' + id) || {}).value || '').trim();
   return { firstName: g('firstName'), lastName: g('lastName'), mobile: g('mobile'), parentFirst: g('parentFirst'), parentLast: g('parentLast'), parentMobile: g('parentMobile'), postcode: g('postcode') };
@@ -9245,7 +9252,7 @@ function renderNewYouth() {
   const k = NY.keep || {};
   const val = (id, d) => esc(k[id] != null ? k[id] : (d || ''));
   const ro = NY.sibling ? 'readonly' : '';
-  const input = (id, label, attrs) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><input class="fi" id="ny-${id}" value="${val(id)}" ${attrs || ''} onblur="_nyBlur(this)" aria-describedby="ny-${id}-err"><div class="fl" id="ny-${id}-err" role="alert" style="color:var(--danger)"></div></div>`;
+  const input = (id, label, attrs) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><input class="fi" id="ny-${id}" value="${val(id)}" ${attrs || ''} onblur="_nyBlur(this)" aria-describedby="ny-${id}-err"><div class="ny-err" id="ny-${id}-err" role="alert"></div></div>`;
   const sel = (id, label, opts) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><select class="fs" id="ny-${id}">${opts.map(([v, l]) => `<option value="${v}" ${k[id] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
   const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
   const addr = k.address || {};
@@ -9298,7 +9305,7 @@ async function nySend(ev, send) {
     ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
   if (need) { toast('Add the ' + need[1]); return; }
-  if (!send) { const bad = Object.values(_nyFieldMsgs({ ...p, postcode: p.address ? p.address.postcode : '' }).block)[0]; if (bad) { _nyShowMsgs(); toast(bad); return; } }
+  if (!send) { const bad = Object.values(_nyFieldMsgs({ ...p, postcode: p.address ? p.address.postcode : '' }).block)[0]; if (bad) { _nyShowMsgs(); toast(bad); const f = document.querySelector('[aria-invalid="true"]'); if (f) { f.focus(); if (f.scrollIntoView) f.scrollIntoView({ block: 'center' }); } return; } }
   // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
@@ -11078,7 +11085,7 @@ function _ikFresh() {
   try { if (localStorage.getItem('ysc.intakeTab') === 'consent') tab = 'consent'; } catch (e) {}
   return { tab, head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
     ans: {}, keepMem: {}, resend: {}, debT: null, busy: false, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
-    sheet: null, hideText: null };
+    sheet: null, hideText: null, pendingDraw: false, helpOpen: false };
 }
 function _ik() { if (!LINK.ik) LINK.ik = _ikFresh(); return LINK.ik; }
 // The module switch for this login (admin + On). The page itself also needs a console at link rev 4 (_intakeOn).
@@ -11163,6 +11170,7 @@ function _ikAlone(d) {
 // Why Save is off ('' = it is on). det = GET /link/intake/row; list = the date (stale); st = the console status.
 function _ikSaveBlock(det, list, st) {
   if (_ikRev(st) < 4) return _ikOldConsole();
+  { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
   if (!det || !det.detail) return det && det.unreadable ? 'Unreadable: refresh' : 'Nothing to save.';
   const row = det.row || {}, acts = det.actions || [];
   if (row.status === 'done') return 'Done.';
@@ -11176,6 +11184,7 @@ function _ikSaveBlock(det, list, st) {
 // The parent text has the same gates, minus the needs-you and the steps (it is sent after the Save).
 function _ikTextBlock(det, list, st) {
   if (_ikRev(st) < 4) return _ikOldConsole();
+  { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
   if (!list || !list.takenAt || list.stale) return 'Plan is over 2 hours old. Refresh first.';
   const acts = (det && det.actions) || [];
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
@@ -11321,8 +11330,8 @@ async function _ikAnswerSend(undo) {
       if (undo) { a.fixes = {}; a.keeps = {}; I.keepMem[key] = {}; }
       _ikLocal(key, { id, type: 'intakeAnswer', status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
     } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; toast('Still updating the plan. Your change goes next.'); }
-    else toast((r && r.message) || 'Not sent. Try again.');
-  } catch (e) { if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
+    else { if (!(r && r.message)) I.resend[key] = true; toast((r && r.message) || 'Not sent. Try again.'); }
+  } catch (e) { I.resend[key] = true; if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
   finally { I.busy = false; }
   if (_ik() !== I) return;
   _ikDraw(); _ikSchedule();
@@ -11365,7 +11374,7 @@ function _ikKeep(fi, ii) {
   I.keepMem[key][is.keep.field] = is.keep.value;
   _ikAnswerSend(false);
 }
-function _ikUndo() { _ikAnswerSend(true); }
+async function _ikUndo() { if (await _lkAsk('Undo all your changes for this family?', 'Undo', 'Keep', 'Undo changes')) _ikAnswerSend(true); }
 function _ikFieldLabel(k) {
   return { first: 'First', last: 'Last', birthday: 'DOB', mobile: 'Mobile', parentName: 'Parent', parentPhone: 'Parent phone', school: 'School', grade: 'Grade', gender: 'Gender' }[k] || k;
 }
@@ -11377,7 +11386,7 @@ function _ikFix(fi, ki) {
   const mine = (_ikAns().fixes[f.subId] || {})[k];
   const cur = mine != null ? mine : f.edits && f.edits[k] != null ? f.edits[k] : f.caps && f.caps[k] != null ? f.caps[k] : (f.values || {})[k] || '';
   modal(`<div class="mo-title">Fix ${esc(_ikFieldLabel(k))}</div><p class="lk-sub">As sent: ${esc((f.values || {})[k] || '')}</p>
-    <input class="fi" id="ik-fix" maxlength="80" autocomplete="off" value="${esc(cur)}" oninput="_ikFixType(this.value)">
+    <input class="fi" id="ik-fix" maxlength="80" autocomplete="off" autofocus onkeydown="if(event.key==='Enter'){event.preventDefault();_ikFixDone()}" value="${esc(cur)}" oninput="_ikFixType(this.value)">
     <div class="lk-acts lk-mt"><button type="button" class="btn btn-primary" onclick="_ikFixDone()">Done</button></div>`);
 }
 function _ikFixType(v) {
@@ -11393,7 +11402,7 @@ function _ikFixDone() { const I = _ik(); closeModal(); I.fix = null; if (I.debT)
 
 // ── Save, one step, the parent text, a consent save: each its own confirm sheet, each its own outbox row. ──
 function _ikSheetHtml(title, steps, foot, go) {
-  return `<div class="mo-title">${esc(title)}</div>` + steps.map((s) => `<div class="ik-step"><span class="lk-box on">${icS('tick')}</span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
+  return `<div class="mo-title">${esc(title)}</div>` + steps.map((s) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
     + (foot ? `<p class="lk-sub lk-mt">${esc(foot)}</p>` : '')
     + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">${esc(go)}</button></div>`;
 }
@@ -11420,6 +11429,7 @@ function _ikTextOpen() {
     <p class="lk-sub">${esc('Mobile ends in ' + sms.last3 + ". Elvanto sends it. It can't be recalled.")}</p>
     <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">Send the text</button></div>`);
 }
+function _ikTextShow() { _ik().hideText = null; _ikDraw(); }
 function _ikTextHide() { const I = _ik(); I.hideText = I.det && I.det.row ? I.det.row.key : null; _ikDraw(); }
 // The step keys go verbatim as shown when the sheet opened (the console refuses a plan that moved since).
 async function _ikSheetGo() {
@@ -11446,12 +11456,17 @@ async function _ikSheetGo() {
 // ── Pages ──
 async function renderLinkIntake() {
   const I = _ik();
-  setApp(shell(`<div class="ph"><h1>Intake</h1></div><div id="ik-page">${_ikPageHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>Intake</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await _ikLoad(!!I.dates);
 }
 function _ikDraw() {
-  try { const el = document.getElementById('ik-page'); if (el && S.page === 'link-intake') el.innerHTML = _ikPageHtml(); } catch (e) {}
+  try {
+    const el = document.getElementById('ik-page'), a = document.activeElement;
+    if (el && a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) && a.type !== 'checkbox' && a.type !== 'radio' && el.contains(a)) { _ik().pendingDraw = true; return; }
+    _ik().pendingDraw = false;
+    if (el && S.page === 'link-intake') el.innerHTML = _ikPageHtml(); } catch (e) {}
 }
+function _ikFocusOut() { setTimeout(() => { if (_ik().pendingDraw) _ikDraw(); }, 0); }
 function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
   if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>`;
@@ -11492,7 +11507,7 @@ function _ikRowsHtml(list, st, open) {
 }
 function _ikDoneToggle(open) { _ik().doneOpen = !!open; }
 function _ikConsentHelp() {
-  return `<details class="lk-done"><summary>What counts as consent ${icS('chevd')}</summary><div class="card lk-d">`
+  return `<details class="lk-done"${_ik().helpOpen ? ' open' : ''} ontoggle="_ik().helpOpen = this.open"><summary>What counts as consent ${icS('chevd')}</summary><div class="card lk-d">`
     + [`For students whose first form was the Friday before, the parent's reply is form 3 ("Brisbane - Youth - 3.").`,
       `A reply in the window (that Friday 00:00 to this Friday 12:00, Brisbane) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
       'A reply without the opt-out is Contact allowed: approve the form and complete step 0.',
@@ -11587,7 +11602,7 @@ function _ikTextCardHtml(t, d, block, now) {
   return `<div class="card ik-text"><div class="lk-svc-t">${esc('Text ' + sms.name + ' now?')}</div>${_ikKv('Parent', esc(sms.name))}${_ikKv('Mobile', esc('ends in ' + sms.last3))}`
     + (days > 3 ? _ikKv('Warning', esc('Form is ' + days + ' days old')) : '')
     + `<p class="lk-sub lk-mt">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` + (block ? `<div class="lk-d">${esc(block)}</div>` : '')
-    + `<div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_ikTextHide()">Cancel</button><button type="button" class="btn btn-primary"${block ? ' disabled' : ''} onclick="_ikTextOpen()">Send the text</button></div></div>`;
+    + `<div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_ikTextHide()">Not now</button><button type="button" class="btn btn-primary"${block ? ' disabled' : ''} onclick="_ikTextOpen()">Send the text</button></div></div>`;
 }
 function _ikSaveHtml(det, list, st, label) {
   const why = _ikSaveBlock(det, list, st);
@@ -11600,7 +11615,7 @@ function _ikFamilyHtml(det, list, st, a) {
   if (!d) return _ikHead(det, st, null) + '<div class="lk-hint">Done. Nothing more to save.</div>' + _ikResultHtml(_ikAct(acts), null, st);
   const ans = _ikOpenOf(acts, ['intakeAnswer']);
   const save = acts.find((x) => (x.type === 'intakeSave' || x.type === 'intakeText') && x.status !== 'cancelled') || null;
-  const t = det.row && _ik().hideText === det.row.key ? null : _ikShowText(d, acts);
+  const hid = !!(det.row && _ik().hideText === det.row.key), t = hid ? null : _ikShowText(d, acts);
   const alone = _ikAlone(d), tb = _ikTextBlock(det, list, st);
   const mine = Object.keys(a.fixes || {}).some((s) => Object.keys(a.fixes[s] || {}).length) || Object.keys(a.keeps || {}).length;
   return _ikHead(det, st, d) + (ans ? `<div class="lk-alert practice">${icS('info')}<div>Updating plan…</div></div>` : '')
@@ -11609,7 +11624,7 @@ function _ikFamilyHtml(det, list, st, a) {
     + `<div class="lk-sec">What Save does</div><div class="card">${_ikStepsHtml(d)}${_ikSaveHtml(det, list, st, 'Save to Elvanto')}`
     + alone.map((s, i) => `<button type="button" class="btn btn-secondary btn-sm lk-mt"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text)}</button>`).join(' ')
     + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
-    + (t ? _ikTextCardHtml(t, d, tb) : '');
+    + (t ? _ikTextCardHtml(t, d, tb) : hid && _ikShowText(d, acts) ? '<button type="button" class="ik-v" onclick="_ikTextShow()">Text the parent</button>' : '');
 }
 // The consent outcome (§7.4): the form's date and outcome, the steps, Save to Elvanto (consentSave).
 function _ikConsentHtml(det, list, st) {
@@ -11846,7 +11861,7 @@ async function renderBus() {
 function _busAllCarsSection() {
   const n = BUS.carsOpen && BUS.cars ? ` (${esc(String(BUS.cars.cars.length))})` : '';
   return `<details class="bus-allcars" style="margin-top:14px"${BUS.carsOpen ? ' open' : ''} ontoggle="busCarsToggle(this.open)">
-    <summary class="card-title" style="cursor:pointer">All cars${n}</summary>${BUS.carsOpen ? _busAllCarsHtml() : ''}</details>`;
+    <summary class="card-title bus-allsum">All cars${n}</summary>${BUS.carsOpen ? _busAllCarsHtml() : ''}</details>`;
 }
 function busCarsToggle(open) {
   if (open === !!BUS.carsOpen) return;
