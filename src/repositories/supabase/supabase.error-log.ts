@@ -13,12 +13,13 @@ export class SupabaseErrorLogRepository implements IErrorLogRepository {
 
   async record(e: ErrorLogEntry, setCount?: number): Promise<void> {
     const set = setCount ?? null;
+    const n = e.n ?? 1;
     await this.sql`
       insert into error_log (id, category, code, route, status, message, count, first_seen, last_seen, last_role)
-      values (${e.id}, ${e.category}, ${e.code}, ${e.route}, ${e.status}, ${e.message}, ${set ?? 1}, ${e.at}, ${e.at}, ${e.role})
+      values (${e.id}, ${e.category}, ${e.code}, ${e.route}, ${e.status}, ${e.message}, ${set ?? n}, ${e.at}, ${e.at}, ${e.role})
       on conflict (id) do update set
-        count = coalesce(${set}::int, error_log.count + 1),
-        last_seen = case when coalesce(${set}::int, error_log.count + 1) = error_log.count then error_log.last_seen
+        count = coalesce(${set}::int, error_log.count + ${n}::int),
+        last_seen = case when coalesce(${set}::int, error_log.count + ${n}::int) = error_log.count then error_log.last_seen
                          else excluded.last_seen end,
         last_role = coalesce(excluded.last_role, error_log.last_role),
         message = excluded.message`;

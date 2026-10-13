@@ -246,6 +246,13 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
     rejects(C.ClaimResponse, { ...r, intake: { ...r.intake, mode: 'shadow' } });
     rejects(C.ClaimResponse, { ...r, intake: { ...r.intake, refresh: Array(5).fill(r.intake!.refresh[0]) } });
   });
+  it('review fixes: a Suburb diff entry must be blank; row keys are unique within a push (400, not a 500)', () => {
+    const sub = JSON.parse(JSON.stringify(PI()).replace('"label":"Suburb","a":""', '"label":"Suburb","a":"Carindale"'));
+    expect(JSON.stringify(sub)).toContain('Carindale');
+    rejects(C.PUSH_SCHEMAS.intakePlan, sub);
+    const dupI = PI(); dupI.rows.push(clone(dupI.rows[0])); rejects(C.PUSH_SCHEMAS.intakePlan, dupI);
+    const dupC = clone(load('push-consent.json')); dupC.rows.push(clone(dupC.rows[0])); rejects(C.PUSH_SCHEMAS.consentPlan, dupC);
+  });
   it('intake push: strict, no suburb / address / email anywhere (an unknown key rejects the push)', () => {
     const raw = readFileSync(join(DIR, 'push-intake.json'), 'utf8') + readFileSync(join(DIR, 'push-consent.json'), 'utf8');
     expect(raw).not.toMatch(/suburb"\s*:|address|email/i);

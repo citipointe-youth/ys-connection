@@ -23,6 +23,8 @@ const CLIENT_REPORT_WINDOW_MS = 10 * 60 * 1000;
 
 export interface ErrorReport {
   category: ErrorCategory; code: string; route: string; status?: number | null; role?: string | null;
+  /** Occurrences to add (default 1): a batch of identical errors is one write. */
+  count?: number;
 }
 
 /** Keeps only safe characters, then truncates. Never trusts a caller's length. */
@@ -54,6 +56,7 @@ const MESSAGES: Record<string, string> = {
   'too-old': 'Expired before the console ran it',
   'lease-lost': 'The console stopped answering mid-send',
   'note-unreadable': 'The stored note could not be read',
+  'intake-unreadable': 'A stored intake plan could not be decrypted',
   'pending-24h': 'Waiting more than 24 hours (is the console offline?)',
   NETWORK: 'Request failed: no connection',
 };
@@ -64,6 +67,12 @@ export function messageFor(category: ErrorCategory, code: string, status: number
   if (category === 'client') return code.startsWith('JS_') ? 'Page error' : `Request failed${status ? ` (${status})` : ''}`;
   return `Server error${status ? ` (${status})` : ''}`;
 }
+
+/** Codes a client report may carry (server error codes + the fixed ones above). Anything else becomes HTTP_<status>. */
+const KNOWN_CODES = new Set([...Object.keys(MESSAGES).filter((k) => /^[A-Z]/.test(k)), 'BAD_REQUEST', 'CONFLICT', 'FORBIDDEN',
+  'INTAKE_STALE', 'LINK_CONTRACT_MISMATCH', 'LINK_DUPLICATE', 'LINK_EDIT_IN_ELVANTO', 'LINK_ID_REUSED', 'LINK_NOT_YOURS', 'LINK_STALE',
+  'LINK_STILL_SENDING', 'LINK_TOO_LATE', 'LINK_TOO_OLD', 'LINK_UNAVAILABLE', 'MODULE_DISABLED', 'MUST_CHANGE_PASSWORD', 'NOT_FOUND',
+  'RATE_LIMITED', 'ROUTING_BAD_ADDRESS', 'ROUTING_FAILED', 'SETTINGS_CHANGED', 'SETUP_INCOMPLETE', 'UNAUTHORIZED', 'VALIDATION_ERROR']);
 
 const ClientReport = z.object({
   kind: z.enum(['js', 'api']),
@@ -85,6 +94,8 @@ export interface ErrorLogDeps {
 export function makeErrorLogService(d: ErrorLogDeps) {
   const now = d.now ?? (() => new Date());
   const limiter = new RateLimiter(CLIENT_REPORT_MAX, CLIENT_REPORT_WINDOW_MS);
+  // The router table's "METHOD /path" patterns, normalised (set by buildRoutes). Empty = every client route reads as 'page'.
+  let knownRoutes = new Set<string>();
 
   /**
    * THE helper other server code calls to log an error. Never throws and never waits more than 2 s.
@@ -97,7 +108,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       const status = typeof r.status === 'number' ? r.status : null;
       const id = createHash('sha256').update(`${r.category}|${code}|${route}|${status ?? ''}`).digest('hex').slice(0, 32);
       const write = d.repo.record({ id, category: r.category, code, route, status, message: messageFor(r.category, code, status),
-        role: r.role ? clean(r.role, 20) : null, at: now().toISOString() }, setCount);
+        role: r.role ? clean(r.role, 20) : null, at: now().toISOString(), n: r.count }, setCount);
       await Promise.race([write, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), RECORD_TIMEOUT_MS).unref?.())]);
     } catch (e) {
       logger.warn('could not record', { category: r.category, code: r.code, err: e instanceof Error ? e.name : 'unknown' });
@@ -118,6 +129,11 @@ export function makeErrorLogService(d: ErrorLogDeps) {
   return {
     record,
 
+    /** Route patterns ("GET /students/:id") the SPA may report; anything else is stored as 'page'. */
+    setKnownRoutes(patterns: string[]): void {
+      knownRoutes = new Set(patterns.map((p) => normaliseRoute(p.replace(/:w+/g, ':id'))));
+    },
+
     /** POST from the logged-in SPA: window errors and failed API calls. Over the per-login limit it is dropped quietly. */
     async reportClient(actor: Actor, body: unknown): Promise<{ ok: boolean }> {
       if (limiter.isBlocked(actor.id)) return { ok: false };
@@ -125,8 +141,9 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       // Only shapes that cannot carry free text: an error class name, a server code, "line N:N" / "promise", a route.
       const code = b.kind === 'js'
         ? 'JS_' + (/^[A-Za-z]{1,40}/.exec(b.code)?.[0] ?? 'Error')
-        : (/^[A-Z][A-Z0-9_]{0,39}$/.test(b.code) ? b.code : '') || (b.status ? `HTTP_${b.status}` : 'NETWORK');
-      const route = b.kind === 'api' ? normaliseRoute(clean(b.route.split(/[?#]/)[0], 200))
+        : KNOWN_CODES.has(b.code) ? b.code : b.status ? `HTTP_${b.status}` : b.code ? 'CLIENT_ERROR' : 'NETWORK';
+      const apiRoute = normaliseRoute(clean(b.route.split(/[?#]/)[0], 200));
+      const route = b.kind === 'api' ? (knownRoutes.has(apiRoute) ? apiRoute : 'page')
         : /^(line \d{1,7}:\d{1,7}|promise)$/.test(b.route) ? b.route : 'page';
       await record({ category: 'client', code, route, status: b.status || null, role: actor.role });
       return { ok: true };

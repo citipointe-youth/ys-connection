@@ -2,7 +2,7 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { ClaimRequest, LINK_CONTRACT_VERSION, LINK_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ClaimArgs, MirrorKind, PushKind, ResultReply } from '../core/link-types';
@@ -47,16 +47,26 @@ export function makeSyncService(d: SyncDeps) {
       const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
         && (m.intakeAdmin ?? 'off') === 'off' ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
+      // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
+      const capabilities = { ...req.capabilities };
+      if ((m.intakeAdmin ?? 'off') === 'off') for (const t of INTAKE_TYPES) delete capabilities[t];
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,
-          capabilities: req.capabilities, linkRev: req.linkRev ?? 1 },
+          capabilities, linkRev: req.linkRev ?? 1 },
         max, leaseSeconds: req.leaseSeconds, cutoffDays: LINK_CUTOFF_DAYS, leaseLostMs: LEASE_LOST_MS, swept,
       });
       const ok = claimed.filter((c) => !c.noteUnreadable); // the repo already stored those as refused
       if (d.errorLog) {
-        for (const s of swept) await d.errorLog.record({ category: 'link', code: s.reason, route: s.type, role: 'console' });
-        for (const c of claimed) if (c.noteUnreadable) await d.errorLog.record({ category: 'link', code: 'note-unreadable', route: c.row.type, role: 'console' });
+        // One write per (type, reason) with its count, all in parallel: a bounded batch, not one awaited write per row.
+        const groups = new Map<string, { code: string; route: string; count: number }>();
+        const add = (code: string, route: string) => {
+          const g = groups.get(`${route}|${code}`);
+          if (g) g.count++; else groups.set(`${route}|${code}`, { code, route, count: 1 });
+        };
+        for (const s of swept) add(s.reason, s.type);
+        for (const c of claimed) if (c.noteUnreadable) add('note-unreadable', c.row.type);
+        await Promise.all([...groups.values()].map((g) => d.errorLog!.record({ category: 'link', ...g, role: 'console' })));
       }
       const logins = new Map<string, string>();
       for (const id of new Set(ok.map((c) => c.row.createdBy))) {

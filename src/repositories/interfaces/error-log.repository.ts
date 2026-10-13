@@ -9,6 +9,8 @@ export interface ErrorLogRow {
 /** One occurrence. `id` is the fingerprint hash; `at` an ISO instant. */
 export type ErrorLogEntry = Pick<ErrorLogRow, 'id' | 'category' | 'code' | 'route' | 'status' | 'message'> & {
   role: string | null; at: string;
+  /** Occurrences this write adds (default 1). */
+  n?: number;
 };
 
 export interface IErrorLogRepository {

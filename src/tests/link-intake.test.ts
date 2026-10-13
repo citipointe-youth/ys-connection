@@ -187,7 +187,7 @@ describe('link_outbox: intake expiry and purge', () => {
     await h.sync.claim({ ...fx('claim-request.json'), max: 0 });
     expect((await h.link.getAction(r.id))!).toMatchObject({ status: 'refused', reason: 'too-old', hasNote: false });
     expect((await h.link.getAction(other))!.status).toBe('pending');
-    expect(h.errorLog.record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'intakeAnswer', role: 'console' });
+    expect(h.errorLog.record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'intakeAnswer', role: 'console', count: 1 });
     h.clock.now = new Date(NOW.getTime() + 15 * 86_400_000);
     await h.sync.claim({ ...fx('claim-request.json'), max: 0 });
     expect(await h.link.getAction(r.id)).toBeNull();
@@ -332,13 +332,47 @@ describe('sync: intake hint, pushes, results', () => {
     reply = await h.sync.claim(CLAIM4({ max: 0 }));
     expect(reply.intake!.hurry).toBe(true);
   });
-  it('module Off: hint mode off, the intake tables cleared, a push not stored, nothing leased by the intake switch alone', async () => {
+  it('module Off: hint mode off, the Off save clears the intake tables, a push not stored, nothing leased by the intake switch alone', async () => {
     const h = await setup();
+    const users = new InMemoryUserRepository(); const audit = new InMemoryAuditRepository();
+    for (const r of [users, audit]) await r.init();
+    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
     await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
       modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off' } } } as never);
     expect((await h.sync.claim({ ...fx('claim-request.json'), linkRev: 4 })).intake).toEqual({ mode: 'off', hurry: false, refresh: [] });
     expect(await h.intakeRepo.dates()).toEqual([]);
     expect(await h.sync.push('intakePlan', { ...fx('push-intake.json'), takenAt: '2026-10-16T09:49:00.000Z' })).toEqual({ applied: false });
+  });
+  it('review fix: intake Off with other link screens on never leases a queued intake row (an intakeText SMS is irreversible)', async () => {
+    const h = await setup();
+    const r = await one(h, act('intakeAnswer', answerP(), NOTE));
+    expect(r.outcome).toBe('saved');
+    await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
+      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'off', checkin: 'on' } } } as never);
+    expect((await h.sync.claim(CLAIM4({ max: 10 }))).rows).toEqual([]);
+    expect((await h.link.getAction(r.id))!.status).toBe('pending');
+  });
+  it('review fix: the Off save cancels intake rows nobody has leased yet, and only those', async () => {
+    const h = await setup();
+    const r = await one(h, act('intakeAnswer', answerP(), NOTE));
+    const users = new InMemoryUserRepository(); const audit = new InMemoryAuditRepository();
+    for (const x of [users, audit]) await x.init();
+    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
+    expect((await h.link.getAction(r.id))!.status).toBe('cancelled');
+  });
+  it('review fix: the claim hint clears nothing while Off and purges at most hourly while On', async () => {
+    const h = await setup();
+    const purge = vi.spyOn(h.intakeRepo, 'purge'); const clear = vi.spyOn(h.intakeRepo, 'clear');
+    await h.sync.claim(CLAIM4()); await h.sync.claim(CLAIM4());
+    expect(purge).toHaveBeenCalledTimes(1);
+    h.clock.now = new Date(NOW.getTime() + 61 * 60_000);
+    await h.sync.claim(CLAIM4());
+    expect(purge).toHaveBeenCalledTimes(2);
+    await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
+      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'off' } } } as never);
+    await h.sync.claim(CLAIM4()); await h.sync.claim(CLAIM4());
+    expect(clear).not.toHaveBeenCalled();
+    expect(await h.intakeRepo.dates()).not.toEqual([]);
   });
   it('a push with a bad row is a 400 for the whole push (strict whitelist)', async () => {
     const h = await setup({ push: false });

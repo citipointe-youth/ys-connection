@@ -101,6 +101,8 @@ export interface IntakeServiceDeps {
 export function makeIntakeService(d: IntakeServiceDeps) {
   const clock = d.now ?? (() => new Date());
   const gate = async (actor: Actor) => { const s = await d.settings.getSettings(); intakeGate(actor, s); return s; };
+  // ponytail: per instance (serverless), so at worst one purge per warm instance per hour; a DB-side schedule if that bites.
+  let lastPurge = 0;
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>
     (await d.link.listActions({ types: [...INTAKE_TYPES], serviceDateFrom: date, serviceDateTo: date }))
@@ -156,13 +158,19 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       return { asked: await d.intake.askRefresh(f.mode, f.date) };
     },
 
-    /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge; Off clears all. */
+    /** Module turned Off (settings save): drop every stored plan and cancel the intake rows nobody has leased yet. */
+    async off(): Promise<void> {
+      await d.intake.clear();
+      for (const r of await d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] })) await d.link.cancelPending(r.id);
+    },
+
+    /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
     async hint(settings: AppSettings): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
-      if (mode === 'off') { await d.intake.clear(); return { mode, hurry: false, refresh: [] }; }
+      if (mode === 'off') return { mode, hurry: false, refresh: [] };
       const today = brisbaneToday(t);
-      await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS));
+      if (t.getTime() - lastPurge >= 3_600_000) { lastPurge = t.getTime(); await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS)); }
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = pending.length > 0 || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);

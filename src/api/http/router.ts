@@ -60,7 +60,7 @@ export function buildRoutes(services: Services): Route[] {
   const linkCtl = makeLinkController({ link: services.link, intake: services.intake });
   const syncCtl = makeSyncController({ sync: services.sync });
 
-  return [
+  const routes: Route[] = [
     // ----- Batch (compose several read endpoints into one request; see batch.controller) -----
     { method: 'GET', path: '/batch', auth: true, handler: (r) => batch.get(r) },
 
@@ -243,4 +243,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/sync/result',             auth: false, sync: true, handler: (r) => syncCtl.result(r) },
     { method: 'POST',   path: '/sync/push/:kind',         auth: false, sync: true, handler: (r) => syncCtl.push(r) },
   ];
+  services.errorLog.setKnownRoutes(routes.map((r) => `${r.method} ${r.path}`));
+  return routes;
 }

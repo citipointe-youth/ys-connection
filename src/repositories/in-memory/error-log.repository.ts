@@ -8,10 +8,10 @@ export class InMemoryErrorLogRepository implements IErrorLogRepository {
     const old = this.rows.get(e.id);
     if (!old) {
       this.rows.set(e.id, { id: e.id, category: e.category, code: e.code, route: e.route, status: e.status, message: e.message,
-        count: setCount ?? 1, firstSeen: e.at, lastSeen: e.at, lastRole: e.role, minimised: false, ignored: false });
+        count: setCount ?? e.n ?? 1, firstSeen: e.at, lastSeen: e.at, lastRole: e.role, minimised: false, ignored: false });
       return;
     }
-    const count = setCount ?? old.count + 1;
+    const count = setCount ?? old.count + (e.n ?? 1);
     if (count !== old.count) old.lastSeen = e.at;
     Object.assign(old, { count, lastRole: e.role ?? old.lastRole, message: e.message });
   }

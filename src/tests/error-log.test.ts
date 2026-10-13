@@ -115,6 +115,7 @@ describe('error-log.service', () => {
 
   it('client reports: sanitised, fixed message, query stripped, ids folded; never the raw text', async () => {
     const { svc } = mk();
+    svc.setKnownRoutes(['GET /students/:id', 'POST /link/batch']);
     await svc.reportClient(grade, { kind: 'api', code: 'INTERNAL_ERROR', route: 'GET /students/9e0a-11?q=Sam Smith', status: 500 });
     await svc.reportClient(grade, { kind: 'js', code: 'TypeError: Sam Smith 0412345678', route: 'line 12:3' });
     await svc.reportClient(grade, { kind: 'api', code: '', route: 'POST /link/batch', status: 0 });
@@ -125,6 +126,25 @@ describe('error-log.service', () => {
       ['INTERNAL_ERROR', 'GET /students/:id'], ['JS_TypeError', 'line 12:3'], ['NETWORK', 'POST /link/batch']].sort());
     expect(rows.every((r) => r.category === 'client' && r.lastRole === 'grade')).toBe(true);
     await expect(svc.reportClient(grade, { kind: 'evil' })).rejects.toBeTruthy();
+  });
+
+  it('review fix: a client route outside the router table and a code outside the known set never reach the log as text', async () => {
+    const { svc } = mk();
+    svc.setKnownRoutes(['GET /students/:id']);
+    await svc.reportClient(grade, { kind: 'api', code: 'SAM_SMITH_0412345678', route: 'GET /Sam-Smith-secret', status: 500 });
+    await svc.reportClient(grade, { kind: 'api', code: 'SAM_SMITH_0412345678', route: 'GET /students/7', status: 0 });
+    const rows = (await svc.list(admin)).rows;
+    expect(JSON.stringify(rows)).not.toMatch(/Sam|SAM|0412|secret/i);
+    expect(rows.map((r) => [r.code, r.route]).sort()).toEqual([['CLIENT_ERROR', 'GET /students/:id'], ['HTTP_500', 'page']].sort());
+  });
+  it('review fix: intake-unreadable has a fixed message, not the console-refusal text', () => {
+    expect(messageFor('link', 'intake-unreadable', null)).toBe('A stored intake plan could not be decrypted');
+  });
+  it('record adds its count in one write', async () => {
+    const { svc } = mk();
+    await svc.record({ category: 'link', code: 'too-old', route: 'checkIn', count: 3 });
+    await svc.record({ category: 'link', code: 'too-old', route: 'checkIn', count: 2 });
+    expect((await svc.list(admin)).rows[0]!.count).toBe(5);
   });
 
   it(`client reports are rate-limited per login (${CLIENT_REPORT_MAX} per window), quietly`, async () => {
@@ -187,7 +207,13 @@ describe('capture: sync claim + result', () => {
     const { link, svc, record } = await setup();
     link._backdate('link_outbox', id(1), 'created_at', new Date(Date.now() - 4 * DAY).toISOString());
     await svc.claim(claimReq);
-    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'checkIn', role: 'console' });
+    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 1 });
+  });
+  it('review fix: swept rows are written once per (type, reason) with their count, not one write per row', async () => {
+    const { link, svc, record } = await setup();
+    for (const n of [1, 2, 3]) link._backdate('link_outbox', id(n), 'created_at', new Date(Date.now() - 4 * DAY).toISOString());
+    await svc.claim(claimReq);
+    expect(record.mock.calls).toEqual([[{ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 3 }]]);
   });
 
   it('refused and unclear results are recorded once each; sent is not', async () => {
@@ -217,7 +243,7 @@ describe('capture: sync claim + result', () => {
     }
     link._backdate('link_outbox', id(8), 'created_at', new Date(Date.now() - 4 * DAY).toISOString());
     await svc.claim({ ...claimReq, max: 9, capabilities: { ...claimReq.capabilities, addGroupMember: 'live', removeGroupMember: 'live' } });
-    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'removeGroupMember', role: 'console' });
+    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'removeGroupMember', role: 'console', count: 1 });
     record.mockClear();
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: id(7), outcome: 'refused', reason: 'person-unknown' }] });
     expect(record).toHaveBeenCalledWith({ category: 'link', code: 'person-unknown', route: 'addGroupMember', role: 'console' });

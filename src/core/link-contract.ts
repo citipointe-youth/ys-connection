@@ -189,7 +189,9 @@ const Form = z.object({ subId: Uuid, status: z.enum(['pending', 'approved']), wh
   edits: FixMap, caps: FixMap, editable: z.array(FixKey).max(6),
   issues: z.array(z.object({ key: FixKey, msg: Cut(80), suggest: Cut(80), advisory: z.boolean(),
     keep: z.object({ field: z.enum(['parentName', 'parentPhone']), value: Cut(200) }).strict().nullable() }).strict()).max(20) }).strict();
-const Diff = z.object({ label: Cut(40), a: Cut(80), b: Cut(80) }).strict();
+// Spec: a Suburb entry names the field only; its values stay blank (a suburb is an address part, never pushed).
+const Diff = z.object({ label: Cut(40), a: Cut(80), b: Cut(80) }).strict()
+  .refine((d) => d.label !== 'Suburb' || (d.a === '' && d.b === ''), 'a Suburb entry has blank values');
 const VerdictWord = z.enum(['same', 'new', 'unsure', 'different']);
 const Choice = z.union([Uuid, z.enum(['same', 'new'])]);
 const Verdict = z.object({ role: Role, subId: Uuid, verdict: VerdictWord, chosen: Choice.nullable(), options: z.array(Choice).max(7),
@@ -221,9 +223,12 @@ export const ConsentRow = z.object({ key: Uuid, status: PlanStatus, title: Cut(1
   profiles: z.object({ student: Profile.nullable() }).strict(),
   steps: z.array(Step).max(4), links: Links }).strict();
 const intakeEnvelope = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, date: Ymd, cut: z.boolean() };
+const uniqueKeys = (p: { rows: { key: string }[] }) => new Set(p.rows.map((r) => r.key)).size === p.rows.length;
+const UNIQUE = 'row keys must be unique within a push';
 export const IntakePush = z.object({ ...intakeEnvelope,
-  inputs: z.object({ from: z.enum(['console', 'app']), at: Iso }).strict().nullable(), rows: z.array(IntakeRow).max(100) });
-export const ConsentPush = z.object({ ...intakeEnvelope, rows: z.array(ConsentRow).max(100) });
+  inputs: z.object({ from: z.enum(['console', 'app']), at: Iso }).strict().nullable(), rows: z.array(IntakeRow).max(100) })
+  .refine(uniqueKeys, UNIQUE);
+export const ConsentPush = z.object({ ...intakeEnvelope, rows: z.array(ConsentRow).max(100) }).refine(uniqueKeys, UNIQUE);
 
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow), flows: push(FlowRow),
   intakePlan: IntakePush, consentPlan: ConsentPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;

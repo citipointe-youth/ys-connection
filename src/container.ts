@@ -258,7 +258,7 @@ export async function buildContainer(): Promise<Container> {
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
   const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections);
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
-  const settingsSvc = makeSettingsService(settings, audit, users, () => intakeRepo.clear());
+  const settingsSvc = makeSettingsService(settings, audit, users, () => intake.off());
   const account = makeAccountService(users, settings);
   const admin = makeAdminService(
     students, leaders, connections,
