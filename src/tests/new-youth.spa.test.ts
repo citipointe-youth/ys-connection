@@ -68,7 +68,7 @@ describe('New youth SPA', () => {
 
 // Runs the REAL nySend / nyOpen / renderNewYouth etc. from index.html against minimal stubs.
 const FRESH = '{ keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }';
-const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
+const FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'toAuMobile', 'tidyName', '_nyFieldMsgs', '_nyRaw', '_nyShowMsgs', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
 function harness(post: (path: string, body: any, ms?: number) => Promise<any>, hostName = 'H', picks: any[] = []) {
   const S: any = { user: { role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
   const pages: string[] = [];
@@ -80,13 +80,13 @@ function harness(post: (path: string, body: any, ms?: number) => Promise<any>, h
   const ref: any = {};
   const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : id === 'ny-err' ? errEl : null) };
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
-    'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList',
+    'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS',
     `let NY = ${FRESH};
     ${FNS.map((n) => extractFn(html, n)).join('\n')}
     return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },
     (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },
-    () => ({ ...body, host: ref.hostName }), [], [], () => (ref.hostName ? 'L1' : null), () => ref.hostName, (then: any) => picks.push(then), () => [7, 8, 9, 10, 11, 12]);
+    () => ({ ...body, host: ref.hostName }), [], [], () => (ref.hostName ? 'L1' : null), () => ref.hostName, (then: any) => picks.push(then), () => [7, 8, 9, 10, 11, 12], ['mobile', 'parentMobile', 'postcode', 'parentFirst']);
   ref.hostName = hostName;
   ref.h = h;
   return { h, S, pages, toasts, scrolled, button, body, last: () => pages[pages.length - 1] ?? '' };
@@ -499,5 +499,18 @@ describe('the host is the "I am" leader (ledger 22)', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].host).toBe('Cody Cobb');
     expect(extractFn(html, '_nyRead')).toContain('host: _nyHost()');
+  });
+});
+
+describe('New person guards block the send (T2)', () => {
+  it('a bad mobile or matching names toast the message and post nothing', async () => {
+    for (const [over, re] of [[{ mobile: '0312345678' }, /student mobile/], [{ parentMobile: '12' }, /parent mobile/], [{ parentFirst: 'A', parentLast: 'T' }, /parent name/], [{ address: { street: '', suburb: '', state: 'QLD', postcode: '40' } }, /postcode/]] as Array<[any, RegExp]>) {
+      let posted = 0;
+      const t = harness(async () => { posted++; return {}; });
+      Object.assign(t.body, over);
+      await t.h.nySend({ preventDefault() {} });
+      expect(posted).toBe(0);
+      expect(t.toasts[0]![0]).toMatch(re);
+    }
   });
 });

@@ -9007,13 +9007,59 @@ function _nyDobProblem(text, today) {
   if (!t) return '';
   return _nyDobError(t, today) || (t.length < 10 ? 'Write the date of birth as DD/MM/YYYY.' : '');
 }
+// Ports of src/services/elvanto-forms.ts toAuMobile / tidyName: keep them identical (src/tests/new-youth.guards.test.ts runs both).
+function toAuMobile(raw) {
+  let d = String(raw).replace(/\D/g, '');
+  if (d.startsWith('61')) d = d.slice(2);
+  if (d.length === 9 && d.startsWith('4')) d = '0' + d;
+  return /^04\d{8}$/.test(d) ? d : null;
+}
+function tidyName(raw) {
+  const s = String(raw).trim().replace(/\s+/g, ' ');
+  const lower = /^\p{Ll}/u.test(s), caps = (s.match(/\p{L}/gu) || []).length >= 2 && !/\p{Ll}/u.test(s);
+  if (!lower && !caps) return s;
+  return (caps ? s.toLowerCase() : s).replace(/(^|[\s'’.-])(\p{Ll})/gu, (_m, a, b) => a + (b.toUpperCase().length === 1 ? b.toUpperCase() : b));
+}
+// Field checks for the New person form. p holds raw typed values. Messages name the field and never echo the value.
+// block = stops the send; warn = shown only. Empty fields get no message here: the "Add the ..." check covers them.
+function _nyFieldMsgs(p) {
+  const m = { block: {}, warn: {} };
+  if (p.mobile && !toAuMobile(p.mobile)) m.block.mobile = 'Check the student mobile: it should be 10 digits starting 04.';
+  if (p.parentMobile && !toAuMobile(p.parentMobile)) m.block.parentMobile = 'Check the parent mobile: it should be 10 digits starting 04.';
+  if (p.postcode && !/^\d{4}$/.test(p.postcode.trim())) m.block.postcode = 'Check the postcode: it should be 4 digits.';
+  const same = (a, b) => a && b && tidyName(a).toLowerCase() === tidyName(b).toLowerCase();
+  if (same(p.firstName, p.parentFirst) && same(p.lastName, p.parentLast)) m.block.parentFirst = 'The parent name is the same as the student name. Check the parent name.';
+  if (!m.block.mobile && !m.block.parentMobile && p.mobile && p.parentMobile && toAuMobile(p.mobile) === toAuMobile(p.parentMobile)) m.warn.parentMobile = 'The parent mobile is the same as the student mobile. Is that right?';
+  return m;
+}
+const NY_ERR_IDS = ['mobile', 'parentMobile', 'postcode', 'parentFirst'];
+function _nyRaw() {
+  const g = (id) => ((document.getElementById('ny-' + id) || {}).value || '').trim();
+  return { firstName: g('firstName'), lastName: g('lastName'), mobile: g('mobile'), parentFirst: g('parentFirst'), parentLast: g('parentLast'), parentMobile: g('parentMobile'), postcode: g('postcode') };
+}
+function _nyShowMsgs() {
+  const m = _nyFieldMsgs(_nyRaw());
+  NY_ERR_IDS.forEach((id) => {
+    const out = document.getElementById('ny-' + id + '-err'), el = document.getElementById('ny-' + id);
+    const bad = m.block[id] || '', warn = m.warn[id] || '';
+    if (out) { out.textContent = bad || warn; out.style.color = bad ? 'var(--danger)' : 'var(--warn)'; }
+    if (el) el.setAttribute('aria-invalid', bad ? 'true' : 'false');
+  });
+  return m;
+}
+// onblur for the guarded fields: tidy what was typed, then redraw the inline messages.
+function _nyBlur(el) {
+  if (/^ny-(firstName|lastName|parentFirst|parentLast)$/.test(el.id)) el.value = tidyName(el.value);
+  else if (/^ny-(mobile|parentMobile)$/.test(el.id)) el.value = toAuMobile(el.value) || el.value.trim();
+  _nyShowMsgs();
+}
 function _nyRead() {
   const g = (id) => ((document.getElementById('ny-' + id) || {}).value || '').trim();
   const ticked = (n) => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map((i) => i.value);
-  const p = { host: _nyHost(), firstName: g('firstName'), lastName: g('lastName'),
-    dob: _nyDobIso(g('dob')) || '', gender: g('gender'), grade: g('grade'), school: g('school'), mobile: g('mobile'),
+  const p = { host: _nyHost(), firstName: tidyName(g('firstName')), lastName: tidyName(g('lastName')),
+    dob: _nyDobIso(g('dob')) || '', gender: g('gender'), grade: g('grade'), school: g('school'), mobile: toAuMobile(g('mobile')) || g('mobile'),
     allergies: ticked('ny-allergy'), conditions: ticked('ny-condition'), medicalNotes: g('medicalNotes'),
-    parentFirst: g('parentFirst'), parentLast: g('parentLast'), parentMobile: g('parentMobile') };
+    parentFirst: tidyName(g('parentFirst')), parentLast: tidyName(g('parentLast')), parentMobile: toAuMobile(g('parentMobile')) || g('parentMobile') };
   if (g('parentGender')) p.parentGender = g('parentGender');
   if (g('street') || g('suburb') || g('postcode')) { // State is prefilled QLD, so it alone isn't an address
     p.address = { street: g('street'), suburb: g('suburb'), state: g('state'), postcode: g('postcode') };
@@ -9052,7 +9098,7 @@ function renderNewYouth() {
   const k = NY.keep || {};
   const val = (id, d) => esc(k[id] != null ? k[id] : (d || ''));
   const ro = NY.sibling ? 'readonly' : '';
-  const input = (id, label, attrs) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><input class="fi" id="ny-${id}" value="${val(id)}" ${attrs || ''}></div>`;
+  const input = (id, label, attrs) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><input class="fi" id="ny-${id}" value="${val(id)}" ${attrs || ''} onblur="_nyBlur(this)" aria-describedby="ny-${id}-err"><div class="fl" id="ny-${id}-err" role="alert" style="color:var(--danger)"></div></div>`;
   const sel = (id, label, opts) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><select class="fs" id="ny-${id}">${opts.map(([v, l]) => `<option value="${v}" ${k[id] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
   const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
   const addr = k.address || {};
@@ -9070,7 +9116,7 @@ function renderNewYouth() {
         <div class="fg"><input class="fi" id="ny-street" placeholder="Street" value="${esc(addr.street || '')}"></div>
         <div class="fg"><input class="fi" id="ny-suburb" placeholder="Suburb" value="${esc(addr.suburb || '')}"></div>
         <div class="fg"><input class="fi" id="ny-state" placeholder="State" value="${esc(addr.state || 'QLD')}"></div>
-        <div class="fg"><input class="fi" id="ny-postcode" placeholder="Postcode" inputmode="numeric" value="${esc(addr.postcode || '')}"></div>
+        <div class="fg"><input class="fi" id="ny-postcode" placeholder="Postcode" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${esc(addr.postcode || '')}" aria-describedby="ny-postcode-err" onblur="_nyBlur(this)"><div class="fl" id="ny-postcode-err" role="alert" style="color:var(--danger)"></div></div>
       </details>
       <details><summary>Medical (optional)</summary>
         ${ticks('ny-allergy', NY_ALLERGIES, k.allergies)}${ticks('ny-condition', NY_CONDITIONS, k.conditions)}
@@ -9105,6 +9151,7 @@ async function nySend(ev, send) {
     ['dob', 'date of birth'], ['gender', 'gender'], ['grade', 'grade'], ['school', 'school'], ['mobile', 'student mobile'],
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
   if (need) { toast('Add the ' + need[1]); return; }
+  if (!send) { const bad = Object.values(_nyFieldMsgs({ ...p, postcode: p.address ? p.address.postcode : '' }).block)[0]; if (bad) { _nyShowMsgs(); toast(bad); return; } }
   // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
