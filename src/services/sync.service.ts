@@ -93,11 +93,16 @@ export function makeSyncService(d: SyncDeps) {
       const reply = await d.link.applyResults(req.consoleId, req.results, now());
       if (d.errorLog) {
         const applied = new Set(reply.applied);
-        for (const it of req.results) {
-          if ((it.outcome !== 'refused' && it.outcome !== 'unclear') || !applied.has(it.id)) continue;
-          const row = await d.link.getAction(it.id);
-          await d.errorLog.record({ category: 'link', code: it.outcome === 'refused' ? it.reason : 'unclear', route: row?.type ?? 'unknown', role: 'console' });
-        }
+        const hits = req.results.filter((it) => (it.outcome === 'refused' || it.outcome === 'unclear') && applied.has(it.id));
+        const rows = await Promise.all(hits.map((it) => d.link.getAction(it.id)));
+        const groups = new Map<string, { code: string; route: string; count: number }>();
+        hits.forEach((it, i) => {
+          const code = it.outcome === 'refused' ? it.reason : 'unclear', route = rows[i]?.type ?? 'unknown';
+          const g = groups.get(`${route}|${code}`) ?? { code, route, count: 0 };
+          g.count++; groups.set(`${route}|${code}`, g);
+        });
+        const errorLog = d.errorLog;
+        await Promise.all([...groups.values()].map((g) => errorLog.record({ category: 'link', code: g.code, route: g.route, role: 'console', count: g.count })));
       }
       return reply;
     },

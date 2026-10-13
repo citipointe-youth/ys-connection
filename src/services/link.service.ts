@@ -16,7 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS } from '../core/link-contract';
+import { ACTION_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS, Uuid } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -55,7 +55,6 @@ const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo'] as const;
 const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
 
-const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ActionFields = { id: Uuid, type: z.enum(ACTION_TYPES), payload: z.record(z.unknown()),
   note: z.string().nullable().optional(), leaderId: Uuid.nullable().optional() };

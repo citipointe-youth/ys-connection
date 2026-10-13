@@ -237,6 +237,25 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
     const reply = await h.sync.claim({ ...fx('claim-request.json'), linkRev: 4 });
     expect(reply.intake!.refresh).toEqual([{ mode: 'consent', date: '2026-10-09' }]);
   });
+  it('R2: a refresh ask is offered for 10 min only', async () => {
+    const h = await setup();
+    await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' });
+    h.clock.now = new Date(NOW.getTime() + 60_000);
+    expect((await h.intake.hint(await h.settings.getSettings())).refresh).toHaveLength(1);
+    h.clock.now = new Date(NOW.getTime() + 11 * 60_000);
+    expect((await h.intake.hint(await h.settings.getSettings())).refresh).toEqual([]);
+  });
+  it('R6: list purges at most hourly, and only the dates list marks the view', async () => {
+    const h = await setup();
+    const purge = vi.spyOn(h.intakeRepo, 'purge'); const viewed = vi.spyOn(h.intakeRepo, 'markViewed');
+    await h.intake.list(ADMIN, { mode: 'intake' }); await h.intake.list(ADMIN, { mode: 'intake' });
+    expect(purge).toHaveBeenCalledTimes(1);
+    expect(viewed).toHaveBeenCalledTimes(2);
+    await h.intake.list(ADMIN, { mode: 'intake', date: DATE });
+    expect(viewed).toHaveBeenCalledTimes(2);
+    await h.sync.claim(CLAIM4());
+    expect(purge).toHaveBeenCalledTimes(1);
+  });
   it('an unreadable detail goes to the error log by code only', async () => {
     const h = await setup();
     vi.spyOn(h.intakeRepo, 'detail').mockResolvedValueOnce({ row: (await h.intakeRepo.rows('intake', DATE))[0]!, detail: null, unreadable: true });
@@ -394,7 +413,7 @@ describe('sync: intake hint, pushes, results', () => {
     expect(await h.link.getAction(ids[0]!)).toMatchObject({ status: 'sent', reason: 'planned' });
     expect(await h.link.getAction(ids[1]!)).toMatchObject({ status: 'sent', steps: tpl[1].steps, stop: tpl[1].stop });
     expect(await h.link.getAction(ids[2]!)).toMatchObject({ status: 'refused', reason: 'plan-changed', stop: tpl[3].stop });
-    expect(h.errorLog.record).toHaveBeenCalledWith({ category: 'link', code: 'plan-changed', route: 'consentSave', role: 'console' });
+    expect(h.errorLog.record).toHaveBeenCalledWith({ category: 'link', code: 'plan-changed', route: 'consentSave', role: 'console', count: 1 });
     for (const call of h.errorLog.record.mock.calls) expect(JSON.stringify(call)).not.toMatch(/Sample|0400|approve:|complete:/);
     // the final intake rows lose their notes at the next sweep
     await h.sync.claim({ ...fx('claim-request.json'), max: 0 });
