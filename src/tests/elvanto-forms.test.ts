@@ -2,6 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as EF from '../services/elvanto-forms';
+import { makeRef } from '../services/new-youth.service';
+import { APP_REF_RE } from '../core/link-contract';
 
 const studentHtml = readFileSync(join(__dirname, 'fixtures/elvanto-student-form.html'), 'utf8');
 const parentHtml = readFileSync(join(__dirname, 'fixtures/elvanto-parent-form.html'), 'utf8');
@@ -35,6 +37,25 @@ describe('isoToDmy', () => {
   const today = new Date('2026-10-11T00:00:00Z');
   it('converts a real date', () => expect(EF.isoToDmy('2012-04-03', today)).toBe('03/04/2012'));
   it.each(['2012-02-30', '12-04-2012', '', '2026-10-01', '1990-01-01'])('refuses %s', (iso) => expect(EF.isoToDmy(iso, today)).toBeNull());
+});
+
+describe('T4 (X19): the app submission ref on the student form', () => {
+  const HOST = 'submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]';
+  it('the host answer ends with (ref) on the student form only; both bodies still match the real forms', () => {
+    const s = EF.studentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(studentHtml)!);
+    expect(s.get(HOST)).toBe('Sam Host (YS-7K2M9Q)');
+    expect(/\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/.exec(s.get(HOST)!)![1]).toBe('YS-7K2M9Q'); // the console's own regex
+    expect(EF.shapeProblems(studentHtml, s)).toEqual([]);
+    const p = EF.parentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(parentHtml)!);
+    expect(p.toString()).not.toContain('YS-7K2M9Q');
+    expect(EF.shapeProblems(parentHtml, p)).toEqual([]);
+    expect(EF.studentBody(SAMPLE, 'elvanto1').get(HOST)).toBe('Sam Host'); // no ref: unchanged
+  });
+  it('makeRef: YS- + 6 Crockford base32, varied', () => {
+    const refs = Array.from({ length: 200 }, () => makeRef());
+    for (const r of refs) expect(r).toMatch(APP_REF_RE);
+    expect(new Set(refs).size).toBeGreaterThan(190);
+  });
 });
 
 describe('bodies match the real forms', () => {

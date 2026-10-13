@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
@@ -14,6 +14,16 @@ export interface NewYouthResult {
   parent: EF.Outcome;
   dryRun: boolean;
   repeat?: boolean;
+  /** T4 (X19): the submission ref the student form carried (live sends only). Not stored, never logged. */
+  ref?: string;
+}
+
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+/** `YS-` + 6 Crockford base32 characters, crypto random (~1 in a billion clash). */
+export function makeRef(): string {
+  let s = 'YS-';
+  for (let i = 0; i < 6; i++) s += CROCKFORD[randomInt(32)];
+  return s;
 }
 
 export interface NewYouthService {
@@ -129,7 +139,8 @@ export function makeNewYouthService(
       }
       if (!gradeRange(settings.ministryConfig.structure).includes(Number(parsed.data.grade))) throw new BadRequestError(`Check the ${LABELS.grade}`); // grade 6 only when "Include Grade 6" is on
       const data = parsed.data; // z.object strips unknown keys, so a stray `attending` is dropped here
-      const y: EF.NewYouth = data;
+      const ref = makeRef();
+      const y: EF.NewYouth = { ...data, ref };
 
       const now = Date.now();
       for (const [k, v] of recent) if (now - v.at > DEDUPE_MS) recent.delete(k);
@@ -143,7 +154,7 @@ export function makeNewYouthService(
 
       // Remember the send BEFORE the form GETs (live mode only): a second tap while this one is still
       // fetching or posting gets "unconfirmed" back instead of posting the same student again.
-      if (live) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false } });
+      if (live) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, ref } });
 
       let sBody: URLSearchParams, pBody: URLSearchParams;
       try {
@@ -163,7 +174,7 @@ export function makeNewYouthService(
 
       const student: EF.Outcome = data.send.includes('student') ? await post('student', sBody) : 'skipped';
       const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post('parent', pBody);
-      const result: NewYouthResult = { student, parent, dryRun: false };
+      const result: NewYouthResult = { student, parent, dryRun: false, ref };
       // T3: an unconfirmed or rejected send goes to the admin Error log (form + outcome only, never the person).
       for (const [form, o] of [['STUDENT', student], ['PARENT', parent]] as const) {
         if (o === 'unconfirmed' || o === 'failed') {

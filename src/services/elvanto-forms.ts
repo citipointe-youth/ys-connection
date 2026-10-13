@@ -7,6 +7,9 @@ export type Outcome = 'sent' | 'failed' | 'unconfirmed' | 'skipped';
 
 export interface NewYouth {
   host: string;
+  /** T4 (X19): the app's submission ref, `YS-` + 6 Crockford base32. Rides on the student form's host answer only, so the
+   *  console pairs the student form with its parent form directly and marks the family "From app". Never logged. */
+  ref?: string;
   firstName: string;
   lastName: string;
   dob: string; // dd/mm/yyyy, already checked by isoToDmy
@@ -122,7 +125,7 @@ export function isoToDmy(iso: string, today: Date = new Date()): string | null {
 export function studentBody(y: NewYouth, honeypot: string): URLSearchParams {
   const b = new URLSearchParams();
   b.append('save', '1');
-  b.append(F.host, y.host);
+  b.append(F.host, y.ref ? `${y.host} (${y.ref})` : y.host); // the console reads /\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/
   b.append(F.givenBy, OPT.givenByChild);
   b.append(F.attending, OPT.attendRegular);
   b.append(`${S}[first_name]`, y.firstName);

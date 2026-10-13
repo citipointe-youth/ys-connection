@@ -6,6 +6,9 @@ import * as EF from '../services/elvanto-forms';
 import { InMemorySettingsRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import type { Actor } from '../core/entities/user';
+import { APP_REF_RE } from '../core/link-contract';
+
+const REF = expect.stringMatching(APP_REF_RE);
 
 const studentHtml = readFileSync(join(__dirname, 'fixtures/elvanto-student-form.html'), 'utf8');
 const parentHtml = readFileSync(join(__dirname, 'fixtures/elvanto-parent-form.html'), 'utf8');
@@ -71,7 +74,18 @@ describe('NewYouthService.send', () => {
   it('shadow mode: the admin login sends live when live is set (shadow does not change sending)', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('shadow'), { fetchFn: f.fetchFn, live: true });
-    expect(await svc.send(ADMIN, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+    expect(await svc.send(ADMIN, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
+  });
+
+  it('T4 (X19): the posted student form carries the returned ref on its host answer; the parent form does not', async () => {
+    const f = fakeFetch();
+    const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
+    const r = await svc.send(LEADER, INPUT);
+    expect(r.ref).toMatch(APP_REF_RE);
+    const [student, parent] = f.posts().map((c) => new URLSearchParams(c.body));
+    expect(student!.get('submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]')).toBe(`Sam Host (${r.ref})`);
+    expect(parent!.toString()).not.toContain(r.ref!);
+    expect((await svc.send(LEADER, INPUT)).ref).toBe(r.ref); // a repeat answers with the same send
   });
 
   it.each([['leader', LEADER], ['grade', GRADE]] as const)('shadow mode: %s gets 404 ModuleDisabled and nothing is fetched', async (_n, who) => {
@@ -94,7 +108,7 @@ describe('NewYouthService.send', () => {
   it('happy path: student then parent, normalised once for both', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
     const [s, p] = f.posts();
     expect(s!.url).toContain(EF.STUDENT_FORM_ID);
     expect(p!.url).toContain(EF.PARENT_FORM_ID);
@@ -133,7 +147,7 @@ describe('NewYouthService.send', () => {
   it('a rejected student form skips the parent', async () => {
     const f = fakeFetch(() => new Response(studentHtml, { status: 200 }));
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'failed', parent: 'skipped', dryRun: false });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'failed', parent: 'skipped', dryRun: false, ref: REF });
     expect(f.posts()).toHaveLength(1);
   });
 
@@ -143,7 +157,7 @@ describe('NewYouthService.send', () => {
       return new Response('<p>OK-TEST</p>', { status: 200 });
     });
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'sent', dryRun: false });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'sent', dryRun: false, ref: REF });
   });
 
   it('T3: an unconfirmed form goes to the Error log (form + outcome + role, never the person)', async () => {
@@ -160,7 +174,7 @@ describe('NewYouthService.send', () => {
   it('send:["parent"] retries only the parent form', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
-    expect(await svc.send(LEADER, { ...INPUT, send: ['parent'] })).toEqual({ student: 'skipped', parent: 'sent', dryRun: false });
+    expect(await svc.send(LEADER, { ...INPUT, send: ['parent'] })).toEqual({ student: 'skipped', parent: 'sent', dryRun: false, ref: REF });
     expect(f.posts().map((c) => c.url)).toEqual([EF.formUrl(EF.PARENT_FORM_ID)]);
   });
 
@@ -168,7 +182,7 @@ describe('NewYouthService.send', () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
     await svc.send(LEADER, INPUT);
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, repeat: true });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF, repeat: true });
     expect(f.posts()).toHaveLength(2);
   });
 
@@ -179,7 +193,7 @@ describe('NewYouthService.send', () => {
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
     const first = svc.send(LEADER, INPUT);
     await vi.waitFor(() => expect(f.posts()).toHaveLength(1)); // the first send is mid-POST
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, repeat: true });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, ref: REF, repeat: true });
     release();
     await first;
     expect(f.posts()).toHaveLength(2); // one student + one parent, from the first send only
@@ -201,7 +215,7 @@ describe('NewYouthService.send', () => {
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn, live: true });
     const first = svc.send(LEADER, INPUT);
     await vi.waitFor(() => expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2)); // mid-GET
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, repeat: true });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, ref: REF, repeat: true });
     release();
     await first;
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(2); // one student + one parent, from the first send only
@@ -217,7 +231,7 @@ describe('NewYouthService.send', () => {
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn, live: true });
     await expect(svc.send(LEADER, INPUT)).rejects.toMatchObject({ code: 'ELVANTO_UNREACHABLE' });
     down = false;
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
   });
 
   it('a changed form clears the in-flight mark', async () => {
@@ -232,7 +246,7 @@ describe('NewYouthService.send', () => {
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn, live: true });
     await expect(svc.send(LEADER, INPUT)).rejects.toMatchObject({ code: 'ELVANTO_FORM_CHANGED' });
     changed = false;
-    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
+    expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
   });
 
   it('a failed send is not remembered, so a fixed retry goes through', async () => {
