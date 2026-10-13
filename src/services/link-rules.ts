@@ -200,12 +200,20 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; grade?: number | null; }
 export interface MatchChange { personId: string; studentId: string | null; match: Match; }
 
-const nameKey = (first: string, last: string) => `${nameFold(first)} ${nameFold(last)}`; // X8 (B16)
+/** Matching only (not dedupe): the X8 fold with spaces, hyphens, apostrophes and dots dropped, so "Antonucci Cook",
+ *  "Antonucci-Cook" and "AntonucciCook" agree. First and last stay separate; a surname alone never matches. */
+export const matchFold = (s: string) => nameFold(s).replace(/[\s'.-]/g, '');
+const nameKey = (first: string, last: string) => `${matchFold(first)}|${matchFold(last)}`;
+/** Gender only blocks a match when both sides say male/female and differ; blank, null or YS 'other' is unknown. */
+export const genderFits = (a: string | null | undefined, b: string | null | undefined) => {
+  const k = (g: string | null | undefined) => (g === 'male' || g === 'female' ? g : null);
+  return !k(a) || !k(b) || k(a) === k(b);
+};
 
 /**
  * The changes to write after a roster push. Resets a dead studentId to none and releases an `auto` row that is no
  * longer an active student (APP-11), then matches `none` (and re-checks `ambiguous`) active student rows by the
- * import's name key + equal gender. Inactive rows do not count towards a same-name clash. Never changes a live
+ * import's name key (matchFold) with a gender that fits (genderFits); grade breaks a tie. Inactive rows do not count towards a same-name clash. Never changes a live
  * manual/ignored row, or an auto row that is still an active student.
  */
 export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): MatchChange[] {
@@ -240,10 +248,11 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
     let { studentId, match } = x;
     if (eligible(r) && (match === 'none' || match === 'ambiguous')) {
       const k = nameKey(r.firstName, r.lastName);
-      const hits = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && !taken.has(s.id));
+      const fits = (byKey.get(k) ?? []).filter((s) => genderFits(r.gender, s.gender));
+      const hits = fits.filter((s) => !taken.has(s.id));
       // B16: grade breaks an ambiguous tie only when exactly one candidate's grade matches (and no other roster row
       // has the same name and grade).
-      const sameGrade = (byKey.get(k) ?? []).filter((s) => r.gender != null && s.gender === r.gender && r.grade != null && s.grade === r.grade);
+      const sameGrade = fits.filter((s) => r.grade != null && s.grade === r.grade);
       const tie = (rosterKeyCount.get(k) ?? 0) > 1 ? hits.length > 0 : hits.length > 1;
       if (tie && sameGrade.length === 1 && !taken.has(sameGrade[0]!.id) && rosterKeyGrade.get(`${k}|${r.grade}`) === 1) {
         studentId = sameGrade[0]!.id; match = 'auto'; taken.add(studentId);

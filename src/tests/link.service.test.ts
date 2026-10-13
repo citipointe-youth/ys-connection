@@ -51,7 +51,7 @@ type Mode = 'off' | 'shadow' | 'on';
 interface H {
   svc: LinkService; link: InMemoryLinkRepository; clock: { now: Date };
   sessions: InMemoryServiceSessionRepository; attendance: InMemoryServiceAttendanceRepository;
-  leaders: InMemoryLeaderRepository;
+  leaders: InMemoryLeaderRepository; students: InMemoryStudentRepository;
 }
 
 const student = (id: string, first: string, last: string, gender: 'male' | 'female', grade: number) => ({
@@ -136,7 +136,7 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
 
   const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions,
     serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => clock.now });
-  return { svc, link, clock, sessions, attendance, leaders };
+  return { svc, link, clock, sessions, attendance, leaders, students };
 }
 
 async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60, linkRev = 1) {
@@ -1179,6 +1179,16 @@ describe('D6 admin: matching, shadow check, log', () => {
     const ben = r.rows.find((x) => x.personId === P_BEN)!;
     expect(ben.candidates).toEqual([{ studentId: S_BEN, name: 'Ben Brown', grade: 9, dob: '2011-05-01' }]);
     expect(r.rows.find((x) => x.personId === P_EVE1)!.candidates).toEqual([]);
+  });
+
+  it('2026-10-14 candidates: same surname, first name starts alike or grade within 1, not held by an active person', async () => {
+    await h.students.save(student(u(711), 'Benjamin', 'Brown', 'male', 3) as never); // first name starts alike
+    await h.students.save(student(u(712), 'Zara', 'Brown', 'female', 10) as never); // grade within 1
+    await h.students.save(student(u(713), 'Zed', 'Brown', 'male', 12) as never); // neither: hidden
+    await h.students.save(student(u(714), 'Bo', 'Brown', 'male', 9) as never); // held by an active person: hidden
+    await h.link.setMatches([{ personId: P_AMY, studentId: u(714), match: 'manual' }]);
+    const ben = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows.find((x) => x.personId === P_BEN)!;
+    expect(ben.candidates.map((c) => c.name).sort()).toEqual(['Ben Brown', 'Benjamin Brown', 'Zara Brown']);
   });
 
   it('A6 / APP-40: only student rows that still need a match; candidates only for none/ambiguous; no unused fields', async () => {

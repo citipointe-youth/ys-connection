@@ -269,6 +269,30 @@ describe('autoMatch (contract 6)', () => {
   it('gender differs -> stays none (no change)', () => {
     expect(autoMatch([ros(1, 'Alex', 'Sample', 'female')], [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([]);
   });
+  it('2026-10-14 Olivia: YS gender other (unknown) still auto-matches a female Elvanto row', () => {
+    expect(autoMatch([ros(1, 'Olivia', 'Antonucci-Cook', 'female', { grade: 7 })], [stu('s1', 'Olivia', 'Antonucci-Cook', 'other', 7)]))
+      .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }]);
+  });
+  it('blank Elvanto gender still auto-matches', () => {
+    expect(autoMatch([ros(1, 'Alex', 'Sample', null)], [stu('s1', 'Alex', 'Sample', 'male')]))
+      .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }]);
+  });
+  it('hyphen, space, apostrophe and accent folding: Antonucci Cook = Antonucci-Cook, OBrien = O’Brien', () => {
+    expect(autoMatch([ros(1, 'Olivia', 'Antonucci Cook', 'female'), ros(2, 'Zoë', 'OBrien', 'female')],
+      [stu('s1', 'Olivia', 'Antonucci-Cook', 'female'), stu('s2', 'Zoe', 'O’Brien', 'female')]))
+      .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }, { personId: U(2), studentId: 's2', match: 'auto' }]);
+  });
+  it('surname alone never auto-matches', () => {
+    expect(autoMatch([ros(1, 'Olivia', 'Cook', 'female', { grade: 7 })], [stu('s1', 'Liv', 'Cook', 'female', 7)])).toEqual([]);
+  });
+  it('a student another roster person holds is never taken', () => {
+    expect(autoMatch([ros(1, 'Alex', 'Sample', 'male'), ros(2, 'Al', 'Other', 'male', { studentId: 's1', match: 'manual' })],
+      [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([]);
+  });
+  it('several same-name students with unknown gender: the unique grade match wins', () => {
+    expect(autoMatch([ros(1, 'Sam', 'Lee', null, { grade: 8 })], [stu('s8', 'Sam', 'Lee', 'male', 8), stu('s10', 'Sam', 'Lee', 'female', 10)]))
+      .toEqual([{ personId: U(1), studentId: 's8', match: 'auto' }]);
+  });
   it('two students -> ambiguous', () => {
     expect(autoMatch([ros(1, 'Alex', 'Sample', 'male')], [stu('s1', 'Alex', 'Sample', 'male'), stu('s2', 'Alex', 'Sample', 'male')]))
       .toEqual([{ personId: U(1), studentId: null, match: 'ambiguous' }]);

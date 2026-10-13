@@ -1763,7 +1763,7 @@ describe('F4.2 admin page', () => {
     }
     expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-admin') { await renderLinkAdmin(); return; }");
   });
-  it('matching lists Unmatched and Two possible with candidates and their DOB, escaped', () => {
+  it('matching lists Unmatched and Several possible with candidates and their DOB, escaped', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.adm.roster = [
       { personId: P(400), name: 'Ava <b>X</b>', grade: 8, kind: 'student', match: 'none', studentId: null,
@@ -1781,6 +1781,26 @@ describe('F4.2 admin page', () => {
     expect(out).not.toContain('Done Already');
     h.get().LINK.adm.mf = 'ambiguous';
     expect(h.fns._lkAdmMatchHtml()).toContain('Bo Two');
+  });
+  it('2026-10-14 clarity: sides labelled, born, no-surname text, Several possible, Set by hand split', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(410), name: 'Olivia AC', grade: 7, kind: 'student', match: 'none', studentId: null,
+        candidates: [{ studentId: P(411), name: 'Olivia AC', grade: 7, dob: '2013-12-15' }] },
+      { personId: P(412), name: 'Nobody Here', grade: 7, kind: 'student', match: 'none', studentId: null, candidates: [] },
+      { personId: P(413), name: 'Hand Made', grade: 8, kind: 'student', match: 'manual', studentId: P(414), candidates: [] },
+      { personId: P(415), name: 'Not Ours', grade: 8, kind: 'student', match: 'ignored', studentId: null, candidates: [] },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('Elvanto: Olivia AC');
+    expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
+    expect(out).toContain('No YS student with this surname.');
+    expect(out).toContain('Several possible');
+    h.get().LINK.adm.mf = 'manual';
+    const m = strip(h.fns._lkAdmMatchHtml());
+    expect(m.indexOf('Matched by hand')).toBeLessThan(m.indexOf('Hand Made'));
+    expect(m.indexOf('Marked Not in YS')).toBeLessThan(m.indexOf('Not Ours'));
+    expect(m.indexOf('Hand Made')).toBeLessThan(m.indexOf('Marked Not in YS'));
   });
 });
 

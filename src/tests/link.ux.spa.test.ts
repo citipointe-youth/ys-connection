@@ -130,7 +130,7 @@ describe('the source keeps its rules', () => {
 describe('T9 admin page source', () => {
   const html = loadIndexHtml();
   it('Matching, Shadow check and Activity each have a one-sentence tooltip', () => {
-    for (const t of ['Pairs each Elvanto person with a student or leader in this app so check-ins and reports land on the right person.',
+    for (const t of ['Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.',
       'Compares what the app would send with what Elvanto already shows, without sending anything.',
       'Every check-in, report and flow step sent from the app, newest first, with who did it.']) expect(html).toContain(`helpTip("${t}")`);
   });

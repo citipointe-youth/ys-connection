@@ -35,7 +35,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
-  noteRoom, pickList, nameFold, serviceDay,
+  noteRoom, pickList, nameFold, matchFold, serviceDay,
 } from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
@@ -165,7 +165,6 @@ export interface LinkServiceDeps {
 
 // ---------------------------------------------------------------- helpers
 
-const fold = nameFold; // X8 (B16): the admin's candidate list uses the same fold as the auto-match
 const fullName = (r: { firstName: string; lastName: string }) => `${r.firstName} ${r.lastName}`.trim();
 const view = (r: OutboxRow): ActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason });
 const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';
@@ -944,17 +943,19 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       // admin can release it (APP-11). Candidates only for none/ambiguous, from one index of folded names.
       const rows = roster.filter((r) => ((r.active && r.kind === 'student' && r.match !== 'auto') || (!r.active && r.studentId))
         && (!f.match || r.match === f.match));
-      const byName = new Map<string, typeof students>();
-      const add = (k: string, s: (typeof students)[number]) => byName.set(k, [...(byName.get(k) ?? []), s]);
+      // Candidates: same surname (matchFold), whose first name starts like the person's either way or whose grade is
+      // within 1, and not already held by an active roster person.
+      const heldBy = new Set(roster.filter((r) => r.active && r.studentId).map((r) => r.studentId!));
+      const bySurname = new Map<string, typeof students>();
       if (rows.some((r) => r.match === 'none' || r.match === 'ambiguous')) {
-        for (const s of students) { add('n:' + fold(fullName(s)), s); add('l:' + fold(s.lastName), s); }
+        for (const s of students) { const k = matchFold(s.lastName); bySurname.set(k, [...(bySurname.get(k) ?? []), s]); }
       }
       const candidatesOf = (r: LinkRosterRow): MatchCandidate[] => {
         if (r.match !== 'none' && r.match !== 'ambiguous') return [];
-        const seen = new Set<string>();
-        return [...(byName.get('n:' + fold(fullName(r))) ?? []), ...(byName.get('l:' + fold(r.lastName)) ?? [])]
-          .filter((s) => !seen.has(s.id) && seen.add(s.id))
-          .sort((a, b) => students.indexOf(a) - students.indexOf(b))
+        const f = matchFold(r.firstName);
+        return (bySurname.get(matchFold(r.lastName)) ?? [])
+          .filter((s) => !heldBy.has(s.id) && (f.startsWith(matchFold(s.firstName)) || matchFold(s.firstName).startsWith(f)
+            || (r.grade != null && s.grade != null && Math.abs(s.grade - r.grade) <= 1)))
           .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
       };
       return { rows: rows.map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
