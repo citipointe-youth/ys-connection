@@ -40,7 +40,7 @@ export const REASONS = ['locked', 'no-room', 'person-unknown', 'report-exists', 
 export const SYNC_ERROR_CODES = ['UNAUTHORIZED', 'LINK_OFF', 'LINK_CONTRACT_MISMATCH', 'VALIDATION_ERROR',
   'SERVICE_UNAVAILABLE', 'REQUEST_TIMEOUT'] as const;
 
-const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'lower-case uuid');
+export const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'lower-case uuid');
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Iso = z.string().datetime();
 const Name = z.string().trim().min(1).max(60);

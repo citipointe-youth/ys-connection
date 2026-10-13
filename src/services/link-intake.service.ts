@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { AppSettings } from '../core/entities/settings';
 import type { ActionType, OutboxRow } from '../core/link-types';
-import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush } from '../core/link-contract';
+import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
@@ -21,13 +21,13 @@ export const INTAKE_STALE_MS = 2 * 3_600_000;  // a plan older than this greys o
 export const INTAKE_KEEP_DAYS = 14;            // rows and dates older than this are deleted
 export const INTAKE_NOTE_MAX = 1900;
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
+const REFRESH_ASK_MS = 10 * 60_000;            // R2: a refresh ask is offered to the console for 10 min only
 const REFRESH_BACK_DAYS = 56;                  // a Refresh may ask for a date up to 8 weeks back
 const INTAKE: readonly string[] = INTAKE_TYPES;
 export const isIntakeType = (t: ActionType) => INTAKE.includes(t);
 const modeOf = (t: ActionType): IntakeMode => (t === 'consentSave' ? 'consent' : 'intake');
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const Mode = z.enum(['intake', 'consent']);
 
 /** The module + RBAC check (Off = 404 for everyone, On = the admin login only, else 403). */
@@ -103,6 +103,11 @@ export function makeIntakeService(d: IntakeServiceDeps) {
   const gate = async (actor: Actor) => { const s = await d.settings.getSettings(); intakeGate(actor, s); return s; };
   // ponytail: per instance (serverless), so at worst one purge per warm instance per hour; a DB-side schedule if that bites.
   let lastPurge = 0;
+  const purgeIfDue = async (t: Date) => {
+    if (t.getTime() - lastPurge < 3_600_000) return;
+    lastPurge = t.getTime();
+    await d.intake.purge(addDays(brisbaneToday(t), -INTAKE_KEEP_DAYS));
+  };
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>
     (await d.link.listActions({ types: [...INTAKE_TYPES], serviceDateFrom: date, serviceDateTo: date }))
@@ -114,8 +119,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       await gate(actor);
       const f = z.object({ mode: Mode, date: Ymd.optional() }).parse(q ?? {});
       const t = clock();
-      await d.intake.purge(addDays(brisbaneToday(t), -INTAKE_KEEP_DAYS));
-      await d.intake.markViewed();
+      await purgeIfDue(t);
+      if (!f.date) await d.intake.markViewed();
       const st = await d.status(actor);
       const head = { console: st.console, consoleLinkRev: st.consoleLinkRev, appLinkRev: st.appLinkRev };
       const [dates, rows] = await Promise.all([d.intake.dates(f.mode), d.intake.rows(f.mode, f.date)]);
@@ -170,11 +175,11 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
       if (mode === 'off') return { mode, hurry: false, refresh: [] };
       const today = brisbaneToday(t);
-      if (t.getTime() - lastPurge >= 3_600_000) { lastPurge = t.getTime(); await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS)); }
+      await purgeIfDue(t);
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = pending.length > 0 || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);
-      const refresh = dates.filter((x) => x.refreshAskedAt && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= today)
+      const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= today)
         .sort((a, b) => Date.parse(b.refreshAskedAt!) - Date.parse(a.refreshAskedAt!)).slice(0, 4)
         .map((x) => ({ mode: x.mode, date: x.date }));
       return { mode, hurry, refresh };

@@ -59,15 +59,18 @@ describe('InMemoryErrorLogRepository', () => {
 });
 
 describe('error-log.service', () => {
-  const mk = (now = new Date('2026-10-13T10:00:00Z')) => {
+  const mk = (start = new Date('2026-10-13T10:00:00Z')) => {
+    const clock = { now: start };
     const repo = new InMemoryErrorLogRepository();
-    const link = new InMemoryLinkRepository({ now: () => now });
-    return { repo, link, svc: makeErrorLogService({ repo, link, now: () => now }) };
+    const link = new InMemoryLinkRepository({ now: () => clock.now });
+    return { repo, link, clock, svc: makeErrorLogService({ repo, link, now: () => clock.now }) };
   };
+  const later = (c: { now: Date }, s: number) => { c.now = new Date(c.now.getTime() + s * 1000); };
 
   it('same category+code+route+status → one row; a different status is a different row', async () => {
-    const { svc } = mk();
+    const { svc, clock } = mk();
     await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 500 });
+    later(clock, 31);
     await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 500, role: 'grade' });
     await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 503 });
     const { rows } = await svc.list(admin);
@@ -140,9 +143,31 @@ describe('error-log.service', () => {
   it('review fix: intake-unreadable has a fixed message, not the console-refusal text', () => {
     expect(messageFor('link', 'intake-unreadable', null)).toBe('A stored intake plan could not be decrypted');
   });
-  it('record adds its count in one write', async () => {
+  it('R8: a route with a named param matches the router table, not page', async () => {
     const { svc } = mk();
+    svc.setKnownRoutes(['GET /prayers/student/:studentId']);
+    await svc.reportClient(grade, { kind: 'api', code: 'INTERNAL_ERROR', route: 'GET /prayers/student/9e000000-0000-4000-8000-000000000011', status: 500 });
+    expect((await svc.list(admin)).rows[0]!.route).toBe('GET /prayers/student/:id');
+  });
+  it('R5: one write per fingerprint per 30 s; the skipped count rides the next write; setCount is never throttled', async () => {
+    const { svc, repo, clock } = mk();
+    const spy = vi.spyOn(repo, 'record');
+    const rec = { category: 'server' as const, code: 'SERVICE_UNAVAILABLE', route: 'GET /x', status: 503 };
+    await svc.record(rec); await svc.record(rec); await svc.record(rec);
+    expect(spy).toHaveBeenCalledTimes(1);
+    later(clock, 31);
+    await svc.record(rec);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1]![0].n).toBe(3);
+    expect((await svc.list(admin)).rows[0]!.count).toBe(4);
+    await svc.record({ category: 'link', code: 'pending-24h', route: 'checkIn' }, 2);
+    await svc.record({ category: 'link', code: 'pending-24h', route: 'checkIn' }, 2);
+    expect(spy).toHaveBeenCalledTimes(4);
+  });
+  it('record adds its count in one write', async () => {
+    const { svc, clock } = mk();
     await svc.record({ category: 'link', code: 'too-old', route: 'checkIn', count: 3 });
+    later(clock, 31);
     await svc.record({ category: 'link', code: 'too-old', route: 'checkIn', count: 2 });
     expect((await svc.list(admin)).rows[0]!.count).toBe(5);
   });
@@ -226,13 +251,20 @@ describe('capture: sync claim + result', () => {
       { id: id(3), outcome: 'sent', sentLogKey: 'k3' },
     ] });
     expect(record.mock.calls).toEqual([
-      [{ category: 'link', code: 'person-unknown', route: 'checkIn', role: 'console' }],
-      [{ category: 'link', code: 'unclear', route: 'checkIn', role: 'console' }],
+      [{ category: 'link', code: 'person-unknown', route: 'checkIn', role: 'console', count: 1 }],
+      [{ category: 'link', code: 'unclear', route: 'checkIn', role: 'console', count: 1 }],
     ]);
     // A replay of the same result is ignored by the repo, so it is not counted twice.
     record.mockClear();
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: id(1), outcome: 'refused', reason: 'person-unknown' }] });
     expect(record).not.toHaveBeenCalled();
+  });
+  it('R9: refused results with the same type and reason are one record with their count', async () => {
+    const { svc, record } = await setup();
+    await svc.claim({ ...claimReq, max: 6 });
+    record.mockClear();
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [1, 2, 3].map((n) => ({ id: id(n), outcome: 'refused', reason: 'person-unknown' })) });
+    expect(record.mock.calls).toEqual([[{ category: 'link', code: 'person-unknown', route: 'checkIn', role: 'console', count: 3 }]]);
   });
   it('T6: a refused or too-old addGroupMember lands in the log as category link', async () => {
     const { link, svc, record } = await setup();
@@ -246,7 +278,7 @@ describe('capture: sync claim + result', () => {
     expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'removeGroupMember', role: 'console', count: 1 });
     record.mockClear();
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: id(7), outcome: 'refused', reason: 'person-unknown' }] });
-    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'person-unknown', route: 'addGroupMember', role: 'console' });
+    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'person-unknown', route: 'addGroupMember', role: 'console', count: 1 });
   });
 });
 

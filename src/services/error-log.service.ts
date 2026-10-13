@@ -17,6 +17,7 @@ export const ERROR_LOG_KEEP_DAYS = 90;
 /** A link action still pending after this long is logged (the console may be offline; claim never sweeps it). */
 export const STALE_PENDING_MS = DAY;
 const RECORD_TIMEOUT_MS = 2_000;
+const RECORD_THROTTLE_MS = 30_000;
 // ponytail: per-instance memory on serverless, like the login limiter. A DB counter if reports ever flood.
 export const CLIENT_REPORT_MAX = 20;
 const CLIENT_REPORT_WINDOW_MS = 10 * 60 * 1000;
@@ -96,6 +97,9 @@ export function makeErrorLogService(d: ErrorLogDeps) {
   const limiter = new RateLimiter(CLIENT_REPORT_MAX, CLIENT_REPORT_WINDOW_MS);
   // The router table's "METHOD /path" patterns, normalised (set by buildRoutes). Empty = every client route reads as 'page'.
   let knownRoutes = new Set<string>();
+  // R5: one DB write per fingerprint per 30 s; skipped repeats are added to the next write's n.
+  // ponytail: per-instance throttle; a skip with no later error is never written
+  const lastWrite = new Map<string, { at: number; skipped: number }>();
 
   /**
    * THE helper other server code calls to log an error. Never throws and never waits more than 2 s.
@@ -107,8 +111,15 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       const route = clean(r.route, 120);
       const status = typeof r.status === 'number' ? r.status : null;
       const id = createHash('sha256').update(`${r.category}|${code}|${route}|${status ?? ''}`).digest('hex').slice(0, 32);
+      let n = r.count;
+      if (setCount === undefined) {
+        const t = now().getTime(), w = lastWrite.get(id);
+        if (w && t - w.at < RECORD_THROTTLE_MS) { w.skipped += r.count ?? 1; return; }
+        n = (r.count ?? 1) + (w?.skipped ?? 0);
+        lastWrite.set(id, { at: t, skipped: 0 });
+      }
       const write = d.repo.record({ id, category: r.category, code, route, status, message: messageFor(r.category, code, status),
-        role: r.role ? clean(r.role, 20) : null, at: now().toISOString(), n: r.count }, setCount);
+        role: r.role ? clean(r.role, 20) : null, at: now().toISOString(), n }, setCount);
       await Promise.race([write, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), RECORD_TIMEOUT_MS).unref?.())]);
     } catch (e) {
       logger.warn('could not record', { category: r.category, code: r.code, err: e instanceof Error ? e.name : 'unknown' });
@@ -131,7 +142,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
 
     /** Route patterns ("GET /students/:id") the SPA may report; anything else is stored as 'page'. */
     setKnownRoutes(patterns: string[]): void {
-      knownRoutes = new Set(patterns.map((p) => normaliseRoute(p.replace(/:w+/g, ':id'))));
+      knownRoutes = new Set(patterns.map((p) => normaliseRoute(p.replace(/:\w+/g, ':id'))));
     },
 
     /** POST from the logged-in SPA: window errors and failed API calls. Over the per-login limit it is dropped quietly. */
