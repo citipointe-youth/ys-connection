@@ -20,7 +20,7 @@ export async function createAppInstance(): Promise<Express> {
   // timeout in express-adapter is the outer safety net. No destroy-on-timeout hook —
   // an incident-era escalation that caused cross-request CONNECTION_DESTROYED
   // failures; see the incident resolution notes in CLAUDE.md.
-  const app = createApp(routes, container.services.auth, container.services.health);
+  const app = createApp(routes, container.services.auth, container.services.health, container.services.errorLog);
 
   return app;
 }

@@ -193,6 +193,12 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .la-role{font-size:12px;color:var(--muted);flex:0 0 auto;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .la-meta{font-size:12px;color:var(--ink-mid);margin-top:2px;line-height:1.4}
 .la-never{color:var(--danger,#c0392b);font-weight:600}
+.el-row{border:1px solid var(--paper-dark,#ddd);border-radius:10px;margin-bottom:6px;background:#fff;padding:10px 12px}
+.el-row.ign{opacity:.6}
+.el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px}
+.el-msg{flex:1;font-weight:600;font-size:14px}
+.el-new{background:#fde2e2;color:#a61b1b}
+.el-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .la-detail{padding:2px 12px 10px;font-size:12px;color:var(--muted);line-height:1.6}
 .li-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
@@ -935,7 +941,10 @@ const API = (() => {
         // err.status stays undefined (not a real HTTP response) same as before.
         const msg = (networkErr && networkErr.message) || '';
         if (networkErr instanceof TypeError || /load failed|failed to fetch|networkerror|request timed out/i.test(msg)) {
-          throw new Error("Can't reach the server — check your internet connection and try again.");
+          _errReport({ kind: 'api', code: '', route: _errRoute(method, path), status: 0 });
+          const ne = new Error("Can't reach the server — check your internet connection and try again.");
+          ne._errLogged = true;
+          throw ne;
         }
         throw networkErr;
       }
@@ -945,6 +954,8 @@ const API = (() => {
         err.status = res.status;
         err.code = e.code;
         err.hint = e.hint;
+        err._errLogged = true; // never re-reported as an unhandled rejection
+        if (res.status >= 500) _errReport({ kind: 'api', code: e.code || '', route: _errRoute(method, path), status: res.status });
         // A stale S.user (e.g. another tab already changed the password) can drift
         // out of sync with the server; if the server says the gate is still up,
         // trust it and re-render into the gate screen instead of a raw error toast.
@@ -1013,6 +1024,33 @@ const API = (() => {
     /*BUS-HOOK*/ fresh: (p, quiet) => r('GET', p, undefined, undefined, quiet), // uncached GET — Bus Ministry data must never come from the 30s cache
   };
 })();
+
+// ── T3 Error log: report page crashes + failed API calls (5xx / no connection) to the admin Error log. ──
+// Sends code, route and status only: never an error message, a request body or a value (they can carry names).
+// At most 10 different reports per page load, and only while logged in; the server rate-limits per login too.
+const _errSent = new Set();
+function _errRoute(method, path) {
+  return method + ' ' + String(path || '').split(/[?#]/)[0].split('/').map(seg => (/\d/.test(seg) ? ':id' : seg)).join('/');
+}
+function _errReport(r) {
+  try {
+    const t = API.token;
+    if (!t || _errSent.size >= 10) return;
+    const key = r.kind + '|' + (r.code || '') + '|' + r.route + '|' + (r.status || '');
+    if (_errSent.has(key)) return;
+    _errSent.add(key);
+    fetch('/admin/errors/client', { method: 'POST', keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+      body: JSON.stringify({ kind: r.kind, code: String(r.code || '').slice(0, 40), route: String(r.route || '').slice(0, 200), status: r.status || null }),
+    }).catch(() => {});
+  } catch (e) { /* reporting must never break the page */ }
+}
+window.addEventListener('error', e => _errReport({ kind: 'js', code: (e.error && e.error.name) || 'Error', route: 'line ' + (e.lineno || 0) + ':' + (e.colno || 0) }));
+window.addEventListener('unhandledrejection', e => {
+  const x = e.reason;
+  if (x && x._errLogged) return; // a failed API call: already reported above if it was a 5xx or no connection
+  _errReport({ kind: 'js', code: (x && x.name) || 'Rejection', route: 'promise' });
+});
 
 // ============================================================
 // DATA CACHE (30-second TTL — makes back-navigation instant)
@@ -5825,7 +5863,7 @@ async function renderAdmin() {
 }
 
 // T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
-const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check']];
+const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log']];
 function _adminTabsHtml(cur) {
   return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}</button>`).join('')}</div>
     <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
@@ -5962,9 +6000,11 @@ async function renderAdminView(settings, users, history) {
   }
 
   if (_adminTab === 'system') body += '<div id="sys-check"></div>';
+  if (_adminTab === 'errors') body += '<div id="err-log"><div class="help-text">Loading…</div></div>';
 
   setApp(shell(body));
   if (_adminTab === 'system') renderSystemCheck();
+  if (_adminTab === 'errors') _elLoad();
 }
 
 // ── Login Activity tab ──
@@ -6079,6 +6119,85 @@ function _loginActivityBodyHtml(users) {
       <div style="display:flex;gap:6px;flex-wrap:wrap">${chip('all', 'All')}${chip('never', 'Never logged in')}${chip('quiet', 'Quiet 30+ days')}</div>
       <div class="help-text" style="margin-top:8px">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are Brisbane time.</div>
     </div>${list}`;
+}
+
+// ── Error log tab (T3) ──
+// GET /admin/errors: one row per fingerprint (category + code + route + status) with a count and first/last seen.
+// Minimise = collapse; Ignore = hidden by default and never "New", still counted; Delete = gone until it happens again.
+// "New" = seen since this device last opened the tab (localStorage, a per-device convenience only).
+const EL_CATS = { server: 'Server', link: 'Elvanto link', 'elvanto-form': 'New person forms', client: 'App (phones)' };
+let _elRows = null, _elCat = '', _elShowIgnored = false, _elSeenAt = 0;
+function _elVisible(rows, cat, showIgnored) {
+  return (rows || []).filter(r => (!cat || r.category === cat) && (showIgnored || !r.ignored));
+}
+function _elIsNew(r, seenAt) { return !r.ignored && Date.parse(r.lastSeen) > seenAt; }
+function _elRowHtml(r, seenAt) {
+  const id = esc(r.id);
+  const cls = 'el-row' + (r.ignored ? ' ign' : '');
+  const chips = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
+    + `<span class="chip" style="background:var(--paper-dark,#eee)">×${Number(r.count) || 0}</span>`;
+  const top = `<div class="el-top" onclick="elFlag('${id}',{minimised:${!r.minimised}})"><span class="el-msg">${esc(r.message)}</span>${chips}</div>`;
+  const when = `<div class="la-meta">${esc(EL_CATS[r.category] || r.category)} · last ${esc(_laRelTime(r.lastSeen))}</div>`;
+  if (r.minimised) return `<div class="${cls}">${top}${when}</div>`;
+  return `<div class="${cls}">${top}${when}
+    <div class="la-meta">${esc(r.code)}${r.status ? ' · ' + Number(r.status) : ''}${r.route ? ' · ' + esc(r.route) : ''}</div>
+    <div class="la-meta">First ${esc(_laFmtBrisbane(r.firstSeen))} · last ${esc(_laFmtBrisbane(r.lastSeen))}${r.lastRole ? ' · ' + esc(r.lastRole) : ''}</div>
+    <div class="el-acts">
+      <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{minimised:true})">Minimise</button>
+      <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
+      <button class="btn btn-ghost btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
+    </div></div>`;
+}
+function _elBodyHtml(rows, cat, showIgnored, seenAt) {
+  const shown = _elVisible(rows, cat, showIgnored);
+  const ignored = (rows || []).filter(r => r.ignored && (!cat || r.category === cat)).length;
+  const opts = '<option value="">All</option>' + Object.keys(EL_CATS).map(k => `<option value="${k}"${cat === k ? ' selected' : ''}>${EL_CATS[k]}</option>`).join('');
+  const any = (rows || []).some(r => !cat || r.category === cat);
+  return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="fs" style="flex:1;min-width:160px" onchange="elSetCat(this.value)" aria-label="Category">${opts}</select>
+        <button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>
+        ${any ? `<button class="btn btn-ghost btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all${cat ? ' in ' + EL_CATS[cat] : ''}</button>` : ''}
+      </div>
+      <div class="help-text" style="margin-top:8px">Same errors are grouped. Only the code, page and role are kept, never names or details. Rows go after 90 days.</div>
+    </div>${shown.length ? shown.map(r => _elRowHtml(r, seenAt)).join('') : '<div class="help-text">No errors to show.</div>'}`;
+}
+function _elPaint() {
+  const el = document.getElementById('err-log');
+  if (el && _elRows) el.innerHTML = _elBodyHtml(_elRows, _elCat, _elShowIgnored, _elSeenAt);
+}
+async function _elLoad() {
+  let d;
+  try { d = await API.fresh('/admin/errors'); }
+  catch (e) { const el = document.getElementById('err-log'); if (el) el.innerHTML = `<div class="alert al-warn">${esc(e.message)}</div>`; return; }
+  try { _elSeenAt = Number(localStorage.getItem('yap_errlog_seen')) || 0; localStorage.setItem('yap_errlog_seen', String(Date.now())); } catch (e) {}
+  _elRows = d.rows || [];
+  _elPaint();
+}
+function elSetCat(v) { _elCat = v; _elPaint(); }
+function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
+async function elFlag(id, flags) {
+  try { await API.patch('/admin/errors/' + encodeURIComponent(id), flags); } catch (e) { toast(e.message); return; }
+  const r = (_elRows || []).find(x => x.id === id);
+  if (r) Object.assign(r, flags);
+  _elPaint();
+}
+// Two-tap confirm (no native confirm() — matches the rest of the app).
+async function elDelete(id) {
+  const btn = document.getElementById('el-del-' + id);
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; return; }
+  try { await API.del('/admin/errors/' + encodeURIComponent(id)); } catch (e) { toast(e.message); return; }
+  _elRows = (_elRows || []).filter(x => x.id !== id);
+  _elPaint();
+}
+async function elDeleteAll() {
+  const btn = document.getElementById('el-delall');
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, _elCat, true).length; return; }
+  let d;
+  try { d = await API.del('/admin/errors' + (_elCat ? '?category=' + encodeURIComponent(_elCat) : '')); } catch (e) { toast(e.message); return; }
+  _elRows = (_elRows || []).filter(x => _elCat && x.category !== _elCat);
+  toast('Deleted ' + ((d && d.deleted) || 0));
+  _elPaint();
 }
 
 // ── New Year Data Refresh wizard ──

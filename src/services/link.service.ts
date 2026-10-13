@@ -27,6 +27,7 @@ import {
 import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
+import type { ErrorLogService } from './error-log.service';
 import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
@@ -142,6 +143,8 @@ export interface LinkServiceDeps {
   users: IUserRepository; serviceSessions: IServiceSessionRepository; serviceAttendance: IServiceAttendanceRepository;
   limiter: { isBlocked(key: string): boolean };
   now?: () => Date;
+  /** T3 admin Error log; a batch item that crashes is recorded here (kind/type only). */
+  errorLog?: Pick<ErrorLogService, 'record'>;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -733,6 +736,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           }
           // Any other fault refuses this item alone (APP-7).
           const res = refused(it.id, it.kind, new AppError('INTERNAL', 'Something went wrong. Do it in Elvanto.', 500));
+          await d.errorLog?.record({ category: 'server', code: 'INTERNAL', route: `POST /link/batch ${it.kind === 'action' ? it.type : it.kind}`,
+            status: 500, role: c.actor.role });
           results.push(res);
           try {
             logs.push(await logRow(c, device, { event: it.kind === 'action' ? it.type : it.kind,

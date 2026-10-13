@@ -5,7 +5,8 @@ import { isProductionEnv } from '../../config/is-production';
 import { RawResponse, type Route, type HttpRequest } from './types';
 import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
-import { sendError } from '../middleware/error.middleware';
+import { errorResponse } from '../middleware/error.middleware';
+import { categoryForCode, type ErrorLogService } from '../../services/error-log.service';
 import { UnauthorizedError, MustChangePasswordError } from '../../core/errors/app-error';
 import { createLogger } from '../../utils/logger';
 import { RateLimiter } from '../../utils/rate-limiter';
@@ -61,7 +62,8 @@ function checkSyncToken(header: string | undefined): void {
   if (!timingSafeEqual(sha256(given), sha256(token)) || !given) throw new UnauthorizedError();
 }
 
-export function createApp(routes: Route[], authService: AuthService, health?: () => Promise<Record<string, unknown>>): Express {
+export function createApp(routes: Route[], authService: AuthService, health?: () => Promise<Record<string, unknown>>,
+  errorLog?: Pick<ErrorLogService, 'record'>): Express {
   const app = express();
   app.disable('x-powered-by'); // don't advertise the framework (minor info-leak reduction)
 
@@ -122,6 +124,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
       const routeLabel = `${route.method} ${route.path}`;
       const store = { id: reqId, route: routeLabel, start: Date.now(), pendingQueries: new Set<CancellableQuery>() };
       await requestContext.run(store, async () => {
+      let ctx: HttpRequest['ctx'] = null;
       try {
         // Throttle login attempts per account, keyed by IP+email (not raw IP) so a
         // whole youth team behind one shared NAT/public IP isn't collectively capped.
@@ -143,7 +146,6 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
           }
         }
 
-        let ctx: HttpRequest['ctx'] = null;
         if (route.sync) checkSyncToken(req.headers['authorization']);
         else {
           ctx = await resolveContext(req.headers['authorization'], authService, route.auth);
@@ -166,7 +168,13 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
         if (result instanceof RawResponse) res.type(result.contentType).send(Buffer.from(result.body));
         else res.json(result);
       } catch (err) {
-        sendError(res, err);
+        const r = errorResponse(err);
+        // T3: every 5xx goes to the admin Error log (code + route + role only), before the reply so serverless can't freeze it.
+        if (r.status >= 500 && errorLog) {
+          await errorLog.record({ category: categoryForCode(r.body.code), code: r.body.code, route: routeLabel, status: r.status,
+            role: ctx?.role ?? (route.sync ? 'console' : null) });
+        }
+        res.status(r.status).json(r.body);
       }
       });
     });

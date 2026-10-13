@@ -34,7 +34,9 @@ export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: stri
   /** T1: the console's LINK_REV from its last claim (missing = 1). */
   linkRev: number; }
 export interface ClaimArgs { console: Omit<ConsoleRow, 'lastSeenAt'>; max: number; leaseSeconds: number;
-  cutoffDays: number; leaseLostMs: number; }
+  cutoffDays: number; leaseLostMs: number;
+  /** T3: the repo pushes each row its sweep closed (too-old / lease-lost) here, for the admin Error log. */
+  swept?: { type: ActionType; reason: 'too-old' | 'lease-lost' }[]; }
 export interface ClaimedRow { row: OutboxRow; reclaimed: boolean; noteUnreadable: boolean; }
 export interface MirrorStateRow { kind: PushKind; takenAt: string; consoleId: string; rowCount: number; appliedAt: string; }
 export interface LinkRosterRow { personId: string; firstName: string; lastName: string; gender: 'male' | 'female' | null;

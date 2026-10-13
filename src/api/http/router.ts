@@ -41,7 +41,7 @@ export function buildRoutes(services: Services): Route[] {
   const settings = makeSettingsController({ settings: services.settings, setup: services.setup });
   const manifest = makeManifestController({ settings: services.settings });
   const account = makeAccountController({ account: services.account, auth: services.auth });
-  const admin = makeAdminController({ admin: services.admin });
+  const admin = makeAdminController({ admin: services.admin, errorLog: services.errorLog });
   const trends = makeTrendsController({ trends: services.trends });
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });
   const connectionAudit = makeConnectionAuditController({ connectionAudit: services.connectionAudit });
@@ -147,6 +147,12 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST', path: '/admin/reset',         auth: true, handler: (r) => admin.reset(r) },
     { method: 'POST', path: '/admin/clear-service-group', auth: true, handler: (r) => admin.clearServiceGroupData(r) },
     { method: 'GET',  path: '/admin/audit',         auth: true, handler: (r) => admin.auditLog(r) },
+    // T3 Error log: admin only, except POST /admin/errors/client (any login's SPA reports its own crashes; rate-limited).
+    { method: 'GET',    path: '/admin/errors',        auth: true, handler: (r) => admin.errors(r) },
+    { method: 'DELETE', path: '/admin/errors',        auth: true, handler: (r) => admin.deleteErrors(r) },
+    { method: 'POST',   path: '/admin/errors/client', auth: true, handler: (r) => admin.reportError(r) },
+    { method: 'PATCH',  path: '/admin/errors/:id',    auth: true, handler: (r) => admin.setErrorFlags(r) },
+    { method: 'DELETE', path: '/admin/errors/:id',    auth: true, handler: (r) => admin.deleteError(r) },
 
     // ----- Account management -----
     { method: 'GET',    path: '/accounts/users',               auth: true, handler: (r) => account.list(r) },

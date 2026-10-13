@@ -333,7 +333,7 @@ describe('T1 admin tabs: pills on desktop, a <select> under 768px, one shared li
   });
   it('the real ADMIN_TABS list and the mobile-only CSS are shipped; renderAdminView uses the helper', () => {
     const src = loadIndexHtml();
-    expect(src).toMatch(/const ADMIN_TABS = \[\['import','Import'\][^;]*\['system','System check'\]\];/);
+    expect(src).toMatch(/const ADMIN_TABS = \[\['import','Import'\][^;]*\['system','System check'\],\['errors','Error log'\]\];/);
     expect(src).toMatch(/@media\(max-width:767px\)\{\.admin-tabs\{display:none\}\.admin-tabsel\{display:block\}\}/);
     expect(extractFn(src, 'renderAdminView')).toContain('_adminTabsHtml(_adminTab)');
   });

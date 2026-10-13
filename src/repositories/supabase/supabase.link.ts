@@ -138,17 +138,21 @@ export class SupabaseLinkRepository implements ILinkRepository {
           link_rev = excluded.link_rev`;
       // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2).
       // lease-lost skips this console's own rows: it reclaims them below and its sent-log decides (B1 / X6).
-      await tx`
+      const tooOld = await tx`
         update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
         where id in (
           select id from link_outbox where status = 'pending' and created_at < now() - make_interval(days => ${a.cutoffDays})
-          order by id for update skip locked)`;
-      await tx`
+          order by id for update skip locked)
+        returning type`;
+      const lost = await tx`
         update link_outbox set status = 'unclear', reason = 'lease-lost', result_at = now(), updated_at = now()
         where id in (
           select id from link_outbox where status = 'claimed' and lease_until < now() - make_interval(secs => ${a.leaseLostMs / 1000})
             and lease_owner <> ${c.consoleId}
-          order by id for update skip locked)`;
+          order by id for update skip locked)
+        returning type`;
+      a.swept?.push(...tooOld.map((r) => ({ type: r.type as ActionType, reason: 'too-old' as const })),
+        ...lost.map((r) => ({ type: r.type as ActionType, reason: 'lease-lost' as const })));
       // purge (§4.3)
       await tx`
         delete from link_roster

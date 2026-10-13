@@ -146,6 +146,17 @@ describe('NewYouthService.send', () => {
     expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'unconfirmed', parent: 'sent', dryRun: false });
   });
 
+  it('T3: an unconfirmed form goes to the Error log (form + outcome + role, never the person)', async () => {
+    const f = fakeFetch((url) => {
+      if (url.includes(EF.STUDENT_FORM_ID)) throw new Error('timed out');
+      return new Response('<p>OK-TEST</p>', { status: 200 });
+    });
+    const record = vi.fn(async () => {});
+    const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true, errorLog: { record } });
+    await svc.send(LEADER, INPUT);
+    expect(record.mock.calls).toEqual([[{ category: 'elvanto-form', code: 'STUDENT_FORM_UNCONFIRMED', route: 'POST /intake/new-youth', role: 'leader' }]]);
+  });
+
   it('send:["parent"] retries only the parent form', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
