@@ -152,17 +152,18 @@ describe('S2.3 Bus All cars', () => {
     const g = loadFns(['_busAllCarsHtml'], `const BUS = { cars: null, carsErr: false, carsLoading: null }; function busCarsRefresh() {} ${PRE}`);
     expect(g._busAllCarsHtml()).toContain('Loading');
   });
-  it('renderBus lists allcars only when canSeeCars, right after My car', () => {
-    const src = extractFn(loadIndexHtml(), 'renderBus');
-    expect(src).toMatch(/v\.canSeeCars && \{ id: 'allcars', label: 'All cars' \}/);
-    expect(src.indexOf("id: 'mycar'")).toBeLessThan(src.indexOf("id: 'allcars'"));
-    expect(src.indexOf("id: 'allcars'")).toBeLessThan(src.indexOf("id: 'roster'"));
-    expect(src).toMatch(/allcars: _busAllCarsHtml/);
+  it('renderBus has no All cars tab (T7); the section is a collapsed <details> labelled All cars (n)', () => {
+    expect(extractFn(loadIndexHtml(), 'renderBus')).not.toContain("id: 'allcars'");
+    const g = loadFns(['_busAllCarsSection', '_busAllCarsHtml'], `const BUS = { carsOpen: true, cars: ${JSON.stringify(cars)} }; ${PRE}`);
+    const h = g._busAllCarsSection();
+    expect(h).toContain('<details');
+    expect(h).toContain('All cars (1)');
+    expect(h).toContain('&lt;b&gt;Ann&lt;/b&gt;');
   });
   it('busRefresh never fetches /bus/run/cars (All cars has its own fetch) and keeps it out of BUS.view', async () => {
     const calls: string[] = [];
     (globalThis as any).__bc = calls;
-    const pre = `const BUS = { view: null, myCar: null, loading: null, loadingAs: null, gen: 0, failed: false, routeMin: {}, tab: 'allcars', cars: null, version: -1 };
+    const pre = `const BUS = { view: null, myCar: null, loading: null, loadingAs: null, gen: 0, failed: false, routeMin: {}, tab: 'mycar', cars: null, version: -1 };
 const S = { user: null, page: 'x' };
 function getMyLeaderId() { return null; } function toast() {} function renderBus() {} function renderHome() {} function _busEditing() { return false; }
 async function _busGet(p) { globalThis.__bc.push(p); if (p === '/bus/run') return { run: { id: 'r', version: 1 }, canSeeCars: true }; if (p === '/bus/run/cars') return { cars: [] }; return {}; }
