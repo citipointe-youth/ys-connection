@@ -211,6 +211,23 @@ export const genderFits = (a: string | null | undefined, b: string | null | unde
 };
 
 /**
+ * Operator 2026-10-14: a matched pair (auto or manual, after `changes`) whose folded first + last name and grade agree
+ * takes Elvanto's gender, only when Elvanto says male/female and the YS student differs. Nothing to write = empty.
+ */
+export function genderFixes<S extends MatchStudent>(roster: LinkRosterRow[], students: S[], changes: MatchChange[] = []):
+  { student: S; gender: 'male' | 'female' }[] {
+  const byId = new Map(students.map((s) => [s.id, s]));
+  const now = new Map(changes.map((c) => [c.personId, c]));
+  return roster.flatMap((r) => {
+    const { studentId, match } = now.get(r.personId) ?? r;
+    const s = studentId && (match === 'auto' || match === 'manual') ? byId.get(studentId) : undefined;
+    if (!s || !r.active || (r.gender !== 'male' && r.gender !== 'female') || s.gender === r.gender) return [];
+    return r.grade != null && r.grade === s.grade && nameKey(r.firstName, r.lastName) === nameKey(s.firstName, s.lastName)
+      ? [{ student: s, gender: r.gender }] : [];
+  });
+}
+
+/**
  * The changes to write after a roster push. Resets a dead studentId to none and releases an `auto` row that is no
  * longer an active student (APP-11), then matches `none` (and re-checks `ambiguous`) active student rows by the
  * import's name key (matchFold) with a gender that fits (genderFits); grade breaks a tie. Inactive rows do not count towards a same-name clash. Never changes a live

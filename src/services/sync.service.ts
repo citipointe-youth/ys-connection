@@ -10,7 +10,16 @@ import type { ConsentPush, IntakePush } from '../core/link-contract';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch, genderFixes } from './link-rules';
+import type { Student } from '../core/entities/student';
+import { computeQuad } from '../core/types/enums';
+
+/** Writes genderFixes (idempotent: genderFixes skips an equal gender). Never logs a name. */
+export async function saveGenderFixes(repo: IStudentRepository, fixes: { student: Student; gender: 'male' | 'female' }[]) {
+  if (!fixes.length) return;
+  const at = new Date().toISOString();
+  await repo.saveMany(fixes.map(({ student: s, gender }) => ({ ...s, gender, quad: computeQuad(s.grade ?? null, gender), updatedAt: at })));
+}
 import { parseGroupName } from './import.service';
 import type { ErrorLogService } from './error-log.service';
 
@@ -126,6 +135,7 @@ export function makeSyncService(d: SyncDeps) {
       const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
       const changes = autoMatch(roster, students);
       if (changes.length) await d.link.setMatches(changes);
+      await saveGenderFixes(d.students, genderFixes(roster, students, changes));
       return { applied: true, rows: res.rows, matched: {
         auto: changes.filter((c) => c.match === 'auto').length,
         ambiguous: changes.filter((c) => c.match === 'ambiguous').length,

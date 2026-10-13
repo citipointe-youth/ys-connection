@@ -126,6 +126,9 @@ export const MinistryConfigSchema = z.object({
       flows: z.enum(['off', 'shadow', 'on']).optional(),
       // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
       intakeAdmin: z.enum(['off', 'on']).default('off'),
+      // 2026-10-14: per flow (Elvanto flow id), the step no login lists, completes or assigns on Flow steps.
+      // Missing or '' = the first step (stepOrder <= 1), 'none' = no hidden step, else that step's id.
+      flowHiddenStep: z.record(z.string().max(64), z.string().max(64)).default({}),
     })
     .transform((m) => ({ ...m, checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms,
       flows: m.flows ?? m.newYouthForms }))

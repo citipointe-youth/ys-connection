@@ -6701,7 +6701,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5 },
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', prayers: true },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
@@ -6984,6 +6984,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
     ${_setupElvantoModulesHtml(md)}
+    ${_setupFlowHiddenHtml(md)}
     ${_setupIntakeHtml(md)}
     <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
       <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
@@ -7225,6 +7226,23 @@ function _setupElvantoModulesHtml(md) {
   return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Shadow mode shows it to the admin login only, for testing.')}</label>
       <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['shadow', 'Shadow (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
 }
+// 2026-10-14: per flow the console pushes, the step Flow steps hides from every login and refuses to complete or assign.
+// '' = the first step (default), 'none' = none, else a step id. The steps come from GET /link/flows (admin gets `steps`).
+let _setupFlowSteps; // undefined = not asked, null = loading or unavailable, else the list
+function _setupFlowHiddenHtml(md) {
+  if (_setupModuleMode(md, 'flows') === 'off') return '';
+  if (_setupFlowSteps === undefined) {
+    _setupFlowSteps = null;
+    API.get('/link/flows').then((r) => { _setupFlowSteps = (r && r.steps) || []; if (_adminTab === 'youthsetup') _setupRerender(); }).catch(() => {});
+  }
+  if (!_setupFlowSteps || !_setupFlowSteps.length) return '';
+  const picks = md.flowHiddenStep || {}, flows = {};
+  _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
+  return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
+    const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for any login, and nobody can complete or assign it there. The Intake screen is not changed.')}</label>
+      <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
+}
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
@@ -7343,7 +7361,7 @@ async function switchAdminTab(tab) {
   if (tab === 'newyear') _wizReset();
   // Re-entering Youth Setup always starts from the server's current state, not
   // whatever was left over from an earlier visit this session.
-  if (tab === 'youthsetup') { _setupDraft = null; _setupServiceMinAttendance = null; _setupTermGapDays = null; _setupOpen = {}; }
+  if (tab === 'youthsetup') { _setupFlowSteps = undefined; _setupDraft = null; _setupServiceMinAttendance = null; _setupTermGapDays = null; _setupOpen = {}; }
   const [settings, users, history] = await Promise.all([
     API.get('/settings').catch(() => ({})),
     API.get('/accounts/users').catch(() => []),

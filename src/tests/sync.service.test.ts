@@ -282,6 +282,16 @@ describe('sync.service push', () => {
     expect(roster.find((r) => r.firstName === 'Casey')).toMatchObject({ studentId: null, match: 'none' });
   });
 
+  it("2026-10-14: a matched student takes Elvanto's gender when name + grade agree, on every push", async () => {
+    const { svc, students } = await setup();
+    await students.save({ id: 's-jamie', firstName: 'Jamie', lastName: 'Test', gender: 'other', grade: 9 } as any);
+    await svc.push('roster', fx('push-roster.json'));
+    expect(await students.findById('s-jamie')).toMatchObject({ gender: 'female', quad: 'g79' });
+    await students.save({ ...(await students.findById('s-jamie'))!, gender: 'other' }); // already matched: next push fixes it
+    await svc.push('roster', { ...fx('push-roster.json'), takenAt: '2026-10-16T09:30:00.000Z' });
+    expect((await students.findById('s-jamie'))!.gender).toBe('female');
+  });
+
   it('roster: an ambiguous name is counted', async () => {
     const { svc, students } = await setup();
     await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);

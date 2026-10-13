@@ -51,7 +51,7 @@ type Mode = 'off' | 'shadow' | 'on';
 interface H {
   svc: LinkService; link: InMemoryLinkRepository; clock: { now: Date };
   sessions: InMemoryServiceSessionRepository; attendance: InMemoryServiceAttendanceRepository;
-  leaders: InMemoryLeaderRepository; students: InMemoryStudentRepository;
+  leaders: InMemoryLeaderRepository; students: InMemoryStudentRepository; settings: InMemorySettingsRepository;
 }
 
 const student = (id: string, first: string, last: string, gender: 'male' | 'female', grade: number) => ({
@@ -136,7 +136,7 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
 
   const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions,
     serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => clock.now });
-  return { svc, link, clock, sessions, attendance, leaders, students };
+  return { svc, link, clock, sessions, attendance, leaders, students, settings };
 }
 
 async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60, linkRev = 1) {
@@ -1165,7 +1165,7 @@ describe('B18 / T-8 an empty flows push', () => {
     const h = await setup();
     expect((await h.svc.flows(ADMIN)).rows.length).toBeGreaterThan(0);
     await h.link.replaceMirror('flows', [], { takenAt: '2026-10-16T08:59:00.000Z', consoleId: CONSOLE });
-    expect(await h.svc.flows(ADMIN)).toEqual({ rows: [] });
+    expect((await h.svc.flows(ADMIN)).rows).toEqual([]);
   });
 });
 
@@ -1339,6 +1339,33 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await enq(h.svc, GRADE2, s, DEV)).code).toBe('FORBIDDEN');
     expect((await enq(h.svc, DIRECTOR, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
     expect((await enq(h.svc, ADMIN, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
+  });
+
+  it("2026-10-14: a manual Match on name + grade sets the YS student's gender to Elvanto's", async () => {
+    const h = await setup();
+    await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'other' });
+    await h.svc.setMatch(ADMIN, P_BEN, { studentId: S_BEN });
+    expect((await h.students.findById(S_BEN))!.gender).toBe('male');
+  });
+
+  it('2026-10-14: the hidden step is the admin pick per flow (none / another step); admin gets every step', async () => {
+    const h = await setup();
+    const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
+    expect((await h.svc.flows(ADMIN)).steps!.map((x) => x.stepId)).toContain(STEP0B);
+    expect((await h.svc.flows(DIRECTOR)).steps).toBeUndefined();
+    const flows = await h.link.flows();
+    const other = flows.find((f) => f.flowId === FLOW_B && f.stepId !== STEP0B)!;
+    const pick = async (v: string) => {
+      const s = await h.settings.getSettings();
+      await h.settings.updateSettings({ ...s, ministryConfig: { ...s.ministryConfig, modules: { ...s.ministryConfig.modules, flowHiddenStep: { [FLOW_B]: v } } } } as never);
+    };
+    await pick('none');
+    expect(await ids(DIRECTOR)).toContain(FR0B);
+    expect((await enq(h.svc, DIRECTOR, step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN }), DEV)).outcome).toBe('saved');
+    await pick(other.stepId);
+    expect(await ids(DIRECTOR)).toContain(FR0B);
+    expect(await ids(DIRECTOR)).not.toContain(other.rowId);
+    expect((await enq(h.svc, DIRECTOR, step({ rowId: other.rowId, flowId: FLOW_B, stepId: other.stepId, personId: other.personId }), DEV)).code).toBe('FORBIDDEN');
   });
 
   it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {

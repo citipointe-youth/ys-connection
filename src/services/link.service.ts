@@ -35,8 +35,9 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
-  noteRoom, pickList, nameFold, matchFold, serviceDay,
+  noteRoom, pickList, nameFold, matchFold, serviceDay, genderFixes,
 } from './link-rules';
+import { saveGenderFixes } from './sync.service';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -142,7 +143,8 @@ export interface LinkService {
   listActions(actor: Actor, q: unknown): Promise<ActionListRow[]>;
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
-  flows(actor: Actor): Promise<{ rows: FlowView[] }>;
+  /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
+  flows(actor: Actor): Promise<{ rows: FlowView[]; steps?: { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number }[] }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -190,8 +192,13 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
  * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no login lists, completes or assigns it
  * here; the Intake screen is its one view (operator 2026-10-14).
  */
-function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope): boolean {
-  if (f.stepOrder <= 1) return false;
+/** The admin's pick per flow (modules.flowHiddenStep): missing / '' = the first step, 'none' = none, else that step id. */
+export function stepHidden(f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, string> | undefined): boolean {
+  const h = picks?.[f.flowId] || '';
+  return h === '' ? f.stepOrder <= 1 : f.stepId === h;
+}
+function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope, hidden: Record<string, string> | undefined): boolean {
+  if (stepHidden(f, hidden)) return false;
   const r = f.personId ? roster.get(f.personId) : undefined;
   const grade = f.grade ?? r?.grade ?? null;
   const gender = f.gender ?? r?.gender ?? null;
@@ -508,8 +515,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (row.flowId !== sp.flowId || row.stepId !== sp.stepId || row.personId !== sp.personId) {
         throw new BadRequestError('This step changed. Reload.');
       }
-      if (row.stepOrder <= 1) throw new ForbiddenError('This step moves on its own after contact consent.');
-      if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure)) {
+      if (stepHidden(row, c.settings.ministryConfig.modules.flowHiddenStep)) throw new ForbiddenError('This step moves on its own after contact consent.');
+      if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure, c.settings.ministryConfig.modules.flowHiddenStep)) {
         throw new ForbiddenError('This person is not one of yours.');
       }
       personId = row.personId;
@@ -862,7 +869,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders()]);
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
-      const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure))
+      const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder)
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
@@ -872,7 +879,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             grade: f.grade, gender: f.gender, mobile: f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null };
         });
-      return { rows };
+      if (!c.admin) return { rows };
+      const steps = new Map(flows.map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
+      return { rows, steps: [...steps.values()].sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder) };
     },
 
     /**
@@ -924,7 +933,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const rows = flows.filter((f) => f.flowId === b.flowId && f.personId === b.personId);
       if (!rows.length) throw new BadRequestError('This person is not in this flow any more. Reload.');
       const byId = new Map(roster.map((r) => [r.personId, r]));
-      if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure))) {
+      if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))) {
         throw new ForbiddenError('This person is not one of yours.');
       }
       // Only a leader this login could pick in its "I am" list (same scope as GET /leaders).
@@ -979,6 +988,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         change = { personId, studentId: b.studentId, match: 'manual' };
       } else change = { personId, studentId: null, match: 'none' };
       await d.link.setMatches([...release, change]);
+      if (change.studentId) { // operator 2026-10-14: Elvanto's gender wins when name + grade agree
+        const s = await d.students.findById(change.studentId);
+        if (s) await saveGenderFixes(d.students, genderFixes(roster, [s], [change]));
+      }
       return change;
     },
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
@@ -224,6 +224,23 @@ function ros(n: number, first: string, last: string, gender: 'male' | 'female' |
 }
 const stu = (id: string, firstName: string, lastName: string, gender: 'male' | 'female' | 'other', grade: number | null = 9) =>
   ({ id, firstName, lastName, gender, grade });
+
+describe('genderFixes (operator 2026-10-14)', () => {
+  it("Elvanto's male/female wins only when folded first + last + grade agree; never blank, never an equal write", () => {
+    const st = [stu('s1', 'Olivia', 'Antonucci Cook', 'other'), stu('s2', 'Ben', 'Lee', 'other', 10), stu('s3', 'Amy', 'Ng', 'female')];
+    const m = (n: number, sid: string, g: 'male' | 'female' | null, first: string, last: string, over: Partial<LinkRosterRow> = {}) =>
+      ros(n, first, last, g, { studentId: sid, match: 'manual', ...over });
+    const fix = (r: LinkRosterRow[], c = []) => genderFixes(r, st, c).map((x) => [x.student.id, x.gender]);
+    expect(fix([m(1, 's1', 'female', 'Olivia', 'Antonucci-Cook')])).toEqual([['s1', 'female']]); // fold, grade 9 = 9
+    expect(fix([m(2, 's2', 'male', 'Ben', 'Lee')])).toEqual([]);                                  // grade 9 vs 10
+    expect(fix([m(1, 's1', null, 'Olivia', 'Antonucci-Cook')])).toEqual([]);                      // Elvanto blank
+    expect(fix([m(3, 's3', 'female', 'Amy', 'Ng')])).toEqual([]);                                 // already equal
+    expect(fix([m(1, 's1', 'female', 'Olivia', 'Antonucci-Cook', { match: 'ignored' })])).toEqual([]);
+    // an auto match made in the same push counts
+    expect(genderFixes([ros(1, 'Olivia', 'Antonucci Cook', 'female')], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
+      .map((x) => x.gender)).toEqual(['female']);
+  });
+});
 
 describe('B16 / X8 one name fold', () => {
   it('accents, curly quotes, spaces round a hyphen, double spaces, case, trim', () => {
