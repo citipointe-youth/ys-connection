@@ -58,19 +58,29 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-flows.json': C.PUSH_SCHEMAS.flows,
   'push-response.json': z.array(C.PushResponse).min(1),
   'errors.json': z.array(z.object({ status: z.number().int(), body: C.ErrorBody })).min(1),
+  // X19 (T4)
+  'push-intake.json': C.PUSH_SCHEMAS.intakePlan,
+  'push-consent.json': C.PUSH_SCHEMAS.consentPlan,
+  'claim-response-rev4.json': C.ClaimResponse,
+  'result-request-intake.json': C.ResultRequest,
+  'batch-intake.json': z.object({ device: z.object({ id: z.string(), label: z.string() }), sentAt: z.string().datetime(),
+    items: z.array(z.union([z.object({ kind: z.literal('cancel'), id: z.string() }).strict(),
+      z.object({ kind: z.literal('action'), id: z.string(), type: z.enum(C.INTAKE_TYPES), payload: z.record(z.unknown()),
+        note: z.string().max(1900).nullable(), leaderId: z.null() }).strict()])).min(1) }).strict(),
 };
 
 describe('link contract: every fixture parses with its schema', () => {
   it('covers every fixture file', () => expect(Object.keys(FIXTURES).sort()).toEqual(Object.keys(load('manifest.json').files).sort()));
   for (const [f, schema] of Object.entries(FIXTURES)) it(f, () => { schema.parse(load(f)); });
 
-  it('claim-response has one row per action type; each payload parses with its type schema', () => {
-    const rows = C.ClaimResponse.parse(load('claim-response.json')).rows;
+  it('claim-response (+ claim-response-rev4, X19) has one row per action type; each payload parses with its type schema', () => {
+    const rows = [...C.ClaimResponse.parse(load('claim-response.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev4.json')).rows];
     expect(rows.map((r) => r.type).sort()).toEqual([...C.ACTION_TYPES].sort());
     for (const r of rows) (C.PAYLOAD_SCHEMAS[r.type] as z.ZodTypeAny).parse(r.payload);
   });
-  it('result-request has every outcome', () => {
-    const outcomes = new Set(C.ResultRequest.parse(load('result-request.json')).results.map((r) => r.outcome));
+  it('result-request (+ result-request-intake, X19) has every outcome', () => {
+    const outcomes = new Set([...C.ResultRequest.parse(load('result-request.json')).results,
+      ...C.ResultRequest.parse(load('result-request-intake.json')).results].map((r) => r.outcome));
     expect([...outcomes].sort()).toEqual([...C.OUTCOMES].sort());
   });
   it('errors.json is the section 3.1 set', () => {
@@ -143,8 +153,8 @@ describe('link contract: decisions 2026-10-12', () => {
 });
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
-  it('LINK_REV is 3 (T1 made it 2, X18 3) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(3);
+  it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
+    expect(C.LINK_REV).toBe(4);
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -216,5 +226,86 @@ describe('X18 (UX batch 2026-10-13 T6): lifegroup member changes, optional for a
     for (const reason of ['group-unknown', 'leader-member']) {
       C.ResultItem.parse({ id: '0a000000-0000-4000-8000-000000000007', outcome: 'refused', reason });
     }
+  });
+});
+
+describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older console', () => {
+  const CR = () => clone(load('claim-request.json'));
+  const PI = () => clone(load('push-intake.json'));
+  const MIG = join(ROOT, 'supabase', 'migrations', '0021_link_intake.sql');
+  it('a claim without the intake capability keys still parses; with them each must be a capability', () => {
+    expect(C.ClaimRequest.parse(CR()).capabilities.intakeSave).toBeUndefined();
+    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'shadow', consentSave: 'shadow', intakeText: 'locked' } };
+    expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'locked' });
+    caps.capabilities.intakeSave = 'maybe'; rejects(C.ClaimRequest, caps);
+  });
+  it('the claim reply may carry the intake hint (mode off/on only, at most 4 refresh dates); without it an older reply parses', () => {
+    const r = C.ClaimResponse.parse(load('claim-response-rev4.json'));
+    expect(r.intake).toEqual({ mode: 'on', hurry: true, refresh: [{ mode: 'intake', date: '2026-10-16' }] });
+    expect(C.ClaimResponse.parse(load('claim-response.json')).intake).toBeUndefined();
+    rejects(C.ClaimResponse, { ...r, intake: { ...r.intake, mode: 'shadow' } });
+    rejects(C.ClaimResponse, { ...r, intake: { ...r.intake, refresh: Array(5).fill(r.intake!.refresh[0]) } });
+  });
+  it('intake push: strict, no suburb / address / email anywhere (an unknown key rejects the push)', () => {
+    const raw = readFileSync(join(DIR, 'push-intake.json'), 'utf8') + readFileSync(join(DIR, 'push-consent.json'), 'utf8');
+    expect(raw).not.toMatch(/suburb"\s*:|address|email/i);
+    const bads: ((x: any) => void)[] = [
+      (x) => { x.rows[0].forms.student.values.suburb = 'Carindale'; },
+      (x) => { x.rows[0].forms.student.edits.suburb = 'Carindale'; },
+      (x) => { x.rows[0].email = 'a@b.c'; },
+      (x) => { x.rows[0].steps[0].extra = 1; },
+      (x) => { x.rows[0].links[0][1] = 'http://evil.example'; },
+      (x) => { x.rows[0].status = 'maybe'; },
+    ];
+    for (const bad of bads) { const x = PI(); bad(x); rejects(C.PUSH_SCHEMAS.intakePlan, x); }
+    rejects(C.PUSH_SCHEMAS.intakePlan, { ...PI(), rows: Array(101).fill(PI().rows[0]) });
+  });
+  it('intake push: an over-long string is cut, not refused', () => {
+    const x = PI(); x.rows[0].title = 'x'.repeat(500); x.rows[0].holds[0].text = 'y'.repeat(500);
+    const row = C.PUSH_SCHEMAS.intakePlan.parse(x).rows[0]!;
+    expect(row.title).toHaveLength(120); expect(row.holds[0]!.text).toHaveLength(200);
+  });
+  it('batch-intake: each action payload parses with its type schema; the answer note is an IntakeNote under 1,900', () => {
+    const items = load('batch-intake.json').items.filter((i: any) => i.kind === 'action');
+    expect(items.map((i: any) => i.type).sort()).toEqual([...C.INTAKE_TYPES].sort());
+    for (const it of items) {
+      (C.PAYLOAD_SCHEMAS[it.type as 'intakeSave'] as z.ZodTypeAny).parse(it.payload);
+      if (it.note) { expect(it.note.length).toBeLessThanOrEqual(1900); C.IntakeNote.parse(JSON.parse(it.note)); }
+    }
+  });
+  it('payload rules: strict; intakeText key is the parent text; intakeSave one = exactly one key; family 1..2; fixes never suburb', () => {
+    const rows = load('claim-response-rev4.json').rows;
+    const p = (t: string) => clone(rows.find((r: any) => r.type === t).payload);
+    rejects(C.PAYLOAD_SCHEMAS.intakeSave, { ...p('intakeSave'), phone: '0400' });
+    rejects(C.PAYLOAD_SCHEMAS.intakeSave, { ...p('intakeSave'), one: true }); // two keys
+    C.PAYLOAD_SCHEMAS.intakeSave.parse({ ...p('intakeSave'), one: true, confirmed: [p('intakeSave').confirmed[0]] });
+    rejects(C.PAYLOAD_SCHEMAS.intakeText, { ...p('intakeText'), key: 'approve:student:x' });
+    rejects(C.PAYLOAD_SCHEMAS.intakeAnswer, { ...p('intakeAnswer'), family: [] });
+    rejects(C.PAYLOAD_SCHEMAS.consentSave, { ...p('consentSave'), confirmed: Array(5).fill('k') });
+    rejects(C.IntakeNote, { fixes: { '5b000000-0000-4000-8000-000000000001': { suburb: 'Carindale' } }, keeps: {} });
+  });
+  it('results: steps/stop optional (an older result parses), planned has no extras, stop.text is cut to 200', () => {
+    const items = C.ResultRequest.parse(load('result-request-intake.json')).results;
+    expect(items.find((i) => i.outcome === 'planned')).toEqual({ id: '0a000000-0000-4000-8000-000000000101', outcome: 'planned' });
+    const sent = clone(load('result-request-intake.json').results[1]);
+    sent.stop.text = 'z'.repeat(300);
+    expect((C.ResultItem.parse(sent) as any).stop.text).toHaveLength(200);
+    sent.steps[0].outcome = 'bogus'; rejects(C.ResultItem, sent);
+    for (const reason of ['needs-you', 'plan-changed', 'saved-before', 'chain-not-done', 'bad-answer']) {
+      C.ResultItem.parse({ id: '0a000000-0000-4000-8000-000000000101', outcome: 'refused', reason });
+    }
+  });
+  it('the app ref is YS- + 6 Crockford base32 characters', () => {
+    expect(C.APP_REF_RE.test('YS-7K2M9Q')).toBe(true);
+    for (const bad of ['YS-7K2M9', 'YS-7K2M9QQ', 'YS-ILOU00', 'ys-7k2m9q']) expect(C.APP_REF_RE.test(bad)).toBe(false);
+  });
+  it('0021: the type check lists every ACTION_TYPE; RLS on every table it creates; additive', () => {
+    const sql = readFileSync(MIG, 'utf8');
+    const check = sql.slice(sql.indexOf('add constraint link_outbox_type_check'), sql.indexOf('));') + 2);
+    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort());
+    const tables = [...sql.matchAll(/create table if not exists (\w+)/g)].map((m) => m[1]!);
+    expect(tables).toEqual(['link_intake_dates', 'link_intake_rows', 'link_intake_view']);
+    for (const t of tables) expect(sql).toMatch(new RegExp(`alter table ${t} enable row level security`));
+    expect(sql).not.toMatch(/\b(drop table|rename|alter column)\b/i);
   });
 });

@@ -1,0 +1,283 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T09:41:00.000Z",
+  "date": "2026-10-16",
+  "cut": false,
+  "inputs": {
+    "from": "app",
+    "at": "2026-10-16T09:40:12.000Z"
+  },
+  "rows": [
+    {
+      "key": "5b000000-0000-4000-8000-000000000001",
+      "status": "needs-you",
+      "title": "Ava Sample",
+      "holds": [
+        {
+          "role": "student",
+          "text": "Check the match"
+        }
+      ],
+      "fromApp": true,
+      "siblings": [],
+      "match": {
+        "kind": "app",
+        "parentSub": "5b000000-0000-4000-8000-000000000002",
+        "options": [
+          {
+            "subId": "5b000000-0000-4000-8000-000000000002",
+            "name": "Jo Sample",
+            "when": "Fri 16 Oct 7:42 pm"
+          }
+        ]
+      },
+      "forms": {
+        "student": {
+          "subId": "5b000000-0000-4000-8000-000000000001",
+          "status": "pending",
+          "when": "Fri 16 Oct 7:41 pm",
+          "values": {
+            "first": "Ava",
+            "last": "sample",
+            "mobile": "0400000001",
+            "gender": "Female",
+            "birthday": "2011-04-03",
+            "parentName": "Jo Sample",
+            "parentPhone": "0400000002",
+            "school": "Test State High",
+            "grade": "Year 9"
+          },
+          "edits": {},
+          "caps": {
+            "last": "Sample"
+          },
+          "editable": [
+            "first",
+            "last",
+            "birthday",
+            "mobile",
+            "parentName",
+            "parentPhone"
+          ],
+          "issues": [
+            {
+              "key": "parentPhone",
+              "msg": "The two forms disagree",
+              "suggest": "0400000002",
+              "advisory": false,
+              "keep": {
+                "field": "parentPhone",
+                "value": "0400000002|0400000003"
+              }
+            }
+          ]
+        },
+        "parent": {
+          "subId": "5b000000-0000-4000-8000-000000000002",
+          "status": "pending",
+          "when": "Fri 16 Oct 7:42 pm",
+          "values": {
+            "first": "Jo",
+            "last": "Sample",
+            "mobile": "0400000003",
+            "gender": "Female"
+          },
+          "edits": {},
+          "caps": {},
+          "editable": [
+            "first",
+            "last",
+            "mobile"
+          ],
+          "issues": []
+        }
+      },
+      "verdicts": [
+        {
+          "role": "student",
+          "subId": "5b000000-0000-4000-8000-000000000001",
+          "verdict": "unsure",
+          "chosen": null,
+          "options": [
+            "9e000000-0000-4000-8000-000000000013",
+            "new"
+          ],
+          "linked": null,
+          "candidates": [
+            {
+              "id": "9e000000-0000-4000-8000-000000000013",
+              "name": "Ava Sampel",
+              "age": 15,
+              "archived": false,
+              "verdict": "unsure",
+              "diff": [
+                {
+                  "label": "Suburb",
+                  "a": "",
+                  "b": ""
+                },
+                {
+                  "label": "Mobile",
+                  "a": "0400000001",
+                  "b": "0400000009"
+                }
+              ]
+            }
+          ],
+          "diff": []
+        }
+      ],
+      "profiles": {
+        "student": null,
+        "parent": null
+      },
+      "grade": {
+        "form": "Year 9",
+        "profile": "",
+        "state": "new"
+      },
+      "gender": null,
+      "age": {
+        "form": "15",
+        "profile": "",
+        "state": "ok",
+        "birthday": "03/04/2011"
+      },
+      "steps": [
+        {
+          "key": "approve:student:5b000000-0000-4000-8000-000000000001:h3k9a1",
+          "action": "approveNew",
+          "role": "student",
+          "text": "Approve the student form",
+          "state": "todo",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        },
+        {
+          "key": "approve:parent:5b000000-0000-4000-8000-000000000002:h7q2b4",
+          "action": "approveNew",
+          "role": "parent",
+          "text": "Approve the parent form",
+          "state": "todo",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        },
+        {
+          "key": "link:pair:5b000000-0000-4000-8000-000000000001:5b000000-0000-4000-8000-000000000002",
+          "action": "linkParent",
+          "role": "pair",
+          "text": "Link parent to student",
+          "state": "wait",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        },
+        {
+          "key": "category:parent:5b000000-0000-4000-8000-000000000002:affiliate",
+          "action": "category",
+          "role": "parent",
+          "text": "Set Jo to Affiliate",
+          "state": "wait",
+          "alone": true,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        },
+        {
+          "key": "complete:parent:5b000000-0000-4000-8000-000000000002:5b000000-0000-4000-8000-000000000001",
+          "action": "completeStep",
+          "role": "parent",
+          "text": "Text Jo (ends 003)",
+          "state": "wait",
+          "alone": false,
+          "locked": false,
+          "sms": {
+            "name": "Jo Sample",
+            "last3": "003"
+          },
+          "alts": []
+        }
+      ],
+      "extras": [
+        {
+          "key": "setField:student:5b000000-0000-4000-8000-000000000001:last:h1",
+          "action": "setField",
+          "role": "student",
+          "text": "Capitalise last name",
+          "state": "todo",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": [],
+          "field": "last",
+          "value": "Sample"
+        }
+      ],
+      "kept": [],
+      "dropped": [
+        {
+          "role": "student",
+          "key": "first"
+        }
+      ],
+      "links": [
+        [
+          "Student form",
+          "https://citipointe.elvanto.com.au/admin/forms/submission/?id=5b000000-0000-4000-8000-000000000001"
+        ]
+      ]
+    },
+    {
+      "key": "5b000000-0000-4000-8000-000000000003",
+      "status": "done",
+      "title": "Liam Example",
+      "holds": [],
+      "fromApp": false,
+      "siblings": [],
+      "match": {
+        "kind": "exact",
+        "parentSub": null,
+        "options": []
+      },
+      "forms": {
+        "student": null,
+        "parent": null
+      },
+      "verdicts": [],
+      "profiles": {
+        "student": {
+          "id": "9e000000-0000-4000-8000-000000000014",
+          "name": "Liam Example",
+          "archived": false
+        },
+        "parent": null
+      },
+      "grade": null,
+      "gender": null,
+      "age": null,
+      "steps": [
+        {
+          "key": "approve:student:5b000000-0000-4000-8000-000000000003:h0",
+          "action": "approveNew",
+          "role": "student",
+          "text": "Approve the student form",
+          "state": "done",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        }
+      ],
+      "extras": [],
+      "kept": [],
+      "dropped": [],
+      "links": []
+    }
+  ]
+}

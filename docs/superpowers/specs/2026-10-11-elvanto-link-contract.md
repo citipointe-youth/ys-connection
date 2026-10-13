@@ -6,7 +6,13 @@ past-service check-ins, check-out on, §12 answers), and again 2026-10-12 with t
 X1–X17 (no fixture, schema, `/sync/*` shape, reason code or status changes). v1 was never released, so `contractVersion` stays `1`.
 **X18 (2026-10-13, UX batch T6):** two new action types `addGroupMember` / `removeGroupMember`, two optional capability
 keys, reason codes `group-unknown` and `leader-member`, `LINK_REV` 3. Optional additions only, so `contractVersion`
-stays `1` (see §5.6). Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
+stays `1` (see §5.6).
+**X19 (2026-10-13, UX batch T4):** youth intake + consents in the app (admin only). Four action types `intakeAnswer`,
+`intakeSave`, `consentSave`, `intakeText`; push kinds `intakePlan` / `consentPlan`; outcome `planned`; optional
+`steps` / `stop` on result items; reasons `needs-you`, `plan-changed`, `saved-before`, `chain-not-done`, `bad-answer`;
+four optional capability keys; an optional claim-reply `intake` hint; `LINK_REV` 4. Optional additions only, so
+`contractVersion` stays `1` (see §5.7). Design: Project 13 `ys-connection/2026-10-13-intake-consent-app-spec.md`.
+Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
 Repos: YS Connection branch `feature/elvanto-link-contract`; Elvanto Sync Console (Project 11.1) branch
 `feature/ys-link-contract`.
 
@@ -415,6 +421,11 @@ What the leader sees:
 | `note-unreadable` | "This note couldn't be read. Do it in Elvanto." |
 | `group-unknown` (X18) | "This group isn't in Elvanto any more. Reload." |
 | `leader-member` (X18) | "Remove a leader in Elvanto." |
+| `needs-you` (X19) | "The family needs a look first. Nothing more was sent." |
+| `plan-changed` (X19) | "Something changed in Elvanto. Review the family again." |
+| `saved-before` (X19) | "Saved before but not showing in Elvanto. Check in Elvanto." |
+| `chain-not-done` (X19) | "Finish saving the family before the parent text." |
+| `bad-answer` (X19) | "That answer no longer fits this date. Refresh." |
 | `already`, `console-busy`, `awaiting-approval` | not a refusal (see §5.3) |
 
 **X9:** codes are unchanged; the leader line is picked by type. `detail` is for the admin only. The console takes it
@@ -471,6 +482,31 @@ link uses; the console never maps text.
   (answer `cancelled`) or refuses while it is claimed (`LINK_STILL_SENDING`). Many different people may wait at once.
 - **Mirrors.** Until the next `groups` push the app applies sent changes to the members list itself. The console should
   push `groups` soon after a member change is `sent`. A report's attendees are still checked against the pushed members.
+
+### 5.7 Youth intake + consents (X19, 2026-10-13)
+
+- **Handshake.** The console sends the capability keys `intakeAnswer`, `intakeSave`, `consentSave`, `intakeText` and
+  claims those types only when the app's reply `linkRev` >= 4. The app adds `intake: { mode: 'off'|'on', hurry, refresh:
+  [{mode:'intake'|'consent', date}] (<= 4) }` to the claim reply only when the claim said `linkRev` >= 4. `mode` is the
+  app's `intakeAdmin` module (Off = push nothing); `hurry` = an intake row is pending or the admin opened Intake in the
+  last 30 min (claim again in 10 s); `refresh` = dates the admin asked for (push them in this tick). The app offers the
+  Intake screen only when the newest console's `link_rev` >= 4.
+- **Pushes** `POST /sync/push/intakePlan` and `/consentPlan`: one (mode, date) per push, `{ contractVersion, consoleId,
+  takenAt, date, cut, inputs (intake only), rows <= 100 }`, a full replace of that date (`takenAt` <= stored: `{applied:
+  false}`). Every object is strict: an unknown key (suburb, address, email) rejects the push (400). Strings are cut,
+  not refused. `rows: []` clears the date. Fixtures `push-intake.json`, `push-consent.json`.
+- **Payloads** (strict): `intakeAnswer { date, family[1..2], choices (<= 2), pairs (<= 1), undo }` with an encrypted
+  note `IntakeNote { fixes, keeps }` (<= 1,900); `intakeSave { date, row, confirmed[1..20], one }` (`one` = exactly one
+  key); `consentSave { date, row, confirmed[1..4] }`; `intakeText { date, row, key }` (`complete:parent:` only).
+  Dedupe `ia:` / `is:` / `cs:` / `it:<date>:<row>`. The intakeAnswer note is not attributed (no leader prefix).
+- **Results.** `planned` (an answer applied and the date re-pushed; the row becomes `sent`, reason `planned`). `sent`,
+  `already`, `refused`, `unclear`, `shadowed` may carry `steps[] { key, action, role, outcome: confirmed | already |
+  not-sent | unconfirmed | locked | shadowed, at }` (<= 20) and `stop { code, text <= 200 }`; an intake `sentLogKey` is
+  the step key (<= 400). Fixtures `claim-response-rev4.json`, `result-request-intake.json`, `batch-intake.json`.
+- **App rules.** Admin only (`intake:admin`), module `intakeAdmin` Off / On (default Off). Save / Text / consent Save
+  are refused `INTAKE_STALE` (409) when the plan is over 2 h old, and 400 when a key is not in the stored plan of that
+  row. An intake row waits at most 24 h (swept `refused`, `too-old`); its note is dropped once final; the row is
+  deleted after 14 days. Plan rows are encrypted at rest and deleted after 14 days; module Off deletes them all.
 
 ## 6. Identity and matching
 

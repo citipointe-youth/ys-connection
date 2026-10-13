@@ -1,12 +1,16 @@
 // Shared Elvanto link types (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §3). Copied exactly;
 // every lane imports these rather than inventing its own.
 import type { z } from 'zod';
-import type { ACTION_TYPES, STATUSES, PUSH_KINDS, REASONS, ResultItem as ResultItemSchema,
-  ResultResponse as ResultResponseSchema } from './link-contract';
+import type { ACTION_TYPES, STATUSES, PUSH_KINDS, MIRROR_KINDS, REASONS, ResultItem as ResultItemSchema,
+  ResultResponse as ResultResponseSchema, ResultStep as ResultStepSchema, ResultStop as ResultStopSchema } from './link-contract';
 
 export type ActionType = (typeof ACTION_TYPES)[number];
 export type Status = (typeof STATUSES)[number];
 export type PushKind = (typeof PUSH_KINDS)[number];
+/** The four kinds kept in link_mirror_state (X19: the intake pushes are stored per date instead). */
+export type MirrorKind = (typeof MIRROR_KINDS)[number];
+export type ResultStep = z.infer<typeof ResultStepSchema>;
+export type ResultStop = z.infer<typeof ResultStopSchema>;
 export type Reason = (typeof REASONS)[number];
 export type Capability = 'live' | 'shadow' | 'locked' | 'off';
 /** X18: a type the console does not list (an older console) counts as off: never leased, new rows refused. */
@@ -27,6 +31,8 @@ export interface OutboxRow {
   attempts: number; retryAt: string | null; leaseOwner: string | null; leaseUntil: string | null;
   resultAt: string | null; sentLogKey: string | null; reportId: string | null;
   createdAt: string; updatedAt: string;
+  /** X19: an intake chain's per-step outcomes and why it stopped (null for every other type). */
+  steps?: ResultStep[] | null; stop?: ResultStop | null;
 }
 export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 'dedupeKey' | 'serviceDate' |
   'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'>;
@@ -39,7 +45,7 @@ export interface ClaimArgs { console: Omit<ConsoleRow, 'lastSeenAt'>; max: numbe
   /** T3: the repo pushes each row its sweep closed (too-old / lease-lost) here, for the admin Error log. */
   swept?: { type: ActionType; reason: 'too-old' | 'lease-lost' }[]; }
 export interface ClaimedRow { row: OutboxRow; reclaimed: boolean; noteUnreadable: boolean; }
-export interface MirrorStateRow { kind: PushKind; takenAt: string; consoleId: string; rowCount: number; appliedAt: string; }
+export interface MirrorStateRow { kind: MirrorKind; takenAt: string; consoleId: string; rowCount: number; appliedAt: string; }
 export interface LinkRosterRow { personId: string; firstName: string; lastName: string; gender: 'male' | 'female' | null;
   grade: number | null; kind: 'student' | 'leader' | 'other'; active: boolean; studentId: string | null; match: Match;
   updatedAt: string; }

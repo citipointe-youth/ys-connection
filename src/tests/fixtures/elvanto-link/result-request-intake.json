@@ -1,0 +1,114 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "results": [
+    {
+      "id": "0a000000-0000-4000-8000-000000000101",
+      "outcome": "planned"
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000102",
+      "outcome": "sent",
+      "sentLogKey": "approve:parent:5b000000-0000-4000-8000-000000000002:h7q2b4",
+      "steps": [
+        {
+          "key": "approve:student:5b000000-0000-4000-8000-000000000001:h3k9a1",
+          "action": "approveNew",
+          "role": "student",
+          "outcome": "confirmed",
+          "at": "2026-10-16T09:47:01.000Z"
+        },
+        {
+          "key": "approve:parent:5b000000-0000-4000-8000-000000000002:h7q2b4",
+          "action": "approveNew",
+          "role": "parent",
+          "outcome": "confirmed",
+          "at": "2026-10-16T09:47:09.000Z"
+        }
+      ],
+      "stop": {
+        "code": "sms",
+        "text": "Saved. The parent text is next, on its own."
+      }
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000105",
+      "outcome": "already",
+      "steps": [
+        {
+          "key": "approve:student:5b000000-0000-4000-8000-000000000001:h3k9a1",
+          "action": "approveNew",
+          "role": "student",
+          "outcome": "already",
+          "at": null
+        }
+      ],
+      "stop": {
+        "code": "finished",
+        "text": "Everything was already in Elvanto."
+      }
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000103",
+      "outcome": "refused",
+      "reason": "plan-changed",
+      "detail": "Something changed in Elvanto. Review the family again.",
+      "steps": [
+        {
+          "key": "approve:consent:5b000000-0000-4000-8000-000000000021:h5",
+          "action": "approveForm",
+          "role": "consent",
+          "outcome": "not-sent",
+          "at": null
+        }
+      ],
+      "stop": {
+        "code": "not-confirmed",
+        "text": "A step changed since you looked."
+      }
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000106",
+      "outcome": "unclear",
+      "sentLogKey": "link:pair:5b000000-0000-4000-8000-000000000001:5b000000-0000-4000-8000-000000000002",
+      "detail": "Not sure it saved. Check in Elvanto.",
+      "steps": [
+        {
+          "key": "link:pair:5b000000-0000-4000-8000-000000000001:5b000000-0000-4000-8000-000000000002",
+          "action": "linkParent",
+          "role": "pair",
+          "outcome": "unconfirmed",
+          "at": "2026-10-16T09:47:20.000Z"
+        }
+      ],
+      "stop": {
+        "code": "stalled",
+        "text": "Elvanto did not answer in time."
+      }
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000104",
+      "outcome": "shadowed",
+      "sentLogKey": "complete:parent:5b000000-0000-4000-8000-000000000002:5b000000-0000-4000-8000-000000000001",
+      "steps": [
+        {
+          "key": "complete:parent:5b000000-0000-4000-8000-000000000002:5b000000-0000-4000-8000-000000000001",
+          "action": "completeStep",
+          "role": "parent",
+          "outcome": "shadowed",
+          "at": null
+        }
+      ],
+      "stop": {
+        "code": "finished",
+        "text": "Practice: nothing was sent."
+      }
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000107",
+      "outcome": "retry",
+      "retrySeconds": 60,
+      "reason": "console-busy"
+    }
+  ]
+}

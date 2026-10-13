@@ -1,0 +1,80 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T09:41:30.000Z",
+  "date": "2026-10-16",
+  "cut": false,
+  "rows": [
+    {
+      "key": "9e000000-0000-4000-8000-000000000011",
+      "status": "ready",
+      "title": "Mia Sample",
+      "holds": [],
+      "outcome": "No contact",
+      "consent": {
+        "ymd": "2026-10-14",
+        "contact": true,
+        "total": ""
+      },
+      "consentNote": "",
+      "textedOn": "2026-10-10",
+      "profiles": {
+        "student": {
+          "id": "9e000000-0000-4000-8000-000000000011",
+          "name": "Mia Sample",
+          "archived": false
+        }
+      },
+      "steps": [
+        {
+          "key": "approve:consent:5b000000-0000-4000-8000-000000000021:h5",
+          "action": "approveForm",
+          "role": "consent",
+          "text": "Approve the consent form",
+          "state": "todo",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        },
+        {
+          "key": "remove:consent:9e000000-0000-4000-8000-000000000011:step0",
+          "action": "removeStep",
+          "role": "consent",
+          "text": "Remove from step 0",
+          "state": "todo",
+          "alone": false,
+          "locked": false,
+          "sms": null,
+          "alts": []
+        }
+      ],
+      "links": [
+        [
+          "Profile",
+          "https://citipointe.elvanto.com.au/admin/people/person/?id=9e000000-0000-4000-8000-000000000011"
+        ]
+      ]
+    },
+    {
+      "key": "9e000000-0000-4000-8000-000000000012",
+      "status": "needs-you",
+      "title": "Noah Example",
+      "holds": [
+        {
+          "role": "consent",
+          "text": "Parent texted late (14/10)?"
+        }
+      ],
+      "outcome": "",
+      "consent": null,
+      "consentNote": "",
+      "textedOn": null,
+      "profiles": {
+        "student": null
+      },
+      "steps": [],
+      "links": []
+    }
+  ]
+}

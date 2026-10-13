@@ -92,6 +92,11 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'firstTimerCheckIn': return `first:${p.serviceTimeId}:${nameFold(p.firstName ?? '')} ${nameFold(p.lastName ?? '')}`;
     case 'addGroupMember': return `addMember:${p.groupId}:${p.personId}`;
     case 'removeGroupMember': return `removeMember:${p.groupId}:${p.personId}`;
+    // X19 (T4): one open row per family / row and kind, per plan date.
+    case 'intakeAnswer': return `ia:${p.date}:${(payload.family as string[])[0]}`;
+    case 'intakeSave': return `is:${p.date}:${p.row}`;
+    case 'consentSave': return `cs:${p.date}:${p.row}`;
+    case 'intakeText': return `it:${p.date}:${p.row}`;
   }
 }
 
@@ -144,6 +149,7 @@ function targetStatus(item: ResultItem): Status {
     case 'already': return 'sent';
     case 'retry': return 'pending';
     case 'resolved': return item.landed ? 'sent' : 'refused';
+    case 'planned': return 'sent';
     default: return item.outcome;
   }
 }
@@ -168,11 +174,15 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 
   if (row.status === 'claimed') {
     if (row.leaseOwner !== consoleId) return { ignored: 'not-leased' };
-    const base = { updatedAt: at };
+    // X19: an intake chain's steps/stop are kept with the row when the console sends them.
+    const chain = 'steps' in item || 'stop' in item
+      ? { ...(item.steps ? { steps: item.steps } : {}), ...(item.stop ? { stop: item.stop } : {}) } : {};
+    const base = { updatedAt: at, ...chain };
     switch (item.outcome) {
       case 'sent': return { next: { ...base, status: 'sent', reason: null, detail: null, resultAt: at,
         sentLogKey: item.sentLogKey, reportId: item.reportId ?? row.reportId, personId: item.personId ?? row.personId } };
       case 'already': return { next: { ...base, status: 'sent', reason: 'already', detail: null, resultAt: at } };
+      case 'planned': return { next: { ...base, status: 'sent', reason: 'planned', detail: null, resultAt: at } };
       case 'refused': return { next: { ...base, status: 'refused', reason: item.reason, detail: item.detail ?? null, resultAt: at } };
       case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at } };
       case 'shadowed': return { next: { ...base, status: 'shadowed', sentLogKey: item.sentLogKey, resultAt: at } };
