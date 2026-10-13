@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
   "files": {
-    "claim-request.json": "25dc4b323b049f387e6382d9c4a5ec52a9ffe21d1001f8b9060dab112092a8b6",
-    "claim-response.json": "a6c56ea2475b6aef03e5a7eee033add842610dc6363593170b3fb93d918c0cdc",
+    "claim-request.json": "73dcd73cf0d54a21c9222702e6f32f93366da4f79e1293a0bfffa44a30db75c7",
+    "claim-response.json": "b6e2e90beb17fd5aefd5068d8f0d37d61eb73a2557dd7085e5ee4f65fb87c98b",
     "errors.json": "2f8ca9b4862b929a101a1b18d646ac1c6b4bc8980f6c23669d5d47100fb05d70",
     "push-flows.json": "b320883d41d204cdaa0babd03901e8cc0aa7b49029c4493c317cf6320317b066",
     "push-groups.json": "1ac1c9aa0da05f8e319b6300cf2fb48d323eba7215f7d18c969d94972afadbb6",

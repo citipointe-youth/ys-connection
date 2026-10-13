@@ -20,6 +20,7 @@ const SPEC_ROUTES = [
   'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind',
   'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
+  'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
 ];
 
@@ -160,5 +161,13 @@ describe('link + sync live (memory)', () => {
     expect(r.status).toBe(400);
     expect((await j(r)).code).toBe('BAD_REQUEST');
     expect((await call('POST', '/link/flows/assign', body)).status).toBe(401);
+  });
+  it('T5/T6: members + youth are routed: 200 as admin, 404 unknown group, 401 with no session', async () => {
+    expect((await asAdmin('GET', '/link/youth')).status).toBe(200);
+    const r = await asAdmin('GET', `/link/lifegroups/${randomUUID()}/members`);
+    expect(r.status).toBe(404);
+    expect((await j(r)).code).toBe('NOT_FOUND');
+    expect((await call('GET', '/link/youth')).status).toBe(401);
+    expect((await call('GET', `/link/lifegroups/${randomUUID()}/members`)).status).toBe(401);
   });
 });

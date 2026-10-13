@@ -17,7 +17,8 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml'];
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -25,7 +26,8 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 // APP-49: the real constant, read from the page (a copy here would hide a change).
-const LK_DOOR_TYPES_SRC = loadIndexHtml().match(/^const LK_DOOR_TYPES = \[[^\]]*\];/m)![0];
+const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES']
+  .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = \\[[^\\]]*\\];`, 'm'))![0]).join('\n');
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
   fresh?: (path: string) => Promise<any>;
@@ -1302,6 +1304,32 @@ describe('F2 lifegroup report', () => {
     expect(k.fns._lkGroupHtml(k.get().LINK.groups[0])).toContain('_lkReportCancel()');
     k.fns._lkReportCancel();
     expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(71), leaderId: 'L1', _g: G(1) });
+  });
+  it('T6: member changes go through the queue; the answer shows on the row; an unsent opposite is just dropped', async () => {
+    const reply = (outcome: string, extra: any = {}) => (_p: string, b: any) =>
+      Promise.resolve({ results: b.items.map((x: any) => ({ id: x.id, kind: x.kind, outcome, ...extra })) });
+    const h = setup('L1', {}, reply('refused', { code: 'BAD_REQUEST', message: 'Already in this group.' }));
+    const L = h.get().LINK;
+    L.gm[G(1)] = { groupId: G(1), canEdit: true, changes: [], members: [{ personId: P(61), name: 'Ava Example', leader: false, grade: 9, studentId: null }] };
+    L.gmOpen[G(1)] = true;
+    // remove queued then add again before sending: the queued remove is dropped, nothing goes
+    h.fns._lkMemQueue(G(1), P(61), 'removeGroupMember', 'Ava Example');
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    expect(h.fns._lkQGet()[0]).toMatchObject({ kind: 'action', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(61) }, leaderId: 'L1', note: null });
+    expect(h.fns._lkMembersHtml(L.groups[0])).toContain('<s>Ava Example</s>');
+    h.fns._lkMemQueue(G(1), P(61), 'addGroupMember', 'Ava Example');
+    expect(h.fns._lkQGet()).toHaveLength(0);
+    // an add of someone new: sent, refused by the server, shown on a greyed row with the reason; the name never leaves the phone
+    h.fns._lkMemQueue(G(1), P(64), 'addGroupMember', 'Cal <b>New</b>');
+    await h.fns._lkFlush();
+    const sent = h.calls.posts.at(-1).b.items[0];
+    expect(sent).not.toHaveProperty('_n');
+    expect(h.fns._lkQGet()).toHaveLength(0);
+    expect(L.mres[sent.id]).toMatchObject({ status: 'refused', personId: P(64), groupId: G(1), name: 'Cal <b>New</b>' });
+    const out = h.fns._lkMembersHtml(L.groups[0]);
+    expect(out).toContain('Cal &lt;b&gt;New&lt;/b&gt;');
+    expect(strip(out)).toContain('Already in this group.');
+    expect(h.calls.toasts).toContain('Already in this group.');
   });
   it('the page is routed; Submit and Edit hide when the console has the type off', () => {
     expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-groups') { await renderLinkGroups(); return; }");

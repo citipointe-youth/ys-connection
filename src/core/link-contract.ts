@@ -8,9 +8,12 @@ export const LINK_CONTRACT_VERSION = 1;
 // UX batch 2026-10-12 (T1): optional additions only, so the version stays 1 and an older peer still parses (row objects
 // strip unknown keys). Each side sends its LINK_REV in the claim (missing = 1); the app shows "Console out of date" when
 // the console's rev is lower, the console sends grade 6 only when the app's rev is >= 2.
-export const LINK_REV = 2;
+// UX batch 2026-10-13 (T6, contract X18): addGroupMember / removeGroupMember, again optional only (rev 3). An older
+// console does not list them in its capabilities: the app never leases them to it and refuses new ones (LINK_UNAVAILABLE).
+export const LINK_REV = 3;
 
-export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn'] as const;
+export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
+  'addGroupMember', 'removeGroupMember'] as const;
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved'] as const;
 // locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
@@ -21,7 +24,8 @@ export const RETRY_REASONS = ['console-busy', 'awaiting-approval', 'console-cann
 export const REASONS = ['locked', 'no-room', 'person-unknown', 'report-exists', 'report-not-found', 'report-changed',
   'member-left', 'not-in-group', 'multi-service', 'unkept-notes', 'service-not-offered', 'note-too-long',
   'did-not-meet-conflict', 'step-moved', 'assignee-needed', 'ambiguous-first-timer', 'too-old', 'not-landed',
-  'console-cannot-read', 'unknown', 'lease-lost', 'note-unreadable', 'already', 'console-busy', 'awaiting-approval'] as const;
+  'console-cannot-read', 'unknown', 'lease-lost', 'note-unreadable', 'already', 'console-busy', 'awaiting-approval',
+  'group-unknown', 'leader-member'] as const; // X18 (T6): the group is gone in Elvanto; a leader is removed in Elvanto only
 // Spec 3.1 (+ the two existing transient 503 codes from error.middleware.ts).
 export const SYNC_ERROR_CODES = ['UNAUTHORIZED', 'LINK_OFF', 'LINK_CONTRACT_MISMATCH', 'VALIDATION_ERROR',
   'SERVICE_UNAVAILABLE', 'REQUEST_TIMEOUT'] as const;
@@ -56,6 +60,9 @@ export const PAYLOAD_SCHEMAS = {
   }).strict().refine(didNotMeetIsEmpty, DID_NOT_MEET),
   completeStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), notePrivate: z.boolean() }).strict(),
   firstTimerCheckIn: z.object({ serviceTimeId: Uuid, serviceId: Uuid, firstName: Name, lastName: Name, grade: Grade, gender: Gender }).strict(),
+  // X18 (T6): one Elvanto lifegroup membership change. The console answers `already` when Elvanto is already that way.
+  addGroupMember: z.object({ groupId: Uuid, personId: Uuid }).strict(),
+  removeGroupMember: z.object({ groupId: Uuid, personId: Uuid }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -63,7 +70,9 @@ const Cap = z.enum(CAPABILITIES);
 export const ClaimRequest = z.object({
   contractVersion: Version, consoleId: Uuid, consoleLabel: Text(60), consoleVersion: Text(60),
   inWindow: z.boolean(), pollSeconds: z.number().int().min(10).max(3600),
-  capabilities: z.object({ checkIn: Cap, checkOut: Cap, submitReport: Cap, editReport: Cap, completeStep: Cap, firstTimerCheckIn: Cap }).strict(),
+  // X18: the two member types are optional (a console before LINK_REV 3 sends neither); missing = the console cannot do it.
+  capabilities: z.object({ checkIn: Cap, checkOut: Cap, submitReport: Cap, editReport: Cap, completeStep: Cap, firstTimerCheckIn: Cap,
+    addGroupMember: Cap.optional(), removeGroupMember: Cap.optional() }).strict(),
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
