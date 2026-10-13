@@ -102,9 +102,9 @@ describe('T4 New Year Refresh with Prayers off', () => {
   });
 });
 
-describe('T5/T6 All cars fetches its own list, only while the tab is open', () => {
-  const PRE = (opts: { fail?: boolean; tab?: string }) => `
-    const BUS = { cars: null, carsErr: false, carsLoading: null, tab: ${JSON.stringify(opts.tab ?? 'allcars')}, version: 1, pendingRepaint: false, view: null, loading: null, gen: 0 };
+describe('T5/T6/T7 All cars fetches its own list, only while the section is open', () => {
+  const PRE = (opts: { fail?: boolean; tab?: string; open?: boolean }) => `
+    const BUS = { cars: null, carsErr: false, carsLoading: null, carsOpen: ${!!opts.open}, tab: ${JSON.stringify(opts.tab ?? 'mycar')}, version: 1, pendingRepaint: false, view: null, loading: null, gen: 0 };
     const S = { page: 'bus' }; const document = { hidden: false, getElementById() { return null; } };
     const calls = []; let renders = 0;
     async function _busGet(p) { calls.push(p); if (${!!opts.fail} && p === '/bus/run/cars') throw new Error('x'); if (p === '/bus/run/version') return { version: 1 }; return { cars: [], unassigned: 0 }; }
@@ -113,7 +113,7 @@ describe('T5/T6 All cars fetches its own list, only while the tab is open', () =
     function __c() { return calls; } function __b() { return BUS; } function __r() { return renders; }`;
 
   it('a failed fetch shows a tap-to-retry line, never an endless Loading', async () => {
-    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml'], PRE({ fail: true }), ['busCarsRefresh', '_busAllCarsHtml', '__b']);
+    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml'], PRE({ fail: true, open: true }), ['busCarsRefresh', '_busAllCarsHtml', '__b']);
     await f.busCarsRefresh();
     expect(f.__b().carsErr).toBe(true);
     const h = f._busAllCarsHtml();
@@ -122,7 +122,7 @@ describe('T5/T6 All cars fetches its own list, only while the tab is open', () =
     expect(h).not.toContain('Loading');
   });
   it('a success stores the list and repaints the tab', async () => {
-    const f = loadFns(['busCarsRefresh'], PRE({}), ['busCarsRefresh', '__b', '__r']);
+    const f = loadFns(['busCarsRefresh'], PRE({ open: true }), ['busCarsRefresh', '__b', '__r']);
     await f.busCarsRefresh();
     expect(f.__b().cars).toEqual({ cars: [], unassigned: 0 });
     expect(f.__r()).toBe(1);
@@ -132,18 +132,32 @@ describe('T5/T6 All cars fetches its own list, only while the tab is open', () =
     expect(f._busAllCarsHtml()).toContain('Loading');
     expect(f.__c()).toEqual(['/bus/run/cars']);
   });
-  it('each poll tick on All cars fetches the cars (no version check); other tabs check the version', async () => {
-    const f = loadFns(['busCarsRefresh', '_busPollTick'], PRE({}), ['_busPollTick', '__c', '__b']);
+  it('a poll tick fetches the cars only while the section is open (version check always)', async () => {
+    const f = loadFns(['busCarsRefresh', '_busPollTick'], PRE({ open: true }), ['_busPollTick', '__c', '__b']);
     await f._busPollTick();
-    expect(f.__c()).toEqual(['/bus/run/cars']);
-    f.__c().length = 0; f.__b().tab = 'mycar';
+    expect(f.__c()).toEqual(['/bus/run/cars', '/bus/run/version']);
+    f.__c().length = 0; f.__b().carsOpen = false;
     await f._busPollTick();
     expect(f.__c()).toEqual(['/bus/run/version']);
   });
-  it('busRefresh no longer fetches /bus/run/cars; the tab click does a cache-only render plus the cars fetch', () => {
+  it('expanding fetches once; collapsing does not; the section stays open across a repaint', () => {
+    const f = loadFns(['busCarsRefresh', 'busCarsToggle', '_busAllCarsSection', '_busAllCarsHtml'], PRE({}), ['busCarsToggle', '_busAllCarsSection', '__c', '__b']);
+    expect(f._busAllCarsSection()).not.toContain(' open');
+    expect(f._busAllCarsSection()).not.toContain('Loading');
+    f.busCarsToggle(true);
+    expect(f.__c()).toEqual(['/bus/run/cars']);
+    expect(f._busAllCarsSection()).toMatch(/<details[^>]* open /);
+    f.busCarsToggle(true); // ontoggle fired by the repaint itself: no second fetch
+    expect(f.__c()).toEqual(['/bus/run/cars']);
+    f.busCarsToggle(false);
+    expect(f.__b().carsOpen).toBe(false);
+  });
+  it('busRefresh never fetches /bus/run/cars; renderBus has no All cars tab and appends the section to My car only for canSeeCars', () => {
     const src = loadIndexHtml();
     expect(extractFn(src, 'busRefresh')).not.toContain('/bus/run/cars');
-    expect(extractFn(src, 'renderBus')).toMatch(/'allcars' \? ';busCarsRefresh\(\)'/);
+    const rb = extractFn(src, 'renderBus');
+    expect(rb).not.toContain('allcars');
+    expect(rb).toContain("mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : '')");
   });
   it('a null stop shows no number; long names sit in a block element so the ellipsis works', () => {
     const f = loadFns(['_busAllCarsHtml'], `const BUS = { cars: { unassigned: 0, cars: [{ name: 'C', colourIndex: 0, leaderNames: [],
@@ -305,3 +319,22 @@ describe('R8 SPA minors', () => {
 });
 
 vi.useRealTimers();
+
+describe('T1 admin tabs: pills on desktop, a <select> under 768px, one shared list', () => {
+  const f = loadFns(['_adminTabsHtml'], `const ADMIN_TABS = [['import','Import'],['x','A <b> tab']]; function esc(s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); }`);
+  it('every tab appears in both the pill strip and the select; current one is on/selected; labels escaped', () => {
+    const h = f._adminTabsHtml('x');
+    expect(h).toContain('<select');
+    expect(h).toContain("switchAdminTab('import')");
+    expect(h).toContain('<option value="import">');
+    expect(h).toMatch(/<option value="x" selected>/);
+    expect(h).toMatch(/tbbtn on" onclick="switchAdminTab\('x'\)"/);
+    expect(h).not.toContain('<b>');
+  });
+  it('the real ADMIN_TABS list and the mobile-only CSS are shipped; renderAdminView uses the helper', () => {
+    const src = loadIndexHtml();
+    expect(src).toMatch(/const ADMIN_TABS = \[\['import','Import'\][^;]*\['system','System check'\]\];/);
+    expect(src).toMatch(/@media\(max-width:767px\)\{\.admin-tabs\{display:none\}\.admin-tabsel\{display:block\}\}/);
+    expect(extractFn(src, 'renderAdminView')).toContain('_adminTabsHtml(_adminTab)');
+  });
+});

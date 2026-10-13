@@ -369,6 +369,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .tbbar::-webkit-scrollbar{display:none}
 .tbbtn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;color:var(--ink-mid);background:var(--paper-card);border:1.5px solid var(--paper-dark);cursor:pointer}
 .tbbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.admin-tabsel{display:none;width:100%;margin-bottom:16px}
+@media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
 
 /* Audit timeline */
 .audit-entry{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--paper-dark)}
@@ -2371,7 +2373,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   _vgReset(); // unsaved grade taps never fire after logout or carry into the next login
@@ -5822,14 +5824,18 @@ async function renderAdmin() {
   renderAdminView(settings, users, history);
 }
 
+// T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
+const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check']];
+function _adminTabsHtml(cur) {
+  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}</button>`).join('')}</div>
+    <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+}
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
-  const tabs = ['import','accounts','loginActivity','data','newyear','youthsetup','system'];
-  const tabLabels = { import:'Import', accounts:'Accounts', loginActivity:'Login Activity', data:'Data', newyear:'New Year Refresh', youthsetup:'Youth Setup', system:'System check' };
-  const tabHtml = tabs.map(t => `<button class="tbbtn ${_adminTab===t?'on':''}" onclick="switchAdminTab('${t}')">${tabLabels[t]}</button>`).join('');
+  const tabHtml = _adminTabsHtml(_adminTab);
 
   let body = `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>
-    <div class="tbbar">${tabHtml}</div>`;
+    ${tabHtml}`;
 
   if (_adminTab === 'import') {
     body += _importBodyHtml(history);
@@ -8775,7 +8781,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, cars: null, carsErr: false, carsLoading: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, cars: null, carsOpen: false, carsErr: false, carsLoading: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
   hist: null, histErr: '', histSub: 'nights', histPeople: [],
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
@@ -8896,7 +8902,7 @@ async function busCarsRefresh() {
     try { BUS.cars = await _busGet('/bus/run/cars'); BUS.carsErr = false; }
     catch (e) { BUS.carsErr = true; }
     finally { BUS.carsLoading = null; }
-    if (S.page === 'bus' && BUS.tab === 'allcars' && !_busEditing()) renderBus();
+    if (S.page === 'bus' && BUS.carsOpen && BUS.tab === 'mycar' && !_busEditing()) renderBus();
   })();
   return BUS.carsLoading;
 }
@@ -8906,7 +8912,7 @@ async function _busPollTick() {
   // waiting on a version re-fetch — the data's already current.
   if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
   if (_busEditing()) return;
-  if (BUS.tab === 'allcars') { await busCarsRefresh(); return; }
+  if (BUS.carsOpen && BUS.tab === 'mycar') await busCarsRefresh();
   try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
 }
 function _busStartPoll() {
@@ -10775,7 +10781,6 @@ async function renderBus() {
   const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
   const tabs = [
     { id: 'mycar', label: 'My car' },
-    v.canSeeCars && { id: 'allcars', label: 'All cars' },
     canRoster && { id: 'roster', label: 'Students' },
     v.canCoordinate && { id: 'cars', label: 'Car setup' },
     v.canCoordinate && { id: 'routes', label: 'Assign' },
@@ -10784,7 +10789,7 @@ async function renderBus() {
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: _busMyCarHtml, allcars: _busAllCarsHtml, analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -10793,12 +10798,24 @@ async function renderBus() {
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
-    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()${t.id === 'allcars' ? ';busCarsRefresh()' : ''}">${esc(t.label)}</button>`).join('')}</div>
+    <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
     ${isAdmin && v.google && v.google.state !== 'on' ? `<div class="alert al-warn">${esc(v.google.text)}</div>` : ''}
     ${last ? `<div class="bus-last">${last}</div>` : ''}
     ${body}</div>`);
 }
 
+// T7: "All cars (n)" sits collapsed at the bottom of My car. Open state lives in BUS.carsOpen so the 10 s
+// repaint keeps it; the list is fetched on expand and polled (_busPollTick) only while open.
+function _busAllCarsSection() {
+  const n = BUS.carsOpen && BUS.cars ? ` (${esc(String(BUS.cars.cars.length))})` : '';
+  return `<details class="bus-allcars" style="margin-top:14px"${BUS.carsOpen ? ' open' : ''} ontoggle="busCarsToggle(this.open)">
+    <summary class="card-title" style="cursor:pointer">All cars${n}</summary>${BUS.carsOpen ? _busAllCarsHtml() : ''}</details>`;
+}
+function busCarsToggle(open) {
+  if (open === !!BUS.carsOpen) return;
+  BUS.carsOpen = open;
+  if (open) busCarsRefresh();
+}
 // All cars (read-only): car, leaders, stop order, rider name, grade and suburb only.
 function _busAllCarsHtml() {
   const d = BUS.cars;
