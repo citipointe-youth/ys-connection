@@ -11,7 +11,7 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
-  '_lkLastReportLabel', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
@@ -114,15 +114,15 @@ describe('F1.1 switch and More entries', () => {
   });
   it('moreItems per role and mode', () => {
     const ids = (role: string, mode: string, modules?: Record<string, string>) => makeEnv({ role, mode, modules }).fns.moreItems().map((m: any) => m.id).filter((id: string) => id.startsWith('link-'));
-    expect(ids('admin', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows', 'link-admin']);
+    expect(ids('admin', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']); // 2026-10-14: Elvanto link is an Admin tab, not a More entry
     expect(ids('director', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('quad', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('grade', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('leader', 'on')).toEqual(['link-checkin']);
-    expect(ids('admin', 'shadow')).toEqual(['link-checkin', 'link-groups', 'link-flows', 'link-admin']);
+    expect(ids('admin', 'shadow')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'shadow')).toEqual([]);
     for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
-    expect(ids('admin', 'off')).toEqual(['link-admin']);
+    expect(ids('admin', 'off')).toEqual([]);
     // each entry by its own switch
     expect(ids('grade', 'off', { lifegroupReport: 'on' })).toEqual(['link-groups']);
     expect(ids('grade', 'off', { flows: 'on', checkin: 'on' })).toEqual(['link-checkin', 'link-flows']);
@@ -1169,6 +1169,22 @@ describe('F2 lifegroup report', () => {
     expect(out).toContain('Here (2)Ava Example, Dana Testleader');
     const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
     expect(strip(dnm.fns._lkReportHtml(dnm.get().LINK.groups[0], dnm.get().LINK.groups[0].lastReport))).toContain('Group did not meet');
+  });
+  it('2026-10-14: who came is a collapsed <details>; two reports on one day both show, with Sent by and a warning', () => {
+    const lr = grp().lastReport;
+    const dup = { ...lr, reportId: G(8), attendees: [P(61)], guests: 0, by: 'Cody <b>Cobb</b>' };
+    const h = setup('L1', { history: [lr, dup] });
+    const g = h.get().LINK.groups[0];
+    const one = h.fns._lkReportHtml(g, lr);
+    expect(one).toMatch(/<details class="lk-here"><summary>Here \(2\)<\/summary>/); // closed: no open attribute
+    expect(one).not.toContain('Sent by'); // made in Elvanto: no sender
+    const w = { start: '2026-10-05', end: '2026-10-11' };
+    const body = h.fns._lkWeekBodyHtml(g, w);
+    expect(body).toContain('2 reports were sent for the same day');
+    expect(body).toContain(`_lkEditReport('${G(9)}')`);
+    expect(body).toContain(`_lkEditReport('${G(8)}')`);
+    expect(strip(body)).toContain('Sent byCody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(strip(h.fns._lkWeekBodyHtml(setup().get().LINK.groups[0], w))).not.toContain('same day');
   });
   it('Edit is shown only when editable, else "Edit this report in Elvanto."', () => {
     const a = setup();

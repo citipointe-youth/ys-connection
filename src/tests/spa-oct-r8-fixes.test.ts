@@ -333,8 +333,23 @@ describe('T1 admin tabs: pills on desktop, a <select> under 768px, one shared li
   });
   it('the real ADMIN_TABS list and the mobile-only CSS are shipped; renderAdminView uses the helper', () => {
     const src = loadIndexHtml();
-    expect(src).toMatch(/const ADMIN_TABS = \[\['import','Import'\][^;]*\['system','System check'\],\['errors','Error log'\]\];/);
+    expect(src).toMatch(/const ADMIN_TABS = \[\['import','Import'\][^;]*\['system','System check'\],\['errors','Error log'\],\['link','Elvanto link'\]\];/);
     expect(src).toMatch(/@media\(max-width:767px\)\{\.admin-tabs\{display:none\}\.admin-tabsel\{display:block\}\}/);
     expect(extractFn(src, 'renderAdminView')).toContain('_adminTabsHtml(_adminTab)');
+  });
+  it('2026-10-14: the Elvanto link tab opens its own page with the same tab list; another tab from there goes back to Admin', async () => {
+    const src = loadIndexHtml();
+    expect(extractFn(src, 'renderLinkAdmin')).toContain("_adminTabsHtml('link')");
+    const gone: string[] = [];
+    const S = { page: 'admin' };
+    const t = new Function('S', 'go', `let _adminTab = 'import'; function _wizReset() {}
+${extractFn(src, 'switchAdminTab')}
+return { sw: switchAdminTab, tab: () => _adminTab };`)(S, (p: string) => gone.push(p));
+    await t.sw('link');
+    expect(gone).toEqual(['link-admin']);
+    S.page = 'link-admin';
+    await t.sw('errors');
+    expect(gone).toEqual(['link-admin', 'admin']);
+    expect(t.tab()).toBe('errors');
   });
 });

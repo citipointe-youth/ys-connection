@@ -1108,6 +1108,18 @@ describe('D5 lifegroups and flows', () => {
     expect((await h.svc.lifegroups(GRADE)).groups[0]!.lastReport!.reportId).toBe(R1);
   });
 
+  it('2026-10-14: a report carries who sent it from the app (by); one made in Elvanto has by null', async () => {
+    const h = await setup();
+    expect((await h.svc.lifegroups(GRADE)).groups[0]!.lastReport!.by).toBeNull();
+    const sub = report({ date: '2026-10-13' });
+    await enq(h.svc, GRADE, sub, DEV);
+    setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T07:45:00.000Z', report_id: R1 }); // before the push: the mirror's R1 stays
+    const g = (await h.svc.lifegroups(GRADE)).groups[0]!;
+    expect(g.lastReport!.reportId).toBe(R1);
+    expect(g.lastReport!.by).toEqual(expect.stringMatching(/\S/));
+    expect(g.history.find((x) => x.reportId === R1)!.by).toBe(g.lastReport!.by);
+  });
+
   it('T-27 / APP-29: the overlay is the newest sent submit OR edit, by report date then resultAt', async () => {
     const h = await setup();
     // submit D1 (newer date) sent, then an older-date submit D0 sent later: D1 stays the last report
@@ -1135,7 +1147,7 @@ describe('D5 lifegroups and flows', () => {
   it('flows: scoped by the roster grade/gender, unknown person for director/admin, ordered by flow then step', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
-    expect(await ids(DIRECTOR)).toEqual([FR0A, FR3, FR0B, FR1, FR2]);
+    expect(await ids(DIRECTOR)).toEqual([FR3, FR1, FR2]); // step 0 rows (FR0A, FR0B) are never listed (2026-10-14)
     expect(await ids(GRADE)).toEqual([FR1]);
     expect(await ids(QUAD_B)).toEqual([FR3]);
     expect(await ids(LEADER)).toEqual([]);
@@ -1293,12 +1305,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });
 
-  it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 is admin/director only', async () => {
+  it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
     expect(await ids(GRADE2)).toEqual([]);                    // Ben (9 boy) sits in the step 0 of Bravo
-    expect(await ids(ADMIN)).toContain(FR0B);
-    expect(await ids(DIRECTOR)).toContain(FR0B);
+    expect(await ids(ADMIN)).not.toContain(FR0B);             // 2026-10-14: Intake screen only, even for admin
+    expect(await ids(DIRECTOR)).not.toContain(FR0B);
     const flows = await h.link.flows();
     const P_UNK = u(160);
     await h.link.replaceMirror('flows', [
@@ -1311,11 +1323,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await h.svc.flows(GRADE)).rows[0]).toMatchObject({ grade: 9, gender: 'female', mobile: '0411111111', mobileIsParent: true });
   });
 
-  it('T4: a step-0 row cannot be completed by a login that cannot see it', async () => {
+  it('T4: a step-0 row cannot be completed by any login (it moves on its own)', async () => {
     const h = await setup();
     const s = step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN });
     expect((await enq(h.svc, GRADE2, s, DEV)).code).toBe('FORBIDDEN');
-    expect((await enq(h.svc, DIRECTOR, { ...s, id: nid() }, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, DIRECTOR, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, ADMIN, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
   });
 
   it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {

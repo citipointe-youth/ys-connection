@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const f = loadFns(['_lkAddDays', '_lkFirstName', '_lkSmsHref', '_lkFlowGroups', '_lkMyFlowRows', '_lkDay', '_lkLastReportLabel', '_lkWeekStart', '_lkWeeks',
-  '_lkReports', '_lkWeekReport', '_lkReportDateFor', '_lkRevLine'], '');
+  '_lkReports', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkRevLine'], '');
 
 const R = (o: any) => ({ rowId: o.rowId ?? 'r' + Math.random(), flowId: 'F1', flowName: 'Flow', stepId: 'S1', stepName: 'Step', stepOrder: 1,
   personId: 'p', name: 'Zed', due: null, ...o });

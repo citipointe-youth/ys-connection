@@ -187,11 +187,12 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
 }
 /**
  * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/director only, through
- * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is
- * admin/director only.
+ * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is the
+ * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no login lists, completes or assigns it
+ * here; the Intake screen is its one view (operator 2026-10-14).
  */
 function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope): boolean {
-  if (f.stepOrder <= 1 && !isAdminRole(a)) return false;
+  if (f.stepOrder <= 1) return false;
   const r = f.personId ? roster.get(f.personId) : undefined;
   const grade = f.grade ?? r?.grade ?? null;
   const gender = f.gender ?? r?.gender ?? null;
@@ -508,6 +509,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (row.flowId !== sp.flowId || row.stepId !== sp.stepId || row.personId !== sp.personId) {
         throw new BadRequestError('This step changed. Reload.');
       }
+      if (row.stepOrder <= 1) throw new ForbiddenError('This step moves on its own after contact consent.');
       if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure)) {
         throw new ForbiddenError('This person is not one of yours.');
       }
@@ -838,14 +840,17 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN })]);
       const gAt = takenAt(mirrors, 'groups');
+      // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
+      const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
+      const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId) ?? null });
       // T8: grade 6..12, girls then boys within a grade, no grade last; then by name.
       const rank = (g: LinkGroupRow) => [g.grade ?? 99, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2] as const;
       const order = (a: LinkGroupRow, b: LinkGroupRow) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1] || a.name.localeCompare(b.name);
       return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).sort(order).map((g) => {
         const o = open.find((r) => (r.payload as { groupId?: string }).groupId === g.groupId);
-        const last = lastReportOf(g, sent, gAt);
+        const last0 = lastReportOf(g, sent, gAt), last = last0 && withBy(last0);
         // The last report (an app overlay included) leads the history; an edit replaces its own entry.
-        const history = [...(last ? [last] : []), ...g.history.filter((h) => h.reportId !== last?.reportId)]
+        const history = [...(last ? [last] : []), ...g.history.filter((h) => h.reportId !== last?.reportId).map(withBy)]
           .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
         return { groupId: g.groupId, name: g.name, grade: g.grade, gender: g.gender, meets: g.meets, members: g.members,
           thisWeek: g.thisWeek, lastReport: last, history, defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null };

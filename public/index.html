@@ -793,6 +793,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
 .lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}
 .lk-kv span{color:var(--ink-mid);flex:none}.lk-kv b{font-weight:600;text-align:right;min-width:0}
+.lk-here{font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}.lk-here summary{cursor:pointer;color:var(--ink-mid);min-height:32px;display:list-item}
 .lk-cand{align-items:center}.lk-cand span{flex:1 1 auto;min-width:0}.lk-cand .btn{flex:none}
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
@@ -1436,7 +1437,7 @@ function setApp(h) {
 function _updateNavActive() {
   const cur = S.page;
   document.querySelectorAll('[data-nav-page]').forEach(el => {
-    el.classList.toggle('on', el.dataset.navPage === cur || (el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)));
+    el.classList.toggle('on', el.dataset.navPage === cur || (cur === 'link-admin' && el.dataset.navPage === 'admin') || (el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)));
   });
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
@@ -2084,7 +2085,6 @@ function moreItems() {
     if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
-    if (_linkAdminOn()) xs.push({ id:'link-admin', ic:'link', label:'Elvanto link', open:"go('link-admin')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'Intake', open:"go('link-intake')" });
   }
@@ -5890,7 +5890,7 @@ async function renderAdmin() {
 }
 
 // T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
-const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log']];
+const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['link','Elvanto link']];
 function _adminTabsHtml(cur) {
   return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}</button>`).join('')}</div>
     <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
@@ -7336,7 +7336,10 @@ function _downloadText(filename, text, mime) {
 let _adminData = { settings: {}, users: [], history: [] };
 
 async function switchAdminTab(tab) {
+  // 2026-10-14: Elvanto link is its own page (link-admin), reached from this tab list; any other tab from there goes back to Admin.
+  if (tab === 'link') { go('link-admin'); return; }
   _adminTab = tab;
+  if (S.page !== 'admin') { go('admin'); return; }
   if (tab === 'newyear') _wizReset();
   // Re-entering Youth Setup always starts from the server's current state, not
   // whatever was left over from an earlier visit this session.
@@ -10250,9 +10253,11 @@ function _lkReports(g) {
   return [g && g.lastReport].concat((g && g.history) || []).filter((r) => r && !seen[r.reportId] && (seen[r.reportId] = true));
 }
 function _lkReportOn(g, date) { return _lkReports(g).find((r) => r.date === date) || null; }
-function _lkWeekReport(g, w) {
-  return _lkReports(g).filter((r) => r.date >= w.start && r.date <= w.end).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0] || null;
+// Every report in the week, newest date first (a group can have two on one day: a duplicate, 2026-10-14).
+function _lkWeekReports(g, w) {
+  return _lkReports(g).filter((r) => r.date >= w.start && r.date <= w.end).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
+function _lkWeekReport(g, w) { return _lkWeekReports(g, w)[0] || null; }
 // The date a Submit in an empty week uses: the weekday in `meets` (else the week's last day), never after today, and only
 // within the 14 days the report form accepts. state: ok | later (day still ahead) | old (too old to send from here).
 function _lkReportDateFor(meets, w, today) {
@@ -10298,18 +10303,25 @@ function _lkReportHtml(g, r) {
   const att = r.attendees || [];
   const names = (g.members || []).filter((m) => att.includes(m.personId)).map((m) => m.name);
   const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
+  if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
-  else kv.push(['Service', _lkSvcName(r.serviceTimeId)], ['Guests', String(r.guests || 0)], ['Here (' + names.length + ')', names.join(', ') || 'Nobody ticked']);
+  else kv.push(['Service', _lkSvcName(r.serviceTimeId)], ['Guests', String(r.guests || 0)]);
+  // Who came: collapsed by default (2026-10-14), the count stays on the summary line.
+  const here = r.didNotMeet ? '' : `<details class="lk-here"><summary>Here (${names.length})</summary><p class="lk-sub">${esc(names.join(', ') || 'Nobody ticked')}</p></details>`;
   const edit = r.editable && !r.blocked && !_lkCapOff('editReport')
     ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(r.reportId)}')">${icS('edit')} Edit</button>`
     : '<p class="lk-sub">Edit this report in Elvanto.</p>';
   return `<div class="card"><div class="lk-sec">Report</div>
-    ${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}<div class="lk-mt">${edit}</div></div>`;
+    ${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}${here}<div class="lk-mt">${edit}</div></div>`;
 }
-// The week body: the report if there is one, else Submit for that week's meeting date.
+// The week body: every report in the week (a same-day duplicate is flagged), else Submit for that week's meeting date.
 function _lkWeekBodyHtml(g, w) {
-  const r = _lkWeekReport(g, w);
-  if (r) return _lkReportHtml(g, r);
+  const rs = _lkWeekReports(g, w);
+  if (rs.length) {
+    const dup = rs.filter((r) => rs.some((x) => x !== r && x.date === r.date)).length;
+    return (dup ? `<div class="lk-alert warn">${icS('info')}<div>${dup} reports were sent for the same day. To cancel one out, edit it: untick everyone and set Guests to 0.</div></div>` : '')
+      + rs.map((r) => _lkReportHtml(g, r)).join('');
+  }
   const d = _lkReportDateFor(g.meets, w, _lkToday());
   if (d.state === 'later') return '<div class="card"><p class="lk-sub">This group has not met yet this week.</p></div>';
   if (d.state === 'old') return '<div class="card"><p class="lk-sub">No report for this week. It is too old to send here. Send it in Elvanto.</p></div>';
@@ -11070,7 +11082,7 @@ async function _lkAdmLoadLog() {
 }
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
-  setApp(shell(`<div class="ph"><h1>Elvanto link</h1></div><div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
+  setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster(); if (!LINK.adm.log) _lkAdmLoadLog();
 }
 // ── T4 Intake (spec 2026-10-13-intake-consent-app-spec.md §7, §9, §10, §11): youth intakes + parent consents, the

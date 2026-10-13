@@ -24,7 +24,7 @@ const row = (over: Record<string, unknown> = {}) => ({ id: 'abc123', category: '
 describe('Error log tab', () => {
   const f = load();
   it('the tab is in the admin tab list', () => {
-    expect(html).toMatch(/const ADMIN_TABS = \[[^;]*\['errors','Error log'\]\]/);
+    expect(html).toMatch(/const ADMIN_TABS = \[[^;]*\['errors','Error log'\]/);
     const g = new Function(`${html.match(/^const ADMIN_TABS = .*;$/m)![0]}
 function esc(s) { return String(s); }
 ${extractFn(html, '_adminTabsHtml')}

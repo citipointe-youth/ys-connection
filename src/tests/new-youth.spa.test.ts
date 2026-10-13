@@ -345,8 +345,8 @@ describe('bottom nav order', () => {
   it('quad, director and admin keep their order', () => {
     expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
     expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
-    // The admin login always has the Elvanto link entry (T9/T10), so its Prayers slot is More even with every module off.
-    expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'more', 'leaders', 'admin']);
+    // 2026-10-14: Elvanto link moved to an Admin tab, so with every module off the admin's slot is plain Prayers again.
+    expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);
   });
   it('the shell builds both navs from _navClick, so desktop and bottom agree', () => {
     const shell = extractFn(html, '_initShell');
@@ -369,10 +369,9 @@ describe('the More menu (in the Prayers slot)', () => {
       }
     }
   });
-  it('admin: the Elvanto link entry is there whatever the module states, and no other role gets it', () => {
+  it('Elvanto link is an Admin tab (2026-10-14): no role gets it in More', () => {
     for (const mode of ['off', 'shadow', 'on']) {
-      expect(ids(navFns(modeOf(mode, 'admin')).moreItems()), mode).toContain('link-admin');
-      for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
+      for (const r of ['admin', 'leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
     }
   });
   it('Bus on: every role gets More in the Prayers slot, same position', () => {

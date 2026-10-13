@@ -54,7 +54,9 @@ export interface LinkServiceRow { serviceTimeId: string; serviceId: string; name
   checkedIn: { personId: string; roomId: string; firstName?: string; lastName?: string }[]; } // T3: names when pushed
 export interface LinkLastReport { reportId: string; date: string; time: string; didNotMeet: boolean; attendees: string[];
   guests: number; serviceTimeId: string | null; editable: boolean;
-  blocked: 'multi-service' | 'unkept-notes' | 'member-left' | null; }
+  blocked: 'multi-service' | 'unkept-notes' | 'member-left' | null;
+  /** App view only (never pushed): the "I am" leader of the app's submit of this report; null when made in Elvanto. */
+  by?: string | null; }
 export interface LinkGroupRow { groupId: string; name: string; grade: number | null; gender: 'male' | 'female' | null;
   meets: string; members: { personId: string; name: string; leader: boolean }[];
   thisWeek: 'reported' | 'did-not-meet' | 'none' | 'later' | 'unreadable'; lastReport: LinkLastReport | null;
