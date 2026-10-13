@@ -14,9 +14,9 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
-  LinkServiceRow, LogEvent, Match, MirrorStateRow, OutboxRow, PushKind, Status,
+  LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, LINK_REV, PAYLOAD_SCHEMAS, PUSH_KINDS } from '../core/link-contract';
+import { ACTION_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -28,6 +28,8 @@ import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
+import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
+import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
 import {
   can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, modeAllows, type StructureScope,
 } from './access-control';
@@ -92,7 +94,7 @@ export type BatchItemResult = ItemResult;
 export interface LinkStatus {
   console: { lastSeenAt: string | null; online: boolean; inWindow: boolean; pollSeconds: number | null;
     capabilities: Capabilities | null; consoles: number };
-  mirrors: Record<PushKind, { takenAt: string | null; ageSeconds: number | null }>;
+  mirrors: Record<MirrorKind, { takenAt: string | null; ageSeconds: number | null }>;
   /** T1: the newest console's LINK_REV (null = no console yet) and this app's; the admin page warns when lower. */
   consoleLinkRev: number | null; appLinkRev: number;
 }
@@ -158,6 +160,8 @@ export interface LinkServiceDeps {
   now?: () => Date;
   /** T3 admin Error log; a batch item that crashes is recorded here (kind/type only). */
   errorLog?: Pick<ErrorLogService, 'record'>;
+  /** T4 (X19): the pushed intake plans, to check an intake batch item. Without it every intake item is refused. */
+  intake?: ILinkIntakeRepository;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -224,9 +228,9 @@ function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l:
 /** T10: the three link screens, each its own module mode (ministryConfig.modules). */
 type Feature = 'checkin' | 'lifegroupReport' | 'flows';
 const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
-const FEATURE_OF: Record<ActionType, Feature> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
+const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
-  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport' };
+  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport' }; // the intake types: module intakeAdmin (X19)
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
@@ -275,7 +279,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       login: memo(async () => (await d.users.findById(actor.id))?.email ?? actor.displayName),
     };
   }
-  const takenAt = (ms: MirrorStateRow[], k: PushKind) => ms.find((m) => m.kind === k)?.takenAt ?? null;
+  const takenAt = (ms: MirrorStateRow[], k: MirrorKind) => ms.find((m) => m.kind === k)?.takenAt ?? null;
 
   async function logRow(c: Ctx, device: Device, p: Partial<LinkLogRow> & { event: LogEvent; outcome: string }): Promise<LinkLogRow> {
     return { id: randomUUID(), at: c.t.toISOString(), userId: c.actor.id, login: await c.login(), deviceId: device.id,
@@ -326,6 +330,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const g = (await c.groups()).find((y) => y.groupId === p.groupId);
       return { kind: 'group', id: p.groupId ?? null, name: g?.name ?? null };
     }
+    if (isIntakeType(r.type)) return { kind: null, id: null, name: null }; // X19: the family is in the plan, not the roster
     if (MEMBER_TYPES.includes(r.type)) {
       const x = (await c.roster()).find((y) => y.personId === p.personId);
       return { kind: 'person', id: p.personId ?? null, name: x ? fullName(x) : null };
@@ -368,8 +373,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       Object.assign(tgt, await targetOf(c, prev));
       return ok(prev, 'replay');
     };
-    // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is)
-    if (!usable(c.actor, c.settings, FEATURE_OF[it.type])) throw new ModuleDisabledError('Elvanto link');
+    // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is); X19: intake = admin + module
+    const intake = isIntakeType(it.type);
+    if (intake) intakeGate(c.actor, c.settings);
+    else if (!usable(c.actor, c.settings, FEATURE_OF[it.type]!)) throw new ModuleDisabledError('Elvanto link');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -389,13 +396,13 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const p = parsed.data as Record<string, unknown> & { serviceTimeId?: string; personId?: string | null };
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
-    if (note !== null && !noteType) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
+    if (note !== null && !noteType && !intake) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
     const member = MEMBER_TYPES.includes(it.type);
     const me = await resolveLeader(c, it.leaderId, noteType || (member && !isAdminRole(c.actor)));
     Object.assign(who, me);
     // X1: the claim row carries "Self identified leader: <name> — <note>", so the leader's part is capped to fit 1,900.
     const room = Math.min(LINK_NOTE_MAX, noteRoom(me.name));
-    if (note !== null && note.length > room) throw new BadRequestError(`A note can be up to ${room} characters.`);
+    if (note !== null && !intake && note.length > room) throw new BadRequestError(`A note can be up to ${room} characters.`);
 
     const [roster, services] = await Promise.all([c.roster(), c.services()]);
     let serviceDate = c.today;
@@ -490,6 +497,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (!cur && !waiting) throw new BadRequestError('Not in this group now. Reload.');
         if (cur?.leader) throw new BadRequestError('Remove a leader in Elvanto.');
       }
+    } else if (intake) { // X19 (T4): date pushed, plan fresh, keys in the stored plan; the console re-plans before each step
+      if (!d.intake) throw new LinkUnavailable();
+      await checkIntakeItem(d.intake, it.type, p, note, c.t);
+      serviceDate = p.date as string;
     } else { // completeStep
       const sp = p as unknown as { rowId: string; flowId: string; stepId: string; personId: string | null };
       const row = (await c.flows()).find((x) => x.rowId === sp.rowId);
@@ -671,7 +682,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           inWindow: n.inWindow, pollSeconds: n.pollSeconds, capabilities: n.capabilities,
           consoles: consoles.filter((x) => t - Date.parse(x.lastSeenAt) <= CONSOLE_RECENT_MS).length }
         : { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 };
-      const m = Object.fromEntries(PUSH_KINDS.map((k) => {
+      const m = Object.fromEntries(MIRROR_KINDS.map((k) => {
         const at = takenAt(mirrors, k);
         return [k, { takenAt: at, ageSeconds: at ? Math.round((t - Date.parse(at)) / 1000) : null }];
       })) as LinkStatus['mirrors'];

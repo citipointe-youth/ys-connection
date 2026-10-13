@@ -124,6 +124,8 @@ export const MinistryConfigSchema = z.object({
       checkin: z.enum(['off', 'shadow', 'on']).optional(),
       lifegroupReport: z.enum(['off', 'shadow', 'on']).optional(),
       flows: z.enum(['off', 'shadow', 'on']).optional(),
+      // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
+      intakeAdmin: z.enum(['off', 'on']).default('off'),
     })
     .transform((m) => ({ ...m, checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms,
       flows: m.flows ?? m.newYouthForms }))

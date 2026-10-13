@@ -57,7 +57,7 @@ export function buildRoutes(services: Services): Route[] {
   });
   const busCtl = makeBusController({ bus: services.bus });
   const setupCtl = makeSetupController({ setup: services.setup });
-  const linkCtl = makeLinkController({ link: services.link });
+  const linkCtl = makeLinkController({ link: services.link, intake: services.intake });
   const syncCtl = makeSyncController({ sync: services.sync });
 
   return [
@@ -233,6 +233,10 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/link/admin/roster/:personId', auth: true, handler: (r) => linkCtl.setMatch(r) },
     { method: 'GET',    path: '/link/admin/shadow-check', auth: true, handler: (r) => linkCtl.shadowCheck(r) },
     { method: 'GET',    path: '/link/admin/log',          auth: true, handler: (r) => linkCtl.log(r) },
+    // T4 (X19): admin Intakes + Consents, under the existing /link prefix (vercel.json + sw.js already route /link)
+    { method: 'GET',    path: '/link/intake',             auth: true, handler: (r) => linkCtl.intakeList(r) },
+    { method: 'GET',    path: '/link/intake/row',         auth: true, handler: (r) => linkCtl.intakeRow(r) },
+    { method: 'POST',   path: '/link/intake/refresh',     auth: true, handler: (r) => linkCtl.intakeRefresh(r) },
 
     // ----- Elvanto link: the console (sync token, no session; checked in the adapter) -----
     { method: 'POST',   path: '/sync/claim',              auth: false, sync: true, handler: (r) => syncCtl.claim(r) },

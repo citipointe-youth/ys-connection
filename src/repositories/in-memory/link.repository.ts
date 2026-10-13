@@ -2,10 +2,13 @@
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow,
-  LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem, ResultReply, Status,
+  LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
+import { INTAKE_TYPES } from '../../core/link-contract';
+
+const INTAKE = INTAKE_TYPES as readonly string[];
 
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 // APP-84: not link-rules FINAL (that one includes unclear); these rows may lose their note after 30 days.
@@ -28,7 +31,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private groupRows: LinkGroupRow[] = [];
   private flowRows: LinkFlowRow[] = [];
   private assigns = new Map<string, LinkFlowAssign>(); // key flowId:personId
-  private mirror = new Map<PushKind, MirrorStateRow>();
+  private mirror = new Map<MirrorKind, MirrorStateRow>();
   private log: LinkLogRow[] = [];
   private decrypt: (note: string, id: string) => string;
   private clock: () => Date;
@@ -48,7 +51,8 @@ export class InMemoryLinkRepository implements ILinkRepository {
     }
     const now = this.nowIso();
     const row: OutboxRow = { ...clone(n), status: 'pending', reason: null, detail: null, attempts: 0, retryAt: null,
-      leaseOwner: null, leaseUntil: null, resultAt: null, sentLogKey: null, reportId: null, createdAt: now, updatedAt: now };
+      leaseOwner: null, leaseUntil: null, resultAt: null, sentLogKey: null, reportId: null, createdAt: now, updatedAt: now,
+      steps: null, stop: null };
     this.outbox.set(n.id, { row, seq: this.seq++ });
     return clone(row);
   }
@@ -85,7 +89,8 @@ export class InMemoryLinkRepository implements ILinkRepository {
     this.consoles.set(a.console.consoleId, { ...clone(a.console), lastSeenAt: nowIso });
     // sweep
     for (const { row } of this.outbox.values()) {
-      if (row.status === 'pending' && Date.parse(row.createdAt) < now - a.cutoffDays * DAY) {
+      const maxAge = INTAKE.includes(row.type) ? DAY : a.cutoffDays * DAY; // X19: an intake row waits at most 24 h
+      if (row.status === 'pending' && Date.parse(row.createdAt) < now - maxAge) {
         Object.assign(row, { status: 'refused', reason: 'too-old', resultAt: nowIso, updatedAt: nowIso });
         a.swept?.push({ type: row.type, reason: 'too-old' });
       } else if (row.status === 'claimed' && row.leaseOwner !== a.console.consoleId && row.leaseUntil
@@ -102,6 +107,12 @@ export class InMemoryLinkRepository implements ILinkRepository {
       if (PURGEABLE.includes(row.status) && row.note !== null && Date.parse(row.createdAt) < now - 30 * DAY) row.note = null;
     }
     this.log = this.log.filter((l) => Date.parse(l.at) >= now - 400 * DAY);
+    // X19: an intake row's note goes once it is final; the row itself after 14 days.
+    for (const [id, { row }] of this.outbox) {
+      if (!INTAKE.includes(row.type) || row.status === 'pending' || row.status === 'claimed') continue;
+      row.note = null;
+      if (Date.parse(row.createdAt) < now - 14 * DAY) this.outbox.delete(id);
+    }
     // lease
     const caps = a.console.capabilities;
     // B4 / APP-3: a checkOut waits while an older checkIn for the same person and service is pending or claimed.
@@ -147,7 +158,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
 
   async listConsoles(): Promise<ConsoleRow[]> { return clone([...this.consoles.values()]); }
 
-  async replaceMirror(kind: PushKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
+  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
     const prev = this.mirror.get(kind);
     if (prev && Date.parse(meta.takenAt) <= Date.parse(prev.takenAt)) return { applied: false, rows: 0 };
     const now = this.nowIso();

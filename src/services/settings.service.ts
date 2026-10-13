@@ -46,6 +46,8 @@ export function makeSettingsService(
   repo: ISettingsRepository,
   audit: IAuditRepository,
   users: IUserRepository,
+  /** T4 (X19): called after a save that turns modules.intakeAdmin Off; deletes every link_intake_* row. */
+  onIntakeOff?: () => Promise<void>,
 ): SettingsService {
   // Quad logins are picked by role + quad field (usernames can be edited). A hand-typed display
   // name is overwritten in both directions. Returns how many were actually renamed.
@@ -114,6 +116,7 @@ export function makeSettingsService(
       let simpleFlip = false;
       let simpleOnNow = false;
       let retire: User[] = [];
+      let intakeOff = false;
 
       if (ministryConfigPatch !== undefined) {
         const current = await repo.getSettings();
@@ -161,6 +164,7 @@ export function makeSettingsService(
           merged.logins.retiredGradeIds = [];
         }
         update.ministryConfig = merged;
+        intakeOff = merged.modules.intakeAdmin === 'off' && (cur.modules.intakeAdmin ?? 'off') !== 'off';
 
         const before = cur.roles?.enabled;
         const after = merged.roles.enabled;
@@ -189,6 +193,7 @@ export function makeSettingsService(
       invalidateLgStatsCache();
 
       for (const u of retire) await users.save({ ...u, status: 'inactive', updatedAt: new Date().toISOString() });
+      if (intakeOff) await onIntakeOff?.();
 
       // A role toggled OFF in Setup deactivates every currently-active account of
       // that role — the Accounts screen also hides that role's whole section

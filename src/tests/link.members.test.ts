@@ -228,11 +228,11 @@ describe('T6 an older console (no member capabilities)', () => {
 });
 
 describe('T6 migration 0020', () => {
-  it('re-creates the link_outbox type check with every ACTION_TYPE (and nothing else)', async () => {
-    const { ACTION_TYPES } = await import('../core/link-contract');
+  it('re-creates the link_outbox type check with every ACTION_TYPE before X19 (and nothing else)', async () => {
+    const { ACTION_TYPES, INTAKE_TYPES } = await import('../core/link-contract');
     const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '0020_link_group_members.sql'), 'utf8');
     expect(sql).toContain('drop constraint if exists link_outbox_type_check');
     const listed = [...sql.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort();
-    expect(listed).toEqual([...ACTION_TYPES].sort());
+    expect(listed).toEqual(ACTION_TYPES.filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t)).sort());
   });
 });

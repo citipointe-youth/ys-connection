@@ -83,6 +83,10 @@ import { makeBusService, type BusService } from './services/bus.service';
 import { makeSetupService, type SetupService } from './services/setup.service';
 import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from './services/link.service';
 import { makeSyncService, type SyncService } from './services/sync.service';
+import { makeIntakeService, type IntakeService } from './services/link-intake.service';
+import { InMemoryLinkIntakeRepository } from './repositories/in-memory/link-intake.repository';
+import { SupabaseLinkIntakeRepository } from './repositories/supabase/supabase.link-intake';
+import type { ILinkIntakeRepository } from './repositories/interfaces/link-intake.repository';
 import { makeErrorLogService, type ErrorLogService } from './services/error-log.service';
 import { RateLimiter } from './utils/rate-limiter';
 import { cachedProbe } from './utils/cached-probe';
@@ -129,6 +133,8 @@ export interface Services {
   newYouth: NewYouthService;
   link: LinkService;
   sync: SyncService;
+  /** T4 (X19): admin Intakes + Consents (GET /link/intake*, POST /link/intake/refresh). */
+  intake: IntakeService;
   /** T3 admin Error log. `errorLog.record(...)` is the helper to log an error from server code. */
   errorLog: ErrorLogService;
   users: IUserRepository;
@@ -199,6 +205,7 @@ export async function buildContainer(): Promise<Container> {
   // Elvanto link (memory mode is dev/test only, no json persistence).
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
+  const intakeRepo: ILinkIntakeRepository = useSupabase ? new SupabaseLinkIntakeRepository(sql) : new InMemoryLinkIntakeRepository();
 
   // Home/Trends fan out to several endpoints in parallel that each independently
   // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
@@ -251,7 +258,7 @@ export async function buildContainer(): Promise<Container> {
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
   const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections);
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
-  const settingsSvc = makeSettingsService(settings, audit, users);
+  const settingsSvc = makeSettingsService(settings, audit, users, () => intakeRepo.clear());
   const account = makeAccountService(users, settings);
   const admin = makeAdminService(
     students, leaders, connections,
@@ -265,8 +272,9 @@ export async function buildContainer(): Promise<Container> {
   const errorLog = makeErrorLogService({ repo: errorLogRepo, link });
   const newYouth = makeNewYouthService(settings, { live: true, errorLog });
   const linkSvc = makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance,
-    limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog });
-  const sync = makeSyncService({ link, settings, students, users, errorLog });
+    limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog, intake: intakeRepo });
+  const intake = makeIntakeService({ intake: intakeRepo, link, settings, status: (a) => linkSvc.status(a), errorLog });
+  const sync = makeSyncService({ link, settings, students, users, errorLog, intake });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;
@@ -297,6 +305,7 @@ export async function buildContainer(): Promise<Container> {
     newYouth,
     link: linkSvc,
     sync,
+    intake,
     errorLog,
     users,
     setup,

@@ -1,5 +1,5 @@
 // Elvanto link data (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §4.1). Tables from migration 0017.
-import type { ActionType, Status, PushKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, ClaimArgs, ClaimedRow,
+import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, ClaimArgs, ClaimedRow,
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
   ResultReply, LinkFlowAssign } from '../../core/link-types';
 
@@ -33,7 +33,7 @@ export interface ILinkRepository {
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
   applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply>;
   listConsoles(): Promise<ConsoleRow[]>;
-  replaceMirror(kind: PushKind, rows: unknown[], meta: { takenAt: string; consoleId: string }):
+  replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }):
     Promise<{ applied: boolean; rows: number }>;
   mirrorState(): Promise<MirrorStateRow[]>;
   roster(): Promise<LinkRosterRow[]>;

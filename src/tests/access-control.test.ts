@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { quadGradesOf } from '../services/access-control';
 import { computeQuad } from '../core/types/enums';
-import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canWithConfig, modeAllows, canSetViewGrades, type Action } from '../services/access-control';
+import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canUseNewYouth, canUseIntakeAdmin, canWithConfig, modeAllows, canSetViewGrades, type Action } from '../services/access-control';
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
 import { ForbiddenError } from '../core/errors/app-error';
@@ -186,6 +186,11 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
   it.each(roles)('link:admin: admin only, directors lose it too (T9) (%s)', (role) => {
     expect(can(actor(role), 'link:admin')).toBe(role === 'admin');
   });
+  it.each(roles)('T4 intake:admin and canUseIntakeAdmin: admin only (not director), and only while the module is on (%s)', (role) => {
+    expect(can(actor(role), 'intake:admin')).toBe(role === 'admin');
+    expect(canUseIntakeAdmin(actor(role), 'on')).toBe(role === 'admin');
+    expect(canUseIntakeAdmin(actor(role), 'off')).toBe(false);
+  });
   it.each(roles)('modeAllows: on -> all, shadow -> admin only, off -> none (%s)', (role) => {
     expect(modeAllows(actor(role), 'on')).toBe(true);
     expect(modeAllows(actor(role), 'shadow')).toBe(role === 'admin');
@@ -198,7 +203,7 @@ const ALL_ACTIONS = [
   'student:read', 'student:read:sensitive', 'student:write', 'leader:read', 'leader:write',
   'connection:write', 'overview:read', 'atrisk:read', 'import:run', 'connection:import',
   'admin:manage', 'prayer:read', 'prayer:write', 'prayer:import', 'bus:use', 'bus:roster',
-  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin',
+  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin', 'intake:admin',
 ] as const satisfies readonly Action[];
 type _MissingAction = Exclude<Action, (typeof ALL_ACTIONS)[number]>;
 const _allActionsListed: [_MissingAction] extends [never] ? true : never = true;

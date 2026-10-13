@@ -25,7 +25,8 @@ export type Action =
   | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
-  | 'link:admin';             // Elvanto link, admin only: matching, shadow check, log, detail, cancel anyone's
+  | 'link:admin'              // Elvanto link, admin only: matching, shadow check, log, detail, cancel anyone's
+  | 'intake:admin';           // T4 (X19): youth intake + consents through the link, admin only (not director)
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -119,6 +120,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'intake:write',
     'link:use',
     'link:admin',
+    'intake:admin',
   ]),
 };
 
@@ -138,6 +140,11 @@ export function canWithConfig(actor: Actor, action: Action, cfg: Pick<MinistryCo
 // admin login only, 'off' = nobody. Used by New person and the link screens (T10).
 export function modeAllows(actor: Actor, mode: NewYouthMode): boolean {
   return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
+}
+
+// T4 (X19): the Intake screens (module intakeAdmin, a plain off/on switch) are the admin login's only.
+export function canUseIntakeAdmin(actor: Actor, mode: 'off' | 'on'): boolean {
+  return mode === 'on' && can(actor, 'intake:admin');
 }
 
 // Who may use the New person screen (module key newYouthForms).

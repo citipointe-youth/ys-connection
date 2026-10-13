@@ -276,6 +276,44 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
       });
     });
 
+    describe('X19 (T4): intake rows', () => {
+      const intakeArgs = () => { const a = claimArgs(); a.console.capabilities = { ...a.console.capabilities, intakeAnswer: 'live',
+        intakeSave: 'live', consentSave: 'live', intakeText: 'live' }; return a; };
+      const ia = (over: Partial<NewOutboxRow> = {}) => newRow({ type: 'intakeAnswer', personId: null, note: '{"fixes":{},"keeps":{}}',
+        payload: { date: '2026-10-16', family: [randomUUID()], choices: {}, pairs: {}, undo: false }, ...over });
+      it('an intake row pending 24 h+ is refused too-old (swept); a check-in of the same age is not', async () => {
+        const old = await repo.insertAction(ia());
+        const chk = await repo.insertAction(newRow());
+        for (const id of [old.id, chk.id]) await h.backdate('link_outbox', id, 'created_at', ago(25 * 3_600_000));
+        const swept: NonNullable<ClaimArgs['swept']> = [];
+        await repo.claim({ ...claimArgs({ max: 0 }), swept });
+        expect(await repo.getAction(old.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+        expect((await repo.getAction(chk.id))!.status).toBe('pending');
+        expect(swept).toContainEqual({ type: 'intakeAnswer', reason: 'too-old' });
+      });
+      it('steps + stop are kept; planned -> sent/planned; a final intake note is dropped at the next claim; 14 days -> deleted', async () => {
+        const a = await repo.insertAction(ia());
+        const b = await repo.insertAction(newRow({ type: 'intakeSave', personId: null,
+          payload: { date: '2026-10-16', row: randomUUID(), confirmed: ['k1'], one: false } }));
+        const args = intakeArgs();
+        expect((await repo.claim(args)).map((c) => c.row.id).sort()).toEqual([a.id, b.id].sort());
+        const steps = [{ key: 'k1', action: 'approveNew', role: 'student' as const, outcome: 'confirmed' as const, at: new Date().toISOString() }];
+        const stop = { code: 'sms' as const, text: 'Saved. The parent text is next.' };
+        const r = await repo.applyResults(args.console.consoleId, [{ id: a.id, outcome: 'planned' },
+          { id: b.id, outcome: 'sent', sentLogKey: 'k1', steps, stop }], new Date());
+        expect(r).toEqual({ applied: [a.id, b.id], ignored: [] });
+        expect(await repo.getAction(a.id)).toMatchObject({ status: 'sent', reason: 'planned' });
+        expect(await repo.getAction(b.id)).toMatchObject({ status: 'sent', steps, stop });
+        expect((await repo.getAction(a.id))!.hasNote).toBe(true);
+        await repo.claim(claimArgs({ max: 0 }));
+        expect((await repo.getAction(a.id))!.hasNote).toBe(false);
+        await h.backdate('link_outbox', b.id, 'created_at', ago(15 * DAY));
+        await repo.claim(claimArgs({ max: 0 }));
+        expect(await repo.getAction(b.id)).toBeNull();
+        expect(await repo.getAction(a.id)).not.toBeNull();
+      });
+    });
+
     describe('purge', () => {
       it('roster: inactive 90+ days with match none/ignored deleted, auto kept', async () => {
         const [p1, p2, p3, p4] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];

@@ -48,6 +48,11 @@ export class LinkStale extends AppError {
   constructor() { super('LINK_STALE', 'Someone else changed this after your tap. Reload.', 409, { reason: 'stale' }); }
 }
 
+/** X19 (T4): a Save / Text / consent Save against a plan older than 2 hours. */
+export class IntakeStale extends AppError {
+  constructor() { super('INTAKE_STALE', 'This plan is over 2 hours old. Refresh first.', 409); }
+}
+
 export class LinkNotYours extends AppError {
   constructor() { super('LINK_NOT_YOURS', 'Only the leader who sent this can undo it.', 403); }
 }

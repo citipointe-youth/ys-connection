@@ -5,7 +5,9 @@ import type { z } from 'zod';
 import { ClaimRequest, LINK_CONTRACT_VERSION, LINK_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
-import type { ClaimArgs, PushKind, ResultReply } from '../core/link-types';
+import type { ClaimArgs, MirrorKind, PushKind, ResultReply } from '../core/link-types';
+import type { ConsentPush, IntakePush } from '../core/link-contract';
+import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch } from './link-rules';
@@ -17,6 +19,8 @@ export interface SyncDeps {
   now?: () => Date;
   /** T3: refused / unclear / expired rows go to the admin Error log (type + reason only). */
   errorLog?: Pick<ErrorLogService, 'record'>;
+  /** T4 (X19): the claim hint and the intakePlan / consentPlan pushes. Without it those pushes are not applied. */
+  intake?: Pick<IntakeService, 'hint' | 'push'>;
 }
 
 /** Version first (from the raw body), then Zod. Issues carry path + message only, never a value. */
@@ -40,7 +44,8 @@ export function makeSyncService(d: SyncDeps) {
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
-      const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off') ? 0 : req.max;
+      const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
+        && (m.intakeAdmin ?? 'off') === 'off' ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
@@ -68,6 +73,8 @@ export function makeSyncService(d: SyncDeps) {
           note: ATTRIBUTED_TYPES.includes(row.type) ? attributedNote(row.leaderName, row.note) : row.note,
         })),
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
+        // X19: only a console at rev >= 4 knows the hint (an older one would strip it anyway).
+        ...((req.linkRev ?? 1) >= 4 && d.intake ? { intake: await d.intake.hint(settings) } : {}),
       };
     },
 
@@ -87,7 +94,13 @@ export function makeSyncService(d: SyncDeps) {
 
     async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse>> {
       if (!(PUSH_KINDS as readonly string[]).includes(kind)) throw new SyncValidation([{ path: 'kind', message: 'Unknown kind' }]);
-      const k = kind as PushKind;
+      const pk = kind as PushKind;
+      if (pk === 'intakePlan' || pk === 'consentPlan') { // X19: one (mode, date) per push
+        const req = parseBody(PUSH_SCHEMAS[pk], body) as z.infer<typeof IntakePush> | z.infer<typeof ConsentPush>;
+        if (!d.intake) return { applied: false };
+        return d.intake.push(pk, req, await d.settings.getSettings());
+      }
+      const k = pk as MirrorKind;
       const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[] };
       const rows = k === 'groups'
         ? (req.rows as { name: string }[]).map((g) => ({ ...g, ...parseGroupName(g.name) }))

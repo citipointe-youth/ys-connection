@@ -7,7 +7,7 @@ import { chunk } from './bulk';
 import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow,
-  LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, PushKind, ResultItem,
+  LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
@@ -27,7 +27,9 @@ function readMobile(r: Row): string | null {
 /** The columns applyOutcome may change. Anything else in its patch is a bug, not a silent write. */
 const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status', reason: 'reason', detail: 'detail',
   retryAt: 'retry_at', leaseOwner: 'lease_owner', leaseUntil: 'lease_until', resultAt: 'result_at',
-  sentLogKey: 'sent_log_key', reportId: 'report_id', personId: 'person_id', updatedAt: 'updated_at' };
+  sentLogKey: 'sent_log_key', reportId: 'report_id', personId: 'person_id', updatedAt: 'updated_at',
+  steps: 'steps', stop: 'stop' }; // X19: jsonb, written via sql.json()
+const JSONB_COLS = new Set(['steps', 'stop']);
 const fail = (k: string): never => { throw new Error(`applyResults: unexpected column ${k}`); };
 
 function toOutbox(r: Row, note: string | null): OutboxRow {
@@ -37,7 +39,7 @@ function toOutbox(r: Row, note: string | null): OutboxRow {
     reason: r.reason ?? null, detail: r.detail ?? null, attempts: r.attempts, retryAt: iso(r.retry_at),
     leaseOwner: r.lease_owner ?? null, leaseUntil: iso(r.lease_until), resultAt: iso(r.result_at),
     sentLogKey: r.sent_log_key ?? null, reportId: r.report_id ?? null, createdAt: toIso(r.created_at),
-    updatedAt: toIso(r.updated_at) };
+    updatedAt: toIso(r.updated_at), steps: r.steps ?? null, stop: r.stop ?? null };
 }
 function toConsole(r: Row): ConsoleRow {
   return { consoleId: r.console_id, label: r.label, lastSeenAt: toIso(r.last_seen_at), contractVersion: r.contract_version,
@@ -151,6 +153,15 @@ export class SupabaseLinkRepository implements ILinkRepository {
             and lease_owner <> ${c.consoleId}
           order by id for update skip locked)
         returning type`;
+      // X19: an intake row waits at most 24 h (a plan that old is no use; the admin re-decides from a fresh one).
+      const tooOldIntake = await tx`
+        update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
+        where id in (
+          select id from link_outbox where status = 'pending' and created_at < now() - interval '24 hours'
+            and type in ('intakeAnswer','intakeSave','consentSave','intakeText')
+          order by id for update skip locked)
+        returning type`;
+      tooOld.push(...tooOldIntake);
       a.swept?.push(...tooOld.map((r) => ({ type: r.type as ActionType, reason: 'too-old' as const })),
         ...lost.map((r) => ({ type: r.type as ActionType, reason: 'lease-lost' as const })));
       // purge (§4.3)
@@ -162,6 +173,15 @@ export class SupabaseLinkRepository implements ILinkRepository {
         where status in ('sent','refused','shadowed','cancelled') and note is not null
           and created_at < now() - interval '30 days'`;
       await tx`delete from link_log where at < now() - interval '400 days'`;
+      // X19: an intake row's note (fixes, keeps) goes as soon as it is final; the row itself after 14 days.
+      await tx`
+        update link_outbox set note = null
+        where type in ('intakeAnswer','intakeSave','consentSave','intakeText') and note is not null
+          and status in ('sent','refused','shadowed','cancelled','unclear')`;
+      await tx`
+        delete from link_outbox
+        where type in ('intakeAnswer','intakeSave','consentSave','intakeText') and created_at < now() - interval '14 days'
+          and status not in ('pending','claimed')`;
       // lease
       const types = (Object.keys(c.capabilities) as ActionType[]).filter((t) => c.capabilities[t] !== 'off');
       if (a.max <= 0 || !types.length) return [];
@@ -223,7 +243,9 @@ export class SupabaseLinkRepository implements ILinkRepository {
         const res = applyOutcome(old, item, consoleId, now);
         if ('ignored' in res) { reply.ignored.push({ id: item.id, why: res.ignored }); continue; }
         const set: Row = {};
-        for (const [k, v] of Object.entries(res.next)) set[RESULT_COLS[k as keyof OutboxRow] ?? fail(k)] = v;
+        for (const [k, v] of Object.entries(res.next)) {
+          set[RESULT_COLS[k as keyof OutboxRow] ?? fail(k)] = JSONB_COLS.has(k) && v != null ? this.j(v) : v;
+        }
         const done = await tx`
           update link_outbox set ${tx(set)}
           where id = ${item.id} and status = ${old!.status}
@@ -242,7 +264,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
     return (await this.sql`select * from link_console order by last_seen_at desc`).map(toConsole);
   }
 
-  async replaceMirror(kind: PushKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
+  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
     return this.sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtext(${'link_mirror:' + kind}))`;
       const [st] = await tx`
@@ -302,7 +324,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
   }
 
   async mirrorState(): Promise<MirrorStateRow[]> {
-    return (await this.sql`select * from link_mirror_state order by kind`).map((r) => ({ kind: r.kind as PushKind,
+    return (await this.sql`select * from link_mirror_state order by kind`).map((r) => ({ kind: r.kind as MirrorKind,
       takenAt: toIso(r.taken_at), consoleId: r.console_id, rowCount: r.row_count, appliedAt: toIso(r.applied_at) }));
   }
   async roster(): Promise<LinkRosterRow[]> {

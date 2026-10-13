@@ -2,14 +2,20 @@
 // Writes go through /link/batch only (X14 / T-42: the single POST and DELETE /link/actions routes are gone).
 import type { HttpRequest } from '../http/types';
 import type { LinkService } from '../../services/link.service';
+import type { IntakeService } from '../../services/link-intake.service';
 import type { Actor } from '../../core/entities/user';
 import { UnauthorizedError } from '../../core/errors/app-error';
 
 const actor = (r: HttpRequest): Actor => { if (!r.ctx) throw new UnauthorizedError(); return r.ctx; };
 
-export function makeLinkController(deps: { link: LinkService }) {
+export function makeLinkController(deps: { link: LinkService; intake?: IntakeService }) {
   const L = deps.link;
+  const I = () => { if (!deps.intake) throw new UnauthorizedError(); return deps.intake; };
   return {
+    // T4 (X19): admin Intakes + Consents
+    intakeList: (r: HttpRequest) => I().list(actor(r), r.query),
+    intakeRow: (r: HttpRequest) => I().row(actor(r), r.query),
+    intakeRefresh: (r: HttpRequest) => I().refresh(actor(r), r.body),
     status: (r: HttpRequest) => L.status(actor(r)),
     checkin: (r: HttpRequest) => L.checkin(actor(r), r.query['serviceTime']),
     listActions: (r: HttpRequest) => L.listActions(actor(r), r.query),
