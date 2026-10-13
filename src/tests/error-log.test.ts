@@ -208,6 +208,20 @@ describe('capture: sync claim + result', () => {
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: id(1), outcome: 'refused', reason: 'person-unknown' }] });
     expect(record).not.toHaveBeenCalled();
   });
+  it('T6: a refused or too-old addGroupMember lands in the log as category link', async () => {
+    const { link, svc, record } = await setup();
+    const payload = { groupId: '6a000000-0000-4000-8000-000000000001', personId: '9e000000-0000-4000-8000-000000000009' };
+    for (const [n, type] of [[7, 'addGroupMember'], [8, 'removeGroupMember']] as const) {
+      await link.insertAction({ id: id(n), type, payload, note: null, dedupeKey: dedupeKey(type, payload) + n,
+        serviceDate: null, studentId: null, personId: payload.personId, createdBy: 'u', leaderId: null, leaderName: 'L' } as any);
+    }
+    link._backdate('link_outbox', id(8), 'created_at', new Date(Date.now() - 4 * DAY).toISOString());
+    await svc.claim({ ...claimReq, max: 9, capabilities: { ...claimReq.capabilities, addGroupMember: 'live', removeGroupMember: 'live' } });
+    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'removeGroupMember', role: 'console' });
+    record.mockClear();
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: id(7), outcome: 'refused', reason: 'person-unknown' }] });
+    expect(record).toHaveBeenCalledWith({ category: 'link', code: 'person-unknown', route: 'addGroupMember', role: 'console' });
+  });
 });
 
 describe('Error log routes (memory, seeded)', () => {

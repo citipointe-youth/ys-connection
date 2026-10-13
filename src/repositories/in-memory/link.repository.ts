@@ -109,7 +109,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
       i.row.type === 'checkIn' && i.row.personId === e.row.personId
       && (i.row.payload as { serviceTimeId?: string }).serviceTimeId === (e.row.payload as { serviceTimeId?: string }).serviceTimeId
       && (i.row.status === 'pending' || i.row.status === 'claimed') && cmpDesc(i, e) > 0);
-    const due = [...this.outbox.values()].filter((e) => !blocked(e)).filter(({ row: r }) => caps[r.type] !== 'off' && (
+    const due = [...this.outbox.values()].filter((e) => !blocked(e)).filter(({ row: r }) => (caps[r.type] ?? 'off') !== 'off' && ( // X18: an unlisted type is off
       (r.status === 'pending' && (r.retryAt === null || Date.parse(r.retryAt) <= now)) ||
       (r.status === 'claimed' && r.leaseOwner === a.console.consoleId && r.leaseUntil !== null && Date.parse(r.leaseUntil) < now)))
       .sort((x, y) => -cmpDesc(x, y))

@@ -3,7 +3,10 @@
 Date: 2026-10-11. Status: spec (step 0 of the link), review fixes applied
 (`C:\Users\ThomasPC\src\link-run\spec-review.md`). Amended in place 2026-10-12 (brief decisions 9–13: service choice,
 past-service check-ins, check-out on, §12 answers), and again 2026-10-12 with the cross-device triage's text-only change set
-X1–X17 (no fixture, schema, `/sync/*` shape, reason code or status changes). v1 was never released, so `contractVersion` stays `1`. Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
+X1–X17 (no fixture, schema, `/sync/*` shape, reason code or status changes). v1 was never released, so `contractVersion` stays `1`.
+**X18 (2026-10-13, UX batch T6):** two new action types `addGroupMember` / `removeGroupMember`, two optional capability
+keys, reason codes `group-unknown` and `leader-member`, `LINK_REV` 3. Optional additions only, so `contractVersion`
+stays `1` (see §5.6). Run brief: `C:\Users\ThomasPC\src\link-run\brief.md` (binding).
 Repos: YS Connection branch `feature/elvanto-link-contract`; Elvanto Sync Console (Project 11.1) branch
 `feature/ys-link-contract`.
 
@@ -322,6 +325,8 @@ All ids are lower-case UUIDs. Dates are `YYYY-MM-DD` (Brisbane).
 | `editReport` | `{ groupId, reportId, date, didNotMeet, attendees, guests, notesPrivate, serviceTimeId, base: { date, didNotMeet, attendees, guests, serviceTimeId } }` | optional, **appended** | `report:<group>:<date>` | `reportId` = the group's last report (mirror, or the `reportId` of this group's latest `sent` submit); `editable`; `base` = that report; `serviceTimeId` = `base.serviceTimeId` (kept) unless the leader picked another (null or in `link_services`) |
 | `completeStep` | `{ rowId, flowId, stepId, personId\|null, notePrivate }` | optional | `complete:<row>` | row in `link_flow_people`, in scope |
 | `firstTimerCheckIn` | `{ serviceTimeId, serviceId, firstName, lastName, grade: 7–12\|null, gender: "male"\|"female" }` | none | `first:<st>:<lower first last>` | service in the pick list (default today's); names 1–60 chars |
+| `addGroupMember` (X18) | `{ groupId, personId }` | none | `addMember:<group>:<person>` | group in scope; admin, director, or the "I am" leader leads the group; person an active roster row (not `other`) in scope; not a member now |
+| `removeGroupMember` (X18) | `{ groupId, personId }` | none | `removeMember:<group>:<person>` | as above; a member now and not a leader of the group |
 
 `service_date` = the service's `ymd`, the report `date`, or today (flows). `student_id` is filled from the roster match.
 
@@ -408,6 +413,8 @@ What the leader sees:
 | `console-cannot-read`, `unknown` | "The console couldn't do this. Do it in Elvanto." |
 | `lease-lost` | (unclear) "Not sure it saved. The admin is checking Elvanto." |
 | `note-unreadable` | "This note couldn't be read. Do it in Elvanto." |
+| `group-unknown` (X18) | "This group isn't in Elvanto any more. Reload." |
+| `leader-member` (X18) | "Remove a leader in Elvanto." |
 | `already`, `console-busy`, `awaiting-approval` | not a refusal (see §5.3) |
 
 **X9:** codes are unchanged; the leader line is picked by type. `detail` is for the admin only. The console takes it
@@ -447,6 +454,23 @@ link uses; the console never maps text.
   reads the intake week that holds the service date. Two intake rows that resolve to the same person count as one
   match, not `ambiguous-first-timer`. A student side with a hold or an unfinished step (for example an archived
   profile) is not approved yet.
+
+### 5.6 Lifegroup member changes (X18, 2026-10-13)
+
+- **Payload** `{ groupId, personId }` (strict, lower-case uuids). The app sets `personId` and `student_id` on the row.
+- **Capabilities.** `ClaimRequest.capabilities` gains optional `addGroupMember` and `removeGroupMember`. A missing key
+  means the console cannot do that type: the app never leases such a row to that console (the claim leases only listed
+  types that are not `off`) and refuses a new one at enqueue (`LINK_UNAVAILABLE`, as `off`). With no console seen yet
+  the row is queued. A row nobody claims is swept `refused`, `too-old` after 3 days. The console sends the two keys
+  **only when the app's `linkRev` >= 3**: an older app's capabilities object is strict and answers 400 to unknown keys.
+- **Results.** Done in Elvanto → `sent` (`sentLogKey`). Already that way in Elvanto (already a member / not a member) →
+  `already`. Group gone → `refused`, `group-unknown`. Person gone → `refused`, `person-unknown`. The person leads the
+  group (remove) → `refused`, `leader-member`. Writer not built or locked → `refused`, `locked`. Practice → `shadowed`.
+  A write it cannot confirm → `unclear` (the admin checks Elvanto).
+- **Ordering.** An add and a remove for the same person never both wait: the app cancels the pending opposite row
+  (answer `cancelled`) or refuses while it is claimed (`LINK_STILL_SENDING`). Many different people may wait at once.
+- **Mirrors.** Until the next `groups` push the app applies sent changes to the members list itself. The console should
+  push `groups` soon after a member change is `sent`. A report's attendees are still checked against the pushed members.
 
 ## 6. Identity and matching
 

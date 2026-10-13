@@ -11,7 +11,9 @@
     "submitReport": "shadow",
     "editReport": "shadow",
     "completeStep": "shadow",
-    "firstTimerCheckIn": "shadow"
+    "firstTimerCheckIn": "shadow",
+    "addGroupMember": "live",
+    "removeGroupMember": "live"
   },
   "max": 6,
   "leaseSeconds": 180

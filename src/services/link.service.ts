@@ -28,10 +28,12 @@ import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
-import { can, canAccessGender, canAccessGrade, genderScopeOf, modeAllows, type StructureScope } from './access-control';
 import {
-  LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, lastMeetingDate, noteRoom, pickList,
-  nameFold, serviceDay,
+  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, modeAllows, type StructureScope,
+} from './access-control';
+import {
+  LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
+  noteRoom, pickList, nameFold, serviceDay,
 } from './link-rules';
 
 export const LINK_NOTE_MAX = 1800;
@@ -46,6 +48,7 @@ const BRISBANE_MS = 10 * 3_600_000;
 
 const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep'];
 const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
+const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo'] as const;
 const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
@@ -118,6 +121,14 @@ export interface MatchCandidate { studentId: string; name: string; grade: number
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
   active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[] }
+/** T5: a group member as this login may see them: studentId only when that student is in its scope (canAccessStudent). */
+export interface MemberView { personId: string; name: string; leader: boolean; grade: number | null; studentId: string | null }
+/** T6: a member change of the last 3 days (not cancelled), newest first. name = the roster's (an add is not a member yet). */
+export interface MemberChange { id: string; type: ActionType; personId: string | null; name: string | null; status: Status;
+  reason: string | null; createdAt: string; resultAt: string | null }
+export interface GroupMembersView { groupId: string; canEdit: boolean; members: MemberView[]; changes: MemberChange[] }
+/** T6: the Add student picker: active youth roster rows (not 'other') this login may see. Name + grade only. */
+export interface YouthRow { personId: string; name: string; grade: number | null }
 export type ShadowVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
 /** The SPA words each verdict (APP-41: no server message). */
 export interface ShadowRow { id: string; personId: string | null; name: string | null; status: Status; studentId: string | null;
@@ -131,6 +142,8 @@ export interface LinkService {
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   flows(actor: Actor): Promise<{ rows: FlowView[] }>;
+  groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
+  youth(actor: Actor): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
@@ -181,6 +194,10 @@ function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRoster
   const gender = f.gender ?? r?.gender ?? null;
   return canAccessGrade(a, grade, s) && (gender ? canAccessGender(a, gender, s) : genderScopeOf(a, s) == null);
 }
+/** T6: a youth roster person this login may pick (admin/director: anyone; else grade, then gender when known). */
+function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
+  return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : true));
+}
 /**
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
  * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
@@ -208,7 +225,8 @@ function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l:
 type Feature = 'checkin' | 'lifegroupReport' | 'flows';
 const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
 const FEATURE_OF: Record<ActionType, Feature> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
-  submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows' };
+  submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
+  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport' };
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
@@ -308,9 +326,26 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const g = (await c.groups()).find((y) => y.groupId === p.groupId);
       return { kind: 'group', id: p.groupId ?? null, name: g?.name ?? null };
     }
+    if (MEMBER_TYPES.includes(r.type)) {
+      const x = (await c.roster()).find((y) => y.personId === p.personId);
+      return { kind: 'person', id: p.personId ?? null, name: x ? fullName(x) : null };
+    }
     const f = (await c.flows()).find((y) => y.rowId === p.rowId);
     return { kind: 'flowRow', id: p.rowId ?? null, name: f?.name ?? null };
   }
+
+  /** T6: the "I am" leader is a leader of this group in Elvanto (matched to the roster by name, as on the door). */
+  async function leadsGroup(c: Ctx, g: LinkGroupRow, leaderId: string | null): Promise<boolean> {
+    const leaders = await c.leaders();
+    const l = leaderId ? leaders.find((x) => x.id === leaderId) : undefined;
+    const pid = l ? rosterPersonMatcher(await c.roster(), leaders)(l) : null;
+    return !!pid && g.members.some((m) => m.leader && m.personId === pid);
+  }
+  const memberRows = (groupId: string, personId?: string) => d.link.listActions({ groupId, types: MEMBER_TYPES, personId });
+  const nameOfPerson = (roster: LinkRosterRow[]) => {
+    const by = new Map(roster.map((r) => [r.personId, fullName(r)]));
+    return (pid: string) => by.get(pid) ?? '';
+  };
 
   const checkRows = (personId: string, serviceTimeId: string) =>
     d.link.listActions({ personId, serviceTimeId, types: CHECK_TYPES });
@@ -340,7 +375,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     if (prev) return replay(prev);
     // 3. capability off on the newest console (none seen yet → allowed)
     const con = newest(await c.consoles());
-    if (con && con.capabilities[it.type] === 'off') throw new LinkUnavailable();
+    if (con && (con.capabilities[it.type] ?? 'off') === 'off') throw new LinkUnavailable(); // X18: unlisted = off
     // 3b. the 3-day cut-off counts from the tap, not from when the phone got a signal (B8 / APP-16 A)
     if (tap && tap.at.getTime() < c.t.getTime() - LINK_CUTOFF_DAYS * 86_400_000) throw new LinkTooOld();
     // 4. type checks, note, "I am"
@@ -355,7 +390,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
     if (note !== null && !noteType) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
-    const me = await resolveLeader(c, it.leaderId, noteType);
+    const member = MEMBER_TYPES.includes(it.type);
+    const me = await resolveLeader(c, it.leaderId, noteType || (member && !isAdminRole(c.actor)));
     Object.assign(who, me);
     // X1: the claim row carries "Self identified leader: <name> — <note>", so the leader's part is capped to fit 1,900.
     const room = Math.min(LINK_NOTE_MAX, noteRoom(me.name));
@@ -417,6 +453,43 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (rp.date !== b.date) throw new BadRequestError('The date of a report cannot be changed here.');
       }
       serviceDate = rp.date;
+    } else if (member) { // T6: addGroupMember / removeGroupMember
+      const mp = p as unknown as { groupId: string; personId: string };
+      const g = (await c.groups()).find((x) => x.groupId === mp.groupId);
+      if (!g) throw new BadRequestError('This group is not in the list. Reload.');
+      const r = roster.find((x) => x.personId === mp.personId);
+      Object.assign(tgt, { kind: 'person', id: mp.personId,
+        name: r ? fullName(r) : g.members.find((m) => m.personId === mp.personId)?.name ?? null });
+      if (!groupVisible(c.actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
+      if (!canEditGroupMembers(c.actor, await leadsGroup(c, g, me.id))) {
+        throw new ForbiddenError('Only a leader of this group can change who is in it.');
+      }
+      personId = mp.personId;
+      const rows = await memberRows(g.groupId, mp.personId);
+      // A re-send after a lost reply: this tap already cancelled the pending opposite change (as the door's check-out).
+      const undone = rows.find((x) => x.status === 'cancelled' && x.detail === `cancelled-by:${it.id}`);
+      if (undone) {
+        if (undone.type === it.type) throw new LinkIdReused();
+        return { id: it.id, kind: 'action', outcome: 'cancelled', action: view(undone) };
+      }
+      // The opposite change has not gone yet: cancel it instead of queueing both (the console could run them in either order).
+      const opp = rows.find((x) => x.type !== it.type && OPEN.includes(x.status));
+      if (opp) {
+        if (opp.status !== 'pending' || !(await d.link.cancelPending(opp.id, it.id))) throw new LinkStillSending();
+        return { id: it.id, kind: 'action', outcome: 'cancelled', action: { ...view(opp), status: 'cancelled' } };
+      }
+      // Same change already waiting: falls through to the insert, which answers `duplicate` (dedupe key).
+      const waiting = rows.some((x) => x.type === it.type && OPEN.includes(x.status));
+      const cur = effectiveMembers(g.members, rows, takenAt(await c.mirror(), 'groups'), nameOfPerson(roster))
+        .find((m) => m.personId === mp.personId);
+      if (it.type === 'addGroupMember') {
+        if (!r || !r.active || r.kind === 'other') throw new BadRequestError('This person is not on the youth list. Reload.');
+        if (!personVisible(c.actor, r, c.structure)) throw new ForbiddenError('This person is not one of yours.');
+        if (cur && !waiting) throw new BadRequestError('Already in this group.');
+      } else {
+        if (!cur && !waiting) throw new BadRequestError('Not in this group now. Reload.');
+        if (cur?.leader) throw new BadRequestError('Remove a leader in Elvanto.');
+      }
     } else { // completeStep
       const sp = p as unknown as { rowId: string; flowId: string; stepId: string; personId: string | null };
       const row = (await c.flows()).find((x) => x.rowId === sp.rowId);
@@ -785,6 +858,45 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             grade: f.grade, gender: f.gender, mobile: f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null };
         });
+      return { rows };
+    },
+
+    /**
+     * T5/T6: one group's members for the collapsed list. A member opens the app profile only when matched to a student
+     * this login may see (canAccessStudent); anyone else is name + roster grade. Never a phone. `?leaderId=` = "I am".
+     */
+    async groupMembers(actor, groupId, q) {
+      const c = context(actor, await gate(actor, ['lifegroupReport']));
+      const f = z.object({ leaderId: Uuid.optional() }).parse(q ?? {});
+      const g = (await c.groups()).find((x) => x.groupId === groupId);
+      if (!g) throw new NotFoundError('This group is not in the list. Reload.');
+      if (!groupVisible(actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
+      const [roster, rows, mirrors, students, me] = await Promise.all([c.roster(), memberRows(g.groupId), c.mirror(),
+        d.students.findAll(), resolveLeader(c, f.leaderId, false)]);
+      const byPerson = new Map(roster.map((r) => [r.personId, r]));
+      const byStudent = new Map(students.map((s) => [s.id, s]));
+      const members = effectiveMembers(g.members, rows, takenAt(mirrors, 'groups'), nameOfPerson(roster)).map((m): MemberView => {
+        const r = byPerson.get(m.personId);
+        const s = r?.studentId ? byStudent.get(r.studentId) : undefined;
+        return { personId: m.personId, name: m.name, leader: m.leader, grade: r?.grade ?? null,
+          studentId: s && canAccessStudent(actor, s.grade, s.gender, c.structure) ? s.id : null };
+      });
+      const from = c.t.getTime() - LINK_CUTOFF_DAYS * 86_400_000;
+      const changes = rows.filter((r) => r.status !== 'cancelled' && Date.parse(r.createdAt) >= from).map((r): MemberChange => {
+        const pid = (r.payload as { personId?: string }).personId ?? null;
+        const x = pid ? byPerson.get(pid) : undefined;
+        return { id: r.id, type: r.type, personId: pid, name: x ? fullName(x) : null, status: r.status, reason: r.reason,
+          createdAt: r.createdAt, resultAt: r.resultAt };
+      });
+      return { groupId: g.groupId, canEdit: canEditGroupMembers(actor, await leadsGroup(c, g, me.id)), members, changes };
+    },
+
+    async youth(actor) {
+      const c = context(actor, await gate(actor, ['lifegroupReport']));
+      const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
+      const rows = (await c.roster()).filter((r) => r.active && r.kind !== 'other' && personVisible(actor, r, c.structure))
+        .sort((a, b) => cmp(a.lastName, b.lastName) || cmp(a.firstName, b.firstName))
+        .map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade }));
       return { rows };
     },
 

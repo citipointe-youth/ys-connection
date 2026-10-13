@@ -103,7 +103,7 @@ describe('sync.service claim', () => {
   it('leases one row per type; reply parses; raw note; by.login = users.email; by.leaderName = snapshot', async () => {
     const { svc, link } = await setup();
     for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
-    const reply = await svc.claim(claimReq);
+    const reply = await svc.claim({ ...claimReq, max: 20 });
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     expect(reply.contractVersion).toBe(1);
     expect(reply.rows.map((r) => r.type).sort()).toEqual([...Object.keys(PAYLOAD_SCHEMAS)].sort());
@@ -308,11 +308,11 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
   it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
     const { svc, link } = await setup();
     const old = await svc.claim(claimReq);
-    expect(old.linkRev).toBe(2);
+    expect(old.linkRev).toBe(3);
     expect((await link.listConsoles())[0]!.linkRev).toBe(1);
     await svc.claim({ ...claimReq, linkRev: 2 });
     expect((await link.listConsoles())[0]!.linkRev).toBe(2);
-    expect(ClaimResponse.parse(old).linkRev).toBe(2);
+    expect(ClaimResponse.parse(old).linkRev).toBe(3);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

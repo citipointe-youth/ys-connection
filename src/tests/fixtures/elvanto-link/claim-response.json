@@ -47,6 +47,20 @@
       "by": { "login": "grade9g", "leaderName": "Test Leader" },
       "payload": { "serviceTimeId": "57000000-0000-4000-8000-000000000001", "serviceId": "5e000000-0000-4000-8000-000000000001", "firstName": "Riley", "lastName": "Newperson", "grade": 8, "gender": "female" },
       "note": null
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000007", "type": "addGroupMember", "attempts": 1, "reclaimed": false,
+      "createdAt": "2026-10-16T08:31:01.000Z", "serviceDate": "2026-10-16",
+      "by": { "login": "grade9g", "leaderName": "Test Leader" },
+      "payload": { "groupId": "6a000000-0000-4000-8000-000000000002", "personId": "9e000000-0000-4000-8000-000000000003" },
+      "note": null
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000008", "type": "removeGroupMember", "attempts": 1, "reclaimed": false,
+      "createdAt": "2026-10-16T08:31:02.000Z", "serviceDate": "2026-10-16",
+      "by": { "login": "grade9g", "leaderName": "Test Leader" },
+      "payload": { "groupId": "6a000000-0000-4000-8000-000000000002", "personId": "9e000000-0000-4000-8000-000000000001" },
+      "note": null
     }
   ]
 }

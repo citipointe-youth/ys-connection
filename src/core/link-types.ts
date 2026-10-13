@@ -9,7 +9,8 @@ export type Status = (typeof STATUSES)[number];
 export type PushKind = (typeof PUSH_KINDS)[number];
 export type Reason = (typeof REASONS)[number];
 export type Capability = 'live' | 'shadow' | 'locked' | 'off';
-export type Capabilities = Record<ActionType, Capability>;
+/** X18: a type the console does not list (an older console) counts as off: never leased, new rows refused. */
+export type Capabilities = Partial<Record<ActionType, Capability>>;
 export type Match = 'auto' | 'manual' | 'none' | 'ambiguous' | 'ignored';
 export type IgnoredWhy = 'unknown-id' | 'not-leased' | 'already-final' | 'bad-transition';
 export type ResultItem = z.infer<typeof ResultItemSchema>;

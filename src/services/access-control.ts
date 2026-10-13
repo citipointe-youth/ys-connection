@@ -153,6 +153,12 @@ export function canSetViewGrades(actor: Actor, leaderId: string): boolean {
   return false;
 }
 
+// T6 (2026-10-13): who may add or remove a lifegroup member through the Elvanto link: admin and director, or a link
+// login whose "I am" leader leads that group in Elvanto (the caller works out leadsGroup).
+export function canEditGroupMembers(actor: Actor, leadsGroup: boolean): boolean {
+  return actor.role === 'admin' || actor.role === 'director' || (leadsGroup && can(actor, 'link:use'));
+}
+
 export function assertCan(actor: Actor, action: Action): void {
   if (!can(actor, action)) {
     throw new ForbiddenError(`Role '${actor.role}' cannot perform '${action}'`);

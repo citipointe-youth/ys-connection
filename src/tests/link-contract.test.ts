@@ -143,8 +143,8 @@ describe('link contract: decisions 2026-10-12', () => {
 });
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
-  it('LINK_REV is 2 and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(2);
+  it('LINK_REV is 3 (T1 made it 2, X18 3) and the contract version is still 1 (old fixtures above still parse)', () => {
+    expect(C.LINK_REV).toBe(3);
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -188,5 +188,33 @@ describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSIO
     Object.assign(flows.rows[1], { grade: null, gender: null, mobile: null });
     C.PUSH_SCHEMAS.flows.parse(flows);
     flows.rows[0].mobile = '0412 345 678'; rejects(C.PUSH_SCHEMAS.flows, flows);
+  });
+});
+
+describe('X18 (UX batch 2026-10-13 T6): lifegroup member changes, optional for an older console', () => {
+  const CR = () => clone(load('claim-request.json'));
+  it('an older console that lists neither member type still parses (missing = it cannot do them)', () => {
+    const old = CR(); delete old.capabilities.addGroupMember; delete old.capabilities.removeGroupMember;
+    const caps = C.ClaimRequest.parse(old).capabilities;
+    expect(caps.addGroupMember).toBeUndefined(); expect(caps.removeGroupMember).toBeUndefined();
+  });
+  it('the new console lists both; a bad value is rejected', () => {
+    expect(C.ClaimRequest.parse(CR()).capabilities).toMatchObject({ addGroupMember: 'live', removeGroupMember: 'live' });
+    const bad = CR(); bad.capabilities.addGroupMember = 'maybe'; rejects(C.ClaimRequest, bad);
+  });
+  it('payload is exactly { groupId, personId } (lower-case uuids, nothing else)', () => {
+    const rows = load('claim-response.json').rows;
+    for (const t of ['addGroupMember', 'removeGroupMember'] as const) {
+      const p = rows.find((r: any) => r.type === t).payload;
+      expect(Object.keys(p).sort()).toEqual(['groupId', 'personId']);
+      rejects(C.PAYLOAD_SCHEMAS[t], { ...p, name: 'Amy' });
+      rejects(C.PAYLOAD_SCHEMAS[t], { ...p, personId: p.personId.toUpperCase() });
+      rejects(C.PAYLOAD_SCHEMAS[t], { groupId: p.groupId });
+    }
+  });
+  it('the two new refusal reasons parse in a result', () => {
+    for (const reason of ['group-unknown', 'leader-member']) {
+      C.ResultItem.parse({ id: '0a000000-0000-4000-8000-000000000007', outcome: 'refused', reason });
+    }
   });
 });

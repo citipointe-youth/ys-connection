@@ -90,7 +90,31 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'editReport': return `report:${p.groupId}:${p.date}`;
     case 'completeStep': return `complete:${p.rowId}`;
     case 'firstTimerCheckIn': return `first:${p.serviceTimeId}:${nameFold(p.firstName ?? '')} ${nameFold(p.lastName ?? '')}`;
+    case 'addGroupMember': return `addMember:${p.groupId}:${p.personId}`;
+    case 'removeGroupMember': return `removeMember:${p.groupId}:${p.personId}`;
   }
+}
+
+// ---------------- Group members (T6, contract X18) ----------------
+
+export interface GroupMember { personId: string; name: string; leader: boolean }
+/**
+ * The group's members as Elvanto has them now: the mirror's list, then every member change the console reported sent
+ * after that push (oldest first). `rows` = this group's sent addGroupMember / removeGroupMember rows, any order.
+ */
+export function effectiveMembers(members: GroupMember[], rows: OutboxRow[], groupsTakenAt: string | null,
+  nameOf: (personId: string) => string): GroupMember[] {
+  let out = members.slice();
+  const after = rows.filter((r) => r.status === 'sent' && r.resultAt
+    && (!groupsTakenAt || Date.parse(r.resultAt) > Date.parse(groupsTakenAt)))
+    .sort((a, b) => Date.parse(a.resultAt!) - Date.parse(b.resultAt!));
+  for (const r of after) {
+    const pid = (r.payload as { personId?: string }).personId;
+    if (!pid) continue;
+    if (r.type === 'removeGroupMember') out = out.filter((m) => m.personId !== pid);
+    else if (r.type === 'addGroupMember' && !out.some((m) => m.personId === pid)) out.push({ personId: pid, name: nameOf(pid), leader: false });
+  }
+  return out;
 }
 
 // ---------------- Attribution (contract X1, ledger 25 D2) ----------------

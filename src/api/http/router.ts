@@ -225,6 +225,8 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/link/actions',            auth: true, handler: (r) => linkCtl.listActions(r) },
     { method: 'POST',   path: '/link/batch',              auth: true, handler: (r) => linkCtl.batch(r) },
     { method: 'GET',    path: '/link/lifegroups',         auth: true, handler: (r) => linkCtl.lifegroups(r) },
+    { method: 'GET',    path: '/link/lifegroups/:groupId/members', auth: true, handler: (r) => linkCtl.groupMembers(r) }, // T5/T6
+    { method: 'GET',    path: '/link/youth',              auth: true, handler: (r) => linkCtl.youth(r) }, // T6 picker
     { method: 'GET',    path: '/link/flows',              auth: true, handler: (r) => linkCtl.flows(r) },
     { method: 'POST',   path: '/link/flows/assign',       auth: true, handler: (r) => linkCtl.assignFlow(r) }, // T6
     { method: 'GET',    path: '/link/admin/roster',       auth: true, handler: (r) => linkCtl.roster(r) },
