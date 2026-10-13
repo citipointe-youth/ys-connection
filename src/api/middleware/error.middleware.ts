@@ -5,40 +5,32 @@ import { ZodError } from 'zod';
 import { RequestTimeoutError } from '../../utils/timeout';
 import { isTransientDbError } from '../../utils/transient-db';
 
-export function sendError(res: Response, err: unknown): void {
+/** The status + JSON body for an error (logs the unexpected ones). The adapter reads `status`/`body.code` for the Error log. */
+export function errorResponse(err: unknown): { status: number; body: { code: string; message: string } & Record<string, unknown> } {
   if (err instanceof AppError) {
     // `extra` (e.g. existingId, reason, expected) goes after code/message and can never overwrite them.
-    res.status(err.statusCode).json(Object.assign({ code: err.code, message: err.message }, err.extra,
-      { code: err.code, message: err.message }));
-    return;
+    return { status: err.statusCode, body: Object.assign({ code: err.code, message: err.message }, err.extra,
+      { code: err.code, message: err.message }) };
   }
   if (err instanceof ZodError) {
-    res.status(400).json({
-      code: 'VALIDATION_ERROR',
-      message: 'Validation failed',
-      details: err.errors,
-    });
-    return;
+    return { status: 400, body: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: err.errors } };
   }
   if (isTransientDbError(err)) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('Transient DB error (503):', msg);
-    res.status(503).json({
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'The service is temporarily unavailable. Please try again.',
-    });
-    return;
+    return { status: 503, body: { code: 'SERVICE_UNAVAILABLE', message: 'The service is temporarily unavailable. Please try again.' } };
   }
   if (err instanceof RequestTimeoutError) {
     console.warn('Request timeout (503):', err.message);
-    res.status(503).json({
-      code: 'REQUEST_TIMEOUT',
-      message: 'This is taking longer than expected. Please try again.',
-    });
-    return;
+    return { status: 503, body: { code: 'REQUEST_TIMEOUT', message: 'This is taking longer than expected. Please try again.' } };
   }
   const msg = err instanceof Error ? err.message : String(err);
   console.error('Unhandled error:', err instanceof Error ? (err.stack ?? msg) : msg);
   const clientMsg = isProductionEnv() ? 'An unexpected error occurred' : msg;
-  res.status(500).json({ code: 'INTERNAL_ERROR', message: clientMsg });
+  return { status: 500, body: { code: 'INTERNAL_ERROR', message: clientMsg } };
+}
+
+export function sendError(res: Response, err: unknown): void {
+  const r = errorResponse(err);
+  res.status(r.status).json(r.body);
 }

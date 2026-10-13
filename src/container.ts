@@ -19,6 +19,7 @@ import {
   InMemoryConnectionAuditRepository,
   InMemoryBusRepository,
   InMemoryLinkRepository,
+  InMemoryErrorLogRepository,
 } from './repositories/in-memory';
 import { JsonFilePersistence } from './repositories/persistence';
 import {
@@ -38,6 +39,7 @@ import {
   SupabaseConnectionAuditRepository,
   SupabaseBusRepository,
   SupabaseLinkRepository,
+  SupabaseErrorLogRepository,
   getSqlClient,
 } from './repositories/supabase/index';
 
@@ -59,6 +61,7 @@ import type {
   IBusRepository,
 } from './repositories/interfaces';
 import type { ILinkRepository } from './repositories/interfaces/link.repository';
+import type { IErrorLogRepository } from './repositories/interfaces/error-log.repository';
 
 import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
@@ -80,6 +83,7 @@ import { makeBusService, type BusService } from './services/bus.service';
 import { makeSetupService, type SetupService } from './services/setup.service';
 import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from './services/link.service';
 import { makeSyncService, type SyncService } from './services/sync.service';
+import { makeErrorLogService, type ErrorLogService } from './services/error-log.service';
 import { RateLimiter } from './utils/rate-limiter';
 import { cachedProbe } from './utils/cached-probe';
 import { LATEST_MIGRATION } from './core/schema-version';
@@ -102,6 +106,7 @@ export interface Repositories {
   connectionAudits: IConnectionAuditRepository;
   bus: IBusRepository;
   link: ILinkRepository;
+  errorLog: IErrorLogRepository;
 }
 
 export interface Services {
@@ -124,6 +129,8 @@ export interface Services {
   newYouth: NewYouthService;
   link: LinkService;
   sync: SyncService;
+  /** T3 admin Error log. `errorLog.record(...)` is the helper to log an error from server code. */
+  errorLog: ErrorLogService;
   users: IUserRepository;
   setup: SetupService;
   /** Cached (30 s) db + schema probe for GET /health. */
@@ -191,6 +198,7 @@ export async function buildContainer(): Promise<Container> {
   const bus: IBusRepository = useSupabase ? new SupabaseBusRepository(sql) : new InMemoryBusRepository();
   // Elvanto link (memory mode is dev/test only, no json persistence).
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
+  const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
 
   // Home/Trends fan out to several endpoints in parallel that each independently
   // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
@@ -215,7 +223,7 @@ export async function buildContainer(): Promise<Container> {
     users, students, leaders, prayers, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, settings, audit, connectionAudits, bus, link,
+    imports, settings, audit, connectionAudits, bus, link, errorLog: errorLogRepo,
   };
 
   // Init all repos
@@ -254,10 +262,11 @@ export async function buildContainer(): Promise<Container> {
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
   // Always live (owner 2026-10-12: the ELVANTO_FORMS_LIVE gate was removed; test sends are deleted in Elvanto).
   // Local dev and preview deployments send real forms too.
-  const newYouth = makeNewYouthService(settings, { live: true });
+  const errorLog = makeErrorLogService({ repo: errorLogRepo, link });
+  const newYouth = makeNewYouthService(settings, { live: true, errorLog });
   const linkSvc = makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance,
-    limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS) });
-  const sync = makeSyncService({ link, settings, students, users });
+    limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog });
+  const sync = makeSyncService({ link, settings, students, users, errorLog });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;
@@ -288,6 +297,7 @@ export async function buildContainer(): Promise<Container> {
     newYouth,
     link: linkSvc,
     sync,
+    errorLog,
     users,
     setup,
     health,

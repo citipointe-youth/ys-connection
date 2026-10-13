@@ -7,6 +7,7 @@ import { RateLimiter } from '../utils/rate-limiter';
 import { assertCan, canUseNewYouth } from './access-control';
 import { gradeRange } from '../core/ministry-config';
 import * as EF from './elvanto-forms';
+import type { ErrorLogService } from './error-log.service';
 
 export interface NewYouthResult {
   student: EF.Outcome;
@@ -76,7 +77,7 @@ const UA = 'Mozilla/5.0 (compatible; YS-Connection)';
 export function makeNewYouthService(
   settingsRepo: ISettingsRepository,
   // Live POSTs are an explicit opt-in: `live` omitted or false is a dry run (GETs and the shape check only).
-  opts: { fetchFn?: typeof fetch; live?: boolean } = {},
+  opts: { fetchFn?: typeof fetch; live?: boolean; errorLog?: Pick<ErrorLogService, 'record'> } = {},
 ): NewYouthService {
   const fetchFn = opts.fetchFn ?? fetch;
   const live = opts.live === true;
@@ -163,6 +164,12 @@ export function makeNewYouthService(
       const student: EF.Outcome = data.send.includes('student') ? await post('student', sBody) : 'skipped';
       const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post('parent', pBody);
       const result: NewYouthResult = { student, parent, dryRun: false };
+      // T3: an unconfirmed or rejected send goes to the admin Error log (form + outcome only, never the person).
+      for (const [form, o] of [['STUDENT', student], ['PARENT', parent]] as const) {
+        if (o === 'unconfirmed' || o === 'failed') {
+          await opts.errorLog?.record({ category: 'elvanto-form', code: `${form}_FORM_${o.toUpperCase()}`, route: 'POST /intake/new-youth', role: actor.role });
+        }
+      }
       if (student !== 'failed' && parent !== 'failed') recent.set(key, { at: now, result });
       else recent.delete(key); // a clear rejection: let the fixed retry through
       return result;

@@ -87,9 +87,11 @@ export class InMemoryLinkRepository implements ILinkRepository {
     for (const { row } of this.outbox.values()) {
       if (row.status === 'pending' && Date.parse(row.createdAt) < now - a.cutoffDays * DAY) {
         Object.assign(row, { status: 'refused', reason: 'too-old', resultAt: nowIso, updatedAt: nowIso });
+        a.swept?.push({ type: row.type, reason: 'too-old' });
       } else if (row.status === 'claimed' && row.leaseOwner !== a.console.consoleId && row.leaseUntil
         && Date.parse(row.leaseUntil) < now - a.leaseLostMs) { // B1 / X6: the owner reclaims its own rows instead
         Object.assign(row, { status: 'unclear', reason: 'lease-lost', resultAt: nowIso, updatedAt: nowIso });
+        a.swept?.push({ type: row.type, reason: 'lease-lost' });
       }
     }
     // purge (§4.3)
