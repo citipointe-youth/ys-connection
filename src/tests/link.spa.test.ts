@@ -1234,7 +1234,8 @@ describe('F2 lifegroup report', () => {
     vi.useFakeTimers();
     const h = setup();
     h.fns._lkNewReport();
-    expect(h.get().LINK.rf).toMatchObject({ date: '2026-10-13', svc: '' }); // Tuesday: no default service
+    expect(h.get().LINK.rf).toMatchObject({ date: '2026-10-13', svc: 'none' }); // a new report defaults to No service
+    h.get().LINK.rf.svc = '';
     h.fns._lkReportSend();
     expect(h.fns._lkQGet()).toEqual([]);
     expect(strip(h.fns._lkFormHtml())).toContain('Pick a service, or pick No service.');
@@ -1285,7 +1286,7 @@ describe('F2 lifegroup report', () => {
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfDate('2026-10-16');
-    expect(h.get().LINK.rf.svc).toBe(P(50));
+    expect(h.get().LINK.rf.svc).toBe('none'); // no auto-pick: a new report stays on No service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
     expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');

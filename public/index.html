@@ -10414,7 +10414,7 @@ function _lkFormOpen(mode, arg) {
       svcSet: true, note: '', priv: false, reportId: r.reportId, base, err: '' };
   } else {
     const date = arg || g.defaultDate || LINK.today || '';
-    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.services) || '', svcSet: false,
+    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: 'none', svcSet: false,
       note: '', priv: false, reportId: null, base: null, err: '' };
   }
   _lkPaintGroups();
@@ -10423,7 +10423,6 @@ function _lkRfDate(v) {
   const f = LINK.rf;
   if (!f || f.mode === 'edit') return;
   f.date = String(v || ''); f.err = '';
-  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || '';
   _lkPaintGroups();
 }
 // Group did not meet: clears and hides the ticks and the service.
@@ -10432,7 +10431,7 @@ function _lkRfDnm(on) {
   if (!f) return;
   f.didNotMeet = !!on; f.err = '';
   if (on) { f.ticks = {}; f.svc = ''; f.svcSet = false; }
-  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || '';
+  else if (!f.svc) f.svc = 'none';
   _lkPaintGroups();
 }
 function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; _lkPaintGroups(); }
