@@ -4,6 +4,36 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+UX BATCH: ERROR LOG, LIFEGROUP MEMBERS, INTAKE, FORM GUARDS  (2026-10-13)
+-------------------------------------------------------------------------------
+Built and tested, not yet live. The operator promotes it (see the checklist in
+CLAUDE.md, "2026-10-13 UX batch").
+- Settings tabs: on a phone the admin tab strip is a drop-down list.
+- New person form: mobile numbers are checked (04 and 10 digits), names that
+  are all lower or all capitals are tidied, a 4-digit postcode is needed, and a
+  parent with the same name as the student is blocked. The same mobile for
+  parent and student only shows a warning. Errors show under the field.
+- Error log (new admin tab): groups the same error with a count and first/last
+  time. Each can be minimised, ignored or deleted; there is a filter and a
+  Delete all. It never stores names, phone numbers or answers. Kept 90 days.
+- Lifegroup report: each group has a members list. Tap a student to see their
+  profile (if you may see them).
+- Lifegroup add/remove: leaders of that group, directors and admins can add a
+  student to a group or take one out. The change shows as Pending until the
+  console has done it in Elvanto. Failures show in the Error log. Needs the
+  console updated to the new version.
+- Bus: the "All cars" tab is now a section at the bottom of My car. It loads
+  when you open it.
+- Intake (new, admin only, Off until you turn it on): More > Intake shows the
+  console's intake and consent lists. Fix fields, match to a person, save the
+  family, text the parent, and settle consent. Everything goes through the
+  console, which stays the one that writes to Elvanto. The console's own Youth
+  intake tab still works. Personal details are encrypted and removed after 14
+  days.
+- Before the update goes live: set FIELD_ENCRYPTION_KEY, snapshot the database,
+  and check that the build log counts migrations through 0021.
+
+-------------------------------------------------------------------------------
 MORE MENU IN THE PRAYERS SPOT  (2026-10-12)
 -------------------------------------------------------------------------------
 - The Prayers button on the nav bar becomes "More" whenever a login has more
