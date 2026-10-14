@@ -8,7 +8,7 @@ const unknown = { female: false, male: false, unknown: true };
 
 describe('autoFillPool', () => {
   const g: Record<string, 'male' | 'female'> = { M1: 'male', F1: 'female', F3: 'female', M2: 'male' };
-  it('keeps fixed leaders and picks pool leaders so girl/boy seats match the roster', () => {
+  it('keeps leaders already on the car and picks pool leaders so girl/boy seats match the roster', () => {
     const out = autoFillPool(
       [{ id: 'A', seats: 10, leaderIds: ['M1'] }, { id: 'B', seats: 8, leaderIds: [] }],
       [{ id: 'F1', gender: 'female' }, { id: 'M2', gender: 'male' }, { id: 'F3', gender: 'female' }],
@@ -30,7 +30,7 @@ describe('autoFillPool', () => {
     expect(ok.get('A')).toEqual(['M1', 'F1']);
   });
   // Task 9 (owner): a car ending at a drop-off address sends its driver home — a pool leader
-  // added there would be stranded. Leaders already fixed to it (hand-assigned) are untouched.
+  // added there would be stranded. Leaders already on it (hand-assigned) are untouched.
   it('never adds a pool leader to a car ending at an address; a church/last_drop car still fills', () => {
     const endsAtAddress = autoFillPool(
       [{ id: 'A', seats: 8, leaderIds: ['M1'], endsAt: 'address' }],

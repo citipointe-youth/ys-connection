@@ -643,6 +643,11 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bus-gender{display:flex;gap:8px}
 .bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
+/* Single-list bus sheets (Leaders on car, Leader pool): the list takes the sheet's height
+   instead of the 110px cap that multi-list sheets (Edit vehicle, Your car) need. */
+.mo-box.bus-fill{display:flex;flex-direction:column;max-height:min(85dvh,100%)}
+.mo-box.bus-fill > *{flex-shrink:0}
+.mo-box.bus-fill > .bus-checks{flex:1 1 auto;min-height:0;max-height:none}
 /* ── Car setup / Routes / My car (Task 7) ── */
 .veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:6px 10px 8px;margin-bottom:6px}
 .veh-card.off{opacity:.55;padding-bottom:6px}
@@ -12726,7 +12731,7 @@ function busEditPoolSheet() {
   // stays alphabetical.
   modal(`<div class="mo-title">Leader pool</div>
     <div class="bus-checks">${v.leaders.slice().sort((a, b) => a.name.localeCompare(b.name)).map(row).join('')}</div>
-    <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>`);
+    <button class="btn btn-secondary btn-full" onclick="closeModal()">Done</button>`, null, { boxClass: 'bus-fill' });
 }
 async function busSetInPool(leaderId, inPool) {
   try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { inPool }); busEditPoolSheet(); } catch (e) { toast(e.message); }
@@ -12765,8 +12770,6 @@ function busEditVehicle(vehicleId) {
       <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}" placeholder="# seats" aria-label="Seats"></div>
     <label class="fl">Preferred grades</label>
     <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
-    <label class="fl">Fixed leaders</label>
-    <div class="bus-checks" id="ve-leaders">${v.leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${l.fixedVehicleId && l.fixedVehicleId === vehicleId ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>`).join('')}</div>
     ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
@@ -12778,29 +12781,16 @@ async function busSaveVehicle(vehicleId) {
   if (endsAt === 'address' && !ends.placeId) { toast('Pick the address from the suggestions list'); return; }
   const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
-  const fixed = [...document.querySelectorAll('#ve-leaders input')];
   const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
   try {
     const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
     const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
       tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId });
-    // M4: track which leaders just got UNticked as fixed-to-this-vehicle, so they can be
-    // dropped from tonight's car below too — leaving them off the leader-prefs record but
-    // still on rv.leaderIds was the bug (a union only ever adds, never removes).
-    const unfixedIds = [];
-    for (const cb of fixed) {
-      const l = BUS.view.leaders.find((x) => x.id === cb.value);
-      const want = cb.checked ? saved.id : (l.fixedVehicleId === saved.id ? null : l.fixedVehicleId);
-      if (want !== l.fixedVehicleId) await API.patch('/bus/leader-prefs/' + l.id + '?' + _busQs(), { fixedVehicleId: want });
-      if (!cb.checked && l.fixedVehicleId === saved.id) unfixedIds.push(l.id);
-    }
     await busRefresh();
+    // Leaders on tonight's car are set from the car card (busEditCarLeaders), not here.
     const rv = BUS.view.vehicles.find((x) => x.vehicleId === saved.id);
-    if (rv) {
-      const leaderIds = [...new Set([...rv.leaderIds.filter((id) => !unfixedIds.includes(id)), ...fixed.filter((c) => c.checked).map((c) => c.value)])];
-      await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, tonightOnly ? { endsAt, endsAddress, endsPlaceId, leaderIds } : { leaderIds });
-    }
+    if (rv && tonightOnly) await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, { endsAt, endsAddress, endsPlaceId });
     closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
 }
@@ -12823,17 +12813,25 @@ async function busArchiveVehicle(id) {
   const f = BUS.view.fleet.find((x) => x.id === id);
   try { await API.patch('/bus/vehicles/' + id + '?' + _busQs(), { ...f, archived: true }); closeModal(); busRefresh(); } catch (e) { toast(e.message); }
 }
-// Tonight's leaders on a car (beyond the fleet's fixed leaders) — the car card's leader
+// Tonight's leaders on a car (carried over from last week's run) — the car card's leader
 // chips open this checklist sheet; Save writes the run vehicle's leaderIds directly.
+// The search only hides rows, so ticked leaders filtered out of view are still saved.
 function busEditCarLeaders(runVehicleId) {
   const v = BUS.view, rv = v.vehicles.find((x) => x.id === runVehicleId);
   modal(`<div class="mo-title">Leaders on ${esc(rv.name)}</div>
+    <div class="sbar"><span class="si">${icS('search')}</span><input type="search" placeholder="Search leaders" aria-label="Search leaders"
+      autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_busFilterChecks('rvl-leaders', this.value)"></div>
     <div class="bus-checks" id="rvl-leaders">${v.leaders.map((l) => {
       const other = v.vehicles.find((x) => x.running && x.id !== rv.id && x.leaderIds.includes(l.id));
-      return `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}${other ? ` <span class="card-sub">on ${esc(other.name)}</span>` : ''}</label>`;
+      return `<label class="cbx-row" data-name="${esc(l.name.toLowerCase())}"><input type="checkbox" value="${l.id}" ${rv.leaderIds.includes(l.id) ? 'checked' : ''}> ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}${other ? ` <span class="card-sub">on ${esc(other.name)}</span>` : ''}</label>`;
     }).join('')}</div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button></div>`);
+      <button class="btn btn-primary" onclick="busSaveCarLeaders('${runVehicleId}')">Save</button></div>`, null, { boxClass: 'bus-fill' });
+}
+// Hide (never remove) rows whose name doesn't match, so checked state survives filtering.
+function _busFilterChecks(listId, q) {
+  q = q.trim().toLowerCase();
+  for (const row of document.querySelectorAll('#' + listId + ' .cbx-row')) row.style.display = row.dataset.name.includes(q) ? '' : 'none';
 }
 async function busSaveCarLeaders(runVehicleId) {
   const leaderIds = [...document.querySelectorAll('#rvl-leaders input:checked')].map((i) => i.value);

@@ -99,7 +99,7 @@ const UpdateRunVehicle = z.object({ running: z.boolean().optional(), leaderIds: 
 const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
 // prefGrades matches the vehicle's own SaveVehicle.prefGrades shape above — plain ints, no
 // min/max (the grade range itself is ministry-config-driven, not a fixed Zod bound).
-const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(), fixedVehicleId: z.string().nullable().optional(),
+const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(),
   prefGrades: z.array(z.number().int()).optional() });
 // Own-car "add someone" (owner, 2026-10-07): a junior leader without bus:roster can still add a
 // brand-new rider into THEIR OWN car — same shapes addRider/createGuest already validate, just
@@ -297,12 +297,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     });
     if (!created) return run;
     const prevVehicles = prev ? await bus.listRunVehicles(prev.id) : [];
-    const prefs = await bus.listLeaderPrefs();
     const fleet = (await bus.listVehicles()).filter((v) => !v.archived);
     for (const [i, v] of fleet.entries()) {
       const before = prevVehicles.find((p) => p.vehicleId === v.id);
-      const leaderIds = (before ? before.leaderIds : prefs.filter((p) => p.fixedVehicleId === v.id).map((p) => p.id))
-        .filter((id) => activeIds.has(id));
+      // Leaders carry over from last week's car; a vehicle new since then starts with none.
+      const leaderIds = (before ? before.leaderIds : []).filter((id) => activeIds.has(id));
       await saveRV({
         id: generateId(), runId: run.id, vehicleId: v.id, ownerLeaderId: null, name: v.name, seats: v.seats, plate: v.plate,
         running: before ? before.running : true, leaderIds,
@@ -368,7 +367,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
-      inPool: prefBy.get(l.id)?.inPool ?? false, fixedVehicleId: prefBy.get(l.id)?.fixedVehicleId ?? null,
+      inPool: prefBy.get(l.id)?.inPool ?? false,
       prefGrades: prefBy.get(l.id)?.prefGrades ?? [] }));
     const seesPending = can(ctx.actor, 'bus:analysis');
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
@@ -904,10 +903,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(LeaderPrefsIn, input);
       if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
       const run = await ensureRun(ctx, c);
-      if (lockActive(run)) throw lockConflict(run); // I1: fixedVehicleId/inPool feed the solve's auto-fill
-      const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
+      if (lockActive(run)) throw lockConflict(run); // I1: inPool/prefGrades feed the solve's auto-fill
+      const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
       await bus.saveLeaderPrefs({ ...p, ...(v.inPool !== undefined ? { inPool: v.inPool } : {}),
-        ...(v.fixedVehicleId !== undefined ? { fixedVehicleId: v.fixedVehicleId } : {}),
         ...(v.prefGrades !== undefined ? { prefGrades: v.prefGrades } : {}) });
       await touch(ctx, run);
     },
@@ -962,7 +960,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         await bus.saveRunRider({ ...byId.get(id)!, runVehicleId: rv.id, stopOrder: i + 1, pinned: true });
       }
       await reorderCar(c, run, rv);
-      const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, fixedVehicleId: null, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
+      const prefs = (await bus.getLeaderPrefs(me)) ?? { id: me, inPool: false, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
       await bus.saveLeaderPrefs({ ...prefs, ownCar: v.car as BusOwnCar,
         lastOwnRiderKeys: riders.filter((r) => riderIds.includes(r.id)).map(riderKey) });
       await bus.setUndo(run.id, null, null); // I2: these riders just moved into an own car — a later Undo must not pull them back out

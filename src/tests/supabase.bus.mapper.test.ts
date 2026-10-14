@@ -36,11 +36,11 @@ describe('bus field encryption', () => {
 
 describe('leader prefs prefGrades (int[] column, not encrypted)', () => {
   it('maps pref_grades onto prefGrades', () => {
-    const row = { leader_id: 'L1', in_pool: true, fixed_vehicle_id: null, own_car: null, last_own_rider_keys: [], pref_grades: [9, 10] };
+    const row = { leader_id: 'L1', in_pool: true, own_car: null, last_own_rider_keys: [], pref_grades: [9, 10] };
     expect(toPrefs(row).prefGrades).toEqual([9, 10]);
   });
   it('defaults to [] when the column is absent (pre-migration row)', () => {
-    const row = { leader_id: 'L1', in_pool: false, fixed_vehicle_id: null, own_car: null, last_own_rider_keys: [] };
+    const row = { leader_id: 'L1', in_pool: false, own_car: null, last_own_rider_keys: [] };
     expect(toPrefs(row).prefGrades).toEqual([]);
   });
 });

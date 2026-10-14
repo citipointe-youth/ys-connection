@@ -1,5 +1,7 @@
 # Bus Ministry — design
 
+> **2026-10-14:** "Fixed leaders" removed (column dropped in `0026`). Leaders on a car carry over from the previous week's run; a new vehicle starts with none.
+
 **Date:** 2026-10-05 · **Status:** approved in brainstorming, awaiting written-spec review
 **Mockup (visual reference):** `_design/bus-ministry-mockup.html` (published: https://claude.ai/artifact/1pbjvHvTcvJTFBwkEMkTsK). Reviews: `_design/review-ux.md`, `_design/review-colour.md`, `_design/car-setup-review.md`.
 

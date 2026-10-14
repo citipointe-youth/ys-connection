@@ -334,38 +334,33 @@ describe('busNewPerson resets a stale gender selection (M3)', () => {
   });
 });
 
-// M4: unticking a previously-fixed leader in Edit Vehicle must drop them from TONIGHT's car
-// too, not just from their standing leader-prefs record — a plain union only ever adds.
-describe('busSaveVehicle drops an unticked fixed leader from tonight (M4)', () => {
-  it('the run-vehicle PATCH leaderIds excludes the just-unticked leader', async () => {
+// Leaders on <car> sheet: the search hides rows but never unticks them, so Save still sends
+// every checked leader, including ones filtered out of view.
+describe('busEditCarLeaders search filter', () => {
+  it('hides non-matching rows case-insensitively and still saves hidden checked leaders', async () => {
     const prelude = `
-      const BUS = { ac: {}, view: { fleet: [], leaders: [{ id: 'L1', fixedVehicleId: 'v1' }], vehicles: [{ id: 'rv1', vehicleId: 'v1', leaderIds: ['L1'] }] } };
-      const __calls = [];
-      const __sendCalls = [];
-      const document = {
-        getElementById: (id) => ({
-          've-ends': { value: 'church' }, 've-ends-addr': { value: '' }, 've-tonight': null,
-          've-name': { value: 'Big Bus' }, 've-plate': { value: '' }, 've-seats': { value: '5' },
-        }[id] ?? null),
-        querySelectorAll: (sel) => (sel === '#ve-leaders input' ? [{ value: 'L1', checked: false }] : []),
-      };
-      const API = {
-        async patch(url, body) { __calls.push({ url, body }); return { id: 'v1' }; },
-        async post(url, body) { __calls.push({ url, body }); return { id: 'v1' }; },
-      };
-      function _busQs() { return ''; }
-      async function busRefresh() {}
-      async function _busSend(method, path, body) { __sendCalls.push({ method, path, body }); }
+      const mkRow = (name, id, checked) => ({ dataset: { name }, style: { display: '' }, input: { value: id, checked } });
+      const rows = [mkRow('amy lee', 'L1', true), mkRow('bob ray', 'L2', true), mkRow('cara amy', 'L3', false)];
+      const __sends = [];
+      const document = { querySelectorAll: (sel) => sel === '#rvl-leaders .cbx-row' ? rows
+        : sel === '#rvl-leaders input:checked' ? rows.map((r) => r.input).filter((i) => i.checked) : [] };
+      async function _busSend(method, path, body) { __sends.push({ method, path, body }); }
       function closeModal() {}
       function toast() {}
-      function __state() { return { calls: __calls, sendCalls: __sendCalls }; }
+      function __state() { return { rows, sends: __sends }; }
     `;
-    const { busSaveVehicle, __state } = loadFns(['busSaveVehicle', '_busAcValue', '_busAcResolve'], prelude, ['busSaveVehicle', '__state']);
-    await busSaveVehicle('v1');
-    const st = __state();
-    const rvPatch = st.sendCalls.find((c: any) => c.path === '/bus/run/vehicles/rv1');
-    expect(rvPatch).toBeTruthy();
-    expect(rvPatch.body.leaderIds).not.toContain('L1');
+    const { _busFilterChecks, busSaveCarLeaders, __state } = loadFns(['_busFilterChecks', 'busSaveCarLeaders'], prelude, ['_busFilterChecks', 'busSaveCarLeaders', '__state']);
+    _busFilterChecks('rvl-leaders', '  AMY ');
+    expect(__state().rows.map((r: any) => r.style.display)).toEqual(['', 'none', '']);
+    await busSaveCarLeaders('rv1');
+    expect(__state().sends[0]).toEqual({ method: 'PATCH', path: '/bus/run/vehicles/rv1', body: { leaderIds: ['L1', 'L2'] } });
+    _busFilterChecks('rvl-leaders', '');
+    expect(__state().rows.every((r: any) => r.style.display === '')).toBe(true);
+  });
+  it('renders a search box and fills the sheet height', () => {
+    const html = loadIndexHtml();
+    expect(html).toContain('placeholder="Search leaders"');
+    expect(html).toMatch(/\.mo-box\.bus-fill > \.bus-checks\{[^}]*max-height:none/);
   });
 });
 

@@ -14,7 +14,7 @@ export interface BusOwnCar {
 }
 /** id === leaderId. riderKeys are 's:<studentId>' | 'g:<guestId>'. */
 export interface BusLeaderPrefs {
-  id: ID; inPool: boolean; fixedVehicleId: ID | null; ownCar: BusOwnCar | null; lastOwnRiderKeys: string[]; prefGrades: number[];
+  id: ID; inPool: boolean; ownCar: BusOwnCar | null; lastOwnRiderKeys: string[]; prefGrades: number[];
 }
 export interface BusGuest {
   id: ID; firstName: string; lastName: string; grade: number | null; gender: BusGender;
@@ -69,7 +69,7 @@ export interface BusRiderView {
   consent: { given: boolean; note?: string; recordedBy?: string; recordedAt?: string } | null;
   droppedAt: string | null; droppedBy: string | null;
 }
-export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; fixedVehicleId: ID | null; prefGrades: number[] }
+export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; prefGrades: number[] }
 // Owner request: "Past riders" on the Tonight tab — people with a saved address who aren't on
 // tonight's roster. addressId lets the SPA one-tap add them via the existing addRider path
 // without re-entering the address; only the suburb is ever shown here (spec I2's rule).

@@ -42,7 +42,7 @@ function ownCarIn(o: any, leaderId: string): BusOwnCar | null {
     endsPlaceId: busCrypt.dec(o.endsPlaceId, `bus_leader_prefs:own_car_place:${leaderId}`) };
 }
 export function toPrefs(r: Record<string, any>): BusLeaderPrefs {
-  return { id: r.leader_id, inPool: r.in_pool, fixedVehicleId: r.fixed_vehicle_id ?? null,
+  return { id: r.leader_id, inPool: r.in_pool,
     ownCar: ownCarIn(r.own_car, r.leader_id), lastOwnRiderKeys: r.last_own_rider_keys ?? [], prefGrades: r.pref_grades ?? [] };
 }
 function toGuest(r: Record<string, any>): BusGuest {
@@ -116,9 +116,9 @@ export class SupabaseBusRepository implements IBusRepository {
   async getLeaderPrefs(id: string) { const r = await this.sql`select * from bus_leader_prefs where leader_id = ${id}`; return r[0] ? toPrefs(r[0]) : null; }
   async saveLeaderPrefs(p: BusLeaderPrefs) {
     const r = await this.sql`
-      insert into bus_leader_prefs (leader_id, in_pool, fixed_vehicle_id, own_car, last_own_rider_keys, pref_grades)
-      values (${p.id}, ${p.inPool}, ${p.fixedVehicleId}, ${p.ownCar ? this.j(ownCarOut(p.ownCar, p.id)) : null}, ${this.j(p.lastOwnRiderKeys)}, ${p.prefGrades})
-      on conflict (leader_id) do update set in_pool = excluded.in_pool, fixed_vehicle_id = excluded.fixed_vehicle_id,
+      insert into bus_leader_prefs (leader_id, in_pool, own_car, last_own_rider_keys, pref_grades)
+      values (${p.id}, ${p.inPool}, ${p.ownCar ? this.j(ownCarOut(p.ownCar, p.id)) : null}, ${this.j(p.lastOwnRiderKeys)}, ${p.prefGrades})
+      on conflict (leader_id) do update set in_pool = excluded.in_pool,
         own_car = excluded.own_car, last_own_rider_keys = excluded.last_own_rider_keys, pref_grades = excluded.pref_grades
       returning *`;
     return toPrefs(r[0]!);
