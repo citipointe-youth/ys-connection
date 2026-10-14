@@ -6,7 +6,7 @@ export function makeLeaderController(deps: { leader: LeaderService }) {
   return {
     async list(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
-      return deps.leader.list(req.ctx);
+      return deps.leader.list(req.ctx, { inactive: req.query['inactive'] === '1' });
     },
 
     async get(req: HttpRequest) {

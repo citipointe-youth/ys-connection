@@ -343,7 +343,8 @@ describe('bottom nav order', () => {
     expect(g.find((i) => i.id === 'my-students')).toMatchObject({ ic: 'users', label: 'My Connections' });
   });
   it('quad, director and admin keep their order', () => {
-    expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
+    // Junior/Senior (2026-10-14): the grade nav, with My Connections where Trends was.
+    expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(ids(navFns(modeOf('off', 'grade')).bottomNavItems()));
     expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
     // 2026-10-14: Elvanto link moved to an Admin tab, so with every module off the admin's slot is plain Prayers again.
     expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);

@@ -175,3 +175,21 @@ describe('Leader Service — setViewGrades (quad grade filter)', async () => {
     expect(after.viewGrades).toEqual([9]);
   });
 });
+
+describe('Leader Service — inactive list (Setup "Inactive leaders")', () => {
+  it('list(actor, {inactive:true}) returns only inactive leaders, with the same role scoping', async () => {
+    const s = await svc();
+    const a = await s.create(ADMIN, { fullName: 'Gone Girl', gender: 'female', grades: [8] });
+    const b = await s.create(ADMIN, { fullName: 'Gone Boy', gender: 'male', grades: [11] });
+    await s.create(ADMIN, { fullName: 'Still Here', gender: 'female', grades: [8] });
+    await s.update(ADMIN, a.id, { active: false });
+    await s.update(ADMIN, b.id, { active: false });
+    expect((await s.list(ADMIN, { inactive: true })).map((l) => l.fullName).sort()).toEqual(['Gone Boy', 'Gone Girl']);
+    expect((await s.list(G79, { inactive: true })).map((l) => l.fullName)).toEqual(['Gone Girl']);
+    expect((await s.list(G79)).map((l) => l.fullName)).toEqual(['Still Here']);
+  });
+  it('a junior leader login (no Setup screen) cannot read the inactive list', async () => {
+    const s = await svc();
+    await expect(s.list(actor('leader'), { inactive: true })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});

@@ -1704,6 +1704,31 @@ function _vgBar() {
   return `<div class="filter-row vg-bar" role="group" aria-label="Filter by grade"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}<span style="color:var(--ink-faint)">·</span><button class="fc ${all ? 'on' : ''}" aria-pressed="${all}" onclick="_vgAll()">All</button><button class="fc" onclick="_vgMine()">My grades</button></div>`;
 }
 
+// ── HOME GRADE BUTTONS (Junior/Senior logins, 2026-10-14) ──
+// All = the quad Home; a grade = that grade login's Home (same renderer, _homeViewUser). Per device
+// (localStorage, per login). Nothing saved: the "I am" filter's grade when it is exactly one, else All.
+function _homeGradeKey() { return 'yap_home_grade.' + ((S.user && S.user.id) || ''); }
+function _homeGrade() {
+  if (!S.user || S.user.role !== 'quad') return null;
+  const bracket = quadGrades(S.user.quad);
+  let saved = null;
+  try { saved = localStorage.getItem(_homeGradeKey()); } catch {}
+  if (saved === 'all') return null;
+  if (saved != null && bracket.includes(Number(saved))) return Number(saved);
+  const vg = _vgGrades();
+  return vg && vg.length === 1 ? vg[0] : null;
+}
+function _setHomeGrade(g) {
+  try { localStorage.setItem(_homeGradeKey(), g == null ? 'all' : String(g)); } catch {}
+  _renderHomeInner(true, true);
+}
+function _homeGradeBar(cur) {
+  const b = (g, label) => `<button class="fc ${cur === g ? 'on' : ''}" aria-pressed="${cur === g}" onclick="_setHomeGrade(${g})">${label}</button>`;
+  return `<div class="filter-row" role="group" aria-label="Show Home for">${b(null, 'All')}${quadGrades(S.user.quad).map(g => b(g, g)).join('')}</div>`;
+}
+// The login Home is drawn as: the quad itself (All), or a grade-N login of the quad's gender.
+function _homeViewUser(u, g) { return g == null ? u : { ...u, role: 'grade', grade: g, grades: [g], gender: quadGender(u.quad) }; }
+
 // ── UNDO SYSTEM ──
 const _undo = { pending: null, timer: null };
 function showUndoToast(msg, undoFn) {
@@ -2103,9 +2128,9 @@ function moreItems() {
   return xs;
 }
 // The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
-function _navSlots() {
+function _navSlots(u) {
   const more = moreItems();
-  return _navItemsBase().map(it => {
+  return _navItemsBase(u).map(it => {
     if (it.id !== 'prayers') return it;
     if (more.length >= 2) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
     if (more.length === 0) return null;
@@ -2126,8 +2151,8 @@ function openMore() {
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
-function _navItemsBase() {
-  const u = S.user; if (!u) return [];
+function _navItemsBase(u = S.user) {
+  if (!u) return [];
   const modules = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules) || {};
   // CA defaults true (empty/absent config = current behaviour).
   const caOn = modules.connectionAudit !== false;
@@ -2152,17 +2177,18 @@ function _navItemsBase() {
     { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
-  // Quad: Home | Health | Trends | Connect Setup
+  // Quad (Junior/Senior, 2026-10-14): the grade nav with My Connections where Trends was (Trends is the Home
+  // hero pill). Student Search stays a quick action (grade logins have none).
   if (u.role === 'quad') return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
+    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
     { id:'prayers',    ic:'pray',     label:'Prayers',           mbl:'Prayers' },
-    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'leaders',    ic:'arrr',     label:'Setup',              mbl:'Setup' },
     // quick actions:
+    { id:'trends',     ic:'chart',    label:'Trends',            mbl:'Trends' },
     { id:'students',   ic:'id',       label:'Student Search',    mbl:'Student Search' },
-    { id:'my-students',ic:'users',    label:'My Connections',    mbl:'<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">Connections</span></span>' },
-    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays', wide:true },
+    { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
   // Admin: Home | Health | Prayers | Setup | Admin (2026-07-23: Admin replaced
   // Trends as the 5th/far-right bottom-nav slot; Trends dropped to a sub-page,
@@ -2196,7 +2222,7 @@ function _navItemsBase() {
   ];
 }
 function bottomNavItems() { return _navSlots().slice(0, 5).filter(Boolean); }
-function quickActionItems() { return _navSlots().slice(5).filter(Boolean); }
+function quickActionItems(u) { return _navSlots(u).slice(5).filter(Boolean); }
 
 // shell() is kept for compatibility — the persistent shell is set up by _initShell().
 // All setApp(shell(x)) calls now just update <main id="page-main"> with x.
@@ -2707,13 +2733,13 @@ function _revalidateHome() {
 }
 // fromCache (T7/T8): a grade-filter repaint; the Follow Up card also reads from the cache.
 async function _renderHomeInner(stale, fromCache) {
-  const u = S.user;
+  const qu = S.user; // the login; `u` below is who Home is drawn for
   const _pg = S.page;
   const lifegroupsOn = !(S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules && S.settings.ministryConfig.modules.lifegroups === false);
   // Stale mode reads straight from the last-known cache (Promise.resolve, no network)
   // so the page paints instantly; renderHome handles the background refresh.
   const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
-  const needConns = ['admin', 'director'].includes(u.role);
+  const needConns = ['admin', 'director'].includes(qu.role);
   let stats, trends, sc = [], lgStats = null, conns = [];
   try {
     [stats, trends, sc, lgStats, conns] = await Promise.all([
@@ -2726,16 +2752,24 @@ async function _renderHomeInner(stale, fromCache) {
   } catch {}
   if (S.page !== _pg) return; // navigated away while awaiting — don't overwrite the new page
   sc = sc || [];
+  // Junior/Senior Home buttons: a picked grade draws the grade-N login's Home from the quad's data.
+  const _hg = _homeGrade();
+  const u = _homeViewUser(qu, _hg);
+  if (_hg != null) {
+    sc = sc.filter(s => s.grade === _hg);
+    const g = stats && (stats.byGrade || []).find(x => x.grade === _hg);
+    if (g) stats = { ...stats, ministryTotal: g.totalStudents, unconnectedTotal: g.totalStudents - g.connectedStudents };
+  }
   // Bug list item 1: birthdays-this-week must be grade/quad-scoped, not tied
   // to whichever leader identity is self-selected in Follow Up, and must not
   // show at all for director/admin. See _homeBirthdaysCtx's doc comment.
   // Junior/Senior logins: the shared grade filter narrows "Birthdays this week" and the
   // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
-  const _vg = _vgGrades();
-  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(_vgStudents(sc, _vg)) : null;
+  _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
   const _connSet = new Set((conns || []).map(a => a.studentId));
   const _lgQuad = q => (lgStats && lgStats.byQuad || []).find(x => x.quad === q);
   const _lgGrade = g => (lgStats && lgStats.byGrade || []).find(x => x.grade === g);
+  const _lgScope = _hg != null ? _lgGrade(_hg) : (lgStats && lgStats.overall);
 
   // ── Hero card: welcome + attendance summary (current + previous term) ──
   const svcUniq = sc.filter(s => s.svcAttended > 0).length;
@@ -2748,7 +2782,7 @@ async function _renderHomeInner(stale, fromCache) {
   // weekly comes from /lifegroups/stats (same source as Trends) so Home and Trends
   // agree: it divides total visits by VALID SERVICE FRIDAYS this term, not by the
   // max weeks any one group ran. Fall back to the per-student calc when stats absent.
-  const grpAvgWk = lgStats ? lgStats.overall.current.avgPerWeek : (grpWeeks > 0 ? Math.round(grpAtt / grpWeeks) : 0);
+  const grpAvgWk = _lgScope ? _lgScope.current.avgPerWeek : (grpWeeks > 0 ? Math.round(grpAtt / grpWeeks) : 0);
 
   let body = `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
   const heroTitle = u.role === 'grade' ? (gradeBadgeLabel(u) + _gsfx(_loginGender(u))) : u.displayName;
@@ -2787,7 +2821,7 @@ async function _renderHomeInner(stale, fromCache) {
     const pGrpEnr = sc.filter(s => s.prevGrpTotal > 0);
     const pGrpUniq = sc.filter(s => s.prevGrpAttended > 0).length;
     const pGrpRun = pGrpEnr.length ? Math.max(...pGrpEnr.map(s => s.prevGrpTotal)) : 0;
-    const pGrpAvg = lgStats ? lgStats.overall.previous.avgPerWeek : (pGrpRun > 0 ? Math.round(pGrpAtt / pGrpRun) : 0);
+    const pGrpAvg = _lgScope ? _lgScope.previous.avgPerWeek : (pGrpRun > 0 ? Math.round(pGrpAtt / pGrpRun) : 0);
     const prevBtn = `<button onclick="_toggleHomePrev()" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px"><span id="home-prev-chev" style="display:inline-block;transition:transform .15s">›</span> Prev term</button>`;
     body += trendsPill ? `<div style="display:flex;align-items:center;justify-content:space-between">${prevBtn}${trendsPill}</div>` : prevBtn;
     body += `<div id="home-prev-body" style="display:none">`;
@@ -2806,6 +2840,7 @@ async function _renderHomeInner(stale, fromCache) {
     body += `<div style="display:flex;justify-content:flex-end">${trendsPill}</div>`;
   }
   body += `</div>`;
+  if (qu.role === 'quad') body += _homeGradeBar(_hg);
   /*BUS-HOOK*/ body += _busHomeTile();
   /*BUS-HOOK*/ body += _busNewPeopleCard();
 
@@ -2824,7 +2859,7 @@ async function _renderHomeInner(stale, fromCache) {
     // ── Quick action tiles ABOVE the breakdown ──
     // Grade: Trends now lives in the hero banner (opposite Prev term), so drop it
     // here — leaving just Birthdays, which then gets the full-width single column.
-    const qa = quickActionItems().filter(x => !((u.role === 'grade' || u.role === 'admin') && x.id === 'trends'));
+    const qa = quickActionItems(u).filter(x => !(['grade', 'admin', 'quad'].includes(u.role) && x.id === 'trends'));
     if (qa.length) {
       body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
@@ -2913,9 +2948,8 @@ async function _renderHomeInner(stale, fromCache) {
       // "Lifegroups by Grade" section below; folded in here so quad only has to
       // tap one tile instead of scrolling to a second section for the same grade).
       if (u.role === 'quad') {
-        body += _vgBar();
         body += '<div class="sh">Attendance by Grade</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-        for (const gr of _vgGradeList(_hQuadGrades(u.quad), _vg)) {
+        for (const gr of _hQuadGrades(u.quad)) {
           const gLg = lifegroupsOn ? _lgGrade(gr) : null;
           const attOpts = { grpAvgWk: gLg ? gLg.current.avgPerWeek : 0, hideLifegroupRow: !lifegroupsOn };
           if (gLg) {
@@ -3345,6 +3379,25 @@ async function loadConnectData(G) {
   _aS.students = students; _aS.leaders = leaders; _aS.allocs = allocs;
 }
 
+// Setup: leaders marked inactive, collapsed (GET /leaders?inactive=1, same scoping as /leaders; Setup roles only).
+// Fetched once in the background, then repainted; Cache.del('/leaders') after an edit also drops it. Edit = the
+// existing leader sheet, whose Active box reactivates. Hidden when there are none.
+let _inactiveLdrsLoading = false;
+function _inactiveLeadersHtml() {
+  const path = '/leaders?inactive=1';
+  const ls = Cache.getStale(path);
+  if (ls == null) {
+    if (!_inactiveLdrsLoading) {
+      _inactiveLdrsLoading = true;
+      API.get(path).then(() => { if (S.page === 'leaders') renderConnectView(); }, () => {}).finally(() => { _inactiveLdrsLoading = false; });
+    }
+    return '';
+  }
+  if (!ls.length) return '';
+  const rows = ls.slice().sort((a, b) => String(a.fullName).localeCompare(String(b.fullName))).map(l =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--paper-dark)"><span style="flex:1;min-width:0">${esc(l.fullName)} <span style="font-size:12px;color:var(--ink-faint)">· Gr ${esc((l.grades || []).join(', ') || 'All')}</span></span><button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" aria-label="Edit ${esc(l.fullName)}" onclick="showEditLeader('${esc(l.id)}')">${icS('edit')}</button></div>`).join('');
+  return `<details class="card" id="inactive-leaders" style="margin-top:16px;padding:11px"><summary style="cursor:pointer;font-size:13px;font-weight:700">Inactive leaders (${ls.length})</summary><div style="margin-top:6px">${rows}</div></details>`;
+}
 function renderConnectView() {
   const { students, leaders, allocs, gf, df } = _aS;
   const u = S.user;
@@ -3480,6 +3533,7 @@ function renderConnectView() {
     }
     body += '</div>';
   }
+  body += _inactiveLeadersHtml();
 
   setApp(shell(body));
   // Native touch scrollbars only flash during an active drag, so the custom

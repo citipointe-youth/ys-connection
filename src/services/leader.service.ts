@@ -16,7 +16,8 @@ const CreateLeaderSchema = z.object({
 });
 
 export interface LeaderService {
-  list(actor: Actor): Promise<Leader[]>;
+  /** opts.inactive: the inactive leaders instead (Setup's list; same scoping, Setup roles only). */
+  list(actor: Actor, opts?: { inactive?: boolean }): Promise<Leader[]>;
   get(actor: Actor, id: string): Promise<Leader>;
   create(actor: Actor, input: unknown): Promise<Leader>;
   update(actor: Actor, id: string, input: unknown): Promise<Leader>;
@@ -55,9 +56,10 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
   const assertInRange = async (grades: number[]) =>
     assertGradesInRange((settings ? (await settings.getSettings()).ministryConfig : MINISTRY_CONFIG_DEFAULTS).structure, grades);
   return {
-    async list(actor) {
+    async list(actor, opts) {
       assertCan(actor, 'leader:read');
-      const all = await repo.findActive();
+      if (opts?.inactive) assertCan(actor, 'leader:write'); // the roles that have Setup
+      const all = opts?.inactive ? (await repo.findAll()).filter((l) => !l.active) : await repo.findActive();
 
       if (actor.role === 'grade') {
         // Grade login sees only leaders of their own GENDER that are for any of

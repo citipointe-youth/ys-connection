@@ -277,7 +277,9 @@ describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
       _visStudents: ['_vgStudents('],
       renderConnectView: ['_vgBar()', '_vgLeaders(', '_vgStudents('],
       _prayersHtml: ['_vgBar()', '_vgPrayers('],
-      _renderHomeInner: ['_vgBar()', '_vgGradeList(', '_vgStudents('],
+      // Home (2026-10-14): the All/grade buttons replace the bar; the "I am" filter seeds their default.
+      _renderHomeInner: ['_homeGradeBar(', '_homeGrade()'],
+      _homeGrade: ['_vgGrades()'],
     };
     for (const [fn, needles] of Object.entries(uses)) {
       const body = extractFn(src, fn);
