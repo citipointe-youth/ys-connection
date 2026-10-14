@@ -785,7 +785,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-lq-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;font-size:15px}
 .lk-lq-row[role=button]{cursor:pointer}
 .lk-lq-row.dis{color:var(--ink-faint)}
-.lk-mem>summary{cursor:pointer;padding:12px 2px;min-height:44px}
+.lk-mem{padding:6px 12px}.lk-mem>summary{cursor:pointer;padding:6px 2px;min-height:36px}.lk-mem>summary.lk-sec{margin:0 2px}
 .lk-box,.lk-box-sp{width:22px;height:22px;flex:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center}
 .lk-box{border:2px solid #b8c2d3}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -2086,7 +2086,7 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'Intake', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'Form Approve & Consent', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -7240,13 +7240,13 @@ function _setupFlowHiddenHtml(md) {
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
     const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for any login, and nobody can complete or assign it there. The Intake screen is not changed.')}</label>
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for any login, and nobody can complete or assign it there. The Form Approve & Consent screen is not changed.')}</label>
       <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
-  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Intake (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
+  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Form Approve & Consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
       <select class="fs" id="setup-intakeAdmin" onchange="_setupSet('modules.intakeAdmin', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
 }
 function _setupSetModule(key, val) {
@@ -9429,6 +9429,8 @@ function _lkNotToday(s) { return s && s.ymd !== _lkSvcDay() ? '<span class="lk-t
 // No service for tonight in the mirror yet (the console pushes today-7 to today+7).
 function _lkNoTonight() {
   const day = _lkSvcDay();
+  const sel = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc);
+  if (sel && sel.ymd !== day) return ''; // a past service is selected on purpose: no "tonight" banner
   return LINK.services && !LINK.services.some((s) => s.ymd === day)
     ? `<div class="lk-alert warn">${icS('info')}<div>${esc("Tonight's service isn't here yet. Use the kiosk.")}</div></div>` : '';
 }
@@ -10016,7 +10018,6 @@ function _lkCheck(pid, type) {
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
-    if (type === 'checkIn' && !_lkDayOk(s, () => _lkCheck(pid, type))) return;
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
     if (type === 'checkIn') _lkTapToast(svc, pid);
@@ -10062,14 +10063,6 @@ function _lkUndo(pid) {
     if (a.type === 'checkIn') _lkPush({ kind: 'undo', id: a.id, leaderId: lid, newId: _lkUuid(), _s: svc, _p: pid }, true);
     else _lkPush({ kind: 'cancel', id: a.id, leaderId: lid, _s: svc, _p: pid }, true);
   } catch (e) {}
-}
-// One confirm before the first check-in to a service that is not on today's service day (B9 / T-32). False = asked;
-// then() runs again after a yes.
-function _lkDayOk(s, then) {
-  if (!s || s.ymd === _lkSvcDay() || LINK.okDay[s.serviceTimeId]) return true;
-  _lkAsk('This service is on ' + _lkDay(s.ymd) + ', not today. Check in to it anyway?', 'Check in', 'Cancel', 'Not today')
-    .then((ok) => { if (ok) { LINK.okDay[s.serviceTimeId] = true; then(); } });
-  return false;
 }
 // "Pick a service" sheet (mockup frame 2). then = 'leaders' opens the leader sheet after.
 function _lkPickService(then) {
@@ -10165,7 +10158,6 @@ function _lkTickAll() {
 function _lkLeadersSubmit() {
   const s = _lkSvc();
   if (!s) return;
-  if (!_lkDayOk(s, _lkLeadersSubmit)) return;
   const t = LINK.lq || {}, lid = getMyLeaderId() || null, q = _lkQGet();
   let n = 0;
   _lkLeadersView().forEach((l) => {
@@ -10253,7 +10245,7 @@ function _lkDefaultSvcFor(day, services) {
 function _lkLastReportLabel(g) {
   const r = g && g.lastReport;
   if (!r) return 'No reports yet';
-  return 'Last report ' + _lkDay(r.date) + ' · ' + (r.didNotMeet ? 'Did not meet' : (r.attendees || []).length + (r.guests || 0));
+  return 'Last report ' + _lkDay(r.date) + ' · ' + (r.didNotMeet ? 'Did not meet' : 'Attendance: ' + ((r.attendees || []).length + (Number(r.guests) || 0)));
 }
 // Weeks run Monday to Sunday. Index 0 is the week of `today`; there are 8, newest first.
 function _lkWeekStart(ymd) {
@@ -10305,11 +10297,22 @@ function _lkGroupsHtml() {
   const gs = LINK.groups;
   if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
   if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.</p>';
-  return gs.map((g) => {
-    const a = _lkGroupAct(g);
-    return `<div class="li lk-row" role="button" onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
+  const grades = [...new Set(gs.map((g) => g.grade).filter((x) => x != null))].sort((a, b) => a - b);
+  let sel = 'all';
+  try { sel = localStorage.getItem('yap_lk_grade') || 'all'; } catch (e) {}
+  if (sel !== 'all' && !grades.some((x) => String(x) === sel)) sel = 'all';
+  const chips = grades.length > 1 ? `<div class="filter-row" role="group" aria-label="Filter by grade">${['all'].concat(grades.map(String)).map((v) =>
+    `<button type="button" class="fc${v === sel ? ' on' : ''}" onclick="_lkGrFilter('${v}')">${v === 'all' ? 'All' : 'Yr ' + v}</button>`).join('')}</div>` : '';
+  return chips + gs.filter((g) => sel === 'all' || String(g.grade) === sel).map((g) => {
+    const a = _lkGroupAct(g), tint = /^f/i.test(g.gender || '') ? ' style="background:var(--girl-light)"' : /^m/i.test(g.gender || '') ? ' style="background:var(--boy-light)"' : '';
+    return `<div class="li lk-row" role="button"${tint} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
       <div class="lk-d">${esc(_lkLastReportLabel(g))}</div>${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${icS('chevr')}</div>`;
   }).join('');
+}
+function _lkGrFilter(v) {
+  try { localStorage.setItem('yap_lk_grade', v); } catch (e) {}
+  const gl = document.getElementById('lk-glist');
+  if (gl) gl.innerHTML = _lkGroupsHtml();
 }
 function _lkSvcName(id) {
   if (!id) return 'No service';
@@ -10323,7 +10326,7 @@ function _lkReportHtml(g, r) {
   const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
   if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
-  else kv.push(['Service', _lkSvcName(r.serviceTimeId)], ['Guests', String(r.guests || 0)]);
+  else kv.push(['Guests', String(r.guests || 0)]);
   // Who came: collapsed by default (2026-10-14), the count stays on the summary line.
   const here = r.didNotMeet ? '' : `<details class="lk-here"><summary>Here (${names.length})</summary><p class="lk-sub">${esc(names.join(', ') || 'Nobody ticked')}</p></details>`;
   const edit = r.editable && !r.blocked && !_lkCapOff('editReport')
@@ -10338,7 +10341,8 @@ function _lkWeekBodyHtml(g, w) {
   if (rs.length) {
     const dup = rs.filter((r) => rs.some((x) => x !== r && x.date === r.date)).length;
     return (dup ? `<div class="lk-alert warn">${icS('info')}<div>${dup} reports were sent for the same day. To cancel one out, edit it: untick everyone and set Guests to 0.</div></div>` : '')
-      + rs.map((r) => _lkReportHtml(g, r)).join('');
+      + rs.map((r) => _lkReportHtml(g, r)).join('')
+      + (_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-secondary btn-full" onclick="_lkAddReport('${esc(w.start)}')">${icS('plus')} Add report</button>`);
   }
   const d = _lkReportDateFor(g.meets, w, _lkToday());
   if (d.state === 'later') return '<div class="card"><p class="lk-sub">This group has not met yet this week.</p></div>';
@@ -10372,7 +10376,8 @@ function _lkFormHtml() {
   if (!f || !g) return '';
   const today = LINK.today || f.date, min = _lkAddDays(today, -14);
   const last = _lkReportOn(g, f.date);
-  const clash = f.mode === 'submit' && !!last;
+  const clash = f.mode === 'submit' && !!last && !f.add;
+  const dupWarn = f.mode === 'submit' && !!last && !!f.add;
   const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
     : `<input type="date" class="fi" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)">`;
   let body = '';
@@ -10392,6 +10397,7 @@ function _lkFormHtml() {
   }
   return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
     <div class="fg"><label class="fl">Date</label>${date}</div>
+    ${dupWarn ? `<div class="lk-alert warn">${icS('info')}<div>${esc('There is already a report for that date. You can still add another.')}</div></div>` : ''}
     ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable && !last.blocked ? `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(last.reportId)}')">Edit that report</button></div>` : ''}</div></div>` : ''}
     <label class="lk-chk"><input type="checkbox"${f.didNotMeet ? ' checked' : ''} onchange="_lkRfDnm(this.checked)"> Group did not meet</label>
     ${body}
@@ -10429,6 +10435,16 @@ function _lkOpenGroup(id) { LINK.gid = id; LINK.gwk = 0; LINK.rf = null; _lkPain
 function _lkGroupsBack() { if (LINK.rf) LINK.rf = null; else LINK.gid = null; _lkPaintGroups(); }
 // "I am" is required before a report (decision 11): no "I am" yet: the picker opens first.
 function _lkNewReport(date) { if (!getMyLeaderId()) { _lkIamPick(() => _lkNewReport(date)); return; } _lkFormOpen('submit', date); }
+// T3 (2026-10-14b): a further report in a week that already has one. The leader picks the date (default: the meeting day);
+// a same-date report is only a warning here.
+function _lkAddReport(start) {
+  const g = _lkGroup(), w = { start, end: _lkAddDays(start, 6) }, today = _lkToday();
+  const d = g ? _lkReportDateFor(g.meets, w, today) : null;
+  const date = d && d.date ? d.date : today;
+  if (!getMyLeaderId()) { _lkIamPick(() => _lkAddReport(start)); return; }
+  _lkFormOpen('submit', date);
+  if (LINK.rf) { LINK.rf.add = true; _lkPaintGroups(); }
+}
 function _lkEditReport(reportId) { if (!getMyLeaderId()) { _lkIamPick(() => _lkEditReport(reportId)); return; } _lkFormOpen('edit', reportId); }
 // submit: arg is the report date (default: the group's last meeting day). edit: arg is the report id (any of the 8 weeks).
 function _lkFormOpen(mode, arg) {
@@ -10485,7 +10501,7 @@ function _lkReportSend() {
   if (!lid) { _lkIamPick(_lkReportSend); return; }
   const today = LINK.today || f.date;
   let err = '';
-  if (f.mode === 'submit' && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
+  if (f.mode === 'submit' && !f.add && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
   else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -14))) err = 'The date must be in the last 14 days.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
@@ -11493,7 +11509,7 @@ async function _ikSheetGo() {
 // ── Pages ──
 async function renderLinkIntake() {
   const I = _ik();
-  setApp(shell(`<div class="ph"><h1>Intake</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>Form Approve &amp; Consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await _ikLoad(!!I.dates);
 }
 function _ikDraw() {

@@ -11,10 +11,10 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
-  '_lkLastReportLabel', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkDayOk', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -926,18 +926,10 @@ describe('B9 / T-32 wrong service (D3)', () => {
     expect(h.fns._lkNotToday(SVC)).toBe('');
     expect(html).toContain("${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}");
   });
-  it('one confirm before the first check-in to a service that is not today', async () => {
+  it('T9: checking in to a service that is not today asks nothing', () => {
     const h = setupDay('2026-10-17T09:00:00.000Z'); // Saturday evening: Friday is not today
-    h.answers.push(true);
     h.fns._lkCheck(P(1), 'checkIn');
-    expect(h.calls.asks).toHaveLength(1);
-    expect(h.calls.asks[0]).toContain('not today');
-    expect(h.fns._lkQGet()).toHaveLength(0);
-    await Promise.resolve(); await Promise.resolve();
-    expect(h.fns._lkQGet()).toHaveLength(1);
-    h.fns._lkCheck(P(1), 'checkIn'); // removes the queued one: no question
-    h.fns._lkCheck(P(1), 'checkIn');
-    expect(h.calls.asks).toHaveLength(1);
+    expect(h.calls.asks).toHaveLength(0);
     expect(h.fns._lkQGet()).toHaveLength(1);
   });
   it('a pick made on day 1 and opened on day 8 drops the services, default, pick and people, and keeps the queue', () => {
@@ -954,6 +946,9 @@ describe('B9 / T-32 wrong service (D3)', () => {
   });
   it('no service today: "Tonight\u2019s service is not here yet" line (kiosk)', () => {
     const h = setupDay('2026-10-17T09:00:00.000Z');
+    expect(h.get().LINK.svc).toBe(SVC.serviceTimeId); // a past service is selected: no banner (T9)
+    expect(h.fns._lkNoTonight()).toBe('');
+    h.get().LINK.svc = null;
     expect(strip(h.fns._lkNoTonight())).toContain("Tonight's service isn't here yet. Use the kiosk.");
     const h2 = setupDay('2026-10-16T09:00:00.000Z');
     expect(h2.fns._lkNoTonight()).toBe('');
@@ -1152,7 +1147,7 @@ describe('F2 lifegroup report', () => {
   it('T8: the group list shows the last report line, no this-week chip, and names are escaped', () => {
     const h = setup();
     const list = h.fns._lkGroupsHtml();
-    expect(strip(list)).toContain('Last report Tue 6 Oct · 4');
+    expect(strip(list)).toContain('Last report Tue 6 Oct · Attendance: 4');
     expect(list).not.toContain('lk-wk');
     expect(strip(list)).not.toMatch(/Reported|No report\b/);
     expect(list).toContain('Yr 9 &lt;i&gt;Girls&lt;/i&gt;');
@@ -1164,7 +1159,7 @@ describe('F2 lifegroup report', () => {
     const out = strip(h.fns._lkReportHtml(h.get().LINK.groups[0], h.get().LINK.groups[0].lastReport));
     expect(out).not.toContain('SECRET');
     expect(out).toContain('Tue 6 Oct 18:30');
-    expect(out).toContain('No service');
+    expect(out).not.toContain('Service');
     expect(out).toContain('Guests2');
     expect(out).toContain('Here (2)Ava Example, Dana Testleader');
     const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
@@ -1209,6 +1204,42 @@ describe('F2 lifegroup report', () => {
     expect(form).not.toContain('Who was there'); expect(form).not.toContain('_lkRfSvc'); expect(form).not.toContain('_lkRfTick');
     h.fns._lkReportSend();
     expect(h.fns._lkQGet()[0].payload).toMatchObject({ didNotMeet: true, attendees: [], serviceTimeId: null });
+  });
+  it('T3: Add report sits under the week reports; a same-date report warns but sends', () => {
+    const h = setup();
+    const w = h.fns._lkWeeks('2026-10-16')[1]; // the week of the 6 Oct report
+    const body = h.fns._lkWeekBodyHtml(h.get().LINK.groups[0], w);
+    expect(body).toContain("_lkAddReport('" + w.start + "')");
+    expect(body.indexOf('Add report')).toBeGreaterThan(body.indexOf('Report</div>'));
+    h.fns._lkAddReport(w.start);
+    const rf = h.get().LINK.rf;
+    expect(rf.add).toBe(true);
+    h.fns._lkRfDate('2026-10-06'); h.fns._lkRfSvc('none');
+    const form = h.fns._lkFormHtml();
+    expect(strip(form)).toContain('There is already a report for that date. You can still add another.');
+    expect(form).not.toMatch(/disabled onclick="_lkReportSend()"/);
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    expect(h.fns._lkQGet()[0].payload.date).toBe('2026-10-06');
+  });
+  it('T2: the report card has no Service row', () => {
+    const h = setup();
+    const r = h.get().LINK.groups[0].lastReport;
+    const card = h.fns._lkReportHtml(h.get().LINK.groups[0], r);
+    expect(strip(card)).toContain('Guests');
+    expect(strip(card)).not.toContain('Service');
+  });
+  it('T1: grade chips filter the list, the choice is remembered, rows are tinted by gender', () => {
+    const h = setup('L1', { grade: 9, gender: 'female' });
+    const g2 = { ...h.get().LINK.groups[0], groupId: G(2), name: 'Yr 7 Boys', grade: 7, gender: 'male' };
+    h.get().LINK.groups.push(g2);
+    const all = h.fns._lkGroupsHtml();
+    expect(all).toContain("_lkGrFilter('all')"); expect(all).toContain("_lkGrFilter('7')"); expect(all).toContain("_lkGrFilter('9')");
+    expect(all).toContain('var(--girl-light)'); expect(all).toContain('var(--boy-light)');
+    h.get().LINK.groups[0].grade = 9;
+    h.fns._lkGrFilter('7'); // remembered in the (stub) localStorage and applied on the next draw
+    const f7 = h.fns._lkGroupsHtml();
+    expect(f7).toContain('Yr 7 Boys'); expect(f7).not.toContain('Yr 9 ');
   });
   it('a date equal to the last report date shows the message and queues nothing', () => {
     const h = setup();

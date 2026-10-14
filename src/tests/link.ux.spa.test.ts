@@ -64,7 +64,8 @@ describe('T6 _lkMyFlowRows: only my assigned people, overdue first', () => {
 
 describe('T8 last-report label', () => {
   const rep = (o: any) => ({ reportId: 'x', date: '2026-10-09', time: '7:00 pm', didNotMeet: false, attendees: ['a', 'b', 'c'], guests: 2, serviceTimeId: null, editable: true, blocked: null, ...o });
-  it('date and attendees plus guests', () => { expect(f._lkLastReportLabel({ lastReport: rep({}) })).toBe('Last report Fri 9 Oct · 5'); });
+  it('date and attendees plus guests', () => { expect(f._lkLastReportLabel({ lastReport: rep({}) })).toBe('Last report Fri 9 Oct · Attendance: 5'); });
+  it('guests arriving as a string still add, not concatenate', () => { expect(f._lkLastReportLabel({ lastReport: rep({ guests: '2' }) })).toBe('Last report Fri 9 Oct · Attendance: 5'); });
   it('did not meet', () => { expect(f._lkLastReportLabel({ lastReport: rep({ didNotMeet: true, attendees: [], guests: 0 }) })).toBe('Last report Fri 9 Oct · Did not meet'); });
   it('no reports yet', () => { expect(f._lkLastReportLabel({ lastReport: null })).toBe('No reports yet'); expect(f._lkLastReportLabel({})).toBe('No reports yet'); });
 });
