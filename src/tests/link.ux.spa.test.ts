@@ -142,3 +142,13 @@ describe('T9 admin page source', () => {
     expect(f).toContain("p === 'link-admin' ? !_linkAdminOn() : !_linkOn(feature)");
   });
 });
+
+describe('T12 _lkFlowGroups: the pushed steps seed every step, so an empty one shows', () => {
+  it('an empty step is listed with no rows, in order', () => {
+    const steps = [{ flowId: 'F1', flowName: 'Flow', stepId: 'S0', stepName: 'Empty', stepOrder: 3 },
+      { flowId: 'F1', flowName: 'Flow', stepId: 'S1', stepName: 'Step', stepOrder: 1 }];
+    const g = f._lkFlowGroups([R({ rowId: 'a', name: 'Amy' })], '2026-10-12', steps);
+    expect(g[0].steps.map((s: any) => [s.stepName, s.rows.length])).toEqual([['Step', 1], ['Empty', 0]]);
+    expect(f._lkFlowGroups([], '2026-10-12', steps)[0].steps.length).toBe(2);
+  });
+});

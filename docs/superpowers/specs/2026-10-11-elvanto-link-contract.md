@@ -508,6 +508,20 @@ link uses; the console never maps text.
   row. An intake row waits at most 24 h (swept `refused`, `too-old`); its note is dropped once final; the row is
   deleted after 14 days. Plan rows are encrypted at rest and deleted after 14 days; module Off deletes them all.
 
+### 5.8 Leader names + flow steps (LINK_REV 5, 2026-10-14b T8/T12)
+
+- **Optional only**, contract version stays 1. Either side at rev 4 keeps working.
+- **`POST /sync/leaders`** (sync token, body `{ contractVersion, consoleId }`) -> `{ contractVersion, names: string[] }`:
+  each active app leader's full name, trimmed, distinct. The console asks only when the app's claim reply said
+  `linkRev` >= 5 (an older app has no such route). The console searches Elvanto by each name and adds to the roster
+  push, as kind `leader` (no Demographic filter), the one non-archived person whose folded name (case, spaces, hyphens,
+  apostrophes, dots) is that name; none or several = left out (the app shows Not linked). Results are cached (found 24 h,
+  not found 6 h). The app's leader match keys on the same fold (`matchFold`).
+- **Flows push `steps`** (optional, <= 2000): `[{ flowId, flowName, stepId, stepName, stepOrder }]`, every step of each
+  pushed flow, empty ones included. Stored with the flows mirror state (migration `0024`); a push without it stores none
+  and the app lists steps from the rows. `GET /link/flows` returns `steps` to every login (the hidden step left out for
+  a non-admin), so an empty step shows as "Step name · 0".
+
 ## 6. Identity and matching
 
 - **Elvanto person id is authoritative.** Every action carries `personId`. Students get one only through

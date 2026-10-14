@@ -1,7 +1,7 @@
 // Elvanto link data (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §4.1). Tables from migration 0017.
 import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, ClaimArgs, ClaimedRow,
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
-  ResultReply, LinkFlowAssign } from '../../core/link-types';
+  ResultReply, LinkFlowAssign, LinkFlowStep } from '../../core/link-types';
 
 export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
@@ -33,13 +33,16 @@ export interface ILinkRepository {
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
   applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply>;
   listConsoles(): Promise<ConsoleRow[]>;
-  replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }):
+  /** T12: meta.steps (flows only) is stored with the mirror state; absent = null (an older console). */
+  replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }):
     Promise<{ applied: boolean; rows: number }>;
   mirrorState(): Promise<MirrorStateRow[]>;
   roster(): Promise<LinkRosterRow[]>;
   services(): Promise<LinkServiceRow[]>;
   groups(): Promise<LinkGroupRow[]>;
   flows(): Promise<LinkFlowRow[]>;
+  /** T12: the last flows push's step list; null when that push carried none. */
+  flowSteps(): Promise<LinkFlowStep[] | null>;
   setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void>;
   /** T6: every flow assignment. */
   flowAssignments(): Promise<LinkFlowAssign[]>;

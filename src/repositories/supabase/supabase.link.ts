@@ -6,7 +6,7 @@ import { toIso } from './client';
 import { chunk } from './bulk';
 import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
-import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow,
+import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow,
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -264,7 +264,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
     return (await this.sql`select * from link_console order by last_seen_at desc`).map(toConsole);
   }
 
-  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
+  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }) {
     return this.sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtext(${'link_mirror:' + kind}))`;
       const [st] = await tx`
@@ -314,11 +314,12 @@ export class SupabaseLinkRepository implements ILinkRepository {
           delete from link_flow_assign a where not exists (
             select 1 from link_flow_people f where f.flow_id = a.flow_id and f.person_id = a.person_id)`;
       }
+      const steps = kind === 'flows' && meta.steps ? this.j(meta.steps) : null; // T12 (0024)
       await tx`
-        insert into link_mirror_state (kind, taken_at, console_id, row_count, applied_at)
-        values (${kind}, ${meta.takenAt}, ${meta.consoleId}, ${rows.length}, now())
+        insert into link_mirror_state (kind, taken_at, console_id, row_count, applied_at, steps)
+        values (${kind}, ${meta.takenAt}, ${meta.consoleId}, ${rows.length}, now(), ${steps})
         on conflict (kind) do update set taken_at = excluded.taken_at, console_id = excluded.console_id,
-          row_count = excluded.row_count, applied_at = now()`;
+          row_count = excluded.row_count, applied_at = now(), steps = excluded.steps`;
       return { applied: true, rows: rows.length };
     });
   }
@@ -346,6 +347,11 @@ export class SupabaseLinkRepository implements ILinkRepository {
       stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to,
       grade: r.grade ?? null, gender: r.gender ?? null, mobile: readMobile(r),
       mobileIsParent: r.mobile_is_parent ?? false }));
+  }
+
+  async flowSteps(): Promise<LinkFlowStep[] | null> {
+    const [r] = await this.sql`select steps from link_mirror_state where kind = 'flows'`;
+    return (r?.steps as LinkFlowStep[] | null | undefined) ?? null;
   }
 
   async flowAssignments(): Promise<LinkFlowAssign[]> {

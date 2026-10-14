@@ -9,5 +9,6 @@ export function makeSyncController(deps: { sync: SyncService }) {
     claim: (r: HttpRequest) => S.claim(r.body),
     result: (r: HttpRequest) => S.result(r.body),
     push: (r: HttpRequest) => S.push(r.params['kind']!, r.body),
+    leaders: (r: HttpRequest) => S.leaders(r.body), // T8 (rev 5)
   };
 }

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeSyncService } from '../services/sync.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
-import { InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
+import { InMemoryLeaderRepository, InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { ClaimResponse, INTAKE_TYPES, PAYLOAD_SCHEMAS, PushResponse, ResultResponse } from '../core/link-contract';
 import { dedupeKey } from '../services/link-rules';
@@ -319,12 +319,12 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
   it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
     const { svc, link } = await setup();
     const old = await svc.claim(claimReq);
-    expect(old.linkRev).toBe(4);
+    expect(old.linkRev).toBe(5);
     expect(old.intake).toBeUndefined(); // X19: no intake hint for a console below rev 4
     expect((await link.listConsoles())[0]!.linkRev).toBe(1);
     await svc.claim({ ...claimReq, linkRev: 2 });
     expect((await link.listConsoles())[0]!.linkRev).toBe(2);
-    expect(ClaimResponse.parse(old).linkRev).toBe(4);
+    expect(ClaimResponse.parse(old).linkRev).toBe(5);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();
@@ -366,5 +366,26 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     expect((await link.flowAssignments()).map((a) => a.personId)).toEqual([kept]);
     await link.setFlowAssign({ flowId, personId: kept, leaderId: null, assignedBy: 'admin' });
     expect(await link.flowAssignments()).toEqual([]);
+  });
+});
+
+describe('UX batch 2026-10-14b (rev 5)', () => {
+  it('T8: POST /sync/leaders answers the names of the active leaders (version checked first)', async () => {
+    const { link, settings, students, users } = await setup();
+    const leaders = new InMemoryLeaderRepository();
+    const L = (id: string, fullName: string, active: boolean) => ({ id, fullName, active, grade: null, gender: null }) as never;
+    await leaders.save(L('l1', ' Sam Lee ', true)); await leaders.save(L('l2', 'Old Leader', false));
+    const svc = makeSyncService({ link, settings, students, users, leaders });
+    expect(await svc.leaders({ contractVersion: 1, consoleId: claimReq.consoleId })).toEqual({ contractVersion: 1, names: ['Sam Lee'] });
+    await expect(svc.leaders({ contractVersion: 2, consoleId: claimReq.consoleId })).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH' });
+  });
+  it('T12: a flows push keeps its optional steps; a push without them stores none', async () => {
+    const { svc, link } = await setup();
+    const body = fx('push-flows.json'), r = body.rows[0];
+    const steps = [{ flowId: r.flowId, flowName: r.flowName, stepId: r.stepId, stepName: r.stepName, stepOrder: 1 }];
+    expect((await svc.push('flows', { ...body, steps })).applied).toBe(true);
+    expect(await link.flowSteps()).toEqual(steps);
+    await svc.push('flows', { ...body, takenAt: '2026-10-16T09:30:00.000Z' });
+    expect(await link.flowSteps()).toBeNull();
   });
 });

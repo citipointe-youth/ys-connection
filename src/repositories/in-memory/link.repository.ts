@@ -1,7 +1,7 @@
 // In-memory Elvanto link repo (spec 2026-10-12-elvanto-link-app-design.md §4.1). Used for `memory` and `json`
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
 import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
-import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkGroupRow, LinkLogRow, LinkRosterRow,
+import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -32,6 +32,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private flowRows: LinkFlowRow[] = [];
   private assigns = new Map<string, LinkFlowAssign>(); // key flowId:personId
   private mirror = new Map<MirrorKind, MirrorStateRow>();
+  private steps: LinkFlowStep[] | null = null;
   private log: LinkLogRow[] = [];
   private decrypt: (note: string, id: string) => string;
   private clock: () => Date;
@@ -158,7 +159,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
 
   async listConsoles(): Promise<ConsoleRow[]> { return clone([...this.consoles.values()]); }
 
-  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string }) {
+  async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }) {
     const prev = this.mirror.get(kind);
     if (prev && Date.parse(meta.takenAt) <= Date.parse(prev.takenAt)) return { applied: false, rows: 0 };
     const now = this.nowIso();
@@ -182,6 +183,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         mobile: f.mobile ?? null, mobileIsParent: f.mobileIsParent ?? false }));
       const keep = new Set(this.flowRows.map((f) => `${f.flowId}:${f.personId}`));
       for (const k of this.assigns.keys()) if (!keep.has(k)) this.assigns.delete(k);
+      this.steps = meta.steps ? clone(meta.steps) : null;
     }
     this.mirror.set(kind, { kind, takenAt: meta.takenAt, consoleId: meta.consoleId, rowCount: rows.length, appliedAt: now });
     return { applied: true, rows: rows.length };
@@ -201,6 +203,8 @@ export class InMemoryLinkRepository implements ILinkRepository {
     return clone([...this.flowRows].sort((a, b) => cmp(a.flowName, b.flowName) || a.stepOrder - b.stepOrder ||
       cmp(a.name, b.name) || cmp(a.rowId, b.rowId)));
   }
+
+  async flowSteps(): Promise<LinkFlowStep[] | null> { return this.steps && clone(this.steps); }
 
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {
     const now = this.nowIso();

@@ -967,7 +967,7 @@ describe('F1.4 leader sheet', () => {
   const rowsOf = (h: any) => h.fns._lkLeadersHtml().split('lk-lq-row').slice(1);
   it('B11 / APP-56: one line when there are unlinked leaders; none when all are linked', () => {
     const h = setup();
-    expect(strip(h.fns._lkLeadersHtml())).toContain('Not linked: no Elvanto person has this exact name. Ask the admin to fix the name.');
+    expect(strip(h.fns._lkLeadersHtml())).toContain('Not linked: not found in Elvanto by this exact name (or more than one match). Ask the admin to fix the name.');
     const h2 = makeEnv(); door(h2, [], [leaders[1]]); h2.get().LINK.lq = {};
     expect(strip(h2.fns._lkLeadersHtml())).not.toContain('Not linked:');
   });

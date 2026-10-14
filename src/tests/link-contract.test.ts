@@ -154,7 +154,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(4);
+    expect(C.LINK_REV).toBe(5); // 2026-10-14b: rev 5 = /sync/leaders + flows push steps
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -314,5 +314,19 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
     expect(tables).toEqual(['link_intake_dates', 'link_intake_rows', 'link_intake_view']);
     for (const t of tables) expect(sql).toMatch(new RegExp(`alter table ${t} enable row level security`));
     expect(sql).not.toMatch(/\b(drop table|rename|alter column)\b/i);
+  });
+});
+
+describe('UX batch 2026-10-14b (rev 5): optional only', () => {
+  it('T12: the flows push takes an optional steps list (the old fixture still parses)', () => {
+    const body = clone(load('push-flows.json'));
+    expect(C.PUSH_SCHEMAS.flows.parse(body).steps).toBeUndefined();
+    const s = { flowId: body.rows[0].flowId, flowName: 'F', stepId: body.rows[0].stepId, stepName: 'S', stepOrder: 0 };
+    expect(C.PUSH_SCHEMAS.flows.parse({ ...body, steps: [s] }).steps).toEqual([s]);
+    rejects(C.PUSH_SCHEMAS.flows, { ...body, steps: [{ ...s, stepId: 'x' }] });
+  });
+  it('T8: leaders request is the envelope; the reply is names', () => {
+    expect(C.LeadersRequest.parse({ contractVersion: 1, consoleId: load('claim-request.json').consoleId }).contractVersion).toBe(1);
+    expect(C.LeadersResponse.parse({ contractVersion: 1, names: ['Sam Lee'] }).names).toEqual(['Sam Lee']);
   });
 });

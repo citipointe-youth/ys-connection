@@ -246,6 +246,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/sync/claim',              auth: false, sync: true, handler: (r) => syncCtl.claim(r) },
     { method: 'POST',   path: '/sync/result',             auth: false, sync: true, handler: (r) => syncCtl.result(r) },
     { method: 'POST',   path: '/sync/push/:kind',         auth: false, sync: true, handler: (r) => syncCtl.push(r) },
+    { method: 'POST',   path: '/sync/leaders',            auth: false, sync: true, handler: (r) => syncCtl.leaders(r) },
   ];
   services.errorLog.setKnownRoutes(routes.map((r) => `${r.method} ${r.path}`));
   return routes;

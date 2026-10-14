@@ -10195,7 +10195,7 @@ function _lkLeadersHtml() {
   }).join('');
   return `<div class="mo-title">Check in leaders</div><p class="lk-sub">${esc(_lkSvcLabel(_lkSvc()))}</p>
     <div class="lk-lq-head"><span>${nDone} done · ${nNl} not linked</span>${tick.length ? `<button type="button" class="btn btn-ghost btn-sm lk-tickall" onclick="_lkTickAll()">${allOn ? 'Untick all' : 'Tick all'}</button>` : ''}</div>
-    ${nNl ? '<p class="lk-sub">Not linked: no Elvanto person has this exact name. Ask the admin to fix the name.</p>' : ''}
+    ${nNl ? '<p class="lk-sub">Not linked: not found in Elvanto by this exact name (or more than one match). Ask the admin to fix the name.</p>' : ''}
     <div class="lk-lq-list">${rows || '<p class="lk-sub">No active leaders.</p>'}</div>`;
 }
 function _lkLeadersFoot() {
@@ -10783,13 +10783,15 @@ function _lkFlowAct(r) {
   return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || null;
 }
 // Flows A-Z, each flow's steps in Elvanto order, each step's people A-Z. overdue = due before today.
-function _lkFlowGroups(rows, today) {
+// T12: `steps` (GET /link/flows) seeds every step first, so an empty one still shows (· 0).
+function _lkFlowGroups(rows, today, steps) {
   const byFlow = {}, out = [];
-  (rows || []).forEach((r) => {
+  (steps || []).concat(rows || []).forEach((r) => {
     let f = byFlow[r.flowId];
     if (!f) { f = byFlow[r.flowId] = { flowId: r.flowId, flowName: r.flowName, steps: [], by: {} }; out.push(f); }
     let s = f.by[r.stepId];
     if (!s) { s = f.by[r.stepId] = { stepId: r.stepId, stepName: r.stepName, stepOrder: r.stepOrder || 0, rows: [], overdue: 0 }; f.steps.push(s); }
+    if (!r.rowId) return;
     s.rows.push(r);
     if (r.due && r.due < today) s.overdue++;
   });
@@ -10836,10 +10838,10 @@ function _lkFlowRowHtml(r, today) {
 function _lkFlowsHtml() {
   const rs = LINK.flows;
   if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
-  if (!rs.length) return '<p class="lk-hint">No flow steps for this login.</p>';
+  if (!rs.length && !(LINK.fSteps || []).length) return '<p class="lk-hint">No flow steps for this login.</p>';
   const today = _lkToday();
-  return _lkFlowGroups(rs, today).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
-    const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, ''), open = !!(LINK.fOpen && LINK.fOpen[id]);
+  return _lkFlowGroups(rs, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
+    const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, ''), open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
       <div class="drop-body">${s.rows.map((r) => _lkFlowRowHtml(r, today)).join('')}</div></div>`;
@@ -10969,6 +10971,7 @@ async function _lkLoadFlows(quiet) {
   try {
     const r = await API.fresh('/link/flows', quiet);
     LINK.flows = (r && r.rows) || [];
+    LINK.fSteps = (r && r.steps) || [];
     LINK.flowsAt = Date.now();
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
@@ -11714,7 +11717,9 @@ function _ikListPage() {
 function _ikRowsHtml(list, st, open) {
   if (!list) return '<div class="lk-hint">Loading…</div>';
   const rows = list.rows || [];
-  if (!rows.length) return '<div class="lk-hint">No families for this date.</div>';
+  if (!rows.length) return _ik().tab === 'consent' // T6: a consent date lists first forms from 7 days before, so it is often empty
+    ? '<div class="lk-hint">No students to check for this date. Students appear here the Friday after their first form.</div>'
+    : '<div class="lk-hint">No families for this date.</div>';
   const grey = list.stale ? ' ik-grey' : '';
   const one = (r) => {
     const i = rows.indexOf(r), c = _ikChip(r, st);
