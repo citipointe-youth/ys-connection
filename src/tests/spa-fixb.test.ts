@@ -73,7 +73,7 @@ describe('R12 same-name blocks both parent fields', () => {
 describe('R14 hidden Text card leaves a link', () => {
   it('shows Text the parent when hidden, Not now on the card', () => {
     const f = loadFns(['_ikFamilyHtml', '_ikTextCardHtml'], `${esc}
-      const icS = () => '', _ikHead = () => '', _ikMatchHtml = () => '', _ikFormHtml = () => '', _ikVerdictHtml = () => '', _ikStepsHtml = () => '',
+      const icS = () => '', _ikHead = () => '', _ikMatchHtml = () => '', _ikCompareHtml = () => '', _ikVerdictHtml = () => '', _ikStepsHtml = () => '',
         _ikSaveHtml = () => '', _ikResultHtml = () => '', _ikOpenOf = () => null, _ikAct = () => null, _ikAlone = () => [], _ikTextBlock = () => '',
         _ikShowText = () => ({ sms: { name: 'P', last3: '123' } }), _ikKv = () => '', _ik = () => ({ hideText: 'k' });`);
     const det = { detail: { forms: {} }, row: { key: 'k' }, actions: [] };
@@ -98,25 +98,21 @@ describe('R15 delete-all arm text', () => {
 });
 
 describe('R16 R17 R18', () => {
-  it('sheet steps are dots, fix input autofocuses and Enter finishes', () => {
-    (globalThis as any).__c = { shown: '' };
-    const f = loadFns(['_ikSheetHtml', '_ikFix'], `${esc} const icS = () => 'TICK'; const _ikTagHtml = () => ''; const _ikDTag = () => null;
-      const IK_FIX = ['first']; const modal = (h) => { __c.shown = h; }; const _ikAns = () => ({ fixes: {} });
-      const _ikForm = () => ({ subId: 's', editable: ['first'], values: { first: 'a' } }); const _ikFieldLabel = (k) => k; const _ik = () => ({});`);
+  it('sheet steps are dots (the value-fix sheet is gone: no editable answer cells, 2026-10-14)', () => {
+    const f = loadFns(['_ikSheetHtml'], `${esc} const icS = () => 'TICK'; const _ikTagHtml = () => ''; const _ikDTag = () => null;`);
     const h = f._ikSheetHtml('t', [{ text: 'x' }], '', 'Go');
     expect(h).toContain('ik-dot');
     expect(h).not.toContain('lk-box');
-    f._ikFix(0, 0);
-    expect(C().shown).toContain('autofocus');
-    expect(C().shown).toContain('_ikFixDone()');
   });
-  it('Undo asks first', async () => {
-    (globalThis as any).__c = { ans: false, sent: [] as any[] };
-    const f = loadFns(['_ikUndo'], `const _lkAsk = async () => __c.ans; const _ikAnswerSend = (u) => __c.sent.push(u);`);
-    await f._ikUndo();
-    expect(C().sent).toEqual([]);
-    C().ans = true;
-    await f._ikUndo();
-    expect(C().sent).toEqual([true]);
+  it('Undo keep drops that one keep and sends the answer set again', () => {
+    const I: any = { det: { row: { key: 'k' } }, keepMem: { k: { parentPhone: '1' } } };
+    const a: any = { keeps: { s: { parentPhone: '1', parentName: 'J' } } };
+    (globalThis as any).__c = { I, a, sent: [] as any[] };
+    const f = loadFns(['_ikUnkeep'], `const _ik = () => __c.I; const _ikAns = () => __c.a; const _ikStudentSub = () => 's';
+      const _ikForm = () => ({ issues: [{ keep: { field: 'parentPhone', value: '1' } }] }); const _ikAnswerSend = (u) => __c.sent.push(u);`);
+    f._ikUnkeep(0, 0);
+    expect(a.keeps.s).toEqual({ parentName: 'J' });
+    expect(I.keepMem.k).toEqual({});
+    expect(C().sent).toEqual([false]);
   });
 });
