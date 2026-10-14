@@ -4,12 +4,12 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It tests, rewrites the l
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
 
 <!-- live -->
-- master sha: 9b80372 (bus/coordinator-perms)
-- last ship: 2026-10-15 (pre-script)
+- master sha: d9bcbc3 (chore/ship)
+- last ship: 2026-10-15 06:53 EAST
 - migration: 0026
 - SW version: ysc-v108
-- promote: promoted (v108 live per 2026-10-15 notes)
-- pending branches: see `git branch --no-merged master`
+- promote: pending (Vercel) — update this line by hand once promoted
+- pending branches: none
 <!-- /live -->
 
 Link contract changes (`src/core/link-*`, link/sync services+controllers, `src/tests/fixtures/elvanto-link/`): ship YS before the 11.1 console; console e2e = `spike/e2e-ys-link.js` in 11.1.
