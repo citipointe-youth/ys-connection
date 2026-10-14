@@ -66,6 +66,8 @@ export interface LinkGroupRow { groupId: string; name: string; grade: number | n
 export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; stepId: string; stepName: string;
   stepOrder: number; personId: string | null; name: string; due: string | null; assignedTo: string;
   grade: number | null; gender: 'male' | 'female' | null; mobile: string | null; mobileIsParent: boolean; }
+/** T12: one step of a pushed flow (the flows push's optional `steps`). */
+export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; }
 /** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */
 export interface LinkFlowAssign { flowId: string; personId: string; leaderId: string; assignedBy: string; assignedAt: string; }
 export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo';

@@ -274,7 +274,7 @@ export async function buildContainer(): Promise<Container> {
   const linkSvc = makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance,
     limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog, intake: intakeRepo });
   const intake = makeIntakeService({ intake: intakeRepo, link, settings, status: (a) => linkSvc.status(a), errorLog });
-  const sync = makeSyncService({ link, settings, students, users, errorLog, intake });
+  const sync = makeSyncService({ link, settings, students, users, errorLog, intake, leaders });
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;

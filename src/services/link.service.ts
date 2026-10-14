@@ -13,7 +13,7 @@ import type {
   IUserRepository,
 } from '../repositories/interfaces/entity-repositories';
 import type {
-  ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
+  ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
 import { ACTION_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS, Uuid } from '../core/link-contract';
@@ -35,7 +35,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
-  noteRoom, pickList, nameFold, matchFold, serviceDay, genderFixes,
+  noteRoom, pickList, matchFold, serviceDay, genderFixes,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
 
@@ -144,7 +144,8 @@ export interface LinkService {
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
-  flows(actor: Actor): Promise<{ rows: FlowView[]; steps?: { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number }[] }>;
+  /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
+  flows(actor: Actor): Promise<{ rows: FlowView[]; steps: LinkFlowStep[] }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -212,18 +213,20 @@ function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
  * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
  * both Not linked (APP-55). APP-79: the folded names are indexed once per call, not once per leader.
+ * T8 (2026-10-14b): keyed on matchFold (case, spaces, hyphens, apostrophes, dots), as students are; the console adds a leader
+ * found in Elvanto by exactly one non-archived person of that name.
  */
 function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l: Leader) => string | null {
   const appCount = new Map<string, number>();
-  for (const x of appLeaders) if (x.active) { const k = nameFold(x.fullName); appCount.set(k, (appCount.get(k) ?? 0) + 1); }
+  for (const x of appLeaders) if (x.active) { const k = matchFold(x.fullName); appCount.set(k, (appCount.get(k) ?? 0) + 1); }
   const byName = new Map<string, LinkRosterRow[]>();
   for (const r of roster) {
     if (!r.active || r.kind !== 'leader') continue;
-    const k = nameFold(fullName(r));
+    const k = matchFold(fullName(r));
     byName.set(k, [...(byName.get(k) ?? []), r]);
   }
   return (l) => {
-    const key = nameFold(l.fullName);
+    const key = matchFold(l.fullName);
     if ((appCount.get(key) ?? 0) > 1) return null;
     const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
     const hits = (byName.get(key) ?? []).filter((r) => !g || !r.gender || r.gender === g);
@@ -865,8 +868,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     async flows(actor) {
       const c = context(actor, await gate(actor, ['flows']));
-      const [flows, roster, open, assigns, leaders] = await Promise.all([c.flows(), c.roster(),
-        d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders()]);
+      const [flows, roster, open, assigns, leaders, pushed] = await Promise.all([c.flows(), c.roster(),
+        d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps()]);
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
       const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
@@ -879,9 +882,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             grade: f.grade, gender: f.gender, mobile: f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null };
         });
-      if (!c.admin) return { rows };
-      const steps = new Map(flows.map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
-      return { rows, steps: [...steps.values()].sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder) };
+      // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
+      const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
+      const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
+      return { rows, steps: [...steps.values()].filter((s) => c.admin || !stepHidden(s, hidden))
+        .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder) };
     },
 
     /**

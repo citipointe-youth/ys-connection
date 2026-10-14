@@ -14,7 +14,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // pushes intakePlan / consentPlan, outcome `planned`, result steps/stop), optional only (rev 4). The console sends the four
 // capability keys and claims these types only when the app's reply linkRev >= 4; the app offers Intake only when the
 // latest console's link_rev >= 4.
-export const LINK_REV = 4;
+// UX batch 2026-10-14b (T8, T12), optional only (rev 5): POST /sync/leaders (the app's active leader names, asked for only
+// by a console whose claim reply said linkRev >= 5) and the flows push's optional `steps` (every step of each flow, in order,
+// so an empty step still shows; an older app strips the key, an older console sends none and the app lists steps from rows).
+export const LINK_REV = 5;
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
@@ -171,6 +174,8 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   // T4: the person's own grade/gender, and their mobile as bare digits (else the parent's, mobileIsParent true).
   grade: Grade.optional(), gender: Gender.nullable().optional(), mobile: z.string().regex(/^\d{6,15}$/).nullable().optional(),
   mobileIsParent: z.boolean().optional() });
+// T12 (rev 5): one step of a pushed flow, empty or not.
+export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0) });
 const push = <T extends z.ZodTypeAny>(row: T) =>
   z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, rows: z.array(row).max(5000) });
 // ---- X19 (T4): intakePlan / consentPlan, one (mode, date) per push, a full replace of that date. The console builds the
@@ -230,10 +235,15 @@ export const IntakePush = z.object({ ...intakeEnvelope,
   .refine(uniqueKeys, UNIQUE);
 export const ConsentPush = z.object({ ...intakeEnvelope, rows: z.array(ConsentRow).max(100) }).refine(uniqueKeys, UNIQUE);
 
-export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow), flows: push(FlowRow),
+export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
+  flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
   intakePlan: IntakePush, consentPlan: ConsentPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
+
+// ---- POST /sync/leaders (T8, rev 5): the envelope only; the reply is every active app leader's full name.
+export const LeadersRequest = z.object({ contractVersion: Version, consoleId: Uuid });
+export const LeadersResponse = z.object({ contractVersion: Version, names: z.array(z.string().max(200)).max(2000) });
 
 // ---- Error bodies (spec 3.1); extra fields (expected, details) pass through.
 export const ErrorBody = z.object({ code: z.enum(SYNC_ERROR_CODES), message: z.string() }).passthrough();

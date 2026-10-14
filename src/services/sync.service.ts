@@ -2,14 +2,14 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
-import type { ClaimResponse, PushResponse } from '../core/link-contract';
+import { ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
-import type { ClaimArgs, MirrorKind, PushKind, ResultReply } from '../core/link-types';
+import type { ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
 import type { ConsentPush, IntakePush } from '../core/link-contract';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
-import type { ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
+import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch, genderFixes } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
@@ -30,6 +30,8 @@ export interface SyncDeps {
   errorLog?: Pick<ErrorLogService, 'record'>;
   /** T4 (X19): the claim hint and the intakePlan / consentPlan pushes. Without it those pushes are not applied. */
   intake?: Pick<IntakeService, 'hint' | 'push'>;
+  /** T8 (rev 5): POST /sync/leaders. Without it the reply is an empty list. */
+  leaders?: Pick<ILeaderRepository, 'findActive'>;
 }
 
 /** Version first (from the raw body), then Zod. Issues carry path + message only, never a value. */
@@ -97,6 +99,13 @@ export function makeSyncService(d: SyncDeps) {
       };
     },
 
+    /** T8 (rev 5): the active app leaders' full names, so the console can find each one in Elvanto by name. */
+    async leaders(body: unknown): Promise<z.infer<typeof LeadersResponse>> {
+      parseBody(LeadersRequest, body);
+      const names = d.leaders ? (await d.leaders.findActive()).map((l) => l.fullName.trim()).filter(Boolean) : [];
+      return { contractVersion: LINK_CONTRACT_VERSION, names: [...new Set(names)] };
+    },
+
     async result(body: unknown): Promise<ResultReply> {
       const req = parseBody(ResultRequest, body);
       const reply = await d.link.applyResults(req.consoleId, req.results, now());
@@ -125,11 +134,11 @@ export function makeSyncService(d: SyncDeps) {
         return d.intake.push(pk, req, await d.settings.getSettings());
       }
       const k = pk as MirrorKind;
-      const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[] };
+      const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[]; steps?: LinkFlowStep[] };
       const rows = k === 'groups'
         ? (req.rows as { name: string }[]).map((g) => ({ ...g, ...parseGroupName(g.name) }))
         : req.rows;
-      const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId });
+      const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };
       const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);

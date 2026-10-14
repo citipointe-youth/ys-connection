@@ -1283,11 +1283,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
     const h = await setup();
-    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 4 });
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 5 });
     await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
     expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
     const none = await setup('on', { console: false });
-    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 4 });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 5 });
   });
 
   it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
@@ -1352,7 +1352,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
     expect((await h.svc.flows(ADMIN)).steps!.map((x) => x.stepId)).toContain(STEP0B);
-    expect((await h.svc.flows(DIRECTOR)).steps).toBeUndefined();
+    expect((await h.svc.flows(DIRECTOR)).steps.map((x) => x.stepId)).not.toContain(STEP0B); // T12: every login, hidden step left out
     const flows = await h.link.flows();
     const other = flows.find((f) => f.flowId === FLOW_B && f.stepId !== STEP0B)!;
     const pick = async (v: string) => {
@@ -1469,5 +1469,26 @@ describe('RFIX (review of the UX batch)', () => {
     expect(await a(GRADE, L_CODY)).toBe('BAD_REQUEST');   // Cody is male; GRADE is a girls login
     expect(await a(GRADE, L_DANA)).toBe('ok');
     expect(await a(ADMIN, L_CODY)).toBe('ok');            // admin picks anyone
+  });
+});
+
+describe('UX batch 2026-10-14b (T8, T12)', () => {
+  it('T8: a leader matches on matchFold (hyphens, spaces, case), as students do', async () => {
+    const h = await setup();
+    await h.leaders.save(leader(u(307), 'mary-jane SMITH', 'female') as never);
+    await h.link.replaceMirror('roster', [...(await h.link.roster()).filter((r) => r.active), { personId: u(109), firstName: 'Mary Jane',
+      lastName: 'Smith', gender: null, grade: null, kind: 'leader' }], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: CONSOLE });
+    expect((await h.svc.checkin(QUAD, ST)).leaders!.find((l) => l.leaderId === u(307))!.personId).toBe(u(109));
+  });
+  it('T12: pushed steps show empty ones to every login; no pushed list = the steps of the rows', async () => {
+    const h = await setup();
+    const before = (await h.svc.flows(DIRECTOR)).steps.map((x) => x.stepId);
+    expect(before).toEqual([STEP3, STEP1, STEP2]); // Alpha then Bravo, step order; step 0 hidden
+    const EMPTY = u(526);
+    const steps = (await h.link.flows()).map((f) => ({ flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }))
+      .concat([{ flowId: FLOW_B, flowName: 'Bravo', stepId: EMPTY, stepName: 'Done', stepOrder: 4 }]);
+    await h.link.replaceMirror('flows', await h.link.flows(), { takenAt: '2026-10-16T09:00:00.000Z', consoleId: CONSOLE, steps });
+    expect((await h.svc.flows(DIRECTOR)).steps.map((x) => x.stepId)).toEqual([STEP3, STEP1, STEP2, EMPTY]);
+    expect((await h.svc.flows(ADMIN)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]);
   });
 });
