@@ -1,6 +1,6 @@
 // link.service (lane D, plan Tasks D1–D6; spec 2026-10-12-elvanto-link-app-design.md §6, §8.2, §9.1).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
+import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
@@ -1147,7 +1147,8 @@ describe('D5 lifegroups and flows', () => {
   it('flows: scoped by the roster grade/gender, unknown person for director/admin, ordered by flow then step', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
-    expect(await ids(DIRECTOR)).toEqual([FR3, FR1, FR2]); // step 0 rows (FR0A, FR0B) are never listed (2026-10-14)
+    expect((await ids(DIRECTOR)).filter((x) => x !== FR0A && x !== FR0B)).toEqual([FR3, FR1, FR2]); // admin/director also see step 0 (T11)
+    expect(await ids(GRADE2)).not.toContain(FR0B);        // a leader never does
     expect(await ids(GRADE)).toEqual([FR1]);
     expect(await ids(QUAD_B)).toEqual([FR3]);
     expect(await ids(LEADER)).toEqual([]);
@@ -1319,8 +1320,8 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
     expect(await ids(GRADE2)).toEqual([]);                    // Ben (9 boy) sits in the step 0 of Bravo
-    expect(await ids(ADMIN)).not.toContain(FR0B);             // 2026-10-14: Intake screen only, even for admin
-    expect(await ids(DIRECTOR)).not.toContain(FR0B);
+    expect(await ids(ADMIN)).toContain(FR0B);                 // T11: admin/director still see step 0 on Flow Steps
+    expect(await ids(DIRECTOR)).toContain(FR0B);
     const flows = await h.link.flows();
     const P_UNK = u(160);
     await h.link.replaceMirror('flows', [
@@ -1333,12 +1334,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await h.svc.flows(GRADE)).rows[0]).toMatchObject({ grade: 9, gender: 'female', mobile: '0411111111', mobileIsParent: true });
   });
 
-  it('T4: a step-0 row cannot be completed by any login (it moves on its own)', async () => {
+  it('T4/T11: a step-0 row cannot be completed by a leader login (it moves on its own); admin can', async () => {
     const h = await setup();
     const s = step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN });
     expect((await enq(h.svc, GRADE2, s, DEV)).code).toBe('FORBIDDEN');
-    expect((await enq(h.svc, DIRECTOR, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
-    expect((await enq(h.svc, ADMIN, { ...s, id: nid() }, DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, ADMIN, { ...s, id: nid() }, DEV)).outcome).toBe('saved'); // T11: admin can complete it
   });
 
   it("2026-10-14: a manual Match on name + grade sets the YS student's gender to Elvanto's", async () => {
@@ -1359,13 +1359,13 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
       const s = await h.settings.getSettings();
       await h.settings.updateSettings({ ...s, ministryConfig: { ...s.ministryConfig, modules: { ...s.ministryConfig.modules, flowHiddenStep: { [FLOW_B]: v } } } } as never);
     };
+    expect(await ids(GRADE2)).not.toContain(FR0B);
     await pick('none');
     expect(await ids(DIRECTOR)).toContain(FR0B);
     expect((await enq(h.svc, DIRECTOR, step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN }), DEV)).outcome).toBe('saved');
     await pick(other.stepId);
     expect(await ids(DIRECTOR)).toContain(FR0B);
-    expect(await ids(DIRECTOR)).not.toContain(other.rowId);
-    expect((await enq(h.svc, DIRECTOR, step({ rowId: other.rowId, flowId: FLOW_B, stepId: other.stepId, personId: other.personId }), DEV)).code).toBe('FORBIDDEN');
+    expect(await ids(DIRECTOR)).toContain(other.rowId); // admin/director are never hidden from (T11); leaders: see the stepHidden tests
   });
 
   it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {
@@ -1469,5 +1469,20 @@ describe('RFIX (review of the UX batch)', () => {
     expect(await a(GRADE, L_CODY)).toBe('BAD_REQUEST');   // Cody is male; GRADE is a girls login
     expect(await a(GRADE, L_DANA)).toBe('ok');
     expect(await a(ADMIN, L_CODY)).toBe('ok');            // admin picks anyone
+  });
+});
+
+describe('stepHidden is actor-aware (T11)', () => {
+  const row = (stepId: string, stepOrder: number) => ({ flowId: 'f1', stepId, stepOrder });
+  it('hides the first step from leaders by default, never from admin/director', () => {
+    expect(stepHidden(actor('l', 'quad'), row('s1', 1), undefined)).toBe(true);
+    expect(stepHidden(actor('l', 'quad'), row('s2', 2), {})).toBe(false);
+    expect(stepHidden(actor('a', 'admin'), row('s1', 1), undefined)).toBe(false);
+    expect(stepHidden(actor('d', 'director'), row('s1', 1), {})).toBe(false);
+  });
+  it('none hides nothing; a step id hides that step for leaders only', () => {
+    expect(stepHidden(actor('l', 'grade'), row('s1', 1), { f1: 'none' })).toBe(false);
+    expect(stepHidden(actor('l', 'grade'), row('s2', 2), { f1: 's2' })).toBe(true);
+    expect(stepHidden(actor('a', 'admin'), row('s2', 2), { f1: 's2' })).toBe(false);
   });
 });

@@ -7240,7 +7240,7 @@ function _setupFlowHiddenHtml(md) {
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
     const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for any login, and nobody can complete or assign it there. The Intake screen is not changed.')}</label>
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. No intake screen is changed.')}</label>
       <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
