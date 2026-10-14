@@ -1,1 +1,2 @@
 src/tests/fixtures/elvanto-link/*.json text eol=lf
+*.sh text eol=lf
