@@ -1007,7 +1007,7 @@ which is why it masked/compounded the outage.
 
 **Session-mode trade-off + mitigation levers (if the connection ceiling is ever hit).**
 Session mode holds a dedicated backend per app connection (transaction mode multiplexed
-them), so the ceiling is `max_connections = 60`. **Correction 2026-10-09:** the binding limit is the Supavisor session **Pool Size (15)** — `EMAXCONNSESSION … pool_size: 15` fired 52× since July (3× on 2026-10-09 right after a deploy). Raise Pool Size in the dashboard (≈30 is safe at max_connections 60). At current usage this is comfortable (~5–20
+them), so the ceiling is `max_connections = 60`. **Correction 2026-10-09:** the binding limit is the Supavisor session **Pool Size (15)** — `EMAXCONNSESSION … pool_size: 15` fired 52× since July (3× on 2026-10-09 right after a deploy). Raise Pool Size in the dashboard (≈30 is safe at max_connections 60). **2026-10-14:** it recurred after two deploys ~40 min apart (bus /trends /prayers 500s). `isTransientDbError` (`src/utils/transient-db.ts`) now maps `XX000` + `(EMAXCONN…)` to a 503 the SPA retries, and `trackForCancellation` (`client.ts`) no longer runs nested sql`` fragments as standalone queries (postgres.js `.then()` executes; ~571 syntax errors/h since 13 Oct). Pool Size raise still pending (operator). At current usage this is comfortable (~5–20
 of 60), and it should still serve 30–40 leaders because connections are per *Vercel instance*
 (not per user — Fluid Compute packs many users onto few instances at `max: 2` each) and the
 `GET /batch` endpoint already cut requests-per-screen. **If a real Friday-night session ever
