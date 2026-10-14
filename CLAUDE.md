@@ -9,7 +9,8 @@ Guidance for Claude Code when working in this package.
 **YS Connection** (`ys-connection`, formerly `connection-made-simple`) — a youth ministry platform for YS Brisbane. Phone-first SPA backed by a TypeScript/Express API. Students are *connected* to leaders; "connection" is the core relationship entity. Backend-agnostic architecture identical in structure to the Youth Camp Platform.
 
 - **GitHub:** `citipointe-youth/ys-connection` (migrated from `987tom1` 2026-06-22; renamed from `connection-made-simple` → `youth-connection` → `ys-connection` 2026-07-11; org owns the GitHub repo, Supabase org, and Vercel team)
-- **Deployed:** https://ys-connection.vercel.app (Vercel team `citipointe-youth`; auto-deploys from `master`)
+- **Deployed:** https://ys-connection.vercel.app (Vercel team `citipointe-youth`; `master` pushes build, the owner promotes to production)
+- **Deploy:** state in `DEPLOY.md`; ship with `/ship` (`bash scripts/ship.sh <branch>`). Pushing `master` builds; the owner promotes.
 - **Supabase:** Sydney region (`ap-southeast-2`), project ref `ltcblcudlzlzfcyzlhpc` — `PERSISTENCE=supabase` + `DATABASE_URL` env var
 
 ## Commands
