@@ -238,11 +238,11 @@ describe('banner lines and stale greying', () => {
     expect(e.fns._ikRowsHtml(LIST({ rows }), ST(), false)).not.toContain('ik-grey');
     expect(strip(e.fns._ikRowsHtml(LIST({ rows }), ST(), false))).toContain('Needs you (1)');
   });
-  it('T6: an empty Consents date says why; Intakes keeps its wording', () => {
+  it('T6/T14: an empty Consents date says repliers show early; Intakes keeps its wording', () => {
     const e = makeEnv();
     expect(e.fns._ikRowsHtml(LIST({ rows: [] }), ST(), false)).toContain('No families for this date.');
     e.fns._ik().tab = 'consent';
-    expect(e.fns._ikRowsHtml(LIST({ rows: [] }), ST(), false)).toContain('No students to check for this date. Students appear here the Friday after their first form.');
+    expect(e.fns._ikRowsHtml(LIST({ rows: [] }), ST(), false)).toContain('Parents who reply show here straight away. Everyone else is added at 9am Friday.');
   });
 });
 

@@ -159,7 +159,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       await gate(actor);
       const f = z.object({ mode: Mode, date: Ymd }).parse(body ?? {});
       const today = brisbaneToday(clock());
-      if (f.date > today || f.date < addDays(today, -REFRESH_BACK_DAYS)) throw new BadRequestError('Pick a date in the last 8 weeks.');
+      // T14: a consent date may be the coming Friday (its repliers are pushed early)
+      if (f.date > (f.mode === 'consent' ? addDays(today, 7) : today) || f.date < addDays(today, -REFRESH_BACK_DAYS)) throw new BadRequestError('Pick a date in the last 8 weeks.');
       return { asked: await d.intake.askRefresh(f.mode, f.date) };
     },
 
@@ -179,7 +180,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = pending.length > 0 || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);
-      const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= today)
+      const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= (x.mode === 'consent' ? addDays(today, 7) : today))
         .sort((a, b) => Date.parse(b.refreshAskedAt!) - Date.parse(a.refreshAskedAt!)).slice(0, 4)
         .map((x) => ({ mode: x.mode, date: x.date }));
       return { mode, hurry, refresh };

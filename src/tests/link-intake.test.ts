@@ -232,10 +232,14 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
     const h = await setup();
     await expect(h.intake.refresh(ADMIN, { mode: 'intake', date: '2026-10-17' })).rejects.toMatchObject({ statusCode: 400 });
     await expect(h.intake.refresh(ADMIN, { mode: 'intake', date: '2026-08-01' })).rejects.toMatchObject({ statusCode: 400 });
+    // T14: a consent date may be up to a week ahead (its repliers are pushed early)
+    await expect(h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-31' })).rejects.toMatchObject({ statusCode: 400 });
     expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' })).toEqual({ asked: true });
     expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' })).toEqual({ asked: false });
     const reply = await h.sync.claim({ ...fx('claim-request.json'), linkRev: 4 });
     expect(reply.intake!.refresh).toEqual([{ mode: 'consent', date: '2026-10-09' }]);
+    expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-23' })).toEqual({ asked: true });
+    expect((await h.intake.hint(await h.settings.getSettings())).refresh).toContainEqual({ mode: 'consent', date: '2026-10-23' });
   });
   it('R2: a refresh ask is offered for 10 min only', async () => {
     const h = await setup();

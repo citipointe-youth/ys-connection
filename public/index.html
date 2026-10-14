@@ -11363,7 +11363,7 @@ const IK_HOLD = {
   'No student form': 'No student form matches this parent form.',
   'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
   'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
-  'Late consent form': 'The consent form came in after Friday 12 pm, so it counts for next week.',
+  'Late consent form': 'The consent form came in after Friday 9 am, so it counts for next week.',
   'Unmatched consent form': "A consent form couldn't be matched to anyone, so no-one is assumed to consent until it's sorted.",
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
@@ -11717,8 +11717,8 @@ function _ikListPage() {
 function _ikRowsHtml(list, st, open) {
   if (!list) return '<div class="lk-hint">Loading…</div>';
   const rows = list.rows || [];
-  if (!rows.length) return _ik().tab === 'consent' // T6: a consent date lists first forms from 7 days before, so it is often empty
-    ? '<div class="lk-hint">No students to check for this date. Students appear here the Friday after their first form.</div>'
+  if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
+    ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>'
     : '<div class="lk-hint">No families for this date.</div>';
   const grey = list.stale ? ' ik-grey' : '';
   const one = (r) => {
@@ -11738,7 +11738,7 @@ function _ikDoneToggle(open) { _ik().doneOpen = !!open; }
 function _ikConsentHelp() {
   return `<details class="lk-done"${_ik().helpOpen ? ' open' : ''} ontoggle="_ik().helpOpen = this.open"><summary>What counts as consent ${icS('chevd')}</summary><div class="card lk-d">`
     + [`For students whose first form was the Friday before, the parent's reply is form 3 ("Brisbane - Youth - 3.").`,
-      `A reply in the window (that Friday 00:00 to this Friday 12:00, Brisbane) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
+      `A reply in the window (that Friday 00:00 to this Friday 9:00, Brisbane) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
       'A reply without the opt-out is Contact allowed: approve the form and complete step 0.',
       'No reply is assume consent only with dated proof the parent was texted about this student: mark consent not received and complete step 0.',
       'A late, unmatched, unsure or double reply needs you.'].map((p) => `<p class="ik-line">${esc(p)}</p>`).join('') + '</div></details>';
