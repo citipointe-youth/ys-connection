@@ -204,6 +204,7 @@ export function assertLeaderSelf(actor: Actor, leaderId: string): void {
 export interface StructureScope {
   cohortModel?: 'grades-quads' | 'none';
   genderPolicy?: 'strict' | 'soft' | 'off';
+  gradeMin?: number;
 }
 
 /**
@@ -233,7 +234,7 @@ export function canAccessGrade(actor: Actor, grade: number | null, structure?: S
       return grade != null && actorGrades(actor).includes(grade);
     case 'quad': {
       if (!actor.quad || grade == null) return false;
-      const isJunior = grade >= 6 && grade <= 9; // T13: grade 6 is junior
+      const isJunior = quadGradesOf('g79', structure).includes(grade); // T13/T14b: grade 6 is junior when Include Grade 6 is on
       const isSenior = grade >= 10 && grade <= 12;
       if (actor.quad === 'g79' || actor.quad === 'b79') return isJunior;
       if (actor.quad === 'g1012' || actor.quad === 'b1012') return isSenior;
@@ -262,8 +263,9 @@ export function quadGenderOf(quad: string | null | undefined): 'male' | 'female'
 }
 
 /** The year bracket a quad login is scoped to. */
-export function quadGradesOf(quad: string | null | undefined): number[] {
-  if (quad === 'g79' || quad === 'b79') return [6, 7, 8, 9];
+export function quadGradesOf(quad: string | null | undefined, structure?: StructureScope): number[] {
+  // T14b: the one junior bracket. Grade 6 is in only when Include Grade 6 is on (gradeMin 6); no structure = 6 in.
+  if (quad === 'g79' || quad === 'b79') return [6, 7, 8, 9].filter((g) => g >= (structure?.gradeMin ?? 6));
   if (quad === 'g1012' || quad === 'b1012') return [10, 11, 12];
   return [];
 }

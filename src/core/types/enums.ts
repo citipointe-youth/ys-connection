@@ -31,8 +31,9 @@ export const QUAD_USERNAMES: Record<Quad, string> = {
   b1012: 'seniorguys',
 };
 
-export function quadLabelFor(quad: Quad, simple: boolean): string {
-  return simple ? SIMPLE_QUAD_LABELS[quad] : QUAD_LABELS[quad];
+export function quadLabelFor(quad: Quad, simple: boolean, gradeMin = 7): string {
+  // T14b: with Include Grade 6 on, the junior range label reads Yr 6�9.
+  return simple ? SIMPLE_QUAD_LABELS[quad] : QUAD_LABELS[quad].replace('Yr 7–9', `Yr ${Math.min(gradeMin, 7)}–9`);
 }
 
 // Compute the quad a student belongs to from grade + gender

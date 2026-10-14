@@ -58,7 +58,7 @@ const ServiceRowSchema = z.object({
   first_name: z.string().min(1),
   last_name: z.string().min(1),
   gender: z.string(),
-  grade: z.coerce.number().int().min(7).max(12).nullable().optional(),
+  grade: z.coerce.number().int().min(6).max(12).nullable().optional(),
 });
 
 // ── service builder ──

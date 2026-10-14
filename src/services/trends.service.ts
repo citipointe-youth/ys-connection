@@ -7,7 +7,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
-import { QUADS, QUAD_LABELS } from '../core/types/enums';
+import { QUADS, quadLabelFor } from '../core/types/enums';
 import { gradeRange } from '../core/ministry-config';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
@@ -230,7 +230,7 @@ export function makeTrendsService(
           scopedStudents.filter((s) => s.quad === quad).map((s) => s.id),
         );
         const withOutliers = buildPoints(quadStudentIds, quadStudentIds.size);
-        return { quad, label: QUAD_LABELS[quad], sessions: withOutliers, averageAttendance: averageOf(withOutliers) };
+        return { quad, label: quadLabelFor(quad, false, structure.gradeMin), sessions: withOutliers, averageAttendance: averageOf(withOutliers) };
       });
 
       const byGrade: GradeTrend[] = !cohorted ? [] : gradeRange(structure).map((grade) => {

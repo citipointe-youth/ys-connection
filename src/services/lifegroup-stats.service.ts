@@ -9,7 +9,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
-import { QUADS, QUAD_LABELS } from '../core/types/enums';
+import { QUADS, quadLabelFor } from '../core/types/enums';
 import { gradeRange } from '../core/ministry-config';
 import { computeTerms, classifyDate, saturdayOf, type Terms } from './terms';
 import { ResponseCache } from '../utils/response-cache';
@@ -241,7 +241,7 @@ export function makeLifegroupStatsService(
       const visibleGrades = !cohorted ? [] : actor.role === 'grade'
         ? actorGrades(actor)
         : actor.role === 'quad'
-          ? quadGradesOf(actor.quad)
+          ? quadGradesOf(actor.quad, structure)
           : allGrades;
       const visibleQuads: Quad[] = !cohorted ? [] : actor.role === 'grade'
         ? []
@@ -294,7 +294,7 @@ export function makeLifegroupStatsService(
       //    per-grade breakdown underneath (grade + the quad's gender). ──
       const byQuad: QuadLifegroupStat[] = [];
       for (const quad of visibleQuads) {
-        const grades = quadGradesOf(quad);
+        const grades = quadGradesOf(quad, structure);
         const gender = quadGenderOf(quad);
         // Count the students OF THIS QUAD across every visible lifegroup they attend
         // (their own quad decides inclusion, not the group's grade/gender), so a
@@ -307,7 +307,7 @@ export function makeLifegroupStatsService(
           .filter((g) => !isEmptyGrade(g));
         if (current.uniqueAttenders === 0 && previous.uniqueAttenders === 0 &&
             current.members === 0 && previous.members === 0 && quadGrades.length === 0) continue;
-        byQuad.push({ quad, label: QUAD_LABELS[quad], current, previous, grades: quadGrades });
+        byQuad.push({ quad, label: quadLabelFor(quad, false, structure.gradeMin), current, previous, grades: quadGrades });
       }
 
       // ── Overall (scoped to the login): all visible groups, all visible students ──

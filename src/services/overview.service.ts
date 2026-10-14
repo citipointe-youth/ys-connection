@@ -7,7 +7,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
-import { QUADS, QUAD_LABELS } from '../core/types/enums';
+import { QUADS, quadLabelFor } from '../core/types/enums';
 import { gradeRange, MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { ResponseCache } from '../utils/response-cache';
 import { actorKey } from './actor-key';
@@ -129,7 +129,7 @@ export function makeOverviewService(
         const qConn = connectable.filter((s) => s.quad === quad);
         return {
           quad,
-          label: QUAD_LABELS[quad],
+          label: quadLabelFor(quad, false, structure.gradeMin),
           totalStudents: qConn.length,
           connectedStudents: qConn.filter((s) => connectedIds.has(s.id)).length,
           unconnectedStudents: qConn.filter((s) => !connectedIds.has(s.id)).length,
