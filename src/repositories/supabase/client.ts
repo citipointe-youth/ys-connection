@@ -58,19 +58,31 @@ function getRealClient(): SqlClient {
   return _realClient;
 }
 
-// Registers every query this request issues with requestContext so a route that
+// Registers every query this request SENDS with requestContext so a route that
 // times out (withTimeout, utils/timeout.ts) can call .cancel() on whatever's still
-// running instead of abandoning it on a pooled connection. postgres.js's tagged
-// Query is itself a thenable (extends Promise), so attaching .then() here doesn't
-// change its result or re-run it — it only lets us drop the entry once it settles.
-function trackForCancellation(query: unknown): void {
+// running instead of abandoning it on a pooled connection.
+// postgres.js's Query is lazy: Query.then()/catch()/finally() call handle(), which
+// sends it. So never call query.then() here: that sent every nested fragment
+// (sql`and status in ...`) as its own query ("syntax error at or near "and"",
+// 2026-10-14). Instead hook handle(), which runs only when the query is really
+// executed, and watch it with the base Promise.prototype.then (does not send).
+type LazyQuery = CancellableQuery & Promise<unknown> & { handle: (...a: unknown[]) => unknown };
+
+export function trackForCancellation(query: unknown): void {
   const store = requestContext.getStore();
-  if (store && query && typeof (query as { cancel?: unknown }).cancel === 'function' && typeof (query as { then?: unknown }).then === 'function') {
-    const cancellable = query as CancellableQuery;
-    store.pendingQueries.add(cancellable);
-    const untrack = () => store.pendingQueries.delete(cancellable);
-    (query as Promise<unknown>).then(untrack, untrack);
-  }
+  const q = query as LazyQuery | null;
+  if (!store || !q || typeof q.cancel !== 'function' || typeof q.handle !== 'function') return;
+  const handle = q.handle;
+  let tracked = false;
+  q.handle = function (this: LazyQuery, ...args: unknown[]) {
+    if (!tracked) {
+      tracked = true;
+      store.pendingQueries.add(q);
+      const untrack = () => { store.pendingQueries.delete(q); };
+      Promise.prototype.then.call(q, untrack, untrack);
+    }
+    return handle.apply(this, args);
+  };
 }
 
 // getSqlClient() returns a stable proxy that container.ts (and every repository it
