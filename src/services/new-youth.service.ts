@@ -1,8 +1,10 @@
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
-import { AppError, BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
+import { AppError, BadRequestError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
+import type { IUnsentRepository, UnsentReason } from '../repositories/interfaces/unsent.repository';
+import { decryptField, encryptField } from '../utils/field-crypto';
 import { RateLimiter } from '../utils/rate-limiter';
 import { assertCan, canUseNewYouth } from './access-control';
 import { gradeRange } from '../core/ministry-config';
@@ -16,6 +18,14 @@ export interface NewYouthResult {
   repeat?: boolean;
   /** T4 (X19): the submission ref the student form carried (live sends only). Not stored, never logged. */
   ref?: string;
+  /** T10: this send did not fully land and was saved (encrypted) for the admin to resend. */
+  queued?: boolean;
+}
+
+/** T10 admin view of one unsent row. `name`/`host`/`grade` are null when the payload can't be decrypted. */
+export interface UnsentView {
+  id: string; reason: UnsentReason; createdAt: string; updatedAt: string;
+  forms: string[]; name: string | null; host: string | null; grade: string | null;
 }
 
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -28,6 +38,10 @@ export function makeRef(): string {
 
 export interface NewYouthService {
   send(actor: Actor, input: unknown): Promise<NewYouthResult>;
+  /** T10 admin queue (admin:manage): list, resend through the same send path, delete. */
+  unsentList(actor: Actor): Promise<{ rows: UnsentView[] }>;
+  unsentRetry(actor: Actor, id: string, body: unknown): Promise<NewYouthResult>;
+  unsentDelete(actor: Actor, id: string): Promise<{ ok: true }>;
 }
 
 // Fixed strings only: never echo a submitted value (minors' data must not reach logs or replies).
@@ -83,11 +97,13 @@ const GET_TIMEOUT_MS = 8_000;
 const POST_TIMEOUT_MS = 10_000;
 const DEDUPE_MS = 2 * 60 * 1000;
 const UA = 'Mozilla/5.0 (compatible; YS-Connection)';
+export const UNSENT_KEEP_DAYS = 14;
+const unsentAad = (id: string) => `newperson_unsent.payload:${id}`;
 
 export function makeNewYouthService(
   settingsRepo: ISettingsRepository,
   // Live POSTs are an explicit opt-in: `live` omitted or false is a dry run (GETs and the shape check only).
-  opts: { fetchFn?: typeof fetch; live?: boolean; errorLog?: Pick<ErrorLogService, 'record'> } = {},
+  opts: { fetchFn?: typeof fetch; live?: boolean; errorLog?: Pick<ErrorLogService, 'record'>; unsent?: IUnsentRepository } = {},
 ): NewYouthService {
   const fetchFn = opts.fetchFn ?? fetch;
   const live = opts.live === true;
@@ -126,8 +142,42 @@ export function makeNewYouthService(
     }
   }
 
-  return {
-    async send(actor, input) {
+  // ── T10 unsent queue. The payload is the submitted form, encrypted; nothing about it is ever logged. ──
+  const purge = () => opts.unsent!.purgeBefore(new Date(Date.now() - UNSENT_KEEP_DAYS * 86_400_000).toISOString());
+  /** Saves (or, for a resend, updates) a row. Never throws: false when it could not be stored (e.g. no FIELD_ENCRYPTION_KEY). */
+  async function keep(id: string | undefined, reason: UnsentReason, payload: unknown): Promise<boolean> {
+    if (!opts.unsent) return false;
+    try {
+      await purge();
+      const rid = id ?? randomUUID(), at = new Date().toISOString();
+      await opts.unsent.save({ id: rid, reason, payload: encryptField(JSON.stringify(payload), unsentAad(rid)), createdAt: at, updatedAt: at });
+      return true;
+    } catch {
+      await opts.errorLog?.record({ category: 'elvanto-form', code: 'UNSENT_SAVE_FAILED', route: 'POST /intake/new-youth' });
+      return false;
+    }
+  }
+  async function readAll() {
+    await purge();
+    return (await opts.unsent!.list()).map(({ payload, ...r }) => {
+      try { return { ...r, input: JSON.parse(decryptField(payload, unsentAad(r.id))) as Record<string, unknown> | null }; }
+      catch { return { ...r, input: null }; }
+    });
+  }
+  /** After a send fully landed: drop the resent row and any saved row for the same person. Never throws. */
+  async function clear(retryId: string | undefined, d: { firstName: string; lastName: string; dob: string; parentMobile: string }) {
+    if (!opts.unsent) return;
+    try {
+      for (const r of await readAll()) {
+        const o = r.input ? Schema.safeParse(r.input) : null;
+        const same = !!o?.success && o.data.firstName === d.firstName && o.data.lastName === d.lastName
+          && o.data.dob === d.dob && o.data.parentMobile === d.parentMobile;
+        if (r.id === retryId || same) await opts.unsent.remove(r.id);
+      }
+    } catch { /* the send itself landed; a stale row only stays until the admin deletes it or it is purged */ }
+  }
+
+  async function run(actor: Actor, input: unknown, retryId?: string): Promise<NewYouthResult> {
       assertCan(actor, 'intake:write');
       const settings = await settingsRepo.getSettings();
       if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New person');
@@ -145,7 +195,7 @@ export function makeNewYouthService(
       const now = Date.now();
       for (const [k, v] of recent) if (now - v.at > DEDUPE_MS) recent.delete(k);
       const key = createHash('sha256').update(JSON.stringify([y.firstName, y.lastName, y.dob, y.parentMobile, data.send])).digest('hex');
-      const hit = recent.get(key);
+      const hit = retryId ? undefined : recent.get(key); // an admin resend is deliberate: never answered from the double-tap memory
       if (hit) return { ...hit.result, repeat: true };
 
       if (limiter.isBlocked(actor.id)) {
@@ -167,6 +217,14 @@ export function makeNewYouthService(
         }
       } catch (e) {
         recent.delete(key); // nothing was posted: let a fixed retry through
+        // T10: Elvanto unreachable or its form changed. Nothing was posted, so the whole send is kept for the admin.
+        if (live && e instanceof AppError && e.statusCode === 502
+          && await keep(retryId, e.code === 'ELVANTO_FORM_CHANGED' ? 'form-changed' : 'unreachable', { ...(input as object), send: data.send })
+          && !retryId) {
+          throw new AppError(e.code, e.code === 'ELVANTO_FORM_CHANGED'
+            ? 'The Elvanto form has changed, so nothing was sent. Saved for the admin to resend.'
+            : "Couldn't reach Elvanto, so nothing was sent. Saved for the admin to resend.", 502);
+        }
         throw e;
       }
 
@@ -181,9 +239,44 @@ export function makeNewYouthService(
           await opts.errorLog?.record({ category: 'elvanto-form', code: `${form}_FORM_${o.toUpperCase()}`, route: 'POST /intake/new-youth', role: actor.role });
         }
       }
+      // T10: keep only the forms that did not land; unconfirmed wins (the admin is warned it may already be in Elvanto).
+      const outs = { student, parent };
+      if ([student, parent].some((o) => o === 'failed' || o === 'unconfirmed')) {
+        const reason: UnsentReason = [student, parent].includes('unconfirmed') ? 'unconfirmed' : 'failed';
+        if (await keep(retryId, reason, { ...(input as object), send: data.send.filter((f) => outs[f] !== 'sent') })) result.queued = true;
+      } else await clear(retryId, data);
       if (student !== 'failed' && parent !== 'failed') recent.set(key, { at: now, result });
       else recent.delete(key); // a clear rejection: let the fixed retry through
       return result;
+  }
+
+  return {
+    send: (actor, input) => run(actor, input),
+
+    async unsentList(actor) {
+      assertCan(actor, 'admin:manage');
+      if (!opts.unsent) return { rows: [] };
+      return { rows: (await readAll()).map(({ input: i, ...r }) => ({ ...r,
+        forms: Array.isArray(i?.send) ? i.send.map(String) : [],
+        name: i ? `${String(i.firstName ?? '')} ${String(i.lastName ?? '')}`.trim() : null,
+        host: i ? String(i.host ?? '') : null, grade: i ? String(i.grade ?? '') : null })) };
+    },
+
+    async unsentRetry(actor, id, body) {
+      assertCan(actor, 'admin:manage');
+      const row = opts.unsent ? (await readAll()).find((r) => r.id === id) : undefined;
+      if (!row) throw new NotFoundError('That saved form is gone (sent, deleted, or older than 14 days).');
+      if (!row.input) throw new AppError('UNSENT_UNREADABLE', "This saved form can't be read. Delete it.", 409);
+      if (row.reason === 'unconfirmed' && (body as { confirm?: unknown } | undefined)?.confirm !== true) {
+        throw new AppError('UNSENT_CHECK_ELVANTO', 'This may already be in Elvanto: check before retrying.', 409);
+      }
+      return run(actor, row.input, id);
+    },
+
+    async unsentDelete(actor, id) {
+      assertCan(actor, 'admin:manage');
+      if (!opts.unsent || !(await opts.unsent.remove(id))) throw new NotFoundError('That saved form is gone.');
+      return { ok: true };
     },
   };
 }

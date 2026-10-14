@@ -19,7 +19,7 @@ import {
   InMemoryConnectionAuditRepository,
   InMemoryBusRepository,
   InMemoryLinkRepository,
-  InMemoryErrorLogRepository,
+  InMemoryErrorLogRepository, InMemoryUnsentRepository,
 } from './repositories/in-memory';
 import { JsonFilePersistence } from './repositories/persistence';
 import {
@@ -39,7 +39,7 @@ import {
   SupabaseConnectionAuditRepository,
   SupabaseBusRepository,
   SupabaseLinkRepository,
-  SupabaseErrorLogRepository,
+  SupabaseErrorLogRepository, SupabaseUnsentRepository,
   getSqlClient,
 } from './repositories/supabase/index';
 
@@ -270,7 +270,9 @@ export async function buildContainer(): Promise<Container> {
   // Always live (owner 2026-10-12: the ELVANTO_FORMS_LIVE gate was removed; test sends are deleted in Elvanto).
   // Local dev and preview deployments send real forms too.
   const errorLog = makeErrorLogService({ repo: errorLogRepo, link });
-  const newYouth = makeNewYouthService(settings, { live: true, errorLog });
+  // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
+  const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
+  const newYouth = makeNewYouthService(settings, { live: true, errorLog, unsent });
   const linkSvc = makeLinkService({ link, settings, students, leaders, users, serviceSessions, serviceAttendance,
     limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog, intake: intakeRepo });
   const intake = makeIntakeService({ intake: intakeRepo, link, settings, status: (a) => linkSvc.status(a), errorLog });

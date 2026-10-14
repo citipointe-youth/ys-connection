@@ -8,5 +8,18 @@ export function makeNewYouthController(deps: { newYouth: NewYouthService }) {
       if (!req.ctx) throw new UnauthorizedError();
       return deps.newYouth.send(req.ctx, req.body);
     },
+    // T10 admin 'Unsent new people' (admin:manage, checked in the service).
+    async unsentList(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.newYouth.unsentList(req.ctx);
+    },
+    async unsentRetry(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.newYouth.unsentRetry(req.ctx, req.params['id']!, req.body);
+    },
+    async unsentDelete(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.newYouth.unsentDelete(req.ctx, req.params['id']!);
+    },
   };
 }

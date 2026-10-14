@@ -53,6 +53,7 @@ const MESSAGES: Record<string, string> = {
   PARENT_FORM_UNCONFIRMED: 'New person: parent form send not confirmed by Elvanto',
   STUDENT_FORM_FAILED: 'New person: Elvanto rejected the student form',
   PARENT_FORM_FAILED: 'New person: Elvanto rejected the parent form',
+  UNSENT_SAVE_FAILED: 'New person: a failed send could not be saved for the admin to resend',
   unclear: 'The console could not confirm this action landed in Elvanto',
   'too-old': 'Expired before the console ran it',
   'lease-lost': 'The console stopped answering mid-send',

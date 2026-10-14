@@ -46,6 +46,8 @@ export const UNTIMED_ROUTES = new Set([
   // New youth forms: the service bounds itself (8 s GETs + two 10 s POSTs). The 20 s guard's 503 "try again"
   // could land after the student form is already in Elvanto, and invite a duplicate.
   'POST /intake/new-youth',
+  // T10 admin resend: the same send path, same reason.
+  'POST /admin/unsent/:id/retry',
 ]);
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();
