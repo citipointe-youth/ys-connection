@@ -4,6 +4,29 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+UX BATCH: LIFEGROUPS, NEW QUAD LOGINS, FORM APPROVE, UNSENT PEOPLE  (2026-10-14)
+-------------------------------------------------------------------------------
+Pushed, not yet live. The operator promotes it (checklist in CLAUDE.md,
+"UX batch 2026-10-14b").
+- Lifegroups: filter by grade (remembered on the device), girls' groups pink
+  and boys' groups blue, the tile shows the attendance. "Add report" sits under
+  the week's reports and lets you pick the date; a second report on the same
+  day only warns.
+- Quad logins are renamed: juniorgirls, juniorguys, seniorgirls, seniorguys
+  (passwords unchanged). The first time, the app asks "Who are you?" and then
+  filters to your grades.
+- "Intake" is now called "Form Approve & Consent". The review page is clearer:
+  two columns, plain hold wording, only "Keep as is" and Undo on the phone.
+- An empty Consents date now explains that students appear the Friday after
+  their first form.
+- Check-in: checking in to a past service no longer asks "Check in anyway?".
+- New person: a send that fails or is not confirmed is kept (encrypted) under
+  Admin > Unsent new people with Retry and Delete, for 14 days.
+- Flow steps: the hidden step is hidden from leaders only; admins and directors
+  still see it. Steps with nobody in them show as "Step · 0".
+- Leaders are now linked to Elvanto by exact name. Needs the console updated.
+
+-------------------------------------------------------------------------------
 UX BATCH: ERROR LOG, LIFEGROUP MEMBERS, INTAKE, FORM GUARDS  (2026-10-13)
 -------------------------------------------------------------------------------
 Built and tested, not yet live. The operator promotes it (see the checklist in
