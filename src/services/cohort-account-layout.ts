@@ -6,7 +6,7 @@
 // imports here, same pattern as connection-allocations.ts, so the plan is
 // unit-testable without a database.
 
-import { quadLabelFor } from '../core/types/enums';
+import { quadLabelFor, QUAD_USERNAMES } from '../core/types/enums';
 
 export type CohortModel = 'grades-quads' | 'none';
 
@@ -121,7 +121,7 @@ export function buildTargetAccounts(
       }
     }
     for (const q of QUAD_TARGETS) {
-      out.push({ role: 'quad', username: q, displayName: quadLabelFor(q, simple), quad: q });
+      out.push({ role: 'quad', username: QUAD_USERNAMES[q], displayName: quadLabelFor(q, simple), quad: q });
     }
   }
   return out;

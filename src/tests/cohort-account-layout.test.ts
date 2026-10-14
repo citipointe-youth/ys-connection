@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUAD_LABELS } from '../core/types/enums';
+import { QUAD_LABELS, QUAD_USERNAMES } from '../core/types/enums';
 import { gradeBrackets, buildTargetAccounts, planCohortAccountLayout } from '../services/cohort-account-layout';
 
 describe('gradeBrackets', () => {
@@ -44,7 +44,7 @@ describe('buildTargetAccounts', () => {
     expect(targets.filter((t) => t.role === 'grade')).toHaveLength(12);
     expect(targets.filter((t) => t.role === 'quad')).toHaveLength(4);
     expect(targets[0]).toEqual({ role: 'grade', username: 'grade7g', displayName: 'Grade 7 Girls', grades: [7], gender: 'female' });
-    expect(targets).toContainEqual({ role: 'quad', username: 'g79', displayName: QUAD_LABELS.g79, quad: 'g79' });
+    expect(targets).toContainEqual({ role: 'quad', username: 'juniorgirls', displayName: QUAD_LABELS.g79, quad: 'g79' });
   });
 });
 
@@ -64,16 +64,16 @@ describe('planCohortAccountLayout', () => {
 
   it('flags an active grade/quad account outside the target set for deactivation, never deletion', () => {
     const existing = [
-      { id: 'u1', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'active' },
+      { id: 'u1', role: 'quad', email: 'juniorgirls', displayName: 'Girls Yr 7-9', status: 'active' },
       { id: 'u2', role: 'admin', email: 'admin', displayName: 'Admin', status: 'active' },
     ];
     const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
-    expect(plan.toDeactivate).toEqual([{ id: 'u1', username: 'g79', displayName: 'Girls Yr 7-9' }]);
+    expect(plan.toDeactivate).toEqual([{ id: 'u1', username: 'juniorgirls', displayName: 'Girls Yr 7-9' }]);
     // admin is never touched by this plan (only grade/quad roles are in scope)
   });
 
   it('an already-inactive out-of-target account is not re-flagged', () => {
-    const existing = [{ id: 'u1', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'inactive' }];
+    const existing = [{ id: 'u1', role: 'quad', email: 'juniorgirls', displayName: 'Girls Yr 7-9', status: 'inactive' }];
     const plan = planCohortAccountLayout('none', 7, 12, 'Grade', existing);
     expect(plan.toDeactivate).toHaveLength(0);
   });
@@ -114,9 +114,9 @@ describe('planCohortAccountLayout', () => {
   });
 
   it('flags a username-matched quad account whose actual quad diverges from the target', () => {
-    const existing = [{ id: 'u1', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'active', quad: 'b1012' }];
+    const existing = [{ id: 'u1', role: 'quad', email: 'juniorgirls', displayName: 'Girls Yr 7-9', status: 'active', quad: 'b1012' }];
     const plan = planCohortAccountLayout('grades-quads', 7, 12, 'Grade', existing);
-    expect(plan.mismatched).toEqual([{ id: 'u1', username: 'g79', displayName: 'Girls Yr 7-9', reason: 'expected quad "g79", found "b1012"' }]);
+    expect(plan.mismatched).toEqual([{ id: 'u1', username: 'juniorgirls', displayName: 'Girls Yr 7-9', reason: 'expected quad "g79", found "b1012"' }]);
   });
 
   it('flags a role mismatch (username matches a grade target but the account is a quad, or vice versa)', () => {
@@ -128,7 +128,7 @@ describe('planCohortAccountLayout', () => {
   it('a correctly-matching account is never flagged', () => {
     const existing = [
       { id: 'u1', role: 'grade', email: 'grade78g', displayName: 'Grades 7–8 Girls', status: 'active', grades: [7, 8], gender: 'female' },
-      { id: 'u2', role: 'quad', email: 'g79', displayName: 'Girls Yr 7-9', status: 'active', quad: 'g79' },
+      { id: 'u2', role: 'quad', email: 'juniorgirls', displayName: 'Girls Yr 7-9', status: 'active', quad: 'g79' },
     ];
     expect(planCohortAccountLayout('none', 7, 12, 'Grade', [existing[0]!]).mismatched).toHaveLength(0);
     expect(planCohortAccountLayout('grades-quads', 7, 12, 'Grade', [existing[1]!]).mismatched).toHaveLength(0);
@@ -145,15 +145,15 @@ describe('Simple (Junior/Senior) logins on', () => {
   it('Complex target is the 4 quads only, named Junior/Senior Girls/Guys', () => {
     const targets = buildTargetAccounts('grades-quads', 7, 12, 'Grade', true);
     expect(targets).toEqual([
-      { role: 'quad', username: 'g79', displayName: 'Junior Girls', quad: 'g79' },
-      { role: 'quad', username: 'b79', displayName: 'Junior Guys', quad: 'b79' },
-      { role: 'quad', username: 'g1012', displayName: 'Senior Girls', quad: 'g1012' },
-      { role: 'quad', username: 'b1012', displayName: 'Senior Guys', quad: 'b1012' },
+      { role: 'quad', username: 'juniorgirls', displayName: 'Junior Girls', quad: 'g79' },
+      { role: 'quad', username: 'juniorguys', displayName: 'Junior Guys', quad: 'b79' },
+      { role: 'quad', username: 'seniorgirls', displayName: 'Senior Girls', quad: 'g1012' },
+      { role: 'quad', username: 'seniorguys', displayName: 'Senior Guys', quad: 'b1012' },
     ]);
   });
   it('plan does not create the 4 quads when they exist, and creates no grade accounts', () => {
     const existing = (['g79', 'b79', 'g1012', 'b1012'] as const).map((q, i) =>
-      ({ id: `q${i}`, role: 'quad', email: q, displayName: QUAD_LABELS[q], status: 'active', quad: q }));
+      ({ id: `q${i}`, role: 'quad', email: QUAD_USERNAMES[q], displayName: QUAD_LABELS[q], status: 'active', quad: q }));
     const plan = planCohortAccountLayout('grades-quads', 7, 12, 'Grade', existing, true);
     expect(plan.toCreate).toEqual([]);
     expect(plan.toDeactivate).toEqual([]);
