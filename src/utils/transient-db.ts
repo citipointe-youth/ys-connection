@@ -15,9 +15,17 @@ export const TRANSIENT_DB_CODES = new Set([
   '57P01', // admin_shutdown
 ]);
 
+// Supavisor refuses a new client with SQLSTATE XX000 (internal_error) and a message
+// like "(EMAXCONNSESSION) max clients reached in session mode" / "(EMAXCONN) ...".
+// XX000 alone is too broad, so match the pooler's own tag.
+const POOLER_FULL_RE = /\(EMAXCONN\w*\)/;
+
 export function isTransientDbError(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  return typeof code === 'string' && TRANSIENT_DB_CODES.has(code);
+  const e = err as { code?: unknown; message?: unknown } | null;
+  const code = e?.code;
+  if (typeof code !== 'string') return false;
+  if (TRANSIENT_DB_CODES.has(code)) return true;
+  return code === 'XX000' && typeof e?.message === 'string' && POOLER_FULL_RE.test(e.message);
 }
 
 /** Any error from the database or its connection: a transient code, a Postgres SQLSTATE, or the driver's error class. */
