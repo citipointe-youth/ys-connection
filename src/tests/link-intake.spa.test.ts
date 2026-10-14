@@ -10,12 +10,14 @@ const FNS = ['esc', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFres
   '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikTextOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
-  '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikFormHtml', '_ikMatchHtml', '_ikDiffHtml',
-  '_ikWho', '_ikVerdictHtml', '_ikTextCardHtml', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
+  '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
+  '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
+  '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikTextCardHtml', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
   '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
-const CONSTS = HTML.match(/^const IK_FIX = \[[^\]]*\];/m)![0];
+const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
+  /^const IK_ISSUE = \{[\s\S]*?\};$/m].map((re) => HTML.match(re)![0]).join('\n');
 
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const HOSTILE = '<img src=x onerror=alert(1)>';
@@ -158,7 +160,13 @@ describe('chips per action status (§7.5)', () => {
 describe('Save disabled reasons', () => {
   const block = (det: any, list: any = LIST()) => makeEnv().fns._ikSaveBlock(det, list, ST());
   it('enabled for a ready, fresh family with todo steps', () => { expect(block(DET())).toBe(''); });
-  it('needs-you', () => { expect(block(DET({ row: { key: P(1), status: 'needs-you', title: 'A' } }))).toBe('Needs you: sort the lines at the top first.'); });
+  it('needs-you says what holds the family (console holdReason wording)', () => {
+    const nv = (holds: any[]) => block(DET({ row: { key: P(1), status: 'needs-you', title: 'A' } }, DETAIL({ status: 'needs-you', holds })));
+    expect(nv([])).toBe('Sort the lines at the top first.');
+    expect(nv([{ role: 'student', text: 'Same person?' }, { role: 'student', text: 'Fix the flagged items' }])).toBe('Answer the question and fix the flagged answers first.');
+    expect(nv([{ role: 'student', text: 'Profile archived' }])).toBe('Unarchive the profile first.');
+    expect(nv([{ role: 'pair', text: 'Waiting for parent form' }])).toBe('Waiting for parent form.');
+  });
   it('an answer still pending', () => { expect(block(DET({ actions: [act({ type: 'intakeAnswer' })] }))).toBe('Updating plan…'); });
   it('stale plan', () => { expect(block(DET(), LIST({ stale: true }))).toBe('Plan is over 2 hours old. Refresh first.'); });
   it('an open save row for this family', () => {
@@ -221,8 +229,7 @@ describe('banner lines and stale greying', () => {
   it('stale age, cut, answers last changed in the console', () => {
     expect(b(ST(), LIST({ stale: true, takenAt: iso((2 * 60 + 10) * 60_000 + 5000) }))).toContain('Plan 2 h 10 m old. Refresh first.');
     expect(b(ST(), LIST({ cut: true }))).toContain('Some forms were cut off: every family needs a look');
-    expect(b(ST(), LIST({ inputs: { from: 'console', at: iso(60_000) } }))).toMatch(/Answers last changed in the console at \d+:\d\d (am|pm)/);
-    expect(b(ST(), LIST({ inputs: { from: 'app', at: iso(60_000) } }))).not.toContain('Answers last changed');
+    expect(b(ST(), LIST({ inputs: { from: 'console', at: iso(60_000) } }))).not.toContain('Answers last changed'); // dropped 2026-10-14
   });
   it('a stale list is greyed; a fresh one is not', () => {
     const rows = [{ key: P(1), status: 'needs-you', title: 'Ava', reason: 'Check the match', fromApp: false, hasText: false, actions: [] }];
@@ -293,7 +300,7 @@ describe('answers and saves go straight to /link/batch (never the phone queue)',
     expect([...e.storage.keys()]).toEqual([]);
     expect(I.det.actions[0]).toMatchObject({ type: 'intakeAnswer', status: 'pending' }); // shown as Updating plan at once
   });
-  it('Save sheet: only todo, non-text steps, D25 tag, parent text separate; Save sends those keys verbatim', async () => {
+  it('Save sheet: only todo, non-text steps, the D25 sentence (no code), parent text separate; Save sends those keys verbatim', async () => {
     const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved' }] }), fresh: () => Promise.reject(new Error('x')) });
     const I = e.fns._ik();
     I.date = '2026-10-09'; I.key = P(1); I.head = ST(); I.list = LIST(); I.det = DET();
@@ -301,7 +308,8 @@ describe('answers and saves go straight to /link/batch (never the phone queue)',
     const sheet = strip(e.calls.modals[0]!);
     expect(sheet).toContain("Save Ava Nguyen's family to Elvanto?");
     expect(sheet).toContain('Approve the parent form');
-    expect(sheet).toContain('Set Jo to Affiliate D25');
+    expect(sheet).toContain('Set Jo to Affiliate');
+    expect(sheet).not.toContain('D25');
     expect(sheet).toContain('Provisional rule: New People or Inactive parents become Affiliate.');
     expect(sheet).toContain('The parent text is separate.');
     expect(sheet).not.toContain('Approve the student form'); // done
@@ -333,15 +341,111 @@ describe('results and consents', () => {
     expect(h).toContain('note: Not sent: Stopped: not confirmed.');
     expect(strip(e.fns._ikResultHtml(act({}), DETAIL(), ST({ online: false })))).toMatch(/Pending \(console last seen/);
   });
-  it('the consent detail shows the outcome with the D26 tag and the D20(b) step line', () => {
-    const e = makeEnv();
+  it('the consent detail shows the outcome with no ruling codes; the D26 and D20(b) sentences are on the Save sheet only', () => {
+    const e = makeEnv({ fresh: () => Promise.reject(new Error('x')) });
     const d = { key: P(3), status: 'ready', title: 'Ava Nguyen', holds: [], outcome: 'No reply: assume consent', consent: { ymd: '2026-10-08', contact: false, total: '' },
       consentNote: '', textedOn: '2026-10-03', profiles: { student: null }, links: [],
       steps: [step({ key: 'cnr:' + P(3), action: 'consentNotReceived', role: 'consent', text: 'Mark consent not received' })] };
-    const h = strip(e.fns._ikConsentHtml({ row: { key: P(3), status: 'ready', title: 'Ava Nguyen' }, detail: d, unreadable: false, actions: [] }, LIST(), ST()));
-    expect(h).toContain('Consent form Thu 8 Oct: No reply: assume consent D26');
-    expect(h).toContain('Provisional rule: assume consent only with a dated text record and no unmatched form.');
-    expect(h).toContain('Provisional: this re-saves the whole profile form.');
+    const det = { row: { key: P(3), status: 'ready', title: 'Ava Nguyen' }, detail: d, unreadable: false, actions: [] };
+    const h = strip(e.fns._ikConsentHtml(det, LIST(), ST()));
+    expect(h).toContain('Consent form Thu 8 Oct: No reply: assume consent');
     expect(h).toContain('Texted on Sat 3 Oct');
+    expect(h).toContain('Ava Nguyen (student)');
+    expect(h).not.toMatch(/D26|D20\(b\)|Provisional/);
+    const I = e.fns._ik();
+    I.tab = 'consent'; I.date = '2026-10-09'; I.key = P(3); I.head = ST(); I.list = LIST(); I.det = det;
+    e.fns._ikSaveOpen();
+    const sheet = strip(e.calls.modals[0]!);
+    expect(sheet).toContain('Provisional: this re-saves the whole profile form.');
+    expect(sheet).toContain('Provisional rule: assume consent only with a dated text record and no unmatched form.');
+    expect(sheet).not.toMatch(/D26|D20\(b\)/);
+  });
+});
+
+describe('Form Approve & Consent review (spec 2026-10-14)', () => {
+  const fam = (d: any, o: any = {}) => { const e = makeEnv(); const det = DET(o, d); return strip(e.fns._ikFamilyHtml(det, LIST(), ST(), e.fns._ikSeed(d))); };
+  const raw = (d: any) => { const e = makeEnv(); return e.fns._ikFamilyHtml(DET({}, d), LIST(), ST(), e.fns._ikSeed(d)); };
+  it('the two forms side by side: headings with when, values in force, the parent mismatch highlighted', () => {
+    const d = DETAIL({ forms: { student: form(P(1), { values: { first: 'Ava', last: 'nguyen', mobile: '0412345678', gender: 'Female', parentName: 'Jo Nguyen', parentPhone: '0412 999 000' } }),
+      parent: form(P(2), { values: { first: 'Jo', last: 'Nguyen', mobile: '0412999111', gender: 'Female' }, caps: {}, status: 'approved' }) } });
+    const h = raw(d), t = strip(h);
+    expect(h).toContain('<table class="ik-cmp">');
+    expect(t).toContain('Student form Fri 9 Oct 7:42pm');
+    expect(t).toContain('Parent form Fri 9 Oct 7:42pm · Approved');
+    expect(t).toContain('Last name Nguyen Nguyen'); // the tidy-up in force, beside the parent's own
+    expect(t).toContain('Mobile 0412 345 678 0412 999 111');
+    expect(h).toMatch(/<tr class="ik-diff"><th scope="row">Parent&#39;s mobile<span class="ik-dflag">Differs<\/span>/);
+    expect(h).not.toMatch(/<tr class="ik-diff"><th scope="row">Parent&#39;s name/); // Jo Nguyen = Jo Nguyen
+    expect(t).toContain("Matched with Jo Nguyen's parent form.");
+  });
+  it('no editable cells: no fix sheet, no Undo my changes, no tappable values', () => {
+    const h = raw(DETAIL());
+    expect(h).not.toContain('_ikFix');
+    expect(h).not.toContain('Undo my changes');
+    expect(h).not.toContain('Your fix');
+  });
+  it('a flagged answer says what is wrong under it; Keep as is sits on its own row and Undo keep follows a keep', () => {
+    const iss = { key: 'parentPhone', msg: 'Forms disagree', suggest: '', advisory: false, keep: { field: 'parentPhone', value: '0412999000' } };
+    const d = DETAIL({ status: 'needs-you', holds: [{ role: 'student', text: 'Fix the flagged items' }],
+      forms: { student: form(P(1), { values: { first: 'Ava', last: 'Nguyen', mobile: '0412345678', gender: 'F', parentName: 'Jo', parentPhone: '0412999000' }, issues: [iss] }),
+        parent: form(P(2), { values: { first: 'Jo', last: 'Nguyen', mobile: '0412999111', gender: 'F' }, caps: {} }) } });
+    const h = raw(d), t = strip(h);
+    expect(h).toContain('class="ik-flag"');
+    expect(t).toContain("Parent's mobile on the student form doesn't match the Mobile on the parent form");
+    expect(h).toContain("onclick=\"_ikKeep(0,0)\">Keep as is (text goes to the parent form's mobile)");
+    expect(t).toContain('Student: Fix the answers marked below in the console or Elvanto.');
+    expect(t).toContain("Matched with Jo Nguyen's parent form (mobiles differ).");
+    const e = makeEnv(), a = e.fns._ikSeed(d);
+    a.keeps[P(1)] = { parentPhone: '0412999000' };
+    const k = e.fns._ikFamilyHtml(DET({}, d), LIST(), ST(), a);
+    expect(strip(k)).toContain("Kept as is. The parent text goes to the parent form's mobile.");
+    expect(k).toContain('onclick="_ikUnkeep(0,0)">Undo keep');
+  });
+  it('each column carries its own Elvanto links: the form and the profile (by name, archived marked)', () => {
+    const base = 'https://citipointe.elvanto.com.au/admin/';
+    const d = DETAIL({ profiles: { student: { id: P(5), name: 'Ava Nguyen', archived: true }, parent: null },
+      links: [['Student form · Fri 9 Oct', base + 'forms/form_submission/?id=' + P(1)], ['Student profile', base + 'people/person/?id=' + P(5)],
+        ['Parent form · Fri 9 Oct', base + 'forms/form_submission/?id=' + P(2)], ['Bad', 'javascript:alert(1)']] });
+    const h = raw(d);
+    expect(h).toMatch(/<th scope="row">In Elvanto<\/th><td><a [^>]+>Form<\/a><a [^>]+>Ava Nguyen \(archived\)<\/a><\/td><td><a [^>]+>Form<\/a><\/td>/);
+    expect(h).toContain('target="_blank" rel="noopener"');
+    expect(h).not.toContain('javascript:');
+  });
+  it('a waiting student shows one column; student-only rows span it', () => {
+    const d = DETAIL({ status: 'needs-you', holds: [{ role: 'pair', text: 'Waiting for parent form' }], match: { kind: null, parentSub: null, options: [] },
+      forms: { student: form(P(1), { values: { first: 'Ava', last: 'Nguyen', mobile: '0412345678', gender: 'F', birthday: '03/04/2011' } }), parent: null } });
+    const h = raw(d), t = strip(h);
+    expect(h).toContain('ik-cmp ik-one');
+    expect(t).toContain('No parent form matched.');
+    expect(t).toContain("Waiting for parent form. Nothing is saved for this student until their parent's form comes in.");
+    expect(t).not.toContain('Before this family can be saved');
+  });
+  it('the verdict is asked as a sentence, in the console wording, with no codes', () => {
+    const d = DETAIL({ status: 'needs-you', holds: [{ role: 'student', text: 'Same person?' }],
+      verdicts: [{ role: 'student', subId: P(1), verdict: 'unsure', chosen: null, options: ['same', 'new'], linked: { name: 'Ava Nguyen', age: 14, archived: false }, candidates: [], diff: [] }] });
+    const t = fam(d, { row: { key: P(1), status: 'needs-you', title: 'Ava Nguyen' } });
+    expect(t).toContain("Is this the same Ava who's already in Elvanto?");
+    expect(t).toContain('Ava Nguyen, 14');
+    expect(t).toContain('Yes, same person');
+    expect(t).toContain('No, someone new (new profile)');
+    expect(t).toContain('Before this family can be saved, answer the question below.');
+    expect(t).not.toMatch(/D17|is linked to|active/);
+  });
+  it('steps: to-dos first by person, done ones under Already done, console chips', () => {
+    const d = DETAIL({ steps: [step({ key: 'a', state: 'done', text: 'Approve the student form' }), step({ key: 'b', role: 'parent', text: 'Approve the parent form', locked: true }), TEXT] });
+    const h = raw(d), t = strip(h);
+    expect(t).toContain('What saving does');
+    expect(t).toContain('Jo Nguyen (parent) Approve the parent form Do in Elvanto Text Jo Nguyen (…111) Asked separately');
+    expect(h).toMatch(/<details class="lk-done"><summary>Already done \(1\)/);
+    expect(t).toContain('Approved the student form');
+    expect(t).not.toMatch(/own confirm|not connected|waits/);
+  });
+  it('chain steps have no one-step buttons; an extra keeps its own, named for Elvanto; Save says what it will do', () => {
+    const d = DETAIL({ steps: [step({ key: 'x', role: 'parent', alone: true, text: 'Approve the parent form' }), TEXT],
+      extras: [{ ...step({ key: 'g', action: 'setField', text: "Set Ava's grade to 8" }), field: 'grade', value: '8' }] });
+    const h = raw(d), t = strip(h);
+    expect(h.match(/_ikOneOpen\(/g)!.length).toBe(1);
+    expect(t).toContain("Set Ava's grade to 8 in Elvanto");
+    expect(t).toContain("Makes 1 change for Ava Nguyen's family, then asks about the parent text. You'll confirm first.");
   });
 });
