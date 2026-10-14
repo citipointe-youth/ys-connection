@@ -1591,7 +1591,7 @@ function setMyLeaderId(id) {
 // _vgLocal holds taps not yet saved (and every tap during an account preview, which
 // is never saved). Key present with null = "back to my grades".
 let _vgLocal = {}, _vgTimer = null;
-function _vgActive() { return !!(S.user && S.user.role === 'quad' && _simpleLoginsOn()); }
+function _vgActive() { return !!(S.user && S.user.role === 'quad'); } // T4 (2026-10-14b): every quad login, Simple logins on or off
 function _vgLeader(id) {
   const ls = Cache.getStale('/leaders') || [];
   return ls.find(l => l.id === id) || null;
@@ -2352,6 +2352,7 @@ async function submitCreateAdmin() {
     Cache.del('/settings');
     S.settings = await API.get('/settings').catch(() => S.settings);
     setTimeout(() => go('home'), 150);
+    setTimeout(_quadIamPrompt, 500);
   } catch (e) {
     if (e.status === 409) { toast(e.message); SETUP.status = null; S.page = 'home'; renderLogin(); return; }
     toast(e.message);
@@ -10199,6 +10200,14 @@ async function _lkSwitchLeader(id) {
   setMyLeaderId(id || null);
   return true;
 }
+// T4 (2026-10-14b): a quad login with no saved "I am" gets the "Who are you?" sheet once per device. Skip is allowed and
+// re-offers after a day (or at once on the Home pick); a pick sets the grade filter to the leader's grades in the quad's bracket.
+function _quadIamPrompt() {
+  if (!S.user || S.user.role !== 'quad' || _previewStash || getMyLeaderId()) return;
+  try { if (Date.now() - Number(localStorage.getItem('yap_iam_skip') || 0) < 864e5) return; } catch {}
+  try { localStorage.setItem('yap_iam_skip', String(Date.now())); } catch {} // any close without a pick counts as a skip
+  _lkIamPick(() => render());
+}
 // The "Who are you?" sheet. then() runs after a pick.
 function _lkIamPick(then) {
   LINK.iamThen = then || null;
@@ -13475,6 +13484,7 @@ async function boot() {
   }
   render();
   _reloadViewportFix();
+  if (typeof _quadIamPrompt === 'function') _quadIamPrompt();
 }
 
 boot();
