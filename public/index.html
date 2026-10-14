@@ -2364,7 +2364,6 @@ async function submitCreateAdmin() {
     Cache.del('/settings');
     S.settings = await API.get('/settings').catch(() => S.settings);
     setTimeout(() => go('home'), 150);
-    setTimeout(_quadIamPrompt, 500);
   } catch (e) {
     if (e.status === 409) { toast(e.message); SETUP.status = null; S.page = 'home'; renderLogin(); return; }
     toast(e.message);
@@ -2436,6 +2435,7 @@ async function doLogin() {
     // imperceptible either way; harmless no-op for browsers that already
     // handled saving via the Credential Management call above.
     setTimeout(() => go('home'), 150);
+    setTimeout(_quadIamPrompt, 500); // T4: quad logins pick "I am" once; no-op for other roles or a saved pick
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
@@ -2455,7 +2455,7 @@ async function doLogout() {
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
     sessionStorage.removeItem('yap_ar_filter'); sessionStorage.removeItem('yap_prayer_filter'); sessionStorage.removeItem('yap_connect_filters');
-    localStorage.removeItem('yap_leader_id');
+    // yap_leader_id ("I am") stays: T4 says the pick persists across logout.
   } catch (e) {}
   render();
 }

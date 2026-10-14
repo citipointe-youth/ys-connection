@@ -112,7 +112,7 @@ prayer migrations `0005`–`0008`. The original **`001`–`020`** (3-digit) are 
 **So: any 3-digit migration number cited in the dated sections below (e.g. "migration `013`",
 "`018_ministry_config`") refers to an ARCHIVED file, not something you will find in
 `supabase/migrations/`.** Its effect is folded into `0001_baseline_schema.sql`. Don't go looking
-for it, and don't renumber a new migration to match one — the next migration is `0025` (`0024` = `link_mirror_state.steps` (2026-10-14b T12), `0023` = `newperson_unsent` (T10), `0022` = quad account rename (T4), `0021` = intake (T4), `0020` = link group members (T6), `0019` = error_log (T3), `0018` = UX batch: `link_console.link_rev`, `link_flow_people` grade/gender/encrypted mobile, `link_flow_assign`, `link_groups.history`; `0017` = Elvanto link tables; `0016` = `leaders.view_grades`; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
+for it, and don't renumber a new migration to match one — the next migration is `0026` (`0025` = quad rename keyed on `users.quad` (fixes `0022`, which matched old usernames prod never had), `0024` = `link_mirror_state.steps` (2026-10-14b T12), `0023` = `newperson_unsent` (T10), `0022` = quad account rename (T4), `0021` = intake (T4), `0020` = link group members (T6), `0019` = error_log (T3), `0018` = UX batch: `link_console.link_rev`, `link_flow_people` grade/gender/encrypted mobile, `link_flow_assign`, `link_groups.history`; `0017` = Elvanto link tables; `0016` = `leaders.view_grades`; `0015` = role `statement_timeout`, now in a migration so a new database gets it; `0014` = bus history, `0013` = bus leader pref_grades, `0009` = `users.login_history`, `0010` = `users.login_devices`, `0011` = Bus Ministry tables, `0012` = bus consent + drop-off).
 
 **Migrations now apply automatically in the Vercel production build** (`scripts/migrate.ts`, `npm run migrate`, `vercel-build`): it records versions in `schema_migrations`, baselines `<= 0014` once for a database that already has `users` + `bus_run_edits` (Citipointe), holds an advisory lock, and prints `Database up to date — N of N changes applied (K new).` Rules: files stay additive; no `create index concurrently`; never edit a shipped file (`0003` was the one exception, now an empty comment); bump `LATEST_MIGRATION` in `src/core/schema-version.ts` with every new file (a test enforces it).
 
@@ -168,7 +168,7 @@ Four quads group students by age bracket + gender:
 - `g1012` — Girls Year 10–12; login `seniorgirls`, "Senior Girls"
 - `b1012` — Boys Year 10–12; login `seniorguys`, "Senior Guys"
 
-The quad **values** (`users.quad`, `computeQuad`) are still `g79`/`b79`/`g1012`/`b1012`; only the **usernames** and display names changed (migration `0022`, 2026-10-14b; `QUAD_USERNAMES` in `enums.ts` feeds `cohort-account-layout.ts` and `seed.ts`; passwords unchanged). Simple logins stays off; turning it off still renames the display names back to "Girls Yr 7–9" etc. (existing, pinned behaviour).
+The quad **values** (`users.quad`, `computeQuad`) are still `g79`/`b79`/`g1012`/`b1012`; only the **usernames** and display names changed (migration `0025`, keyed on `users.quad`; `0022` was a no-op on prod, whose logins were `quad79g`/`quad79b`/`quad1012g`/`quad1012b`; 2026-10-14b; `QUAD_USERNAMES` in `enums.ts` feeds `cohort-account-layout.ts` and `seed.ts`; passwords unchanged). Simple logins stays off; turning it off still renames the display names back to "Girls Yr 7–9" etc. (existing, pinned behaviour).
 
 Quad is computed automatically from `grade + gender` via `computeQuad()` in enums.
 
@@ -2544,7 +2544,7 @@ request already succeeded). It now sits above `/* ── CA MODULE START ── 
 
 **Console defaults (11.1):** `intakeSave` / `consentSave` / `intakeText` Practice; `intakeText` is also locked without `SEND_VERIFIED`; Lifegroup add / remove LIVE; `intakeAnswer` has no Setup switch (no Elvanto write). A missing shadow key takes the shipped default.
 
-**Migrations:** `0019` error_log, `0020` link_group_members (renumbered from 0019 at integration, two lanes had taken the same number), `0021` intake (tables above + `link_outbox.steps/stop`). `LATEST_MIGRATION` was 0021 here (now `0024`, next `0025`). **`FIELD_ENCRYPTION_KEY` is required** (intake detail, phones and DOB are encrypted); set it in Vercel before the promote.
+**Migrations:** `0019` error_log, `0020` link_group_members (renumbered from 0019 at integration, two lanes had taken the same number), `0021` intake (tables above + `link_outbox.steps/stop`). `LATEST_MIGRATION` was 0021 here (now `0025`, next `0026`). **`FIELD_ENCRYPTION_KEY` is required** (intake detail, phones and DOB are encrypted); set it in Vercel before the promote.
 
 **Operator rulings (2026-10-13):** T1-T8 in `rulings.md`; T6 writer ships live; T4 spec first, then approved. Review questions: **O1** keep members LIVE, but the operator does a supervised add + remove first. **O2** the pre-promote checklist below. **O3** no "All cars" count until first expand. **O4** keep the provisional ruling tags (D25, D20(b), D26, D17(b)) on the Intake screen until settled, then delete `_ikDTag`/`_ikD26`/`_ikTagHtml`. **O5** an `unclear` intake outbox row is deleted after 14 days (the console Unclear-save box is where it is settled).
 
@@ -2571,6 +2571,8 @@ request already succeeded). It now sits above `/* ── CA MODULE START ── 
 - UI: U15 member rows nest buttons inside `role=button` (Keep missing on a pending remove when add is off); U16 Add queues on one tap, `youthErr` has no Retry; U18 console `appAnswersLine` shows time only (add weekday).
 - Open from lanes: the real-DB V2 suite lacks `error_log` and the intake tables; the ">3 days old" intake warning needs a parseable date; the client rate limit is in-memory per instance; `LINK_SYNC_TOKEN` unset makes a `LINK_OFF` row increment each poll; a 503 can be up to 2 s slower when the DB is down; unknown person id retries `cannot-read`; form `at` not built.
 - SW cache: this branch bumps `ysc-v98` (live) to `ysc-v99` once for the whole batch; no further bump needed unless more SPA changes land after a release.
+
+- **T4 fix (2026-10-14, SW `ysc-v105`, migration `0025`):** `0025` renames the quad logins by `users.quad`; `doLogin` now calls `_quadIamPrompt` (the stray call in `submitCreateAdmin` is gone, admin is never a quad); `doLogout` no longer removes `yap_leader_id`, so the "I am" pick persists across logout. Test: `quad-iam.spa.test.ts`.
 
 ## UX batch 2026-10-14b (lanes A-E merged + pushed to master 2026-10-14; SW `ysc-v103`; migrations `0022`-`0024`; `LINK_REV` 5)
 
