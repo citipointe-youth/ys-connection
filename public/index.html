@@ -5903,7 +5903,7 @@ async function renderAdmin() {
 }
 
 // T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
-const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['link','Elvanto link']];
+const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['unsent','Unsent new people'],['link','Elvanto link']];
 function _adminTabsHtml(cur) {
   return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}</button>`).join('')}</div>
     <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
@@ -6041,10 +6041,12 @@ async function renderAdminView(settings, users, history) {
 
   if (_adminTab === 'system') body += '<div id="sys-check"></div>';
   if (_adminTab === 'errors') body += '<div id="err-log"><div class="help-text">Loading…</div></div>';
+  if (_adminTab === 'unsent') body += '<div id="unsent-list"><div class="help-text">Loading…</div></div>';
 
   setApp(shell(body));
   if (_adminTab === 'system') renderSystemCheck();
   if (_adminTab === 'errors') _elLoad();
+  if (_adminTab === 'unsent') _usLoad();
 }
 
 // ── Login Activity tab ──
@@ -6239,6 +6241,53 @@ async function elDeleteAll() {
   _elRows = (_elRows || []).filter(x => _elCat && x.category !== _elCat);
   toast('Deleted ' + ((d && d.deleted) || 0));
   _elPaint();
+}
+
+// ── Unsent new people (T10) ──
+// GET /admin/unsent: New person sends that failed, were unconfirmed, or never reached Elvanto. Stored encrypted, purged after 14 days.
+// Retry re-runs the same send; an unconfirmed one needs a second tap (it may already be in Elvanto).
+const US_REASON = { unreachable: "Elvanto couldn't be reached", 'form-changed': 'The Elvanto form had changed', failed: 'Elvanto rejected it', unconfirmed: "Elvanto didn't confirm it" };
+let _usRows = null;
+function _usRowHtml(r) {
+  const id = esc(r.id);
+  const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : 'parent form').join(' + ');
+  return `<div class="el-row">
+    <div class="el-msg"><strong>${esc(r.name || 'Unreadable saved form')}</strong>${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div>
+    <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · host ' + esc(r.host) : ''}</div>
+    <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
+    ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
+    <div class="el-acts">
+      ${r.name ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>` : ''}
+      <button class="btn btn-ghost btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>
+    </div></div>`;
+}
+function _usPaint() {
+  const el = document.getElementById('unsent-list');
+  if (el && _usRows) el.innerHTML = `<div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted.</div>`
+    + (_usRows.length ? _usRows.map(_usRowHtml).join('') : '<div class="help-text">Nothing waiting to resend.</div>');
+}
+async function _usLoad() {
+  try { _usRows = (await API.fresh('/admin/unsent')).rows || []; }
+  catch (e) { const el = document.getElementById('unsent-list'); if (el) el.innerHTML = `<div class="alert al-warn">${esc(e.message)}</div><button class="btn btn-secondary btn-sm" onclick="_usLoad()">Try again</button>`; return; }
+  _usPaint();
+}
+async function usRetry(id) {
+  const btn = document.getElementById('us-retry-' + id);
+  const r = (_usRows || []).find(x => x.id === id);
+  if (!btn || btn.disabled) return;
+  if (r && r.reason === 'unconfirmed' && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Checked Elvanto? Tap to retry'; return; }
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try { toast(_nyMessage(await API.post('/admin/unsent/' + encodeURIComponent(id) + '/retry', { confirm: true }, 45000)).lines.join(' '), 8000); }
+  catch (e) { toast(e.message, 8000); }
+  _usLoad();
+}
+// Two-tap confirm, like the Error log.
+async function usDelete(id) {
+  const btn = document.getElementById('us-del-' + id);
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; return; }
+  try { await API.del('/admin/unsent/' + encodeURIComponent(id)); } catch (e) { toast(e.message); return; }
+  _usRows = (_usRows || []).filter(x => x.id !== id);
+  _usPaint();
 }
 
 // ── New Year Data Refresh wizard ──
@@ -9149,6 +9198,7 @@ function _nyMessage(r) {
   else if (r.parent !== 'skipped') lines.push('Parent form ' + say[r.parent]);
   const outs = [r.student, r.parent].filter((o) => o !== 'skipped');
   const tone = outs.includes('failed') ? 'bad' : outs.every((o) => o === 'sent') ? 'good' : 'warn';
+  if (r.queued) lines.push('Saved for the admin to resend.'); // T10
   return { tone, retryParent: r.student !== 'failed' && r.parent === 'failed', lines };
 }
 // Only the service's own refusals, matched by their error CODE and never by status, mean nothing was posted:

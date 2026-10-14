@@ -153,6 +153,10 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/admin/errors/client', auth: true, handler: (r) => admin.reportError(r) },
     { method: 'PATCH',  path: '/admin/errors/:id',    auth: true, handler: (r) => admin.setErrorFlags(r) },
     { method: 'DELETE', path: '/admin/errors/:id',    auth: true, handler: (r) => admin.deleteError(r) },
+    // T10 Unsent new people: admin only (admin:manage in the service).
+    { method: 'GET',    path: '/admin/unsent',           auth: true, handler: (r) => newYouth.unsentList(r) },
+    { method: 'POST',   path: '/admin/unsent/:id/retry', auth: true, handler: (r) => newYouth.unsentRetry(r) },
+    { method: 'DELETE', path: '/admin/unsent/:id',       auth: true, handler: (r) => newYouth.unsentDelete(r) },
 
     // ----- Account management -----
     { method: 'GET',    path: '/accounts/users',               auth: true, handler: (r) => account.list(r) },
