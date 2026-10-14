@@ -57,7 +57,7 @@ export function makeBusController(deps: { bus: BusService }) {
     setPool: async (r: HttpRequest) => { await b.setPool(ctxOf(r), r.body); return { ok: true }; },
     setLeaderPrefs: async (r: HttpRequest) => { await b.setLeaderPrefs(ctxOf(r), p(r, 'leaderId'), r.body); return { ok: true }; },
     saveOwnCar: (r: HttpRequest) => b.saveOwnCar(ctxOf(r), r.body),
-    removeOwnCar: async (r: HttpRequest) => { await b.removeOwnCar(ctxOf(r)); return { ok: true }; },
+    removeOwnCar: async (r: HttpRequest) => { await b.removeOwnCar(ctxOf(r), r.query['owner'] ? String(r.query['owner']) : null); return { ok: true }; },
     myCar: (r: HttpRequest) => b.myCar(ctxOf(r)),
     runs: (r: HttpRequest) => b.listRuns(ctxOf(r)),
     pastRun: (r: HttpRequest) => b.getPastRun(ctxOf(r), p(r, 'id')),

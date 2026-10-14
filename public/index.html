@@ -12128,7 +12128,7 @@ async function busDismissGuest(id) {
   catch (e) { toast(e.message); }
 }
 
-function _busPickTab(ids, tab, seesPast) { return ids.includes(tab) || ((tab === 'analysis' || tab === 'past') && seesPast) ? tab : ids[0]; }
+function _busPickTab(ids, tab, seesPast, seesAnalysis) { return ids.includes(tab) || (tab === 'analysis' && seesAnalysis) || (tab === 'past' && seesPast) ? tab : ids[0]; }
 async function renderBus() {
   if (!_busOn()) { go('home'); return; }
   if (!BUS.view) {
@@ -12151,14 +12151,15 @@ async function renderBus() {
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;
   const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
-  const seesAnalysis = seesPast || v.canCoordinate; // coordinators get route analysis; Past nights stay director/admin
+  // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays director/admin.
+  const seesAnalysis = seesPast || v.canCoordinate || u.role !== 'leader';
   const tabs = [
     { id: 'mycar', label: 'My car' },
     canRoster && { id: 'roster', label: 'Students' },
-    v.canCoordinate && { id: 'cars', label: 'Car setup' },
-    v.canCoordinate && { id: 'routes', label: 'Assign' },
+    { id: 'cars', label: 'Car setup' }, // every Bus login (2026-10-15)
+    { id: 'routes', label: 'Assign' }, // read-only unless v.canCoordinate
   ].filter(Boolean);
-  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesAnalysis);
+  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const d = new Date(v.run.serviceDate + 'T00:00:00');
   const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
@@ -12169,7 +12170,7 @@ async function renderBus() {
     <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
-        ${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
+        ${seesPast ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
     ${isAdmin && v.google && v.google.state !== 'on' ? `<div class="alert al-warn">${esc(v.google.text)}</div>` : ''}
@@ -12677,7 +12678,7 @@ function busOpenCarRoute(runVehicleId) {
   // actually fine. Only say "set the church address" once it HAS loaded and is genuinely empty.
   if (!BUS.myCar) { toast('Still loading — try again in a moment'); return; }
   const church = BUS.myCar.churchAddress;
-  if (!church) { toast('Set the church address in Bus settings'); return; }
+  if (!church) { toast(S.user && S.user.role === 'admin' ? 'Set the church address in Bus settings' : 'Ask an admin to set the church address'); return; }
   const stops = v.riders.filter((r) => r.runVehicleId === runVehicleId).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
   if (!stops.length) return;
   const links = _busMapsLinks(stops, church, rv, BUS.myCar.churchPlaceId);
@@ -12887,7 +12888,7 @@ function _busCarsHtml() {
     return `<div class="li"><div class="li-body"><div class="li-title">${icS('bus')} ${esc(rv.name)}</div>
       <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div>
       <div class="card-sub" style="margin-top:2px">To change it, use My car as that leader.</div></div>
-      <button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button></div>`;
+      ${v.canCoordinate ? `<button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button>` : ''}</div>`;
   }).join('');
 
   return `${lockAlert}<div class="bus-routes">${cards}</div>
@@ -12898,9 +12899,7 @@ function _busCarsHtml() {
         <a onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
     ${ownCars.length ? `<div class="card-title bus-sec">Own cars tonight</div>${ownCarRows}` : ''}`;
 }
-// Task 11: coordinators can remove someone else's own car from Car setup (the server agent
-// may wire the exact call differently — this is kept as its own small function so the call
-// can be adjusted without touching the confirm UI).
+// Task 11: coordinators can remove someone else's own car from Car setup.
 function busConfirmRemoveOwnCarFor(runVehicleId) {
   const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
   if (!rv) return;
@@ -12911,9 +12910,8 @@ function busConfirmRemoveOwnCarFor(runVehicleId) {
 async function busRemoveOwnCarFor(runVehicleId) {
   const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
   if (!rv || !rv.ownerLeaderId) return;
-  // A coordinator removes another leader's own car by naming them in ?as= (removeOwnCar uses selfLeaderId).
-  const qs = `now=${encodeURIComponent(_busLocalNow())}&as=${encodeURIComponent(rv.ownerLeaderId)}`;
-  try { await API.del('/bus/run/own-car?' + qs); closeModal(); toast('Removed'); busRefresh(); }
+  // ?owner= names the car's leader; the coordinator keeps their own as= so the server can check bus:coordinate.
+  try { await API.del('/bus/run/own-car?' + _busQs('owner=' + encodeURIComponent(rv.ownerLeaderId))); closeModal(); toast('Removed'); busRefresh(); }
   catch (e) { toast(e.message); }
 }
 
@@ -12965,7 +12963,7 @@ function _busGenLocked() { return !!(BUS.view && (BUS.generating || _busLockedBy
 function _busBlockWrite() { if (_busGenLocked()) { toast('Routes are being generated — try again in a moment'); return true; } return false; }
 function _busRoutesHead() {
   const v = BUS.view;
-  if (v.run.readOnly || !v.riders.length) return '';
+  if (v.run.readOnly || !v.canCoordinate || !v.riders.length) return '';
   const lock = _busLockedBy(v, Date.now(), BUS.generating), busy = !!lock || BUS.generating;
   const fleet = new Set(v.vehicles.filter((x) => x.running && x.vehicleId).map((x) => x.id));
   const anyPlaced = v.riders.some((r) => r.runVehicleId && fleet.has(r.runVehicleId));
@@ -13019,11 +13017,12 @@ async function busUndo() { try { await _busSend('POST', '/bus/run/undo'); BUS.ro
 
 function _busRoutesHtml() {
   const v = BUS.view;
+  const ro = v.run.readOnly || !v.canCoordinate; // non-coordinators see Assign read-only (2026-10-15)
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
     <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
-    ${v.run.readOnly ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
+    ${ro ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
       <button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
   </div>`).join('');
   const unHead = unassigned.length
@@ -13038,7 +13037,7 @@ function _busRoutesHtml() {
     // car. Server-computed per car (rv.needsFemaleLeader) — true when the car holds a
     // girl rider and no female leader. Replaces the old client-side "Only 1 girl" chip.
     const needsFemaleLeaderChip = rv.needsFemaleLeader ? `<span class="chip c-warn">${icS('alert')} No female leader</span>` : '';
-    const rows = riders.map((r, i) => `<div class="route-row${v.run.readOnly ? '' : ' clickable'}"${v.run.readOnly ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
+    const rows = riders.map((r, i) => `<div class="route-row${ro ? '' : ' clickable'}"${ro ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
@@ -13292,9 +13291,8 @@ function _busMyCarHtml() {
       ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
       ${rv.needsFemaleLeader ? `<div class="chip c-warn" style="margin-bottom:8px">${icS('alert')} No female leader</div>` : ''}
       ${mc.churchAddress ? links.map((l) => `<a class="btn btn-primary btn-full" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('') :
-        // Task 15: only admin/coordinator logins can actually reach Bus settings to fix this —
-        // a plain leader just needs to be told who to ask.
-        `<div class="alert al-warn">${(S.user && S.user.role === 'admin') || v.canCoordinate ? 'Set the church address in Bus settings' : 'Ask a coordinator to set the church address'}</div>`}
+        // Only admin has the Bus settings button; everyone else is told who to ask.
+        `<div class="alert al-warn">${S.user && S.user.role === 'admin' ? 'Set the church address in Bus settings' : 'Ask an admin to set the church address'}</div>`}
     </div>
     <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
       <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>

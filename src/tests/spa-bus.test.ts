@@ -422,11 +422,13 @@ describe('R3 SPA', () => {
     const m = /const BUS_CAR_COLOURS = (\[[^\]]*\]);/.exec(loadIndexHtml())!;
     expect(JSON.parse(m[1]!.replace(/'/g, '"'))).toEqual(BUS_CAR_COLOURS);
   });
-  it('_busPickTab keeps Route analysis for director/admin only', () => {
+  it('_busPickTab keeps Route analysis for seesAnalysis and Past for seesPast (2026-10-15)', () => {
     const { _busPickTab } = loadFns(['_busPickTab']);
-    expect(_busPickTab(['routes', 'mycar'], 'analysis', true)).toBe('analysis');
-    expect(_busPickTab(['routes', 'mycar'], 'analysis', false)).toBe('routes');
-    expect(_busPickTab(['routes', 'mycar'], 'mycar', false)).toBe('mycar');
+    expect(_busPickTab(['routes', 'mycar'], 'analysis', false, true)).toBe('analysis');
+    expect(_busPickTab(['routes', 'mycar'], 'analysis', true, false)).toBe('routes');
+    expect(_busPickTab(['routes', 'mycar'], 'past', false, true)).toBe('routes');
+    expect(_busPickTab(['routes', 'mycar'], 'past', true, true)).toBe('past');
+    expect(_busPickTab(['routes', 'mycar'], 'mycar', false, false)).toBe('mycar');
   });
   it('_busExtraLine reads as a plain sentence with no symbols', () => {
     const { _busExtraLine } = loadFns(['_busExtraLine']);
@@ -791,6 +793,7 @@ describe('busOpenCarRoute toast wording distinguishes "still loading" from "real
       function toast(m) { __msg = m; }
       function modal() {}
       const window = { open: () => {} };
+      const S = { user: { role: 'admin' } };
       function __state() { return { msg: __msg }; }
     `;
     return loadFns(['busOpenCarRoute', '_busMapsLinks'], prelude, ['busOpenCarRoute', '__state']);
@@ -1008,12 +1011,12 @@ describe('_busCarsHtml computes the real leader shortfall (Task 10)', () => {
 });
 
 // Task 11: coordinators can remove someone else's own car from Car setup.
-describe('busRemoveOwnCarFor removes the car with an ?as=<ownerLeaderId> override (Task 11)', () => {
+describe('busRemoveOwnCarFor names the car owner in ?owner= (Task 11, 2026-10-15)', () => {
   it('deletes using the car owner\'s leader id, not the caller\'s own', async () => {
     const prelude = `
       const BUS = { view: { vehicles: [{ id: 'rv1', name: 'Josh\\'s car', ownerLeaderId: 'L9' }] } };
       function esc(s) { return String(s); }
-      function _busLocalNow() { return '2026-10-09T19:00'; }
+      function _busQs(extra) { return 'now=x&as=L1' + (extra ? '&' + extra : ''); }
       let __deleted = null;
       function closeModal() {}
       function toast() {}
@@ -1024,7 +1027,8 @@ describe('busRemoveOwnCarFor removes the car with an ?as=<ownerLeaderId> overrid
     const { busRemoveOwnCarFor, __state } = loadFns(['busRemoveOwnCarFor'], prelude, ['busRemoveOwnCarFor', '__state']);
     await busRemoveOwnCarFor('rv1');
     expect(__state().deleted).toContain('/bus/run/own-car?');
-    expect(__state().deleted).toContain('as=L9');
+    expect(__state().deleted).toContain('owner=L9');
+    expect(__state().deleted).toContain('as=L1');
   });
   it('does nothing for a car with no owner', async () => {
     const prelude = `
@@ -1128,11 +1132,12 @@ describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 
     `;
     return loadFns(['_busMyCarHtml'], prelude)._busMyCarHtml();
   };
-  it('tells a plain leader to ask a coordinator', () => {
-    expect(mk('leader', false)).toContain('Ask a coordinator to set the church address');
+  it('tells a plain leader to ask an admin', () => {
+    expect(mk('leader', false)).toContain('Ask an admin to set the church address');
   });
-  it('still points a coordinator leader at Bus settings', () => {
-    expect(mk('leader', true)).toContain('Set the church address in Bus settings');
+  it('tells a coordinator (no Bus settings button) to ask an admin too', () => {
+    expect(mk('leader', true)).toContain('Ask an admin to set the church address');
+    expect(mk('quad', true)).toContain('Ask an admin to set the church address');
   });
   it('still points an admin at Bus settings', () => {
     expect(mk('admin', false)).toContain('Set the church address in Bus settings');

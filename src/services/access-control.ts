@@ -21,7 +21,7 @@ export type Action =
   | 'prayer:import'           // admin-only: bulk CSV import/export of prayers
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
-  | 'bus:coordinate'          // Car setup, Move (Generate/Undo in R2)
+  | 'bus:coordinate'          // route edits on Assign (Generate/Move/Undo), removing another's own car
   | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status

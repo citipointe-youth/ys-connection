@@ -45,7 +45,7 @@ export interface BusService {
   setPool(ctx: BusCtx, input: unknown): Promise<void>;
   setLeaderPrefs(ctx: BusCtx, leaderId: string, input: unknown): Promise<void>;
   saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
-  removeOwnCar(ctx: BusCtx): Promise<void>;
+  removeOwnCar(ctx: BusCtx, ownerLeaderId?: string | null): Promise<void>;
   moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView & { reordered: boolean }>;
   setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   setDropped(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
@@ -235,6 +235,17 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!allowed(ctx, c, action)) throw new ForbiddenError(`Role '${ctx.actor.role}' cannot perform '${action}'`);
     return c;
   }
+  /** Route analysis is read-only for every Bus login except a junior leader on "My car only":
+   *  the map pins sit on real home addresses, so that login doesn't get it (2026-10-15). */
+  async function gateAnalysisView(ctx: BusCtx): Promise<MinistryConfig> {
+    const c = await gate(ctx, 'bus:use');
+    if (isRedactedLeader(ctx, c)) throw new ForbiddenError('Route analysis is for coordinators and staff logins');
+    return c;
+  }
+  /** A junior `leader` login that isn't a coordinator: "My car only" (spec §4) — riders reach it suburb-only. */
+  function isRedactedLeader(ctx: BusCtx, c: MinistryConfig): boolean {
+    return ctx.actor.role === 'leader' && !allowed(ctx, c, 'bus:coordinate');
+  }
   function selfLeaderId(ctx: BusCtx): string | null {
     // A junior-leader login is locked to its own record; everyone else self-identifies (spoofable by design — spec §4).
     return ctx.actor.role === 'leader' ? ctx.actor.leaderId ?? null : ctx.asLeaderId;
@@ -373,22 +384,23 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
     const riderViews = riders.map((r) => riderView(r, consentFor(consents, r)));
     // I1: a 'leader' login who isn't a self-identified coordinator gets "My car only" per
-    // spec §4 — strip every other rider's full address/consent note/who-recorded-it, and
-    // the leaders/fleet lists, instead of handing out the whole night's roster.
-    const isRedactedLeader = ctx.actor.role === 'leader' && !canCoordinate;
+    // spec §4 — strip every rider's street address/place/consent note/who-recorded-it (name +
+    // suburb only; this is also what their read-only Assign shows). Leaders + fleet stay:
+    // Car setup is open to every Bus login since 2026-10-15 and they hold no student data.
+    const redacted = isRedactedLeader(ctx, c);
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
         lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: lockName(run.lockBy), lockUntil: run.lockUntil, undoUntil: run.undoUntil },
       vehicles,
-      riders: isRedactedLeader ? riderViews.map((r) => ({
+      riders: redacted ? riderViews.map((r) => ({
         id: r.id, studentId: null, guestId: null, addressId: null,
         runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
         name: r.name, grade: r.grade, gender: r.gender, address: suburbOnly(r.address), placeId: null,
         consent: r.consent ? { given: r.consent.given } : null,
         droppedAt: r.droppedAt, droppedBy: r.droppedBy,
       })) : riderViews,
-      leaders: isRedactedLeader ? [] : leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
-      fleet: isRedactedLeader ? [] : fleet.filter((v) => !v.archived), canCoordinate,
+      leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
+      fleet: fleet.filter((v) => !v.archived), canCoordinate,
       canSeeCars: true, // T10: All cars follows the Bus module only (gate() above)
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
@@ -842,7 +854,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return { kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: [] };
     },
     async saveVehicle(ctx, input) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
       const v = parseIn(SaveVehicle, input);
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this save actually picks "ends at an address"
       const prior = v.id ? await bus.getVehicle(v.id) : null;
@@ -875,7 +887,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return saved;
     },
     async updateRunVehicle(ctx, id, input) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
       const v = parseIn(UpdateRunVehicle, input);
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this patch sets "ends at an address"
       const run = await writableRun(ctx, c);
@@ -891,7 +903,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return (await vehicleViews(run.id)).find((x) => x.id === id)!;
     },
     async setPool(ctx, input) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
       const v = parseIn(SetPool, input);
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // I1: the pool feeds the solve's auto-fill — don't change it mid-solve
@@ -899,7 +911,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await touch(ctx, run);
     },
     async setLeaderPrefs(ctx, leaderId, input) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
       const v = parseIn(LeaderPrefsIn, input);
       if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
       const run = await ensureRun(ctx, c);
@@ -967,9 +979,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await touch(ctx, run);
       return (await vehicleViews(run.id)).find((x) => x.id === rv.id)!;
     },
-    async removeOwnCar(ctx) {
-      const c = await gate(ctx, 'bus:use');
-      const me = selfLeaderId(ctx);
+    async removeOwnCar(ctx, ownerLeaderId) {
+      let c = await gate(ctx, 'bus:use');
+      // Removing ANOTHER leader's own car (Car setup's trash button) is a coordinator action.
+      const other = !!ownerLeaderId && ownerLeaderId !== selfLeaderId(ctx);
+      if (other) c = await gate(ctx, 'bus:coordinate');
+      const me = other ? ownerLeaderId : selfLeaderId(ctx);
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
@@ -1092,10 +1107,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await writableRun(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
-      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === r.runVehicleId);
-      const me = selfLeaderId(ctx);
-      const inMyCar = !!rv && !!me && (rv.ownerLeaderId === me || rv.leaderIds.includes(me));
-      if (!inMyCar && !allowed(ctx, c, 'bus:coordinate')) throw new ForbiddenError("Only this car's leaders can mark drop-offs");
+      // 2026-10-15 (operator): any Bus login can mark a drop-off on any car.
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
@@ -1382,7 +1394,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return { unassigned: out.length };
     },
     async analysis(ctx) {
-      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
+      const c = await gateAnalysisView(ctx);
       const b = c.busMinistry;
       const run = await ensureRun(ctx, c);
       const signal = routingDeadline();
@@ -1422,7 +1434,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         longestMin: Math.max(0, ...cars.map((x) => x.routeMin)), totalMin: sum(cars.map((x) => x.routeMin)) };
     },
     async extraCars(ctx, input) {
-      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
+      const c = await gateAnalysisView(ctx); // read-only "Try +N cars" what-if, part of route analysis
       const v = parseIn(ExtraCarsIn, input);
       if (!c.busMinistry.churchPlaceId) throw new BadRequestError(NO_CHURCH);
       const run = await ensureRun(ctx, c);
@@ -1526,7 +1538,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return img;
     },
     async analysisMap(ctx) {
-      const c = await gate(ctx, 'bus:coordinate'); // coordinators run the night, so they get route analysis (Past nights stay bus:analysis)
+      const c = await gateAnalysisView(ctx);
       const run = await ensureRun(ctx, c);
       const signal = routingDeadline();
       const a = await analysisSolve(c, run, signal);

@@ -126,10 +126,11 @@ describe('route analysis', () => {
     expect(x.cars.map((c) => c.label)).toEqual(['Big']);
   });
 
-  it('coordinators (bus:coordinate roles + designated coordinator leaders) only; module off → 404', async () => {
+  it('every Bus login except a non-coordinating junior leader (2026-10-15); module off → 404', async () => {
     const f = await busFixture();
     await expect(f.svc.analysis(f.ctx('quad'))).resolves.toBeTruthy();
-    await expect(f.svc.analysis(f.ctx('grade'))).rejects.toMatchObject({ statusCode: 403 });
+    await expect(f.svc.analysis(f.ctx('grade'))).resolves.toBeTruthy();
+    await expect(f.svc.analysis(f.ctx('leader'))).rejects.toMatchObject({ statusCode: 403 });
     const s0 = await f.settings.getSettings();
     await f.settings.updateSettings({ ministryConfig: { ...s0.ministryConfig, busMinistry: { ...s0.ministryConfig.busMinistry, coordinatorLeaderIds: ['L1'] } } });
     await expect(f.svc.analysis(f.ctx('grade', 'L1'))).resolves.toBeTruthy();

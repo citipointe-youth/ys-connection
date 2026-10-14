@@ -215,9 +215,8 @@ describe('my car', () => {
   // Task 6: confirmed this already works — self-identification via `as=` is spoofable by
   // design (spec §4), and a bus:coordinate login (quad/director/admin) already has `bus:use`
   // outright via ROLE_PERMISSIONS, so `removeOwnCar` resolves `me` to whatever `as=` names and
-  // finds/deletes THAT leader's own car. The SPA call is simply
-  // `DELETE /bus/run/own-car?now=<local>&as=<ownerLeaderId>` from the coordinator's own session
-  // (no leader login/record needed) — no new route was added.
+  // finds/deletes THAT leader's own car. Since 2026-10-15 the SPA sends `?owner=<ownerLeaderId>`
+  // with its own as= instead (see "permission split" below); this soft-guard path still works.
   it('Task 6: a quad coordinator can remove another leader\'s own car via as=', async () => {
     const t = await withFleet();
     await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'church' }, riderIds: [t.c.id] });
@@ -399,7 +398,7 @@ describe('parent consent', () => {
 });
 
 describe('drop-off record', () => {
-  it('car leaders tick with a time, can edit and clear it; others cannot', async () => {
+  it('car leaders tick with a time, can edit and clear it; any Bus login can too (2026-10-15)', async () => {
     const t = await withFleet();
     await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
     const d = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true });
@@ -407,7 +406,7 @@ describe('drop-off record', () => {
     expect(d.droppedBy).toBe('Tom');
     const e = await t.svc.setDropped(t.ctx('grade', 'L1'), t.a.id, { dropped: true, at: '2026-10-09T11:42:00.000Z' });
     expect(e.droppedAt).toBe('2026-10-09T11:42:00.000Z');
-    await expect(t.svc.setDropped(t.ctx('grade', 'L2'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
+    expect((await t.svc.setDropped(t.ctx('grade', 'L2'), t.a.id, { dropped: true })).droppedBy).toBe('Sarah'); // not on this car
     expect((await t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: false })).droppedAt).toBeNull();
   });
 });
@@ -454,7 +453,7 @@ describe('createGuest input validation (C2)', () => {
 });
 
 describe('leader role sees "My car only" on the shared run view (I1)', () => {
-  it('a non-coordinating leader gets suburb-only addresses, a bare consent flag, and no leaders/fleet', async () => {
+  it('a non-coordinating leader gets suburb-only addresses and a bare consent flag; leaders + fleet stay for Car setup', async () => {
     const t = await withFleet();
     await t.svc.setConsent(t.ctx('grade', 'L2'), t.a.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
     const leaderCtx: BusCtx = { actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM };
@@ -466,8 +465,9 @@ describe('leader role sees "My car only" on the shared run view (I1)', () => {
     }
     const ridden = v.riders.find((r) => r.id === t.a.id)!;
     expect(ridden.consent).toEqual({ given: true });
-    expect(v.leaders).toEqual([]);
-    expect(v.fleet).toEqual([]);
+    expect(v.leaders.map((l) => l.id).sort()).toEqual(['L1', 'L2']);
+    expect(v.fleet.map((f) => f.name)).toEqual(['Big Bus']);
+    expect(v.canCoordinate).toBe(false);
   });
 });
 
@@ -916,13 +916,13 @@ describe('quad loses bus:coordinate under Simple logins (October rework E2)', ()
     await t.settings.updateSettings({ ministryConfig: { ...cur, logins: { ...cur.logins, simple: on },
       busMinistry: { ...cur.busMinistry, coordinatorLeaderIds, churchAddress: '1 Church St, Testville', churchPlaceId: 'fake:church' } } });
   }
-  it('Simple on, quad with no as=: cannot coordinate, Generate 403, drop-off on another car 403', async () => {
+  it('Simple on, quad with no as=: cannot coordinate, Generate 403, drop-off on another car still ok', async () => {
     const t = await withFleet();
     await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId });
     await simple(t, true);
     expect((await t.svc.getRun(t.ctx('quad'))).canCoordinate).toBe(false);
     await expect(t.svc.generate(t.ctx('quad'), { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
-    await expect(t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: true })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.setDropped(t.ctx('quad'), t.a.id, { dropped: true })).resolves.toBeTruthy();
   });
   it('Simple on, quad as a coordinator leader: coordinates', async () => {
     const t = await withFleet();
@@ -945,5 +945,56 @@ describe('quad loses bus:coordinate under Simple logins (October rework E2)', ()
         await expect(t.svc.generate(t.ctx(role), { mode: 'all' })).resolves.toBeTruthy();
       }
     }
+  });
+});
+
+// 2026-10-15 (operator): every Bus login gets Car setup + a read-only Assign; coordinators keep
+// Past nights and route edits; route analysis is for everyone except a junior "My car only" leader.
+describe('permission split (2026-10-15)', () => {
+  const junior = (leaderId = 'L1'): BusCtx => ({ actor: actor('leader', { leaderId }), asLeaderId: null, localNow: FRI_7PM });
+  it('a bus:use non-coordinator can do Car setup writes but not route edits', async () => {
+    const t = await withFleet();
+    const j = junior();
+    expect((await t.svc.getRun(j)).canCoordinate).toBe(false);
+    const van = await t.svc.saveVehicle(j, { name: 'Van', seats: 8, endsAt: 'church' });
+    expect(van.name).toBe('Van');
+    await expect(t.svc.setPool(j, { availableLeaderIds: ['L2'] })).resolves.toBeUndefined();
+    await expect(t.svc.setLeaderPrefs(j, 'L2', { inPool: true })).resolves.toBeUndefined();
+    await expect(t.svc.generate(j, { mode: 'all' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.moveRider(j, t.a.id, { runVehicleId: t.rvId })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.unassignAll(j)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.undo(j)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('any Bus login can mark a drop-off on a car it is not on', async () => {
+    const t = await withFleet();
+    await t.svc.moveRider(t.ctx('admin'), t.a.id, { runVehicleId: t.rvId }); // Tom's car
+    const d = await t.svc.setDropped(junior('L2'), t.a.id, { dropped: true });
+    expect(d.droppedBy).toBe('Sarah');
+  });
+  it('route analysis: 403 for a redacted junior leader, ok for a grade login; a junior coordinator gets it', async () => {
+    const t = await withFleet();
+    const church = async (coordinatorLeaderIds: string[]) => {
+      const cur = (await t.settings.getSettings()).ministryConfig;
+      await t.settings.updateSettings({ ministryConfig: { ...cur, busMinistry: { ...cur.busMinistry, coordinatorLeaderIds, churchAddress: '1 Church St, Testville', churchPlaceId: 'fake:church' } } });
+    };
+    await church([]);
+    await expect(t.svc.analysis(junior())).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.extraCars(junior(), { count: 1, seats: 6 })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.analysis(t.ctx('grade'))).resolves.toBeTruthy();
+    await church(['L1']);
+    await expect(t.svc.analysis(junior('L1'))).resolves.toBeTruthy();
+  });
+  it("removing another leader's own car (?owner=) is coordinator-only; own car stays open", async () => {
+    const t = await withFleet();
+    await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'church' }, riderIds: [t.c.id] });
+    const sarahs = async () => (await t.svc.getRun(t.ctx('admin'))).vehicles.find((x) => x.ownerLeaderId === 'L2');
+    await expect(t.svc.removeOwnCar(t.ctx('grade', 'L1'), 'L2')).rejects.toMatchObject({ statusCode: 403 });
+    await expect(t.svc.removeOwnCar(junior('L1'), 'L2')).rejects.toMatchObject({ statusCode: 403 });
+    expect(await sarahs()).toBeTruthy();
+    await t.svc.removeOwnCar(t.ctx('quad'), 'L2'); // quad = bus:coordinate
+    expect(await sarahs()).toBeUndefined();
+    await t.svc.saveOwnCar(t.ctx('grade', 'L2'), { car: { name: "Sarah's car", seats: 5, endsAt: 'church' }, riderIds: [] });
+    await t.svc.removeOwnCar(t.ctx('grade', 'L2'), 'L2'); // naming yourself is not "another"
+    expect(await sarahs()).toBeUndefined();
   });
 });
