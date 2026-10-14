@@ -145,9 +145,9 @@ describe('S1.3 grade filter core', () => {
     expect(f._vgGrades()).toBeNull();
     expect(f._vgBar()).toBe('');
   });
-  it('Simple off: null', () => {
+  it('Simple off: the filter still applies to quad logins (T4 2026-10-14b)', () => {
     const f = load({ me: 'L1', simple: false, leaders: [{ id: 'L1', grades: [8] }] });
-    expect(f._vgGrades()).toBeNull();
+    expect(f._vgGrades()).toEqual([8]);
   });
   it('no saved filter: leader.grades within the bracket', () => {
     const f = load({ me: 'L1', leaders: [{ id: 'L1', grades: [8, 9, 10] }] });

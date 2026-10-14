@@ -23,6 +23,14 @@ const SIMPLE_QUAD_LABELS: Record<Quad, string> = {
   b1012: 'Senior Guys',
 };
 
+// Login usernames for the quad accounts (migration 0022). Scope comes from the quad field, never the username.
+export const QUAD_USERNAMES: Record<Quad, string> = {
+  g79: 'juniorgirls',
+  b79: 'juniorguys',
+  g1012: 'seniorgirls',
+  b1012: 'seniorguys',
+};
+
 export function quadLabelFor(quad: Quad, simple: boolean): string {
   return simple ? SIMPLE_QUAD_LABELS[quad] : QUAD_LABELS[quad];
 }

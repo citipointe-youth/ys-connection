@@ -32,7 +32,7 @@ describe('oct rework routes (memory mode, seeded)', () => {
     leaderId = l.id;
     server = createApp(buildRoutes(services), services.auth, services.health).listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    for (const u of ['admin', 'g79', 'grade7']) tokens[u] = await login(u);
+    for (const u of ['admin', 'juniorgirls', 'grade7']) tokens[u] = await login(u);
   });
   afterAll(() => { server.close(); });
 
@@ -47,7 +47,7 @@ describe('oct rework routes (memory mode, seeded)', () => {
     expect((await j(r)).code).toBe('UNAUTHORIZED');
   });
   it('quad sets viewGrades', async () => {
-    const r = await patch(tokens['g79']!, { grades: [7] });
+    const r = await patch(tokens['juniorgirls']!, { grades: [7] });
     expect(r.status).toBe(200);
     expect((await j(r)).viewGrades).toEqual([7]);
   });
@@ -61,6 +61,6 @@ describe('oct rework routes (memory mode, seeded)', () => {
   });
   it('GET /bus/run/cars: admin and quad 200 (T10: All cars follows the Bus module only, not New person Shadow)', async () => {
     expect((await cars(tokens['admin']!)).status).toBe(200);
-    expect((await cars(tokens['g79']!)).status).toBe(200);
+    expect((await cars(tokens['juniorgirls']!)).status).toBe(200);
   });
 });

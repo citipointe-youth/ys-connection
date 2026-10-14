@@ -189,16 +189,17 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
 /**
  * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/director only, through
  * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is the
- * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no login lists, completes or assigns it
- * here; the Intake screen is its one view (operator 2026-10-14).
+ * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no non-admin login lists, completes or
+ * assigns it on the Flow Steps screen (admin / director still see it; no intake screen is affected). Operator 2026-10-14b T11.
  */
 /** The admin's pick per flow (modules.flowHiddenStep): missing / '' = the first step, 'none' = none, else that step id. */
-export function stepHidden(f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, string> | undefined): boolean {
+export function stepHidden(a: Actor, f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, string> | undefined): boolean {
+  if (isAdminRole(a)) return false; // T11: the Flow Steps screen hides it from non-admin logins only
   const h = picks?.[f.flowId] || '';
   return h === '' ? f.stepOrder <= 1 : f.stepId === h;
 }
 function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope, hidden: Record<string, string> | undefined): boolean {
-  if (stepHidden(f, hidden)) return false;
+  if (stepHidden(a, f, hidden)) return false;
   const r = f.personId ? roster.get(f.personId) : undefined;
   const grade = f.grade ?? r?.grade ?? null;
   const gender = f.gender ?? r?.gender ?? null;
@@ -515,7 +516,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (row.flowId !== sp.flowId || row.stepId !== sp.stepId || row.personId !== sp.personId) {
         throw new BadRequestError('This step changed. Reload.');
       }
-      if (stepHidden(row, c.settings.ministryConfig.modules.flowHiddenStep)) throw new ForbiddenError('This step moves on its own after contact consent.');
+      if (stepHidden(c.actor, row, c.settings.ministryConfig.modules.flowHiddenStep)) throw new ForbiddenError('This step moves on its own after contact consent.');
       if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure, c.settings.ministryConfig.modules.flowHiddenStep)) {
         throw new ForbiddenError('This person is not one of yours.');
       }

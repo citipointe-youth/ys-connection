@@ -24,22 +24,22 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {
-      id: generateId(), displayName: 'Girls Yr 7–9 Quad', email: 'g79',
+      id: generateId(), displayName: 'Junior Girls', email: 'juniorgirls',
       role: 'quad', grade: null, quad: 'g79',
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {
-      id: generateId(), displayName: 'Boys Yr 7–9 Quad', email: 'b79',
+      id: generateId(), displayName: 'Junior Guys', email: 'juniorguys',
       role: 'quad', grade: null, quad: 'b79',
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {
-      id: generateId(), displayName: 'Girls Yr 10–12 Quad', email: 'g1012',
+      id: generateId(), displayName: 'Senior Girls', email: 'seniorgirls',
       role: 'quad', grade: null, quad: 'g1012',
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {
-      id: generateId(), displayName: 'Boys Yr 10–12 Quad', email: 'b1012',
+      id: generateId(), displayName: 'Senior Guys', email: 'seniorguys',
       role: 'quad', grade: null, quad: 'b1012',
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },

@@ -1603,7 +1603,7 @@ function setMyLeaderId(id) {
 // _vgLocal holds taps not yet saved (and every tap during an account preview, which
 // is never saved). Key present with null = "back to my grades".
 let _vgLocal = {}, _vgTimer = null;
-function _vgActive() { return !!(S.user && S.user.role === 'quad' && _simpleLoginsOn()); }
+function _vgActive() { return !!(S.user && S.user.role === 'quad'); } // T4 (2026-10-14b): every quad login, Simple logins on or off
 function _vgLeader(id) {
   const ls = Cache.getStale('/leaders') || [];
   return ls.find(l => l.id === id) || null;
@@ -2364,6 +2364,7 @@ async function submitCreateAdmin() {
     Cache.del('/settings');
     S.settings = await API.get('/settings').catch(() => S.settings);
     setTimeout(() => go('home'), 150);
+    setTimeout(_quadIamPrompt, 500);
   } catch (e) {
     if (e.status === 409) { toast(e.message); SETUP.status = null; S.page = 'home'; renderLogin(); return; }
     toast(e.message);
@@ -7252,7 +7253,7 @@ function _setupFlowHiddenHtml(md) {
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
     const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for any login, and nobody can complete or assign it there. The Form Approve & Consent screen is not changed.')}</label>
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The Form Approve & Consent screen is not changed.')}</label>
       <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
@@ -10202,6 +10203,14 @@ async function _lkSwitchLeader(id) {
   if (!(await _lkSwitchGuard(id))) return false;
   setMyLeaderId(id || null);
   return true;
+}
+// T4 (2026-10-14b): a quad login with no saved "I am" gets the "Who are you?" sheet once per device. Skip is allowed and
+// re-offers after a day (or at once on the Home pick); a pick sets the grade filter to the leader's grades in the quad's bracket.
+function _quadIamPrompt() {
+  if (!S.user || S.user.role !== 'quad' || _previewStash || getMyLeaderId()) return;
+  try { if (Date.now() - Number(localStorage.getItem('yap_iam_skip') || 0) < 864e5) return; } catch {}
+  try { localStorage.setItem('yap_iam_skip', String(Date.now())); } catch {} // any close without a pick counts as a skip
+  _lkIamPick(() => render());
 }
 // The "Who are you?" sheet. then() runs after a pick.
 function _lkIamPick(then) {
@@ -13636,6 +13645,7 @@ async function boot() {
   }
   render();
   _reloadViewportFix();
+  if (typeof _quadIamPrompt === 'function') _quadIamPrompt();
 }
 
 boot();
