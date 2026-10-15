@@ -12763,7 +12763,7 @@ async function _ikLkGo(kind, page, q, sameId) {
 function _ikLkErr(x, e) {
   let off = false;
   try { off = navigator.onLine === false; } catch (er) {}
-  if (off || !e || !e.status) { x.st = 'offline'; x.msg = "Can't reach the server. Check your internet, then press Check again."; }
+  if (off || !e || !e.status) { x.st = 'offline'; x.msg = 'No internet. Reconnect, then tap Ask again.'; }
   else if (e.status === 404) { x.st = 'failed'; x.msg = 'That lookup has expired. Search again.'; }
   else { x.st = 'failed'; x.msg = e.message || 'Something went wrong. Search again.'; }
 }
@@ -12781,7 +12781,7 @@ function _ikLkApply(x, r, now) {
   if (s !== 'waiting' && s !== 'working') { x.st = 'failed'; x.msg = _ikLkReason(null); return false; }
   if (now - x.since > (x.kind === 'mismatches' ? 15 : 5) * 60000) {
     x.st = 'timeout';
-    x.msg = s === 'working' ? 'The console is still reading the forms. Press Check again in a minute.' : "The console hasn't picked this up yet. Press Check again later.";
+    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.' : "The console hasn't picked this up yet. Tap Ask again later.";
     return false;
   }
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
