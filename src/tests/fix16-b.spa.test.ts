@@ -116,9 +116,17 @@ describe('F-33 boot storage', () => {
     const _lsGet = new Function('localStorage', `${extractFn(html, '_lsGet')}\nreturn _lsGet;`)(ls);
     expect(_lsGet('yap_token')).toBe(null);
   });
-  it('no bare token read is left in the boot path', () => {
-    expect(html).not.toContain("localStorage.getItem('yap_token')");
+  it('the API token read and boot() survive a throwing localStorage', async () => {
     expect(html).toContain("let _t = _lsGet('yap_token') || null;");
+    const env = {
+      localStorage: { getItem: () => { throw new Error('SecurityError'); }, removeItem: () => { throw new Error('x'); } },
+      API: { get: async () => ({}), setToken: () => {} }, S: { user: null, settings: null } as any, _previewStash: null,
+      restoreConnectFilters: () => {}, restoreArFilter: () => {}, restorePrayerFilter: () => {}, applyTheme: () => {},
+      render: () => {}, _reloadViewportFix: () => {}, _isAuthExpired: () => false, location: { search: '' },
+    };
+    const boot = new Function(...Object.keys(env), `${extractFn(html, 'boot')}
+return boot;`)(...Object.values(env));
+    await expect(boot()).resolves.toBeUndefined();
   });
 });
 

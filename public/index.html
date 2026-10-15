@@ -14773,7 +14773,8 @@ function _handleAuthExpired() {
   render();
 }
 async function boot() {
-  const token = _lsGet('yap_token');
+  let token = null;
+  try { token = localStorage.getItem('yap_token'); } catch (e) {} // F-33
   if (token) {
     try {
       const user = await API.get('/auth/me');
