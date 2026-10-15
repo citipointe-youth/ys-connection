@@ -11252,7 +11252,7 @@ function _lkFfToggle(k) {
 function _lkFfHtml(on) {
   return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
     const p = on.includes(k);
-    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.split(' ')[0]}</button>`;
+    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`;
   }).join('')}</div>`;
 }
 // The rows this login sees on the screen (filters only for admin/director).
