@@ -70,7 +70,7 @@ describe('F-01 SPA pickers', () => {
     expect(f.gets.length).toBe(before);
   });
 
-  it('Home Follow Up: a 403 for a saved out-of-scope "I am" clears it and shows the picker', async () => {
+  it('Home Follow Up: a 403 for a saved out-of-scope "I am" shows the picker without changing "I am"', async () => {
     const prelude = `
       var S = { user: { role: 'quad', quad: 'g79' } };
       var mine = 'out', cleared = [];
@@ -88,7 +88,7 @@ describe('F-01 SPA pickers', () => {
       var out = () => host.innerHTML;`;
     const f = loadFns(['renderHomeFollowup'], prelude, ['renderHomeFollowup', 'out', 'cleared']);
     await f.renderHomeFollowup();
-    expect(f.cleared).toEqual([null]);
+    expect(f.cleared).toEqual([]); // the pick goes through _lkSwitchLeader, never set here
     expect(f.out()).toContain('Choose your name');
     expect(f.out()).toContain('Junior Girl');
   });

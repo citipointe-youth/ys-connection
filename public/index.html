@@ -3315,8 +3315,15 @@ async function renderHomeFollowup(fromCache) {
   // fromCache: a repaint (grade filter) — reuse the last reply instead of a network call.
   const G = (p) => (fromCache && Cache.getStale(p)) || API.get(p);
 
+  // F-01: a saved "I am" now outside this login's leaders (403) shows the picker too. The saved id is kept;
+  // the user's own pick goes through chooseHomeLeader -> _lkSwitchLeader (the guard).
+  let data, out = false;
+  if (mine) {
+    try { data = await G(`/connections/leader/${mine}/followup`); }
+    catch (e) { if (e && e.status === 403 && !(S.user && S.user.role === 'leader')) out = true; else { host.innerHTML = ''; return; } }
+  }
   // No identity yet → offer a picker built from the leaders in scope.
-  if (!mine) {
+  if (!mine || out) {
     let leaders = [];
     try { leaders = await G('/leaders?pick=1'); } catch {} // F-01: only this login's own leaders
     if (!leaders.length) { host.innerHTML = ''; return; }
@@ -3329,13 +3336,6 @@ async function renderHomeFollowup(fromCache) {
     return;
   }
 
-  let data;
-  try { data = await G(`/connections/leader/${mine}/followup`); }
-  catch (e) {
-    // F-01: a saved "I am" that is now outside this login's leaders (403): forget it and offer the picker.
-    if (e && e.status === 403 && !(S.user && S.user.role === 'leader')) { setMyLeaderId(null); return renderHomeFollowup(fromCache); }
-    host.innerHTML = ''; return;
-  }
   if (!data) { host.innerHTML = ''; return; }
 
   // A junior-leader login is bound to its own leader record — no "Not you?".
