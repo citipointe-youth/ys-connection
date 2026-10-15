@@ -96,3 +96,19 @@ describe('F-15 Save result lines are plain and counted', () => {
     expect(t.match(/Stopped: Elvanto was slow\./g)!.length).toBe(1);
   });
 });
+
+describe('F-16 text card warns when the form is old', () => {
+  const t = { key: 'complete:parent:' + P(2), sms: { name: 'Ree LEstrange', last3: '111' } };
+  const now = Date.UTC(2026, 9, 11, 0, 0); // Sun 11 Oct 10:00 Brisbane
+  it('the console\'s "Fri 2 Oct 7:42pm" (no year) reads as 8 days old', () => {
+    const { f } = env();
+    expect(strip(f._ikTextCardHtml(t, DETAIL(), '', now))).toContain('Form sent 8 days ago');
+    expect(f._ikWhenMs('Fri 2 Oct 7:42pm', now)).toBe(Date.UTC(2026, 9, 2, 9, 42));
+    expect(f._ikWhenMs('Wed 30 Dec 9:00am', Date.UTC(2027, 0, 2))).toBe(Date.UTC(2026, 11, 29, 23, 0)); // last year
+    expect(f._ikWhenMs('', now)).toBeNaN();
+  });
+  it('no warning for a form 3 days old or less', () => {
+    const { f } = env();
+    expect(strip(f._ikTextCardHtml(t, DETAIL(), '', Date.UTC(2026, 9, 5, 9, 0)))).not.toContain('days ago');
+  });
+});

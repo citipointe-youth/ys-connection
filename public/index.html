@@ -12456,11 +12456,21 @@ function _ikVerdictHtml(d, a) {
     return `<div class="card"><div>${esc(q)}</div>${sub ? `<div class="ik-line">${esc(sub)}</div>` : ''}${diffs}${btns ? `<div class="lk-mt">${btns}</div>` : ''}</div>`;
   }).join('');
 }
+// F-16: the console's form time is "Fri 2 Oct 7:42pm" (Brisbane, no year): Date.parse can't read it, so the old-form
+// warning never showed. The year is the one that puts it in the past.
+function _ikWhenMs(when, now) {
+  const m = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w* (\d{1,2}):(\d{2}) ?(am|pm)/i.exec(String(when || ''));
+  if (!m) return NaN;
+  const mo = 'janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[2].toLowerCase()) / 3, h = (Number(m[3]) % 12) + (/pm/i.test(m[5]) ? 12 : 0);
+  const at = (y) => Date.UTC(y, mo, Number(m[1]), h, Number(m[4])) - 36e5 * 10, n = now == null ? Date.now() : now, y = new Date(n + 36e6).getUTCFullYear();
+  return at(y) > n + 864e5 ? at(y - 1) : at(y);
+}
 function _ikTextCardHtml(t, d, block, now) {
-  const sms = t.sms || { name: '', last3: '' }, when = d && d.forms && d.forms.student ? Date.parse(d.forms.student.when) : NaN;
-  const days = isFinite(when) ? Math.floor(((now == null ? Date.now() : now) - when) / 864e5) : 0;
+  const sms = t.sms || { name: '', last3: '' }, n = now == null ? Date.now() : now;
+  const when = d && d.forms && d.forms.student ? _ikWhenMs(d.forms.student.when, n) : NaN;
+  const days = isFinite(when) ? Math.floor((n - when) / 864e5) : 0;
   return `<div class="card ik-text"><div class="lk-svc-t">${esc('Text ' + sms.name + ' now?')}</div>${_ikKv('Parent', esc(sms.name))}${_ikKv('Mobile', esc('ends in ' + sms.last3))}`
-    + (days > 3 ? _ikKv('Warning', esc('Form is ' + days + ' days old')) : '')
+    + (days > 3 ? `<div class="ik-line ik-warn">${esc('Form sent ' + days + ' days ago')}</div>` : '')
     + `<p class="lk-sub lk-mt">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` + (block ? `<div class="lk-d">${esc(block)}</div>` : '')
     + `<div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_ikTextHide()">Not now</button><button type="button" class="btn btn-primary"${block ? ' disabled' : ''} onclick="_ikTextOpen()">Send the text</button></div></div>`;
 }
