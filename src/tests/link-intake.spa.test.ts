@@ -5,7 +5,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
-  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge',
+  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikWhenMs', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
   '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
@@ -118,10 +118,10 @@ describe('module gating', () => {
     const e = makeEnv({ fresh: () => ({ ...ST({ rev: 3 }), dates: [{ date: '2026-10-09', takenAt: iso(1000), counts: { needsYou: 0 } }] }) });
     await e.fns._ikLoad(false);
     expect(e.fns._intakeOn()).toBe(false);
-    expect(strip(e.fns._ikPageHtml())).toContain("Console out of date: use the console's Youth intake tab");
+    expect(strip(e.fns._ikPageHtml())).toContain('Console out of date: use New youth on the console PC');
     expect(e.calls.fresh.some((p: string) => p.includes('date='))).toBe(false);
     // and the Save reason says the same
-    expect(e.fns._ikSaveBlock(DET(), LIST(), ST({ rev: 3 }))).toBe("Console out of date: use the console's Youth intake tab");
+    expect(e.fns._ikSaveBlock(DET(), LIST(), ST({ rev: 3 }))).toBe('Console out of date: use New youth on the console PC');
   });
   it('the tab is remembered per device; logout drops the intake state', () => {
     const storage = new Map([['ysc.intakeTab', 'consent']]);
@@ -138,7 +138,7 @@ describe('chips per action status (§7.5)', () => {
   const chip = (a: any, st: any = ST()) => makeEnv().fns._ikChip({ actions: [a] }, st);
   it('pending / claimed / answer pending', () => {
     expect(chip(act({}))).toEqual({ label: 'Pending', tone: 'wait', line: 'Waiting for the console.' });
-    expect(chip(act({}), ST({ online: false, lastSeenAt: iso(30_000) })).line).toMatch(/^Waiting for the console\. Console last seen \d+:\d\d (am|pm)\.$/);
+    expect(chip(act({}), ST({ online: false, lastSeenAt: iso(30_000) })).line).toBe('Waiting for the console.'); // F-47(c): no per-row last seen
     expect(chip(act({ status: 'claimed' })).line).toBe('Sending to Elvanto…');
     expect(chip(act({ type: 'intakeAnswer' }))).toEqual({ label: 'Pending', tone: 'wait', line: 'Updating plan…' });
   });
@@ -147,11 +147,12 @@ describe('chips per action status (§7.5)', () => {
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toEqual({ label: 'Answers saved', tone: 'ok', line: 'Answers saved' });
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), act({ status: 'shadowed' })] }, ST()).label).toBe('Practice');
   });
-  it('sent, already, unclear, refused (detail wins, else the reason), shadowed', () => {
+  it('sent, already, unclear, refused (reason wins, else the detail), shadowed', () => {
     expect(chip(act({ status: 'sent', resultAt: iso(1000) })).label).toBe('Saved');
     expect(chip(act({ status: 'sent', reason: 'already' })).line).toBe('Already in Elvanto');
     expect(chip(act({ status: 'unclear' }))).toEqual({ label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" });
-    expect(chip(act({ status: 'refused', reason: 'plan-changed', detail: 'The console said this.' })).line).toBe('The console said this.');
+    expect(chip(act({ status: 'refused', reason: 'plan-changed', detail: 'The console said this.' })).line).toBe('Something changed in Elvanto. Review the family again.');
+    expect(chip(act({ status: 'refused', reason: 'weird', detail: 'The console said this.' })).line).toBe('The console said this.');
     expect(chip(act({ status: 'refused', reason: 'plan-changed' })).line).toBe('Something changed in Elvanto. Review the family again.');
     expect(chip(act({ status: 'refused', reason: 'chain-not-done' })).line).toBe('Finish saving the family before the parent text.');
     expect(chip(act({ status: 'shadowed' }))).toEqual({ label: 'Practice', tone: 'prac', line: 'Practice: nothing sent' });
@@ -175,10 +176,10 @@ describe('Save disabled reasons', () => {
     expect(nv([])).toBe('Sort the lines at the top first.');
     expect(nv([{ role: 'student', text: 'Same person?' }, { role: 'student', text: 'Fix the flagged items' }])).toBe('Answer the question and fix the flagged answers first.');
     expect(nv([{ role: 'student', text: 'Profile archived' }])).toBe('Unarchive the profile first.');
-    expect(nv([{ role: 'pair', text: 'Waiting for parent form' }])).toBe('Waiting for parent form.');
+    expect(nv([{ role: 'pair', text: 'Waiting for parent form' }])).toBe('Sort the line at the top first.'); // F-17: the hold is already at the top
   });
   it('an answer still pending', () => { expect(block(DET({ actions: [act({ type: 'intakeAnswer' })] }))).toBe('Updating plan…'); });
-  it('stale plan', () => { expect(block(DET(), LIST({ stale: true }))).toBe('Plan is over 2 hours old. Refresh first.'); });
+  it('stale plan', () => { expect(block(DET(), LIST({ stale: true }))).toBe('Over 2 hours old. Tap Refresh.'); });
   it('an open save row for this family', () => {
     expect(block(DET({ actions: [act({ status: 'claimed' })] }))).toBe('Waiting for the console');
     expect(block(DET({ actions: [act({ type: 'intakeText' })] }))).toBe('Waiting for the console');
@@ -187,7 +188,7 @@ describe('Save disabled reasons', () => {
     const e = makeEnv();
     const h = e.fns._ikFamilyHtml(DET(), LIST({ stale: true }), ST(), e.fns._ikSeed(DETAIL()));
     expect(h).toMatch(/<button[^>]*disabled[^>]*onclick="_ikSaveOpen\(\)"/);
-    expect(h).toContain('Plan is over 2 hours old. Refresh first.');
+    expect(h).toContain('Over 2 hours old. Tap Refresh.');
     expect(h).toContain('onclick="_ikPair(false)"'); // the answer controls are still there
     expect(h).not.toMatch(/disabled[^>]*onclick="_ikPair/);
   });
@@ -236,7 +237,7 @@ describe('banner lines and stale greying', () => {
     expect(b(ST({ caps: { intakeSave: 'live', consentSave: 'shadow' } }), LIST(), 'consent')).not.toContain('Practice');
   });
   it('stale age, cut, answers last changed in the console', () => {
-    expect(b(ST(), LIST({ stale: true, takenAt: iso((2 * 60 + 10) * 60_000 + 5000) }))).toContain('Plan 2 h 10 m old. Refresh first.');
+    expect(b(ST(), LIST({ stale: true, takenAt: iso((2 * 60 + 10) * 60_000 + 5000) }))).toContain('Over 2 hours old. Tap Refresh.');
     expect(b(ST(), LIST({ cut: true }))).toContain('Some forms were cut off: every family needs a look');
     expect(b(ST(), LIST({ inputs: { from: 'console', at: iso(60_000) } }))).not.toContain('Answers last changed'); // dropped 2026-10-14
   });
@@ -351,10 +352,11 @@ describe('results and consents', () => {
       { key: 'category:parent:' + P(2), action: 'category', role: 'parent', outcome: 'unconfirmed', at: null },
       { key: 'x', action: 'note', role: 'parent', outcome: 'not-sent', at: null }] });
     const h = strip(e.fns._ikResultHtml(a, DETAIL(), ST()));
-    expect(h).toMatch(/Approve the parent form: Saved \d+:\d\d (am|pm)/);
-    expect(h).toContain('Set Jo to Affiliate: Not sure it saved');
-    expect(h).toContain('note: Not sent: Stopped: not confirmed.');
-    expect(strip(e.fns._ikResultHtml(act({}), DETAIL(), ST({ online: false })))).toMatch(/Pending \(console last seen/);
+    expect(h).toContain('Made 1 change'); // F-15: plain past-tense lines, counted
+    expect(h).toMatch(/Approved Jo's form \d+:\d\d (am|pm)/);
+    expect(h).toContain('Not sure it saved: Set Jo to Affiliate');
+    expect(h).toContain('Not sent: Add a note to the parent');
+    expect(h).toContain('Stopped: not confirmed.');
   });
   it('the consent detail shows the outcome with no ruling codes; the D26 and D20(b) sentences are on the Save sheet only', () => {
     const e = makeEnv({ fresh: () => Promise.reject(new Error('x')) });
@@ -407,7 +409,8 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     const h = raw(d), t = strip(h);
     expect(h).toContain('class="ik-flag"');
     expect(t).toContain("Parent's mobile on the student form doesn't match the Mobile on the parent form");
-    expect(h).toContain("onclick=\"_ikKeep(0,0)\">Keep as is (text goes to the parent form's mobile)");
+    expect(h).toContain('onclick="_ikKeep(0,0)">Keep as is<'); // F-41: short button, the explanation is a line below
+    expect(h).toContain(`<div class="ik-line">The text goes to the parent form's mobile.</div>`);
     expect(t).toContain('Student: Fix the answers marked below in the console or Elvanto.');
     expect(t).toContain("Matched with Jo Nguyen's parent form (mobiles differ).");
     const e = makeEnv(), a = e.fns._ikSeed(d);
