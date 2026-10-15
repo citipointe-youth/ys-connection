@@ -14,33 +14,39 @@ describe('F-01 SPA pickers', () => {
   });
 
   it('Bus screens never use the pick list', () => {
-    const bus = html.slice(html.indexOf('/* ── BUS MODULE ── */'));
-    expect(bus.length).toBeGreaterThan(1000);
-    expect(bus).not.toContain('pick=1');
+    const names = [...html.matchAll(/function ((?:_bus|renderBus|bus)\w*)\(/g)].map((m) => m[1]!);
+    expect(names.length).toBeGreaterThan(50);
+    for (const n of new Set(names)) expect(extractFn(html, n), n).not.toContain('pick=1');
   });
 
   it('"Who are you?" lists only leaders on this login\'s bracket and gender', () => {
     const prelude = `
       var S = { user: null };
       var LINK = { ldrs: null };
-      function _juniorMin() { return 6; }
+      var gets = [];
+      var API = { get: (p) => { gets.push(p); return new Promise(() => {}); } };
       function esc(x) { return String(x); }
-      ${extractFn(html, 'quadGrades')}
-      ${extractFn(html, 'quadGender')}
-      ${extractFn(html, 'userGrades')}`;
-    const f = loadFns(['_leaderPickable', '_lkIamListHtml'], prelude + '\nvar setUser = (u) => { S.user = u; };', ['_lkIamListHtml', 'setUser']);
+      function _lkIamFilter() {}
+      var set = (u, pick) => { S.user = u; LINK.iamPick = pick; };`;
+    const f = loadFns(['_lkIamListHtml'], prelude, ['_lkIamListHtml', 'set', 'gets']);
     const ls = [
-      { id: 'jg', fullName: 'Junior Girl', gender: 'female', grades: [8], active: true },
-      { id: 'sg', fullName: 'Senior Girl', gender: 'female', grades: [11], active: true },
-      { id: 'ng', fullName: 'No Gender', gender: null, grades: [8], active: true },
-      { id: 'eg', fullName: 'No Grades', gender: 'female', grades: [], active: true },
-      { id: 'jb', fullName: 'Junior Boy', gender: 'male', grades: [8], active: true },
+      { id: 'jg', fullName: 'Junior Girl', active: true },
+      { id: 'sg', fullName: 'Senior Girl', active: true },
+      { id: 'ng', fullName: 'No Gender', active: true },
     ];
-    f.setUser({ role: 'quad', quad: 'g79' });
+    // quad: first call asks the server for its pick list
+    f.set({ role: 'quad', quad: 'g79' }, undefined);
+    f._lkIamListHtml('', ls);
+    expect(f.gets).toEqual(['/leaders?pick=1']);
+    // once loaded, only the server's in-scope ids are listed
+    f.set({ role: 'quad', quad: 'g79' }, new Set(['jg']));
     const out = f._lkIamListHtml('', ls);
     expect(out).toContain('Junior Girl');
-    for (const n of ['Senior Girl', 'No Gender', 'No Grades', 'Junior Boy']) expect(out).not.toContain(n);
-    f.setUser({ role: 'admin' });
+    expect(out).not.toContain('Senior Girl');
+    expect(out).not.toContain('No Gender');
+    // admin: never filtered, never fetches
+    f.set({ role: 'admin' }, undefined);
     expect(f._lkIamListHtml('', ls)).toContain('No Gender');
+    expect(f.gets.length).toBe(1);
   });
 });

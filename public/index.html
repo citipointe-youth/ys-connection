@@ -10674,24 +10674,20 @@ function _lkIamPick(then) {
 }
 function _lkIamListHtml(q, ls) {
   const toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false && _leaderPickable(l))
+  // F-01 (FX3): a grade/quad login may pick only its own leaders: the server's /leaders?pick=1 list (leaderInScope),
+  // loaded once per session into LINK.iamPick, then the open list repaints. Admin, director and junior leader: unchanged.
+  const u = S.user, scoped = !!u && (u.role === 'grade' || u.role === 'quad');
+  if (scoped && LINK.iamPick === undefined) {
+    LINK.iamPick = null;
+    API.get('/leaders?pick=1').then((p) => { LINK.iamPick = new Set((Array.isArray(p) ? p : []).map((l) => l.id)); _lkIamFilter(''); }, () => { LINK.iamPick = undefined; });
+  }
+  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false && (!scoped || !LINK.iamPick || LINK.iamPick.has(l.id)))
     .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
   return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
     : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found.'}</p>`;
 }
 function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
-// F-01 (FX3): the client mirror of the server's leaderInScope, so "Who are you?" lists only this login's own
-// leaders whatever list LINK.ldrs holds. Admin/director: anyone; junior leader: itself; grade/quad: same gender
-// (none fails) and a grade in the login's bracket (none fails). Keep in sync with access-control.ts leaderInScope.
-function _leaderPickable(l) {
-  const u = S.user;
-  if (!u || u.role === 'admin' || u.role === 'director') return true;
-  if (u.role === 'leader') return l.id === u.leaderId;
-  const gs = u.role === 'quad' ? quadGrades(u.quad) : userGrades(u);
-  const g = u.role === 'quad' ? quadGender(u.quad) : (u.gender || null);
-  return !!l.gender && (!g || l.gender === g) && (l.grades || []).some((x) => gs.includes(x));
-}
 // The app's leaders, loaded once (the "I am" names come from it). A failed load keeps nothing and gives [].
 function _lkLoadLeaders() {
   if (LINK.ldrs) return Promise.resolve(LINK.ldrs);
