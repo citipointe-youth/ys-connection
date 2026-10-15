@@ -10853,7 +10853,8 @@ function _lkFormHtml() {
     const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
     body = `<div class="fg"><label class="fl">Who was there</label><div class="lk-lq-list">${(g.members || []).map((m) => {
         const on = !!f.ticks[m.personId];
-        return `<div class="lk-lq-row" role="button" onclick="_lkRfTick('${esc(m.personId)}')"><span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
+        // F-40: a real checkbox for screen readers and keyboards (Space / Enter tick it).
+        return `<div class="lk-lq-row" role="checkbox" aria-checked="${on}" tabindex="0" onclick="_lkRfTick('${esc(m.personId)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${esc(m.personId)}')}"><span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
       }).join('') || '<p class="lk-sub">No members.</p>'}</div></div>
       <div class="fg"><label class="fl">Guests</label><input type="number" class="fi" min="0" max="99" inputmode="numeric" value="${esc(f.guests)}" oninput="_lkRfGuests(this.value)"></div>
       <div class="fg"><label class="fl">Service</label><select class="fs" onchange="_lkRfSvc(this.value)">

@@ -268,3 +268,15 @@ describe('F-38 member remove: Cancel remove while it can be cancelled, Add back 
     expect(h.fns._lkMembersHtml(L.groups[0])).toMatch(/_lkMemKeep\([^)]*\)">Cancel remove</);
   });
 });
+
+describe('F-40(b) report tick rows are checkboxes', () => {
+  it('role=checkbox, aria-checked follows the tick, focusable, Space/Enter handler', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    h.fns._lkRfTick(P(61));
+    const form = h.fns._lkFormHtml();
+    expect(form).toContain(`role="checkbox" aria-checked="true" tabindex="0" onclick="_lkRfTick('${P(61)}')"`);
+    expect(form).toContain(`role="checkbox" aria-checked="false" tabindex="0" onclick="_lkRfTick('${P(63)}')"`);
+    expect(form).toContain(`onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${P(61)}')}"`);
+  });
+});
