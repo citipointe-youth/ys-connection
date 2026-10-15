@@ -15,19 +15,19 @@ const extra = (src: string) => (src.match(/^function (_ik[A-Za-z0-9]+)\(/gm) || 
 const NEW = ['_ikNameChanges', '_ikWhenMs', '_ikResultLine'].filter((n) => extra(HTML).includes(n));
 
 function env(o: { tab?: string; date?: string | null } = {}) {
-  const calls = { modals: [] as string[], timers: [] as number[], loads: 0 };
+  const calls = { modals: [] as string[], timers: [] as number[], cbs: [] as Array<() => void>, loads: 0, vis: 'visible' };
   const prelude = `
     const __calls = globalThis.__g1;
     const S = { user: { id: 'u1', role: 'admin' }, page: 'link-intake', settings: { ministryConfig: { modules: { intakeAdmin: 'on' } } } };
     const LINK = { ik: null, status: null, adm: { shadow: null, sErr: null, sDate: '2026-10-09' } };
     ${CONSTS}
     const localStorage = { getItem: () => null, setItem() {} };
-    const document = { visibilityState: 'visible' };
+    const document = { get visibilityState() { return __calls.vis; } };
     const modal = (h) => __calls.modals.push(h);
     const icS = (k) => '<svg data-ic="' + k + '"></svg>';
     const helpTip = () => '';
     const navPush = () => {};
-    const setTimeout = (f, ms) => { __calls.timers.push(ms); return 1; };
+    const setTimeout = (f, ms) => { __calls.timers.push(ms); __calls.cbs.push(f); return 1; };
     const clearTimeout = () => {};
     const _ikDraw = () => {};
     const _ikLoad = () => { __calls.loads++; };
@@ -211,5 +211,26 @@ describe('F-47(c) no per-row "console last seen" (the banner already says it)', 
     const a = { id: P(9), type: 'intakeSave', status: 'pending' };
     expect(f._ikChip({ actions: [a] }, off).line).toBe('Waiting for the console.');
     expect(strip(f._ikResultHtml(a, null, off))).toBe('Pending');
+  });
+});
+
+describe('GAP-2 a pending intake row polls every 5 s, and keeps polling after the phone was away', () => {
+  it('polls at 5 s while something is pending', () => {
+    const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
+    I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
+    f._ikSchedule();
+    expect(calls.timers).toContain(5000);
+  });
+  it('a poll that fires while the app is hidden re-arms, so the result shows within ~5 s of coming back (was the 60 s tick)', () => {
+    const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
+    I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
+    f._ikSchedule();
+    calls.vis = 'hidden';
+    calls.cbs.shift()!();
+    expect(calls.loads).toBe(0);
+    expect(calls.cbs.length).toBe(1); // re-armed
+    calls.vis = 'visible';
+    calls.cbs.shift()!();
+    expect(calls.loads).toBe(1);
   });
 });

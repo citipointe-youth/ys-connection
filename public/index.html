@@ -12555,14 +12555,20 @@ function _ikAfterLoad() {
   const det = I.det, key = det && det.row && det.row.key;
   if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer'])) { delete I.resend[key]; _ikAnswerSend(false); }
 }
-// Every 10 s while something of mine is Pending or a Refresh is waiting; otherwise the 60 s link tick reloads.
+// Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
   const I = _ik();
   if (I.poll) { clearTimeout(I.poll); I.poll = null; }
   if (S.page !== 'link-intake') return;
   const busy = !!I.ref || (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
     || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0;
-  if (busy) I.poll = setTimeout(() => { I.poll = null; if (_ik() === I && S.page === 'link-intake' && document.visibilityState !== 'hidden') _ikLoad(true); }, I.ref ? 4000 : 10000); // S5: a Refresh ask's bar moves every 4 s
+  // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
+  // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
+  if (busy) I.poll = setTimeout(() => {
+    I.poll = null;
+    if (_ik() !== I || S.page !== 'link-intake') return;
+    if (document.visibilityState === 'hidden') _ikSchedule(); else _ikLoad(true);
+  }, I.ref ? 4000 : 5000); // S5: a Refresh ask's bar moves every 4 s
   for (const k of ['forms', 'unlinked', 'mismatches']) { const x = I.lk && I.lk[k]; if (x && (x.st === 'waiting' || x.st === 'working') && !x.poll) _ikLkPoll(k); }
   if (!I.fixPoll) _ikFixPoll();
 }
