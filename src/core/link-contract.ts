@@ -26,7 +26,13 @@ export const LINK_CONTRACT_VERSION = 1;
 // Run 2026-10-15b (S5), optional only, no rev bump: the claim reply's `progress: true` says this app takes POST
 // /sync/push/progress (how far a lookup, the flows read or an intake ask has got). An older app sends no flag, so the
 // console never posts it; an older console ignores the flag. Progress is a hint: a lost or refused post changes nothing.
-export const LINK_REV = 6;
+// LINK_REV 7 (fix round 2026-10-16, contract C-1), optional only: consentLookup mismatch rows may carry `linked` (F-36: the
+// console linked that form itself; fix it in Elvanto), and a removeFromFlowStep `sent` result may carry `note` (F-37:
+// 'failed' = the remove landed but the Elvanto note did not). The console sends either only when the claim reply says
+// linkRev >= 7; an older app would 400 on the keys. The app stores note 'failed' as the row's detail (NOTE_FAILED_DETAIL).
+export const LINK_REV = 7;
+/** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
+export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
@@ -170,7 +176,8 @@ const chain = { steps: z.array(ResultStep).max(20).optional(), stop: ResultStop.
 // X19: an intake row's sent-log key is the console's step key (up to 400); the other types stay within 200 in practice.
 const LogKey = StepKey;
 export const ResultItem = z.discriminatedUnion('outcome', [
-  z.object({ id: Uuid, outcome: z.literal('sent'), sentLogKey: LogKey, reportId: Uuid.optional(), personId: Uuid.optional(), ...chain }),
+  z.object({ id: Uuid, outcome: z.literal('sent'), sentLogKey: LogKey, reportId: Uuid.optional(), personId: Uuid.optional(),
+    note: z.enum(['sent', 'failed']).optional(), ...chain }), // note: rev 7 (C-1, F-37)
   z.object({ id: Uuid, outcome: z.literal('already'), ...chain }),
   z.object({ id: Uuid, outcome: z.literal('refused'), reason: z.enum(REASONS), detail: Detail, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('unclear'), sentLogKey: LogKey, detail: Detail, ...chain }),
@@ -275,7 +282,8 @@ export const ConsentFormRow = z.object({ subId: Uuid, personId: Uuid.nullable(),
 const ConsentSide = z.object({ consentDate: Dmy40, total: Dmy40, optOuts: OptOuts }).strict();
 export const CONSENT_DIFFS = ['consent date', 'TOTAL non-consent date', 'opt-outs'] as const;
 export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: Cut(120), submitted: Ymd.nullable(),
-  diffs: z.array(z.enum(CONSENT_DIFFS)).min(1).max(3), form: ConsentSide, profile: ConsentSide }).strict();
+  diffs: z.array(z.enum(CONSENT_DIFFS)).min(1).max(3), form: ConsentSide, profile: ConsentSide,
+  linked: z.boolean().optional() }).strict(); // linked: rev 7 (C-1, F-36)
 // Run 2026-10-15b (L6): a consent form with no person in Elvanto, or one the console linked (linked = that person).
 export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend({ names: z.array(Cut(80)).max(4),
   linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable() }).strict();
