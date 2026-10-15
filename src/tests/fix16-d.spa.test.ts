@@ -166,3 +166,30 @@ describe('F-28 a past service is read-only for check-out', () => {
     expect(f._lkRowHtml(p)).toContain('Check out');
   });
 });
+
+describe('F-35 refusals: "Tell the admin." for non-admin logins', () => {
+  const prelude = `
+    let S = { user: { role: 'grade' } };
+    function _lkStatusText(row) { return row.t; }
+    function esc(s) { return String(s); }
+    function icS() { return ''; }
+    function role(r) { S.user.role = r; }`;
+  const f = loadFns(['_lkStatusHtml'], prelude, ['_lkStatusHtml', 'role']);
+  const h = (t: string) => f._lkStatusHtml({ status: 'refused', t });
+  it('grade / quad / leader logins', () => {
+    for (const r of ['grade', 'quad', 'leader']) {
+      f.role(r);
+      expect(h("This isn't connected yet. Do it in Elvanto.")).toBe("This isn't connected yet. Tell the admin.");
+      expect(h('Too late to send. Do it in Elvanto.')).toBe('Too late to send. Tell the admin.');
+      expect(h('Do this in Elvanto for now.')).toBe('Tell the admin.');
+      expect(h('This step changed in Elvanto. Do it there.')).toBe('This step changed in Elvanto. Tell the admin.');
+      expect(h('Edit this report in Elvanto.')).toBe('Tell the admin.');
+    }
+  });
+  it('admin / director keep "Do it in Elvanto."', () => {
+    for (const r of ['admin', 'director']) {
+      f.role(r);
+      expect(h('Too late to send. Do it in Elvanto.')).toBe('Too late to send. Do it in Elvanto.');
+    }
+  });
+});

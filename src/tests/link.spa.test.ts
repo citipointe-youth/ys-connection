@@ -393,7 +393,7 @@ describe('F1.2 queue', () => {
     expect(q[0].payload.personId).toBe(P(1));
     expect(h.calls.toasts).toContain('Too many taps. Wait a minute.');
     const row = h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[1]);
-    expect(strip(row)).toContain('Do this in Elvanto for now.');
+    expect(strip(row)).toContain('Tell the admin.'); // fix16 F-35: a grade login is told to pass it on
     expect(strip(row)).toContain('Check in');
   });
   it('network errors back off 5 s, 15 s, 45 s, then 60 s; the pill turns red after the 45 s step fails', async () => {
@@ -1639,7 +1639,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
-    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Do it there.');
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Tell the admin.'); // fix16 F-35
     expect(h.calls.toasts).toEqual([]);
     const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
     k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);

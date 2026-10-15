@@ -9951,7 +9951,11 @@ function _lkStatusText(row, lastSeen) {
 }
 // The status line as HTML: the contract's tick is the SVG check icon (the SPA has no Unicode symbols).
 function _lkStatusHtml(row, lastSeen) {
-  const t = _lkStatusText(row, lastSeen);
+  let t = _lkStatusText(row, lastSeen);
+  // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
+  const role = S.user && S.user.role;
+  if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.');
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
