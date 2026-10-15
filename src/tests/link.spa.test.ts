@@ -50,6 +50,7 @@ function makeEnv(e: Partial<Env> = {}) {
     removeItem: (k: string) => { if (env.failStorage) throw new Error('blocked'); env.storage.delete(k); },
   };
   const prelude = `
+    const navPush = () => {};
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
       settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } };
     let LINK = _lkFresh();

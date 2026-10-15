@@ -139,9 +139,9 @@ describe('chips per action status (§7.5)', () => {
     expect(chip(act({ status: 'claimed' })).line).toBe('Sending to Elvanto…');
     expect(chip(act({ type: 'intakeAnswer' }))).toEqual({ label: 'Pending', tone: 'wait', line: 'Updating plan…' });
   });
-  it('a planned answer is not shown as Saved; the older Save behind it shows', () => {
+  it('a sent answer reads Answers saved, never Saved; the older Save behind it shows', () => {
     const e = makeEnv();
-    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toBe(null);
+    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toEqual({ label: 'Answers saved', tone: 'ok', line: 'Answers saved' });
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), act({ status: 'shadowed' })] }, ST()).label).toBe('Practice');
   });
   it('sent, already, unclear, refused (detail wins, else the reason), shadowed', () => {
