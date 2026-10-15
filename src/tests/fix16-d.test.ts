@@ -84,7 +84,7 @@ describe('F-37: GET /link/actions carries note failed', () => {
 });
 
 describe('GAP-3: any pending link row asks the console to hurry', () => {
-  const svc = (pending: { type: string }[]) => makeIntakeService({
+  const svc = (pending: { type: string; reason?: string | null }[]) => makeIntakeService({
     link: { listActions: async (f: any) => pending.filter((r) => !f.types || f.types.includes(r.type)) } as never,
     intake: { purge: async () => undefined, viewedAt: async () => null, dates: async () => [] } as never,
     settings: {} as never, status: async () => ({}) as never, now: () => new Date('2026-10-16T08:00:00Z') });
@@ -92,6 +92,12 @@ describe('GAP-3: any pending link row asks the console to hurry', () => {
   it('a pending checkIn gives hurry true, intake on or off', async () => {
     expect((await svc([{ type: 'checkIn' }]).hint(S('on'))).hurry).toBe(true);
     expect((await svc([{ type: 'checkIn' }]).hint(S('off')))).toEqual({ mode: 'off', hurry: true, refresh: [] });
+  });
+  it('r1: awaiting-approval rows (pending for days) do not hurry', async () => {
+    const w = [{ type: 'checkIn', reason: 'awaiting-approval' }];
+    expect((await svc(w).hint(S('on'))).hurry).toBe(false);
+    expect((await svc(w).hint(S('off'))).hurry).toBe(false);
+    expect((await svc([...w, { type: 'checkIn', reason: null }]).hint(S('on'))).hurry).toBe(true);
   });
   it('nothing pending: no hurry', async () => {
     expect((await svc([]).hint(S('on'))).hurry).toBe(false);
