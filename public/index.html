@@ -10483,7 +10483,9 @@ function _lkRowHtml(p) {
   if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(Date.now()-(LINK.doorAt||0)>=600)_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
-  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
+  // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
+  const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc), past = !!sv && sv.ymd < _lkSvcDay();
+  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;

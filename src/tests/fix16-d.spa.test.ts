@@ -146,3 +146,23 @@ describe('F-13 the pill', () => {
     expect(f._lkPill()).toContain('All saved');
   });
 });
+
+describe('F-28 a past service is read-only for check-out', () => {
+  const prelude = `
+    let LINK = { svc: 'S', services: [], refusals: {} };
+    function _lkSvcDay() { return '2026-10-16'; }
+    function _lkCapOff() { return false; }
+    function _lkStatusTone() { return ''; }
+    function _lkStatusHtml() { return ''; }
+    function _lkLastSeen() { return ''; }
+    function esc(s) { return String(s); }
+    function day(d) { LINK.services = [{ serviceTimeId: 'S', ymd: d }]; }`;
+  const f = loadFns(['_lkRowHtml'], prelude, ['_lkRowHtml', 'day']);
+  const p = { personId: 'tom', name: 'Tom', grade: 9, checkedIn: true, action: { status: 'sent', type: 'checkIn' }, mine: false };
+  it('Fri 9 Oct: no Check out; today: Check out', () => {
+    f.day('2026-10-09');
+    expect(f._lkRowHtml(p)).not.toContain('Check out');
+    f.day('2026-10-16');
+    expect(f._lkRowHtml(p)).toContain('Check out');
+  });
+});

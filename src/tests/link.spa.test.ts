@@ -269,7 +269,7 @@ describe('F1.1 _lkBanner', () => {
 // ── F1.2 the phone queue ──
 function door(h: ReturnType<typeof makeEnv>, people: any[] = [], leaders: any[] = []) {
   const L = h.get().LINK;
-  L.services = [SVC]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders };
+  L.services = [{ ...SVC, ymd: h.fns._lkSvcDay() }]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders }; // fix16 F-28: today, so Check out shows
   L.okDay = { [SVC.serviceTimeId]: true }; // B9: the "Not today" confirm is tested on its own
 }
 
