@@ -2403,7 +2403,7 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'Form Approve & Consent', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -7681,13 +7681,13 @@ function _setupFlowHiddenHtml(md) {
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
     const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The Form Approve & Consent screen is not changed.')}</label>
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The New youth & consent screen is not changed.')}</label>
       <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
-  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Form Approve & Consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
+  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">New youth & consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
       <select class="fs" id="setup-intakeAdmin" onchange="_setupSet('modules.intakeAdmin', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
 }
 function _setupSetModule(key, val) {
