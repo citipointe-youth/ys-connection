@@ -12195,12 +12195,13 @@ function _ikFieldLabel(k) {
 
 // ── Save, one step, the parent text, a consent save: each its own confirm sheet, each its own outbox row. ──
 // F-14: the Save approves each form onto its linked profile and the form wins, so name each name field that changes
-// ("Surname: Strange [arrow] LEstrange"; the arrow is the SVG icon). [label, was, now] each. Nothing for a new profile.
-function _ikNameChanges(d, choices) {
-  const out = [], F = (d && d.forms) || {}, P = (d && d.profiles) || {};
+// ("Surname: Strange [arrow] LEstrange"; the arrow is the SVG icon). [label, was, now] each. Only while this Save approves
+// that form onto the profile (a todo 'approve' step): an already approved form or a new profile changes no name.
+function _ikNameChanges(d) {
+  const out = [], F = (d && d.forms) || {}, P = (d && d.profiles) || {}, todo = _ikTodo(d);
   ['student', 'parent'].forEach((role) => {
-    const f = F[role], p = P[role], v = ((d && d.verdicts) || []).find((x) => x.role === role);
-    if (!f || !p || !p.name || (v && ((choices || {})[v.subId] || v.chosen) === 'new')) return;
+    const f = F[role], p = P[role];
+    if (!f || !p || !p.name || !todo.some((s) => s.action === 'approve' && s.role === role)) return;
     const first = _ikVal(f, 'first').trim(), last = _ikVal(f, 'last').trim(), was = String(p.name).trim(), now = [first, last].filter(Boolean).join(' ');
     if (!now || was === now) return;
     const pre = role === 'parent' ? 'Parent ' : '', lab = (w) => pre ? pre + w.toLowerCase() : w;
@@ -12222,7 +12223,7 @@ function _ikSaveOpen() {
   I.sheet = { type: consent ? 'consentSave' : 'intakeSave', key: det.row.key, keys: steps.map((s) => s.key), one: false };
   modal(_ikSheetHtml(consent ? 'Save ' + det.row.title + ' to Elvanto?' : 'Save ' + det.row.title + "'s family to Elvanto?", steps,
     consent ? (det.detail.outcome === 'No reply: assume consent' ? _ikD26() : '') : 'The parent text is separate.', 'Save',
-    consent ? [] : _ikNameChanges(det.detail, _ikAns().choices)));
+    consent ? [] : _ikNameChanges(det.detail)));
 }
 function _ikOneOpen(i) {
   const I = _ik(), det = I.det, s = det && _ikAlone(det.detail)[i];

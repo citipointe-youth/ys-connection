@@ -54,7 +54,7 @@ const DETAIL = (o: any = {}) => ({ key: P(1), status: 'ready', title: 'Tom LEstr
   match: { kind: 'exact', parentSub: P(2), options: [] },
   forms: { student: form(P(1)), parent: form(P(2), { values: { first: 'Ree', last: 'LEstrange', mobile: '0412999111', gender: 'Female' } }) },
   verdicts: [], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: { id: P(6), name: 'Ree Strange', archived: false } },
-  grade: null, gender: null, age: null, steps: [step({ key: 'approve:student:' + P(1) })], extras: [], kept: [], dropped: [], links: [], ...o });
+  grade: null, gender: null, age: null, steps: [step({ key: 'approve:student:' + P(1) }), step({ key: 'approve:parent:' + P(2), role: 'parent' })], extras: [], kept: [], dropped: [], links: [], ...o });
 const DET = (d: any = DETAIL()) => ({ row: { key: P(1), status: 'ready', title: 'Tom LEstrange' }, detail: d, unreadable: false, actions: [] });
 const LIST = (o: any = {}) => ({ date: '2026-10-09', takenAt: new Date().toISOString(), stale: false, cut: false, rows: [], ...o });
 
@@ -67,10 +67,17 @@ describe('F-14 Save sheet names each name field that changes', () => {
     expect(h).toContain('Surname: Strange <svg data-ic="arrr"></svg> LEstrange');
     expect(h).toContain('Parent surname: Strange <svg data-ic="arrr"></svg> LEstrange');
   });
+  it('review r1: no line when the form is already approved (no approve step left), e.g. Tom re-save', () => {
+    const { f } = env();
+    const done = DETAIL({ steps: [step({ key: 'approve:student:' + P(1), state: 'done' }), step({ key: 'approve:parent:' + P(2), role: 'parent', state: 'done' })] });
+    expect(f._ikNameChanges(done, {})).toEqual([]);
+    const parentOnly = DETAIL({ steps: [step({ key: 'approve:parent:' + P(2), role: 'parent' })] });
+    expect(f._ikNameChanges(parentOnly, {})).toEqual([['Parent surname', 'Strange', 'LEstrange']]);
+  });
   it('no line when the names already agree, or when the person gets a new profile', () => {
     const { f } = env();
     expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Tom LEstrange', archived: false }, parent: null } }), {})).toEqual([]);
-    const d = DETAIL({ verdicts: [{ role: 'student', subId: P(1), chosen: 'new' }], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: null } });
+    const d = DETAIL({ steps: [step({ key: 'approveNew:student:' + P(1), action: 'approveNew' })], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: null } });
     expect(f._ikNameChanges(d, {})).toEqual([]);
     expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LEstrange', archived: false }, parent: null } }), {})).toEqual([['First name', 'Thomas', 'Tom']]);
   });
