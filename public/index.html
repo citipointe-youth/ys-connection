@@ -10426,8 +10426,10 @@ function _lkLists() {
   let all = d.people;
   try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
   const list = _lkFilter(all, LINK.q);
+  // F-02: the row just tapped stays where it was for 600 ms, so the next row does not slide under the finger.
+  const held = _lkDoorBusy() ? LINK.doorHeld : null;
   // T7: nobody is listed to check in until a name is typed; the Checked in list always shows.
-  return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn) : [], done: list.filter((p) => p.checkedIn) };
+  return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn || p.personId === held) : [], done: list.filter((p) => p.checkedIn && p.personId !== held) };
 }
 // T7: matches while typing, then the collapsed Checked in list. APP-74: its rows are built only while it is open.
 function _lkListHtml() {
@@ -10460,7 +10462,7 @@ function _lkRowHtml(p) {
   const queued = !!act && act.status === 'queued';
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
-  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkUndo('${pid}')">Undo</button>`;
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!_lkDoorBusy())_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
@@ -10468,11 +10470,16 @@ function _lkRowHtml(p) {
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
 }
+// F-02: every door row ignores taps for 600 ms after a tap (a double tap must not undo, or tick the next row).
+const LK_DOOR_HOLD_MS = 600;
+function _lkDoorBusy() { return Date.now() - (LINK.doorAt || 0) < LK_DOOR_HOLD_MS; }
 // A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
 function _lkCheck(pid, type) {
   try {
     const svc = LINK.svc, s = _lkSvc();
-    if (!svc || !s) return;
+    if (!svc || !s || _lkDoorBusy()) return;
+    LINK.doorAt = Date.now(); LINK.doorHeld = pid;
+    setTimeout(() => { if (!_lkDoorBusy()) _lkRefreshView(); }, LK_DOOR_HOLD_MS + 20);
     delete LINK.refusals[svc + ':' + pid];
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
