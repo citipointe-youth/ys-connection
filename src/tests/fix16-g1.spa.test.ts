@@ -203,3 +203,13 @@ describe('F-46(b) plain words: no "stale", no "Plan", no "Shadow check"', () => 
     expect(f._lkAdmShadowHtml()).not.toContain('Shadow check');
   });
 });
+
+describe('F-47(c) no per-row "console last seen" (the banner already says it)', () => {
+  it('a pending row and a pending result say only that they wait', () => {
+    const { f } = env();
+    const off = ST({ online: false, lastSeenAt: new Date(Date.now() - 36e5).toISOString() });
+    const a = { id: P(9), type: 'intakeSave', status: 'pending' };
+    expect(f._ikChip({ actions: [a] }, off).line).toBe('Waiting for the console.');
+    expect(strip(f._ikResultHtml(a, null, off))).toBe('Pending');
+  });
+});

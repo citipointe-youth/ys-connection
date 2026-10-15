@@ -11830,7 +11830,7 @@ function _ikChip(row, st) {
   if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
-    return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') + _ikSeenLine(st) };
+    return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') }; // F-47: the banner says when it was last seen
   }
   if (a.status === 'sent') return { label: 'Saved', tone: 'ok', line: a.reason === 'already' ? 'Already in Elvanto' : 'Saved' + (a.resultAt ? ' ' + _lkSeen(a.resultAt) : '') };
   if (a.status === 'unclear') return { label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" };
@@ -12024,10 +12024,7 @@ function _ikStepsHtml(d) {
 // The per-step result of a Save (§7.3 "after"): from the outbox row's steps[] and stop.
 function _ikResultHtml(a, d, st) {
   if (!a) return '';
-  if (_ikOpenAct(a)) {
-    const c = st && st.console;
-    return `<div class="lk-st wait">${esc('Pending' + (c && !c.online && c.lastSeenAt ? ' (console last seen ' + _lkSeen(c.lastSeenAt) + ')' : ''))}</div>`;
-  }
+  if (_ikOpenAct(a)) return '<div class="lk-st wait">Pending</div>'; // F-47: the banner says when the console was last seen
   const stop = a.stop && a.stop.text ? a.stop.text : '', xs = a.steps || [];
   const lines = xs.map((x) => {
     const o = x.outcome, t = _ikResultLine(x, d);
