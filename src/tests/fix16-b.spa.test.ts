@@ -15,7 +15,7 @@ function swHarness(st: { sending?: boolean; modal?: string; page?: string; ny?: 
     NY: { sending: !!st.sending },
     S: { page: st.page || 'home', user: { id: 'u1' } },
     LINK: { ik: st.ik || null },
-    _nyRaw: () => st.ny || {},
+    _nyRaw: () => { if ((st as any).nyThrows) throw new Error('boom'); return st.ny || {}; },
     _lkQGet: () => st.queue || [],
     location: { reload: () => reloads.push(1) },
     document: {
@@ -46,6 +46,8 @@ describe('F-07 SW update reload deferral', () => {
     ['an intake detail open', { page: 'link-intake', ik: { det: { row: {} } } }],
     ['intake answers waiting to send', { page: 'link-intake', ik: { debT: 7 } }],
     ['taps still in the link queue', { queue: [{ id: 'x' }] }],
+    ['an unsent intake answer, detail closed, on another page', { page: 'home', ik: { resend: { k: true } } }],
+    ['a check that throws (fail safe)', { page: 'new-youth', ny: null, nyThrows: true }],
   ])('does not reload with %s: shows one "Update ready" banner instead', (_n, st) => {
     const h = swHarness(st as any);
     h.fns._swOnUpdate();
@@ -139,7 +141,9 @@ describe('CSS fixes', () => {
     expect(css).toMatch(/\.c-dnc\{background:#b91c1c/);
     expect(css).toMatch(/\.dnc-banner\{[^}]*background:#b91c1c/);
     expect(css).toMatch(/\.bot-nav a\{flex:1;[^}]*color:var\(--ink-mid\)/);
-    expect(css).toMatch(/\.bot-nav a span\{font-size:11px/);
+    // The "My / Connections" second line carries an inline 7.5px (bottomNavItems, lane C): only !important beats it.
+    expect(html).toContain('<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">');
+    expect(css).toContain('.bot-nav .ni-lbl>span{font-size:11px!important;opacity:1!important}');
   });
   it('F-45 inputs 16 px with a #94a3b8 border; the viewport meta is unchanged', () => {
     expect(css).toMatch(/\.fi,\.fs,\.ft\{[^}]*border:1\.5px solid #94a3b8;[^}]*font-size:16px/);
