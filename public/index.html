@@ -11327,7 +11327,7 @@ function _lkFlowRowHtml(r, today, boss) {
     ? `<label style="display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -10px;cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)"></label>`
     : '<span class="lk-tick-sp"></span>';
   return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-chip)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
-    ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
+    ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}${a.type === 'removeFromFlowStep' && a.status === 'sent' && a.note === 'failed' ? ' · note not saved' : ''}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
 }
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
 function _lkFlowsHtml() {
