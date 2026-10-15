@@ -11,6 +11,7 @@ import type {
 import type { Actor } from '../core/entities/user';
 import { assertCan } from './access-control';
 import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { makeDnc, type Dnc } from './dnc';
 
 export interface FollowupStudent {
   id: string;
@@ -98,10 +99,12 @@ export interface LeaderFollowup {
   leader: { id: string; fullName: string; smsTemplate: string | null };
   latestSvcDate: string | null;
   latestGrpDate: string | null;
-  birthdays: FollowupStudent[];
-  notSeenService: FollowupStudent[];
-  notSeenGroup: FollowupStudent[];
+  birthdays: DncFollowup[];
+  notSeenService: DncFollowup[];
+  notSeenGroup: DncFollowup[];
 }
+/** R1: phones null for a DO NOT CONTACT student unless admin/director. */
+export type DncFollowup = FollowupStudent & { dnc: boolean };
 
 export interface FollowupService {
   leaderFollowup(actor: Actor, leaderId: string): Promise<LeaderFollowup>;
@@ -115,6 +118,7 @@ export function makeFollowupService(
   svcAttRepo: IServiceAttendanceRepository,
   weekRepo: ILifegroupWeekRepository,
   grpAttRepo: ILifegroupAttendanceRepository,
+  dnc: Dnc = makeDnc(), // R1: optional; absent = nobody is DNC
 ): FollowupService {
   return {
     async leaderFollowup(actor, leaderId) {
@@ -127,13 +131,14 @@ export function makeFollowupService(
       // These six reads are mutually independent, so fetch them concurrently instead
       // of chaining round-trips one after another — a sequential chain was holding a
       // DB connection open for the sum of all six latencies instead of the max.
-      const [leader, conns, allStudents, validSessions, weeks, grpAttRecords] = await Promise.all([
+      const [leader, conns, allStudents, validSessions, weeks, grpAttRecords, mark] = await Promise.all([
         leaderRepo.findById(leaderId),
         connRepo.findByLeader(leaderId),
         studentRepo.findAll(),
         sessionRepo.findValid(),
         weekRepo.findAll(),
         grpAttRepo.findAll(),
+        dnc.forActor(actor),
       ]);
       if (!leader) throw new NotFoundError('Leader not found');
       const connectedIds = new Set(conns.map((c) => c.studentId));
@@ -178,7 +183,9 @@ export function makeFollowupService(
         leader: { id: leader.id, fullName: leader.fullName, smsTemplate: leader.smsTemplate },
         latestSvcDate: latestSession ? latestSession.sessionDate : null,
         latestGrpDate,
-        ...lists,
+        birthdays: lists.birthdays.map((s) => mark(s, s.id)),
+        notSeenService: lists.notSeenService.map((s) => mark(s, s.id)),
+        notSeenGroup: lists.notSeenGroup.map((s) => mark(s, s.id)),
       };
     },
   };

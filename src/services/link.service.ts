@@ -16,13 +16,13 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS, Uuid } from '../core/link-contract';
+import { ACTION_TYPES, CONSENT_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
 import {
-  LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStale, LinkStillSending, LinkTooOld,
-  LinkUnavailable,
+  ConsentCheckFirst, LinkBusyRow, LinkDnc, LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStale,
+  LinkStillSending, LinkTooOld, LinkUnavailable,
 } from '../core/errors/link-errors';
 import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
@@ -35,7 +35,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes,
+  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
 
@@ -49,7 +49,12 @@ const REPORT_BACK_DAYS = 14;
 const CONSOLE_RECENT_MS = 600_000;
 const BRISBANE_MS = 10 * 3_600_000;
 
-const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep'];
+const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep', 'removeFromFlowStep'];
+/** Rev 6: the flow-row types (one open per row between them). */
+const FLOW_ROW_TYPES: ActionType[] = ['completeStep', 'removeFromFlowStep'];
+const isConsentType = (t: ActionType) => (CONSENT_TYPES as readonly string[]).includes(t);
+/** Rev 6 (R2 b): a consentLookup's search text (the encrypted note). */
+const LOOKUP_Q_MAX = 60;
 const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
 const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
@@ -118,7 +123,14 @@ export interface LifegroupView { groupId: string; name: string; grade: number | 
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
   personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null;
   grade: number | null; gender: LinkFlowRow['gender']; mobile: string | null; mobileIsParent: boolean;
-  assignedLeaderId: string | null; assignedLeaderName: string | null }
+  assignedLeaderId: string | null; assignedLeaderName: string | null;
+  /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/director login). */
+  consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
+  /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
+  consentStep: boolean }
+/** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
+export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches'; status: 'waiting' | 'working' | 'ready' | 'failed';
+  reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[] }
 export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
@@ -153,6 +165,8 @@ export interface LinkService {
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
   shadowCheck(actor: Actor, date: unknown): Promise<ShadowCheck>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
+  /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
+  consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
 }
 
 export interface LinkServiceDeps {
@@ -240,7 +254,7 @@ type Feature = 'checkin' | 'lifegroupReport' | 'flows';
 const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
 const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
-  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport' }; // the intake types: module intakeAdmin (X19)
+  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows' }; // the intake + consent types: module intakeAdmin (X19, rev 6)
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
@@ -286,6 +300,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
       leaders: memo(() => d.leaders.findAll()),
+      // Rev 6: read once per batch. ponytail: a Complete and a Remove for one row queued in the SAME batch are not seen by each other.
+      openFlowRows: memo(() => d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN })),
+      consentRows: memo(async () => (d.intake ? d.intake.rows('consent') : [])),
       login: memo(async () => (await d.users.findById(actor.id))?.email ?? actor.displayName),
     };
   }
@@ -384,9 +401,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return ok(prev, 'replay');
     };
     // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is); X19: intake = admin + module
+    // Rev 6: the Consents screen's two types = intake's gate; removeFromFlowStep = the flows screen + admin/director.
     const intake = isIntakeType(it.type);
-    if (intake) intakeGate(c.actor, c.settings);
+    const consentType = isConsentType(it.type);
+    if (intake || consentType) intakeGate(c.actor, c.settings);
     else if (!usable(c.actor, c.settings, FEATURE_OF[it.type]!)) throw new ModuleDisabledError('Elvanto link');
+    if (it.type === 'removeFromFlowStep' && !can(c.actor, 'link:flowRemove')) throw new ForbiddenError('Only the admin or a director can remove someone from a step.');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -406,13 +426,17 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const p = parsed.data as Record<string, unknown> & { serviceTimeId?: string; personId?: string | null };
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
-    if (note !== null && !noteType && !intake) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
+    const lookup = it.type === 'consentLookup';
+    if (note !== null && !noteType && !intake && !lookup) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
+    if (lookup && note !== null && note.length > LOOKUP_Q_MAX) throw new BadRequestError(`Search for up to ${LOOKUP_Q_MAX} characters.`);
     const member = MEMBER_TYPES.includes(it.type);
-    const me = await resolveLeader(c, it.leaderId, noteType || (member && !isAdminRole(c.actor)));
+    // Rev 6: a removal needs "I am" only when it carries a note (the note is signed with it).
+    const needMe = it.type === 'removeFromFlowStep' ? note !== null : noteType || (member && !isAdminRole(c.actor));
+    const me = await resolveLeader(c, it.leaderId, needMe);
     Object.assign(who, me);
     // X1: the claim row carries "Self identified leader: <name> — <note>", so the leader's part is capped to fit 1,900.
     const room = Math.min(LINK_NOTE_MAX, noteRoom(me.name));
-    if (note !== null && !intake && note.length > room) throw new BadRequestError(`A note can be up to ${room} characters.`);
+    if (note !== null && !intake && !lookup && note.length > room) throw new BadRequestError(`A note can be up to ${room} characters.`);
 
     const [roster, services] = await Promise.all([c.roster(), c.services()]);
     let serviceDate = c.today;
@@ -511,7 +535,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!d.intake) throw new LinkUnavailable();
       await checkIntakeItem(d.intake, it.type, p, note, c.t);
       serviceDate = p.date as string;
-    } else { // completeStep
+    } else if (it.type === 'consentLookup') { // rev 6 (R2 b/c): a read request; ref is its own id (one dedupe key per request)
+      if ((p as { ref: string }).ref !== it.id) throw new BadRequestError('A lookup ref must be its own id.');
+    } else if (it.type === 'consentFix') { // rev 6 (R2 c): the console re-checks the form; the app only names the person
+      personId = (p as { personId: string }).personId;
+    } else { // completeStep, removeFromFlowStep (rev 6)
       const sp = p as unknown as { rowId: string; flowId: string; stepId: string; personId: string | null };
       const row = (await c.flows()).find((x) => x.rowId === sp.rowId);
       if (!row) throw new BadRequestError('This step is not in the list. Reload.');
@@ -522,6 +550,16 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (stepHidden(c.actor, row, c.settings.ministryConfig.modules.flowHiddenStep)) throw new ForbiddenError('This step moves on its own after contact consent.');
       if (!flowRowVisible(c.actor, row, new Map(roster.map((x) => [x.personId, x])), c.structure, c.settings.ministryConfig.modules.flowHiddenStep)) {
         throw new ForbiddenError('This person is not one of yours.');
+      }
+      // Rev 6: one open flow-row action per row (a Complete and a Remove would race in Elvanto).
+      const other = it.type === 'completeStep' ? 'removeFromFlowStep' : 'completeStep';
+      if ((await c.openFlowRows()).some((r) => r.type === other && (r.payload as { rowId?: string }).rowId === row.rowId)) {
+        throw new LinkBusyRow();
+      }
+      if (it.type === 'completeStep') {
+        if (isDnc(row.consent)) throw new LinkDnc(); // R4: DO NOT CONTACT = Remove only
+        // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
+        if (isConsentStep(row) && !consentStepAllowed(row, await c.consentRows())) throw new ConsentCheckFirst();
       }
       personId = row.personId;
     }
@@ -870,7 +908,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async flows(actor) {
       const c = context(actor, await gate(actor, ['flows']));
       const [flows, roster, open, assigns, leaders, pushed] = await Promise.all([c.flows(), c.roster(),
-        d.link.listActions({ types: ['completeStep'], statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps()]);
+        d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps()]);
+      const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
       const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
@@ -878,10 +917,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
           const l = f.personId ? assigned.get(`${f.flowId}:${f.personId}`) : undefined; // a deleted leader reads as none
+          const dnc = isDnc(f.consent);
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
-            grade: f.grade, gender: f.gender, mobile: f.mobile, mobileIsParent: f.mobileIsParent,
-            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null };
+            grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
+            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
+            consent: f.consent ?? 'unknown', dnc, consentStep: isConsentStep(f) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
       const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
@@ -894,6 +935,22 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
      * T5/T6: one group's members for the collapsed list. A member opens the app profile only when matched to a student
      * this login may see (canAccessStudent); anyone else is name + roster grade. Never a phone. `?leaderId=` = "I am".
      */
+    async consentLookup(actor, q) {
+      const settings = await d.settings.getSettings();
+      intakeGate(actor, settings);
+      const { id } = z.object({ id: Uuid }).parse(q ?? {});
+      const row = await d.link.getAction(id);
+      if (!row || row.type !== 'consentLookup') throw new NotFoundError('That lookup is not known.');
+      const p = row.payload as { kind: 'forms' | 'mismatches'; page: number };
+      const base = { id, kind: p.kind, page: p.page, pageSize: 25, total: null, takenAt: null, rows: [] as unknown[] };
+      if (row.status === 'pending') return { ...base, status: 'waiting', reason: null };
+      if (row.status === 'claimed') return { ...base, status: 'working', reason: null };
+      if (row.status !== 'sent') return { ...base, status: 'failed', reason: row.reason ?? row.status };
+      const got = await d.link.consentLookup(id);
+      if (!got) return { ...base, status: 'failed', reason: 'expired' };
+      return { id, kind: got.kind, status: 'ready', reason: null, page: got.page, pageSize: got.pageSize, total: got.total, takenAt: got.takenAt, rows: got.rows };
+    },
+
     async groupMembers(actor, groupId, q) {
       const c = context(actor, await gate(actor, ['lifegroupReport']));
       const f = z.object({ leaderId: Uuid.optional() }).parse(q ?? {});

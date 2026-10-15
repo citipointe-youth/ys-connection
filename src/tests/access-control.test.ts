@@ -188,6 +188,7 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
   });
   it.each(roles)('T4 intake:admin and canUseIntakeAdmin: admin only (not director), and only while the module is on (%s)', (role) => {
     expect(can(actor(role), 'intake:admin')).toBe(role === 'admin');
+    expect(can(actor(role), 'link:flowRemove')).toBe(role === 'admin' || role === 'director'); // rev 6 (R4)
     expect(canUseIntakeAdmin(actor(role), 'on')).toBe(role === 'admin');
     expect(canUseIntakeAdmin(actor(role), 'off')).toBe(false);
   });
@@ -203,7 +204,7 @@ const ALL_ACTIONS = [
   'student:read', 'student:read:sensitive', 'student:write', 'leader:read', 'leader:write',
   'connection:write', 'overview:read', 'atrisk:read', 'import:run', 'connection:import',
   'admin:manage', 'prayer:read', 'prayer:write', 'prayer:import', 'bus:use', 'bus:roster',
-  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin', 'intake:admin',
+  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin', 'intake:admin', 'link:flowRemove',
 ] as const satisfies readonly Action[];
 type _MissingAction = Exclude<Action, (typeof ALL_ACTIONS)[number]>;
 const _allActionsListed: [_MissingAction] extends [never] ? true : never = true;

@@ -11,6 +11,7 @@ import { decodePolyline, thinPolyline } from './routing/polyline';
 import { markerLabel, ROUTE_MAX_INTERMEDIATES } from './routing/google-requests';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
+import { makeDnc, type Dnc } from './dnc';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
@@ -213,7 +214,8 @@ function parseIn<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
 
 export function makeBusService(bus: IBusRepository, students: IStudentRepository,
   leaders: ILeaderRepository, settingsRepo: ISettingsRepository,
-  routing: RoutingProvider = new FakeRoutingProvider(), connections?: IConnectionRepository): BusService {
+  routing: RoutingProvider = new FakeRoutingProvider(), connections?: IConnectionRepository,
+  dnc: Dnc = makeDnc()): BusService { // R1: optional; absent = nobody is DNC
 
   async function cfg(): Promise<MinistryConfig> { return (await settingsRepo.getSettings()).ministryConfig; }
 
@@ -1123,11 +1125,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (vehicle) {
         const mine = (await ridingOf(run.id)).filter((r) => r.runVehicleId === vehicle.id)
           .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
-        const consents = await bus.listConsents();
+        const [consents, mark] = await Promise.all([bus.listConsents(), dnc.forActor(ctx.actor)]);
         for (const r of mine) {
           const mobile = r.studentId ? (await students.findById(r.studentId))?.mobile ?? null
             : r.guestId ? (await bus.getGuest(r.guestId))?.phone ?? null : null;
-          stops.push({ ...riderView(r, consentFor(consents, r)), mobile });
+          // R1: a guest has no roster row, so studentId null = never DNC.
+          stops.push(mark({ ...riderView(r, consentFor(consents, r)), mobile }, r.studentId));
         }
       }
       let ownCarDraft: MyCarView['ownCarDraft'] = null;

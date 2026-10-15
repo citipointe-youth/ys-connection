@@ -3,6 +3,11 @@ import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, Co
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
   ResultReply, LinkFlowAssign, LinkFlowStep, Consent } from '../../core/link-types';
 
+/** Rev 6 (R2 b/c): a consentLookup answer as stored (rows = the pushed ConsentFormRow / ConsentMismatchRow list). */
+export interface ConsentLookupStored { requestId: string; kind: 'forms' | 'mismatches'; page: number; pageSize: number;
+  total: number | null; rows: unknown[]; takenAt: string }
+export const CONSENT_LOOKUP_KEEP_MS = 24 * 3_600_000;
+
 export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
   types?: ActionType[]; statuses?: Status[]; personId?: string;
@@ -49,6 +54,10 @@ export interface ILinkRepository {
   /** T6: upsert by (flowId, personId); leaderId null deletes it. */
   setFlowAssign(a: { flowId: string; personId: string; leaderId: string | null; assignedBy: string }): Promise<void>;
   addLog(rows: LinkLogRow[]): Promise<void>;
+  /** Rev 6 (R2 b/c): store one consentLookup answer (replaces the same request; purges answers over 24 h old). */
+  putConsentLookup(r: ConsentLookupStored & { consoleId: string }): Promise<void>;
+  /** Rev 6: one answer, rows decrypted; null when unknown or over 24 h old. */
+  consentLookup(requestId: string): Promise<ConsentLookupStored | null>;
   /** from inclusive, to exclusive (ISO instants); newest first; at most `limit` rows. */
   listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; outboxId?: string; limit: number }): Promise<LinkLogRow[]>;
 }

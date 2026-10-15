@@ -3,6 +3,7 @@ import type { IStudentRepository, ISettingsRepository, IConnectionRepository } f
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { AtRiskStatus } from '../core/types/enums';
+import { makeDnc, type Dnc } from './dnc';
 
 export interface AtRiskEntry {
   studentId: string;
@@ -28,6 +29,8 @@ export interface AtRiskEntry {
   // Computed trend direction relative to previous term
   svcTrend: 'up' | 'down' | 'stable' | 'no-data';
   grpTrend: 'up' | 'down' | 'stable' | 'no-data';
+  /** R1: DO NOT CONTACT (Health still lists them, marked). */
+  dnc: boolean;
 }
 
 export interface AtRiskService {
@@ -94,7 +97,7 @@ function trendDirection(
   return 'stable';
 }
 
-function toEntry(s: Student, computedStatus?: AtRiskStatus): AtRiskEntry {
+function toEntry(s: Student, computedStatus?: AtRiskStatus): Omit<AtRiskEntry, 'dnc'> {
   const status = computedStatus ?? s.atRiskStatus ?? 'regular';
   const svcRate = s.svcTotal > 0 ? s.svcAttended / s.svcTotal : null;
   const grpRate = s.grpTotal > 0 ? s.grpAttended / s.grpTotal : null;
@@ -130,11 +133,12 @@ export function makeAtRiskService(
   studentRepo: IStudentRepository,
   settingsRepo: ISettingsRepository,
   connRepo?: IConnectionRepository,
+  dnc: Dnc = makeDnc(), // R1: optional; absent = nobody is DNC
 ): AtRiskService {
   return {
     async list(actor, filter) {
       assertCan(actor, 'atrisk:read');
-      const [allStudents, settings] = await Promise.all([studentRepo.findAll(), settingsRepo.getSettings()]);
+      const [allStudents, settings, mark] = await Promise.all([studentRepo.findAll(), settingsRepo.getSettings(), dnc.forActor(actor)]);
       const structure = settings.ministryConfig.structure;
       let students = allStudents;
 
@@ -166,7 +170,7 @@ export function makeAtRiskService(
           s.prevSvcAttended, s.prevSvcTotal, s.prevGrpAttended, s.prevGrpTotal,
         );
         if (AT_RISK_DISPLAY.has(computed)) {
-          entries.push(toEntry(s, computed));
+          entries.push(mark(toEntry(s, computed), s.id));
         }
       }
 

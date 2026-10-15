@@ -1311,7 +1311,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T4: flow rows carry grade, gender, mobile, mobileIsParent and the assignee', async () => {
     const h = await setup();
     const r = (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FR1)!;
-    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'due', 'flowId', 'flowName',
+    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentStep', 'dnc', 'due', 'flowId', 'flowName',
       'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'openAction', 'personId', 'rowId', 'stepId', 'stepName', 'stepOrder']);
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });

@@ -8,6 +8,10 @@ import type { AtRiskStatus } from '../core/types/enums';
 import { computeQuad } from '../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-config';
 import { NotFoundError, BadRequestError } from '../core/errors/app-error';
+import { makeDnc, type Dnc } from './dnc';
+
+/** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/director. */
+export type StudentView = Student & { dnc: boolean };
 
 const CreateStudentSchema = z.object({
   firstName: z.string().min(1),
@@ -23,13 +27,13 @@ const CreateStudentSchema = z.object({
 const AT_RISK_VALUES = ['regular', 'declining', 'atrisk', 'stopped', 'watch', 'new'] as const;
 
 export interface StudentService {
-  list(actor: Actor, filter?: { grade?: number; gender?: string; query?: string; unconnected?: boolean; crossGrade?: boolean }): Promise<Student[]>;
-  get(actor: Actor, id: string): Promise<Student>;
+  list(actor: Actor, filter?: { grade?: number; gender?: string; query?: string; unconnected?: boolean; crossGrade?: boolean }): Promise<StudentView[]>;
+  get(actor: Actor, id: string): Promise<StudentView>;
   create(actor: Actor, input: unknown): Promise<Student>;
   update(actor: Actor, id: string, input: unknown): Promise<Student>;
   updateAtRisk(actor: Actor, id: string, status: string): Promise<Student>;
   remove(actor: Actor, id: string): Promise<void>;
-  search(actor: Actor, query: string): Promise<Student[]>;
+  search(actor: Actor, query: string): Promise<StudentView[]>;
 }
 
 function stripSensitive(s: Student): Student {
@@ -45,6 +49,7 @@ export function makeStudentService(
   // the container always supplies it in production. When absent, remove() simply
   // doesn't cascade-delete prayers (today's pre-M1 behaviour).
   prayerRepo?: IPrayerRepository,
+  dnc: Dnc = makeDnc(), // R1: optional; absent = nobody is DNC
 ): StudentService {
   // Structure config for scoping (cohortModel/genderPolicy, §5). Optional repo so
   // existing test harnesses constructing makeStudentService(repo) keep today's
@@ -98,7 +103,8 @@ export function makeStudentService(
         students = students.map(stripSensitive);
       }
 
-      return students.sort((a, b) => a.lastName.localeCompare(b.lastName));
+      const mark = await dnc.forActor(actor);
+      return students.map((s) => mark(s, s.id)).sort((a, b) => a.lastName.localeCompare(b.lastName));
     },
 
     async get(actor, id) {
@@ -121,10 +127,8 @@ export function makeStudentService(
         throw new NotFoundError('Student not found');
       }
 
-      if (!can(actor, 'student:read:sensitive')) {
-        return stripSensitive(s);
-      }
-      return s;
+      const mark = await dnc.forActor(actor);
+      return mark(can(actor, 'student:read:sensitive') ? s : stripSensitive(s), s.id);
     },
 
     async create(actor, input) {
@@ -218,7 +222,8 @@ export function makeStudentService(
       if (!can(actor, 'student:read:sensitive')) {
         results = results.map(stripSensitive);
       }
-      return results;
+      const mark = await dnc.forActor(actor);
+      return results.map((s) => mark(s, s.id));
     },
   };
 }

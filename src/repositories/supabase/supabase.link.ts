@@ -5,7 +5,8 @@ import type { SqlClient } from './client';
 import { toIso } from './client';
 import { chunk } from './bulk';
 import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
-import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
+import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
+import { putConsentLookup, readConsentLookup } from './supabase.link-consent';
 import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow,
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
@@ -349,6 +350,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
       grade: r.grade ?? null, gender: r.gender ?? null, mobile: readMobile(r),
       mobileIsParent: r.mobile_is_parent ?? false, consent: r.consent ?? null }));
   }
+
+  // Rev 6 (R2 b/c): an encrypted TEXT store, kept in supabase.link-consent.ts.
+  putConsentLookup(r: ConsentLookupStored & { consoleId: string }): Promise<void> { return putConsentLookup(this.sql, r); }
+  consentLookup(requestId: string): Promise<ConsentLookupStored | null> { return readConsentLookup(this.sql, requestId); }
 
   async flowSteps(): Promise<LinkFlowStep[] | null> {
     const [r] = await this.sql`select steps from link_mirror_state where kind = 'flows'`;

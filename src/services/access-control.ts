@@ -26,7 +26,8 @@ export type Action =
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
   | 'link:admin'              // Elvanto link, admin only: matching, shadow check, log, detail, cancel anyone's
-  | 'intake:admin';           // T4 (X19): youth intake + consents through the link, admin only (not director)
+  | 'intake:admin'            // T4 (X19): youth intake + consents through the link, admin only (not director)
+  | 'link:flowRemove';        // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + director)
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -96,6 +97,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:analysis',
     'intake:write',
     'link:use',
+    'link:flowRemove',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -121,6 +123,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'link:use',
     'link:admin',
     'intake:admin',
+    'link:flowRemove',
   ]),
 };
 
@@ -164,6 +167,11 @@ export function canSetViewGrades(actor: Actor, leaderId: string): boolean {
 // login whose "I am" leader leads that group in Elvanto (the caller works out leadsGroup).
 export function canEditGroupMembers(actor: Actor, leadsGroup: boolean): boolean {
   return actor.role === 'admin' || actor.role === 'director' || (leadsGroup && can(actor, 'link:use'));
+}
+
+// R1 (LINK_REV 6): only admin and director still get a DO NOT CONTACT student's mobile / parent phone.
+export function canSeeDncPhones(actor: Actor): boolean {
+  return actor.role === 'admin' || actor.role === 'director';
 }
 
 export function assertCan(actor: Actor, action: Action): void {

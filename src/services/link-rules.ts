@@ -130,7 +130,23 @@ export function effectiveMembers(members: GroupMember[], rows: OutboxRow[], grou
 
 /** The ClaimRow `note` cap (contract §3.2). The prefixed text must fit it. */
 export const CLAIM_NOTE_MAX = 1900;
-export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editReport', 'completeStep'];
+export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editReport', 'completeStep', 'removeFromFlowStep'];
+
+// ---------------- Rev 6: the New People consent step (review C1) ----------------
+
+/** The 7-day consent wait: flow "Brisbane - Youth - New People 2026", step "0" / "Step 0 ..." (youth-gather.js FLOW.people / STEP.people0). */
+export const isConsentStep = (r: { flowName: string; stepName: string }) =>
+  /^Brisbane - Youth - New People 2026/i.test(r.flowName) && /^(step\s*)?0\b/i.test(r.stepName.trim());
+/**
+ * Complete on the consent step is allowed only when that person's consent row (Form Approve & Consent > Consents) is done,
+ * or their profile consent is 'ok' and no consent row for them is still open. consentSave (the consent path) never comes here.
+ */
+export function consentStepAllowed(row: { personId: string | null; consent?: string | null }, consentRows: { key: string; status: string }[]): boolean {
+  if (!row.personId) return false;
+  const mine = consentRows.filter((r) => r.key === row.personId);
+  if (mine.some((r) => r.status === 'done')) return true;
+  return row.consent === 'ok' && mine.every((r) => r.status === 'done');
+}
 
 /** `Self identified leader: <name> — <note>`, or the name alone when the leader wrote no note. */
 export function attributedNote(leaderName: string, note: string | null): string {

@@ -2,11 +2,11 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
-import type { ConsentPush, IntakePush } from '../core/link-contract';
+import type { ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
@@ -60,7 +60,7 @@ export function makeSyncService(d: SyncDeps) {
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
-      if ((m.intakeAdmin ?? 'off') === 'off') for (const t of INTAKE_TYPES) delete capabilities[t];
+      if ((m.intakeAdmin ?? 'off') === 'off') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,
@@ -91,7 +91,9 @@ export function makeSyncService(d: SyncDeps) {
           serviceDate: row.serviceDate, by: { login: logins.get(row.createdBy) ?? '', leaderName: row.leaderName },
           payload: row.payload,
           // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
-          note: ATTRIBUTED_TYPES.includes(row.type) ? attributedNote(row.leaderName, row.note) : row.note,
+          // Rev 6: a removal with no note stays null (the console posts a note only when there is one).
+          note: ATTRIBUTED_TYPES.includes(row.type) && (row.type !== 'removeFromFlowStep' || row.note)
+            ? attributedNote(row.leaderName, row.note) : row.note,
         })),
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
         // X19: only a console at rev >= 4 knows the hint (an older one would strip it anyway).
@@ -132,6 +134,16 @@ export function makeSyncService(d: SyncDeps) {
         const req = parseBody(PUSH_SCHEMAS[pk], body) as z.infer<typeof IntakePush> | z.infer<typeof ConsentPush>;
         if (!d.intake) return { applied: false };
         return d.intake.push(pk, req, await d.settings.getSettings());
+      }
+      if (pk === 'consentLookup') { // rev 6 (R2 b/c): the answer to one consentLookup row this console holds
+        const req = parseBody(PUSH_SCHEMAS.consentLookup, body) as z.infer<typeof ConsentLookupPush>;
+        const row = await d.link.getAction(req.requestId);
+        const p = row?.payload as { kind?: string; page?: number } | undefined;
+        if (!row || row.type !== 'consentLookup' || p?.kind !== req.kind || p?.page !== req.page
+          || row.status !== 'claimed' || row.leaseOwner !== req.consoleId) return { applied: false };
+        await d.link.putConsentLookup({ requestId: req.requestId, kind: req.kind, page: req.page, pageSize: req.pageSize,
+          total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
+        return { applied: true, rows: req.rows.length };
       }
       const k = pk as MirrorKind;
       const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[]; steps?: LinkFlowStep[] };

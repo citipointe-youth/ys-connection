@@ -23,6 +23,7 @@ const SPEC_ROUTES = [
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
   'GET /link/intake', 'GET /link/intake/row', 'POST /link/intake/refresh', // T4 (X19)
+  'GET /link/consents/lookup', // rev 6 (R2 b/c)
 ];
 
 describe('link + sync route table', () => {

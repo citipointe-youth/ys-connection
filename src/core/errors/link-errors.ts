@@ -7,6 +7,19 @@ export class LinkUnavailable extends AppError {
   constructor() { super('LINK_UNAVAILABLE', 'Do this in Elvanto for now.', 409); }
 }
 
+/** Rev 6 (R1/R4): a DO NOT CONTACT flow person can only be removed from the step. */
+export class LinkDnc extends AppError {
+  constructor() { super('LINK_DNC', 'Do not contact: this person can only be removed from the step.', 409); }
+}
+/** Rev 6 (review C1): the New People consent step moves on through Form Approve & Consent > Consents only. */
+export class ConsentCheckFirst extends AppError {
+  constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (Form Approve & Consent > Consents).', 409); }
+}
+/** Rev 6 (R4): a Complete and a Remove for the same flow row cannot both be open. */
+export class LinkBusyRow extends AppError {
+  constructor() { super('LINK_BUSY_ROW', 'Something is already waiting to be sent for this person. Wait for it, or cancel it.', 409); }
+}
+
 export class LinkIdReused extends AppError {
   constructor() { super('LINK_ID_REUSED', 'This action id was already used for a different action.', 409); }
 }

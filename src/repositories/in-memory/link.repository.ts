@@ -1,6 +1,7 @@
 // In-memory Elvanto link repo (spec 2026-10-12-elvanto-link-app-design.md §4.1). Used for `memory` and `json`
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
-import type { ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
+import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
+import { CONSENT_LOOKUP_KEEP_MS } from '../interfaces/link.repository';
 import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
 } from '../../core/link-types';
@@ -205,6 +206,20 @@ export class InMemoryLinkRepository implements ILinkRepository {
   }
 
   async flowSteps(): Promise<LinkFlowStep[] | null> { return this.steps && clone(this.steps); }
+
+  private lookups = new Map<string, ConsentLookupStored & { at: number }>();
+  async putConsentLookup(r: ConsentLookupStored & { consoleId: string }): Promise<void> {
+    const now = this.clock().getTime();
+    for (const [k, v] of this.lookups) if (now - v.at > CONSENT_LOOKUP_KEEP_MS) this.lookups.delete(k);
+    const { consoleId: _c, ...rest } = r;
+    this.lookups.set(r.requestId, { ...clone(rest), at: now });
+  }
+  async consentLookup(requestId: string): Promise<ConsentLookupStored | null> {
+    const v = this.lookups.get(requestId);
+    if (!v || this.clock().getTime() - v.at > CONSENT_LOOKUP_KEEP_MS) return null;
+    const { at: _a, ...rest } = v;
+    return clone(rest);
+  }
 
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {
     const now = this.nowIso();

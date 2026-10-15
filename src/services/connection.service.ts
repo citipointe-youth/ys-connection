@@ -21,6 +21,7 @@ import type { Actor } from '../core/entities/user';
 import type { Gender, Grade } from '../core/types/enums';
 import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from '../core/errors/app-error';
 import { invalidateOverviewCache } from './overview.service';
+import { makeDnc, type Dnc } from './dnc';
 
 export interface ConnectionWithNames {
   id: string;
@@ -45,6 +46,8 @@ export interface ExportRow {
   dateOfBirth: string | null;
   mobile: string | null;
   parentPhone: string | null;
+  /** R1: DO NOT CONTACT (phones blank for non-admin/director). */
+  dnc: boolean;
 }
 
 export interface ConnectionService {
@@ -53,7 +56,7 @@ export interface ConnectionService {
   listAll(actor: Actor, opts?: { crossGrade?: boolean }): Promise<ConnectionWithNames[]>;
   assign(actor: Actor, input: unknown): Promise<Connection>;
   unassign(actor: Actor, studentId: string, leaderId: string): Promise<void>;
-  leaderSummary(actor: Actor, leaderId: string): Promise<{ students: ReturnType<typeof summariseStudent>[]; leader: { id: string; fullName: string } }>;
+  leaderSummary(actor: Actor, leaderId: string): Promise<{ students: (ReturnType<typeof summariseStudent> & { dnc: boolean })[]; leader: { id: string; fullName: string } }>;
   exportCsv(actor: Actor): Promise<ExportRow[]>;
   exportAllocations(actor: Actor): Promise<AllocationExportRow[]>;
   importAllocations(actor: Actor, rows: unknown, autoCreateLeaders?: boolean): Promise<AllocationImportReport>;
@@ -97,6 +100,7 @@ export function makeConnectionService(
   studentRepo: IStudentRepository,
   leaderRepo: ILeaderRepository,
   settingsRepo: ISettingsRepository,
+  dnc: Dnc = makeDnc(), // R1: optional; absent = nobody is DNC
 ): ConnectionService {
   // Load every student + leader once into id-keyed maps. Enriching connections
   // by looking up these maps in memory replaces what used to be 2 DB queries
@@ -217,27 +221,29 @@ export function makeConnectionService(
 
     async leaderSummary(actor, leaderId) {
       assertCan(actor, 'leader:read');
-      const [leader, conns, allStudents] = await Promise.all([
+      const [leader, conns, allStudents, mark] = await Promise.all([
         leaderRepo.findById(leaderId),
         connRepo.findByLeader(leaderId),
         studentRepo.findAll(),
+        dnc.forActor(actor),
       ]);
       if (!leader) throw new NotFoundError('Leader not found');
       const studentsById = new Map(allStudents.map((s) => [s.id, s]));
       const students = [];
       for (const a of conns) {
         const s = studentsById.get(a.studentId);
-        if (s) students.push(summariseStudent(s));
+        if (s) students.push(mark(summariseStudent(s), s.id));
       }
       return { leader: { id: leader.id, fullName: leader.fullName }, students };
     },
 
     async exportCsv(actor) {
       assertCan(actor, 'student:read');
-      const [all, { studentsById, leadersById }, settings] = await Promise.all([
+      const [all, { studentsById, leadersById }, settings, mark] = await Promise.all([
         connRepo.findAll(),
         buildLookups(),
         settingsRepo.getSettings(),
+        dnc.forActor(actor),
       ]);
       const structure = settings.ministryConfig.structure;
       const rows: ExportRow[] = [];
@@ -255,7 +261,7 @@ export function makeConnectionService(
         const grpPct = student.grpTotal > 0
           ? Math.round((student.grpAttended / student.grpTotal) * 100) + '%'
           : '—';
-        rows.push({
+        rows.push(mark({
           leaderName: leader.fullName,
           leaderGrade: leader.grades.length ? leader.grades.join('; ') : 'All',
           leaderGender: leader.gender,
@@ -268,7 +274,7 @@ export function makeConnectionService(
           dateOfBirth: student.dateOfBirth,
           mobile: student.mobile,
           parentPhone: student.parentPhone,
-        });
+        }, student.id));
       }
       return rows.sort((a, b) => a.leaderName.localeCompare(b.leaderName) || a.studentName.localeCompare(b.studentName));
     },

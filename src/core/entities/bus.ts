@@ -103,7 +103,7 @@ export interface BusSearchHit {
 }
 export interface MyCarView {
   vehicle: BusRunVehicleView | null;
-  stops: (BusRiderView & { mobile: string | null })[];
+  stops: (BusRiderView & { mobile: string | null; dnc: boolean })[]; // R1: dnc = DO NOT CONTACT student
   churchAddress: string;
   churchPlaceId: string;
   ownCarDraft: { car: BusOwnCar | null; riderIds: ID[] } | null;

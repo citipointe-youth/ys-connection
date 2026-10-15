@@ -65,6 +65,7 @@ import type { IErrorLogRepository } from './repositories/interfaces/error-log.re
 
 import { makeAuthService, type AuthService } from './services/auth.service';
 import { makeStudentService, type StudentService } from './services/student.service';
+import { makeDnc } from './services/dnc';
 import { makeLeaderService, type LeaderService } from './services/leader.service';
 import { makePrayerService, type PrayerService } from './services/prayer.service';
 import { makeConnectionService, type ConnectionService } from './services/connection.service';
@@ -243,20 +244,21 @@ export async function buildContainer(): Promise<Container> {
 
   // ----- Services -----
   const auth = makeAuthService(users);
-  const student = makeStudentService(students, settings, connections, prayers);
+  const dnc = makeDnc(link); // R1: one shared DO NOT CONTACT cache for every student read
+  const student = makeStudentService(students, settings, connections, prayers, dnc);
   const leader = makeLeaderService(leaders, settings);
   const prayer = makePrayerService(prayers, students, settings, connections);
-  const connection = makeConnectionService(connections, students, leaders, settings);
+  const connection = makeConnectionService(connections, students, leaders, settings, dnc);
   const followup = makeFollowupService(
     connections, students, leaders,
     serviceSessions, serviceAttendance,
-    lifegroupWeeks, lifegroupAttendance,
+    lifegroupWeeks, lifegroupAttendance, dnc,
   );
   const overview = makeOverviewService(students, leaders, connections, settings);
-  const atRisk = makeAtRiskService(students, settings, connections);
+  const atRisk = makeAtRiskService(students, settings, connections, dnc);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
-  const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections);
+  const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections, dnc);
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
   const settingsSvc = makeSettingsService(settings, audit, users, () => intake.off());
   const account = makeAccountService(users, settings);
