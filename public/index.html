@@ -12792,19 +12792,28 @@ function _ikLkApply(x, r, now) {
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
   return true;
 }
+// L6-8: 10 s while waiting for the console to claim, 2.5 s once working, 5 s after a minute of working.
+// L2-3: a network blip (no status) is retried silently up to 3 times before the offline line shows.
 function _ikLkPoll(kind) {
   const I = _ik(), x = _ikLk(kind), id = x.id;
   if (x.poll) clearTimeout(x.poll);
+  if (x.st !== 'working') x.workSince = 0; else if (!x.workSince) x.workSince = Date.now();
+  const ms = x.st !== 'working' ? 10000 : Date.now() - x.workSince > 60000 ? 5000 : 2500;
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;
     try {
       const r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(id), true);
       if (_ik() !== I || x.id !== id) return;
+      x.blips = 0;
       if (_ikLkApply(x, r, Date.now())) _ikLkPoll(kind);
-    } catch (e) { if (_ik() !== I || x.id !== id) return; _ikLkErr(x, e); }
+    } catch (e) {
+      if (_ik() !== I || x.id !== id) return;
+      if ((!e || !e.status) && (x.blips || 0) < 3) { x.blips = (x.blips || 0) + 1; _ikLkPoll(kind); return; }
+      x.blips = 0; _ikLkErr(x, e);
+    }
     _ikDraw();
-  }, 2500);
+  }, ms);
 }
 function _ikLkPages(r) {
   const page = Number(r && r.page) || 1, size = Number(r && r.pageSize) || 25, n = ((r && r.rows) || []).length;
