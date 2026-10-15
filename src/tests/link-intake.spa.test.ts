@@ -13,7 +13,12 @@ const FNS = ['esc', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFres
   '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
   '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikTextCardHtml', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
-  '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave'];
+  '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave',
+  // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
+  '_ikSubBar', '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
+  '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkSearch', '_ikLkKey', '_ikLkTurn', '_ikLkGo', '_ikLkErr', '_ikLkAgain',
+  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormIconDefs', '_ikFormIcons', '_ikIcHtml', '_ikMisLines', '_ikLkStatusHtml', '_ikFixBanner',
+  '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
@@ -453,5 +458,202 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     expect(h.match(/_ikOneOpen\(/g)!.length).toBe(1);
     expect(t).toContain("Set Ava's grade to 8 in Elvanto");
     expect(t).toContain("Makes 1 change for Ava Nguyen's family, then asks about the parent text. You'll confirm first.");
+  });
+});
+
+// ── R2 Consents sub-menus + R8 Save all (run 2026-10-15) ──
+const ST6 = (caps: Record<string, string> = {}) => ST({ rev: 6, caps: { intakeSave: 'live', intakeText: 'live', consentSave: 'live', intakeAnswer: 'live', consentLookup: 'live', consentFix: 'locked', ...caps } });
+const LROW = (n: number, o: any = {}) => ({ key: P(n), status: 'ready', title: 'Kid ' + n, reason: '', outcome: 'Contact allowed', fromApp: false, hasText: false, actions: [], ...o });
+
+describe('consents sub-menus (R2)', () => {
+  const consentEnv = () => makeEnv({ storage: new Map([['ysc.intakeTab', 'consent']]), fresh: (p) => (p.includes('date=')
+    ? { ...ST6(), ...LIST({ date: '2026-10-16', rows: [LROW(1), LROW(2, { outcome: 'No reply: assume consent' }), LROW(3, { status: 'needs-you', outcome: '' })] }) }
+    : { ...ST6(), dates: [{ date: '2026-10-16', takenAt: iso(1000), counts: { needsYou: 1 } }, { date: '2026-10-09', takenAt: iso(1000), counts: {} }] }) });
+  it('Last Friday is the default: newest week, its new people, returned chips, a week picker instead of date tabs', async () => {
+    const e = consentEnv();
+    await e.fns._ikLoad(false);
+    const h = e.fns._ikPageHtml(), t = strip(h);
+    expect(e.fns._ik().csub).toBe('last');
+    expect(t).toContain('Last Friday All consent forms Mismatches');
+    expect(t).toContain('New people from ' + e.fns._lkDay('2026-10-09'));
+    expect(h).not.toContain('onclick="_ikPickDate(');
+    expect(h).toContain('onchange="_ikPickDate(+this.value)"');
+    expect(t).toContain('Form returned');
+    expect(t).toContain('No form');
+    expect(t).toContain('Save all ready (2)');
+  });
+  it('the other sub-menus load nothing until asked, and the Intakes tab still works', async () => {
+    const e = consentEnv();
+    await e.fns._ikLoad(false);
+    const n = e.calls.fresh.length;
+    e.fns._ikConsentSub('forms');
+    const t = strip(e.fns._ikPageHtml());
+    expect(t).toContain('Load forms');
+    expect(t).toContain('Nothing loaded yet');
+    expect(e.calls.posts.length).toBe(0);
+    expect(e.calls.fresh.length).toBe(n);
+    e.fns._ikConsentSub('mismatches');
+    expect(strip(e.fns._ikPageHtml())).toContain('Find mismatches');
+    e.fns._ikConsentSub('bogus');
+    expect(e.fns._ik().csub).toBe('mismatches');
+    e.fns._ikTab('intake');
+    expect(e.fns._ik().tab).toBe('intake');
+  });
+  it('an older console or a locked lookup says so instead of a search box', () => {
+    const e = makeEnv();
+    expect(e.fns._ikLkGate(ST({ rev: 5 }))).toMatch(/Console out of date/);
+    expect(e.fns._ikLkGate(ST6({ consentLookup: 'locked' }))).toMatch(/isn't switched on/);
+    expect(e.fns._ikLkGate(ST6())).toBe('');
+  });
+});
+
+describe('lookup request shaping, polling, pagination (R2 b/c)', () => {
+  it('the search text goes in the note, trimmed to 60; the ref is the item id', () => {
+    const f = makeEnv().fns;
+    expect(f._ikLkItem('forms', 2, '  Ava  ', P(9))).toEqual({ kind: 'action', id: P(9), type: 'consentLookup', payload: { kind: 'forms', page: 2, ref: P(9) }, note: 'Ava', leaderId: null });
+    expect(f._ikLkItem('mismatches', 1, '', P(8)).note).toBe(null);
+    expect(f._ikLkItem('forms', 1, 'x'.repeat(80), P(7)).note).toHaveLength(60);
+  });
+  it('_ikLkGo posts one consentLookup and waits; Next asks for page + 1 with the same search', async () => {
+    const e = makeEnv({ post: (_p, b) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }) });
+    await e.fns._ikLkGo('forms', 1, ' Ava ');
+    const x = e.fns._ikLk('forms');
+    expect(x.st).toBe('waiting');
+    const item = e.calls.posts[0].b.items[0];
+    expect(item.type).toBe('consentLookup');
+    expect(item.payload).toEqual({ kind: 'forms', page: 1, ref: item.id });
+    expect(item.note).toBe('Ava');
+    clearTimeout(x.poll);
+    expect(e.fns._ikLkApply(x, { status: 'ready', kind: 'forms', page: 1, pageSize: 25, total: 60, rows: [] }, Date.now())).toBe(false);
+    await e.fns._ikLkTurn('forms', 1);
+    const next = e.calls.posts[1].b.items[0];
+    expect(next.payload.page).toBe(2);
+    expect(next.note).toBe('Ava');
+    clearTimeout(e.fns._ikLk('forms').poll);
+  });
+  it('a refused queue shows the server message; no network = offline with Check again; 404 = expired', async () => {
+    const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'LINK_UNAVAILABLE', message: 'Do this in Elvanto for now.' }] }) });
+    await e.fns._ikLkGo('forms', 1, '');
+    expect(e.fns._ikLk('forms').st).toBe('failed');
+    expect(e.fns._ikLk('forms').msg).toBe('Do this in Elvanto for now.');
+    const x: any = { kind: 'forms' };
+    e.fns._ikLkErr(x, new Error('Load failed'));
+    expect(x.st).toBe('offline');
+    expect(strip(e.fns._ikLkStatusHtml('forms', x, ST6()))).toContain('Check again');
+    e.fns._ikLkErr(x, Object.assign(new Error('nf'), { status: 404 }));
+    expect(x.msg).toMatch(/expired/);
+  });
+  it('apply: waiting/working keep polling; failed maps the reason; too long = timeout (mismatches waits longer)', () => {
+    const f = makeEnv().fns, now = Date.now();
+    const x: any = { kind: 'forms', since: now, q: 'a' };
+    expect(f._ikLkApply(x, { status: 'working' }, now + 1000)).toBe(true);
+    expect(x.st).toBe('working');
+    expect(f._ikLkApply(x, { status: 'waiting' }, now + 6 * 60000)).toBe(false);
+    expect(x.st).toBe('timeout');
+    const m: any = { kind: 'mismatches', since: now };
+    expect(f._ikLkApply(m, { status: 'working' }, now + 6 * 60000)).toBe(true);
+    const y: any = { kind: 'forms', since: now };
+    f._ikLkApply(y, { status: 'failed', reason: 'too-old' }, now);
+    expect(y.msg).toMatch(/within an hour/);
+  });
+  it('pages: total known = page x of y; unknown total = Next while a full page came back', () => {
+    const f = makeEnv().fns;
+    expect(f._ikLkPages({ page: 1, pageSize: 25, total: 51, rows: [] })).toEqual({ page: 1, pages: 3, prev: false, next: true });
+    expect(f._ikLkPages({ page: 3, pageSize: 25, total: 51, rows: [] })).toEqual({ page: 3, pages: 3, prev: true, next: false });
+    expect(f._ikLkPages({ page: 2, pageSize: 25, total: null, rows: new Array(25).fill({}) }).next).toBe(true);
+    expect(f._ikLkPages({ page: 2, pageSize: 25, total: null, rows: [{}] }).next).toBe(false);
+    expect(f._ikLkPages({ page: 1, pageSize: 25, total: 0, rows: [] }).pages).toBe(1);
+  });
+});
+
+describe('form icons and rows (R2 b)', () => {
+  const row = (o: any = {}) => ({ subId: P(1), personId: P(2), name: 'Ava', submitted: '2026-10-09', status: 'approved', consentDate: '09/10/2026', contactOptOut: false, total: '', otherOptOuts: [], ...o });
+  it('maps each flag to its icon with a spoken label', () => {
+    const f = makeEnv().fns;
+    expect(f._ikFormIcons(row()).map((i: any) => i.k)).toEqual(['given']);
+    expect(f._ikFormIcons(row({ contactOptOut: true })).map((i: any) => i.k)).toEqual(['given', 'contact']);
+    expect(f._ikFormIcons(row({ total: '09/10/2026' })).map((i: any) => i.k)).toEqual(['total']);
+    expect(f._ikFormIcons(row({ consentDate: '', otherOptOuts: ['Photos'] })).map((i: any) => i.label)).toEqual(['Other opt-outs: Photos']);
+    expect(f._ikFormIcons(row({ consentDate: '' }))).toEqual([]);
+  });
+  it('rows escape names and labels and carry a legend', () => {
+    const e = makeEnv(), x = e.fns._ikLk('forms');
+    Object.assign(x, { st: 'ready', resQ: '', res: { status: 'ready', page: 1, pageSize: 25, total: 1, takenAt: null, rows: [row({ name: HOSTILE, otherOptOuts: [HOSTILE] })] } });
+    const h = e.fns._ikLkResHtml('forms', x, ST6());
+    expect(h).not.toContain('<img');
+    expect(h).toContain('aria-label="Consent given"');
+    expect(strip(h)).toContain('Opted out of contact TOTAL non-consent Other opt-outs');
+  });
+  it('empty results say why', () => {
+    const e = makeEnv(), x = e.fns._ikLk('mismatches');
+    Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 0, rows: [] } });
+    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6()))).toContain('Every profile matches its newest consent form');
+    x.resQ = 'zed';
+    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6()))).toContain('No mismatches for &quot;zed&quot;');
+  });
+});
+
+describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
+  const mis = { subId: P(3), personId: P(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date', 'opt-outs'],
+    form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };
+  it('lines show form vs profile; a locked writer is said plainly', () => {
+    const f = makeEnv().fns;
+    expect(f._ikMisLines(mis)).toEqual([['Consent date', '09/10/2026', 'empty'], ['Opt-outs', 'Contact with my child', 'empty']]);
+    expect(strip(f._ikFixBanner(ST6()))).toContain('waiting for its first live approval');
+    expect(f._ikFixText({ status: 'refused', reason: 'locked' }, ST6())).toEqual(['bad', 'Not sent. Waiting for first live approval in the console.']);
+    expect(f._ikFixText({ status: 'sent', reason: 'already' }, ST6())[1]).toMatch(/Already matched/);
+  });
+  it('the fix queues one consentFix {personId, subId} after one confirm', async () => {
+    const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved' }] }) });
+    const x = e.fns._ikLk('mismatches');
+    Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 1, rows: [mis] } });
+    expect(e.fns._ikLkResHtml('mismatches', x, ST6())).toContain('_ikFixOpen(0)');
+    e.fns._ikFixOpen(0);
+    expect(strip(e.calls.modals[0]!)).toContain("Change Ava Nguyen's profile to match the form?");
+    await e.fns._ikFixGo();
+    const it1 = e.calls.posts[0].b.items[0];
+    expect(it1.type).toBe('consentFix');
+    expect(it1.payload).toEqual({ personId: P(4), subId: P(3) });
+    expect(e.fns._ik().fixes[P(4)].status).toBe('pending');
+    clearTimeout(e.fns._ik().fixPoll);
+  });
+});
+
+describe('Save all ready (R8)', () => {
+  it('only ready rows with nothing open and no save already sent', () => {
+    const f = makeEnv().fns;
+    const rows = [LROW(1), LROW(2, { status: 'needs-you' }), LROW(3, { actions: [act({ type: 'consentSave', status: 'pending' })] }),
+      LROW(4, { actions: [act({ type: 'consentSave', status: 'sent' })] }), LROW(5, { actions: [act({ type: 'consentSave', status: 'refused' })] }),
+      LROW(6, { actions: [act({ type: 'consentSave', status: 'unclear' })] }), LROW(7, { status: 'done' })];
+    expect(f._ikReadyRows({ rows }).map((r: any) => r.key)).toEqual([P(1), P(5)]);
+  });
+  it('items skip a row the single Save would block and carry the todo keys', () => {
+    const f = makeEnv().fns;
+    const ok = DET({ row: { key: P(1), status: 'ready', title: 'Ava' } });
+    const held = DET({ row: { key: P(2), status: 'needs-you', title: 'Ben' } });
+    const gone = { row: { key: P(3), title: 'Cy' }, detail: null };
+    const x = f._ikSaveAllItems([ok, held, gone], '2026-10-09', 'intakeSave', LIST(), ST());
+    expect(x.items.map((i: any) => i.key)).toEqual([P(1)]);
+    expect(x.items[0].payload).toEqual({ date: '2026-10-09', row: P(1), confirmed: ['approve:parent:' + P(2), 'category:parent:' + P(2)], one: false });
+    expect(x.skipped).toEqual(['Ben', 'Cy']);
+    expect(f._ikSaveAllItems([ok], '2026-10-16', 'consentSave', LIST(), ST()).items[0].payload).not.toHaveProperty('one');
+  });
+  it('one confirm, then N saves in one batch; refused rows get their own status line', async () => {
+    const e = makeEnv({
+      fresh: (p) => (p.startsWith('/link/intake/row') ? DET({ row: { key: p.includes(P(1)) ? P(1) : P(5), status: 'ready', title: p.includes(P(1)) ? 'Ava' : 'Eve' } }) : LIST()),
+      post: (_p, b) => ({ results: b.items.map((i: any, n: number) => (n === 0 ? { id: i.id, kind: 'action', outcome: 'saved' }
+        : { id: i.id, kind: 'action', outcome: 'refused', message: 'This plan changed. Refresh and check again.' })) }),
+    });
+    const I = e.fns._ik();
+    Object.assign(I, { head: ST(), tab: 'intake', date: '2026-10-09', dates: [{ date: '2026-10-09' }], list: LIST({ rows: [LROW(1), LROW(5)] }) });
+    await e.fns._ikSaveAllOpen();
+    expect(e.calls.modals.length).toBe(1);
+    expect(strip(e.calls.modals[0]!)).toContain('Save 2 families to Elvanto?');
+    expect(e.calls.posts.length).toBe(0);
+    await e.fns._ikSaveAllGo();
+    expect(e.calls.posts.length).toBe(1);
+    expect(e.calls.posts[0].b.items.map((i: any) => i.type)).toEqual(['intakeSave', 'intakeSave']);
+    expect(I.saErr[P(5)]).toBe('This plan changed. Refresh and check again.');
+    expect(I.saErr[P(1)]).toBeUndefined();
   });
 });
