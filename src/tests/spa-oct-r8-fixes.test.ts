@@ -113,7 +113,7 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     function __c() { return calls; } function __b() { return BUS; } function __r() { return renders; }`;
 
   it('a failed fetch shows a tap-to-retry line, never an endless Loading', async () => {
-    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml'], PRE({ fail: true, open: true }), ['busCarsRefresh', '_busAllCarsHtml', '__b']);
+    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml', 'progBar'], PRE({ fail: true, open: true }), ['busCarsRefresh', '_busAllCarsHtml', '__b']);
     await f.busCarsRefresh();
     expect(f.__b().carsErr).toBe(true);
     const h = f._busAllCarsHtml();
@@ -128,7 +128,7 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     expect(f.__r()).toBe(1);
   });
   it('showing the tab with no list starts a fetch', async () => {
-    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml'], PRE({}), ['_busAllCarsHtml', '__c']);
+    const f = loadFns(['busCarsRefresh', '_busAllCarsHtml', 'progBar'], PRE({}), ['_busAllCarsHtml', '__c']);
     expect(f._busAllCarsHtml()).toContain('Loading');
     expect(f.__c()).toEqual(['/bus/run/cars']);
   });
@@ -141,7 +141,7 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     expect(f.__c()).toEqual(['/bus/run/version']);
   });
   it('expanding fetches once; collapsing does not; the section stays open across a repaint', () => {
-    const f = loadFns(['busCarsRefresh', 'busCarsToggle', '_busAllCarsSection', '_busAllCarsHtml'], PRE({}), ['busCarsToggle', '_busAllCarsSection', '__c', '__b']);
+    const f = loadFns(['busCarsRefresh', 'busCarsToggle', '_busAllCarsSection', '_busAllCarsHtml', 'progBar'], PRE({}), ['busCarsToggle', '_busAllCarsSection', '__c', '__b']);
     expect(f._busAllCarsSection()).not.toContain(' open');
     expect(f._busAllCarsSection()).not.toContain('Loading');
     f.busCarsToggle(true);
@@ -160,7 +160,7 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     expect(rb).toContain("mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : '')");
   });
   it('a null stop shows no number; long names sit in a block element so the ellipsis works', () => {
-    const f = loadFns(['_busAllCarsHtml'], `const BUS = { cars: { unassigned: 0, cars: [{ name: 'C', colourIndex: 0, leaderNames: [],
+    const f = loadFns(['_busAllCarsHtml', 'progBar'], `const BUS = { cars: { unassigned: 0, cars: [{ name: 'C', colourIndex: 0, leaderNames: [],
       stops: [{ stop: null, name: 'Maximilian Throckmorton-Wellington', grade: 9, suburb: 'Carina', dropped: false }] }] } };
       function esc(s) { return String(s); } function _busCarColour() { return '#000'; } function icS() { return ''; }`);
     const h = f._busAllCarsHtml();
@@ -168,7 +168,7 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     expect(h).toContain('<div class="li-title">Maximilian Throckmorton-Wellington</div>');
   });
   it('no cars running still shows how many riders are not on a car', () => {
-    const f = loadFns(['_busAllCarsHtml'], `const BUS = { cars: { unassigned: 3, cars: [] } }; function esc(s) { return String(s); }`);
+    const f = loadFns(['_busAllCarsHtml', 'progBar'], `const BUS = { cars: { unassigned: 3, cars: [] } }; function esc(s) { return String(s); }`);
     expect(f._busAllCarsHtml()).toContain('3 not on a car yet.');
   });
 });

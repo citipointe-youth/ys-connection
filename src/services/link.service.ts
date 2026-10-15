@@ -98,7 +98,9 @@ export type BatchItemResult = ItemResult;
 
 export interface LinkStatus {
   console: { lastSeenAt: string | null; online: boolean; inWindow: boolean; pollSeconds: number | null;
-    capabilities: Capabilities | null; consoles: number };
+    capabilities: Capabilities | null; consoles: number;
+    /** S5: the newest console's fresh progress entries by key (intake:<mode>:<date> is the Refresh ask's). */
+    progress: Record<string, ProgressView> };
   mirrors: Record<MirrorKind, { takenAt: string | null; ageSeconds: number | null }>;
   /** T1: the newest console's LINK_REV (null = no console yet) and this app's; the admin page warns when lower. */
   consoleLinkRev: number | null; appLinkRev: number;
@@ -130,7 +132,9 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   consentStep: boolean }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
 export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches'; status: 'waiting' | 'working' | 'ready' | 'failed';
-  reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[] }
+  reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[];
+  /** S5: while working, how far the console has got (null = not known). */
+  progress?: ProgressView | null }
 export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
@@ -157,7 +161,7 @@ export interface LinkService {
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
-  flows(actor: Actor): Promise<{ rows: FlowView[]; steps: LinkFlowStep[] }>;
+  flows(actor: Actor): Promise<{ rows: FlowView[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -185,6 +189,15 @@ export interface LinkServiceDeps {
 const fullName = (r: { firstName: string; lastName: string }) => `${r.firstName} ${r.lastName}`.trim();
 const view = (r: OutboxRow): ActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason });
 const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';
+/** S5: how far a long console job has got (POST /sync/push/progress); stale after 2 min, or once `after` (the push it
+ *  leads to) has landed. null = nothing known (the SPA slides its bar). */
+export interface ProgressView { done: number | null; total: number | null; stage: string }
+const PROGRESS_FRESH_MS = 120_000;
+export function progressOf(con: ConsoleRow | null, key: string, now: number, after?: string | null): ProgressView | null {
+  const p = con?.progress?.[key];
+  if (!p || now - Date.parse(p.at) > PROGRESS_FRESH_MS || (after && Date.parse(p.at) <= Date.parse(after))) return null;
+  return { done: p.done, total: p.total, stage: p.stage };
+}
 const newest = (cs: ConsoleRow[]) => [...cs].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))[0] ?? null;
 /** Key-order-independent JSON, for the replay check (contract §4.1 "jsonb ="). */
 function stable(v: unknown): string {
@@ -729,8 +742,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const console = n
         ? { lastSeenAt: n.lastSeenAt, online: t - Date.parse(n.lastSeenAt) <= (2 * n.pollSeconds + 60) * 1000,
           inWindow: n.inWindow, pollSeconds: n.pollSeconds, capabilities: n.capabilities,
-          consoles: consoles.filter((x) => t - Date.parse(x.lastSeenAt) <= CONSOLE_RECENT_MS).length }
-        : { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 };
+          consoles: consoles.filter((x) => t - Date.parse(x.lastSeenAt) <= CONSOLE_RECENT_MS).length,
+          progress: Object.fromEntries(Object.keys(n.progress ?? {}).flatMap((k) => { const p = progressOf(n, k, t); return p ? [[k, p]] : []; })) }
+        : { lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0, progress: {} };
       const m = Object.fromEntries(MIRROR_KINDS.map((k) => {
         const at = takenAt(mirrors, k);
         return [k, { takenAt: at, ageSeconds: at ? Math.round((t - Date.parse(at)) / 1000) : null }];
@@ -907,8 +921,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     async flows(actor) {
       const c = context(actor, await gate(actor, ['flows']));
-      const [flows, roster, open, assigns, leaders, pushed] = await Promise.all([c.flows(), c.roster(),
-        d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps()]);
+      const [flows, roster, open, assigns, leaders, pushed, consoles, mirrors] = await Promise.all([c.flows(), c.roster(),
+        d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
@@ -930,8 +944,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
       const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
+      // S5: the console is reading the flows now (progress posted after the last flows push landed)
+      const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
       return { rows, steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
-        .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder) };
+        .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder), progress };
     },
 
     /**
@@ -947,7 +963,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const p = row.payload as { kind: 'forms' | 'mismatches'; page: number };
       const base = { id, kind: p.kind, page: p.page, pageSize: 25, total: null, takenAt: null, rows: [] as unknown[] };
       if (row.status === 'pending') return { ...base, status: 'waiting', reason: row.reason ?? null }; // a retry carries why (resilience M5)
-      if (row.status === 'claimed') return { ...base, status: 'working', reason: null };
+      if (row.status === 'claimed') return { ...base, status: 'working', reason: null,
+        progress: progressOf(newest(await d.link.listConsoles()), `lookup:${id}`, clock().getTime()) };
       if (row.status !== 'sent') return { ...base, status: 'failed', reason: row.reason ?? row.status };
       const got = await d.link.consentLookup(id);
       if (!got) return { ...base, status: 'failed', reason: 'expired' };

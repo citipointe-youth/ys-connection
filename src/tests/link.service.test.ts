@@ -272,7 +272,7 @@ describe('D1 status', () => {
   it('no console yet: online false, capabilities null', async () => {
     const h = await setup('on', { console: false });
     const s = await h.svc.status(GRADE);
-    expect(s.console).toEqual({ lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0 });
+    expect(s.console).toEqual({ lastSeenAt: null, online: false, inWindow: false, pollSeconds: null, capabilities: null, consoles: 0, progress: {} });
   });
 });
 

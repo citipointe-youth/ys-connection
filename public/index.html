@@ -774,6 +774,16 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
 .lk-hint{font-size:12px;color:var(--ink-mid);text-align:center;margin:12px 4px}
+/* S5 progress bar (progBar): every wait. A fill to done/total when the console says how far it is, else a sliding segment.
+   Reduced motion: the segment stands still (the stage text still says what is happening). */
+.pbar{margin:12px 4px;font-size:12px;color:var(--ink-mid)}
+.pbar-top{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.pbar-n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pbar-track{position:relative;height:4px;border-radius:2px;background:var(--paper-dark);overflow:hidden}
+.pbar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent-dark));transition:width .4s ease}
+.pbar-fill.ind{position:absolute;left:0;width:35%;animation:pbar-slide 1.3s ease-in-out infinite}
+@keyframes pbar-slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+@media(prefers-reduced-motion:reduce){.pbar-fill.ind{animation:none!important;transform:none;width:100%;opacity:.35}}
 .lk-sub{margin:0 0 12px;font-size:13px;color:var(--ink-mid)}
 .lk-opt{display:flex;width:100%;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:6px;font:inherit;font-size:15px;background:var(--paper-card);color:var(--ink);text-align:left;cursor:pointer}
 .lk-opt.on{border-color:var(--accent);background:var(--accent-light)}
@@ -1279,6 +1289,16 @@ function accentRampPairs(accentHex) {
 // HTML-escape any user-supplied string before interpolating it into innerHTML.
 // Names, notification titles/messages, emails etc. all come from CSV import or
 // user input and MUST go through this to prevent stored XSS.
+// S5 (run 2026-10-15b): the one progress bar for every wait. done/total known -> a determinate fill ("3 of 40");
+// else a sliding bar. stage = what is happening, in the reader's words. Global: the link block uses it.
+function progBar(stage, done, total) {
+  const T = Number(total), D = Number(done), known = done != null && total != null && T > 0 && D >= 0;
+  const n = known ? Math.min(D, T) : 0, label = String(stage || 'Loading');
+  const aria = known ? ` aria-valuemin="0" aria-valuemax="${T}" aria-valuenow="${n}" aria-valuetext="${esc(label + ', ' + n + ' of ' + T)}"` : '';
+  return `<div class="pbar" role="progressbar" aria-label="${esc(label)}"${aria}><div class="pbar-top"><span>${esc(label)}</span>`
+    + (known ? `<span class="pbar-n">${n} of ${T}</span>` : '') + `</div><div class="pbar-track"><div class="pbar-fill${known ? '' : ' ind'}"`
+    + (known ? ` style="width:${Math.round(n / T * 100)}%"` : '') + '></div></div></div>';
+}
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -6299,8 +6319,8 @@ async function renderAdminView(settings, users, history) {
   }
 
   if (_adminTab === 'system') body += '<div id="sys-check"></div>';
-  if (_adminTab === 'errors') body += '<div id="err-log"><div class="help-text">Loading…</div></div>';
-  if (_adminTab === 'unsent') body += '<div id="unsent-list"><div class="help-text">Loading…</div></div>';
+  if (_adminTab === 'errors') body += '<div id="err-log">' + progBar('Loading') + '</div>';
+  if (_adminTab === 'unsent') body += '<div id="unsent-list">' + progBar('Loading') + '</div>';
 
   setApp(shell(body));
   if (_adminTab === 'system') renderSystemCheck();
@@ -10349,7 +10369,7 @@ function _lkLists() {
 // T7: matches while typing, then the collapsed Checked in list. APP-74: its rows are built only while it is open.
 function _lkListHtml() {
   const l = _lkLists();
-  if (!l) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : '<p class="lk-hint">Loading…</p>';
+  if (!l) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : progBar('Loading');
   const typed = !!String(LINK.q.search || '').trim();
   return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' : '<p class="lk-hint">Type a name to check someone in.</p>')}
     <details class="lk-done"${LINK.doneOpen ? ' open' : ''} ontoggle="_lkDoneToggle(this.open)"><summary><span>Checked in · ${l.done.length}</span>${icS('chevd')}</summary>
@@ -10491,7 +10511,7 @@ function _lkTickedCount() {
   return _lkLeadersView().filter((l) => _lkLeaderState(l) === 'tick' && t[l.leaderId]).length;
 }
 function _lkLeadersHtml() {
-  if (!LINK.people[LINK.svc]) return `<div class="mo-title">Check in leaders</div><p class="lk-hint">Loading…</p>`;
+  if (!LINK.people[LINK.svc]) return `<div class="mo-title">Check in leaders</div>${progBar('Loading')}`;
   const xs = _lkLeadersView(), t = LINK.lq || {};
   const tick = xs.filter((l) => _lkLeaderState(l) === 'tick');
   const allOn = tick.length > 0 && tick.every((l) => t[l.leaderId]);
@@ -10679,7 +10699,7 @@ function _lkGroupAct(g) {
 }
 function _lkGroupsHtml() {
   const gs = LINK.groups;
-  if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
+  if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : progBar('Loading');
   if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.</p>';
   const grades = [...new Set(gs.map((g) => g.grade).filter((x) => x != null))].sort((a, b) => a - b);
   let sel = 'all';
@@ -10977,7 +10997,7 @@ function _lkMemberRows(v, queue, mres, gid) {
 function _lkMembersHtml(g) {
   const gid = g.groupId, v = LINK.gm[gid], open = !!LINK.gmOpen[gid], a = `'${esc(gid)}'`;
   let body = '';
-  if (open && !v) body = '<p class="lk-hint">Loading...</p>';
+  if (open && !v) body = progBar('Loading');
   else if (open && v.err) body = `<p class="lk-sub">${esc(v.err)}</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMembersLoad(${a})">Try again</button>`;
   else if (open) {
     const canAdd = v.canEdit && !_lkMemOff('addGroupMember'), canRm = v.canEdit && !_lkMemOff('removeGroupMember');
@@ -11067,7 +11087,7 @@ function _lkYouthFilter(rows, q, grade, exclude) {
 function _lkYpDraw() {
   const el = document.getElementById('lk-yp-list'), p = LINK.yp;
   if (!el || !p) return;
-  if (!LINK.youth) { el.innerHTML = LINK.youthErr ? `<p class="lk-sub">${esc(LINK.youthErr)}</p>` : '<p class="lk-hint">Loading...</p>'; return; }
+  if (!LINK.youth) { el.innerHTML = LINK.youthErr ? `<p class="lk-sub">${esc(LINK.youthErr)}</p>` : progBar('Loading'); return; }
   const v = LINK.gm[p.gid], ex = {};
   if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state !== 'not-added') ex[r.personId] = true; });
   const list = _lkYouthFilter(LINK.youth, p.q, p.grade, ex);
@@ -11241,8 +11261,9 @@ function _lkFlowRowHtml(r, today, boss) {
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
 function _lkFlowsHtml() {
   const rs = LINK.flows;
-  if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
-  if (!rs.length && !(LINK.fSteps || []).length) return '<p class="lk-hint">No flow steps for this login.</p>';
+  if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : progBar('Loading');
+  const fp = LINK.fProg, bar = fp ? progBar(fp.stage || 'Reading flow steps', fp.done, fp.total) : ''; // S5: the console is updating these
+  if (!rs.length && !(LINK.fSteps || []).length) return bar || '<p class="lk-hint">No flow steps for this login.</p>';
   const today = _lkToday(), boss = _lkBoss(), shown = _lkFlowVisible();
   LINK.fstep = {};
   let top = '';
@@ -11251,7 +11272,7 @@ function _lkFlowsHtml() {
     top = _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
       <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button></div>` : '');
   }
-  return top + _lkFlowGroups(shown, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
+  return bar + top + _lkFlowGroups(shown, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
     const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, ''), open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
@@ -11431,6 +11452,10 @@ async function _lkLoadFlows(quiet) {
     LINK.flows = (r && r.rows) || [];
     LINK.fSteps = (r && r.steps) || [];
     LINK.flowsAt = Date.now();
+    // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
+    LINK.fProg = (r && r.progress) || null;
+    clearTimeout(LINK.fProgT);
+    if (LINK.fProg) LINK.fProgT = setTimeout(() => { if (S.page === 'link-flows' && document.visibilityState !== 'hidden') _lkLoadFlows(true).then(_lkFlowsDraw); }, 3000);
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
     LINK.fErr = null;
@@ -11525,7 +11550,7 @@ function _lkRevLine(st) {
 // Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows named with the action.
 function _lkAdmStatusHtml() {
   const st = LINK.status, c = st && st.console;
-  if (!st) return '<div class="lk-sec">Status</div><p class="lk-hint">Loading...</p>';
+  if (!st) return '<div class="lk-sec">Status</div>' + progBar('Loading');
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};
@@ -11541,7 +11566,7 @@ function _lkAdmStatusHtml() {
   const rev = _lkRevLine(st);
   return `<div class="lk-sec">Status</div>${rev ? `<div class="lk-alert warn">${icS('info')}<div>${esc(rev)}</div></div>` : ''}${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}
     <p class="lk-sub">Each link screen has its own switch in Youth Setup, Modules. To stop all data flow, also Turn off the link on the console.</p>
-    <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? '<p class="lk-hint">Loading...</p>'
+    <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? progBar('Loading')
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
@@ -11562,7 +11587,7 @@ function _lkAdmMatchHtml() {
   };
   let body;
   if (A.rErr) body = `<p class="lk-sub">${esc(A.rErr)}</p>`;
-  else if (!A.roster) body = '<p class="lk-hint">Loading...</p>';
+  else if (!A.roster) body = progBar('Loading');
   else {
     const xs = A.roster.filter((r) => r.kind === 'student' && (f === 'manual' ? r.match === 'manual' || r.match === 'ignored' : r.match === f));
     const list = (ys) => ys.slice(0, 60).map(row).join('') + (ys.length > 60 ? `<p class="lk-hint">Showing 60 of ${ys.length}.</p>` : '');
@@ -11591,7 +11616,7 @@ function _lkAdmShadowHtml() {
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
   if (A.lErr) return `<p class="lk-sub">${esc(A.lErr)}</p>`;
-  if (!A.log) return '<p class="lk-hint">Loading...</p>';
+  if (!A.log) return progBar('Loading');
   if (!A.log.length) return '<p class="lk-sub">No activity for these dates.</p>';
   return A.log.map(_lkLogRowHtml).join('') + (A.log.length >= 2000 ? '<p class="lk-hint">Showing the newest 2,000.</p>' : '');
 }
@@ -12156,7 +12181,7 @@ function _ikFocusOut() { setTimeout(() => { if (_ik().pendingDraw) _ikDraw(); },
 function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
   if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>`;
-  if (!I.dates) return '<div class="lk-hint">Loading…</div>';
+  if (!I.dates) return progBar('Loading');
   if (!_intakeOn(st)) return `<div class="lk-alert warn">${icS('info')}<div>${esc(_ikOldConsole())}</div></div>`;
   return I.key ? _ikFamilyPage() : _ikListPage();
 }
@@ -12165,18 +12190,25 @@ function _ikListPage() {
   const tabs = `<div class="tbbar">${[['intake', 'Intakes'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
   const sub = consent ? _ikSubBar(I.csub) : '';
   if (consent && I.csub !== 'last') return `<div class="lk-svc lk-mb">${tabs}</div>${sub}${_ikLkPage(I.csub, st)}`;
-  const ref = I.ref ? '<span class="lk-d">Asking the console…</span>' : '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikRefresh()">Refresh</button>';
+  const ref = I.ref ? '' : '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikRefresh()">Refresh</button>';
   const dates = consent ? _ikWeekHtml(I) : I.dates.length
     ? `<div class="tbbar">${I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">${esc(_lkDay(x.date))}${x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : ''}</button>`).join('')}</div>`
     : '<div class="lk-hint">No dates yet. Press Refresh to ask the console.</div>';
   const checked = L && L.takenAt ? `<div class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · stale' : ''}</div>` : '';
-  return `<div class="lk-svc lk-mb">${tabs}${ref}</div>${sub}${_ikBanner(st, L, I.tab)}${dates}${checked}${I.tab === 'consent' ? _ikConsentHelp() : ''}`
+  return `<div class="lk-svc lk-mb">${tabs}${ref}</div>${I.ref ? _ikRefBar(I.ref, st) : ''}${sub}${_ikBanner(st, L, I.tab)}${dates}${checked}${I.tab === 'consent' ? _ikConsentHelp() : ''}`
     + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="ik-rows">${I.date ? _ikRowsHtml(L, st, I.doneOpen) : ''}</div>`;
 }
+// S5: a Refresh ask in four steps: Sent, Console picked up (it claimed after the ask), Reading Elvanto (its progress post),
+// Done (the list's newer takenAt clears I.ref with "Checked just now.").
+function _ikRefBar(ref, st) {
+  const c = st && st.console, p = c && c.progress && c.progress['intake:' + ref.mode + ':' + ref.date];
+  if (p) return progBar(p.stage || 'Reading Elvanto', 3, 4);
+  return c && c.lastSeenAt && Date.parse(c.lastSeenAt) >= ref.since - 5000 ? progBar('Console picked up', 2, 4) : progBar('Sent, waiting for the console', 1, 4);
+}
 // The list in three sections (§7.1): NEEDS YOU, READY, DONE (collapsed). Greyed while the plan is stale.
 function _ikRowsHtml(list, st, open) {
-  if (!list) return '<div class="lk-hint">Loading…</div>';
+  if (!list) return progBar('Loading');
   const rows = list.rows || [];
   if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
     ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>'
@@ -12212,7 +12244,7 @@ function _ikConsentHelp() {
 function _ikFamilyPage() {
   const I = _ik(), st = _ikSt(), det = I.det && I.det.row && I.det.row.key === I.key ? I.det : null;
   const back = `<button type="button" class="btn btn-ghost btn-sm lk-mb" onclick="_ikBack()">${icS('arrl')} ${I.tab === 'consent' ? 'All students' : 'All families'}</button>`;
-  if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : '<div class="lk-hint">Loading…</div>');
+  if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : progBar('Loading'));
   const L = I.list && I.list.date === I.date ? I.list : null;
   return back + _ikBanner(st, L, I.tab) + (I.tab === 'consent' ? _ikConsentHtml(det, L, st) : _ikFamilyHtml(det, L, st, _ikAns()));
 }
@@ -12420,7 +12452,7 @@ function _ikSchedule() {
   if (S.page !== 'link-intake') return;
   const busy = !!I.ref || (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
     || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0;
-  if (busy) I.poll = setTimeout(() => { I.poll = null; if (_ik() === I && S.page === 'link-intake' && document.visibilityState !== 'hidden') _ikLoad(true); }, 10000);
+  if (busy) I.poll = setTimeout(() => { I.poll = null; if (_ik() === I && S.page === 'link-intake' && document.visibilityState !== 'hidden') _ikLoad(true); }, I.ref ? 4000 : 10000); // S5: a Refresh ask's bar moves every 4 s
   for (const k of ['forms', 'mismatches']) { const x = I.lk && I.lk[k]; if (x && (x.st === 'waiting' || x.st === 'working') && !x.poll) _ikLkPoll(k); }
   if (!I.fixPoll) _ikFixPoll();
 }
@@ -12664,7 +12696,7 @@ function _ikLkApply(x, r, now) {
     x.msg = s === 'working' ? 'The console is still reading the forms. Press Check again in a minute.' : "The console hasn't picked this up yet. Press Check again later.";
     return false;
   }
-  x.st = s; x.reason = r.reason || null;
+  x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
   return true;
 }
 function _ikLkPoll(kind) {
@@ -12734,10 +12766,10 @@ function _ikDncLine(dnc, name) {
     : dnc === 'off' ? 'This turns DO NOT CONTACT off: after this, leaders CAN contact ' + name + '.' : '';
 }
 function _ikLkStatusHtml(kind, x, st) {
-  const live = (t) => `<div class="lk-st wait lk-mb" role="status" aria-live="polite">${esc(t)}</div>`;
-  if (x.st === 'asking') return live('Asking the console…');
-  if (x.st === 'waiting') return live(x.reason ? "Looking up… The console couldn't read Elvanto just now. It tries again in a few minutes." : 'Looking up… Waiting for the console to pick this up.' + _ikSeenLine(st));
-  if (x.st === 'working') return live('Looking up… The console is reading Elvanto.' + (kind === 'mismatches' ? ' A first check can take a few minutes.' : ''));
+  const note = (t) => (t ? `<div class="lk-d lk-mb">${esc(t)}</div>` : ''), p = x.prog; // S5: a bar, real numbers once the console posts them
+  if (x.st === 'asking') return progBar('Sending your search');
+  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason ? "The console couldn't read Elvanto just now. It tries again in a few minutes." : _ikSeenLine(st).trim());
+  if (x.st === 'working') return progBar(p ? p.stage : 'The console is reading Elvanto', p && p.done, p && p.total) + note(kind === 'mismatches' ? 'A first check can take a few minutes.' : '');
   if (x.st === 'timeout' || x.st === 'offline' || x.st === 'failed') {
     const again = x.st === 'failed' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLkGo('${kind}', ${Number(x.page) || 1}, _ikLk('${kind}').q)">Search again</button>`
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLkAgain('${kind}')">Ask again</button>`;
@@ -13007,7 +13039,7 @@ function _busAllCarsHtml() {
   if (!d) {
     if (BUS.carsErr) return `<button type="button" class="btn btn-secondary btn-full" onclick="busCarsRefresh()">Couldn't load the cars. Tap to retry.</button>`;
     if (!BUS.carsLoading) busCarsRefresh();
-    return `<div class="card-sub">Loading…</div>`;
+    return `${progBar('Loading')}`;
   }
   const notOnCar = d.unassigned ? `<div class="card-sub">${esc(String(d.unassigned))} not on a car yet.</div>` : '';
   if (!d.cars.length) return `<div class="card-sub">No cars are running tonight.</div>${notOnCar}`;
@@ -14076,7 +14108,7 @@ function _busMyCarHtml() {
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
   if (!mine) return picker;
-  if (!mc) return `${picker}<div class="card-sub">Loading…</div>`;
+  if (!mc) return `${picker}${progBar('Loading')}`;
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
@@ -14334,7 +14366,7 @@ function _busHistHtml() {
     ${BUS.hist && BUS.hist.nights.length ? `<button class="btn btn-secondary btn-sm" onclick="busExportHist()">Export</button>` : ''}</div>`;
   if (BUS.histErr && !BUS.hist) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>`;
   const h = BUS.hist;
-  if (!h) return `${back}<div class="card-sub">Loading…</div>`;
+  if (!h) return `${back}${progBar('Loading')}`;
   if (!h.nights.length) return `${back}<div class="empty">${icEmpty('bus')}<div>No past nights yet.</div></div>`;
   const people = BUS.histPeople || [];
   const byRun = _busByRun(h.rides);
