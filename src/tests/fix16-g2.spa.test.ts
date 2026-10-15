@@ -1,0 +1,135 @@
+// Fix round 2026-10-16, lane G2 (Consents tab): F-08, F-18, F-32(b), F-36, F-42, F-48(a), L6-8.
+import { describe, it, expect } from 'vitest';
+import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+
+const FNS = ['esc', '_ikSubBar', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
+  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormIconDefs',
+  '_ikFormIcons', '_ikIcHtml', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
+const HTML = loadIndexHtml();
+const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
+const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
+const strip = (h: string) => h.replace(/<[^>]*>/g, '');
+const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+function env(o: { fresh?: () => any } = {}) {
+  const t = { delays: [] as number[], cbs: [] as Array<() => any>, picked: [] as number[], loads: 0 };
+  const I: any = { csub: 'last', dates: [{ date: '2026-10-16' }, { date: '2026-10-09' }], date: '2026-10-16', fixes: {}, lk: null };
+  const fns = new Function('__t', '__I', '__fresh', `
+    const S = { page: 'link-intake' };
+    const navigator = { onLine: true };
+    const document = { getElementById: () => null };
+    const API = { fresh: () => __fresh() };
+    const setTimeout = (cb, ms) => { __t.delays.push(ms); __t.cbs.push(cb); return __t.cbs.length; };
+    const clearTimeout = () => {};
+    const _ik = () => __I;
+    const navPush = () => {}; const _ikDraw = () => {}; const _ikLoad = () => { __t.loads++; };
+    const _ikPickDate = (i) => { __t.picked.push(i); __I.date = __I.dates[i].date; };
+    const progBar = (s) => '<div>' + s + '</div>'; const icS = (k) => ''; const _ikSeenLine = () => '';
+    const _lkDay = (d) => d; const _lkSeen = (d) => d;
+    ${FIX_REASON}
+    const IK_CONTACT_RE = /contact with my child/i;
+    ${BODY}
+    return { ${FNS.join(', ')} };`)(t, I, o.fresh ?? (() => ({ status: 'waiting' })));
+  return { fns, t, I };
+}
+const ST = (caps: Record<string, string> = {}) => ({ consoleLinkRev: 7, console: { capabilities: { consentLookup: 'live', consentFix: 'live', consentLink: 'live', ...caps } } });
+
+describe('F-48(a) Last Friday pill', () => {
+  it('is lit only on the newest week; tapping it from an older week goes back to the newest', () => {
+    const { fns, t, I } = env();
+    expect(fns._ikSubBar('last')).toMatch(/class="tbbtn on"[^>]*>Last Friday/);
+    I.date = '2026-10-09';
+    expect(fns._ikSubBar('last')).not.toMatch(/class="tbbtn on"[^>]*>Last Friday/);
+    fns._ikConsentSub('last');
+    expect(t.picked).toEqual([0]);
+  });
+});
+
+describe('F-08 console busy', () => {
+  it('a console-busy retry renders the busy line', () => {
+    const { fns } = env(), now = Date.now();
+    const x: any = { kind: 'forms', since: now };
+    fns._ikLkApply(x, { status: 'waiting', reason: 'console-busy' }, now);
+    expect(strip(fns._ikLkStatusHtml('forms', x, ST()))).toContain('The console is busy with the service. Lists open again after the service.');
+  });
+});
+
+describe('F-18 messages name the button on screen', () => {
+  it('offline and timeouts say "tap Ask again", never "Check again"', () => {
+    const { fns } = env(), now = Date.now();
+    const x: any = { kind: 'forms' };
+    fns._ikLkErr(x, new Error('Load failed'));
+    expect(x.msg).toBe('No internet. Reconnect, then tap Ask again.');
+    expect(strip(fns._ikLkStatusHtml('forms', x, ST()))).toContain('Ask again');
+    const w: any = { kind: 'forms', since: now };
+    fns._ikLkApply(w, { status: 'working' }, now + 6 * 60000);
+    expect(w.msg).toBe('Still reading the forms. Tap Ask again in a minute.');
+    const v: any = { kind: 'forms', since: now };
+    fns._ikLkApply(v, { status: 'waiting' }, now + 6 * 60000);
+    expect(v.msg).not.toMatch(/Check again/);
+    expect(v.msg).toMatch(/Ask again/);
+  });
+});
+
+describe('F-32(b) no doubled prefix', () => {
+  it('a refused detail that already says Not sent/Not saved is shown as is', () => {
+    const { fns } = env();
+    expect(fns._ikClText({ status: 'refused', detail: 'Not sent: the console was busy.' })).toEqual(['bad', 'Not sent: the console was busy.']);
+    expect(fns._ikClText({ status: 'refused', detail: 'Only the admin can do this.' })).toEqual(['bad', 'Not saved: Only the admin can do this.']);
+  });
+});
+
+describe('F-36 linked mismatch rows', () => {
+  it('a console-linked row has no Fix button and says to fix it in Elvanto', () => {
+    const { fns } = env();
+    const x = fns._ikLk('mismatches');
+    const row = (n: number, o: any = {}) => ({ personId: P(n), name: 'Tom Test', submitted: '2026-10-09', diffs: ['consent date'], form: { consentDate: '09/10/2026' }, profile: {}, ...o });
+    Object.assign(x, { st: 'ready', res: { rows: [row(1, { linked: true }), row(2)], page: 1, pageSize: 25, total: 2 } });
+    const h = fns._ikLkResHtml('mismatches', x, ST());
+    expect(h.match(/_ikFixOpen\(/g)).toHaveLength(1);
+    expect(h).toContain('_ikFixOpen(1)');
+    expect(strip(h)).toContain('Linked on the console; fix in Elvanto.');
+  });
+});
+
+describe('F-42 Unlinked intro + tag', () => {
+  it('intro is short and the tag says not in Elvanto and may wrap', () => {
+    const { fns } = env();
+    const intro = strip(fns._ikLkPage('unlinked', ST()).match(/<p class="lk-d lk-mb">[^<]*<\/p>/)![0]);
+    expect(intro).toBe('Consent forms with no person. Tap Find person to link one. Elvanto is not changed.');
+    expect(intro.length).toBeLessThanOrEqual(90);
+    const f = { subId: P(1), name: 'Riley', submitted: '2026-10-09', linked: { personId: P(2), name: 'Riley Sample' } };
+    const h = fns._ikClRow(f, 0, '', ST());
+    expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
+    expect(h).not.toContain('console only');
+    expect(h).toMatch(/white-space:normal[^>]*>Linked to/);
+  });
+});
+
+describe('L6-8 lookup poll schedule', () => {
+  it('10 s while waiting, 2.5 s once working, 5 s after a minute', async () => {
+    let reply: any = { status: 'waiting' };
+    const { fns, t } = env({ fresh: () => reply });
+    const x = fns._ikLk('forms');
+    Object.assign(x, { id: P(9), st: 'waiting', since: Date.now() });
+    fns._ikLkPoll('forms');
+    expect(t.delays.at(-1)).toBe(10000);
+    reply = { status: 'working' };
+    await t.cbs.at(-1)!();
+    expect(t.delays.at(-1)).toBe(2500);
+    x.workSince = Date.now() - 61000;
+    await t.cbs.at(-1)!();
+    expect(t.delays.at(-1)).toBe(5000);
+  });
+  it('a network blip is retried silently 3 times, then shown', async () => {
+    const { fns, t } = env({ fresh: () => { throw new Error('Load failed'); } });
+    const x = fns._ikLk('forms');
+    Object.assign(x, { id: P(9), st: 'waiting', since: Date.now() });
+    fns._ikLkPoll('forms');
+    for (let i = 0; i < 3; i++) { await t.cbs.at(-1)!(); expect(x.st).toBe('waiting'); }
+    const n = t.cbs.length;
+    await t.cbs.at(-1)!();
+    expect(x.st).toBe('offline');
+    expect(t.cbs.length).toBe(n);
+  });
+});
