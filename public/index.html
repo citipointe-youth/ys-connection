@@ -7687,7 +7687,7 @@ function _setupFlowHiddenHtml(md) {
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
-  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">New youth & consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
+  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">New youth & consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Off deletes the stored plans.")}</label>
       <select class="fs" id="setup-intakeAdmin" onchange="_setupSet('modules.intakeAdmin', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
 }
 function _setupSetModule(key, val) {
