@@ -9,7 +9,7 @@ import type {
   ILifegroupAttendanceRepository,
 } from '../repositories/interfaces';
 import type { Actor } from '../core/entities/user';
-import { assertCan } from './access-control';
+import { assertCan, assertLeaderInScope, leaderStudentVisible } from './access-control';
 import { NotFoundError, ForbiddenError } from '../core/errors/app-error';
 import { makeDnc, type Dnc } from './dnc';
 
@@ -142,7 +142,10 @@ export function makeFollowupService(
       ]);
       if (!leader) throw new NotFoundError('Leader not found');
       const connectedIds = new Set(conns.map((c) => c.studentId));
-      const myStudents = allStudents.filter((s) => connectedIds.has(s.id));
+      // F-01: a grade/quad login may read only an in-scope leader, and only students it may access.
+      // ponytail: no settings repo here, so the default (strict) structure; pass structure if a soft-gender deployment needs it.
+      assertLeaderInScope(actor, leader);
+      const myStudents = allStudents.filter((s) => connectedIds.has(s.id) && leaderStudentVisible(actor, s));
 
       // Most recent VALID service session (ignores holiday/low-attendance Fridays).
       const latestSession = validSessions.reduce<(typeof validSessions)[number] | null>(

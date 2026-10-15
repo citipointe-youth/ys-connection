@@ -3315,10 +3315,17 @@ async function renderHomeFollowup(fromCache) {
   // fromCache: a repaint (grade filter) — reuse the last reply instead of a network call.
   const G = (p) => (fromCache && Cache.getStale(p)) || API.get(p);
 
+  // F-01: a saved "I am" now outside this login's leaders (403) shows the picker too. The saved id is kept;
+  // the user's own pick goes through chooseHomeLeader -> _lkSwitchLeader (the guard).
+  let data, out = false;
+  if (mine) {
+    try { data = await G(`/connections/leader/${mine}/followup`); }
+    catch (e) { if (e && e.status === 403 && !(S.user && S.user.role === 'leader')) out = true; else { host.innerHTML = ''; return; } }
+  }
   // No identity yet → offer a picker built from the leaders in scope.
-  if (!mine) {
+  if (!mine || out) {
     let leaders = [];
-    try { leaders = await G('/leaders'); } catch {}
+    try { leaders = await G('/leaders?pick=1'); } catch {} // F-01: only this login's own leaders
     if (!leaders.length) { host.innerHTML = ''; return; }
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
     host.innerHTML = `<div class="sh" style="font-size:13px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
@@ -3329,9 +3336,6 @@ async function renderHomeFollowup(fromCache) {
     return;
   }
 
-  let data;
-  try { data = await G(`/connections/leader/${mine}/followup`); }
-  catch { host.innerHTML = ''; return; }
   if (!data) { host.innerHTML = ''; return; }
 
   // A junior-leader login is bound to its own leader record — no "Not you?".
@@ -4256,7 +4260,7 @@ function fmtBday(iso) {
 // "I am" changes go through _lkSwitchLeader (LINK MODULE): it warns first when link actions are unsent.
 async function _msNotYou() { if (await _lkSwitchLeader(null)) { _msLeader = null; renderMyStudents(); } }
 async function _msPickLeader(v) { if (await _lkSwitchLeader(v || null)) _msLeader = v; renderMyStudents(); }
-const MYSTUDENTS_PATHS = ['/leaders', '/students'];
+const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students']; // F-01: the I am picker lists only this login's own leaders
 let _myStudentsRevalidating = false;
 function _revalidateMyStudents() {
   if (_myStudentsRevalidating) return;
@@ -4272,13 +4276,13 @@ async function renderMyStudents() {
   const haveStale = MYSTUDENTS_PATHS.every(p => Cache.getStale(p) !== null);
   let leaders, allStudents;
   if (allFresh || haveStale) {
-    leaders = Cache.getStale('/leaders') || [];
+    leaders = Cache.getStale('/leaders?pick=1') || [];
     allStudents = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateMyStudents();
   } else {
     setApp(shell(''));
     [leaders, allStudents] = await Promise.all([
-      API.get('/leaders').catch(() => []),
+      API.get('/leaders?pick=1').catch(() => []),
       API.get('/students').catch(() => []),
     ]);
     if (S.page !== _pg) return;
@@ -10674,13 +10678,26 @@ function _lkIamPick(then) {
 }
 function _lkIamListHtml(q, ls) {
   const toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false)
+  // F-01 (FX3): a grade/quad login may pick only its own leaders: the server's /leaders?pick=1 list (leaderInScope),
+  // loaded once per session into LINK.iamPick (undefined = not asked, null = loading, 'err' = failed, Set = loaded).
+  // FAIL CLOSED: no names until the list is in; a failure shows a retry. Admin, director and junior leader: unchanged.
+  const u = S.user, scoped = !!u && (u.role === 'grade' || u.role === 'quad');
+  LINK.iamQ = q || '';
+  if (scoped && LINK.iamPick === undefined) {
+    LINK.iamPick = null;
+    API.get('/leaders?pick=1').then((p) => { LINK.iamPick = new Set((Array.isArray(p) ? p : []).map((l) => l.id)); },
+      () => { LINK.iamPick = 'err'; }).then(() => _lkIamFilter(LINK.iamQ));
+  }
+  if (scoped && LINK.iamPick === 'err') return `<p class="lk-sub">Couldn't load the names. <button type="button" class="btn btn-secondary btn-sm" onclick="_lkIamRetry()">Try again</button></p>`;
+  if (scoped && !(LINK.iamPick instanceof Set)) return '<p class="lk-sub">Loading names…</p>';
+  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false && (!scoped || LINK.iamPick.has(l.id)))
     .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
   return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
     : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found.'}</p>`;
 }
 function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
+function _lkIamRetry() { LINK.iamPick = undefined; _lkIamFilter(LINK.iamQ || ''); }
 // The app's leaders, loaded once (the "I am" names come from it). A failed load keeps nothing and gives [].
 function _lkLoadLeaders() {
   if (LINK.ldrs) return Promise.resolve(LINK.ldrs);

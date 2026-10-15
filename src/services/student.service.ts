@@ -198,9 +198,10 @@ export function makeStudentService(
 
       // Junior leader: only their own connected students.
       if (myIds) results = results.filter((s) => myIds.has(s.id));
-      // Gender-scoped for grade + quad (cross-grade allowed — the connect exception).
+      // F-27 (FX3): grade + quad see only students they may access. The SPA never calls this route
+      // (Connect Setup's cross-grade picker uses /students?crossGrade=1), so the connect exception is unaffected.
       else if (actor.role === 'quad' || actor.role === 'grade') {
-        results = results.filter((s) => canAccessGender(actor, s.gender, structure));
+        results = results.filter((s) => canAccessStudent(actor, s.grade, s.gender, structure));
       }
 
       if (!can(actor, 'student:read:sensitive')) {

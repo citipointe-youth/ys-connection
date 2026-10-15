@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessStudent, canAccessGender, actorGrades, assertLeaderSelf } from './access-control';
+import { assertCan, canAccessStudent, canAccessGender, actorGrades, assertLeaderSelf, assertLeaderInScope, leaderStudentVisible } from './access-control';
 import {
   parseAllocationRows,
   planAllocationSync,
@@ -146,11 +146,16 @@ export function makeConnectionService(
     async listByLeader(actor, leaderId) {
       assertCan(actor, 'leader:read');
       assertLeaderSelf(actor, leaderId); // a junior leader can only list their own connections
-      const [conns, { studentsById, leadersById }] = await Promise.all([
+      const [conns, { studentsById, leadersById }, settings] = await Promise.all([
         connRepo.findByLeader(leaderId),
         buildLookups(),
+        settingsRepo.getSettings(),
       ]);
-      return enrichWith(conns, studentsById, leadersById);
+      const structure = settings.ministryConfig.structure;
+      const leader = leadersById.get(leaderId);
+      if (leader) assertLeaderInScope(actor, leader, structure); // F-01: same guard as leaderSummary
+      const visible = conns.filter((c) => { const s = studentsById.get(c.studentId); return !s || leaderStudentVisible(actor, s, structure); });
+      return enrichWith(visible, studentsById, leadersById);
     },
 
     async listAll(actor, opts) {
@@ -221,18 +226,22 @@ export function makeConnectionService(
 
     async leaderSummary(actor, leaderId) {
       assertCan(actor, 'leader:read');
-      const [leader, conns, allStudents, mark] = await Promise.all([
+      assertLeaderSelf(actor, leaderId);
+      const [leader, conns, allStudents, mark, settings] = await Promise.all([
         leaderRepo.findById(leaderId),
         connRepo.findByLeader(leaderId),
         studentRepo.findAll(),
         dnc.forActor(actor),
+        settingsRepo.getSettings(),
       ]);
       if (!leader) throw new NotFoundError('Leader not found');
+      const structure = settings.ministryConfig.structure;
+      assertLeaderInScope(actor, leader, structure); // F-01
       const studentsById = new Map(allStudents.map((s) => [s.id, s]));
       const students = [];
       for (const a of conns) {
         const s = studentsById.get(a.studentId);
-        if (s) students.push(mark(summariseStudent(s), s.id));
+        if (s && leaderStudentVisible(actor, s, structure)) students.push(mark(summariseStudent(s), s.id));
       }
       return { leader: { id: leader.id, fullName: leader.fullName }, students };
     },
@@ -251,10 +260,10 @@ export function makeConnectionService(
         const student = studentsById.get(a.studentId);
         const leader = leadersById.get(a.leaderId);
         if (!student || !leader) continue;
-        // Own-gender-only (not own-grade-only) — this export is Connect Setup's own
-        // "Export CSV" button, so it should include cross-grade connections the actor
-        // made there, same as the picker and listAll() above.
-        if ((actor.role === 'grade' || actor.role === 'quad') && !canAccessGender(actor, student.gender, structure)) continue;
+        // F-10 (FX3): a junior leader exports only its own rows; grade/quad only students they may
+        // access (canAccessStudent, the same one rule as leaderSummary).
+        if (actor.role === 'leader' && a.leaderId !== actor.leaderId) continue;
+        if ((actor.role === 'grade' || actor.role === 'quad') && !canAccessStudent(actor, student.grade, student.gender, structure)) continue;
         const svcPct = student.svcTotal > 0
           ? Math.round((student.svcAttended / student.svcTotal) * 100) + '%'
           : '—';
