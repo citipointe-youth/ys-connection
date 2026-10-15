@@ -40,6 +40,7 @@ function makeEnv(e: Env = {}) {
     const S = { user: { id: 'u1', role: ${JSON.stringify(e.role ?? 'admin')} }, page: 'link-intake',
       settings: { ministryConfig: { modules: Object.assign({ newYouthForms: 'off' }, ${JSON.stringify(e.modules ?? { intakeAdmin: 'on' })}) } } };
     let LINK = _lkFresh();
+    function navPush() {}
     ${CONSTS}
     const localStorage = __ls;
     const navigator = { userAgent: 'iPhone Safari' };

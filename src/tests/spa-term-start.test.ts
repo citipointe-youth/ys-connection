@@ -115,6 +115,7 @@ describe('auth expiry handling', () => {
       const go = p => calls.push('go:' + p);
       const setMyLeaderId = () => {}; const _vgReset = () => {}; const _lkSoftReset = () => {};
       const render = () => calls.push('render');
+      const NAV = { stack: [] }; const navReset = () => {};
       function __state() { return { S, calls, stash: _previewStash }; }
     `;
     return loadFns(['_isAuthExpired', '_handleAuthExpired'], prelude, ['_isAuthExpired', '_handleAuthExpired', '__state']);

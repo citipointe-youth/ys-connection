@@ -1429,10 +1429,11 @@ function go(page) {
 // history entry; the header arrow, Android back and iPhone swipe-back all pop the same stack.
 const NAV = { stack: [] };
 function _navSnap() {
-  const p = S.page;
-  return { p, g: p === 'link-groups' && LINK.gid ? (LINK.rf ? 2 : 1) : 0, gid: p === 'link-groups' ? LINK.gid : null, i: p === 'link-intake' && LINK.ik && LINK.ik.key ? 1 : 0 };
+  const p = S.page, I = p === 'link-intake' ? LINK.ik : null; // intake: its tab, date and consent sub-tab come back too
+  return { p, g: p === 'link-groups' && LINK.gid ? (LINK.rf ? 2 : 1) : 0, gid: p === 'link-groups' ? LINK.gid : null, i: I && I.key ? 1 : 0,
+    t: I ? I.tab : null, d: I ? I.date : null, c: I ? I.csub : null };
 }
-function _navSame(a, b) { return a.p === b.p && a.g === b.g && a.i === b.i; }
+function _navSame(a, b) { return a.p === b.p && a.g === b.g && a.gid === b.gid && a.i === b.i && a.t === b.t && a.d === b.d && a.c === b.c; }
 function navPush() {
   NAV.stack.push(_navSnap());
   try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
@@ -1447,14 +1448,23 @@ function navBack() {
 }
 function _navPop() {
   if (!S.user) return;
+  // A sheet is open: back closes it and stays on the screen (the entry the browser just popped is put back).
+  if (NAV.stack.length && document.querySelector('#modal-root .mo')) { closeModal(); try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
   const s = NAV.stack.pop();
   if (!s) { if (S.page !== 'home') { S.page = 'home'; render(); } return; }
   if (_navSame(s, _navSnap())) { if (NAV.stack.length) { try { history.back(); } catch (e) {} } return; }
   const same = s.p === S.page;
   S.page = s.p;
   if (s.p === 'link-groups') { LINK.gid = s.gid || null; LINK.rf = null; if (same) { _lkPaintGroups(); return; } }
-  if (s.p === 'link-intake' && LINK.ik && !s.i && LINK.ik.key) {
-    const I = LINK.ik; _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null;
+  if (s.p === 'link-intake' && LINK.ik) {
+    const I = LINK.ik;
+    if (I.key && !s.i) { _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null; }
+    if (s.t && s.t !== I.tab) { // the tab as _ikTab sets it, then the date it showed (kept by _ikLoad when still listed)
+      _ikLeave();
+      try { localStorage.setItem('ysc.intakeTab', s.t); } catch (e) {}
+      Object.assign(I, { tab: s.t, dates: null, date: s.d, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
+    } else if (s.d && s.d !== I.date) { I.date = s.d; I.list = null; I.key = null; I.det = null; I.saErr = {}; }
+    if (s.c && s.c !== I.csub) I.csub = s.c;
     if (same) { _ikDraw(); _ikLoad(true); return; }
   }
   render();
@@ -1757,10 +1767,10 @@ async function _ntPushFinish(permP, publicKey) {
   } finally { _ntPushBusy = false; _ntPushDraw(); }
 }
 // S4 (2026-10-15): first-login alerts popup for the four quad logins. Once per device; "Not now" asks again 7+ days later.
-async function _quadAlertsPrompt() {
+async function _quadAlertsPrompt(n = 0) {
   if (!S.user || S.user.role !== 'quad' || _previewStash || !_noticesOn()) return;
   try { if (Date.now() - Number(localStorage.getItem('yap_alert_ask') || 0) < 7 * 864e5) return; } catch {}
-  if (document.querySelector('#modal-root .mo')) return;
+  if (document.querySelector('#modal-root .mo')) { if (n < 30) setTimeout(() => _quadAlertsPrompt(n + 1), 2000); return; } // e.g. the I am sheet: ask after it
   const env = await _ntPushEnv(); _ntPushLast = env;
   const st = _ntPushState(env);
   if (st !== 'off' && st !== 'ios-install') return;
@@ -8166,7 +8176,7 @@ async function enterPreview(id) {
     _lkSoftReset(); /*LINK: the previewed login never sees or sends the admin's queue (B13) */
     Cache.clear();
     _shellReady = false;
-    go('home');
+    go('home'); NAV.stack = []; // S3: back never returns to the admin's screens
   } catch (e) { toast(e.message); }
 }
 
@@ -8180,7 +8190,7 @@ function exitPreview() {
   setMyLeaderId(null); _vgReset(); // preview-only taps are dropped, never saved
   Cache.clear();
   _shellReady = false;
-  go('home');
+  go('home'); NAV.stack = [];
 }
 
 // ============================================================
@@ -11242,7 +11252,7 @@ function _lkFfToggle(k) {
 function _lkFfHtml(on) {
   return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
     const p = on.includes(k);
-    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.split(' ')[0]}</button>`;
+    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.replace('Junior', 'Jr').replace('Senior', 'Sr')}</button>`;
   }).join('')}</div>`;
 }
 // The rows this login sees on the screen (filters only for admin/director).
@@ -11315,7 +11325,7 @@ function _lkFlowRowHtml(r, today, boss) {
   const tick = !boss ? '' : _lkTickable(r)
     ? `<input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)">`
     : '<span class="lk-tick-sp"></span>';
-  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-surface-2,#eee)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
+  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-chip)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
     ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
 }
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
@@ -12097,6 +12107,7 @@ async function _ikAnswerSend(undo) {
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
   const old = _ikOpenOf(det.actions, ['intakeAnswer']), id = _lkUuid(), items = [];
+  let ok = false; // review 2026-10-15b: Save answers closes the form only on a saved answer
   if (old && old.status === 'pending') items.push({ kind: 'cancel', id: old.id });
   items.push({ kind: 'action', id, type: 'intakeAnswer', payload: b.payload, note: b.note, leaderId: null });
   I.busy = true;
@@ -12104,6 +12115,7 @@ async function _ikAnswerSend(undo) {
     const r = _ikOutcome(await _ikPost(items), id);
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
+      ok = true;
       delete I.resend[key];
       if (undo) { a.fixes = {}; a.keeps = {}; I.keepMem[key] = {}; }
       _ikLocal(key, { id, type: 'intakeAnswer', status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
@@ -12111,8 +12123,9 @@ async function _ikAnswerSend(undo) {
     else { if (!(r && r.message)) I.resend[key] = true; toast((r && r.message) || 'Not sent. Try again.'); }
   } catch (e) { I.resend[key] = true; if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
   finally { I.busy = false; }
-  if (_ik() !== I) return;
+  if (_ik() !== I) return ok;
   _ikDraw(); _ikSchedule();
+  return ok;
 }
 function _ikForm(fi) { const d = _ik().det && _ik().det.detail; return d && d.forms ? (fi ? d.forms.parent : d.forms.student) : null; }
 function _ikStudentSub() { const d = _ik().det; const f = _ikForm(0); return f ? f.subId : d && d.row ? d.row.key : null; }
@@ -12520,6 +12533,7 @@ function _ikLeave() { const I = _ik(); if (I.debT) _ikAnswerSend(false); }
 function _ikTab(m) {
   const I = _ik();
   if ((m !== 'intake' && m !== 'consent') || I.tab === m) return;
+  navPush();
   _ikLeave();
   try { localStorage.setItem('ysc.intakeTab', m); } catch (e) {}
   Object.assign(I, { tab: m, dates: null, date: null, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
@@ -12528,6 +12542,7 @@ function _ikTab(m) {
 function _ikPickDate(i) {
   const I = _ik(), x = I.dates && I.dates[i];
   if (!x || x.date === I.date) return;
+  navPush();
   I.date = x.date; I.list = null; I.key = null; I.det = null; I.saErr = {};
   _ikDraw(); _ikLoad(false);
 }
@@ -12545,9 +12560,9 @@ async function _ikAnswersSave() {
   const I = _ik(), det = I.det, key = det && det.row && det.row.key;
   if (!key) return;
   if (I.busy) { toast('Still sending. Try again in a moment.'); return; }
-  await _ikAnswerSend(false);
+  const ok = await _ikAnswerSend(false);
   if (_ik() !== I) return;
-  if (I.resend[key]) return; // not sent: the toast already said why; stay on the form
+  if (!ok) return; // not saved: the toast already said why; stay on the form
   toast('Answers saved');
   navBack();
 }
@@ -12582,6 +12597,7 @@ function _ikSubBar(cur) {
 function _ikConsentSub(k) {
   const I = _ik();
   if (!['last', 'forms', 'mismatches'].includes(k) || I.csub === k) return;
+  navPush();
   I.csub = k;
   _ikDraw();
   if (k === 'last') _ikLoad(true);
@@ -14625,9 +14641,10 @@ function _handleAuthExpired() {
     Cache.clear();
     _shellReady = false;
     toast('Preview expired, back to your admin session');
-    go('home');
+    go('home'); NAV.stack = [];
     return;
   }
+  navReset();
   API.setToken(null);
   S.user = null;
   S.page = 'home';
