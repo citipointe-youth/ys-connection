@@ -397,6 +397,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lock-banner{background:var(--warn-light);border:1.5px solid var(--warn);color:#92400e;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
 .preview-banner .btn{background:rgba(0,0,0,.15);color:#1a1200;border:none;padding:4px 10px;font-size:11px}
+.preview-banner .btn{min-height:44px}
+.hdr-back{background:none;border:none;padding:0;margin:0 0 0 -11px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit;flex-shrink:0;min-width:44px;min-height:44px}
 
 /* ── SCALE-READY CONNECTION CARDS ── */
 .connect-grid{display:grid;grid-template-columns:1fr;gap:12px}
@@ -1568,7 +1570,7 @@ function _isRootPage(page) {
 }
 function _hdrBrandHtml() {
   if (S.page !== 'home') {
-    return `<button type="button" onclick="navBack()" title="Back" aria-label="Back" style="background:none;border:none;padding:0;margin:0;display:flex;align-items:center;cursor:pointer;color:inherit;flex-shrink:0">${icN('arrl')}</button>`;
+    return `<button type="button" class="hdr-back" onclick="navBack()" title="Back" aria-label="Back">${icN('arrl')}</button>`;
   }
   return brandMark(26, '#fff');
 }
