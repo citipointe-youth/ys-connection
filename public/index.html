@@ -14762,6 +14762,7 @@ function _handleAuthExpired() {
   S.page = 'home';
   _shellReady = false;
   _vgReset();
+  _lkSoftReset(); // F-50c: drop the in-memory link lists; the tap queue stays under its own key for retry
   toast('Session expired, please log in again');
   render();
 }
