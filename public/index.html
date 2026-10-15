@@ -11778,7 +11778,7 @@ function _ikRev(st) { return Number((st && st.consoleLinkRev) || 0); }
 function _intakeOn(st) { if (st === undefined) st = _ikSt(); return _ikModuleOn() && _ikRev(st) >= 4; }
 // The freshest console status: the intake reply carries it too.
 function _ikSt() { return (LINK.ik && LINK.ik.head) || LINK.status || null; }
-function _ikOldConsole() { return "Console out of date: use the console's Youth intake tab"; }
+function _ikOldConsole() { return 'Console out of date: use New youth on the console PC'; }
 function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:parent:') === 0; }
 function _ikOpenAct(a) { return !!a && (a.status === 'pending' || a.status === 'claimed'); }
 // The newest open action of these types (actions come newest first).
@@ -11834,7 +11834,7 @@ function _ikChip(row, st) {
   }
   if (a.status === 'sent') return { label: 'Saved', tone: 'ok', line: a.reason === 'already' ? 'Already in Elvanto' : 'Saved' + (a.resultAt ? ' ' + _lkSeen(a.resultAt) : '') };
   if (a.status === 'unclear') return { label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" };
-  if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: a.detail || _ikReasons()[a.reason] || "The console couldn't do this. Do it in Elvanto." };
+  if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: _ikReasons()[a.reason] || a.detail || "The console couldn't do this. Do it in Elvanto." };
   if (a.status === 'shadowed') return { label: 'Practice', tone: 'prac', line: 'Practice: nothing sent' };
   return null;
 }

@@ -156,3 +156,17 @@ describe('F-24(b) one name: New youth & consent', () => {
     expect(r).not.toContain('Form Approve');
   });
 });
+
+describe('F-32(a) console messages', () => {
+  it('the out-of-date console line points at New youth on the console PC, not a missing tab', () => {
+    const { f } = env();
+    expect(f._ikOldConsole()).toBe('Console out of date: use New youth on the console PC');
+    expect(HTML).not.toContain('Youth intake tab');
+  });
+  it('a refusal shows the app\'s own sentence for the reason before the console detail', () => {
+    const { f } = env();
+    const a = { id: P(9), type: 'intakeSave', status: 'refused', reason: 'locked', detail: 'Not sent: locked by the console' };
+    expect(f._ikChip({ actions: [a] }, ST()).line).toBe("This isn't connected yet. Do it in Elvanto.");
+    expect(f._ikChip({ actions: [{ ...a, reason: 'weird' }] }, ST()).line).toBe('Not sent: locked by the console');
+  });
+});
