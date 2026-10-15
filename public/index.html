@@ -11321,7 +11321,8 @@ function _lkFlowGroups(rows, today, steps) {
   });
   return out.sort((a, b) => String(a.flowName || '').localeCompare(String(b.flowName || '')) || String(a.flowId).localeCompare(String(b.flowId)));
 }
-function _lkFirstName(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
+// Elvanto pushes flow names as "Last, First" (F-23): the first name is after the comma.
+function _lkFirstName(n) { const s = String(n || ''), c = s.indexOf(','); return (c >= 0 ? s.slice(c + 1) : s).trim().split(/\s+/)[0] || ''; }
 // sms: link. iPhone joins the body with &, everything else with ? (the shared callPhone sheet cannot be a plain link).
 function _lkSmsHref(digits, body, ua) {
   const u = ua == null ? ((typeof navigator !== 'undefined' && navigator.userAgent) || '') : ua;
@@ -11367,7 +11368,7 @@ function _lkFfToggle(k) {
 function _lkFfHtml(on) {
   return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
     const p = on.includes(k);
-    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.split(' ')[0]}</button>`;
+    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`;
   }).join('')}</div>`;
 }
 // The rows this login sees on the screen (filters only for admin/director).
@@ -11438,10 +11439,10 @@ function _lkFlowRowHtml(r, today, boss) {
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepUndo('${rid}')">Undo</button>`;
   else if (a && a.status === 'pending' && LINK.fres && LINK.fres[r.rowId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepCancel('${rid}')">Cancel</button>`;
   const tick = !boss ? '' : _lkTickable(r)
-    ? `<input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)">`
+    ? `<label style="display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -10px;cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)"></label>`
     : '<span class="lk-tick-sp"></span>';
-  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-chip)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
-    ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
+  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-chip);white-space:nowrap">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
+    ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}${a.type === 'removeFromFlowStep' && a.status === 'sent' && a.note === 'failed' ? ' · note not saved' : ''}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
 }
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
 function _lkFlowsHtml() {
@@ -11462,7 +11463,7 @@ function _lkFlowsHtml() {
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
     const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
-    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall"><input type="checkbox"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length}${tk.length < s.rows.length ? ' of ' + s.rows.length + ' - the rest are Do Not Contact, need the consent check or are already queued' : ''})</label>` : '';
+    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall" style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox" style="width:22px;height:22px"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length}${tk.length < s.rows.length ? ' of ' + s.rows.length + ' - the rest are Do Not Contact, need the consent check or are already queued' : ''})</label>` : '';
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
       <div class="drop-body">${selAll}${s.rows.map((r) => _lkFlowRowHtml(r, today, boss)).join('')}</div></div>`;
@@ -11543,7 +11544,7 @@ function _lkRemoveHtml(r) {
   const f = LINK.fs;
   return `<div class="mo-title">Remove ${esc(r.name)}?</div><p class="lk-sub">From ${esc(r.stepName)} · ${esc(r.flowName)}. This takes them out of the step in Elvanto.</p>
     <div class="fg"><label class="fl" for="lk-rm-note">Note (optional)</label><textarea id="lk-rm-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fs)LINK.fs.rmNote=this.value">${esc(f.rmNote || '')}</textarea>
-    <div class="lk-d">Goes on their Elvanto notes. The console may hold a remove with a note until notes are switched on; leave it empty to just remove.</div></div>`;
+    <div class="lk-d">Goes on their Elvanto notes. Leave empty to just remove.</div></div>`;
 }
 function _lkRemoveAsk() { if (LINK.fs) { LINK.fs.rm = true; _lkStepDraw(); } }
 function _lkRemoveBack() { if (LINK.fs) { LINK.fs.rm = false; _lkStepDraw(); } }
@@ -11633,8 +11634,19 @@ function _lkPaintFlows() {
 function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
   try {
+    const prev = LINK.flows || [];
     const r = await API.fresh('/link/flows', quiet);
-    LINK.flows = (r && r.rows) || [];
+    const rows = (r && r.rows) || [], listed = {};
+    rows.forEach((x) => { listed[x.rowId] = x; });
+    // F-05: a sent Remove/Complete leaves the open list at once, but the row stays until the console's next flows push.
+    // Ask about the actions that just left the open list: a sent one shows its done line now and is hidden from the next
+    // load (LINK.flowGone) until a push no longer lists the row.
+    const gone = LINK.flowGone || (LINK.flowGone = {}), left = {};
+    Object.keys(gone).forEach((k) => { if (!listed[k]) delete gone[k]; });
+    prev.forEach((x) => {
+      const a = (LINK.fres && LINK.fres[x.rowId]) || x.openAction;
+      if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
+    });
     LINK.fSteps = (r && r.steps) || [];
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
@@ -11643,6 +11655,20 @@ async function _lkLoadFlows(quiet) {
     if (LINK.fProg) LINK.fProgT = setTimeout(() => { if (S.page === 'link-flows' && document.visibilityState !== 'hidden') _lkLoadFlows(true).then(_lkFlowsDraw); }, 3000);
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
+    const ids = Object.keys(left);
+    if (ids.length) {
+      try {
+        const acts = await API.fresh('/link/actions?ids=' + ids.map(encodeURIComponent).join(','), true);
+        (Array.isArray(acts) ? acts : []).forEach((a) => {
+          const k = left[a.id];
+          if (!k || ['pending', 'claimed'].includes(a.status)) return;
+          if (!LINK.fres) LINK.fres = {};
+          LINK.fres[k] = { id: a.id, type: a.type, status: a.status, reason: a.reason || null, resultAt: a.resultAt || null, note: a.note };
+          if (a.status === 'sent') gone[k] = true;
+        });
+      } catch (e) {}
+    }
+    LINK.flows = rows.filter((x) => !gone[x.rowId] || (LINK.fres && LINK.fres[x.rowId] && LINK.fres[x.rowId].status === 'sent'));
     LINK.fErr = null;
     return true;
   } catch (e) { LINK.fErr = e.message || 'Could not load the flow steps.'; return false; }
