@@ -6323,9 +6323,9 @@ async function renderAdminView(settings, users, history) {
             <div class="li-sub">${esc(u.email)}</div>
           </div>
           <div class="li-right">
+            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" style="margin-right:16px" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
-            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)" ${isProtectedAdmin?'disabled':''} onclick="confirmDelUser('${u.id}')" title="${delTitle}" aria-label="${delTitle}">${icS('trash')}</button>
           </div>
