@@ -12919,7 +12919,7 @@ function _ikLkResHtml(kind, x, st) {
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
       + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><span>${esc('Form: ' + l[1])}</span><span>${esc('Profile: ' + l[2])}</span></div>`).join('')
       + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '')
-      + (done ? '' : noFix ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Do in Elvanto</span></div>'
+      + (done ? '' : m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : noFix ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Do in Elvanto</span></div>'
         : `<div class="lk-row-act"><span></span><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
       + '</div></div>';
   };
