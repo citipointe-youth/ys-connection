@@ -553,3 +553,8 @@ before touching `client.ts`'s pool config.
 - **A failed answer POST let Save send the old plan.** `_ikAnswerSend` dropped a failed send, and the next reload discarded the draft. Fix: a thrown or non-refusal failure sets `I.resend[key]`; `_ikSaveBlock` / `_ikTextBlock` refuse while `I.debT` or `I.resend[key]` is set.
 - **Error log write storms.** Every 5xx wrote to the DB, so a 503 storm piled row locks onto an exhausted pool. `record()` now throttles one write per fingerprint per 30 s per instance (skipped count carried into `n`); `setCount` (sweep) bypasses it.
 - **Stale refresh asks made the console re-read a whole Elvanto date on every claim.** A failing date stayed "asked" for weeks. Fix: an ask counts for 10 min (`REFRESH_ASK_MS`).
+
+### Run 2026-10-15b
+- **Pending-form DNC:** root cause was consentOf/personFacts reading only the profile, so an unapproved returned form 3 (opt-out or total non-consent) never made a person DNC. Fix is on the console (newest form per person wins, flag contact/all, unchanged values). See 11.1 debug.md.
+- **Flow steps findings:** only 1 flow is configured; the select-all count counts tickable rows only; same-name rows are duplicate Elvanto profiles (hence the same-name chip).
+- **Progress contract:** console posts `/sync/push/progress` (stored in `link_console.progress`, migration 0030) and claims `progress:true`.

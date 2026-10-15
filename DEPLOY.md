@@ -7,7 +7,7 @@ Pushing `master` builds on Vercel and the build applies migrations (`vercel-buil
 - master sha: abdf25e (feat/notice-push)
 - last ship: 2026-10-15 19:41 EAST
 - migration: 0029
-- SW version: ysc-v110
+- SW version: ysc-v111
 - promote: pending (Vercel) — update this line by hand once promoted
 - pending branches: chore/ship 
 <!-- /live -->

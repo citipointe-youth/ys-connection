@@ -12303,13 +12303,8 @@ function _ikConsentHelp() {
 }
 function _ikFamilyPage() {
   const I = _ik(), st = _ikSt(), det = I.det && I.det.row && I.det.row.key === I.key ? I.det : null;
-<<<<<<< HEAD
-  const back = `<button type="button" class="btn btn-ghost btn-sm lk-mb" onclick="_ikBack()">${icS('arrl')} ${I.tab === 'consent' ? 'All students' : 'All families'}</button>`;
-  if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : progBar('Loading'));
-=======
   const back = '';
-  if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : '<div class="lk-hint">Loading…</div>');
->>>>>>> run15b/ys-ux
+  if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : progBar('Loading'));
   const L = I.list && I.list.date === I.date ? I.list : null;
   return back + _ikBanner(st, L, I.tab) + (I.tab === 'consent' ? _ikConsentHtml(det, L, st) : _ikFamilyHtml(det, L, st, _ikAns()));
 }

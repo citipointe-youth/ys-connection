@@ -1,4 +1,4 @@
-const CACHE = 'ysc-v110';
+const CACHE = 'ysc-v111';
 const APP_SHELL = ['/'];
 
 // API paths that should never be served from cache. NOTE: every API resource must
