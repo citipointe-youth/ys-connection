@@ -11942,7 +11942,10 @@ function _ikHoldText(h, d) {
     : "Parent Consent step 1 has more people than the console can read, so this parent can't be found. Do this one in Elvanto.";
   if (t === 'Not found in consent step') return (who || 'This student') + " isn't in New People step 0, so no follow-up can be planned. Add them in Elvanto.";
   const late = /^Parent texted late \((\d{2}\/\d{2}\/\d{4})\)\? Check in Elvanto$/.exec(t);
-  if (late) return 'The parent was texted on ' + late[1] + ", less than a week before this Friday, so consent can't be assumed. Check in Elvanto.";
+  if (late) { // F-17: plain dates; the missed week is the intake Friday (consent date - 7)
+    const p = late[1].split('/'), D = _ik().date, wk = D ? new Date(Date.parse(D + 'T00:00:00Z') - 7 * 864e5).toISOString().slice(0, 10) : '';
+    return 'Parent texted ' + _lkDay(p[2] + '-' + p[1] + '-' + p[0]) + ', too late for ' + (wk ? 'the ' + _lkDay(wk) + ' week' : 'that week') + '. Look in Elvanto before saving.';
+  }
   if (t === 'Saved before, not in Elvanto now') return "The console saved this before, but Elvanto doesn't show it now. Check in Elvanto and make the change there if it's missing.";
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
   return IK_HOLD[t] || t;
@@ -11974,8 +11977,7 @@ function _ikHoldReason(d) {
   if (parts.length) { const s = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]; return s.charAt(0).toUpperCase() + s.slice(1) + ' first.'; }
   if (t.includes('Profile archived')) return 'Unarchive the profile first.';
   if (!t.length) return '';
-  const h = _ikHoldText(d.holds[0], d), m = /^(.*?[.?])(\s|$)/.exec(h);
-  return m ? m[1] : h;
+  return 'Sort the line' + (t.length > 1 ? 's' : '') + ' at the top first.'; // F-17: the hold itself is already at the top; never say it twice
 }
 // What an enabled Save will do.
 function _ikConseq(d) {

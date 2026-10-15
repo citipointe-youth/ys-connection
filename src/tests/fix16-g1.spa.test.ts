@@ -112,3 +112,17 @@ describe('F-16 text card warns when the form is old', () => {
     expect(strip(f._ikTextCardHtml(t, DETAIL(), '', Date.UTC(2026, 9, 5, 9, 0)))).not.toContain('days ago');
   });
 });
+
+describe('F-17 the late-text hold is one plain sentence, shown once', () => {
+  it('says when the parent was texted and which week it missed; the Save reason does not repeat it', () => {
+    const { f, I } = env({ tab: 'consent', date: '2026-10-09' });
+    const d = { key: P(1), status: 'needs-you', title: 'Tom LEstrange', holds: [{ role: 'student', text: 'Parent texted late (09/10/2026)? Check in Elvanto' }],
+      outcome: '', consent: null, consentNote: '', textedOn: null, profiles: { student: null }, steps: [], links: [] };
+    const want = 'Parent texted Fri 9 Oct, too late for the Fri 2 Oct week. Look in Elvanto before saving.';
+    expect(f._ikHoldLines(d)).toEqual([want]);
+    I.head = ST();
+    const why = f._ikSaveBlock({ row: { key: P(1), status: 'needs-you' }, detail: d, actions: [] }, LIST(), ST());
+    expect(why).toBe('Sort the line at the top first.');
+    expect(why).not.toContain('texted');
+  });
+});
