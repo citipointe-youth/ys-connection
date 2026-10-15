@@ -7,7 +7,7 @@ describe('LATEST_MIGRATION', () => {
   it('equals the highest migration filename', () => {
     const files = listMigrationFiles(join(__dirname, '..', '..', 'supabase', 'migrations'));
     expect(LATEST_MIGRATION).toBe(files.at(-1)!.version);
-    expect(LATEST_MIGRATION).toBe('0027');
+    expect(LATEST_MIGRATION).toBe('0028');
   });
 });
 

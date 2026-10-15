@@ -1000,6 +1000,7 @@ const API = (() => {
         }
         // Prayers was switched off after this login signed in: refresh settings and go home.
         if (e.code === 'MODULE_DISABLED' && /^\/prayers/.test(path) && S.user) _moduleDisabledRefresh();
+        if (e.code === 'MODULE_DISABLED' && /^\/notices/.test(path) && S.user) _moduleDisabledRefresh();
         if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
@@ -1536,8 +1537,70 @@ async function _moduleDisabledRefresh() {
     S.settings = await API.get('/settings');
     if (_shellReady && _navSig() !== before) _initShell();
     // Only the Prayers page itself is gone; any other screen (My Connections, Youth Setup) stays.
-    if (S.page === 'prayers') go('home'); else render();
+    if (S.page === 'prayers' || S.page === 'notices') go('home'); else render();
   } catch (e) {} finally { _mdBusy = false; }
+}
+
+// ============================================================
+// NOTICES (admin/director send to the four quad logins; module modules.notices off|on, default off)
+// ============================================================
+const NOTICE_QUADS = [['b79', 'Junior Guys'], ['g79', 'Junior Girls'], ['b1012', 'Senior Guys'], ['g1012', 'Senior Girls']];
+function _noticesOn() {
+  const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
+  return m.notices === 'on' && !!S.user && ['admin', 'director', 'quad'].includes(S.user.role);
+}
+function _noticeSender() { return !!S.user && ['admin', 'director'].includes(S.user.role); }
+function _noticeToList(n) {
+  return (n.recipients || []).map(q => { const f = NOTICE_QUADS.find(x => x[0] === q); return f ? f[1] : q; }).join(', ');
+}
+function _noticeCardHtml(n, showTo) {
+  return `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:flex-start">
+    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">${esc(n.title)}</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</div>
+    <div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${esc(n.senderName || '')} · ${esc(_relTime(n.createdAt))}${showTo ? ' · To: ' + esc(_noticeToList(n)) : ''}</div></div>
+    ${showTo ? `<button type="button" class="btn btn-ghost btn-sm" aria-label="Delete notice" onclick="deleteNotice('${esc(n.id)}')">${icS('trash')}</button>` : ''}
+  </div></div>`;
+}
+// Home: notices sent in the last 24 hours, not dismissable.
+function _noticeHomeHtml(list) {
+  if (!_noticesOn()) return '';
+  const cut = Date.now() - 86400000;
+  const xs = (list || []).filter(n => new Date(n.createdAt).getTime() >= cut);
+  if (!xs.length) return '';
+  return `<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--ink-mid);margin-bottom:6px;display:flex;align-items:center;gap:6px">${icS('bell')} Notices</div>${xs.map(n => _noticeCardHtml(n, false)).join('')}</div>`;
+}
+function _noticesHtml(list) {
+  let h = `<div class="ph"><div class="ph-title">Notices</div><div class="ph-sub">Last 30 days</div></div>`;
+  if (_noticeSender()) {
+    h += `<div class="card"><div class="fg"><label class="fl" for="nt-title">Title</label><input class="fi" id="nt-title" maxlength="120" autocomplete="off"></div>
+      <div class="fg"><label class="fl" for="nt-body">Message</label><textarea class="ft" id="nt-body" rows="4" maxlength="1000"></textarea></div>
+      <div class="fg"><label class="fl">Send to</label>${NOTICE_QUADS.map(q => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer"><input type="checkbox" class="nt-q" value="${q[0]}"> <span>${esc(q[1])}</span></label>`).join('')}</div>
+      <button type="button" class="btn btn-primary btn-full" id="nt-send" onclick="submitNotice()">Send notice</button></div>`;
+  }
+  h += (list || []).length ? list.map(n => _noticeCardHtml(n, _noticeSender())).join('')
+    : `<div style="padding:24px 8px;text-align:center;color:var(--ink-faint);font-size:13px">No notices in the last 30 days.</div>`;
+  return h;
+}
+async function renderNotices() {
+  const _pg = S.page;
+  let list = Cache.getStale('/notices');
+  if (list == null) { setApp(shell('')); try { list = await API.get('/notices'); } catch { list = []; } if (S.page !== _pg) return; }
+  setApp(shell(_noticesHtml(list)));
+}
+async function submitNotice() {
+  const title = (document.getElementById('nt-title').value || '').trim();
+  const body = (document.getElementById('nt-body').value || '').trim();
+  const recipients = Array.from(document.querySelectorAll('.nt-q')).filter(c => c.checked).map(c => c.value);
+  if (!title || !body) { toast('Add a title and a message'); return; }
+  if (!recipients.length) { toast('Pick at least one login to send to'); return; }
+  const btn = document.getElementById('nt-send'); if (btn) btn.disabled = true;
+  try { await API.post('/notices', { title, body, recipients }); Cache.del('/notices'); toast('Notice sent'); renderNotices(); }
+  catch (e) { toast(e.message || 'Could not send'); if (btn) btn.disabled = false; }
+}
+async function deleteNotice(id) {
+  if (!confirm('Delete this notice?')) return;
+  try { await API.del('/notices/' + id); Cache.del('/notices'); renderNotices(); }
+  catch (e) { toast(e.message || 'Could not delete'); }
 }
 
 // ============================================================
@@ -2131,6 +2194,7 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', open:"go('notices')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
@@ -2153,6 +2217,7 @@ function _navSlots(u) {
     const m = more[0];
     if (m.id === 'prayers') return it;
     if (m.id === 'bus') return { id:'bus', ic:'bus', label:esc(L('busMinistry')), mbl:'Bus' }; // _initShell puts labels in raw: escape here
+    if (m.id === 'notices') return { id:'notices', ic:'bell', label:'Notices', mbl:'Notices' };
     return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
   });
 }
@@ -2289,6 +2354,7 @@ async function render() {
   // other route home (defence-in-depth; the server also scopes/403s their data).
   if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p) && p !== 'link-checkin') { go('home'); return; }
   if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
+  if (p === 'notices' && !_noticesOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
@@ -2301,6 +2367,7 @@ async function render() {
   else if (p==='my-quad') go('leaders');   // merged into leaders
   else if (p==='at-risk') await renderAtRisk();
   else if (p==='prayers') await renderPrayers();
+  else if (p==='notices') await renderNotices();
   else if (p==='students') await renderStudents();
   else if (p==='trends') await renderTrends();
   else if (p==='import') await renderImport();
@@ -2757,14 +2824,15 @@ async function _renderHomeInner(stale, fromCache) {
   // so the page paints instantly; renderHome handles the background refresh.
   const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
   const needConns = ['admin', 'director'].includes(qu.role);
-  let stats, trends, sc = [], lgStats = null, conns = [];
+  let stats, trends, sc = [], lgStats = null, conns = [], notices = [];
   try {
-    [stats, trends, sc, lgStats, conns] = await Promise.all([
+    [stats, trends, sc, lgStats, conns, notices] = await Promise.all([
       G('/overview').catch(() => null),
       G('/trends').catch(() => null),
       G('/students').catch(() => []),
       G('/lifegroups/stats').catch(() => null),
       needConns ? G('/connections').catch(() => []) : Promise.resolve([]),
+      _noticesOn() ? G('/notices').catch(() => []) : Promise.resolve([]),
     ]);
   } catch {}
   if (S.page !== _pg) return; // navigated away while awaiting — don't overwrite the new page
@@ -2801,7 +2869,7 @@ async function _renderHomeInner(stale, fromCache) {
   // max weeks any one group ran. Fall back to the per-student calc when stats absent.
   const grpAvgWk = _lgScope ? _lgScope.current.avgPerWeek : (grpWeeks > 0 ? Math.round(grpAtt / grpWeeks) : 0);
 
-  let body = `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
+  let body = _noticeHomeHtml(notices) + `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
   const heroTitle = u.role === 'grade' ? (gradeBadgeLabel(u) + _gsfx(_loginGender(u))) : u.displayName;
   body += `<div style="display:flex;align-items:center;margin-bottom:6px"><div style="font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.1;display:flex;align-items:center;gap:7px">${icN('users')} ${esc(heroTitle)}</div></div>`;
   body += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:40%"><col style="width:30%"><col style="width:30%"></colgroup>`;
@@ -7116,6 +7184,8 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
+    <div class="fg"><label class="fl" for="setup-notices">Notices ${helpTip("Admin and director send a message to any of the four quad logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</label>
+      <select class="fs" id="setup-notices" onchange="_setupSet('modules.notices', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${(md && md.notices === 'on' ? 'on' : 'off') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     ${_setupElvantoModulesHtml(md)}
     ${_setupFlowHiddenHtml(md)}
     ${_setupIntakeHtml(md)}
