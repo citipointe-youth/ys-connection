@@ -12945,7 +12945,7 @@ function _ikClText(a) {
   if (a.status === 'pending') return ['wait', 'Waiting for the console.'];
   if (a.status === 'claimed') return ['wait', 'The console is saving the link…'];
   if (a.status === 'sent') return null;
-  if (a.status === 'refused') return ['bad', 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
+  if (a.status === 'refused') return ['bad', /^Not (saved|sent)\b/i.test(a.detail || '') ? a.detail : 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
   return ['bad', a.detail || 'Not saved. Try again.'];
 }
 function _ikClRow(f, i, grey, st) {
