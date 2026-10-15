@@ -145,3 +145,49 @@ describe('F-02(b) Add student picker: one add per tap', () => {
     expect(el.innerHTML).toContain('Tom Other');
   });
 });
+
+describe('F-03 a date that already has a report blocks Send and offers Edit', () => {
+  it('Add report on a taken date: the block, an Edit button, Send disabled, nothing queued', () => {
+    const h = setup();
+    h.fns._lkAddReport('2026-10-12'); // the week of Tue 13 Oct, which has a report
+    const rf = h.get().LINK.rf;
+    expect(rf.date).toBe('2026-10-13');
+    const form = h.fns._lkFormHtml();
+    expect(strip(form)).toContain("There's already a report for that date. Edit it.");
+    expect(strip(form)).not.toContain('You can still add another');
+    expect(form).toContain(`_lkEditReport('${G(9)}')`);
+    expect(form).toMatch(/disabled onclick="_lkReportSend\(\)"/);
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()).toHaveLength(0);
+  });
+  it('a free date sends', () => {
+    const h = setup();
+    h.fns._lkAddReport('2026-10-05');
+    h.fns._lkRfDate('2026-10-06');
+    expect(h.fns._lkFormHtml()).not.toMatch(/disabled onclick="_lkReportSend\(\)"/);
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()).toHaveLength(1);
+  });
+  it('a report-exists refusal the console gave after the batch stays on the group card', async () => {
+    const id = '20000000-0000-4000-8000-000000000001';
+    const h = setup('L1', {}, { fresh: (p: string) => p.startsWith('/link/lifegroups') ? Promise.resolve({ groups: [grp()] })
+      : p.startsWith('/link/actions?ids=' + id) ? Promise.resolve([{ id, type: 'submitReport', status: 'refused', reason: 'report-exists' }])
+        : Promise.reject(new Error('no')) });
+    const L = h.get().LINK;
+    L.gres = { [G(1)]: { id, type: 'submitReport', status: 'pending', reason: null } };
+    expect(await h.fns._lkLoadGroups(true)).toBe(true);
+    expect(L.gres[G(1)]).toMatchObject({ status: 'refused', reason: 'report-exists' });
+    expect(strip(h.fns._lkGroupHtml(L.groups[0]))).toContain("There's already a report for that date. Edit it.");
+    expect(await h.fns._lkLoadGroups(true)).toBe(true); // a later reload keeps it
+    expect(L.gres[G(1)].status).toBe('refused');
+  });
+  it('a pending row that went through is dropped (no stale line)', async () => {
+    const id = '20000000-0000-4000-8000-000000000002';
+    const h = setup('L1', {}, { fresh: (p: string) => p.startsWith('/link/lifegroups') ? Promise.resolve({ groups: [grp()] })
+      : Promise.resolve([{ id, type: 'submitReport', status: 'sent', reason: null }]) });
+    const L = h.get().LINK;
+    L.gres = { [G(1)]: { id, type: 'submitReport', status: 'pending', reason: null } };
+    await h.fns._lkLoadGroups(true);
+    expect(L.gres[G(1)]).toBeUndefined();
+  });
+});

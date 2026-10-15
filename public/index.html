@@ -10843,8 +10843,7 @@ function _lkFormHtml() {
   if (!f || !g) return '';
   const today = LINK.today || f.date, min = _lkAddDays(today, -14);
   const last = _lkReportOn(g, f.date);
-  const clash = f.mode === 'submit' && !!last && !f.add;
-  const dupWarn = f.mode === 'submit' && !!last && !!f.add;
+  const clash = f.mode === 'submit' && !!last; // F-03: the console refuses a second report on a date (report-exists)
   const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
     : `<input type="date" class="fi" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)">`;
   let body = '';
@@ -10864,8 +10863,7 @@ function _lkFormHtml() {
   }
   return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
     <div class="fg"><label class="fl">Date</label>${date}</div>
-    ${dupWarn ? `<div class="lk-alert warn">${icS('info')}<div>${esc('There is already a report for that date. You can still add another.')}</div></div>` : ''}
-    ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable && !last.blocked ? `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(last.reportId)}')">Edit that report</button></div>` : ''}</div></div>` : ''}
+    ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable && !last.blocked ? `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(last.reportId)}')">Edit that report</button></div>` : '<p class="lk-sub">Edit it in Elvanto, or pick another date.</p>'}</div></div>` : ''}
     <label class="lk-chk"><input type="checkbox"${f.didNotMeet ? ' checked' : ''} onchange="_lkRfDnm(this.checked)"> Group did not meet</label>
     ${body}
     <div class="fg"><label class="fl">Note</label><textarea class="fi" rows="4" maxlength="1800" oninput="_lkRfNote(this)">${esc(f.note)}</textarea>
@@ -10888,7 +10886,19 @@ async function _lkLoadGroups(quiet) {
     LINK.groups = (r && r.groups) || [];
     if (c) _lkTakeServices(c); // APP-42: one services list for the door, reports and the admin page
     // The server's open row is the truth again; keep only this phone's final answers.
-    Object.keys(LINK.gres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.gres[k].status)) delete LINK.gres[k]; });
+    // F-03: a row the console answered after the batch (refused report-exists, unclear) leaves the open list, so ask for
+    // this phone's own rows by id and keep a refusal on the card until the next send (it never fades).
+    const gres = LINK.gres || {}, fin = {};
+    const gone = Object.keys(gres).filter((k) => !['refused', 'cancelled'].includes(gres[k].status) && gres[k].id
+      && !LINK.groups.some((g) => g.groupId === k && g.openAction));
+    if (gone.length) {
+      try { ((await API.fresh('/link/actions?ids=' + gone.map((k) => encodeURIComponent(gres[k].id)).join(','), true)) || []).forEach((a) => { fin[a.id] = a; }); } catch (e) {}
+    }
+    Object.keys(gres).forEach((k) => {
+      const x = gres[k], a = fin[x.id];
+      if (a && (a.status === 'refused' || a.status === 'unclear')) gres[k] = Object.assign({}, x, { status: a.status, reason: a.reason || null });
+      else if (!['refused', 'cancelled'].includes(x.status)) delete gres[k];
+    });
     LINK.gErr = null;
     return true;
   } catch (e) { LINK.gErr = e.message || 'Could not load the groups.'; return false; }
@@ -10969,7 +10979,7 @@ function _lkReportSend() {
   if (!lid) { _lkIamPick(_lkReportSend); return; }
   const today = LINK.today || f.date;
   let err = '';
-  if (f.mode === 'submit' && !f.add && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
+  if (f.mode === 'submit' && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
   else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -14))) err = 'The date must be in the last 14 days.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
