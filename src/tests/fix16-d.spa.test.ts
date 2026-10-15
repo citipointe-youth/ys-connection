@@ -216,3 +216,23 @@ describe('F-33 a phone that cannot store taps says so once', () => {
     expect(f.t()).toEqual(["This phone can't keep taps. Keep the app open until All saved."]);
   });
 });
+
+describe('F-19 the admin status: an error with no status shows Try again, not Loading', () => {
+  const prelude = `
+    let LINK = { status: null, statusErr: null, adm: {} };
+    let fail = true;
+    const API = { fresh() { return fail ? Promise.reject(new Error('Network down')) : Promise.resolve({ console: null, mirrors: {} }); } };
+    function _lkRefreshView() {}
+    function progBar(t) { return 'PROGBAR ' + t; }
+    function esc(s) { return String(s); }
+    function ok() { fail = false; }`;
+  const f = loadFns(['_lkStatusLoad', '_lkAdmStatusHtml'], prelude, ['_lkStatusLoad', '_lkAdmStatusHtml', 'ok']);
+  it('loading, then the error with Try again', async () => {
+    expect(f._lkAdmStatusHtml()).toContain('PROGBAR');
+    await f._lkStatusLoad();
+    const h = f._lkAdmStatusHtml();
+    expect(h).toContain('Network down');
+    expect(h).toContain('Try again');
+    expect(h).not.toContain('PROGBAR');
+  });
+});

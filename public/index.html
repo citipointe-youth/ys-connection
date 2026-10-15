@@ -10305,7 +10305,9 @@ function _lkSoftReset() {
 // ── Status and refresh (only while a link page is visible) ──
 function _lkOnPage() { return !!S.user && String(S.page || '').indexOf('link-') === 0; }
 function _lkStatusLoad() {
-  return API.fresh('/link/status', true).then((st) => { LINK.status = st; LINK.statusAt = Date.now(); _lkRefreshView(); }).catch(() => {});
+  // F-19: a failed load is remembered, so the admin status shows Try again instead of Loading for ever.
+  return API.fresh('/link/status', true).then((st) => { LINK.status = st; LINK.statusAt = Date.now(); LINK.statusErr = null; _lkRefreshView(); })
+    .catch((e) => { LINK.statusErr = (e && e.message) || 'Could not load the status.'; _lkRefreshView(); });
 }
 function _lkTickStart() {
   if (LINK.tick) return;
@@ -11653,7 +11655,7 @@ function _lkRevLine(st) {
 // Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows named with the action.
 function _lkAdmStatusHtml() {
   const st = LINK.status, c = st && st.console;
-  if (!st) return '<div class="lk-sec">Status</div>' + progBar('Loading');
+  if (!st) return '<div class="lk-sec">Status</div>' + (LINK.statusErr ? `<div class="card"><p>${esc(LINK.statusErr)}</p><button class="btn btn-secondary btn-sm" onclick="_lkStatusLoad()">Try again</button></div>` : progBar('Loading'));
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};
