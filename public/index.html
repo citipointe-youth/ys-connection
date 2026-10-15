@@ -14814,14 +14814,17 @@ boot();
 // or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
 let _swReloading = false, _swWaiting = false;
 function _swIdle() {
-  if (typeof NY !== 'undefined' && NY.sending) return false;
-  const mr = document.getElementById('modal-root');
-  if (mr && mr.innerHTML) return false;
-  if (S.page === 'new-youth' && Object.values(_nyRaw()).some(Boolean)) return false;
-  const I = typeof LINK !== 'undefined' && LINK ? LINK.ik : null;
-  if (S.page === 'link-intake' && I && (I.det || I.debT || I.busy || I.saBusy)) return false;
-  if (S.user && _lkQGet().length) return false;
-  return true;
+  try {
+    if (typeof NY !== 'undefined' && NY.sending) return false;
+    const mr = document.getElementById('modal-root');
+    if (mr && mr.innerHTML) return false;
+    if (S.page === 'new-youth' && Object.values(_nyRaw()).some(Boolean)) return false;
+    const I = typeof LINK !== 'undefined' && LINK ? LINK.ik : null;
+    if (I && (I.debT || I.busy || I.saBusy || Object.keys(I.resend || {}).length)) return false; // LINK.ik outlives the page; resend is memory-only
+    if (S.page === 'link-intake' && I && I.det) return false;
+    if (S.user && _lkQGet().length) return false;
+    return true;
+  } catch (e) { return false; } // fail safe: a broken check defers and shows the banner
 }
 function _swReload() { if (_swReloading) return; _swReloading = true; location.reload(); }
 function _swOnUpdate() {
