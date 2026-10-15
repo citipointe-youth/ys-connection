@@ -99,7 +99,7 @@ describe('F-15 Save result lines are plain and counted', () => {
     expect(t).toMatch(/Parent texted \d+:\d\d (am|pm)/);
     expect(t.match(/Approved Tom's form/g)!.length).toBe(1); // a repeated step shows once
     expect(t).toContain('Made 2 changes');
-    expect(t).toContain('Not sent: Added a note to the parent');
+    expect(t).toContain('Not sent: Add a note to the parent');
     expect(t.match(/Stopped: Elvanto was slow\./g)!.length).toBe(1);
   });
 });
@@ -239,5 +239,28 @@ describe('GAP-2 a pending intake row polls every 5 s, and keeps polling after th
     calls.vis = 'visible';
     calls.cbs.shift()!();
     expect(calls.loads).toBe(1);
+  });
+});
+
+describe('review r1: picking a date clears the old error', () => {
+  it('after a failed load, another date shows Loading, not the stale error / Try again', () => {
+    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
+    I.dates = [{ date: '2026-10-09' }, { date: '2026-10-02' }]; I.head = ST(); I.err = "Can't reach the server"; I.list = null;
+    f._ikPickDate(1);
+    expect(I.err).toBe(null);
+    expect(f._ikListPage()).not.toContain('Try again');
+  });
+});
+
+describe('review r1: failed result lines use the step wording, not the past tense', () => {
+  it('a not-sent step reads "Not sent: Add note to parent", never "Not sent: Added..."', () => {
+    const { f } = env();
+    const d = DETAIL({ steps: [step({ key: 'note:parent:' + P(2), action: 'note', role: 'parent', text: 'Add note to parent' })] });
+    const a = { id: P(9), type: 'intakeSave', status: 'sent', steps: [{ key: 'note:parent:' + P(2), action: 'note', role: 'parent', outcome: 'not-sent', at: null },
+      { key: 'gone', action: 'category', role: 'parent', outcome: 'unconfirmed', at: null }] };
+    const t = strip(f._ikResultHtml(a, d, ST()));
+    expect(t).toContain('Not sent: Add note to parent');
+    expect(t).toContain('Not sure it saved: Set the parent to Affiliate');
+    expect(t).not.toMatch(/Not sent: Added|Not sure it saved: Set the parent to Affiliate\b.*Set/);
   });
 });

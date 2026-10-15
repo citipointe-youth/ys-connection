@@ -12026,8 +12026,9 @@ function _ikResultHtml(a, d, st) {
   if (!a) return '';
   if (_ikOpenAct(a)) return '<div class="lk-st wait">Pending</div>'; // F-47: the banner says when the console was last seen
   const stop = a.stop && a.stop.text ? a.stop.text : '', xs = a.steps || [];
+  const all = ((d && d.steps) || []).concat((d && d.extras) || []);
   const lines = xs.map((x) => {
-    const o = x.outcome, t = _ikResultLine(x, d);
+    const o = x.outcome, s = all.find((y) => y.key === x.key), t = o === 'confirmed' || o === 'already' ? _ikResultLine(x, d) : (s && s.text) || _ikResultLine(x, d, true);
     const r = o === 'confirmed' ? ['ok', 'tick', t + (x.at ? ' ' + _lkSeen(x.at) : '')]
       : o === 'already' ? ['ok', 'tick', t + ' (already in Elvanto)']
       : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved: ' + t]
@@ -12041,7 +12042,8 @@ function _ikResultHtml(a, d, st) {
     + (stop && a.stop.code !== 'finished' ? `<div class="lk-d">${esc(stop)}</div>` : '');
 }
 // F-15: a reported step as one plain past-tense line ("Approved Tom's form", "Parent texted"); never the raw step key.
-function _ikResultLine(x, d) {
+// now: the present tense, for a step that did not happen ("Not sent: Add a note to the parent").
+function _ikResultLine(x, d, now) {
   const n = _ikNames(d), parent = x.role === 'parent', who = ((parent ? n.parent : n.student) || '').split(' ')[0];
   const of = _ikPoss(who, parent ? 'parent' : 'student'), frm = x.role === 'consent' ? ' consent form' : ' form';
   const W = { approve: 'Approved ' + of + frm, approveNew: 'Approved ' + of + frm + ' (new profile)', unlink: 'Unlinked ' + of + ' form',
@@ -12049,7 +12051,12 @@ function _ikResultLine(x, d) {
     locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
     consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
     complete: parent ? 'Parent texted' : 'Completed New People step 0' };
-  return W[x.action] || 'Saved a change';
+  const t = W[x.action] || 'Saved a change';
+  if (!now) return t;
+  if (t === 'Parent texted') return 'Text the parent';
+  const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save' }, w = t.split(' ')[0];
+  return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
 // ── Answers (intakeAnswer): the family's WHOLE answer set each time, never a delta (§3.4). ──
