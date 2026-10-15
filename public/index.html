@@ -10870,7 +10870,7 @@ function _lkFormHtml() {
       <div class="lk-d lk-right" id="lk-rf-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.rf.priv=this.checked"> Keep notes private</label>
     ${f.err && !clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc(f.err)}</div></div>` : ''}
-    <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_lkGroupsBack()">Cancel</button>
+    <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_lkRfBack()">Cancel</button>
       <button type="button" class="btn btn-primary"${clash ? ' disabled' : ''} onclick="_lkReportSend()">Send</button></div></div>`;
 }
 function _lkPaintGroups() {
@@ -10938,38 +10938,51 @@ function _lkFormOpen(mode, arg) {
       svcSet: true, note: '', priv: false, reportId: r.reportId, base, err: '' };
   } else {
     const date = arg || g.defaultDate || LINK.today || '';
-    LINK.rf = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: 'none', svcSet: false,
-      note: '', priv: false, reportId: null, base: null, err: '' };
+    // F-25: a draft per group and date comes back (Back never loses ticks); a new form starts on that day's service.
+    const rfd = LINK.rfd || (LINK.rfd = {}), key = g.groupId + '|' + date;
+    LINK.rf = rfd[key] || (rfd[key] = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.services) || 'none', svcSet: false,
+      note: '', priv: false, reportId: null, base: null, err: '' });
   }
   _lkPaintGroups();
 }
 function _lkRfDate(v) {
   const f = LINK.rf;
   if (!f || f.mode === 'edit') return;
-  f.date = String(v || ''); f.err = '';
+  const g = _lkGroup(), rfd = LINK.rfd || (LINK.rfd = {});
+  if (g && rfd[g.groupId + '|' + f.date] === f) delete rfd[g.groupId + '|' + f.date];
+  f.date = String(v || ''); f.err = ''; f.dirty = true;
+  if (g) rfd[g.groupId + '|' + f.date] = f;
+  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || 'none'; // F-25: follow the date
   _lkPaintGroups();
 }
 // Group did not meet: clears and hides the ticks and the service.
 function _lkRfDnm(on) {
   const f = LINK.rf;
   if (!f) return;
-  f.didNotMeet = !!on; f.err = '';
+  f.didNotMeet = !!on; f.err = ''; f.dirty = true;
   if (on) { f.ticks = {}; f.svc = ''; f.svcSet = false; }
-  else if (!f.svc) f.svc = 'none';
+  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || 'none';
   _lkPaintGroups();
 }
-function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; _lkPaintGroups(); }
-function _lkRfGuests(v) { const f = LINK.rf; if (!f) return; const n = parseInt(v, 10); f.guests = isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; }
-function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.svcSet = true; f.err = ''; }
+function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; f.dirty = true; _lkPaintGroups(); }
+function _lkRfGuests(v) { const f = LINK.rf; if (!f) return; const n = parseInt(v, 10); f.guests = isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; f.dirty = true; }
+function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.svcSet = true; f.err = ''; f.dirty = true; }
 // The note stops at 1,800 characters (the console adds the leader line in front, inside Elvanto's 1,900).
 function _lkRfNote(el) {
   const f = LINK.rf;
   if (!f || !el) return;
   let v = String(el.value || '');
   if (v.length > 1800) { v = v.slice(0, 1800); el.value = v; }
-  f.note = v;
+  f.note = v; f.dirty = true;
   const n = document.getElementById('lk-rf-n');
   if (n) n.textContent = _lkNoteCount(v.length);
+}
+// F-25: Cancel on a changed form asks first; Discard drops that group and date's draft.
+async function _lkRfBack() {
+  const f = LINK.rf, g = _lkGroup();
+  if (f && f.dirty && !(await _lkAsk('The ticks and note on this report are not sent.', 'Discard report', 'Keep editing', 'Discard report?'))) return;
+  if (f && g && LINK.rfd && LINK.rfd[g.groupId + '|' + f.date] === f) delete LINK.rfd[g.groupId + '|' + f.date];
+  _lkGroupsBack();
 }
 // Send = into the shared phone queue. The raw note goes as typed: the console composes the leader line.
 function _lkReportSend() {
@@ -10989,6 +11002,7 @@ function _lkReportSend() {
   if (f.mode === 'edit') { payload.reportId = f.reportId; payload.base = f.base; }
   const note = String(f.note || '').trim() ? f.note : null;
   if (LINK.gres) delete LINK.gres[g.groupId];
+  if (LINK.rfd) delete LINK.rfd[g.groupId + '|' + f.date];
   LINK.rf = null;
   _lkPush({ kind: 'action', id: _lkUuid(), type: f.mode === 'edit' ? 'editReport' : 'submitReport', payload, note, leaderId: lid }, true);
   _lkPaintGroups();

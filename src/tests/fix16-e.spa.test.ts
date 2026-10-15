@@ -23,7 +23,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFfGet',
   '_lkFfHtml', '_lkFfToggle', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
   '_lkBulkOpen', '_lkBulkSend', '_lkRemoveHtml', '_lkRemoveAsk', '_lkRemoveBack', '_lkRemoveSend', '_lkStepBtns', 'dncChip', 'dncBanner',
-  '_structure', '_juniorMin', '_ikModuleOn', '_lkYpAdd', '_lkYpSet', '_lkYouthFilter', '_lkLoadGroups'];
+  '_structure', '_juniorMin', '_ikModuleOn', '_lkYpAdd', '_lkYpSet', '_lkYouthFilter', '_lkLoadGroups', '_lkRfBack'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -51,6 +51,7 @@ function makeEnv(e: Partial<Env> = {}) {
   };
   const prelude = `
     const navPush = () => {};
+    const navBack = () => { __calls.gos.push('back'); };
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
       settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } };
     let LINK = _lkFresh();
@@ -189,5 +190,55 @@ describe('F-03 a date that already has a report blocks Send and offers Edit', ()
     L.gres = { [G(1)]: { id, type: 'submitReport', status: 'pending', reason: null } };
     await h.fns._lkLoadGroups(true);
     expect(L.gres[G(1)]).toBeUndefined();
+  });
+});
+
+describe('F-25 report form: default service, a draft per group and date, Discard asks', () => {
+  it('a new form starts on that day\'s default service and follows a date change until a service is picked', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    expect(h.get().LINK.rf.svc).toBe(P(50));
+    h.fns._lkRfDate('2026-10-13');
+    expect(h.get().LINK.rf.svc).toBe(P(52));
+    h.fns._lkRfSvc('none');
+    h.fns._lkRfDate('2026-10-16');
+    expect(h.get().LINK.rf.svc).toBe('none');
+    h.fns._lkRfDate('2026-10-10'); // no service that day
+    expect(h.get().LINK.rf.svc).toBe('none');
+  });
+  it('a back gesture keeps the draft: reopening the same group and date restores the ticks and note', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    h.fns._lkRfTick(P(61)); h.fns._lkRfGuests('3');
+    h.get().LINK.rf = null; // the header arrow / Android back (navBack) drops the form silently
+    h.fns._lkNewReport('2026-10-16');
+    expect(h.get().LINK.rf.ticks).toEqual({ [P(61)]: true });
+    expect(h.get().LINK.rf.guests).toBe(3);
+    h.fns._lkReportSend(); // a sent report leaves no draft
+    h.fns._lkNewReport('2026-10-16');
+    expect(h.get().LINK.rf.ticks).toEqual({});
+  });
+  it('Cancel with a dirty form asks "Discard report?"; Keep editing stays, Discard drops the draft', async () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    h.fns._lkRfTick(P(61));
+    h.answers.push(false);
+    await h.fns._lkRfBack();
+    expect(h.calls.asks[0]).toContain('| Discard report | Keep editing');
+    expect(h.calls.gos).not.toContain('back');
+    h.answers.push(true);
+    await h.fns._lkRfBack();
+    expect(h.calls.gos).toContain('back');
+    h.get().LINK.rf = null;
+    h.fns._lkNewReport('2026-10-16');
+    expect(h.get().LINK.rf.ticks).toEqual({});
+  });
+  it('Cancel on an untouched form goes straight back', async () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    await h.fns._lkRfBack();
+    expect(h.calls.asks).toHaveLength(0);
+    expect(h.calls.gos).toContain('back');
+    expect(h.fns._lkFormHtml()).toContain('onclick="_lkRfBack()"');
   });
 });
