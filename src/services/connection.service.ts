@@ -260,10 +260,10 @@ export function makeConnectionService(
         const student = studentsById.get(a.studentId);
         const leader = leadersById.get(a.leaderId);
         if (!student || !leader) continue;
-        // Own-gender-only (not own-grade-only) — this export is Connect Setup's own
-        // "Export CSV" button, so it should include cross-grade connections the actor
-        // made there, same as the picker and listAll() above.
-        if ((actor.role === 'grade' || actor.role === 'quad') && !canAccessGender(actor, student.gender, structure)) continue;
+        // F-10 (FX3): a junior leader exports only its own rows; grade/quad only students they may
+        // access (canAccessStudent, the same one rule as leaderSummary).
+        if (actor.role === 'leader' && a.leaderId !== actor.leaderId) continue;
+        if ((actor.role === 'grade' || actor.role === 'quad') && !canAccessStudent(actor, student.grade, student.gender, structure)) continue;
         const svcPct = student.svcTotal > 0
           ? Math.round((student.svcAttended / student.svcTotal) * 100) + '%'
           : '—';
