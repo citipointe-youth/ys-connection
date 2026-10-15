@@ -3,7 +3,7 @@ import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
 import type { PrayerRequest } from '../../core/entities/prayer';
-import type { Notice } from '../../core/entities/notice';
+import type { Notice, NoticePushSub } from '../../core/entities/notice';
 import type { Connection } from '../../core/entities/connection';
 import type {
   ServiceSession,
@@ -70,6 +70,9 @@ export interface INoticeRepository extends IRepository<Notice> {
   /** Notices created at or after `iso`, newest first. */
   findSince(iso: string): Promise<Notice[]>;
 }
+
+/** Notice alert devices. Tiny table (one row per subscribed phone), so findAll is the send-time read. */
+export type INoticePushRepository = IRepository<NoticePushSub>;
 
 export interface IConnectionRepository extends IRepository<Connection> {
   findByStudent(studentId: string): Promise<Connection[]>;

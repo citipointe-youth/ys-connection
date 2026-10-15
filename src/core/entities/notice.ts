@@ -13,3 +13,13 @@ export interface Notice {
   senderName: string;
   createdAt: ISODateString;
 }
+
+/** One device's web-push registration (migration 0029). `id` = hash of the endpoint, so a re-subscribe upserts. */
+export interface NoticePushSub {
+  id: ID;
+  userId: ID;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: ISODateString;
+}

@@ -118,6 +118,9 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Notices -----
     { method: 'GET',    path: '/notices',              auth: true, handler: (r) => notice.list(r) },
     { method: 'POST',   path: '/notices',              auth: true, handler: (r) => notice.send(r) },
+    { method: 'GET',    path: '/notices/push',         auth: true, handler: (r) => notice.pushConfig(r) },
+    { method: 'POST',   path: '/notices/push',         auth: true, handler: (r) => notice.subscribe(r) },
+    { method: 'POST',   path: '/notices/push/off',     auth: true, handler: (r) => notice.unsubscribe(r) },
     { method: 'DELETE', path: '/notices/:id',          auth: true, handler: (r) => notice.remove(r) },
 
     // ----- Connections -----

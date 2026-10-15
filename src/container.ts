@@ -8,6 +8,7 @@ import {
   InMemoryLeaderRepository,
   InMemoryPrayerRepository,
   InMemoryNoticeRepository,
+  InMemoryNoticePushRepository,
   InMemoryConnectionRepository,
   InMemoryServiceSessionRepository,
   InMemoryServiceAttendanceRepository,
@@ -29,6 +30,7 @@ import {
   SupabaseLeaderRepository,
   SupabasePrayerRepository,
   SupabaseNoticeRepository,
+  SupabaseNoticePushRepository,
   SupabaseConnectionRepository,
   SupabaseServiceSessionRepository,
   SupabaseServiceAttendanceRepository,
@@ -51,6 +53,7 @@ import type {
   ILeaderRepository,
   IPrayerRepository,
   INoticeRepository,
+  INoticePushRepository,
   IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
@@ -180,6 +183,9 @@ export async function buildContainer(): Promise<Container> {
   const notices: INoticeRepository = useSupabase
     ? new SupabaseNoticeRepository(sql)
     : new InMemoryNoticeRepository(useJson ? makeJson('notices.json') : undefined);
+  const noticePush: INoticePushRepository = useSupabase
+    ? new SupabaseNoticePushRepository(sql)
+    : new InMemoryNoticePushRepository(useJson ? makeJson('notice-push.json') : undefined);
   const connections: IConnectionRepository = useSupabase
     ? new SupabaseConnectionRepository(sql)
     : new InMemoryConnectionRepository(useJson ? makeJson('connections.json') : undefined);
@@ -245,7 +251,7 @@ export async function buildContainer(): Promise<Container> {
 
   // Init all repos
   await Promise.all([
-    users.init(), students.init(), leaders.init(), prayers.init(), notices.init(), connections.init(),
+    users.init(), students.init(), leaders.init(), prayers.init(), notices.init(), noticePush.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
     imports.init(), settings.init(), audit.init(), connectionAudits.init(), bus.init(),
@@ -257,7 +263,6 @@ export async function buildContainer(): Promise<Container> {
   const student = makeStudentService(students, settings, connections, prayers, dnc);
   const leader = makeLeaderService(leaders, settings);
   const prayer = makePrayerService(prayers, students, settings, connections);
-  const notice = makeNoticeService(notices, settings);
   const connection = makeConnectionService(connections, students, leaders, settings, dnc);
   const followup = makeFollowupService(
     connections, students, leaders,
@@ -282,6 +287,7 @@ export async function buildContainer(): Promise<Container> {
   // Always live (owner 2026-10-12: the ELVANTO_FORMS_LIVE gate was removed; test sends are deleted in Elvanto).
   // Local dev and preview deployments send real forms too.
   const errorLog = makeErrorLogService({ repo: errorLogRepo, link });
+  const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, errorLog });
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
   const newYouth = makeNewYouthService(settings, { live: true, errorLog, unsent });

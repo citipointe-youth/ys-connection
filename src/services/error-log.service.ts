@@ -61,6 +61,8 @@ const MESSAGES: Record<string, string> = {
   'intake-unreadable': 'A stored intake plan could not be decrypted',
   'pending-24h': 'Waiting more than 24 hours (is the console offline?)',
   NETWORK: 'Request failed: no connection',
+  PUSH_FAILED: 'A notice alert could not be delivered to a phone (the notice itself was sent)',
+  PUSH_OFF: 'Notice alerts are not set up yet (VAPID keys missing in Vercel)',
 };
 /** Fixed text only. Exported for the tests. */
 export function messageFor(category: ErrorCategory, code: string, status: number | null): string {

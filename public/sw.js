@@ -1,4 +1,4 @@
-const CACHE = 'ysc-v109';
+const CACHE = 'ysc-v110';
 const APP_SHELL = ['/'];
 
 // API paths that should never be served from cache. NOTE: every API resource must
@@ -53,6 +53,34 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       });
+    })
+  );
+});
+
+// ─── Notice alerts (web push, ported from MyYouthCamp) ───────────────────────────
+// userVisibleOnly is mandatory, so every push MUST show a notification. The server sends only
+// { title: 'New notice', body: <the notice's first line>, screen: 'notices' }; it may show on a locked screen.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = {}; }
+  e.waitUntil(self.registration.showNotification(d.title || 'New notice', {
+    body: d.body || 'Open the app for details.',
+    icon: '/icons/icon-192.png',
+    tag: 'notice',
+    renotify: true, // a second notice replacing the first must still alert (Android is silent otherwise)
+    data: { screen: 'notices' },
+  }));
+});
+
+// The SPA has no URL router: tell an open window to go to Notices, or cold-start with /?nav=notices.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+      for (const c of cs) {
+        if ('focus' in c) { c.postMessage({ type: 'push-nav', screen: 'notices' }); return c.focus(); }
+      }
+      return self.clients.openWindow('/?nav=notices');
     })
   );
 });

@@ -20,6 +20,7 @@ export type Action =
   | 'prayer:write'            // add/edit/mark/delete a prayer in scope
   | 'prayer:import'           // admin-only: bulk CSV import/export of prayers
   | 'notice:write'            // admin + director: send and delete notices (quad logins only read theirs)
+  | 'notice:alerts'           // admin + director + quad: turn notice alerts (web push) on/off for this device
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // route edits on Assign (Generate/Move/Undo), removing another's own car
@@ -78,6 +79,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'bus:coordinate',
     'intake:write',
     'link:use',
+    'notice:alerts',
   ]),
   // director — ministry-wide access; can import data
   director: new Set<Action>([
@@ -93,6 +95,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:read',
     'prayer:write',
     'notice:write',
+    'notice:alerts',
     'bus:use',
     'bus:roster',
     'bus:coordinate',
@@ -117,6 +120,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'prayer:read',
     'prayer:write',
     'notice:write',
+    'notice:alerts',
     'prayer:import',
     'bus:use',
     'bus:roster',
@@ -132,6 +136,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
 
 export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
+}
+
+/** Who a notice's alert goes to: active admin/director (every notice) and the active quad logins it is addressed to. */
+export function receivesNoticePush(u: { role: UserRole; quad?: string | null; status: string }, recipients: readonly string[]): boolean {
+  if (u.status !== 'active') return false;
+  if (u.role === 'admin' || u.role === 'director') return true;
+  return u.role === 'quad' && !!u.quad && recipients.includes(u.quad);
 }
 
 // can() with the config-dependent exceptions. ROLE_PERMISSIONS stays static; the only

@@ -331,6 +331,9 @@ SETUP_CODE=<16+ chars>   # first-run admin creation (setup screen); ignored once
 GOOGLE_SA_JSON=<key file as one line>   # Bus; replaces the three GOOGLE_SA_* vars (they still work; JSON wins if both set)
 GOOGLE_MAPS_API_KEY=<key>               # Bus; always required
 LINK_SYNC_TOKEN=<32+ chars>             # Elvanto link console (/sync/*); unset or shorter = /sync answers 503 LINK_OFF
+VAPID_PUBLIC_KEY=<base64url>            # Notice alerts (web push). Any of the three unset = alerts silently off
+VAPID_PRIVATE_KEY=<base64url>           #   ("Alerts aren't set up yet"). Make a pair: npx web-push generate-vapid-keys
+VAPID_SUBJECT=<mailto: or https: URL>   #   Contact sent to the push services, e.g. https://ys-connection.vercel.app
 
 # Required whenever PERSISTENCE=supabase — read directly from process.env by
 # src/utils/field-crypto.ts, NOT via src/config/env.ts. Encrypts students.mobile and
@@ -571,12 +574,12 @@ re-add an SVG path there for it.
   showing" — a snapshot cached before the lgStats fix was served forever). `audits`
   is now in `API_RE` as of `cms-v6`.
 
-## Notifications (web push) — removed
+## Notifications (web push) — removed 2026-07-11; notice alerts added 2026-10-15
 
-Push notifications were fully removed from the codebase 2026-07-11 and archived to
-`../Archive/push-notifications-2026-07-11/` (source + a README with reinstatement notes).
-The Supabase `push_subscriptions`/`notifications`/`notification_recipients` tables may
-still exist in the database — that's out of scope for this code-only removal.
+The old push feature was removed 2026-07-11 (archived to `../Archive/push-notifications-2026-07-11/`).
+Its `push_subscriptions`/`notifications`/`notification_recipients` tables may still exist in prod;
+**never reuse those names** (`create table if not exists` would silently keep the old shape).
+Notice alerts (2026-10-15) are a fresh port from MyYouthCamp: see "Notice alerts" under Run 2026-10-15.
 
 ## Trend qualifiers
 
@@ -2743,5 +2746,6 @@ Release branch `release/2026-10-15` (5 merges + review fixes; shipped as `deploy
 - **Error log polish.** Plain-English text + "what to do" per code (`EL_HELP` in `public/index.html`), NETWORK drops throttled to 1/min per device, the client-side duplicate 5xx report dropped, non-digit id-like path segments masked. Test: `error-log.spa.test.ts`.
 - **Leader switch fix (R5).** "I am" change or login snaps the grade filter to that leader's own grades (discarding remembered `viewGrades`) after `/leaders` has loaded.
 - **Notices (R6; migration 0028, `supabase.notices.ts`).** Flag `modules.notices` `off|on`, default **off** (admin turns it on in Settings). Admin/director compose + send to any subset of the 4 quad accounts (perm `notice:write`; quad logins only read their own); More > Notices (30-day history; admin/director see recipients); Home card for 24 h after send, not dismissable; sender can delete. No priority, push, schedule, edit or read receipts. `/notices` is in `vercel.json` and `sw.js` `API_RE`.
+- **Notice alerts (web push; migration 0029 `notice_push_subscriptions`, id = sha256(endpoint) prefix, SW `ysc-v110`).** Only while `modules.notices` is on. More > Notices card: Turn on alerts (the ONLY place permission is asked; `Notification.requestPermission` runs synchronously in the tap) / Turn off alerts; states on / off / blocked by browser / not supported / iPhone not on Home Screen ("Add to Home Screen first") / not set up (VAPID env unset). Routes `GET /notices/push` (`{publicKey|null}`), `POST /notices/push` (subscribe), `POST /notices/push/off`; perm `notice:alerts` = admin, director, quad. Sending: after the notice insert, to active quad logins it is addressed to plus every subscribed active admin/director (`receivesNoticePush`); payload `{title:'New notice', body:<notice title, ~120 chars>, screen:'notices'}` only; 404/410 deletes the row; any other failure logs `PUSH_FAILED` (code only) and never fails the send. Click opens More > Notices (`push-nav` message, or cold start `/?nav=notices`). Env: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Tests: `notice-push.service.test.ts`, `notice-push.spa.test.ts`.
 - **`src/tests/route-registration.test.ts`** fails when a router top-level segment is missing from `vercel.json` or `sw.js` `API_RE` (the 2026-07-18 `/prayers` misroute class).
 - **PRE-PROMOTE CHECKLIST for 0027 + 0028, in order.** (1) Snapshot the prod DB (additive migrations, but the Supabase repos for link_roster consent and notices have never run on real Postgres). (2) Push; the Vercel build log must apply `0027` and `0028` ("2 new", then `Database up to date`). (3) `curl -s https://<new-deployment>/health` -> `schema.current` = `0028`. (4) `curl -si https://<new-deployment>/notices` -> **JSON 401**, not SPA HTML (proves routing). (5) Same for `/link/consents/lookup` and `/link/flows` (JSON 401). (6) Promote; only then ship 11.1 and restart the console. Roll back = promote the previous deployment (migrations are additive, nothing to undo). Notices stay off until the admin enables them.

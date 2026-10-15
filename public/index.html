@@ -1600,6 +1600,7 @@ function _noticeHomeHtml(list) {
 }
 function _noticesHtml(list) {
   let h = `<div class="ph"><div class="ph-title">Notices</div><div class="ph-sub">Last 30 days</div></div>`;
+  h += `<div id="nt-push"></div>`;
   if (_noticeSender()) {
     h += `<div class="card"><div class="fg"><label class="fl" for="nt-title">Title</label><input class="fi" id="nt-title" maxlength="120" autocomplete="off"></div>
       <div class="fg"><label class="fl" for="nt-body">Message</label><textarea class="ft" id="nt-body" rows="4" maxlength="1000"></textarea></div>
@@ -1615,6 +1616,7 @@ async function renderNotices() {
   let list = Cache.getStale('/notices');
   if (list == null) { setApp(shell('')); try { list = await API.get('/notices'); } catch { list = []; } if (S.page !== _pg) return; }
   setApp(shell(_noticesHtml(list)));
+  _ntPushDraw();
 }
 async function submitNotice() {
   const title = (document.getElementById('nt-title').value || '').trim();
@@ -1630,6 +1632,88 @@ async function deleteNotice(id) {
   if (!confirm('Delete this notice?')) return;
   try { await API.del('/notices/' + id); Cache.del('/notices'); renderNotices(); }
   catch (e) { toast(e.message || 'Could not delete'); }
+}
+
+// Notice alerts (web push, ported from MyYouthCamp). Permission is asked ONLY from the "Turn on alerts" tap, never on load.
+// State: on | off | blocked (browser said no) | unsupported | ios-install (iPhone not on Home Screen) | not-set-up (no VAPID keys).
+let _ntPushLast = null, _ntPushBusy = false;
+function _ntPushState(o) {
+  if (o.ios && !o.standalone) return 'ios-install'; // iOS only offers push to a Home Screen app
+  if (!o.supported) return 'unsupported';
+  if (!o.publicKey) return 'not-set-up';
+  if (o.permission === 'denied') return 'blocked';
+  return o.subscribed && o.permission === 'granted' ? 'on' : 'off';
+}
+function _ntPushCardHtml(st) {
+  const msg = {
+    on: 'Alerts are on for this phone.',
+    off: 'Get a phone alert when a new notice arrives.',
+    blocked: 'Alerts are blocked by your browser. Allow notifications for this site in your browser or phone settings, then come back.',
+    unsupported: "This browser can't show alerts.",
+    'ios-install': 'To get alerts on iPhone, add this app to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.',
+    'not-set-up': "Alerts aren't set up yet.",
+  }[st] || '';
+  const btn = st === 'on' ? `<button type="button" class="btn btn-secondary btn-sm" id="nt-push-btn" onclick="noticePushOff()">Turn off alerts</button>`
+    : st === 'off' ? `<button type="button" class="btn btn-primary btn-sm" id="nt-push-btn" onclick="noticePushOn()">Turn on alerts</button>` : '';
+  return `<div class="card" style="margin-bottom:10px;display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0;font-size:13px;color:var(--ink-mid)">${icS('bell')} ${esc(msg)}</div>${btn}</div>`;
+}
+async function _ntPushEnv() {
+  let ios = false, standalone = false;
+  try { ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch {}
+  try { standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch {}
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const o = { ios, standalone, supported, publicKey: null, permission: supported ? Notification.permission : 'default', subscribed: false };
+  if (!supported) return o;
+  try { o.publicKey = (await API.get('/notices/push')).publicKey || null; } catch {}
+  try { const reg = await navigator.serviceWorker.getRegistration(); o.subscribed = !!(reg && await reg.pushManager.getSubscription()); } catch {}
+  return o;
+}
+async function _ntPushDraw() {
+  const env = await _ntPushEnv();
+  _ntPushLast = env;
+  const el = document.getElementById('nt-push');
+  if (el) el.innerHTML = _ntPushCardHtml(_ntPushState(env));
+}
+function _urlB64ToUint8(b64) {
+  const raw = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+// requestPermission runs synchronously inside the tap (iOS drops the prompt after an await), using the state from the last draw.
+function noticePushOn() {
+  const env = _ntPushLast;
+  if (_ntPushBusy || !env || _ntPushState(env) !== 'off') return;
+  _ntPushBusy = true;
+  let permP;
+  try { permP = Promise.resolve(Notification.requestPermission()); } catch (e) { permP = Promise.reject(e); }
+  _ntPushFinish(permP, env.publicKey);
+}
+async function _ntPushFinish(permP, publicKey) {
+  try {
+    const perm = await permP;
+    if (perm !== 'granted') { toast(perm === 'denied' ? 'Alerts are blocked by the browser' : 'Alerts were not turned on'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(publicKey) });
+    const j = sub.toJSON();
+    await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } });
+    toast('Alerts are on for this phone');
+  } catch (e) {
+    toast('Could not turn on alerts' + (e && e.message ? ': ' + e.message : ''));
+  } finally { _ntPushBusy = false; _ntPushDraw(); }
+}
+async function noticePushOff() {
+  if (_ntPushBusy) return;
+  _ntPushBusy = true;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) {
+      const endpoint = sub.endpoint;
+      try { await sub.unsubscribe(); } catch {} // the phone stops first; the server row is also pruned on the next 404/410
+      try { await API.post('/notices/push/off', { endpoint }); } catch {}
+    }
+    toast('Alerts are off for this phone');
+  } catch { toast('Could not turn off alerts'); }
+  finally { _ntPushBusy = false; _ntPushDraw(); }
 }
 
 // ============================================================
@@ -6363,6 +6447,8 @@ const EL_HELP = {
   'note-unreadable': ['A saved note is corrupted.', 'Re-enter it and tell the developer.', 1],
   'intake-unreadable': ['A saved intake plan is corrupted.', 'Re-enter it and tell the developer.', 1],
   'pending-24h': ['Actions have waited a day: the console computer has not picked them up.', 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
+  PUSH_FAILED: ['A notice was sent, but the phone alert for it did not reach some phones.', 'Nothing to do: the notice is still in the app. Tell the developer if it happens on every notice.', 0],
+  PUSH_OFF: ['Someone tried to turn on notice alerts, but alerts are not set up yet.', 'Ask the owner to add the VAPID keys in Vercel.', 1],
   HTTP_401: ['A login had expired.', 'Safe to ignore unless many people see it.', 0],
   HTTP_403: ['Someone tried something their role does not allow.', 'Safe to ignore unless many people see it.', 0],
 };
@@ -14475,6 +14561,8 @@ async function boot() {
     let wantBus = false;
     try { wantBus = localStorage.getItem('yap_bus_reload') === '1'; } catch {}
     if (wantBus) { try { localStorage.removeItem('yap_bus_reload'); } catch {} S.page = 'bus'; }
+    // Tapped notice alert, cold start (sw.js openWindow('/?nav=notices')). render() sends Home if the module is off.
+    try { if (new URLSearchParams(location.search).get('nav') === 'notices') { S.page = 'notices'; history.replaceState(null, '', location.pathname); } } catch {}
   }
   render();
   _reloadViewportFix();
@@ -14486,6 +14574,10 @@ boot();
 if ('serviceWorker' in navigator) {
   let _swReloading = false;
   const _swHadController = !!navigator.serviceWorker.controller;
+  // Tapped notice alert with the app already open (sw.js notificationclick posts this).
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'push-nav' && e.data.screen === 'notices' && S.user) go('notices');
+  });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!_swHadController || _swReloading) return;
     _swReloading = true;

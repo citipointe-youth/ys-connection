@@ -17,5 +17,17 @@ export function makeNoticeController(deps: { notice: NoticeService }) {
       await deps.notice.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },
+    async pushConfig(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.notice.pushConfig(req.ctx);
+    },
+    async subscribe(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.notice.subscribe(req.ctx, req.body);
+    },
+    async unsubscribe(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.notice.unsubscribe(req.ctx, req.body);
+    },
   };
 }

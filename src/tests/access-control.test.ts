@@ -204,7 +204,7 @@ const ALL_ACTIONS = [
   'student:read', 'student:read:sensitive', 'student:write', 'leader:read', 'leader:write',
   'connection:write', 'overview:read', 'atrisk:read', 'import:run', 'connection:import',
   'admin:manage', 'prayer:read', 'prayer:write', 'prayer:import', 'bus:use', 'bus:roster',
-  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin', 'intake:admin', 'link:flowRemove', 'notice:write',
+  'bus:coordinate', 'bus:analysis', 'intake:write', 'link:use', 'link:admin', 'intake:admin', 'link:flowRemove', 'notice:write', 'notice:alerts',
 ] as const satisfies readonly Action[];
 type _MissingAction = Exclude<Action, (typeof ALL_ACTIONS)[number]>;
 const _allActionsListed: [_MissingAction] extends [never] ? true : never = true;

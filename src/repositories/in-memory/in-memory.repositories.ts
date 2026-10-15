@@ -5,7 +5,7 @@ import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
 import type { PrayerRequest } from '../../core/entities/prayer';
-import type { Notice } from '../../core/entities/notice';
+import type { Notice, NoticePushSub } from '../../core/entities/notice';
 import type { Connection } from '../../core/entities/connection';
 import type {
   ServiceSession,
@@ -26,6 +26,7 @@ import type {
   ILeaderRepository,
   IPrayerRepository,
   INoticeRepository,
+  INoticePushRepository,
   IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
@@ -197,6 +198,9 @@ export class InMemoryNoticeRepository extends InMemoryBaseRepository<Notice> imp
     return Array.from(this.store.values()).filter((n) => n.createdAt >= iso)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((n) => this.clone(n));
   }
+}
+export class InMemoryNoticePushRepository extends InMemoryBaseRepository<NoticePushSub> implements INoticePushRepository {
+  constructor(persistence?: IPersistenceAdapter<NoticePushSub>) { super(persistence); }
 }
 
 // ---------------------------------------------------------------------------
