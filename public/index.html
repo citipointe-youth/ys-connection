@@ -12600,7 +12600,7 @@ function _ikSubBar(cur) {
 }
 function _ikConsentSub(k) {
   const I = _ik();
-  if (k === 'last' && I.csub === 'last' && I.dates && I.dates.length && I.date !== I.dates[0].date) return _ikPickDate(0);
+  if (k === 'last' && I.dates && I.dates.length && I.date !== I.dates[0].date) { if (I.csub !== 'last') { navPush(); I.csub = 'last'; } return _ikPickDate(0); }
   if (!['last', 'forms', 'unlinked', 'mismatches'].includes(k) || I.csub === k) return;
   navPush();
   I.csub = k;

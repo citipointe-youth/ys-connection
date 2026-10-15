@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['esc', '_ikSubBar', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
+const FNS = ['esc', '_ikSubBar', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
   '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormIconDefs',
   '_ikFormIcons', '_ikIcHtml', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
 const HTML = loadIndexHtml();
@@ -25,7 +25,7 @@ function env(o: { fresh?: () => any } = {}) {
     const navPush = () => {}; const _ikDraw = () => {}; const _ikLoad = () => { __t.loads++; };
     const _ikPickDate = (i) => { __t.picked.push(i); __I.date = __I.dates[i].date; };
     const progBar = (s) => '<div>' + s + '</div>'; const icS = (k) => ''; const _ikSeenLine = () => '';
-    const _lkDay = (d) => d; const _lkSeen = (d) => d;
+    const _lkDay = (d) => d; const _lkUuid = () => 'u-1'; const _ikPost = async () => { throw new Error('Load failed'); }; const _ikOutcome = () => null; const _lkSeen = (d) => d;
     ${FIX_REASON}
     const IK_CONTACT_RE = /contact with my child/i;
     ${BODY}
@@ -42,6 +42,14 @@ describe('F-48(a) Last Friday pill', () => {
     expect(fns._ikSubBar('last')).not.toMatch(/class="tbbtn on"[^>]*>Last Friday/);
     fns._ikConsentSub('last');
     expect(t.picked).toEqual([0]);
+  });
+  it('from All forms with an older week picked, Last Friday opens the newest week with the pill lit', () => {
+    const { fns, t, I } = env();
+    Object.assign(I, { csub: 'forms', date: '2026-10-09' });
+    fns._ikConsentSub('last');
+    expect(t.picked).toEqual([0]);
+    expect(I.csub).toBe('last');
+    expect(fns._ikSubBar(I.csub)).toMatch(/class="tbbtn on"[^>]*>Last Friday/);
   });
 });
 
@@ -120,6 +128,13 @@ describe('L6-8 lookup poll schedule', () => {
     x.workSince = Date.now() - 61000;
     await t.cbs.at(-1)!();
     expect(t.delays.at(-1)).toBe(5000);
+  });
+  it('a new lookup starts with a fresh blip count', async () => {
+    const { fns } = env({ fresh: () => ({ status: 'waiting' }) });
+    const x = fns._ikLk('forms');
+    x.blips = 3;
+    await fns._ikLkGo('forms', 1, '');
+    expect(x.blips).toBe(0);
   });
   it('a network blip is retried silently 3 times, then shown', async () => {
     const { fns, t } = env({ fresh: () => { throw new Error('Load failed'); } });
