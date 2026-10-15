@@ -990,12 +990,14 @@ const SECTION_OF = {
   '/students?crossGrade=1': 'studentsConnect',
   '/connections?crossGrade=1': 'connectionsConnect',
 };
+// F-33: a phone that blocks storage (private mode, full) must still boot.
+function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 const API = (() => {
   // The session token is kept in localStorage (sent as a Bearer header). This is
   // an accepted risk: the XSS vector that could read it is closed by escaping all
   // user-supplied fields (see esc()) plus the page CSP. If that ever changes,
   // move to an httpOnly cookie. (See CLAUDE.md → Security notes.)
-  let _t = localStorage.getItem('yap_token') || null;
+  let _t = _lsGet('yap_token') || null;
   const hdr = () => ({ 'Content-Type': 'application/json', ...(_t ? { Authorization: `Bearer ${_t}` } : {}) });
   // quiet: a background call (the link queue flush, status and 60 s refresh) never shows the loading bar (APP-75).
   async function r(method, path, body, timeoutMs, quiet) {
@@ -1048,7 +1050,7 @@ const API = (() => {
   }
   const _inflight = new Map();
   return {
-    setToken(t) { _t = t; t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); },
+    setToken(t) { _t = t; try { t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); } catch (e) {} },
     get token() { return _t; },
     get: (p) => {
       const cached = Cache.get(p);
@@ -14759,7 +14761,7 @@ function _handleAuthExpired() {
   render();
 }
 async function boot() {
-  const token = localStorage.getItem('yap_token');
+  const token = _lsGet('yap_token');
   if (token) {
     try {
       const user = await API.get('/auth/me');
