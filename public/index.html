@@ -3331,7 +3331,11 @@ async function renderHomeFollowup(fromCache) {
 
   let data;
   try { data = await G(`/connections/leader/${mine}/followup`); }
-  catch { host.innerHTML = ''; return; }
+  catch (e) {
+    // F-01: a saved "I am" that is now outside this login's leaders (403): forget it and offer the picker.
+    if (e && e.status === 403 && !(S.user && S.user.role === 'leader')) { setMyLeaderId(null); return renderHomeFollowup(fromCache); }
+    host.innerHTML = ''; return;
+  }
   if (!data) { host.innerHTML = ''; return; }
 
   // A junior-leader login is bound to its own leader record — no "Not you?".
