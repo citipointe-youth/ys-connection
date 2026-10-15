@@ -12590,12 +12590,17 @@ async function _ikRefresh() {
 // Mismatches (both a consentLookup read through the outbox, polled at GET /link/consents/lookup), Make profile match
 // form (consentFix, ships LOCKED in the console). R8 Save all: one confirm queues N saves in one /link/batch call; the
 // console runs them one at a time; each row's chip shows its own status. Handlers take indexes, never ids or names.
+// F-48: "Last Friday" is lit only on the newest week; another week picked in Other weeks leaves no pill lit.
 function _ikSubBar(cur) {
-  return `<div class="tbbar ik-sub">${[['last', 'Last Friday'], ['forms', 'All forms'], ['unlinked', 'Unlinked'], ['mismatches', 'Mismatches']].map(([k, l]) =>
-    `<button type="button" class="tbbtn ${cur === k ? 'on' : ''}"${cur === k ? ' aria-current="true"' : ''} onclick="_ikConsentSub('${k}')">${l}</button>`).join('')}</div>`;
+  const I = _ik(), older = !!(I && I.dates && I.dates.length && I.date && I.date !== I.dates[0].date);
+  return `<div class="tbbar ik-sub">${[['last', 'Last Friday'], ['forms', 'All forms'], ['unlinked', 'Unlinked'], ['mismatches', 'Mismatches']].map(([k, l]) => {
+    const on = cur === k && !(k === 'last' && older);
+    return `<button type="button" class="tbbtn ${on ? 'on' : ''}"${on ? ' aria-current="true"' : ''} onclick="_ikConsentSub('${k}')">${l}</button>`;
+  }).join('')}</div>`;
 }
 function _ikConsentSub(k) {
   const I = _ik();
+  if (k === 'last' && I.csub === 'last' && I.dates && I.dates.length && I.date !== I.dates[0].date) return _ikPickDate(0);
   if (!['last', 'forms', 'unlinked', 'mismatches'].includes(k) || I.csub === k) return;
   navPush();
   I.csub = k;
