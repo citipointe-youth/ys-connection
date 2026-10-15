@@ -14286,9 +14286,9 @@ function _busMyCarHtml() {
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
+    ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id">I am: <select class="fs" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
