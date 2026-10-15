@@ -10769,7 +10769,7 @@ function _lkGroupsHtml() {
   try { sel = localStorage.getItem('yap_lk_grade') || 'all'; } catch (e) {}
   if (sel !== 'all' && !grades.some((x) => String(x) === sel)) sel = 'all';
   const chips = grades.length > 1 ? `<div class="filter-row" role="group" aria-label="Filter by grade">${['all'].concat(grades.map(String)).map((v) =>
-    `<button type="button" class="fc${v === sel ? ' on' : ''}" onclick="_lkGrFilter('${v}')">${v === 'all' ? 'All' : 'Yr ' + v}</button>`).join('')}</div>` : '';
+    `<button type="button" class="fc${v === sel ? ' on' : ''}" style="white-space:nowrap" onclick="_lkGrFilter('${v}')">${v === 'all' ? 'All' : 'Yr ' + v}</button>`).join('')}</div>` : '';
   return chips + gs.filter((g) => sel === 'all' || String(g.grade) === sel).map((g) => {
     const a = _lkGroupAct(g), tint = /^f/i.test(g.gender || '') ? ' style="background:var(--girl-light)"' : /^m/i.test(g.gender || '') ? ' style="background:var(--boy-light)"' : '';
     return `<div class="li lk-row" role="button"${tint} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>

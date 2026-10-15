@@ -280,3 +280,13 @@ describe('F-40(b) report tick rows are checkboxes', () => {
     expect(form).toContain(`onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${P(61)}')}"`);
   });
 });
+
+describe('F-48(d) grade chips never wrap', () => {
+  it('every chip is nowrap', () => {
+    const h = setup();
+    h.get().LINK.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' });
+    const chips = h.fns._lkGroupsHtml().match(/<button type="button" class="fc[^>]*>/g);
+    expect(chips).toHaveLength(3);
+    chips.forEach((c: string) => expect(c).toContain('white-space:nowrap'));
+  });
+});
