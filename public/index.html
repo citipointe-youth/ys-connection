@@ -11820,7 +11820,7 @@ function _lkAdmShadowHtml() {
   else if (r && !r.imported) body = '<p class="lk-sub">Not in the import</p>';
   else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
     + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(V[x.verdict] || x.verdict)}</b></div>`).join('');
-  return `<div class="lk-sec">Shadow check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
+  return `<div class="lk-sec">Kiosk vs app check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
     <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
     <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;
 }
@@ -11919,7 +11919,7 @@ function _ikRev(st) { return Number((st && st.consoleLinkRev) || 0); }
 function _intakeOn(st) { if (st === undefined) st = _ikSt(); return _ikModuleOn() && _ikRev(st) >= 4; }
 // The freshest console status: the intake reply carries it too.
 function _ikSt() { return (LINK.ik && LINK.ik.head) || LINK.status || null; }
-function _ikOldConsole() { return "Console out of date: use the console's Youth intake tab"; }
+function _ikOldConsole() { return 'Console out of date: use New youth on the console PC'; }
 function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:parent:') === 0; }
 function _ikOpenAct(a) { return !!a && (a.status === 'pending' || a.status === 'claimed'); }
 // The newest open action of these types (actions come newest first).
@@ -11944,7 +11944,7 @@ function _ikBanner(st, list, tab) {
   if (tab !== 'consent' && caps.intakeText === 'locked') out.push(['practice', "The parent text isn't connected yet. Send it in Elvanto."]);
   if (list) {
     if (!list.takenAt) out.push(['warn', 'Not checked yet. Press Refresh to ask the console.']);
-    else if (list.stale) out.push(['warn', 'Plan ' + _ikAge(list.takenAt) + ' old. Refresh first.']);
+    else if (list.stale) out.push(['warn', 'Over 2 hours old. Tap Refresh.']);
     if (list.cut) out.push(['warn', 'Some forms were cut off: every family needs a look']);
   }
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
@@ -11971,11 +11971,11 @@ function _ikChip(row, st) {
   if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
-    return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') + _ikSeenLine(st) };
+    return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') }; // F-47: the banner says when it was last seen
   }
   if (a.status === 'sent') return { label: 'Saved', tone: 'ok', line: a.reason === 'already' ? 'Already in Elvanto' : 'Saved' + (a.resultAt ? ' ' + _lkSeen(a.resultAt) : '') };
   if (a.status === 'unclear') return { label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" };
-  if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: a.detail || _ikReasons()[a.reason] || "The console couldn't do this. Do it in Elvanto." };
+  if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: _ikReasons()[a.reason] || a.detail || "The console couldn't do this. Do it in Elvanto." };
   if (a.status === 'shadowed') return { label: 'Practice', tone: 'prac', line: 'Practice: nothing sent' };
   return null;
 }
@@ -11991,7 +11991,7 @@ function _ikSaveBlock(det, list, st) {
   if (!det || !det.detail) return det && det.unreadable ? 'Unreadable: refresh' : 'Nothing to save.';
   const row = det.row || {}, acts = det.actions || [];
   if (row.status === 'done') return 'Done.';
-  if (!list || !list.takenAt || list.stale) return 'Plan is over 2 hours old. Refresh first.';
+  if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
   if (row.status === 'needs-you') return _ikHoldReason(det.detail) || 'Sort the lines at the top first.';
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'consentSave', 'intakeText'])) return 'Waiting for the console';
@@ -12002,7 +12002,7 @@ function _ikSaveBlock(det, list, st) {
 function _ikTextBlock(det, list, st) {
   if (_ikRev(st) < 4) return _ikOldConsole();
   { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
-  if (!list || !list.takenAt || list.stale) return 'Plan is over 2 hours old. Refresh first.';
+  if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
   const acts = (det && det.actions) || [];
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'intakeText'])) return 'Waiting for the console';
@@ -12083,7 +12083,10 @@ function _ikHoldText(h, d) {
     : "Parent Consent step 1 has more people than the console can read, so this parent can't be found. Do this one in Elvanto.";
   if (t === 'Not found in consent step') return (who || 'This student') + " isn't in New People step 0, so no follow-up can be planned. Add them in Elvanto.";
   const late = /^Parent texted late \((\d{2}\/\d{2}\/\d{4})\)\? Check in Elvanto$/.exec(t);
-  if (late) return 'The parent was texted on ' + late[1] + ", less than a week before this Friday, so consent can't be assumed. Check in Elvanto.";
+  if (late) { // F-17: plain dates; the missed week is the intake Friday (consent date - 7)
+    const p = late[1].split('/'), D = _ik().date, wk = D ? new Date(Date.parse(D + 'T00:00:00Z') - 7 * 864e5).toISOString().slice(0, 10) : '';
+    return 'Parent texted ' + _lkDay(p[2] + '-' + p[1] + '-' + p[0]) + ', too late for ' + (wk ? 'the ' + _lkDay(wk) + ' week' : 'that week') + '. Look in Elvanto before saving.';
+  }
   if (t === 'Saved before, not in Elvanto now') return "The console saved this before, but Elvanto doesn't show it now. Check in Elvanto and make the change there if it's missing.";
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
   return IK_HOLD[t] || t;
@@ -12115,8 +12118,7 @@ function _ikHoldReason(d) {
   if (parts.length) { const s = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]; return s.charAt(0).toUpperCase() + s.slice(1) + ' first.'; }
   if (t.includes('Profile archived')) return 'Unarchive the profile first.';
   if (!t.length) return '';
-  const h = _ikHoldText(d.holds[0], d), m = /^(.*?[.?])(\s|$)/.exec(h);
-  return m ? m[1] : h;
+  return 'Sort the line' + (t.length > 1 ? 's' : '') + ' at the top first.'; // F-17: the hold itself is already at the top; never say it twice
 }
 // What an enabled Save will do.
 function _ikConseq(d) {
@@ -12163,25 +12165,39 @@ function _ikStepsHtml(d) {
 // The per-step result of a Save (§7.3 "after"): from the outbox row's steps[] and stop.
 function _ikResultHtml(a, d, st) {
   if (!a) return '';
-  if (_ikOpenAct(a)) {
-    const c = st && st.console;
-    return `<div class="lk-st wait">${esc('Pending' + (c && !c.online && c.lastSeenAt ? ' (console last seen ' + _lkSeen(c.lastSeenAt) + ')' : ''))}</div>`;
-  }
+  if (_ikOpenAct(a)) return '<div class="lk-st wait">Pending</div>'; // F-47: the banner says when the console was last seen
+  const stop = a.stop && a.stop.text ? a.stop.text : '', xs = a.steps || [];
   const all = ((d && d.steps) || []).concat((d && d.extras) || []);
-  const name = (x) => { const s = all.find((y) => y.key === x.key); return s ? s.text : x.action; };
-  const stop = a.stop && a.stop.text ? a.stop.text : '';
-  const lines = (a.steps || []).map((x) => {
-    const o = x.outcome;
-    const r = o === 'confirmed' ? ['ok', 'tick', 'Saved' + (x.at ? ' ' + _lkSeen(x.at) : '')]
-      : o === 'already' ? ['ok', 'tick', 'Already in Elvanto']
-      : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved']
-      : o === 'shadowed' ? ['prac', 'info', 'Practice: nothing sent']
-      : ['bad', 'xmark', 'Not sent' + (stop ? ': ' + stop : '')];
-    return `<div class="lk-st ${r[0]}">${icS(r[1])} ${esc(name(x))}: ${esc(r[2])}</div>`;
-  });
-  if (!lines.length) { const c = _ikChip({ actions: [a] }, st); if (c) lines.push(`<div class="lk-st ${c.tone}">${esc(c.line)}</div>`); }
-  else if (stop && a.stop.code !== 'finished' && !(a.steps || []).some((x) => x.outcome === 'not-sent' || x.outcome === 'locked')) lines.push(`<div class="lk-d">${esc(stop)}</div>`);
-  return lines.join('');
+  const lines = xs.map((x) => {
+    const o = x.outcome, s = all.find((y) => y.key === x.key), t = o === 'confirmed' || o === 'already' ? _ikResultLine(x, d) : (s && s.text) || _ikResultLine(x, d, true);
+    const r = o === 'confirmed' ? ['ok', 'tick', t + (x.at ? ' ' + _lkSeen(x.at) : '')]
+      : o === 'already' ? ['ok', 'tick', t + ' (already in Elvanto)']
+      : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved: ' + t]
+      : o === 'shadowed' ? ['prac', 'info', 'Practice, nothing sent: ' + t]
+      : ['bad', 'xmark', 'Not sent: ' + t];
+    return `<div class="lk-st ${r[0]}">${icS(r[1])} ${esc(r[2])}</div>`;
+  }).filter((h, i, all) => all.indexOf(h) === i); // the console can report one step twice: show it once
+  if (!lines.length) { const c = _ikChip({ actions: [a] }, st); if (c) lines.push(`<div class="lk-st ${c.tone}">${esc(c.line)}</div>`); return lines.join(''); }
+  const made = new Set(xs.filter((x) => x.outcome === 'confirmed').map((x) => x.key)).size;
+  return `<div class="lk-d">${esc('Made ' + made + (made === 1 ? ' change' : ' changes'))}</div>` + lines.join('')
+    + (stop && a.stop.code !== 'finished' ? `<div class="lk-d">${esc(stop)}</div>` : '');
+}
+// F-15: a reported step as one plain past-tense line ("Approved Tom's form", "Parent texted"); never the raw step key.
+// now: the present tense, for a step that did not happen ("Not sent: Add a note to the parent").
+function _ikResultLine(x, d, now) {
+  const n = _ikNames(d), parent = x.role === 'parent', who = ((parent ? n.parent : n.student) || '').split(' ')[0];
+  const of = _ikPoss(who, parent ? 'parent' : 'student'), frm = x.role === 'consent' ? ' consent form' : ' form';
+  const W = { approve: 'Approved ' + of + frm, approveNew: 'Approved ' + of + frm + ' (new profile)', unlink: 'Unlinked ' + of + ' form',
+    unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: 'Set the parent to Affiliate',
+    locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
+    consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
+    complete: parent ? 'Parent texted' : 'Completed New People step 0' };
+  const t = W[x.action] || 'Saved a change';
+  if (!now) return t;
+  if (t === 'Parent texted') return 'Text the parent';
+  const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save' }, w = t.split(' ')[0];
+  return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
 // ── Answers (intakeAnswer): the family's WHOLE answer set each time, never a delta (§3.4). ──
@@ -12326,8 +12342,25 @@ function _ikFieldLabel(k) {
 }
 
 // ── Save, one step, the parent text, a consent save: each its own confirm sheet, each its own outbox row. ──
-function _ikSheetHtml(title, steps, foot, go) {
-  return `<div class="mo-title">${esc(title)}</div>` + steps.map((s) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
+// F-14: the Save approves each form onto its linked profile and the form wins, so name each name field that changes
+// ("Surname: Strange [arrow] LEstrange"; the arrow is the SVG icon). [label, was, now] each. Only while this Save approves
+// that form onto the profile (a todo 'approve' step): an already approved form or a new profile changes no name.
+function _ikNameChanges(d) {
+  const out = [], F = (d && d.forms) || {}, P = (d && d.profiles) || {}, todo = _ikTodo(d);
+  ['student', 'parent'].forEach((role) => {
+    const f = F[role], p = P[role];
+    if (!f || !p || !p.name || !todo.some((s) => s.action === 'approve' && s.role === role)) return;
+    const first = _ikVal(f, 'first').trim(), last = _ikVal(f, 'last').trim(), was = String(p.name).trim(), now = [first, last].filter(Boolean).join(' ');
+    if (!now || was === now) return;
+    const pre = role === 'parent' ? 'Parent ' : '', lab = (w) => pre ? pre + w.toLowerCase() : w;
+    if (first && was.indexOf(first + ' ') === 0) out.push([lab('Surname'), was.slice(first.length + 1), last]);
+    else if (last && was.endsWith(' ' + last)) out.push([lab('First name'), was.slice(0, -last.length - 1), first]);
+    else out.push([lab('Name'), was, now]);
+  });
+  return out;
+}
+function _ikSheetHtml(title, steps, foot, go, warn) {
+  return `<div class="mo-title">${esc(title)}</div>` + (warn || []).map((w) => `<div class="ik-line ik-warn">${esc(w[0])}: ${esc(w[1])} ${icS('arrr')} ${esc(w[2])}</div>`).join('') + steps.map((s) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
     + (foot ? `<p class="lk-sub lk-mt">${esc(foot)}</p>` : '')
     + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">${esc(go)}</button></div>`;
 }
@@ -12337,7 +12370,8 @@ function _ikSaveOpen() {
   const steps = _ikTodo(det.detail), consent = I.tab === 'consent';
   I.sheet = { type: consent ? 'consentSave' : 'intakeSave', key: det.row.key, keys: steps.map((s) => s.key), one: false };
   modal(_ikSheetHtml(consent ? 'Save ' + det.row.title + ' to Elvanto?' : 'Save ' + det.row.title + "'s family to Elvanto?", steps,
-    consent ? (det.detail.outcome === 'No reply: assume consent' ? _ikD26() : '') : 'The parent text is separate.', 'Save'));
+    consent ? (det.detail.outcome === 'No reply: assume consent' ? _ikD26() : '') : 'The parent text is separate.', 'Save',
+    consent ? [] : _ikNameChanges(det.detail)));
 }
 function _ikOneOpen(i) {
   const I = _ik(), det = I.det, s = det && _ikAlone(det.detail)[i];
@@ -12381,7 +12415,7 @@ async function _ikSheetGo() {
 // ── Pages ──
 async function renderLinkIntake() {
   const I = _ik();
-  setApp(shell(`<div class="ph"><h1>Form Approve &amp; Consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>New youth &amp; consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await _ikLoad(!!I.dates);
 }
 function _ikDraw() {
@@ -12401,14 +12435,14 @@ function _ikPageHtml() {
 }
 function _ikListPage() {
   const I = _ik(), st = _ikSt(), L = I.list && I.list.date === I.date ? I.list : null, consent = I.tab === 'consent';
-  const tabs = `<div class="tbbar">${[['intake', 'Intakes'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
+  const tabs = `<div class="tbbar">${[['intake', 'New youth'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
   const sub = consent ? _ikSubBar(I.csub) : '';
   if (consent && I.csub !== 'last') return `<div class="lk-svc lk-mb">${tabs}</div>${sub}${_ikLkPage(I.csub, st)}`;
   const ref = I.ref ? '' : '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikRefresh()">Refresh</button>';
   const dates = consent ? _ikWeekHtml(I) : I.dates.length
     ? `<div class="tbbar">${I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">${esc(_lkDay(x.date))}${x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : ''}</button>`).join('')}</div>`
     : '<div class="lk-hint">No dates yet. Press Refresh to ask the console.</div>';
-  const checked = L && L.takenAt ? `<div class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · stale' : ''}</div>` : '';
+  const checked = L && L.takenAt ? `<div class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · old' : ''}</div>` : '';
   return `<div class="lk-svc lk-mb">${tabs}${ref}</div>${I.ref ? _ikRefBar(I.ref, st) : ''}${sub}${_ikBanner(st, L, I.tab)}${dates}${checked}${I.tab === 'consent' ? _ikConsentHelp() : ''}`
     + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="ik-rows">${I.date ? _ikRowsHtml(L, st, I.doneOpen) : ''}</div>`;
@@ -12422,7 +12456,7 @@ function _ikRefBar(ref, st) {
 }
 // The list in three sections (§7.1): NEEDS YOU, READY, DONE (collapsed). Greyed while the plan is stale.
 function _ikRowsHtml(list, st, open) {
-  if (!list) return progBar('Loading');
+  if (!list) return _ik().err ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ik().err = null; _ikDraw(); _ikLoad(false)">Try again</button>' : progBar('Loading'); // F-19
   const rows = list.rows || [];
   if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
     ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>'
@@ -12506,7 +12540,8 @@ function _ikCompareHtml(d, a) {
     const inner = kept
       ? `<div class="ik-line">${phone ? "Kept as is. The parent text goes to the parent form's mobile." : 'Kept as is.'}</div>`
         + (mine[x.keep.field] === x.keep.value ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikUnkeep(${fi},${ii})">Undo keep</button>` : '')
-      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">${phone ? "Keep as is (text goes to the parent form's mobile)" : 'Keep as is'}</button>`;
+      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">Keep as is</button>` // F-41: short, so it fits at 360 px
+        + (phone ? `<div class="ik-line">The text goes to the parent form's mobile.</div>` : '');
     return `<tr class="ik-keep"><td colspan="${n + 1}">${inner}</td></tr>`;
   }).join('');
   // The Elvanto links, each under its own form (links[] is [label, url]: "Student form · when", "Student profile", ...).
@@ -12570,11 +12605,21 @@ function _ikVerdictHtml(d, a) {
     return `<div class="card"><div>${esc(q)}</div>${sub ? `<div class="ik-line">${esc(sub)}</div>` : ''}${diffs}${btns ? `<div class="lk-mt">${btns}</div>` : ''}</div>`;
   }).join('');
 }
+// F-16: the console's form time is "Fri 2 Oct 7:42pm" (Brisbane, no year): Date.parse can't read it, so the old-form
+// warning never showed. The year is the one that puts it in the past.
+function _ikWhenMs(when, now) {
+  const m = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w* (\d{1,2}):(\d{2}) ?(am|pm)/i.exec(String(when || ''));
+  if (!m) return NaN;
+  const mo = 'janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[2].toLowerCase()) / 3, h = (Number(m[3]) % 12) + (/pm/i.test(m[5]) ? 12 : 0);
+  const at = (y) => Date.UTC(y, mo, Number(m[1]), h, Number(m[4])) - 36e5 * 10, n = now == null ? Date.now() : now, y = new Date(n + 36e6).getUTCFullYear();
+  return at(y) > n + 864e5 ? at(y - 1) : at(y);
+}
 function _ikTextCardHtml(t, d, block, now) {
-  const sms = t.sms || { name: '', last3: '' }, when = d && d.forms && d.forms.student ? Date.parse(d.forms.student.when) : NaN;
-  const days = isFinite(when) ? Math.floor(((now == null ? Date.now() : now) - when) / 864e5) : 0;
+  const sms = t.sms || { name: '', last3: '' }, n = now == null ? Date.now() : now;
+  const when = d && d.forms && d.forms.student ? _ikWhenMs(d.forms.student.when, n) : NaN;
+  const days = isFinite(when) ? Math.floor((n - when) / 864e5) : 0;
   return `<div class="card ik-text"><div class="lk-svc-t">${esc('Text ' + sms.name + ' now?')}</div>${_ikKv('Parent', esc(sms.name))}${_ikKv('Mobile', esc('ends in ' + sms.last3))}`
-    + (days > 3 ? _ikKv('Warning', esc('Form is ' + days + ' days old')) : '')
+    + (days > 3 ? `<div class="ik-line ik-warn">${esc('Form sent ' + days + ' days ago')}</div>` : '')
     + `<p class="lk-sub lk-mt">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` + (block ? `<div class="lk-d">${esc(block)}</div>` : '')
     + `<div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_ikTextHide()">Not now</button><button type="button" class="btn btn-primary"${block ? ' disabled' : ''} onclick="_ikTextOpen()">Send the text</button></div></div>`;
 }
@@ -12659,14 +12704,20 @@ function _ikAfterLoad() {
   const det = I.det, key = det && det.row && det.row.key;
   if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer'])) { delete I.resend[key]; _ikAnswerSend(false); }
 }
-// Every 10 s while something of mine is Pending or a Refresh is waiting; otherwise the 60 s link tick reloads.
+// Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
   const I = _ik();
   if (I.poll) { clearTimeout(I.poll); I.poll = null; }
   if (S.page !== 'link-intake') return;
   const busy = !!I.ref || (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
     || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0;
-  if (busy) I.poll = setTimeout(() => { I.poll = null; if (_ik() === I && S.page === 'link-intake' && document.visibilityState !== 'hidden') _ikLoad(true); }, I.ref ? 4000 : 10000); // S5: a Refresh ask's bar moves every 4 s
+  // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
+  // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
+  if (busy) I.poll = setTimeout(() => {
+    I.poll = null;
+    if (_ik() !== I || S.page !== 'link-intake') return;
+    if (document.visibilityState === 'hidden') _ikSchedule(); else _ikLoad(true);
+  }, I.ref ? 4000 : 5000); // S5: a Refresh ask's bar moves every 4 s
   for (const k of ['forms', 'unlinked', 'mismatches']) { const x = I.lk && I.lk[k]; if (x && (x.st === 'waiting' || x.st === 'working') && !x.poll) _ikLkPoll(k); }
   if (!I.fixPoll) _ikFixPoll();
 }
@@ -12682,9 +12733,9 @@ function _ikTab(m) {
 }
 function _ikPickDate(i) {
   const I = _ik(), x = I.dates && I.dates[i];
-  if (!x || x.date === I.date) return;
-  navPush();
-  I.date = x.date; I.list = null; I.key = null; I.det = null; I.saErr = {};
+  if (!x || (x.date === I.date && I.list)) return; // F-19: the same date again retries a failed load
+  if (x.date !== I.date) navPush();
+  I.date = x.date; I.list = null; I.key = null; I.det = null; I.saErr = {}; I.err = null; // a fresh load shows Loading, not the old error
   _ikDraw(); _ikLoad(false);
 }
 function _ikOpen(i) {
