@@ -11094,7 +11094,9 @@ function _lkMembersHtml(g) {
       let btn = '';
       if (r.state === 'member' && !r.leader && canRm) btn = `<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove ${nm}" onclick="event.stopPropagation();_lkMemRemove(${b})">${icS('trash')}</button>`;
       else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">Cancel</button>`;
-      else if (r.state === 'removing' && canAdd) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemKeep(${b})">Keep</button>`;
+      // F-38: a remove still on this phone or pending on the server can be cancelled; once sent it is an add back; while
+      // the console is sending it (claimed) nothing can stop it, so no button.
+      else if (r.state === 'removing' && canAdd && c.status !== 'claimed') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemKeep(${b})">${c.status === 'queued' || c.status === 'pending' ? 'Cancel remove' : 'Add back'}</button>`;
       const st = c && c.status !== 'cancelled' ? `<div class="lk-st ${_lkStatusTone(c)}">${_lkStatusHtml(c, _lkLastSeen())}</div>` : '';
       const grey = r.state === 'adding' || r.state === 'not-added';
       return `<div class="lk-lq-row${grey ? ' dis' : ''}" role="button" onclick="_lkMemOpen(${b})"><div class="lk-grow"><div class="lk-nm">${r.state === 'removing' ? '<s>' + nm + '</s>' : nm}</div>${st}</div>`

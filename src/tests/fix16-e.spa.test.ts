@@ -242,3 +242,29 @@ describe('F-25 report form: default service, a draft per group and date, Discard
     expect(h.fns._lkFormHtml()).toContain('onclick="_lkRfBack()"');
   });
 });
+
+describe('F-38 member remove: Cancel remove while it can be cancelled, Add back once sent', () => {
+  const view = (status: string) => ({ groupId: G(1), canEdit: true, members: [{ personId: P(70), name: 'Tom LEstrange', leader: false, grade: 11, studentId: null }],
+    changes: [{ id: 'x1', type: 'removeGroupMember', personId: P(70), name: 'Tom LEstrange', status, reason: null }] });
+  const label = (status: string) => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gm[G(1)] = view(status); L.gmOpen[G(1)] = true;
+    const out = h.fns._lkMembersHtml(L.groups[0]);
+    const m = out.match(/_lkMemKeep\([^)]*\)">([^<]*)<\/button>/);
+    return m ? m[1] : null;
+  };
+  it('labels per state', () => {
+    expect(label('pending')).toBe('Cancel remove');
+    expect(label('claimed')).toBeNull();
+    expect(label('sent')).toBe('Add back');
+    expect(label('unclear')).toBe('Add back');
+  });
+  it('a remove still on this phone says Cancel remove', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gm[G(1)] = { ...view('sent'), changes: [] }; L.gmOpen[G(1)] = true;
+    h.fns._lkQSet([{ kind: 'action', id: 'q1', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(70) }, _n: 'Tom LEstrange' }]);
+    expect(h.fns._lkMembersHtml(L.groups[0])).toMatch(/_lkMemKeep\([^)]*\)">Cancel remove</);
+  });
+});
