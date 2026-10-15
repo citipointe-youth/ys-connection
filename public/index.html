@@ -11323,7 +11323,7 @@ function _lkFlowRowHtml(r, today, boss) {
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepUndo('${rid}')">Undo</button>`;
   else if (a && a.status === 'pending' && LINK.fres && LINK.fres[r.rowId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepCancel('${rid}')">Cancel</button>`;
   const tick = !boss ? '' : _lkTickable(r)
-    ? `<input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)">`
+    ? `<label style="display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -10px;cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)"></label>`
     : '<span class="lk-tick-sp"></span>';
   return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-chip)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
     ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
@@ -11347,7 +11347,7 @@ function _lkFlowsHtml() {
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
     const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
-    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall"><input type="checkbox"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length}${tk.length < s.rows.length ? ' of ' + s.rows.length + ' - the rest are Do Not Contact, need the consent check or are already queued' : ''})</label>` : '';
+    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall" style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox" style="width:22px;height:22px"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length}${tk.length < s.rows.length ? ' of ' + s.rows.length + ' - the rest are Do Not Contact, need the consent check or are already queued' : ''})</label>` : '';
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
       <div class="drop-body">${selAll}${s.rows.map((r) => _lkFlowRowHtml(r, today, boss)).join('')}</div></div>`;
