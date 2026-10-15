@@ -21,3 +21,4 @@ export { SupabaseBusRepository } from './supabase.bus';
 export { SupabaseLinkRepository } from './supabase.link';
 export { SupabaseErrorLogRepository } from './supabase.error-log';
 export { SupabaseUnsentRepository } from './supabase.unsent';
+export { SupabaseNoticeRepository } from './supabase.notices';

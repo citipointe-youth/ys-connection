@@ -19,6 +19,7 @@ export type Action =
   | 'prayer:read'             // view prayer requests in scope
   | 'prayer:write'            // add/edit/mark/delete a prayer in scope
   | 'prayer:import'           // admin-only: bulk CSV import/export of prayers
+  | 'notice:write'            // admin + director: send and delete notices (quad logins only read theirs)
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // route edits on Assign (Generate/Move/Undo), removing another's own car
@@ -90,6 +91,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'import:run',
     'prayer:read',
     'prayer:write',
+    'notice:write',
     'bus:use',
     'bus:roster',
     'bus:coordinate',
@@ -112,6 +114,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'admin:manage',
     'prayer:read',
     'prayer:write',
+    'notice:write',
     'prayer:import',
     'bus:use',
     'bus:roster',

@@ -3,6 +3,7 @@ import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
 import type { PrayerRequest } from '../../core/entities/prayer';
+import type { Notice } from '../../core/entities/notice';
 import type { Connection } from '../../core/entities/connection';
 import type {
   ServiceSession,
@@ -63,6 +64,11 @@ export interface IPrayerRepository extends IRepository<PrayerRequest> {
   // if the student has no prayers.
   deleteByStudent(studentId: string): Promise<void>;
   deleteAll(): Promise<void>;
+}
+
+export interface INoticeRepository extends IRepository<Notice> {
+  /** Notices created at or after `iso`, newest first. */
+  findSince(iso: string): Promise<Notice[]>;
 }
 
 export interface IConnectionRepository extends IRepository<Connection> {

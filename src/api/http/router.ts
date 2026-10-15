@@ -4,6 +4,7 @@ import { makeAuthController } from '../controllers/auth.controller';
 import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
 import { makePrayerController } from '../controllers/prayer.controller';
+import { makeNoticeController } from '../controllers/notice.controller';
 import { makeNewYouthController } from '../controllers/new-youth.controller';
 import { makeConnectionController } from '../controllers/connection.controller';
 import { makeFollowupController } from '../controllers/followup.controller';
@@ -28,6 +29,7 @@ export function buildRoutes(services: Services): Route[] {
   const student = makeStudentController({ student: services.student });
   const leader = makeLeaderController({ leader: services.leader });
   const prayer = makePrayerController({ prayer: services.prayer });
+  const notice = makeNoticeController({ notice: services.notice });
   const newYouth = makeNewYouthController({ newYouth: services.newYouth });
   const connection = makeConnectionController({ connection: services.connection });
   const followup = makeFollowupController({ followup: services.followup });
@@ -115,6 +117,10 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'PATCH',  path: '/prayers/:id',          auth: true, handler: (r) => prayer.update(r) },
     { method: 'PATCH',  path: '/prayers/:id/status',   auth: true, handler: (r) => prayer.setStatus(r) },
     { method: 'DELETE', path: '/prayers/:id',          auth: true, handler: (r) => prayer.remove(r) },
+    // ----- Notices -----
+    { method: 'GET',    path: '/notices',              auth: true, handler: (r) => notice.list(r) },
+    { method: 'POST',   path: '/notices',              auth: true, handler: (r) => notice.send(r) },
+    { method: 'DELETE', path: '/notices/:id',          auth: true, handler: (r) => notice.remove(r) },
 
     // ----- Connections -----
     { method: 'GET',    path: '/connections',                          auth: true, handler: (r) => connection.listAll(r) },

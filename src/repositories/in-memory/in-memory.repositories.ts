@@ -5,6 +5,7 @@ import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
 import type { Leader } from '../../core/entities/leader';
 import type { PrayerRequest } from '../../core/entities/prayer';
+import type { Notice } from '../../core/entities/notice';
 import type { Connection } from '../../core/entities/connection';
 import type {
   ServiceSession,
@@ -24,6 +25,7 @@ import type {
   IStudentRepository,
   ILeaderRepository,
   IPrayerRepository,
+  INoticeRepository,
   IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
@@ -183,6 +185,17 @@ export class InMemoryPrayerRepository
       .map((p) => p.id);
     for (const id of idsToDelete) this.store.delete(id);
     await this.writeToPersistence();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Notices
+// ---------------------------------------------------------------------------
+export class InMemoryNoticeRepository extends InMemoryBaseRepository<Notice> implements INoticeRepository {
+  constructor(persistence?: IPersistenceAdapter<Notice>) { super(persistence); }
+  async findSince(iso: string): Promise<Notice[]> {
+    return Array.from(this.store.values()).filter((n) => n.createdAt >= iso)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((n) => this.clone(n));
   }
 }
 

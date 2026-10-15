@@ -119,6 +119,8 @@ export const MinistryConfigSchema = z.object({
         .default('off'),
       // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
       prayers: z.boolean().default(true),
+      // Notices (2026-10-15): admin/director messages to the four quad logins. Off by default; off = every /notices route answers 404.
+      notices: z.enum(['off', 'on']).default('off'),
       // T10 (2026-10-12): the Elvanto link screens, each off / shadow (admin only) / on. Missing = the newYouthForms
       // value, so a config stored before the split (prod: shadow) keeps behaving exactly as it did.
       checkin: z.enum(['off', 'shadow', 'on']).optional(),
