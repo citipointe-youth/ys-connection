@@ -170,3 +170,16 @@ describe('F-32(a) console messages', () => {
     expect(f._ikChip({ actions: [{ ...a, reason: 'weird' }] }, ST()).line).toBe('Not sent: locked by the console');
   });
 });
+
+describe('F-41 the Keep as is button stays short (fits at 360 px)', () => {
+  it('the button says only "Keep as is"; the explanation is a line below it', () => {
+    const { f } = env();
+    const iss = { key: 'parentPhone', msg: 'Forms disagree', suggest: '', advisory: false, keep: { field: 'parentPhone', value: '0412999111' } };
+    const d = DETAIL({ forms: { student: form(P(1), { values: { first: 'Tom', last: 'LEstrange', mobile: '0412345678', gender: 'Male', parentPhone: '0412000000' }, issues: [iss] }),
+      parent: form(P(2), { values: { first: 'Ree', last: 'LEstrange', mobile: '0412999111', gender: 'Female' } }) } });
+    const h = f._ikCompareHtml(d, { keeps: {} });
+    const btn = /<button[^>]*_ikKeep[^>]*>([^<]*)<\/button>/.exec(h)!;
+    expect(btn[1]).toBe('Keep as is');
+    expect(h).toContain(`<div class="ik-line">The text goes to the parent form's mobile.</div>`);
+  });
+});

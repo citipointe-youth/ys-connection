@@ -12394,7 +12394,8 @@ function _ikCompareHtml(d, a) {
     const inner = kept
       ? `<div class="ik-line">${phone ? "Kept as is. The parent text goes to the parent form's mobile." : 'Kept as is.'}</div>`
         + (mine[x.keep.field] === x.keep.value ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikUnkeep(${fi},${ii})">Undo keep</button>` : '')
-      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">${phone ? "Keep as is (text goes to the parent form's mobile)" : 'Keep as is'}</button>`;
+      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">Keep as is</button>` // F-41: short, so it fits at 360 px
+        + (phone ? `<div class="ik-line">The text goes to the parent form's mobile.</div>` : '');
     return `<tr class="ik-keep"><td colspan="${n + 1}">${inner}</td></tr>`;
   }).join('');
   // The Elvanto links, each under its own form (links[] is [label, url]: "Student form · when", "Student profile", ...).
