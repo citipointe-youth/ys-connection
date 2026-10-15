@@ -200,3 +200,19 @@ describe('GAP-3 honest ETA', () => {
     expect(f._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Usually under a minute.');
   });
 });
+
+describe('F-33 a phone that cannot store taps says so once', () => {
+  const prelude = `
+    let LINK = { memOnly: false, mem: {} };
+    const S = { user: { id: 'u1' } };
+    const toasts = [];
+    function toast(t) { toasts.push(t); }
+    const localStorage = { setItem() { throw new Error('QuotaExceededError'); }, removeItem() { throw new Error('blocked'); } };
+    function t() { return toasts; }`;
+  const f = loadFns(['_lkKey', '_lkQSet'], prelude, ['_lkQSet', 't']);
+  it('one toast however many taps', () => {
+    f._lkQSet([{ id: 1 }]);
+    f._lkQSet([{ id: 1 }, { id: 2 }]);
+    expect(f.t()).toEqual(["This phone can't keep taps. Keep the app open until All saved."]);
+  });
+});

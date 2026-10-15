@@ -10042,6 +10042,8 @@ function _lkQSet(q) {
       LINK.memOnly = true;
     }
   }
+  // F-33: say so once: a reload now loses the taps that are not sent yet.
+  if (q.length && !LINK.memWarned) { LINK.memWarned = true; try { toast("This phone can't keep taps. Keep the app open until All saved.", 6000); } catch (e) {} }
   LINK.mem[_lkKey()] = q.slice();
 }
 function _lkUuid() {
@@ -10296,7 +10298,7 @@ function _lkSoftReset() {
   if (LINK.tick) clearInterval(LINK.tick);
   if (LINK.toastT) clearTimeout(LINK.toastT);
   if (LINK.ik) { clearTimeout(LINK.ik.debT); clearTimeout(LINK.ik.poll); } // T4: the intake answers live in memory only
-  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly };
+  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned };
   LINK = _lkFresh();
   Object.assign(LINK, keep);
 }
