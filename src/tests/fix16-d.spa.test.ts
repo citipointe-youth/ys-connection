@@ -127,3 +127,22 @@ describe('F-11 / F-12 / F-51 the no-link line', () => {
     expect(text(h)).toBe('No link to Elvanto since 5:15 am. Your taps send later.');
   });
 });
+
+describe('F-13 the pill', () => {
+  const prelude = `
+    let LINK = { red: false, flash: true, people: {}, gres: {}, fres: {}, mres: {} };
+    function _lkQGet() { return []; }
+    function set(x) { Object.assign(LINK, x); }`;
+  const f = loadFns(['_lkPill'], prelude, ['_lkPill', 'set']);
+  it('a pending row of mine gives "Sent. Waiting for Elvanto.", never "All saved"', () => {
+    f.set({ flash: true, people: { S: { people: [{ mine: true, action: { status: 'pending' } }], leaders: [] } } });
+    expect(f._lkPill()).toContain('Sent. Waiting for Elvanto.');
+    expect(f._lkPill()).not.toContain('All saved');
+    f.set({ people: {}, gres: { G: { status: 'claimed' } } });
+    expect(f._lkPill()).toContain('Sent. Waiting for Elvanto.');
+  });
+  it('once confirmed, the flash says All saved', () => {
+    f.set({ flash: true, people: { S: { people: [{ mine: true, action: { status: 'sent' } }, { mine: false, action: { status: 'pending' } }] } }, gres: {} });
+    expect(f._lkPill()).toContain('All saved');
+  });
+});

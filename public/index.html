@@ -10219,6 +10219,11 @@ function _lkPill() {
   try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
   if (LINK.red && n) return `<button type="button" class="lk-pill bad" onclick="_lkRetry()">Not saved — tap to retry</button>`;
   if (n) return `<span class="lk-pill wait">${n} waiting to send</span>`;
+  // F-13: off the phone is not in Elvanto: while any of my rows still waits for the console, no "All saved".
+  const acts = [];
+  Object.keys(LINK.people || {}).forEach((k) => { const d = LINK.people[k] || {}; [].concat(d.people || [], d.leaders || []).forEach((p) => { if (p.mine) acts.push(p.action); }); });
+  [LINK.gres, LINK.fres, LINK.mres].forEach((m) => Object.keys(m || {}).forEach((k) => acts.push(m[k])));
+  if (acts.some((a) => a && (a.status === 'pending' || a.status === 'claimed'))) { LINK.flash = false; return '<span class="lk-pill wait">Sent. Waiting for Elvanto.</span>'; }
   if (LINK.flash) { LINK.flash = false; return `<span class="lk-pill ok fade">All saved</span>`; }
   return '';
 }
