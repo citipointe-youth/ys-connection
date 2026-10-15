@@ -12755,7 +12755,7 @@ async function _ikLkGo(kind, page, q, sameId) {
   const I = _ik(), x = _ikLk(kind);
   if (_ikLkBusy(x) || page < 1) return;
   const id = sameId || _lkUuid();
-  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now() });
+  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now(), blips: 0 });
   _ikDraw();
   try {
     const r = _ikOutcome(await _ikPost([_ikLkItem(kind, page, x.q, id)]), id);
