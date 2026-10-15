@@ -59,20 +59,20 @@ const DET = (d: any = DETAIL()) => ({ row: { key: P(1), status: 'ready', title: 
 const LIST = (o: any = {}) => ({ date: '2026-10-09', takenAt: new Date().toISOString(), stale: false, cut: false, rows: [], ...o });
 
 describe('F-14 Save sheet names each name field that changes', () => {
-  it('a profile renamed by the form shows "Surname: Strange → LEstrange" for each person', () => {
+  it('a profile renamed by the form shows "Surname: Strange [arrow] LEstrange" for each person', () => {
     const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
     I.det = DET(); I.list = LIST(); I.head = ST();
     f._ikSaveOpen();
-    const t = strip(calls.modals[0]);
-    expect(t).toContain('Surname: Strange → LEstrange');
-    expect(t).toContain('Parent surname: Strange → LEstrange');
+    const h = calls.modals[0]!;
+    expect(h).toContain('Surname: Strange <svg data-ic="arrr"></svg> LEstrange');
+    expect(h).toContain('Parent surname: Strange <svg data-ic="arrr"></svg> LEstrange');
   });
   it('no line when the names already agree, or when the person gets a new profile', () => {
     const { f } = env();
     expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Tom LEstrange', archived: false }, parent: null } }), {})).toEqual([]);
     const d = DETAIL({ verdicts: [{ role: 'student', subId: P(1), chosen: 'new' }], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: null } });
     expect(f._ikNameChanges(d, {})).toEqual([]);
-    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LEstrange', archived: false }, parent: null } }), {})).toEqual(['First name: Thomas → Tom']);
+    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LEstrange', archived: false }, parent: null } }), {})).toEqual([['First name', 'Thomas', 'Tom']]);
   });
 });
 
