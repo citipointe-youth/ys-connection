@@ -3132,9 +3132,6 @@ async function _renderHomeInner(stale, fromCache) {
   /*BUS-HOOK*/ body += _busNewPeopleCard();
 
   if (stats) {
-    if (stats.unconnectedTotal === 0 && stats.ministryTotal > 0) {
-      body += `<div class="alert al-ok">${icS('check')} All students are connected!</div>`;
-    }
     if (u.role === 'admin' && stats.ministryTotal === 0) {
       body += `<div class="first-run">
         <h3 style="display:flex;align-items:center;gap:8px">${icN('target')} Welcome — let's get started</h3>
