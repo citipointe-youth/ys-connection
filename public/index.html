@@ -6529,7 +6529,7 @@ const EL_HELP = {
   'lease-lost': ['The console went offline while sending.', 'Check Elvanto for the result before repeating.', 1],
   'note-unreadable': ['A saved note is corrupted.', 'Re-enter it and tell the developer.', 1],
   'intake-unreadable': ['A saved intake plan is corrupted.', 'Re-enter it and tell the developer.', 1],
-  'pending-24h': ['Actions have waited a day: the console computer has not picked them up.', 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
+  'pending-24h': ["Actions waited a day: the console PC hasn't picked them up.", 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
   PUSH_FAILED: ['A notice was sent, but the phone alert for it did not reach some phones.', 'Nothing to do: the notice is still in the app. Tell the developer if it happens on every notice.', 0],
   PUSH_OFF: ['Someone tried to turn on notice alerts, but alerts are not set up yet.', 'Ask the owner to add the VAPID keys in Vercel.', 1],
   HTTP_401: ['A login had expired.', 'Safe to ignore unless many people see it.', 0],
@@ -8158,11 +8158,10 @@ function confirmEnterPreview(id) {
   const u = (_adminData.users || []).find(x => x.id === id);
   if (!u) return;
   modal(`
-    <div class="mo-title">Preview Account?</div>
-    <p style="color:var(--ink-mid);margin-bottom:14px">Do you want to preview the <strong>${esc(u.displayName)}</strong> login?</p>
+    <div class="mo-title" style="margin-bottom:14px">Preview as <strong>${esc(u.displayName)}</strong>?</div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal(); enterPreview('${id}')">Preview</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal(); enterPreview('${id}')">Preview</button>
     </div>`);
 }
 async function enterPreview(id) {
