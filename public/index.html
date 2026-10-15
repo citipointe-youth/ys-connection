@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Connection">
 <meta name="theme-color" content="#1a1af2">
+<meta name="color-scheme" content="light">
 <link rel="manifest" href="/manifest.json">
 <!-- iOS "Add to Home Screen" needs a raster PNG here; it can't rasterize the SVG for the
      installed tile and falls back to a page screenshot (white/black). -->
@@ -122,7 +123,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Bottom nav */
 .bot-nav{display:flex;background:var(--paper-card);border-top:1px solid var(--line);padding:6px 0 calc(6px + var(--safe-b));position:fixed;left:0;right:0;bottom:0;z-index:100;box-shadow:0 -2px 8px rgba(18,35,59,.06)}
-.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
+.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
+.bot-nav .ni-lbl>span{font-size:11px!important;opacity:1!important;text-transform:none;letter-spacing:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* F-44: beats the inline 7.5px/.75 on "Connections" (bottomNavItems) */
 .bot-nav a.on{color:var(--accent)}
 .bot-nav a .ic-n{transition:color .15s}
 @media(min-width:768px){.bot-nav{display:none}}
@@ -142,6 +144,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 */
 .pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
+@media(max-width:767px){.pg:has(.pfab){padding-bottom:calc(164px + var(--safe-b))}} /* F-47f: the last prayer clears the Add Prayer pill */
 
 /* Cards */
 .card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:16px;margin-bottom:12px}
@@ -171,7 +174,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* Forms */
 .fg{margin-bottom:14px}
 .fl{display:block;font-size:12px;font-weight:700;color:var(--ink-mid);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
-.fi,.fs,.ft{width:100%;padding:11px 14px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:15px;color:var(--ink);background:var(--paper-card);outline:none;transition:border-color .15s;-webkit-appearance:none}
+.fi,.fs,.ft{width:100%;padding:11px 14px;border:1.5px solid #94a3b8;border-radius:var(--radius-sm);font-size:16px;color:var(--ink);background:var(--paper-card);outline:none;transition:border-color .15s;-webkit-appearance:none}
 .fs{-moz-appearance:none;appearance:none;padding-right:38px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23647488' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:10px 6px}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -301,7 +304,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Search */
 .sbar{position:relative;margin-bottom:12px}
-.sbar input{width:100%;padding:11px 14px 11px 40px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:15px;background:var(--paper-card);outline:none;transition:border-color .15s}
+.sbar input{width:100%;padding:11px 14px 11px 40px;border:1.5px solid #94a3b8;border-radius:var(--radius-sm);font-size:16px;background:var(--paper-card);outline:none;transition:border-color .15s}
 .sbar input:focus{border-color:var(--accent)}
 .sbar .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-faint);pointer-events:none}
 .ph-search{flex:0 1 170px;min-width:130px;padding:7px 10px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;background:var(--paper-card);outline:none;transition:border-color .15s}
@@ -342,6 +345,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 #toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:rgba(17,24,39,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:300;width:max-content;max-width:calc(100vw - 32px);text-align:center;line-height:1.35}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:768px){#toast{bottom:24px}}
+.sw-upd{position:fixed;top:calc(var(--safe-t) + 8px);left:50%;transform:translateX(-50%);z-index:400;background:var(--accent);color:#fff;border:none;border-radius:22px;padding:10px 18px;min-height:44px;font:inherit;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(10,10,46,.3);cursor:pointer;max-width:calc(100vw - 32px)}
 
 /* Desktop table */
 @media(min-width:768px){
@@ -396,6 +400,10 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lock-banner{background:var(--warn-light);border:1.5px solid var(--warn);color:#92400e;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
 .preview-banner .btn{background:rgba(0,0,0,.15);color:#1a1200;border:none;padding:4px 10px;font-size:11px}
+.preview-banner .btn{min-height:44px;flex:none;white-space:nowrap}
+.preview-banner>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* F-48b */
+.mo-box li:empty{display:none}
+.hdr-back{background:none;border:none;padding:0;margin:0 0 0 -11px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit;flex-shrink:0;min-width:44px;min-height:44px}
 
 /* ── SCALE-READY CONNECTION CARDS ── */
 .connect-grid{display:grid;grid-template-columns:1fr;gap:12px}
@@ -777,6 +785,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* S5 progress bar (progBar): every wait. A fill to done/total when the console says how far it is, else a sliding segment.
    Reduced motion: the segment stands still (the stage text still says what is happening). */
 .pbar{margin:12px 4px;font-size:12px;color:var(--ink-mid)}
+.pbar-wait{animation:pbar-in 0s .4s both}@keyframes pbar-in{from{visibility:hidden}} /* F-47a: #nprog covers sub-second loads */
 .pbar-top{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
 .pbar-n{font-variant-numeric:tabular-nums;white-space:nowrap}
 .pbar-track{position:relative;height:4px;border-radius:2px;background:var(--paper-dark);overflow:hidden}
@@ -794,6 +803,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lk-toast .btn{background:#fff;color:#111827;flex:none}
 @media(min-width:768px){.lk-toast{bottom:24px}}
+body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} /* F-26: an error stays readable above the Undo toast */
 .lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
 .lk-lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;color:var(--ink-mid)}
 .lk-tickall{color:var(--accent)}
@@ -802,7 +812,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-lq-row.dis{color:var(--ink-faint)}
 .lk-mem{padding:6px 12px}.lk-mem>summary{cursor:pointer;padding:6px 2px;min-height:36px}.lk-mem>summary.lk-sec{margin:0 2px}
 .lk-box,.lk-box-sp{width:22px;height:22px;flex:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center}
-.lk-box{border:2px solid #b8c2d3}
+.lk-box{border:2px solid #64748b}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .lk-done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
 .lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
@@ -816,8 +826,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
 /* R1 DO NOT CONTACT + R4 flow steps (run 2026-10-15) */
-.c-dnc{background:var(--danger);color:#fff;letter-spacing:.03em}
-.dnc-banner{display:flex;gap:10px;align-items:flex-start;background:var(--danger);color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
+.c-dnc{background:#b91c1c;color:#fff;letter-spacing:.03em}
+.dnc-banner{display:flex;gap:10px;align-items:flex-start;background:#b91c1c;color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
 .dnc-banner b{display:block;font-size:17px;font-weight:800;letter-spacing:.05em}.dnc-banner svg{flex:none;margin-top:3px}
 .lk-alert.bad{background:var(--danger-light);color:#991b1b}
 .lk-row.lk-dnc{background:var(--danger-light);box-shadow:inset 4px 0 0 var(--danger)}
@@ -986,12 +996,14 @@ const SECTION_OF = {
   '/students?crossGrade=1': 'studentsConnect',
   '/connections?crossGrade=1': 'connectionsConnect',
 };
+// F-33: a phone that blocks storage (private mode, full) must still boot.
+function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 const API = (() => {
   // The session token is kept in localStorage (sent as a Bearer header). This is
   // an accepted risk: the XSS vector that could read it is closed by escaping all
   // user-supplied fields (see esc()) plus the page CSP. If that ever changes,
   // move to an httpOnly cookie. (See CLAUDE.md → Security notes.)
-  let _t = localStorage.getItem('yap_token') || null;
+  let _t = _lsGet('yap_token') || null;
   const hdr = () => ({ 'Content-Type': 'application/json', ...(_t ? { Authorization: `Bearer ${_t}` } : {}) });
   // quiet: a background call (the link queue flush, status and 60 s refresh) never shows the loading bar (APP-75).
   async function r(method, path, body, timeoutMs, quiet) {
@@ -1044,7 +1056,7 @@ const API = (() => {
   }
   const _inflight = new Map();
   return {
-    setToken(t) { _t = t; t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); },
+    setToken(t) { _t = t; try { t ? localStorage.setItem('yap_token', t) : localStorage.removeItem('yap_token'); } catch (e) {} },
     get token() { return _t; },
     get: (p) => {
       const cached = Cache.get(p);
@@ -1293,9 +1305,9 @@ function accentRampPairs(accentHex) {
 // else a sliding bar. stage = what is happening, in the reader's words. Global: the link block uses it.
 function progBar(stage, done, total) {
   const T = Number(total), D = Number(done), known = done != null && total != null && T > 0 && D >= 0;
-  const n = known ? Math.min(D, T) : 0, label = String(stage || 'Loading');
+  const n = known ? Math.min(D, T) : 0, label = String(stage || 'Loading'), wait = !known && label === 'Loading' ? ' pbar-wait' : '';
   const aria = known ? ` aria-valuemin="0" aria-valuemax="${T}" aria-valuenow="${n}" aria-valuetext="${esc(label + ', ' + n + ' of ' + T)}"` : '';
-  return `<div class="pbar" role="progressbar" aria-label="${esc(label)}"${aria}><div class="pbar-top"><span>${esc(label)}</span>`
+  return `<div class="pbar${wait}" role="progressbar" aria-label="${esc(label)}"${aria}><div class="pbar-top"><span>${esc(label)}</span>`
     + (known ? `<span class="pbar-n">${n} of ${T}</span>` : '') + `</div><div class="pbar-track"><div class="pbar-fill${known ? '' : ' ind'}"`
     + (known ? ` style="width:${Math.round(n / T * 100)}%"` : '') + '></div></div></div>';
 }
@@ -1473,7 +1485,7 @@ window.addEventListener('popstate', _navPop);
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), dur);
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), dur); // F-26: a new toast gets its full time
 }
 function modal(html, onClose, opts) {
   opts = opts || {};
@@ -1494,7 +1506,12 @@ function _moFitViewport() {
   mo.style.top = kb ? vv.offsetTop + 'px' : ''; mo.style.height = kb ? vv.height + 'px' : ''; mo.style.bottom = kb ? 'auto' : '';
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
-function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
+function closeModal() {
+  const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
+  // F-52: the tap that closed the sheet must not land on the page underneath (iOS ghost click).
+  const app = document.getElementById('app');
+  if (app) { app.style.pointerEvents = 'none'; clearTimeout(closeModal._t); closeModal._t = setTimeout(() => { app.style.pointerEvents = ''; }, 350); }
+}
 
 // Irreversible bulk actions: require typing a word to arm the confirm button
 // (Recommendation 5). Reuses modal(); onConfirm is a zero-arg function.
@@ -1567,7 +1584,7 @@ function _isRootPage(page) {
 }
 function _hdrBrandHtml() {
   if (S.page !== 'home') {
-    return `<button type="button" onclick="navBack()" title="Back" aria-label="Back" style="background:none;border:none;padding:0;margin:0;display:flex;align-items:center;cursor:pointer;color:inherit;flex-shrink:0">${icN('arrl')}</button>`;
+    return `<button type="button" class="hdr-back" onclick="navBack()" title="Back" aria-label="Back">${icN('arrl')}</button>`;
   }
   return brandMark(26, '#fff');
 }
@@ -14768,11 +14785,13 @@ function _handleAuthExpired() {
   S.page = 'home';
   _shellReady = false;
   _vgReset();
+  _lkSoftReset(); // F-50c: drop the in-memory link lists; the tap queue stays under its own key for retry
   toast('Session expired, please log in again');
   render();
 }
 async function boot() {
-  const token = localStorage.getItem('yap_token');
+  let token = null;
+  try { token = localStorage.getItem('yap_token'); } catch (e) {} // F-33
   if (token) {
     try {
       const user = await API.get('/auth/me');
@@ -14807,18 +14826,44 @@ async function boot() {
 
 boot();
 
+// F-07 (fix round 16 Oct): a new build taking over reloads the page only when nothing is mid-task.
+// Busy = a New person send, an open sheet, a half-typed New person form, an open/unsent intake answer
+// or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
+let _swReloading = false, _swWaiting = false;
+function _swIdle() {
+  try {
+    if (typeof NY !== 'undefined' && NY.sending) return false;
+    const mr = document.getElementById('modal-root');
+    if (mr && mr.innerHTML) return false;
+    if (S.page === 'new-youth' && Object.values(_nyRaw()).some(Boolean)) return false;
+    const I = typeof LINK !== 'undefined' && LINK ? LINK.ik : null;
+    if (I && (I.debT || I.busy || I.saBusy || Object.keys(I.resend || {}).length)) return false; // LINK.ik outlives the page; resend is memory-only
+    if (S.page === 'link-intake' && I && I.det) return false;
+    if (S.user && _lkQGet().length) return false;
+    return true;
+  } catch (e) { return false; } // fail safe: a broken check defers and shows the banner
+}
+function _swReload() { if (_swReloading) return; _swReloading = true; location.reload(); }
+function _swOnUpdate() {
+  if (_swIdle()) { _swReload(); return; }
+  if (_swWaiting) return;
+  _swWaiting = true;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'sw-upd'; b.textContent = 'Update ready. Tap to reload'; b.onclick = _swReload;
+  document.body.appendChild(b);
+}
+function _swOnHidden() { if (_swWaiting && document.visibilityState === 'hidden' && _swIdle()) _swReload(); }
 if ('serviceWorker' in navigator) {
-  let _swReloading = false;
   const _swHadController = !!navigator.serviceWorker.controller;
   // Tapped notice alert with the app already open (sw.js notificationclick posts this).
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'push-nav' && e.data.screen === 'notices' && S.user) go('notices');
   });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!_swHadController || _swReloading) return;
-    _swReloading = true;
-    location.reload();
+    if (!_swHadController) return;
+    _swOnUpdate();
   });
+  document.addEventListener('visibilitychange', _swOnHidden);
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       document.addEventListener('visibilitychange', () => {
