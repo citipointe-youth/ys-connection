@@ -2420,7 +2420,7 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'Form Approve & Consent', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -7708,13 +7708,13 @@ function _setupFlowHiddenHtml(md) {
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
     const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The Form Approve & Consent screen is not changed.')}</label>
+    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The New youth & consent screen is not changed.')}</label>
       <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
-  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Form Approve & Consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Off deletes the stored plans.")}</label>
+  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">New youth & consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Off deletes the stored plans.")}</label>
       <select class="fs" id="setup-intakeAdmin" onchange="_setupSet('modules.intakeAdmin', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
 }
 function _setupSetModule(key, val) {
@@ -9966,7 +9966,7 @@ function _lkStatusText(row, lastSeen) {
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'shadowed': return _lkPracticeLine(row.type);
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
-      if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (Form Approve & Consent > Consents).';
+      if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
       if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
       return R[row.reason] || row.message || R.unknown;
@@ -11379,7 +11379,7 @@ function _lkFlowVisible() {
 // check first (the server has the final word: CONSENT_CHECK_FIRST also covers a not-done consent row we can't see).
 function _lkStepBlock(r) {
   if (r && r.dnc) return 'Do not contact: this person can only be removed from the step.';
-  if (r && r.consentStep && r.consent !== 'ok') return 'Do the consent check first (Form Approve & Consent > Consents).';
+  if (r && r.consentStep && r.consent !== 'ok') return 'Do the consent check first (New youth & consent > Consents).';
   return '';
 }
 // Free = nothing open for the row (none, or the last one was refused / cancelled).

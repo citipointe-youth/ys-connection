@@ -11,9 +11,9 @@ export class LinkUnavailable extends AppError {
 export class LinkDnc extends AppError {
   constructor() { super('LINK_DNC', 'Do not contact: this person can only be removed from the step.', 409); }
 }
-/** Rev 6 (review C1): the New People consent step moves on through Form Approve & Consent > Consents only. */
+/** Rev 6 (review C1): the New People consent step moves on through New youth & consent > Consents only. */
 export class ConsentCheckFirst extends AppError {
-  constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (Form Approve & Consent > Consents).', 409); }
+  constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (New youth & consent > Consents).', 409); }
 }
 /** Rev 6 (R4): a Complete and a Remove for the same flow row cannot both be open. */
 export class LinkBusyRow extends AppError {

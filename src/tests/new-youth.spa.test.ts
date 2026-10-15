@@ -446,7 +446,7 @@ describe('"New person" is the name the host sees', () => {
     expect(r.match(/<h1>New person<\/h1>/g)!.length).toBeGreaterThanOrEqual(4);
     expect(r).toContain('Next new person');
     expect(extractFn(html, 'moreItems')).toContain("label:'New person'");
-    expect(extractFn(html, 'moreItems')).not.toMatch(/New youth/);
+    expect(extractFn(html, 'moreItems')).toContain("id:'new-youth', ic:'plus', label:'New person'"); // F-24(a): the intake entry may say New youth & consent
   });
   it('Youth Setup shows an Off / Shadow mode / On select and no checkbox for it', () => {
     // T10: four selects (New person, Check-in, Lifegroup report, Flow steps), written through _setupSetModule.

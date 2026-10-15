@@ -140,7 +140,7 @@ export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editRep
 export const isConsentStep = (r: { flowName: string; stepName: string }) =>
   /^Brisbane - Youth - New People 2026/i.test(r.flowName) && /^(step\s*)?0\b/i.test(r.stepName.trim());
 /**
- * Complete on the consent step is allowed only when that person's consent row (Form Approve & Consent > Consents) is done,
+ * Complete on the consent step is allowed only when that person's consent row (New youth & consent > Consents) is done,
  * or their profile consent is 'ok' and no consent row for them is still open. consentSave (the consent path) never comes here.
  */
 export function consentStepAllowed(row: { personId: string | null; consent?: string | null }, consentRows: { key: string; status: string }[]): boolean {

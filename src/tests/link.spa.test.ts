@@ -1732,7 +1732,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(90), type: 'removeFromFlowStep', payload: { rowId: F(1) }, note: 'n', leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(strip(h.fns._lkFlowsHtml())).toContain("Not sent: a remove with a note isn't switched on yet.");
-    const k = boss([row(2, { consentStep: true, consent: 'ok' })], reply(P(91), 'refused', { code: 'CONSENT_CHECK_FIRST', message: 'Do the consent check first (Form Approve & Consent > Consents).' }));
+    const k = boss([row(2, { consentStep: true, consent: 'ok' })], reply(P(91), 'refused', { code: 'CONSENT_CHECK_FIRST', message: 'Do the consent check first (New youth & consent > Consents).' }));
     k.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1', _f: F(2) }]);
     await k.fns._lkFlush();
     expect(strip(k.fns._lkFlowsHtml())).toContain('Do the consent check first');
