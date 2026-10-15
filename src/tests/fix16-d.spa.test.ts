@@ -193,3 +193,10 @@ describe('F-35 refusals: "Tell the admin." for non-admin logins', () => {
     }
   });
 });
+
+describe('GAP-3 honest ETA', () => {
+  it('the pending line says "Usually under a minute." outside the window', () => {
+    const f = loadFns(['_lkStatusText'], `function _lkOutsideWindow() { return true; } function _lkPracticeLine() { return ''; } function _lkTime() { return ''; }`, ['_lkStatusText']);
+    expect(f._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Usually under a minute.');
+  });
+});

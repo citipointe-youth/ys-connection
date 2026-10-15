@@ -10,6 +10,7 @@ import {
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
 } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { makeIntakeService } from '../services/link-intake.service';
 import { RateLimiter } from '../utils/rate-limiter';
 import type { Actor } from '../core/entities/user';
 
@@ -80,4 +81,20 @@ describe('F-37: GET /link/actions carries note failed', () => {
       expect('note' in rows[0]!).toBe(want !== undefined);
     });
   }
+});
+
+describe('GAP-3: any pending link row asks the console to hurry', () => {
+  const svc = (pending: { type: string }[]) => makeIntakeService({
+    link: { listActions: async (f: any) => pending.filter((r) => !f.types || f.types.includes(r.type)) } as never,
+    intake: { purge: async () => undefined, viewedAt: async () => null, dates: async () => [] } as never,
+    settings: {} as never, status: async () => ({}) as never, now: () => new Date('2026-10-16T08:00:00Z') });
+  const S = (intakeAdmin: string) => ({ ministryConfig: { modules: { intakeAdmin } } }) as never;
+  it('a pending checkIn gives hurry true, intake on or off', async () => {
+    expect((await svc([{ type: 'checkIn' }]).hint(S('on'))).hurry).toBe(true);
+    expect((await svc([{ type: 'checkIn' }]).hint(S('off')))).toEqual({ mode: 'off', hurry: true, refresh: [] });
+  });
+  it('nothing pending: no hurry', async () => {
+    expect((await svc([]).hint(S('on'))).hurry).toBe(false);
+    expect((await svc([]).hint(S('off'))).hurry).toBe(false);
+  });
 });

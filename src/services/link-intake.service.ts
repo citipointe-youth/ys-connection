@@ -174,11 +174,12 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     async hint(settings: AppSettings): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
-      if (mode === 'off') return { mode, hurry: false, refresh: [] };
+      // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s.
+      if (mode === 'off') return { mode, hurry: (await d.link.listActions({ statuses: ['pending'] })).length > 0, refresh: [] };
       const today = brisbaneToday(t);
       await purgeIfDue(t);
       const [pending, viewed, dates] = await Promise.all([
-        d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
+        d.link.listActions({ statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = pending.length > 0 || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);
       const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= (x.mode === 'consent' ? addDays(today, 7) : today))
         .sort((a, b) => Date.parse(b.refreshAskedAt!) - Date.parse(a.refreshAskedAt!)).slice(0, 4)

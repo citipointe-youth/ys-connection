@@ -1937,10 +1937,10 @@ describe('F4.2 admin page', () => {
 describe('T-17 / X14 outside the window a pending row says when it goes', () => {
   const st = (c: any) => ({ console: { lastSeenAt: '2026-10-16T06:12:00.000Z', online: true, inWindow: false, pollSeconds: 900,
     capabilities: null, consoles: 1, ...c }, mirrors: {} });
-  it('online, outside the window: "Goes to Elvanto within 15 minutes."; inside the window or offline: not', () => {
+  it('online, outside the window: "Usually under a minute. (fix16 GAP-3)"; inside the window or offline: not', () => {
     const h = makeEnv();
     h.get().LINK.status = st({});
-    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Goes to Elvanto within 15 minutes.');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Usually under a minute.');
     expect(h.fns._lkStatusText({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
     h.get().LINK.status = st({ inWindow: true });
     expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console.');
