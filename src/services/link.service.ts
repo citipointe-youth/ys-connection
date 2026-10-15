@@ -234,8 +234,9 @@ function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRoster
   return canAccessGrade(a, grade, s) && (gender ? canAccessGender(a, gender, s) : genderScopeOf(a, s) == null);
 }
 /** T6: a youth roster person this login may pick (admin/director: anyone; else grade, then gender when known). */
-function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
-  return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : true));
+// F-50(a): unknown gender is visible only to a login with no gender scope (as flowRowVisible).
+export function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
+  return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null));
 }
 /**
  * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
