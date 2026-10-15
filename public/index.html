@@ -10506,7 +10506,8 @@ function _lkCheck(pid, type) {
     // 600 ms (so the next row does not move under the finger), and a second tap on it (or its Undo) is ignored.
     if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
     LINK.doorAt = Date.now(); LINK.doorHeld = pid;
-    setTimeout(() => { LINK.doorHeld = null; _lkRefreshView(); }, 620);
+    const at = LINK.doorAt; // r1: only this tap's own hold is cleared, never a later tap's
+    setTimeout(() => { if (LINK.doorAt === at) LINK.doorHeld = null; _lkRefreshView(); }, 620);
     delete LINK.refusals[svc + ':' + pid];
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;

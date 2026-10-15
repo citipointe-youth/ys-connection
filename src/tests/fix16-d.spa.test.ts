@@ -1,5 +1,5 @@
 // Fix round 16 Oct 2026, lane D (Link core + door + New person): run from the REAL page source.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
 
 describe('F-02(a) door: a double tap checks in one person and keeps the row in place', () => {
@@ -234,5 +234,34 @@ describe('F-19 the admin status: an error with no status shows Try again, not Lo
     expect(h).toContain('Network down');
     expect(h).toContain('Try again');
     expect(h).not.toContain('PROGBAR');
+  });
+});
+
+describe('F-02 r1: holds are per row', () => {
+  const prelude = `
+    let LINK = { svc: 'S', people: { S: { people: [] } }, q: { search: '' }, refusals: {} };
+    let Q = []; const pushed = [];
+    function _lkSvc() { return { serviceTimeId: 'S', serviceId: 'SV' }; }
+    function _lkQGet() { return Q.slice(); }
+    function _lkQSet(q) { Q = q.slice(); }
+    function _lkQueuedIdx(q, svc, pid) { return q.findIndex((it) => it.payload && it.payload.personId === pid); }
+    function _lkTakeBack() { return false; }
+    function _lkRefreshView() {}
+    function _lkPush(it) { pushed.push(it); Q.push(it); }
+    function _lkTapToast() {}
+    function getMyLeaderId() { return null; }
+    function _lkUuid() { return 'id' + pushed.length; }
+    function state() { return { pushed, Q }; }`;
+  it("tap A's timer never clears tap B's hold: a quick double tap on B does not undo B", () => {
+    vi.useFakeTimers();
+    try {
+      const f = loadFns(['_lkCheck'], prelude, ['_lkCheck', 'state']);
+      f._lkCheck('a', 'checkIn');
+      vi.advanceTimersByTime(300);
+      f._lkCheck('b', 'checkIn');
+      vi.advanceTimersByTime(330); // A's timer has fired; B was tapped 330 ms ago
+      f._lkCheck('b', 'checkIn');
+      expect(f.state().Q.map((x: any) => x.payload.personId)).toEqual(['a', 'b']);
+    } finally { vi.useRealTimers(); }
   });
 });
