@@ -290,3 +290,13 @@ describe('F-48(d) grade chips never wrap', () => {
     chips.forEach((c: string) => expect(c).toContain('white-space:nowrap'));
   });
 });
+
+describe('F-49 report count label', () => {
+  it('says "Students here (N)" (ticked members, guests apart)', () => {
+    const h = setup();
+    const g = h.get().LINK.groups[0];
+    const out = strip(h.fns._lkReportHtml(g, g.lastReport));
+    expect(out).toContain('Students here (2)Ava Example, Dana Testleader');
+    expect(out).toContain('Guests2');
+  });
+});

@@ -10794,8 +10794,9 @@ function _lkReportHtml(g, r) {
   if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
   else kv.push(['Guests', String(r.guests || 0)]);
-  // Who came: collapsed by default (2026-10-14), the count stays on the summary line.
-  const here = r.didNotMeet ? '' : `<details class="lk-here"><summary>Here (${names.length})</summary><p class="lk-sub">${esc(names.join(', ') || 'Nobody ticked')}</p></details>`;
+  // Who came: collapsed by default (2026-10-14), the count stays on the summary line. F-49: it counts ticked members only
+  // (guests are their own row), so the label says so; the console's total adds guests.
+  const here = r.didNotMeet ? '' : `<details class="lk-here"><summary>Students here (${names.length})</summary><p class="lk-sub">${esc(names.join(', ') || 'Nobody ticked')}</p></details>`;
   const edit = r.editable && !r.blocked && !_lkCapOff('editReport')
     ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(r.reportId)}')">${icS('edit')} Edit</button>`
     : '<p class="lk-sub">Edit this report in Elvanto.</p>';
