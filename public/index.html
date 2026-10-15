@@ -12269,7 +12269,7 @@ async function _ikSheetGo() {
 // ── Pages ──
 async function renderLinkIntake() {
   const I = _ik();
-  setApp(shell(`<div class="ph"><h1>Form Approve &amp; Consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>New youth &amp; consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await _ikLoad(!!I.dates);
 }
 function _ikDraw() {
@@ -12289,7 +12289,7 @@ function _ikPageHtml() {
 }
 function _ikListPage() {
   const I = _ik(), st = _ikSt(), L = I.list && I.list.date === I.date ? I.list : null, consent = I.tab === 'consent';
-  const tabs = `<div class="tbbar">${[['intake', 'Intakes'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
+  const tabs = `<div class="tbbar">${[['intake', 'New youth'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
   const sub = consent ? _ikSubBar(I.csub) : '';
   if (consent && I.csub !== 'last') return `<div class="lk-svc lk-mb">${tabs}</div>${sub}${_ikLkPage(I.csub, st)}`;
   const ref = I.ref ? '' : '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikRefresh()">Refresh</button>';

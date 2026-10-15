@@ -142,3 +142,17 @@ describe('F-19 a failed date load offers Try again, never an endless Loading', (
     expect(calls.loads).toBe(1);
   });
 });
+
+describe('F-24(b) one name: New youth & consent', () => {
+  it('the tab is "New youth" and the page title is "New youth & consent"', async () => {
+    const { f, I } = env({ tab: 'intake', date: null });
+    I.dates = []; I.head = ST();
+    const h = f._ikListPage();
+    expect(h).toContain('>New youth<');
+    expect(h).not.toContain('Intakes');
+    const { extractFn } = await import('./helpers/extract-fn');
+    const r = extractFn(HTML, 'renderLinkIntake');
+    expect(r).toContain('New youth &amp; consent');
+    expect(r).not.toContain('Form Approve');
+  });
+});
