@@ -11518,8 +11518,19 @@ function _lkPaintFlows() {
 function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
   try {
+    const prev = LINK.flows || [];
     const r = await API.fresh('/link/flows', quiet);
-    LINK.flows = (r && r.rows) || [];
+    const rows = (r && r.rows) || [], listed = {};
+    rows.forEach((x) => { listed[x.rowId] = x; });
+    // F-05: a sent Remove/Complete leaves the open list at once, but the row stays until the console's next flows push.
+    // Ask about the actions that just left the open list: a sent one shows its done line now and is hidden from the next
+    // load (LINK.flowGone) until a push no longer lists the row.
+    const gone = LINK.flowGone || (LINK.flowGone = {}), left = {};
+    Object.keys(gone).forEach((k) => { if (!listed[k]) delete gone[k]; });
+    prev.forEach((x) => {
+      const a = (LINK.fres && LINK.fres[x.rowId]) || x.openAction;
+      if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
+    });
     LINK.fSteps = (r && r.steps) || [];
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
@@ -11528,6 +11539,20 @@ async function _lkLoadFlows(quiet) {
     if (LINK.fProg) LINK.fProgT = setTimeout(() => { if (S.page === 'link-flows' && document.visibilityState !== 'hidden') _lkLoadFlows(true).then(_lkFlowsDraw); }, 3000);
     // The server's open row is the truth again; keep only this phone's final answers.
     Object.keys(LINK.fres || {}).forEach((k) => { if (!['refused', 'cancelled'].includes(LINK.fres[k].status)) delete LINK.fres[k]; });
+    const ids = Object.keys(left);
+    if (ids.length) {
+      try {
+        const acts = await API.fresh('/link/actions?ids=' + ids.map(encodeURIComponent).join(','), true);
+        (Array.isArray(acts) ? acts : []).forEach((a) => {
+          const k = left[a.id];
+          if (!k || ['pending', 'claimed'].includes(a.status)) return;
+          if (!LINK.fres) LINK.fres = {};
+          LINK.fres[k] = { id: a.id, type: a.type, status: a.status, reason: a.reason || null, resultAt: a.resultAt || null, note: a.note };
+          if (a.status === 'sent') gone[k] = true;
+        });
+      } catch (e) {}
+    }
+    LINK.flows = rows.filter((x) => !gone[x.rowId] || (LINK.fres && LINK.fres[x.rowId] && LINK.fres[x.rowId].status === 'sent'));
     LINK.fErr = null;
     return true;
   } catch (e) { LINK.fErr = e.message || 'Could not load the flow steps.'; return false; }
