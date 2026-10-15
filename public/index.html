@@ -122,7 +122,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Bottom nav */
 .bot-nav{display:flex;background:var(--paper-card);border-top:1px solid var(--line);padding:6px 0 calc(6px + var(--safe-b));position:fixed;left:0;right:0;bottom:0;z-index:100;box-shadow:0 -2px 8px rgba(18,35,59,.06)}
-.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
+.bot-nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.01em;padding:4px 2px;cursor:pointer;transition:color .15s}
+.bot-nav a span{font-size:11px;line-height:1.15} /* F-44: no shrunk second line */
 .bot-nav a.on{color:var(--accent)}
 .bot-nav a .ic-n{transition:color .15s}
 @media(min-width:768px){.bot-nav{display:none}}
@@ -820,8 +821,8 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
 /* R1 DO NOT CONTACT + R4 flow steps (run 2026-10-15) */
-.c-dnc{background:var(--danger);color:#fff;letter-spacing:.03em}
-.dnc-banner{display:flex;gap:10px;align-items:flex-start;background:var(--danger);color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
+.c-dnc{background:#b91c1c;color:#fff;letter-spacing:.03em}
+.dnc-banner{display:flex;gap:10px;align-items:flex-start;background:#b91c1c;color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
 .dnc-banner b{display:block;font-size:17px;font-weight:800;letter-spacing:.05em}.dnc-banner svg{flex:none;margin-top:3px}
 .lk-alert.bad{background:var(--danger-light);color:#991b1b}
 .lk-row.lk-dnc{background:var(--danger-light);box-shadow:inset 4px 0 0 var(--danger)}
