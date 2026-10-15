@@ -991,7 +991,7 @@ const API = (() => {
         err.code = e.code;
         err.hint = e.hint;
         err._errLogged = true; // never re-reported as an unhandled rejection
-        if (res.status >= 500) _errReport({ kind: 'api', code: e.code || '', route: _errRoute(method, path), status: res.status });
+        // 5xx: the server already records these in the Error log, so the browser sends no second copy.
         // A stale S.user (e.g. another tab already changed the password) can drift
         // out of sync with the server; if the server says the gate is still up,
         // trust it and re-render into the gate screen instead of a raw error toast.
@@ -1066,15 +1066,22 @@ const API = (() => {
 // At most 10 different reports per page load, and only while logged in; the server rate-limits per login too.
 const _errSent = new Set();
 function _errRoute(method, path) {
-  return method + ' ' + String(path || '').split(/[?#]/)[0].split('/').map(seg => (/\d/.test(seg) ? ':id' : seg)).join('/');
+  return method + ' ' + String(path || '').split(/[?#]/)[0].split('/').map(seg => (/\d/.test(seg) || seg.length >= 16 || /^[0-9a-f-]{8,}$/i.test(seg) ? ':id' : seg)).join('/');
 }
+// No-connection reports: at most one a minute per device (a phone losing signal fires many calls at once).
+const _errNet = { at: 0 };
 function _errReport(r) {
   try {
     const t = API.token;
     if (!t || _errSent.size >= 10) return;
+    if (r.kind === 'api' && !r.status) {
+      const n = Date.now();
+      if (n - _errNet.at < 60000) return;
+      _errNet.at = n;
+      r = { ...r, route: 'page' };
+    }
     const key = r.kind + '|' + (r.code || '') + '|' + r.route + '|' + (r.status || '');
-    if (_errSent.has(key)) return;
-    _errSent.add(key);
+    if (r.route !== 'page' || r.kind !== 'api' || r.status) { if (_errSent.has(key)) return; _errSent.add(key); } // no-connection reports are throttled above, not once-only
     fetch('/admin/errors/client', { method: 'POST', keepalive: true,
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
       body: JSON.stringify({ kind: r.kind, code: String(r.code || '').slice(0, 40), route: String(r.route || '').slice(0, 200), status: r.status || null }),
@@ -6227,6 +6234,37 @@ function _loginActivityBodyHtml(users) {
 // Minimise = collapse; Ignore = hidden by default and never "New", still counted; Delete = gone until it happens again.
 // "New" = seen since this device last opened the tab (localStorage, a per-device convenience only).
 const EL_CATS = { server: 'Server', link: 'Elvanto link', 'elvanto-form': 'New person forms', client: 'App (phones)' };
+const EL_HELP = {
+  NETWORK: ['A phone lost signal or wifi while loading a screen.', 'Nothing to do unless many people hit it at once.', 0],
+  INTERNAL_ERROR: ['The app hit a bug or a database hiccup loading this screen.', 'Retry once. If the same screen keeps failing, tell the developer the time shown.', 1],
+  INTERNAL: ['One queued Elvanto action crashed while the console was syncing.', 'Open Elvanto link, look for a stuck item, tell the developer.', 1],
+  SERVICE_UNAVAILABLE: ['The database was briefly busy or unreachable.', 'Wait a minute and retry. Tell the developer only if it lasts.', 0],
+  REQUEST_TIMEOUT: ['A screen took too long to load.', 'Retry. Tell the developer if it repeats.', 0],
+  LINK_OFF: ['The Elvanto link is switched off or not set up.', 'Ask the developer to set the link key.', 1],
+  ELVANTO_FORM_CHANGED: ['The Elvanto form was edited, so a new-person send was blocked to avoid bad data.', 'Check the form in Elvanto, tell the developer, then resend from Unsent new people.', 1],
+  ELVANTO_UNREACHABLE: ['Elvanto was down or unreachable, so the person was not sent.', 'Resend from Unsent new people later.', 1],
+  STUDENT_FORM_UNCONFIRMED: ['The form was sent but Elvanto did not confirm it.', 'Search Elvanto for the person before resending, to avoid a duplicate.', 1],
+  PARENT_FORM_UNCONFIRMED: ['The form was sent but Elvanto did not confirm it.', 'Search Elvanto for the person before resending, to avoid a duplicate.', 1],
+  STUDENT_FORM_FAILED: ['Elvanto refused the student form.', 'Open Unsent new people, check the details and resend.', 1],
+  PARENT_FORM_FAILED: ['Elvanto refused the parent form.', 'Open Unsent new people, check the details and resend.', 1],
+  UNSENT_SAVE_FAILED: ['A failed send could not be saved, so the new person may be lost.', 'Re-enter this new person by hand and tell the developer. Urgent.', 1],
+  unclear: ['An action sent to Elvanto may or may not have worked.', 'Check that person in Elvanto before repeating it.', 1],
+  'too-old': ['A request waited too long (console offline) and was dropped.', 'Redo the action in the app.', 1],
+  'lease-lost': ['The console went offline while sending.', 'Check Elvanto for the result before repeating.', 1],
+  'note-unreadable': ['A saved note is corrupted.', 'Re-enter it and tell the developer.', 1],
+  'intake-unreadable': ['A saved intake plan is corrupted.', 'Re-enter it and tell the developer.', 1],
+  'pending-24h': ['Actions have waited a day: the console computer has not picked them up.', 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
+  HTTP_401: ['A login had expired.', 'Safe to ignore unless many people see it.', 0],
+  HTTP_403: ['Someone tried something their role does not allow.', 'Safe to ignore unless many people see it.', 0],
+};
+function _elHelp(r) {
+  const h = EL_HELP[r.code];
+  if (h) return { what: h[0], todo: h[1], act: !!h[2] };
+  if (/^JS_/.test(r.code)) return { what: 'A screen crashed in a browser.', todo: 'Reload. Tell the developer the time and role if it repeats.', act: true };
+  if (r.category === 'link') return { what: 'The console refused an action.', todo: 'Open Elvanto link for the reason.', act: true };
+  if (r.status && r.status < 500) return { what: 'A request was refused.', todo: 'Usually a permission or expired login. Tell the developer only if many people see it.', act: false };
+  return { what: 'An error this tab has no description for.', todo: 'Tell the developer the code and time shown below.', act: true };
+}
 let _elRows = null, _elCat = '', _elShowIgnored = false, _elSeenAt = 0;
 function _elVisible(rows, cat, showIgnored) {
   return (rows || []).filter(r => (!cat || r.category === cat) && (showIgnored || !r.ignored));
@@ -6238,9 +6276,11 @@ function _elRowHtml(r, seenAt) {
   const chips = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
     + `<span class="chip" style="background:var(--paper-dark,#eee)">×${Number(r.count) || 0}</span>`;
   const top = `<button type="button" class="el-top" aria-expanded="${!r.minimised}" onclick="elFlag('${id}',{minimised:${!r.minimised}})"><span class="el-msg">${esc(r.message)}</span>${chips}</button>`;
+  const h = _elHelp(r);
+  const help = `<div class="help-text"><span class="chip">${h.act ? 'Needs action' : 'Safe to ignore'}</span> ${esc(h.what)} ${esc(h.todo)}</div>`;
   const when = `<div class="la-meta">${esc(EL_CATS[r.category] || r.category)} · last ${esc(_laRelTime(r.lastSeen))}</div>`;
   if (r.minimised) return `<div class="${cls}">${top}${when}</div>`;
-  return `<div class="${cls}">${top}${when}
+  return `<div class="${cls}">${top}${help}${when}
     <div class="la-meta">${esc(r.code)}${r.status ? ' · ' + Number(r.status) : ''}${r.route ? ' · ' + esc(r.route) : ''}</div>
     <div class="la-meta">First ${esc(_laFmtBrisbane(r.firstSeen))} · last ${esc(_laFmtBrisbane(r.lastSeen))}${r.lastRole ? ' · ' + esc(r.lastRole) : ''}</div>
     <div class="el-acts">

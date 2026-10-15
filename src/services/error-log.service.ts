@@ -31,10 +31,10 @@ export interface ErrorReport {
 /** Keeps only safe characters, then truncates. Never trusts a caller's length. */
 const clean = (s: unknown, n: number) => String(s ?? '').replace(/[^\w .:/#-]/g, '').trim().slice(0, n);
 
-/** "GET /students/9e00…?q=Sam" -> "GET /students/:id". Query and hash dropped; a segment with a digit becomes :id. */
+/** "GET /students/9e00…?q=Sam" -> "GET /students/:id". Query and hash dropped; a segment with a digit, a hex/uuid run or 16+ chars (token-like) becomes :id. */
 export function normaliseRoute(route: string): string {
   const [method, path = ''] = route.includes(' ') ? route.split(' ', 2) : ['', route];
-  const p = path.split(/[?#]/)[0]!.split('/').map((seg) => (/\d/.test(seg) ? ':id' : seg)).join('/');
+  const p = path.split(/[?#]/)[0]!.split('/').map((seg) => (/\d/.test(seg) || seg.length >= 16 || /^[0-9a-f-]{8,}$/i.test(seg) ? ':id' : seg)).join('/');
   return (method ? method.toUpperCase() + ' ' : '') + p;
 }
 
