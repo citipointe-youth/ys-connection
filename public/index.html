@@ -3675,6 +3675,7 @@ async function loadConnectData(G) {
 // Fetched once in the background, then repainted; Cache.del('/leaders') after an edit also drops it. Edit = the
 // existing leader sheet, whose Active box reactivates. Hidden when there are none.
 let _inactiveLdrsLoading = false;
+// OP-1: the open state lives on the function (like LINK.doneOpen), so a background repaint of Setup keeps it open.
 function _inactiveLeadersHtml() {
   const path = '/leaders?inactive=1';
   const ls = Cache.getStale(path);
@@ -3688,7 +3689,7 @@ function _inactiveLeadersHtml() {
   if (!ls.length) return '';
   const rows = ls.slice().sort((a, b) => String(a.fullName).localeCompare(String(b.fullName))).map(l =>
     `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--paper-dark)"><span style="flex:1;min-width:0">${esc(l.fullName)} <span style="font-size:12px;color:var(--ink-faint)">· Gr ${esc((l.grades || []).join(', ') || 'All')}</span></span><button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" aria-label="Edit ${esc(l.fullName)}" onclick="showEditLeader('${esc(l.id)}')">${icS('edit')}</button></div>`).join('');
-  return `<details class="card" id="inactive-leaders" style="margin-top:16px;padding:11px"><summary style="cursor:pointer;font-size:13px;font-weight:700">Inactive leaders (${ls.length})</summary><div style="margin-top:6px">${rows}</div></details>`;
+  return `<details class="card" id="inactive-leaders"${_inactiveLeadersHtml.open ? ' open' : ''} ontoggle="_inactiveLeadersHtml.open = this.open" style="margin-top:16px;padding:11px"><summary style="cursor:pointer;font-size:13px;font-weight:700">Inactive leaders (${ls.length})</summary><div style="margin-top:6px">${rows}</div></details>`;
 }
 function renderConnectView() {
   const { students, leaders, allocs, gf, df } = _aS;

@@ -65,4 +65,26 @@ describe('fix16 lane C', () => {
       expect(fn('renderLeaderHome')).toContain('_homeCheckinTile()');
     });
   });
+  describe('OP-1: Setup "Inactive leaders" fold-out keeps its open state across repaints', () => {
+    const mk = () => new Function(`
+      let _inactiveLdrsLoading = false; const S = { page: 'leaders' };
+      const Cache = { getStale() { return [{ id: 'a', fullName: 'Amy', grades: [] }]; } };
+      const API = { get() { return new Promise(() => {}); } };
+      function esc(s) { return String(s); } function icS() { return ''; } function renderConnectView() {}
+      ${fn('_inactiveLeadersHtml')}; return _inactiveLeadersHtml;`)();
+    it('closed by default, toggling records the state', () => {
+      const f = mk();
+      const h = f();
+      expect(h).not.toMatch(/<details[^>]* open/);
+      expect(h).toContain('ontoggle="_inactiveLeadersHtml.open = this.open"');
+    });
+    it('a re-render after opening renders it open, and closed again after closing', () => {
+      const f = mk();
+      f.open = true;
+      expect(f()).toMatch(/<details class="card" id="inactive-leaders" open/);
+      expect(f()).toMatch(/id="inactive-leaders" open/); // survives a second repaint
+      f.open = false;
+      expect(f()).not.toMatch(/<details[^>]* open/);
+    });
+  });
 });
