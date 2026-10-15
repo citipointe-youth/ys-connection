@@ -143,6 +143,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 */
 .pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
+@media(max-width:767px){.pg:has(.pfab){padding-bottom:calc(164px + var(--safe-b))}} /* F-47f: the last prayer clears the Add Prayer pill */
 
 /* Cards */
 .card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:16px;margin-bottom:12px}
