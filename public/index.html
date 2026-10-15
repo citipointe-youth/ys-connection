@@ -12782,12 +12782,17 @@ async function _ikRefresh() {
 // Mismatches (both a consentLookup read through the outbox, polled at GET /link/consents/lookup), Make profile match
 // form (consentFix, ships LOCKED in the console). R8 Save all: one confirm queues N saves in one /link/batch call; the
 // console runs them one at a time; each row's chip shows its own status. Handlers take indexes, never ids or names.
+// F-48: "Last Friday" is lit only on the newest week; another week picked in Other weeks leaves no pill lit.
 function _ikSubBar(cur) {
-  return `<div class="tbbar ik-sub">${[['last', 'Last Friday'], ['forms', 'All forms'], ['unlinked', 'Unlinked'], ['mismatches', 'Mismatches']].map(([k, l]) =>
-    `<button type="button" class="tbbtn ${cur === k ? 'on' : ''}"${cur === k ? ' aria-current="true"' : ''} onclick="_ikConsentSub('${k}')">${l}</button>`).join('')}</div>`;
+  const I = _ik(), older = !!(I && I.dates && I.dates.length && I.date && I.date !== I.dates[0].date);
+  return `<div class="tbbar ik-sub">${[['last', 'Last Friday'], ['forms', 'All forms'], ['unlinked', 'Unlinked'], ['mismatches', 'Mismatches']].map(([k, l]) => {
+    const on = cur === k && !(k === 'last' && older);
+    return `<button type="button" class="tbbtn ${on ? 'on' : ''}"${on ? ' aria-current="true"' : ''} onclick="_ikConsentSub('${k}')">${l}</button>`;
+  }).join('')}</div>`;
 }
 function _ikConsentSub(k) {
   const I = _ik();
+  if (k === 'last' && I.dates && I.dates.length && I.date !== I.dates[0].date) { if (I.csub !== 'last') { navPush(); I.csub = 'last'; } return _ikPickDate(0); }
   if (!['last', 'forms', 'unlinked', 'mismatches'].includes(k) || I.csub === k) return;
   navPush();
   I.csub = k;
@@ -12942,7 +12947,7 @@ async function _ikLkGo(kind, page, q, sameId) {
   const I = _ik(), x = _ikLk(kind);
   if (_ikLkBusy(x) || page < 1) return;
   const id = sameId || _lkUuid();
-  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now() });
+  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now(), blips: 0 });
   _ikDraw();
   try {
     const r = _ikOutcome(await _ikPost([_ikLkItem(kind, page, x.q, id)]), id);
@@ -12955,7 +12960,7 @@ async function _ikLkGo(kind, page, q, sameId) {
 function _ikLkErr(x, e) {
   let off = false;
   try { off = navigator.onLine === false; } catch (er) {}
-  if (off || !e || !e.status) { x.st = 'offline'; x.msg = "Can't reach the server. Check your internet, then press Check again."; }
+  if (off || !e || !e.status) { x.st = 'offline'; x.msg = 'No internet. Reconnect, then tap Ask again.'; }
   else if (e.status === 404) { x.st = 'failed'; x.msg = 'That lookup has expired. Search again.'; }
   else { x.st = 'failed'; x.msg = e.message || 'Something went wrong. Search again.'; }
 }
@@ -12973,25 +12978,34 @@ function _ikLkApply(x, r, now) {
   if (s !== 'waiting' && s !== 'working') { x.st = 'failed'; x.msg = _ikLkReason(null); return false; }
   if (now - x.since > (x.kind === 'mismatches' ? 15 : 5) * 60000) {
     x.st = 'timeout';
-    x.msg = s === 'working' ? 'The console is still reading the forms. Press Check again in a minute.' : "The console hasn't picked this up yet. Press Check again later.";
+    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.' : "The console hasn't picked this up yet. Tap Ask again later.";
     return false;
   }
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
   return true;
 }
+// L6-8: 10 s while waiting for the console to claim, 2.5 s once working, 5 s after a minute of working.
+// L2-3: a network blip (no status) is retried silently up to 3 times before the offline line shows.
 function _ikLkPoll(kind) {
   const I = _ik(), x = _ikLk(kind), id = x.id;
   if (x.poll) clearTimeout(x.poll);
+  if (x.st !== 'working') x.workSince = 0; else if (!x.workSince) x.workSince = Date.now();
+  const ms = x.st !== 'working' ? 10000 : Date.now() - x.workSince > 60000 ? 5000 : 2500;
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;
     try {
       const r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(id), true);
       if (_ik() !== I || x.id !== id) return;
+      x.blips = 0;
       if (_ikLkApply(x, r, Date.now())) _ikLkPoll(kind);
-    } catch (e) { if (_ik() !== I || x.id !== id) return; _ikLkErr(x, e); }
+    } catch (e) {
+      if (_ik() !== I || x.id !== id) return;
+      if ((!e || !e.status) && (x.blips || 0) < 3) { x.blips = (x.blips || 0) + 1; _ikLkPoll(kind); return; }
+      x.blips = 0; _ikLkErr(x, e);
+    }
     _ikDraw();
-  }, 2500);
+  }, ms);
 }
 function _ikLkPages(r) {
   const page = Number(r && r.page) || 1, size = Number(r && r.pageSize) || 25, n = ((r && r.rows) || []).length;
@@ -13048,7 +13062,8 @@ function _ikDncLine(dnc, name) {
 function _ikLkStatusHtml(kind, x, st) {
   const note = (t) => (t ? `<div class="lk-d lk-mb">${esc(t)}</div>` : ''), p = x.prog; // S5: a bar, real numbers once the console posts them
   if (x.st === 'asking') return progBar('Sending your search');
-  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason ? "The console couldn't read Elvanto just now. It tries again in a few minutes." : _ikSeenLine(st).trim());
+  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason === 'console-busy' ? "The console is busy with the service. Lists open again after the service. It couldn't read Elvanto just now."
+    : x.reason ? "The console couldn't read Elvanto just now. It tries again in a few minutes." : _ikSeenLine(st).trim());
   if (x.st === 'working') return progBar(p ? p.stage : 'The console is reading Elvanto', p && p.done, p && p.total) + note(kind === 'mismatches' ? 'A first check can take a few minutes.' : '');
   if (x.st === 'timeout' || x.st === 'offline' || x.st === 'failed') {
     const again = x.st === 'failed' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLkGo('${kind}', ${Number(x.page) || 1}, _ikLk('${kind}').q)">Search again</button>`
@@ -13067,7 +13082,7 @@ function _ikFixBanner(st) {
 function _ikLkPage(kind, st) {
   const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st)
     || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
-  const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Returned consent forms with no person in Elvanto. Find the person to link one. Only the console remembers the link, so Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
+  const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Consent forms with no person. Tap Find person to link one. Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
   if (gate) return intro + `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
   const busy = _ikLkBusy(x);
   const search = `<div class="ik-srch"><input class="fi" id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
@@ -13110,7 +13125,7 @@ function _ikLkResHtml(kind, x, st) {
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
       + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><span>${esc('Form: ' + l[1])}</span><span>${esc('Profile: ' + l[2])}</span></div>`).join('')
       + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '')
-      + (done ? '' : noFix ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Do in Elvanto</span></div>'
+      + (done ? '' : m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : noFix ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Do in Elvanto</span></div>'
         : `<div class="lk-row-act"><span></span><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
       + '</div></div>';
   };
@@ -13136,7 +13151,7 @@ function _ikClText(a) {
   if (a.status === 'pending') return ['wait', 'Waiting for the console.'];
   if (a.status === 'claimed') return ['wait', 'The console is saving the link…'];
   if (a.status === 'sent') return null;
-  if (a.status === 'refused') return ['bad', 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
+  if (a.status === 'refused') return ['bad', /^Not (saved|sent)\b/i.test(a.detail || '') ? a.detail : 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
   return ['bad', a.detail || 'Not saved. Try again.'];
 }
 function _ikClRow(f, i, grey, st) {
@@ -13144,7 +13159,7 @@ function _ikClRow(f, i, grey, st) {
   const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Form filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const act = open ? '' : !_ikClCap(st) ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Console needs an update</span></div>'
-    : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok">' + esc('Linked to ' + now.name + ' (console only)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
+    : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok" style="white-space:normal">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
     : '<div class="lk-row-act"><span></span><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
   return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(f.name) + '</div><div class="lk-d">' + esc(meta) + '</div>'
     + ((f.names || []).length ? '<div class="lk-d">' + esc('Also on the form: ' + f.names.join(', ')) + '</div>' : '')
