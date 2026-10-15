@@ -9760,7 +9760,13 @@ async function nySend(ev, send) {
   const p = send ? NY.last : _nyRead();
   // No "I am" yet (ledger 22): the picker opens first, then the send carries on.
   // APP-69: the leaders list (the host's name) may still be loading: wait for it before deciding.
-  if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) { await _lkLoadLeaders(); p.host = _nyHost(); }
+  // F-06: a second tap while the leaders load must not send twice: hold the send flag (and the button) across the wait.
+  if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) {
+    const b0 = document.getElementById('ny-send');
+    NY.sending = true; if (b0) b0.disabled = true;
+    try { await _lkLoadLeaders(); } finally { NY.sending = false; if (b0) b0.disabled = false; }
+    p.host = _nyHost();
+  }
   if (!send && !p.host) { _nyPickHost(() => nySend()); return; }
   const dobBad = send ? '' : _nyDobProblem((document.getElementById('ny-dob') || {}).value, _nyToday());
   if (dobBad) { toast(dobBad); return; }

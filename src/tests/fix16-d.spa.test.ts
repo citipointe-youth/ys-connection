@@ -45,3 +45,47 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
     expect(f.state().pushed.length).toBe(2);
   });
 });
+
+describe('F-06 / F-34 nySend', () => {
+  const prelude = `
+    const full = { host: '', firstName: 'Tom', lastName: 'L', dob: '2010-01-01', gender: 'm', grade: 9, school: 'S', mobile: '0412345678',
+      parentFirst: 'Ree', parentLast: 'L', parentMobile: '0412345679' };
+    let NY = { sending: false }; let LINK = { ldrs: null }; const S = { page: 'new-youth', user: { id: 'u' } };
+    const navigator = { onLine: true };
+    const posts = [], toasts = [];
+    let release;
+    function _nyRead() { return Object.assign({}, full); }
+    function getMyLeaderId() { return 'L1'; }
+    function _lkLoadLeaders() { return new Promise((r) => { release = () => { LINK.ldrs = []; r(); }; }); }
+    function _nyHost() { return 'Host'; }
+    function _nyPickHost() {}
+    function _nyDobProblem() { return ''; }
+    function _nyToday() { return '2026-10-16'; }
+    function _nyFieldMsgs() { return { block: {} }; }
+    function _nyShowMsgs() {}
+    function toast(t) { toasts.push(t); }
+    const document = { getElementById() { return null; }, querySelector() { return null; } };
+    const API = { post(u, b) { posts.push(b); return Promise.resolve({}); } };
+    function renderNewYouth() {}
+    function _nyMessage() { return { lines: [] }; }
+    function _nyErrorText(e) { return { text: String(e), unsent: true }; }
+    function rel() { release(); }
+    function st() { return { posts, toasts }; }
+    function offline() { navigator.onLine = false; full.host = 'Host'; }`;
+  it('F-06: two taps while the leaders load give one POST', async () => {
+    const f = loadFns(['nySend'], prelude, ['nySend', 'rel', 'st']);
+    const a = f.nySend();
+    const b = f.nySend();
+    await Promise.resolve();
+    f.rel();
+    await a; await b;
+    expect(f.st().posts.length).toBe(1);
+  });
+  it('F-34: offline stays on the form and sends nothing', async () => {
+    const f = loadFns(['nySend'], prelude, ['nySend', 'st', 'offline']);
+    f.offline();
+    await f.nySend();
+    expect(f.st().posts.length).toBe(0);
+    expect(f.st().toasts).toEqual(["You're offline. Nothing was sent."]);
+  });
+});
