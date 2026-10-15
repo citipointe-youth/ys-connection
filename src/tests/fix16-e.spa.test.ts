@@ -300,3 +300,31 @@ describe('F-49 report count label', () => {
     expect(out).toContain('Guests2');
   });
 });
+
+describe('GAP-4 fewer taps: newest week with no report, Yr chip opens a lone group', () => {
+  it('the group page offers a jump to the newest week with no report', () => {
+    const h = setup(); // today Fri 16 Oct; this week's Tue 13 Oct has a report, the week of 6 Oct has none
+    const g = h.get().LINK.groups[0];
+    const page = h.fns._lkGroupHtml(g);
+    expect(page).toContain('onclick="_lkWeekGo(1)">Go to the newest week with no report');
+    h.get().LINK.gwk = 1;
+    expect(h.fns._lkGroupHtml(g)).not.toContain('Go to the newest week'); // already there
+  });
+  it('no jump when every week in reach has a report', () => {
+    const h = setup();
+    const g = h.get().LINK.groups[0];
+    g.history = ['2026-10-06', '2026-09-29', '2026-09-22'].map((date, i) => ({ ...g.lastReport, reportId: G(20 + i), date }));
+    expect(h.fns._lkGroupHtml(g)).not.toContain('Go to the newest week');
+  });
+  it('a Yr chip with one group opens it; with two it only filters', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' }, { ...grp(), groupId: G(3), name: 'Yr 9 Boys', grade: 9, gender: 'male' });
+    L.gid = null;
+    h.fns._lkGrFilter('12');
+    expect(L.gid).toBe(G(2));
+    L.gid = null;
+    h.fns._lkGrFilter('9');
+    expect(L.gid).toBeNull();
+  });
+});
