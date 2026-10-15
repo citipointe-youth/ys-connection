@@ -12876,7 +12876,7 @@ function _ikFixBanner(st) {
 function _ikLkPage(kind, st) {
   const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st)
     || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
-  const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Returned consent forms with no person in Elvanto. Find the person to link one. Only the console remembers the link, so Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
+  const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Consent forms with no person. Tap Find person to link one. Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
   if (gate) return intro + `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
   const busy = _ikLkBusy(x);
   const search = `<div class="ik-srch"><input class="fi" id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
@@ -12953,7 +12953,7 @@ function _ikClRow(f, i, grey, st) {
   const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Form filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const act = open ? '' : !_ikClCap(st) ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Console needs an update</span></div>'
-    : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok">' + esc('Linked to ' + now.name + ' (console only)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
+    : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok" style="white-space:normal">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
     : '<div class="lk-row-act"><span></span><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
   return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(f.name) + '</div><div class="lk-d">' + esc(meta) + '</div>'
     + ((f.names || []).length ? '<div class="lk-d">' + esc('Also on the form: ' + f.names.join(', ')) + '</div>' : '')
