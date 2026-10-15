@@ -816,7 +816,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px}.lk-bulk>span{flex:1;font-weight:700;font-size:14px}
 .fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
-.lk-ff .fc{min-height:36px}
+.lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 4px;text-align:center}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
@@ -1401,9 +1401,45 @@ function _egTe(e) { if (_egTouchX == null) return; const dx = e.changedTouches[0
 
 function go(page) {
   if (page === 'at-risk' && S.page !== 'at-risk') _arNameFilter = '';
+  if (page !== S.page) navPush();
   S.page = page;
   render();
 }
+// ── NAV HISTORY (S3, 2026-10-15) ── every screen change and sub-screen open pushes a lightweight snapshot + a
+// history entry; the header arrow, Android back and iPhone swipe-back all pop the same stack.
+const NAV = { stack: [] };
+function _navSnap() {
+  const p = S.page;
+  return { p, g: p === 'link-groups' && LINK.gid ? (LINK.rf ? 2 : 1) : 0, gid: p === 'link-groups' ? LINK.gid : null, i: p === 'link-intake' && LINK.ik && LINK.ik.key ? 1 : 0 };
+}
+function _navSame(a, b) { return a.p === b.p && a.g === b.g && a.i === b.i; }
+function navPush() {
+  NAV.stack.push(_navSnap());
+  try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+}
+function navReset() {
+  const n = NAV.stack.length; NAV.stack = [];
+  if (n) { try { history.go(-n); } catch (e) {} }
+}
+function navBack() {
+  if (NAV.stack.length) { try { history.back(); return; } catch (e) {} _navPop(); }
+  else if (S.page !== 'home') { S.page = 'home'; render(); }
+}
+function _navPop() {
+  if (!S.user) return;
+  const s = NAV.stack.pop();
+  if (!s) { if (S.page !== 'home') { S.page = 'home'; render(); } return; }
+  if (_navSame(s, _navSnap())) { if (NAV.stack.length) { try { history.back(); } catch (e) {} } return; }
+  const same = s.p === S.page;
+  S.page = s.p;
+  if (s.p === 'link-groups') { LINK.gid = s.gid || null; LINK.rf = null; if (same) { _lkPaintGroups(); return; } }
+  if (s.p === 'link-intake' && LINK.ik && !s.i && LINK.ik.key) {
+    const I = LINK.ik; _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null;
+    if (same) { _ikDraw(); _ikLoad(true); return; }
+  }
+  render();
+}
+window.addEventListener('popstate', _navPop);
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
@@ -1500,8 +1536,8 @@ function _isRootPage(page) {
   return bn.some(it => it.id === page) || (page === 'prayers' && bn.some(it => it.id === 'more'));
 }
 function _hdrBrandHtml() {
-  if (!_isRootPage(S.page)) {
-    return `<button type="button" onclick="go('home')" title="Back" aria-label="Back to Home" style="background:none;border:none;padding:0;margin:0;display:flex;align-items:center;cursor:pointer;color:inherit;flex-shrink:0">${icN('arrl')}</button>`;
+  if (S.page !== 'home') {
+    return `<button type="button" onclick="navBack()" title="Back" aria-label="Back" style="background:none;border:none;padding:0;margin:0;display:flex;align-items:center;cursor:pointer;color:inherit;flex-shrink:0">${icN('arrl')}</button>`;
   }
   return brandMark(26, '#fff');
 }
@@ -1699,6 +1735,21 @@ async function _ntPushFinish(permP, publicKey) {
   } catch (e) {
     toast('Could not turn on alerts' + (e && e.message ? ': ' + e.message : ''));
   } finally { _ntPushBusy = false; _ntPushDraw(); }
+}
+// S4 (2026-10-15): first-login alerts popup for the four quad logins. Once per device; "Not now" asks again 7+ days later.
+async function _quadAlertsPrompt() {
+  if (!S.user || S.user.role !== 'quad' || _previewStash || !_noticesOn()) return;
+  try { if (Date.now() - Number(localStorage.getItem('yap_alert_ask') || 0) < 7 * 864e5) return; } catch {}
+  if (document.querySelector('#modal-root .mo')) return;
+  const env = await _ntPushEnv(); _ntPushLast = env;
+  const st = _ntPushState(env);
+  if (st !== 'off' && st !== 'ios-install') return;
+  if (!S.user || document.querySelector('#modal-root .mo')) return;
+  try { localStorage.setItem('yap_alert_ask', String(Date.now())); } catch {}
+  modal(`<div class="mo-title">Turn on alerts?</div>
+    <p class="lk-sub">${st === 'off' ? 'Get a phone alert when a new notice arrives.' : 'To get alerts on iPhone, add this app to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.'}</p>
+    <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="closeModal()">Not now</button>
+    ${st === 'off' ? `<button type="button" class="btn btn-primary" onclick="closeModal();noticePushOn()">Turn on alerts</button>` : ''}</div>`);
 }
 async function noticePushOff() {
   if (_ntPushBusy) return;
@@ -2665,6 +2716,7 @@ async function doLogin() {
     // handled saving via the Credential Management call above.
     setTimeout(() => go('home'), 150);
     setTimeout(_quadIamPrompt, 500); // T4: quad logins pick "I am" once; no-op for other roles or a saved pick
+    setTimeout(_quadAlertsPrompt, 1500);
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
@@ -2672,6 +2724,7 @@ async function doLogout() {
   if (!(await _lkLogoutGuard())) return; /*LINK*/
   _lkClear(); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
+  navReset();
   API.setToken(null); S.user = null; S.page = 'home';
   _msLeader = null; _trTab = 'svc';
   _arFilter = { grade: null, gender: null };
@@ -10797,7 +10850,7 @@ function _lkFormHtml() {
 function _lkPaintGroups() {
   const g = LINK.gid ? _lkGroup() : null;
   const body = !g ? `<div id="lk-glist">${_lkGroupsHtml()}</div>`
-    : `<button type="button" class="btn btn-ghost btn-sm lk-mb" onclick="_lkGroupsBack()">${icS('arrl')} ${LINK.rf ? 'Back to the group' : 'All groups'}</button>`
+    : ''
       + (LINK.rf ? _lkFormHtml() : `<div id="lk-gpage">${_lkGroupHtml(g)}</div>`);
   setApp(shell(`<div class="ph"><h1>Lifegroup report</h1></div><div id="lk-top">${_lkTop(LK_GROUP_TYPES)}</div>${body}`));
 }
@@ -10817,8 +10870,8 @@ async function renderLinkGroups() {
   _lkPaintGroups();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (S.page === 'link-groups' && LINK.rf) _lkPaintGroups(); }, () => {});
 }
-function _lkOpenGroup(id) { LINK.gid = id; LINK.gwk = 0; LINK.rf = null; _lkPaintGroups(); }
-function _lkGroupsBack() { if (LINK.rf) LINK.rf = null; else LINK.gid = null; _lkPaintGroups(); }
+function _lkOpenGroup(id) { navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null; _lkPaintGroups(); }
+function _lkGroupsBack() { navBack(); }
 // "I am" is required before a report (decision 11): no "I am" yet: the picker opens first.
 function _lkNewReport(date) { if (!getMyLeaderId()) { _lkIamPick(() => _lkNewReport(date)); return; } _lkFormOpen('submit', date); }
 // T3 (2026-10-14b): a further report in a week that already has one. The leader picks the date (default: the meeting day);
@@ -10836,6 +10889,7 @@ function _lkEditReport(reportId) { if (!getMyLeaderId()) { _lkIamPick(() => _lkE
 function _lkFormOpen(mode, arg) {
   const g = _lkGroup();
   if (!g) return;
+  navPush();
   if (mode === 'edit') {
     const r = _lkReports(g).find((x) => x.reportId === arg);
     if (!r || !r.editable || r.blocked) return;
@@ -11164,7 +11218,7 @@ function _lkFfToggle(k) {
 function _lkFfHtml(on) {
   return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
     const p = on.includes(k);
-    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" onclick="_lkFfToggle('${k}')">${l}</button>`;
+    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.split(' ')[0]}</button>`;
   }).join('')}</div>`;
 }
 // The rows this login sees on the screen (filters only for admin/director).
@@ -11735,7 +11789,7 @@ function _ikAct(actions) {
 // The overlay chip for a list row (§7.5): { label, tone, line } or null.
 function _ikChip(row, st) {
   const a = _ikAct(row && row.actions);
-  if (!a) return null;
+  if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
     return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') + _ikSeenLine(st) };
@@ -12214,7 +12268,7 @@ function _ikConsentHelp() {
 }
 function _ikFamilyPage() {
   const I = _ik(), st = _ikSt(), det = I.det && I.det.row && I.det.row.key === I.key ? I.det : null;
-  const back = `<button type="button" class="btn btn-ghost btn-sm lk-mb" onclick="_ikBack()">${icS('arrl')} ${I.tab === 'consent' ? 'All students' : 'All families'}</button>`;
+  const back = '';
   if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : '<div class="lk-hint">Loading…</div>');
   const L = I.list && I.list.date === I.date ? I.list : null;
   return back + _ikBanner(st, L, I.tab) + (I.tab === 'consent' ? _ikConsentHtml(det, L, st) : _ikFamilyHtml(det, L, st, _ikAns()));
@@ -12351,7 +12405,7 @@ function _ikFamilyHtml(det, list, st, a) {
   const alone = _ikAlone(d), tb = _ikTextBlock(det, list, st);
   return _ikHead(det, st, d) + (ans ? `<div class="lk-alert practice">${icS('info')}<div>Updating plan…</div></div>` : '')
     + _ikMatchHtml(d, a) + _ikCompareHtml(d, a) + _ikVerdictHtml(d, a)
-    + `<div class="card">${_ikSaveHtml(det, list, st, 'Save to Elvanto')}`
+    + `<div class="card"><button type="button" class="btn btn-secondary btn-full" onclick="_ikAnswersSave()">Save answers</button><div class="lk-d">Keeps your links and answers on the console. Nothing goes to Elvanto.</div>${_ikSaveHtml(det, list, st, 'Save to Elvanto')}`
     + alone.map((s, i) => `<button type="button" class="btn btn-secondary btn-sm lk-mt"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text + ' in Elvanto')}</button>`).join(' ')
     + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`
@@ -12445,10 +12499,22 @@ function _ikPickDate(i) {
 function _ikOpen(i) {
   const I = _ik(), r = I.list && (I.list.rows || [])[i];
   if (!r) return;
+  navPush();
   I.key = r.key; I.det = null; I.detErr = null; I.pick = null; I.hideText = null;
   _ikDraw();
   try { window.scrollTo(0, 0); } catch (e) {}
   _ikLoadRow(false).then(() => { _ikDraw(); _ikSchedule(); });
+}
+// S6: keep the answers on the console (intakeAnswer, no Elvanto write), close the form; the list row then says "Answers saved".
+async function _ikAnswersSave() {
+  const I = _ik(), det = I.det, key = det && det.row && det.row.key;
+  if (!key) return;
+  if (I.busy) { toast('Still sending. Try again in a moment.'); return; }
+  await _ikAnswerSend(false);
+  if (_ik() !== I) return;
+  if (I.resend[key]) return; // not sent: the toast already said why; stay on the form
+  toast('Answers saved');
+  navBack();
 }
 function _ikBack() {
   const I = _ik();
