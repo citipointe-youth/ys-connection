@@ -797,6 +797,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lk-toast .btn{background:#fff;color:#111827;flex:none}
 @media(min-width:768px){.lk-toast{bottom:24px}}
+body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} /* F-26: an error stays readable above the Undo toast */
 .lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
 .lk-lq-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;color:var(--ink-mid)}
 .lk-tickall{color:var(--accent)}
@@ -1476,7 +1477,7 @@ window.addEventListener('popstate', _navPop);
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), dur);
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), dur); // F-26: a new toast gets its full time
 }
 function modal(html, onClose, opts) {
   opts = opts || {};
