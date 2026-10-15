@@ -781,6 +781,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 /* S5 progress bar (progBar): every wait. A fill to done/total when the console says how far it is, else a sliding segment.
    Reduced motion: the segment stands still (the stage text still says what is happening). */
 .pbar{margin:12px 4px;font-size:12px;color:var(--ink-mid)}
+.pbar-wait{animation:pbar-in 0s .4s both}@keyframes pbar-in{from{visibility:hidden}} /* F-47a: #nprog covers sub-second loads */
 .pbar-top{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
 .pbar-n{font-variant-numeric:tabular-nums;white-space:nowrap}
 .pbar-track{position:relative;height:4px;border-radius:2px;background:var(--paper-dark);overflow:hidden}
@@ -1300,9 +1301,9 @@ function accentRampPairs(accentHex) {
 // else a sliding bar. stage = what is happening, in the reader's words. Global: the link block uses it.
 function progBar(stage, done, total) {
   const T = Number(total), D = Number(done), known = done != null && total != null && T > 0 && D >= 0;
-  const n = known ? Math.min(D, T) : 0, label = String(stage || 'Loading');
+  const n = known ? Math.min(D, T) : 0, label = String(stage || 'Loading'), wait = !known && label === 'Loading' ? ' pbar-wait' : '';
   const aria = known ? ` aria-valuemin="0" aria-valuemax="${T}" aria-valuenow="${n}" aria-valuetext="${esc(label + ', ' + n + ' of ' + T)}"` : '';
-  return `<div class="pbar" role="progressbar" aria-label="${esc(label)}"${aria}><div class="pbar-top"><span>${esc(label)}</span>`
+  return `<div class="pbar${wait}" role="progressbar" aria-label="${esc(label)}"${aria}><div class="pbar-top"><span>${esc(label)}</span>`
     + (known ? `<span class="pbar-n">${n} of ${T}</span>` : '') + `</div><div class="pbar-track"><div class="pbar-fill${known ? '' : ' ind'}"`
     + (known ? ` style="width:${Math.round(n / T * 100)}%"` : '') + '></div></div></div>';
 }
