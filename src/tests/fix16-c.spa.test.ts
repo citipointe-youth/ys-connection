@@ -62,6 +62,7 @@ describe('fix16 lane C', () => {
     });
     it('Home renders it', () => {
       expect(fn('_renderHomeInner')).toContain('_homeCheckinTile()');
+      expect(fn('renderLeaderHome')).toContain('_homeCheckinTile()');
     });
   });
 });

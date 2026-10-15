@@ -3018,6 +3018,12 @@ function _revalidateHome() {
     .finally(() => { _homeRevalidating = false; });
 }
 // fromCache (T7/T8): a grade-filter repaint; the Follow Up card also reads from the cache.
+// GAP-1: on the service day, a login that may use Check-in gets it as a Home tile (saves the More tap).
+function _homeCheckinTile() {
+  if (!_linkOn('checkin') || new Date(_lkSvcDay() + 'T00:00:00Z').getUTCDay() !== _serviceDow()) return '';
+  return `<div class="bus-tile" onclick="go('link-checkin')" role="button" tabindex="0">
+    <div class="bt-ic">${icN('check')}</div><div class="bt-label">Check-in</div></div>`;
+}
 async function _renderHomeInner(stale, fromCache) {
   const qu = S.user; // the login; `u` below is who Home is drawn for
   const _pg = S.page;
@@ -3128,6 +3134,7 @@ async function _renderHomeInner(stale, fromCache) {
   }
   body += `</div>`;
   if (qu.role === 'quad') body += _homeGradeBar(_hg);
+  body += _homeCheckinTile();
   /*BUS-HOOK*/ body += _busHomeTile();
   /*BUS-HOOK*/ body += _busNewPeopleCard();
 
@@ -3285,6 +3292,7 @@ async function _renderHomeInner(stale, fromCache) {
 async function renderLeaderHome() {
   const u = S.user;
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
+  body += _homeCheckinTile();
   /*BUS-HOOK*/ body += _busHomeTile();
   // The base list, so Prayers stays a plain button here even when the nav shows More.
   const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
