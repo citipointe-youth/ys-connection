@@ -150,9 +150,22 @@ describe('R4 bulk selection: DNC, consent-blocked, busy and hidden rows are neve
     const h = f._lkFlowsHtml();
     expect(h).toContain('1 selected');
     expect(h).toContain('Complete 1');
-    expect(h).toContain('Select all shown here (2)');
+    expect(h).toContain('Select all shown here (2 of 3 - the rest are Do Not Contact');
     expect(h).not.toContain("_lkSel('g'"); // filtered out: not on the screen at all
     expect(h).not.toContain("_lkSel('c'"); // DNC: no tick box
+  });
+});
+
+describe('L5 flow rows', () => {
+  it('select-all says how many of the step it covers; equal counts stay plain', () => {
+    reset();
+    L.flows = [R({ rowId: 'a' }), R({ rowId: 'b' })];
+    expect(f._lkFlowsHtml()).toContain('Select all shown here (2)</label>');
+  });
+  it('two same-name rows in one step are both marked', () => {
+    reset();
+    L.flows = [R({ rowId: 'a', name: 'Sam Lee' }), R({ rowId: 'b', name: 'sam lee' }), R({ rowId: 'c', name: 'Other One' })];
+    expect((f._lkFlowsHtml().match(/same name as another row/g) || []).length).toBe(2);
   });
 });
 
