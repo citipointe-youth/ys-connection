@@ -11206,7 +11206,8 @@ function _lkFlowGroups(rows, today, steps) {
   });
   return out.sort((a, b) => String(a.flowName || '').localeCompare(String(b.flowName || '')) || String(a.flowId).localeCompare(String(b.flowId)));
 }
-function _lkFirstName(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
+// Elvanto pushes flow names as "Last, First" (F-23): the first name is after the comma.
+function _lkFirstName(n) { const s = String(n || ''), c = s.indexOf(','); return (c >= 0 ? s.slice(c + 1) : s).trim().split(/\s+/)[0] || ''; }
 // sms: link. iPhone joins the body with &, everything else with ? (the shared callPhone sheet cannot be a plain link).
 function _lkSmsHref(digits, body, ua) {
   const u = ua == null ? ((typeof navigator !== 'undefined' && navigator.userAgent) || '') : ua;
