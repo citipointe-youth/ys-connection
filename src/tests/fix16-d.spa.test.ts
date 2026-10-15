@@ -4,7 +4,6 @@ import { loadFns } from './helpers/extract-fn';
 
 describe('F-02(a) door: a double tap checks in one person and keeps the row in place', () => {
   const prelude = `
-    const LK_DOOR_HOLD_MS = 600;
     let LINK = { svc: 'S', people: { S: { people: [
       { personId: 'tom', name: 'Tom LEstrange', checkedIn: false },
       { personId: 'ree', name: 'Ree LEstrange', checkedIn: false }] } }, q: { search: 'lestrange' }, refusals: {} };
@@ -24,12 +23,11 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
     function _lkFilter(l) { return l; }
     function setT(ms) { LINK.doorAt = Date.now() - ms; }
     function state() { return { pushed, Q }; }`;
-  const f = loadFns(['_lkDoorBusy', '_lkCheck', '_lkLists'], prelude, ['_lkCheck', '_lkLists', 'setT', 'state']);
+  const f = loadFns(['_lkCheck', '_lkLists'], prelude, ['_lkCheck', '_lkLists', 'setT', 'state']);
 
-  it('a second tap within 600 ms is a no-op (no undo, no second row queued)', () => {
+  it('a second tap on the same row within 600 ms is a no-op (no undo)', () => {
     f._lkCheck('tom', 'checkIn');
     f._lkCheck('tom', 'checkIn'); // would take the queued item back
-    f._lkCheck('ree', 'checkIn'); // the row that slid under the finger
     expect(f.state().pushed.length).toBe(1);
     expect(f.state().Q.map((x: any) => x.payload.personId)).toEqual(['tom']);
   });
@@ -40,7 +38,7 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
     expect(l.due.map((p: any) => p.personId)).toEqual(['ree']);
     expect(l.done.map((p: any) => p.personId)).toEqual(['tom']);
   });
-  it('after 600 ms a tap works again', () => {
+  it('another person can be tapped straight away', () => {
     f._lkCheck('ree', 'checkIn');
     expect(f.state().pushed.length).toBe(2);
   });
@@ -87,5 +85,45 @@ describe('F-06 / F-34 nySend', () => {
     await f.nySend();
     expect(f.st().posts.length).toBe(0);
     expect(f.st().toasts).toEqual(["You're offline. Nothing was sent."]);
+  });
+});
+
+describe('F-11 / F-12 / F-51 the no-link line', () => {
+  const prelude = `
+    const LK_OFFLINE_MS = 15 * 60000;
+    let S = { user: { role: 'admin' } };
+    let LINK = { status: null };
+    function _lkSeen() { return '5:15 am'; }
+    function icS() { return ''; }
+    function esc(s) { return String(s); }
+    function role(r) { S.user.role = r; }
+    function setSt(st) { LINK.status = st; }`;
+  const f = loadFns(['_lkBoss', '_lkOfflineSince', '_lkBanner', '_lkOfflineHtml'], prelude, ['_lkBanner', '_lkOfflineHtml', 'role', 'setSt']);
+  const old = new Date(Date.now() - 20 * 60000).toISOString();
+  const st = (c: any) => ({ console: { lastSeenAt: old, capabilities: {}, consoles: 1, ...c } });
+  const text = (h: string) => h.replace(/<[^>]+>/g, '');
+  it('F-11: online with a 20-minute-old lastSeenAt shows no line (admin, Home and Check-in)', () => {
+    f.role('admin');
+    expect(f._lkBanner(['checkIn'], st({ online: true }))).toBe('');
+    f.setSt(st({ online: true }));
+    expect(f._lkOfflineHtml()).toBe('');
+  });
+  it('F-12: one plain line; the kiosk line only on Check-in', () => {
+    f.role('admin');
+    expect(text(f._lkBanner(['checkIn', 'checkOut'], st({ online: false })))).toBe('No link to Elvanto since 5:15 am. Your taps send later. Use the kiosk too.');
+    expect(text(f._lkBanner(['submitReport'], st({ online: false })))).toBe('No link to Elvanto since 5:15 am. Your taps send later.');
+    expect(text(f._lkBanner(['checkIn'], { console: null }))).toBe('No link to Elvanto yet. Your taps send later. Use the kiosk too.');
+  });
+  it('F-12: leaders get the pill only, except on the door', () => {
+    f.role('leader');
+    expect(f._lkBanner(['submitReport'], st({ online: false }))).toBe('');
+    expect(text(f._lkBanner(['checkIn'], st({ online: false })))).toContain('Use the kiosk too.');
+  });
+  it('F-51: the Home offline line is role=status, not alert', () => {
+    f.role('admin');
+    f.setSt(st({ online: false }));
+    const h = f._lkOfflineHtml();
+    expect(h).toContain('role="status"');
+    expect(text(h)).toBe('No link to Elvanto since 5:15 am. Your taps send later.');
   });
 });

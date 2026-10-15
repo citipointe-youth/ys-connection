@@ -9986,10 +9986,14 @@ function _lkBanner(types, st) {
   if (!st) return '';
   const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
   const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', removeFromFlowStep: 'Removing from steps', firstTimerCheckIn: 'First-timer check-in', addGroupMember: 'Adding students', removeGroupMember: 'Removing students' };
-  const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
-  if (off) out.push(['bad', 'Console offline since ' + _lkSeen(off) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  else if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  // F-11/F-12: the console's own online flag decides; one plain line. Leaders get the pill only, except on
+  // Check-in, where the kiosk line matters to whoever is on the door.
+  const door = types.indexOf('checkIn') >= 0;
+  if ((!c || !c.online) && (_lkBoss() || door)) {
+    const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
+    const at = c && c.lastSeenAt;
+    out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
+  }
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
@@ -9999,12 +10003,13 @@ function _lkBanner(types, st) {
 const LK_OFFLINE_MS = 15 * 60000;
 function _lkOfflineSince(st, now) {
   const c = st && st.console, t = c && c.lastSeenAt ? Date.parse(c.lastSeenAt) : NaN;
+  if (c && c.online) return ''; // F-11: the server's online flag (2 x poll + 60 s) wins over the 15-minute guess
   return isFinite(t) && now - t > LK_OFFLINE_MS ? c.lastSeenAt : '';
 }
 function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
 function _lkOfflineHtml() {
   const at = _lkBoss() ? _lkOfflineSince(LINK.status, Date.now()) : '';
-  return at ? `<div class="lk-alert bad" role="alert">${icS('alert')}<div>Console offline since ${esc(_lkSeen(at))}. Elvanto changes from the app wait until it is back.</div></div>` : '';
+  return at ? `<div class="lk-alert bad" role="status">${icS('alert')}<div>No link to Elvanto since ${esc(_lkSeen(at))}. Your taps send later.</div></div>` : ''; // F-12 wording, F-51 status
 }
 // ── The phone queue (§9.2): localStorage['ysc.lkq.' + login id], every access in try/catch. ──
 function _lkKey() { return 'ysc.lkq.' + ((S.user && S.user.id) || ''); }
@@ -10435,7 +10440,7 @@ function _lkLists() {
   try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
   const list = _lkFilter(all, LINK.q);
   // F-02: the row just tapped stays where it was for 600 ms, so the next row does not slide under the finger.
-  const held = _lkDoorBusy() ? LINK.doorHeld : null;
+  const held = Date.now() - (LINK.doorAt || 0) < 600 ? LINK.doorHeld : null;
   // T7: nobody is listed to check in until a name is typed; the Checked in list always shows.
   return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn || p.personId === held) : [], done: list.filter((p) => p.checkedIn && p.personId !== held) };
 }
@@ -10470,7 +10475,7 @@ function _lkRowHtml(p) {
   const queued = !!act && act.status === 'queued';
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
-  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!_lkDoorBusy())_lkUndo('${pid}')">Undo</button>`;
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(Date.now()-(LINK.doorAt||0)>=600)_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
@@ -10478,16 +10483,15 @@ function _lkRowHtml(p) {
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
 }
-// F-02: every door row ignores taps for 600 ms after a tap (a double tap must not undo, or tick the next row).
-const LK_DOOR_HOLD_MS = 600;
-function _lkDoorBusy() { return Date.now() - (LINK.doorAt || 0) < LK_DOOR_HOLD_MS; }
 // A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
 function _lkCheck(pid, type) {
   try {
     const svc = LINK.svc, s = _lkSvc();
-    if (!svc || !s || _lkDoorBusy()) return;
+    // F-02: a double tap must not undo, or tick the row that slid up. _lkLists keeps the tapped row in place for
+    // 600 ms (so the next row does not move under the finger), and a second tap on it (or its Undo) is ignored.
+    if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
     LINK.doorAt = Date.now(); LINK.doorHeld = pid;
-    setTimeout(() => { if (!_lkDoorBusy()) _lkRefreshView(); }, LK_DOOR_HOLD_MS + 20);
+    setTimeout(() => { LINK.doorHeld = null; _lkRefreshView(); }, 620);
     delete LINK.refusals[svc + ':' + pid];
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
@@ -10526,6 +10530,7 @@ function _lkToastUndo() {
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {
   try {
+    LINK.doorHeld = null; // F-02: a deliberate Undo ends the 600 ms hold on that row
     const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
