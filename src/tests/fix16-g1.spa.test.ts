@@ -75,3 +75,24 @@ describe('F-14 Save sheet names each name field that changes', () => {
     expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LEstrange', archived: false }, parent: null } }), {})).toEqual(['First name: Thomas → Tom']);
   });
 });
+
+describe('F-15 Save result lines are plain and counted', () => {
+  const at = new Date().toISOString();
+  it('maps each reported step to a plain past-tense line, with no raw keys, and counts only what was made', () => {
+    const { f } = env();
+    const d = DETAIL({ steps: [] }); // the plan moved on: the result keys are no longer in it
+    const a = { id: P(9), type: 'intakeSave', status: 'sent', steps: [
+      { key: 'approve:student:' + P(1), action: 'approve', role: 'student', outcome: 'confirmed', at },
+      { key: 'approve:student:' + P(1), action: 'approve', role: 'student', outcome: 'confirmed', at },
+      { key: 'complete:parent:' + P(2), action: 'complete', role: 'parent', outcome: 'confirmed', at },
+      { key: 'note:parent:' + P(2), action: 'note', role: 'parent', outcome: 'not-sent', at: null }], stop: { code: 'stuck', text: 'Stopped: Elvanto was slow.' } };
+    const t = strip(f._ikResultHtml(a, d, ST()));
+    expect(t).not.toMatch(/approve:|complete:|note:/);
+    expect(t).toMatch(/Approved Tom's form \d+:\d\d (am|pm)/);
+    expect(t).toMatch(/Parent texted \d+:\d\d (am|pm)/);
+    expect(t.match(/Approved Tom's form/g)!.length).toBe(1); // a repeated step shows once
+    expect(t).toContain('Made 2 changes');
+    expect(t).toContain('Not sent: Added a note to the parent');
+    expect(t.match(/Stopped: Elvanto was slow\./g)!.length).toBe(1);
+  });
+});

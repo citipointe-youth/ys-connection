@@ -12026,21 +12026,31 @@ function _ikResultHtml(a, d, st) {
     const c = st && st.console;
     return `<div class="lk-st wait">${esc('Pending' + (c && !c.online && c.lastSeenAt ? ' (console last seen ' + _lkSeen(c.lastSeenAt) + ')' : ''))}</div>`;
   }
-  const all = ((d && d.steps) || []).concat((d && d.extras) || []);
-  const name = (x) => { const s = all.find((y) => y.key === x.key); return s ? s.text : x.action; };
-  const stop = a.stop && a.stop.text ? a.stop.text : '';
-  const lines = (a.steps || []).map((x) => {
-    const o = x.outcome;
-    const r = o === 'confirmed' ? ['ok', 'tick', 'Saved' + (x.at ? ' ' + _lkSeen(x.at) : '')]
-      : o === 'already' ? ['ok', 'tick', 'Already in Elvanto']
-      : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved']
-      : o === 'shadowed' ? ['prac', 'info', 'Practice: nothing sent']
-      : ['bad', 'xmark', 'Not sent' + (stop ? ': ' + stop : '')];
-    return `<div class="lk-st ${r[0]}">${icS(r[1])} ${esc(name(x))}: ${esc(r[2])}</div>`;
-  });
-  if (!lines.length) { const c = _ikChip({ actions: [a] }, st); if (c) lines.push(`<div class="lk-st ${c.tone}">${esc(c.line)}</div>`); }
-  else if (stop && a.stop.code !== 'finished' && !(a.steps || []).some((x) => x.outcome === 'not-sent' || x.outcome === 'locked')) lines.push(`<div class="lk-d">${esc(stop)}</div>`);
-  return lines.join('');
+  const stop = a.stop && a.stop.text ? a.stop.text : '', xs = a.steps || [];
+  const lines = xs.map((x) => {
+    const o = x.outcome, t = _ikResultLine(x, d);
+    const r = o === 'confirmed' ? ['ok', 'tick', t + (x.at ? ' ' + _lkSeen(x.at) : '')]
+      : o === 'already' ? ['ok', 'tick', t + ' (already in Elvanto)']
+      : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved: ' + t]
+      : o === 'shadowed' ? ['prac', 'info', 'Practice, nothing sent: ' + t]
+      : ['bad', 'xmark', 'Not sent: ' + t];
+    return `<div class="lk-st ${r[0]}">${icS(r[1])} ${esc(r[2])}</div>`;
+  }).filter((h, i, all) => all.indexOf(h) === i); // the console can report one step twice: show it once
+  if (!lines.length) { const c = _ikChip({ actions: [a] }, st); if (c) lines.push(`<div class="lk-st ${c.tone}">${esc(c.line)}</div>`); return lines.join(''); }
+  const made = new Set(xs.filter((x) => x.outcome === 'confirmed').map((x) => x.key)).size;
+  return `<div class="lk-d">${esc('Made ' + made + (made === 1 ? ' change' : ' changes'))}</div>` + lines.join('')
+    + (stop && a.stop.code !== 'finished' ? `<div class="lk-d">${esc(stop)}</div>` : '');
+}
+// F-15: a reported step as one plain past-tense line ("Approved Tom's form", "Parent texted"); never the raw step key.
+function _ikResultLine(x, d) {
+  const n = _ikNames(d), parent = x.role === 'parent', who = ((parent ? n.parent : n.student) || '').split(' ')[0];
+  const of = _ikPoss(who, parent ? 'parent' : 'student'), frm = x.role === 'consent' ? ' consent form' : ' form';
+  const W = { approve: 'Approved ' + of + frm, approveNew: 'Approved ' + of + frm + ' (new profile)', unlink: 'Unlinked ' + of + ' form',
+    unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: 'Set the parent to Affiliate',
+    locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
+    consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
+    complete: parent ? 'Parent texted' : 'Completed New People step 0' };
+  return W[x.action] || 'Saved a change';
 }
 
 // ── Answers (intakeAnswer): the family's WHOLE answer set each time, never a delta (§3.4). ──
