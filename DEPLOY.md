@@ -8,7 +8,7 @@ Pushing `master` builds on Vercel and the build applies migrations (`vercel-buil
 - last ship: 2026-10-15 17:03 EAST
 - migration: 0028
 - SW version: ysc-v109
-- promote: pending (Vercel) — update this line by hand once promoted
+- promote: promoted 5f888be on 2026-10-15 by owner
 - pending branches: chore/ship 
 <!-- /live -->
 
