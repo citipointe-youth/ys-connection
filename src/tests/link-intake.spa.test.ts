@@ -63,6 +63,7 @@ function makeEnv(e: Env = {}) {
     const _deviceId = () => 'dev-1';
     const _deviceLabel = () => 'iPhone';
     const _lkLastFriday = () => '2026-10-09';
+    const _lkRefreshView = () => {};
     function __get() { return { S, LINK }; }
   `;
   const fresh = (p: string) => { calls.fresh.push(p); return e.fresh ? Promise.resolve(e.fresh(p)) : Promise.reject(new Error('no')); };
