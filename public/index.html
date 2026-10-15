@@ -10488,7 +10488,7 @@ function _lkRowHtml(p) {
   const queued = !!act && act.status === 'queued';
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
-  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(Date.now()-(LINK.doorAt||0)>=600)_lkUndo('${pid}')">Undo</button>`;
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!(LINK.doorHeld==='${pid}'&&Date.now()-(LINK.doorAt||0)<600))_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
   // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
