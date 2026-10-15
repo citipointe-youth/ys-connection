@@ -84,8 +84,8 @@ describe('R4 filter persistence (localStorage in try/catch)', () => {
   });
   it('chip colours: guys blue, girls pink, aria-pressed follows the pick', () => {
     const h = f._lkFfHtml(['jf']);
-    expect(h).toMatch(/lk-ff-boy" aria-pressed="false"[^>]*aria-label="Junior Guys"[^>]*>Jr Guys</);
-    expect(h).toMatch(/lk-ff-girl on" aria-pressed="true"[^>]*aria-label="Junior Girls"[^>]*>Jr Girls</);
+    expect(h).toMatch(/lk-ff-boy" aria-pressed="false"[^>]*aria-label="Junior Guys"[^>]*>Junior</);
+    expect(h).toMatch(/lk-ff-girl on" aria-pressed="true"[^>]*aria-label="Junior Girls"[^>]*>Junior</);
   });
 });
 
