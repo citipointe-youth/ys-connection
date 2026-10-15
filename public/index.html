@@ -9775,6 +9775,8 @@ async function nySend(ev, send) {
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
   if (need) { toast('Add the ' + need[1]); return; }
   if (!send) { const bad = Object.values(_nyFieldMsgs({ ...p, postcode: p.address ? p.address.postcode : '' }).block)[0]; if (bad) { _nyShowMsgs(); toast(bad); const f = document.querySelector('[aria-invalid="true"]'); if (f) { f.focus(); if (f.scrollIntoView) f.scrollIntoView({ block: 'center' }); } return; } }
+  // F-34: offline: nothing is sent and the form stays as typed.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) { toast("You're offline. Nothing was sent.", 5000); return; }
   // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
