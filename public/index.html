@@ -3318,7 +3318,7 @@ async function renderHomeFollowup(fromCache) {
   // No identity yet → offer a picker built from the leaders in scope.
   if (!mine) {
     let leaders = [];
-    try { leaders = await G('/leaders'); } catch {}
+    try { leaders = await G('/leaders?pick=1'); } catch {} // F-01: only this login's own leaders
     if (!leaders.length) { host.innerHTML = ''; return; }
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
     host.innerHTML = `<div class="sh" style="font-size:13px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
@@ -4256,7 +4256,7 @@ function fmtBday(iso) {
 // "I am" changes go through _lkSwitchLeader (LINK MODULE): it warns first when link actions are unsent.
 async function _msNotYou() { if (await _lkSwitchLeader(null)) { _msLeader = null; renderMyStudents(); } }
 async function _msPickLeader(v) { if (await _lkSwitchLeader(v || null)) _msLeader = v; renderMyStudents(); }
-const MYSTUDENTS_PATHS = ['/leaders', '/students'];
+const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students']; // F-01: the I am picker lists only this login's own leaders
 let _myStudentsRevalidating = false;
 function _revalidateMyStudents() {
   if (_myStudentsRevalidating) return;
@@ -4272,13 +4272,13 @@ async function renderMyStudents() {
   const haveStale = MYSTUDENTS_PATHS.every(p => Cache.getStale(p) !== null);
   let leaders, allStudents;
   if (allFresh || haveStale) {
-    leaders = Cache.getStale('/leaders') || [];
+    leaders = Cache.getStale('/leaders?pick=1') || [];
     allStudents = Cache.getStale('/students') || [];
     if (!allFresh) _revalidateMyStudents();
   } else {
     setApp(shell(''));
     [leaders, allStudents] = await Promise.all([
-      API.get('/leaders').catch(() => []),
+      API.get('/leaders?pick=1').catch(() => []),
       API.get('/students').catch(() => []),
     ]);
     if (S.page !== _pg) return;
@@ -10674,13 +10674,24 @@ function _lkIamPick(then) {
 }
 function _lkIamListHtml(q, ls) {
   const toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false)
+  const xs = (ls || LINK.ldrs || []).filter((l) => l && l.active !== false && _leaderPickable(l))
     .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
   return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
     : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found.'}</p>`;
 }
 function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
+// F-01 (FX3): the client mirror of the server's leaderInScope, so "Who are you?" lists only this login's own
+// leaders whatever list LINK.ldrs holds. Admin/director: anyone; junior leader: itself; grade/quad: same gender
+// (none fails) and a grade in the login's bracket (none fails). Keep in sync with access-control.ts leaderInScope.
+function _leaderPickable(l) {
+  const u = S.user;
+  if (!u || u.role === 'admin' || u.role === 'director') return true;
+  if (u.role === 'leader') return l.id === u.leaderId;
+  const gs = u.role === 'quad' ? quadGrades(u.quad) : userGrades(u);
+  const g = u.role === 'quad' ? quadGender(u.quad) : (u.gender || null);
+  return !!l.gender && (!g || l.gender === g) && (l.grades || []).some((x) => gs.includes(x));
+}
 // The app's leaders, loaded once (the "I am" names come from it). A failed load keeps nothing and gives [].
 function _lkLoadLeaders() {
   if (LINK.ldrs) return Promise.resolve(LINK.ldrs);

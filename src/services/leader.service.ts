@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
+import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades, leaderInScope } from './access-control';
 import type { ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import { MINISTRY_CONFIG_DEFAULTS, gradeRange, assertGradesInRange } from '../core/ministry-config';
 import type { Leader } from '../core/entities/leader';
@@ -17,7 +17,7 @@ const CreateLeaderSchema = z.object({
 
 export interface LeaderService {
   /** opts.inactive: the inactive leaders instead (Setup's list; same scoping, Setup roles only). */
-  list(actor: Actor, opts?: { inactive?: boolean }): Promise<Leader[]>;
+  list(actor: Actor, opts?: { inactive?: boolean; pick?: boolean }): Promise<Leader[]>;
   get(actor: Actor, id: string): Promise<Leader>;
   create(actor: Actor, input: unknown): Promise<Leader>;
   update(actor: Actor, id: string, input: unknown): Promise<Leader>;
@@ -60,6 +60,11 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       assertCan(actor, 'leader:read');
       if (opts?.inactive) assertCan(actor, 'leader:write'); // the roles that have Setup
       const all = opts?.inactive ? (await repo.findAll()).filter((l) => !l.active) : await repo.findActive();
+      // F-01 (FX3): ?pick=1 = the Home "who are you" pickers, strict leaderInScope (Bus keeps the plain list).
+      if (opts?.pick) {
+        const structure = settings ? (await settings.getSettings()).ministryConfig.structure : undefined;
+        return all.filter((l) => leaderInScope(actor, l, structure));
+      }
 
       if (actor.role === 'grade') {
         // Grade login sees only leaders of their own GENDER that are for any of

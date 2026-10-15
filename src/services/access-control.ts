@@ -218,6 +218,28 @@ export function assertLeaderSelf(actor: Actor, leaderId: string): void {
 }
 
 /**
+ * F-01 (FX3): the strict "may this login see this leader's students" rule, used by the Home pickers
+ * (`GET /leaders?pick=1`) and the leader-detail routes. Admin/director: any leader. Junior leader: itself only.
+ * Grade/quad: same gender (null fails) AND grades intersect the login's bracket ([] fails).
+ */
+export function leaderInScope(actor: Actor, leader: { id: string; gender: string | null; grades: readonly number[] }, structure?: StructureScope): boolean {
+  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'leader') return !!actor.leaderId && actor.leaderId === leader.id;
+  if (actor.role !== 'grade' && actor.role !== 'quad') return false;
+  return leader.gender != null && canAccessGender(actor, leader.gender, structure) && leader.grades.some((g) => canAccessGrade(actor, g, structure));
+}
+
+/** F-01: refuse (403) a leader outside leaderInScope. */
+export function assertLeaderInScope(actor: Actor, leader: { id: string; gender: string | null; grades: readonly number[] }, structure?: StructureScope): void {
+  if (!leaderInScope(actor, leader, structure)) throw new ForbiddenError('This leader is not one of yours');
+}
+
+/** F-01: which of a leader's students this login may see (junior leader: all of its own; grade/quad: canAccessStudent). */
+export function leaderStudentVisible(actor: Actor, s: { grade: number | null; gender: string }, structure?: StructureScope): boolean {
+  return actor.role === 'leader' || canAccessStudent(actor, s.grade, s.gender, structure);
+}
+
+/**
  * Structure config relevant to scoping (§5.1/§5.2 of the generalisation design).
  * Passed by services from `settings.ministryConfig.structure`. Optional at every
  * call site so the existing tests (which don't pass it) and any not-yet-migrated
