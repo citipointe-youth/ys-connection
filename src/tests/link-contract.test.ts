@@ -74,6 +74,7 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-flows-rev6.json': C.PUSH_SCHEMAS.flows,
   'push-consent-lookup-forms.json': C.PUSH_SCHEMAS.consentLookup,
   'push-consent-lookup-mismatches.json': C.PUSH_SCHEMAS.consentLookup,
+  'push-consent-lookup-unlinked.json': C.PUSH_SCHEMAS.consentLookup,
   'result-request-rev6.json': C.ResultRequest,
   'push-progress.json': C.PUSH_SCHEMAS.progress, // S5 (run 2026-10-15b)
 };
@@ -319,11 +320,16 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   it('0021: the type check lists every ACTION_TYPE; RLS on every table it creates; additive', () => {
     const sql = readFileSync(MIG, 'utf8');
     const check = sql.slice(sql.indexOf('add constraint link_outbox_type_check'), sql.indexOf('));') + 2);
-    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix'];
+    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'];
     expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => !REV6.includes(t)).sort());
     const sql27 = readFileSync(join(ROOT, 'supabase', 'migrations', '0027_link_rev6.sql'), 'utf8');
     const at27 = sql27.indexOf('add constraint link_outbox_type_check'), check27 = sql27.slice(at27, sql27.indexOf('));', at27) + 2);
-    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort()); // 0027: every type
+    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'consentLink').sort()); // 0027: every type then
+    const sql31 = readFileSync(join(ROOT, 'supabase', 'migrations', '0031_link_consent_link.sql'), 'utf8');
+    const at31 = sql31.indexOf('add constraint link_outbox_type_check'), check31 = sql31.slice(at31, sql31.indexOf('));', at31) + 2);
+    expect([...check31.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort()); // 0031: every type
+    expect(sql31).toMatch(/kind in \('forms','mismatches','unlinked'\)/);
+    expect(sql31).not.toMatch(/\b(drop table|rename|alter column)\b/i);
     expect(sql27).toMatch(/alter table link_consent_lookup enable row level security/);
     expect(sql27).not.toMatch(/\b(drop table|rename|alter column)\b/i);
     const tables = [...sql.matchAll(/create table if not exists (\w+)/g)].map((m) => m[1]!);
@@ -362,6 +368,17 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     rejects(C.PAYLOAD_SCHEMAS.consentLookup, { kind: 'forms', page: 0, ref: '0a000000-0000-4000-8000-000000000202' });
     rejects(C.PAYLOAD_SCHEMAS.consentLookup, { kind: 'forms', page: 1, ref: '0a000000-0000-4000-8000-000000000202', q: 'a name' });
     rejects(C.PAYLOAD_SCHEMAS.consentFix, { personId: '9e000000-0000-4000-8000-000000000003' });
+  });
+  it('L6: consentLink and the unlinked lookup kind', () => {
+    const sub = '5c000000-0000-4000-8000-000000000002', person = '9e000000-0000-4000-8000-000000000003';
+    C.PAYLOAD_SCHEMAS.consentLink.parse({ subId: sub, personId: person });
+    C.PAYLOAD_SCHEMAS.consentLink.parse({ subId: sub, personId: null });
+    rejects(C.PAYLOAD_SCHEMAS.consentLink, { subId: sub });
+    rejects(C.PAYLOAD_SCHEMAS.consentLink, { subId: sub, personId: person, note: 'x' });
+    C.PAYLOAD_SCHEMAS.consentLookup.parse({ kind: 'unlinked', page: 1, ref: '0a000000-0000-4000-8000-000000000202' });
+    const u = clone(load('push-consent-lookup-unlinked.json')); u.rows[0].personId = person; rejects(C.PUSH_SCHEMAS.consentLookup, u);
+    const v = clone(load('push-consent-lookup-unlinked.json')); v.rows[0].names = ['a', 'b', 'c', 'd', 'e']; rejects(C.PUSH_SCHEMAS.consentLookup, v);
+    const w = clone(load('push-consent-lookup-unlinked.json')); w.kind = 'forms'; rejects(C.PUSH_SCHEMAS.consentLookup, w);
   });
   it('a consentLookup push is strict: unknown keys and a mismatch row with no diff are refused', () => {
     const f = clone(load('push-consent-lookup-forms.json')); f.rows[0].email = 'x@example.com'; rejects(C.PUSH_SCHEMAS.consentLookup, f);

@@ -131,7 +131,7 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
   consentStep: boolean }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
-export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches'; status: 'waiting' | 'working' | 'ready' | 'failed';
+export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches' | 'unlinked'; status: 'waiting' | 'working' | 'ready' | 'failed';
   reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[];
   /** S5: while working, how far the console has got (null = not known). */
   progress?: ProgressView | null }
@@ -163,7 +163,7 @@ export interface LinkService {
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
   flows(actor: Actor): Promise<{ rows: FlowView[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
-  youth(actor: Actor): Promise<{ rows: YouthRow[] }>;
+  youth(actor: Actor, q?: unknown): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
@@ -550,6 +550,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       serviceDate = p.date as string;
     } else if (it.type === 'consentLookup') { // rev 6 (R2 b/c): a read request; ref is its own id (one dedupe key per request)
       if ((p as { ref: string }).ref !== it.id) throw new BadRequestError('A lookup ref must be its own id.');
+    } else if (it.type === 'consentLink') { // L6: console-local; nothing is checked in Elvanto, the app names the form and the person
+      personId = (p as { personId: string | null }).personId;
     } else if (it.type === 'consentFix') { // rev 6 (R2 c): the console re-checks the form; the app only names the person
       personId = (p as { personId: string }).personId;
     } else { // completeStep, removeFromFlowStep (rev 6)
@@ -960,7 +962,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const { id } = z.object({ id: Uuid }).parse(q ?? {});
       const row = await d.link.getAction(id);
       if (!row || row.type !== 'consentLookup') throw new NotFoundError('That lookup is not known.');
-      const p = row.payload as { kind: 'forms' | 'mismatches'; page: number };
+      const p = row.payload as { kind: 'forms' | 'mismatches' | 'unlinked'; page: number };
       const base = { id, kind: p.kind, page: p.page, pageSize: 25, total: null, takenAt: null, rows: [] as unknown[] };
       if (row.status === 'pending') return { ...base, status: 'waiting', reason: row.reason ?? null }; // a retry carries why (resilience M5)
       if (row.status === 'claimed') return { ...base, status: 'working', reason: null,
@@ -998,8 +1000,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { groupId: g.groupId, canEdit: canEditGroupMembers(actor, await leadsGroup(c, g, me.id)), members, changes };
     },
 
-    async youth(actor) {
-      const c = context(actor, await gate(actor, ['lifegroupReport']));
+    async youth(actor, q) {
+      // L6: ?scope=consents = the Consents screen's person search (intake gate: admin + module), not the lifegroup one.
+      let c;
+      if ((q as { scope?: string } | undefined)?.scope === 'consents') { const s = await d.settings.getSettings(); intakeGate(actor, s); c = context(actor, s); }
+      else c = context(actor, await gate(actor, ['lifegroupReport']));
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
       const rows = (await c.roster()).filter((r) => r.active && r.kind !== 'other' && personVisible(actor, r, c.structure))
         .sort((a, b) => cmp(a.lastName, b.lastName) || cmp(a.firstName, b.firstName))

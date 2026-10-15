@@ -20,6 +20,8 @@ export const LINK_CONTRACT_VERSION = 1;
 // LINK_REV 6 (run 2026-10-15, lane A; ux-run-2026-10-15/CONTRACT-REV6.md), optional only: roster + flow rows carry `consent`
 // (R1 DO NOT CONTACT); types removeFromFlowStep (R4), consentLookup + consentFix (R2 b/c); push kind consentLookup (the
 // answer to one consentLookup row). The console sends them only when the app's claim reply says linkRev >= 6.
+// Run 2026-10-15b (L6), optional only, no rev bump (migration 0031): outbox type consentLink and consentLookup kind `unlinked`; the
+// console offers consentLink only after an app reply with linkRev >= 6, and an older console never sees either.
 // Run 2026-10-15b (S5), optional only, no rev bump: the claim reply's `progress: true` says this app takes POST
 // /sync/push/progress (how far a lookup, the flows read or an intake ask has got). An older app sends no flag, so the
 // console never posts it; an older console ignores the flag. Progress is a hint: a lost or refused post changes nothing.
@@ -27,9 +29,9 @@ export const LINK_REV = 6;
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
-  'removeFromFlowStep', 'consentLookup', 'consentFix'] as const;
+  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'] as const;
 /** Rev 6: the Consents screen's two types (admin only, module intakeAdmin; never leased while it is off). */
-export const CONSENT_TYPES = ['consentLookup', 'consentFix'] as const;
+export const CONSENT_TYPES = ['consentLookup', 'consentFix', 'consentLink'] as const;
 /** Rev 6 (R1): the profile consent flag. contact = the "contact with my child" opt-out; all = TOTAL non-consent date. */
 export const CONSENT_FLAGS = ['ok', 'contact', 'all', 'unknown'] as const;
 export const isDnc = (c: string | null | undefined) => c === 'contact' || c === 'all';
@@ -120,9 +122,11 @@ export const PAYLOAD_SCHEMAS = {
   // Rev 6 (R4): admin/director; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
   removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
   // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
-  consentLookup: z.object({ kind: z.enum(['forms', 'mismatches']), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
+  consentLookup: z.object({ kind: z.enum(['forms', 'mismatches', 'unlinked']), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
   // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
+  // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
+  consentLink: z.object({ subId: Uuid, personId: Uuid.nullable() }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -136,7 +140,7 @@ export const ClaimRequest = z.object({
     // X19: the intake types, sent only when the app's linkRev >= 4 (an older app 400s on unknown keys).
     intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
     // Rev 6: sent only when the app's linkRev >= 6.
-    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional() }).strict(),
+    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional() }).strict(),
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
@@ -270,11 +274,15 @@ const ConsentSide = z.object({ consentDate: Dmy40, total: Dmy40, optOuts: OptOut
 export const CONSENT_DIFFS = ['consent date', 'TOTAL non-consent date', 'opt-outs'] as const;
 export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: Cut(120), submitted: Ymd.nullable(),
   diffs: z.array(z.enum(CONSENT_DIFFS)).min(1).max(3), form: ConsentSide, profile: ConsentSide }).strict();
+// Run 2026-10-15b (L6): a consent form with no person in Elvanto, or one the console linked (linked = that person).
+export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend({ names: z.array(Cut(80)).max(4),
+  linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable() }).strict();
 const lookupEnvelope = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, requestId: Uuid,
   page: z.number().int().min(1).max(1000), pageSize: z.number().int().min(1).max(100), total: z.number().int().min(0).nullable() };
 export const ConsentLookupPush = z.discriminatedUnion('kind', [
   z.object({ ...lookupEnvelope, kind: z.literal('forms'), rows: z.array(ConsentFormRow).max(100) }).strict(),
   z.object({ ...lookupEnvelope, kind: z.literal('mismatches'), rows: z.array(ConsentMismatchRow).max(100) }).strict(),
+  z.object({ ...lookupEnvelope, kind: z.literal('unlinked'), rows: z.array(ConsentUnlinkedRow).max(100) }).strict(),
 ]);
 
 // ---- S5 (run 2026-10-15b): progress of one long console job. key: flows (the flows read), lookup:<consentLookup row id>,

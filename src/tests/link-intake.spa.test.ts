@@ -20,7 +20,9 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid
   '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormIconDefs', '_ikFormIcons', '_ikIcHtml', '_ikMisLines', '_ikLkStatusHtml', '_ikFixBanner',
   '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
   // integration review fixes (run 2026-10-15)
-  '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', '_ikFixChanges', '_ikDncLine'];
+  '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', '_ikFixChanges', '_ikDncLine',
+  // L6 Unlinked consent forms (run 2026-10-15b)
+  '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
@@ -476,7 +478,7 @@ describe('consents sub-menus (R2)', () => {
     await e.fns._ikLoad(false);
     const h = e.fns._ikPageHtml(), t = strip(h);
     expect(e.fns._ik().csub).toBe('last');
-    expect(t).toContain('Last Friday All forms Mismatches');
+    expect(t).toContain('Last Friday All forms Unlinked Mismatches');
     expect(t).toContain('New people from ' + e.fns._lkDay('2026-10-09'));
     expect(h).not.toContain('onclick="_ikPickDate(');
     expect(h).toContain('onchange="this.blur();_ikPickDate(+this.value)"');
@@ -723,5 +725,66 @@ describe('integration review fixes (run 2026-10-15)', () => {
     const y: any = { kind: 'forms', since: now };
     f._ikLkApply(y, { status: 'waiting', reason: 'console-busy' }, now);
     expect(strip(f._ikLkStatusHtml('forms', y, ST6()))).toContain("couldn't read Elvanto just now");
+  });
+});
+
+describe('Unlinked consent forms (L6)', () => {
+  const ST7 = (caps: Record<string, string> = {}) => ST6({ consentLink: 'live', ...caps });
+  const ROW = (n: number, o: any = {}) => ({ subId: P(n), name: 'Riley Sample', submitted: '2026-10-09', status: 'pending', consentDate: '09/10/2026', contactOptOut: true,
+    total: '', otherOptOuts: ['Photos'], names: ['Pat Sample'], linked: null, ...o });
+  const env = (post?: any) => {
+    const e = makeEnv({ fresh: (p) => (p.startsWith('/link/youth') ? { rows: [{ personId: P(70), name: 'Riley Sample', grade: 8 }, { personId: P(71), name: 'Sam Other', grade: null }] } : ST7()), post });
+    const I = e.fns._ik();
+    Object.assign(e.fns._ikLk('unlinked'), { st: 'ready', res: { rows: [ROW(1), ROW(2, { linked: { personId: P(70), name: 'Riley Sample' } })], page: 1, pageSize: 25, total: 2 } });
+    e.get().LINK.st = ST7();
+    return { e, I };
+  };
+  it('the sub-menu is there and loads nothing until asked', () => {
+    const e = makeEnv({ storage: new Map([['ysc.intakeTab', 'consent']]) });
+    e.fns._ikConsentSub('unlinked');
+    expect(e.fns._ik().csub).toBe('unlinked');
+    expect(e.calls.posts.length).toBe(0);
+  });
+  it('rows show names, the icons, and Find person or Unlink by link state; hostile text is escaped', () => {
+    const { e } = env();
+    const x = e.fns._ikLk('unlinked');
+    x.res.rows[0].name = HOSTILE;
+    const h = e.fns._ikLkResHtml('unlinked', x, ST7());
+    expect(h).not.toContain(HOSTILE);
+    expect(strip(h)).toContain('Also on the form: Pat Sample');
+    expect(strip(h)).toContain('DO NOT CONTACT');
+    expect(strip(h)).toContain('Find person');
+    expect(strip(h)).toContain('Linked to Riley Sample (console only)');
+    expect(strip(h)).toContain('Unlink');
+    expect(strip(e.fns._ikClRow(x.res.rows[0], 0, '', ST6()))).toContain('Console needs an update'); // no consentLink capability
+  });
+  it('Find person searches the roster, pick -> confirm warns about DO NOT CONTACT, Link posts one consentLink', async () => {
+    const { e } = env((_p: string, b: any) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }));
+    await e.fns._ikClOpen(0);
+    expect(e.get().LINK.cyouth.length).toBe(2);
+    e.fns._ikClQ('riley');
+    expect(e.fns._ik().clp.list.map((r: any) => r.personId)).toEqual([P(70)]);
+    e.fns._ikClPick(0);
+    expect(e.calls.modals.at(-1)).toContain('Link this form to Riley Sample?');
+    expect(strip(e.calls.modals.at(-1)!)).toContain('DO NOT CONTACT');
+    await e.fns._ikClGo();
+    const item = e.calls.posts[0].b.items[0];
+    expect(item).toMatchObject({ type: 'consentLink', payload: { subId: P(1), personId: P(70) }, note: null });
+    expect(e.fns._ik().fixes['cn:' + P(1)].status).toBe('pending');
+    e.fns._ik().fixes['cn:' + P(1)].status = 'sent';
+    expect(e.fns._ikClNow(ROW(1))).toEqual({ personId: P(70), name: 'Riley Sample' });
+  });
+  it('Unlink posts personId null, and a sent unlink shows the form as unlinked again', async () => {
+    const { e } = env((_p: string, b: any) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }));
+    e.fns._ikClUnlink(1);
+    expect(e.calls.modals.at(-1)).toContain('Unlink this form from Riley Sample?');
+    await e.fns._ikClGo();
+    expect(e.calls.posts[0].b.items[0].payload).toEqual({ subId: P(2), personId: null });
+    e.fns._ik().fixes['cn:' + P(2)].status = 'sent';
+    expect(e.fns._ikClNow(ROW(2, { linked: { personId: P(70), name: 'Riley Sample' } }))).toBe(null);
+  });
+  it('a refused link says why', () => {
+    const { e } = env();
+    expect(e.fns._ikClText({ status: 'refused', detail: 'Only the admin can do this.' })).toEqual(['bad', 'Not saved: Only the admin can do this.']);
   });
 });

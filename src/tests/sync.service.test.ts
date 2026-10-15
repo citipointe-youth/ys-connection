@@ -107,7 +107,7 @@ describe('sync.service claim', () => {
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     expect(reply.contractVersion).toBe(1);
     // X19: the intake types are in claim-response-rev4.json (this console lists no intake capability).
-    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix'].includes(t)).sort()); // rev 6 types: claim-response-rev6.json
+    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'].includes(t)).sort()); // rev 6 types: claim-response-rev6.json
     for (const row of reply.rows) {
       expect(PAYLOAD_SCHEMAS[row.type as ActionType].safeParse(row.payload).success).toBe(true);
     }

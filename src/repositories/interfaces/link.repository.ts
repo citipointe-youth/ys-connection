@@ -4,7 +4,7 @@ import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, Co
   ResultReply, LinkFlowAssign, LinkFlowStep, Consent } from '../../core/link-types';
 
 /** Rev 6 (R2 b/c): a consentLookup answer as stored (rows = the pushed ConsentFormRow / ConsentMismatchRow list). */
-export interface ConsentLookupStored { requestId: string; kind: 'forms' | 'mismatches'; page: number; pageSize: number;
+export interface ConsentLookupStored { requestId: string; kind: 'forms' | 'mismatches' | 'unlinked'; page: number; pageSize: number;
   total: number | null; rows: unknown[]; takenAt: string; /** the stored rows could not be decrypted / parsed */ unreadable?: true }
 export const CONSENT_LOOKUP_KEEP_MS = 24 * 3_600_000;
 

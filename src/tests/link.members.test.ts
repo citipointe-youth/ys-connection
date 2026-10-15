@@ -233,6 +233,6 @@ describe('T6 migration 0020', () => {
     const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '0020_link_group_members.sql'), 'utf8');
     expect(sql).toContain('drop constraint if exists link_outbox_type_check');
     const listed = [...sql.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort();
-    expect(listed).toEqual(ACTION_TYPES.filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix'].includes(t)).sort());
+    expect(listed).toEqual(ACTION_TYPES.filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'].includes(t)).sort());
   });
 });

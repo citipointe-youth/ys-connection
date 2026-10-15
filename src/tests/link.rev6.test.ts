@@ -29,7 +29,7 @@ const DEV = { id: 'dev-1', label: 'test' };
 let idn = 9000;
 const nid = () => u(++idn);
 const ALL = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live',
-  removeFromFlowStep: 'live', consentLookup: 'live', consentFix: 'locked' } as const;
+  removeFromFlowStep: 'live', consentLookup: 'live', consentFix: 'locked', consentLink: 'live' } as const;
 
 async function setup(o: { intakeAdmin?: 'on' | 'off' } = {}) {
   const link = new InMemoryLinkRepository({ now: () => NOW });
@@ -166,6 +166,33 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     expect(h.oc(await h.one(DIRECTOR, fix))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, fix))).toBe('saved');
     expect(h.oc(await h.one(ADMIN, { ...fix, id: nid() }))).toBe('duplicate'); // one open fix per person
+  });
+  it('L6: consentLink queues for admin only, one open per form, link and unlink; the unlinked lookup is stored and read back', async () => {
+    const h = await setup();
+    const sub = u(802), link = { kind: 'action', id: nid(), type: 'consentLink', payload: { subId: sub, personId: P_OK }, note: null, leaderId: null };
+    expect(h.oc(await h.one(DIRECTOR, link))).toBe('FORBIDDEN');
+    expect(h.oc(await h.one(ADMIN, { ...link, payload: { subId: sub } }))).toBe('VALIDATION_ERROR');
+    expect(h.oc(await h.one(ADMIN, link))).toBe('saved');
+    expect(h.oc(await h.one(ADMIN, { ...link, id: nid(), payload: { subId: sub, personId: null } }))).toBe('duplicate'); // one open per form
+    const got = (await h.claim()).rows.find((r) => r.id === link.id)!;
+    expect(got.type).toBe('consentLink');
+    expect(got.payload).toEqual({ subId: sub, personId: P_OK });
+    await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: link.id, outcome: 'planned' }] });
+    const un = { ...link, id: nid(), payload: { subId: sub, personId: null } };
+    expect(h.oc(await h.one(ADMIN, un))).toBe('saved'); // closed, so unlinking is a new request
+    const p = JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-unlinked.json'), 'utf8')), id = p.requestId as string;
+    await h.one(ADMIN, { ...lookup(id, null), payload: { kind: 'unlinked', page: 1, ref: id } });
+    await h.claim();
+    expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE })).toEqual({ applied: true, rows: 2 });
+    await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'planned' }] });
+    expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'ready', kind: 'unlinked', total: 2, rows: p.rows });
+  });
+  it('L6: the consents person search needs the intake gate; the lifegroup one is unchanged', async () => {
+    const h = await setup();
+    await expect(h.svc.youth(DIRECTOR, { scope: 'consents' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(await h.svc.youth(ADMIN, { scope: 'consents' })).toEqual({ rows: [] });
+    const off = await setup({ intakeAdmin: 'off' });
+    await expect(off.svc.youth(ADMIN, { scope: 'consents' })).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
   });
   it('intakeAdmin off: the claim strips consentLookup/consentFix (never leased)', async () => {
     const h = await setup();

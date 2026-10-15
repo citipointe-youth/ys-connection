@@ -24,7 +24,7 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     flows: (r: HttpRequest) => L.flows(actor(r)),
     consentLookup: (r: HttpRequest) => L.consentLookup(actor(r), r.query), // rev 6 (R2 b/c)
     groupMembers: (r: HttpRequest) => L.groupMembers(actor(r), r.params['groupId']!, r.query),
-    youth: (r: HttpRequest) => L.youth(actor(r)),
+    youth: (r: HttpRequest) => L.youth(actor(r), r.query),
     assignFlow: (r: HttpRequest) => L.assignFlow(actor(r), r.body),
     roster: (r: HttpRequest) => L.rosterForMatching(actor(r), r.query),
     setMatch: (r: HttpRequest) => L.setMatch(actor(r), r.params['personId']!, r.body),
