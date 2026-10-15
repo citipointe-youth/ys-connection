@@ -1,16 +1,19 @@
 // T3 Error log, SPA side: the REAL functions from public/index.html (extract-and-run), against small stubs.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
 const EL_CATS_SRC = html.match(/^const EL_CATS = \{[^}]*\};/m)![0];
-const NAMES = ['esc', '_laRelTime', '_laFmtBrisbane', '_elVisible', '_elIsNew', '_elRowHtml', '_elBodyHtml', '_errRoute', '_errReport'];
+const EL_HELP_SRC = html.match(/^const EL_HELP = \{[\s\S]*?\n\};/m)![0];
+const NAMES = ['esc', '_elHelp', '_laRelTime', '_laFmtBrisbane', '_elVisible', '_elIsNew', '_elRowHtml', '_elBodyHtml', '_errRoute', '_errReport'];
 
 function load(token: string | null = 'tok') {
   const sent: any[] = [];
   const prelude = `${EL_CATS_SRC}
+    ${EL_HELP_SRC}
     const API = { get token() { return ${JSON.stringify(token)}; } };
     const _errSent = new Set();
+    const _errNet = { at: 0 };
     const fetch = (url, init) => { __sent.push({ url, init }); return Promise.resolve(); };`;
   const fns = new Function('__sent', `${prelude}\n${NAMES.map((n) => extractFn(html, n)).join('\n')}
     return { ${NAMES.join(', ')} };`)(sent);
@@ -84,7 +87,37 @@ describe('client error reporting', () => {
   });
   it('API errors are marked so the rejection handler skips them; 5xx and network failures are reported', () => {
     expect(html).toMatch(/err\._errLogged = true/);
-    expect(html).toMatch(/if \(res\.status >= 500\) _errReport\(/);
+    expect(html).not.toMatch(/if \(res\.status >= 500\) _errReport\(/); // the server records 5xx itself
     expect(html).toMatch(/if \(x && x\._errLogged\) return;/);
+  });
+});
+
+describe('Error log polish (R8)', () => {
+  it('no-connection reports: one a minute per device, sent as route page', () => {
+    const f = load();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    f._errReport({ kind: 'api', code: '', route: 'GET /a', status: 0 });
+    f._errReport({ kind: 'api', code: '', route: 'GET /b', status: 0 });
+    expect(f.sent).toHaveLength(1);
+    expect(JSON.parse(f.sent[0].init.body).route).toBe('page');
+    now.mockReturnValue(1_061_000);
+    f._errReport({ kind: 'api', code: '', route: 'GET /c', status: 0 });
+    expect(f.sent).toHaveLength(2);
+    now.mockRestore();
+  });
+  it('client route masks hex and long token-like segments', () => {
+    const f = load();
+    expect(f._errRoute('GET', '/x/deadbeefcafe/y')).toBe('GET /x/:id/y');
+    expect(f._errRoute('GET', '/x/someLongTokenValueHere')).toBe('GET /x/:id');
+  });
+  it('help line and Needs action / Safe to ignore chip per code, generic for unknown', () => {
+    const f = load();
+    const net = f._elRowHtml(row({ code: 'NETWORK', category: 'client', message: 'Request failed: no connection' }), 0);
+    expect(net).toContain('Safe to ignore');
+    expect(net).toContain('lost signal');
+    expect(f._elRowHtml(row({ code: 'UNSENT_SAVE_FAILED' }), 0)).toContain('Needs action');
+    const unk = f._elRowHtml(row({ code: 'WEIRD_NEW', status: 500 }), 0);
+    expect(unk).toContain('no description');
+    expect(unk).toContain('Needs action');
   });
 });

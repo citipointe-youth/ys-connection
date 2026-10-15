@@ -55,7 +55,7 @@ describe('R10 no repaint while typing', () => {
 
 describe('R11 error row is a button', () => {
   it('has button + aria-expanded', () => {
-    const f = loadFns(['_elRowHtml'], `${esc} const EL_CATS = {}; const _elIsNew = () => false; const _laRelTime = () => ''; const _laFmtBrisbane = () => '';`);
+    const f = loadFns(['_elRowHtml'], `${esc} const EL_CATS = {}; const _elHelp = () => ({ what: '', todo: '', act: false }); const _elIsNew = () => false; const _laRelTime = () => ''; const _laFmtBrisbane = () => '';`);
     const h = f._elRowHtml({ id: 'a', message: 'm', count: 1, minimised: true, category: 'x' }, 0);
     expect(h).toContain('<button type="button" class="el-top" aria-expanded="false"');
   });

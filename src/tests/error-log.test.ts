@@ -200,6 +200,9 @@ describe('error-log.service', () => {
 
   it('normaliseRoute / messageFor', () => {
     expect(normaliseRoute('get /a/1b/c?x=1#y')).toBe('GET /a/:id/c');
+    expect(normaliseRoute('GET /a/deadbeef/c')).toBe('GET /a/:id/c');
+    expect(normaliseRoute('GET /a/abcdefghijklmnopqrst')).toBe('GET /a/:id');
+    expect(normaliseRoute('GET /link/flows/step')).toBe('GET /link/flows/step');
     expect(messageFor('link', 'report-changed', null)).toBe('The console refused this action');
     expect(messageFor('server', 'WEIRD', 502)).toBe('Server error (502)');
   });
