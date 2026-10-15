@@ -4,11 +4,11 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It tests, rewrites the l
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
 
 <!-- live -->
-- master sha: 15d31b2 (release/2026-10-15)
-- last ship: 2026-10-15 17:03 EAST
-- migration: 0028
-- SW version: ysc-v109
-- promote: promoted 5f888be on 2026-10-15 by owner
+- master sha: abdf25e (feat/notice-push)
+- last ship: 2026-10-15 19:41 EAST
+- migration: 0029
+- SW version: ysc-v110
+- promote: pending (Vercel) — update this line by hand once promoted
 - pending branches: chore/ship 
 <!-- /live -->
 
