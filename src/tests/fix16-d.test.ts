@@ -2,6 +2,16 @@
 import { describe, it, expect } from 'vitest';
 import * as C from '../core/link-contract';
 import { applyOutcome } from '../services/link-rules';
+import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS } from '../services/link.service';
+import { makeSyncService } from '../services/sync.service';
+import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
+import {
+  InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
+  InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
+} from '../repositories/in-memory';
+import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { RateLimiter } from '../utils/rate-limiter';
+import type { Actor } from '../core/entities/user';
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -31,4 +41,43 @@ describe('C-1: LINK_REV 7, optional linked + note', () => {
     const r2 = applyOutcome(row, { id: u(1), outcome: 'sent', sentLogKey: 'k', note: 'sent' } as any, u(9), now) as any;
     expect(r2.next.detail).toBeNull();
   });
+});
+
+describe('F-37: GET /link/actions carries note failed', () => {
+  const NOW = new Date('2026-10-16T09:00:00.000Z'), T0 = '2026-10-01T00:00:00.000Z';
+  const ADMIN_ID = u(1), CONSOLE = u(601), FLOW = u(511), STEP = u(521), ROW = u(501), PER = u(101);
+  const ADMIN = { id: ADMIN_ID, role: 'admin', displayName: 'admin', grade: null, quad: null, gender: null, leaderId: null } as unknown as Actor;
+  async function setup() {
+    const link = new InMemoryLinkRepository({ now: () => NOW });
+    const settings = new InMemorySettingsRepository(), students = new InMemoryStudentRepository(), leaders = new InMemoryLeaderRepository();
+    const users = new InMemoryUserRepository(), sessions = new InMemoryServiceSessionRepository(), attendance = new InMemoryServiceAttendanceRepository();
+    for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
+    await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, flows: 'on' } } } as never);
+    await users.save({ id: ADMIN_ID, email: 'admin', displayName: 'admin', role: 'admin', status: 'active', createdAt: T0, updatedAt: T0 } as never);
+    await link.replaceMirror('flows', [{ rowId: ROW, flowId: FLOW, flowName: 'Follow up', stepId: STEP, stepName: 'Call', stepOrder: 2,
+      personId: PER, name: 'Sample Kid', due: null, assignedTo: '', grade: 8, gender: 'female', mobile: null, mobileIsParent: false, consent: 'ok' }] as never,
+      { takenAt: '2026-10-16T08:00:00.000Z', consoleId: CONSOLE });
+    const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions, serviceAttendance: attendance,
+      limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => NOW } as never);
+    const sync = makeSyncService({ link, settings, students, users, now: () => NOW } as never);
+    const claim = (max: number) => sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false,
+      pollSeconds: 60, capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', removeFromFlowStep: 'live' } as never, max, leaseSeconds: 300, linkRev: 7 });
+    await claim(0);
+    return { svc, sync, claim };
+  }
+  for (const [note, want] of [['failed', 'failed'], ['sent', undefined], [undefined, undefined]] as const) {
+    it(`a sent remove with note ${note} lists note ${want}`, async () => {
+      const h = await setup();
+      const id = u(9001);
+      const r = (await h.svc.batch(ADMIN, { device: { id: 'd', label: 't' }, items: [{ kind: 'action', id, type: 'removeFromFlowStep',
+        payload: { rowId: ROW, flowId: FLOW, stepId: STEP, personId: PER }, note: null, leaderId: null }] })).results[0]!;
+      expect(r.outcome).toBe('saved');
+      expect((await h.claim(5)).rows.map((x: any) => x.id)).toContain(id);
+      await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'sent', sentLogKey: 'k', ...(note ? { note } : {}) }] } as never);
+      const rows = await h.svc.listActions(ADMIN, { ids: id });
+      expect(rows[0]!.status).toBe('sent');
+      expect(rows[0]!.note).toBe(want);
+      expect('note' in rows[0]!).toBe(want !== undefined);
+    });
+  }
 });
