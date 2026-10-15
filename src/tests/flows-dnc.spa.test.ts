@@ -116,7 +116,7 @@ describe('R1 DNC on flow rows: no number, no Text, Complete blocked, Remove only
     reset();
     L.status = { console: { lastSeenAt: '2026-10-15T00:00:00Z', capabilities: { completeStep: 'live' } } };
     expect(f._lkCanRemove(R({}))).toBe(false);
-    L.status.console.capabilities.removeFromFlowStep = 'shadow';
+    L.status.console.capabilities.removeFromFlowStep = 'live';
     expect(f._lkCanRemove(R({}))).toBe(true);
   });
   it('DNC row renders red with the badge and no tick box', () => {

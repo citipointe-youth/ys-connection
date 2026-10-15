@@ -205,15 +205,10 @@ describe('A3 / X9 lines by action type', () => {
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
   });
-  it('the practice banner picks the line by the screen types', () => {
+  it('S1: a shadow capability no longer raises a practice banner (practice mode is gone)', () => {
     const st = (caps: any) => ({ console: { lastSeenAt: '2026-10-16T06:12:00.000Z', online: true, inWindow: true, pollSeconds: 60,
       capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', ...caps }, consoles: 1 }, mirrors: {} });
-    const b = (types: string[], caps: any) => strip(makeEnv().fns._lkBanner(types, st(caps)));
-    expect(b(['checkIn', 'checkOut'], { checkOut: 'shadow' })).toContain('Check out the usual way.');
-    expect(b(['checkIn', 'checkOut'], { checkOut: 'shadow' })).not.toContain('Check in the usual way.');
-    expect(b(['completeStep'], { completeStep: 'shadow' })).toContain('Practice mode: not sent to Elvanto. Do it in Elvanto as usual.');
-    const both = b(['submitReport', 'editReport'], { submitReport: 'shadow', editReport: 'shadow' });
-    expect(both.split('Do it in Elvanto as usual.').length).toBe(2); // one line, not two
+    expect(strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ checkOut: 'shadow' })))).not.toContain('Practice');
   });
 });
 
@@ -236,9 +231,9 @@ describe('F1.1 _lkBanner', () => {
       expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct 4:12 pm');
     } finally { vi.useRealTimers(); }
   });
-  it('practice mode, check-out locked, off hides', () => {
+  it('check-out locked, off hides; no practice line (S1)', () => {
     const b = strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkIn: 'shadow', checkOut: 'locked' }) })));
-    expect(b).toContain('Practice mode: not sent to Elvanto. Check in the usual way.');
+    expect(b).not.toContain('Practice');
     expect(b).toContain("Check-out: this isn't connected yet. Do it in Elvanto.");
     expect(b).not.toContain('last seen');
     const off = makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkOut: 'off' }) }));

@@ -9899,8 +9899,6 @@ function _lkBanner(types, st) {
   if (off) out.push(['bad', 'Console offline since ' + _lkSeen(off) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   else if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  types.filter((t) => caps[t] === 'shadow').map(_lkPracticeLine)
-    .forEach((l) => { if (!out.some((x) => x[1] === l)) out.push(['practice', l]); });
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
@@ -11707,7 +11705,6 @@ function _ikBanner(st, list, tab) {
   if (!c || !c.lastSeenAt) out.push(['warn', "The console has not been seen yet. Saves wait until it's back."]);
   else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + ". Saves wait until it's back."]);
   const types = tab === 'consent' ? ['consentSave'] : ['intakeSave', 'intakeText'];
-  if (types.some((t) => caps[t] === 'shadow')) out.push(['practice', 'Practice: nothing is sent to Elvanto']);
   if (tab !== 'consent' && caps.intakeText === 'locked') out.push(['practice', "The parent text isn't connected yet. Send it in Elvanto."]);
   if (list) {
     if (!list.takenAt) out.push(['warn', 'Not checked yet. Press Refresh to ask the console.']);
@@ -12752,7 +12749,7 @@ function _ikFixBanner(st) {
   const caps = (st && st.console && st.console.capabilities) || {}, cap = caps.consentFix;
   const t = !cap || cap === 'off' ? "Make profile match form isn't on this console yet. Change the profile in Elvanto."
     : cap === 'locked' ? "The app isn't allowed to change profiles yet. Change them in Elvanto (each row says what to change)."
-    : cap === 'shadow' ? 'Practice: Make profile match form changes nothing in Elvanto.' : '';
+    : '';
   return t ? `<div class="lk-alert practice">${icS('info')}<div>${esc(t)}</div></div>` : '';
 }
 function _ikLkPage(kind, st) {

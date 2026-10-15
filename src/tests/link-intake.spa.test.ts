@@ -228,10 +228,9 @@ describe('banner lines and stale greying', () => {
     expect(b(ST({ lastSeenAt: null }), LIST())).toContain('The console has not been seen yet.');
     expect(b(ST(), LIST())).not.toContain('last seen');
   });
-  it('practice when a save type is shadow; the consent tab looks at consentSave only', () => {
-    expect(b(ST({ caps: { intakeSave: 'shadow', intakeText: 'live', consentSave: 'live' } }), LIST())).toContain('Practice: nothing is sent to Elvanto');
-    expect(b(ST({ caps: { intakeSave: 'shadow', consentSave: 'live' } }), LIST(), 'consent')).not.toContain('Practice');
-    expect(b(ST({ caps: { intakeSave: 'live', consentSave: 'shadow' } }), LIST(), 'consent')).toContain('Practice: nothing is sent to Elvanto');
+  it('S1: no practice banner, whatever the save types say', () => {
+    expect(b(ST({ caps: { intakeSave: 'shadow', intakeText: 'live', consentSave: 'shadow' } }), LIST())).not.toContain('Practice');
+    expect(b(ST({ caps: { intakeSave: 'live', consentSave: 'shadow' } }), LIST(), 'consent')).not.toContain('Practice');
   });
   it('stale age, cut, answers last changed in the console', () => {
     expect(b(ST(), LIST({ stale: true, takenAt: iso((2 * 60 + 10) * 60_000 + 5000) }))).toContain('Plan 2 h 10 m old. Refresh first.');
