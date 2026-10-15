@@ -724,7 +724,7 @@ describe('integration review fixes (run 2026-10-15)', () => {
     expect(x.msg).toBe("Couldn't read the answer. Search again.");
     const y: any = { kind: 'forms', since: now };
     f._ikLkApply(y, { status: 'waiting', reason: 'console-busy' }, now);
-    expect(strip(f._ikLkStatusHtml('forms', y, ST6()))).toContain("couldn't read Elvanto just now");
+    expect(strip(f._ikLkStatusHtml('forms', y, ST6()))).toContain('busy with the service');
   });
 });
 
@@ -754,7 +754,7 @@ describe('Unlinked consent forms (L6)', () => {
     expect(strip(h)).toContain('Also on the form: Pat Sample');
     expect(strip(h)).toContain('DO NOT CONTACT');
     expect(strip(h)).toContain('Find person');
-    expect(strip(h)).toContain('Linked to Riley Sample (console only)');
+    expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
     expect(strip(h)).toContain('Unlink');
     expect(strip(e.fns._ikClRow(x.res.rows[0], 0, '', ST6()))).toContain('Console needs an update'); // no consentLink capability
   });

@@ -13062,7 +13062,7 @@ function _ikDncLine(dnc, name) {
 function _ikLkStatusHtml(kind, x, st) {
   const note = (t) => (t ? `<div class="lk-d lk-mb">${esc(t)}</div>` : ''), p = x.prog; // S5: a bar, real numbers once the console posts them
   if (x.st === 'asking') return progBar('Sending your search');
-  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason === 'console-busy' ? "The console is busy with the service. Lists open again after the service. It couldn't read Elvanto just now."
+  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason === 'console-busy' ? "The console is busy with the service. Lists open again after the service."
     : x.reason ? "The console couldn't read Elvanto just now. It tries again in a few minutes." : _ikSeenLine(st).trim());
   if (x.st === 'working') return progBar(p ? p.stage : 'The console is reading Elvanto', p && p.done, p && p.total) + note(kind === 'mismatches' ? 'A first check can take a few minutes.' : '');
   if (x.st === 'timeout' || x.st === 'offline' || x.st === 'failed') {
