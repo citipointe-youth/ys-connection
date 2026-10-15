@@ -37,7 +37,7 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE).then((c) => c.put(request, clone));
         }
         return res;
-      }).catch(() => caches.match(request))
+      }).catch(() => caches.match(request, { ignoreSearch: true })) // F-52: /?nav=notices offline gets the shell
     );
     return;
   }

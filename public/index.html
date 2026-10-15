@@ -1506,7 +1506,12 @@ function _moFitViewport() {
   mo.style.top = kb ? vv.offsetTop + 'px' : ''; mo.style.height = kb ? vv.height + 'px' : ''; mo.style.bottom = kb ? 'auto' : '';
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
-function closeModal() { const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null; }
+function closeModal() {
+  const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
+  // F-52: the tap that closed the sheet must not land on the page underneath (iOS ghost click).
+  const app = document.getElementById('app');
+  if (app) { app.style.pointerEvents = 'none'; clearTimeout(closeModal._t); closeModal._t = setTimeout(() => { app.style.pointerEvents = ''; }, 350); }
+}
 
 // Irreversible bulk actions: require typing a word to arm the confirm button
 // (Recommendation 5). Reuses modal(); onConfirm is a zero-arg function.
