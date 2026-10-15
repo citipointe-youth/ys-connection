@@ -1,0 +1,21 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "results": [
+    {
+      "id": "0a000000-0000-4000-8000-000000000201",
+      "outcome": "shadowed",
+      "sentLogKey": "removeFromStep:ys:f7000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000202",
+      "outcome": "planned"
+    },
+    {
+      "id": "0a000000-0000-4000-8000-000000000203",
+      "outcome": "refused",
+      "reason": "form-unknown",
+      "detail": "That is not the newest approved consent form for this person."
+    }
+  ]
+}

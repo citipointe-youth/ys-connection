@@ -67,6 +67,14 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
     items: z.array(z.union([z.object({ kind: z.literal('cancel'), id: z.string() }).strict(),
       z.object({ kind: z.literal('action'), id: z.string(), type: z.enum(C.INTAKE_TYPES), payload: z.record(z.unknown()),
         note: z.string().max(1900).nullable(), leaderId: z.null() }).strict()])).min(1) }).strict(),
+  // Rev 6 (run 2026-10-15 lane A)
+  'claim-request-rev6.json': C.ClaimRequest,
+  'claim-response-rev6.json': C.ClaimResponse,
+  'push-roster-rev6.json': C.PUSH_SCHEMAS.roster,
+  'push-flows-rev6.json': C.PUSH_SCHEMAS.flows,
+  'push-consent-lookup-forms.json': C.PUSH_SCHEMAS.consentLookup,
+  'push-consent-lookup-mismatches.json': C.PUSH_SCHEMAS.consentLookup,
+  'result-request-rev6.json': C.ResultRequest,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -74,7 +82,8 @@ describe('link contract: every fixture parses with its schema', () => {
   for (const [f, schema] of Object.entries(FIXTURES)) it(f, () => { schema.parse(load(f)); });
 
   it('claim-response (+ claim-response-rev4, X19) has one row per action type; each payload parses with its type schema', () => {
-    const rows = [...C.ClaimResponse.parse(load('claim-response.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev4.json')).rows];
+    const rows = [...C.ClaimResponse.parse(load('claim-response.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev4.json')).rows,
+      ...C.ClaimResponse.parse(load('claim-response-rev6.json')).rows];
     expect(rows.map((r) => r.type).sort()).toEqual([...C.ACTION_TYPES].sort());
     for (const r of rows) (C.PAYLOAD_SCHEMAS[r.type] as z.ZodTypeAny).parse(r.payload);
   });
@@ -154,7 +163,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(5); // 2026-10-14b: rev 5 = /sync/leaders + flows push steps
+    expect(C.LINK_REV).toBe(6); // 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -309,7 +318,13 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   it('0021: the type check lists every ACTION_TYPE; RLS on every table it creates; additive', () => {
     const sql = readFileSync(MIG, 'utf8');
     const check = sql.slice(sql.indexOf('add constraint link_outbox_type_check'), sql.indexOf('));') + 2);
-    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort());
+    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix'];
+    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => !REV6.includes(t)).sort());
+    const sql27 = readFileSync(join(ROOT, 'supabase', 'migrations', '0027_link_rev6.sql'), 'utf8');
+    const at27 = sql27.indexOf('add constraint link_outbox_type_check'), check27 = sql27.slice(at27, sql27.indexOf('));', at27) + 2);
+    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort()); // 0027: every type
+    expect(sql27).toMatch(/alter table link_consent_lookup enable row level security/);
+    expect(sql27).not.toMatch(/\b(drop table|rename|alter column)\b/i);
     const tables = [...sql.matchAll(/create table if not exists (\w+)/g)].map((m) => m[1]!);
     expect(tables).toEqual(['link_intake_dates', 'link_intake_rows', 'link_intake_view']);
     for (const t of tables) expect(sql).toMatch(new RegExp(`alter table ${t} enable row level security`));
@@ -328,5 +343,28 @@ describe('UX batch 2026-10-14b (rev 5): optional only', () => {
   it('T8: leaders request is the envelope; the reply is names', () => {
     expect(C.LeadersRequest.parse({ contractVersion: 1, consoleId: load('claim-request.json').consoleId }).contractVersion).toBe(1);
     expect(C.LeadersResponse.parse({ contractVersion: 1, names: ['Sam Lee'] }).names).toEqual(['Sam Lee']);
+  });
+});
+
+describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)', () => {
+  it('roster and flow rows carry an optional consent flag; an unknown value is refused', () => {
+    expect(C.PUSH_SCHEMAS.roster.parse(load('push-roster-rev6.json')).rows.map((r) => r.consent)).toEqual(['ok', 'contact', 'all', 'unknown']);
+    C.PUSH_SCHEMAS.roster.parse(load('push-roster.json')); // an older console sends none
+    const bad = clone(load('push-roster-rev6.json')); bad.rows[0].consent = 'maybe'; rejects(C.PUSH_SCHEMAS.roster, bad);
+    const badF = clone(load('push-flows-rev6.json')); badF.rows[0].consent = 'no'; rejects(C.PUSH_SCHEMAS.flows, badF);
+  });
+  it('isDnc is contact or all only', () => {
+    expect(['ok', 'contact', 'all', 'unknown', null, undefined].map((c) => C.isDnc(c))).toEqual([false, true, true, false, false, false]);
+  });
+  it('the three new payloads are strict', () => {
+    rejects(C.PAYLOAD_SCHEMAS.removeFromFlowStep, { rowId: load('claim-response-rev6.json').rows[0].payload.rowId });
+    rejects(C.PAYLOAD_SCHEMAS.consentLookup, { kind: 'forms', page: 0, ref: '0a000000-0000-4000-8000-000000000202' });
+    rejects(C.PAYLOAD_SCHEMAS.consentLookup, { kind: 'forms', page: 1, ref: '0a000000-0000-4000-8000-000000000202', q: 'a name' });
+    rejects(C.PAYLOAD_SCHEMAS.consentFix, { personId: '9e000000-0000-4000-8000-000000000003' });
+  });
+  it('a consentLookup push is strict: unknown keys and a mismatch row with no diff are refused', () => {
+    const f = clone(load('push-consent-lookup-forms.json')); f.rows[0].email = 'x@example.com'; rejects(C.PUSH_SCHEMAS.consentLookup, f);
+    const m = clone(load('push-consent-lookup-mismatches.json')); m.rows[0].diffs = []; rejects(C.PUSH_SCHEMAS.consentLookup, m);
+    const k = clone(load('push-consent-lookup-forms.json')); k.kind = 'mismatches'; rejects(C.PUSH_SCHEMAS.consentLookup, k);
   });
 });

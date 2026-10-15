@@ -107,7 +107,7 @@ describe('sync.service claim', () => {
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     expect(reply.contractVersion).toBe(1);
     // X19: the intake types are in claim-response-rev4.json (this console lists no intake capability).
-    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t)).sort());
+    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix'].includes(t)).sort()); // rev 6 types: claim-response-rev6.json
     for (const row of reply.rows) {
       expect(PAYLOAD_SCHEMAS[row.type as ActionType].safeParse(row.payload).success).toBe(true);
     }
@@ -319,12 +319,12 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
   it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
     const { svc, link } = await setup();
     const old = await svc.claim(claimReq);
-    expect(old.linkRev).toBe(5);
+    expect(old.linkRev).toBe(6);
     expect(old.intake).toBeUndefined(); // X19: no intake hint for a console below rev 4
     expect((await link.listConsoles())[0]!.linkRev).toBe(1);
     await svc.claim({ ...claimReq, linkRev: 2 });
     expect((await link.listConsoles())[0]!.linkRev).toBe(2);
-    expect(ClaimResponse.parse(old).linkRev).toBe(5);
+    expect(ClaimResponse.parse(old).linkRev).toBe(6);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

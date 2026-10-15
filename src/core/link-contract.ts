@@ -17,17 +17,26 @@ export const LINK_CONTRACT_VERSION = 1;
 // UX batch 2026-10-14b (T8, T12), optional only (rev 5): POST /sync/leaders (the app's active leader names, asked for only
 // by a console whose claim reply said linkRev >= 5) and the flows push's optional `steps` (every step of each flow, in order,
 // so an empty step still shows; an older app strips the key, an older console sends none and the app lists steps from rows).
-export const LINK_REV = 5;
+// LINK_REV 6 (run 2026-10-15, lane A; ux-run-2026-10-15/CONTRACT-REV6.md), optional only: roster + flow rows carry `consent`
+// (R1 DO NOT CONTACT); types removeFromFlowStep (R4), consentLookup + consentFix (R2 b/c); push kind consentLookup (the
+// answer to one consentLookup row). The console sends them only when the app's claim reply says linkRev >= 6.
+export const LINK_REV = 6;
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
-  'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
+  'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
+  'removeFromFlowStep', 'consentLookup', 'consentFix'] as const;
+/** Rev 6: the Consents screen's two types (admin only, module intakeAdmin; never leased while it is off). */
+export const CONSENT_TYPES = ['consentLookup', 'consentFix'] as const;
+/** Rev 6 (R1): the profile consent flag. contact = the "contact with my child" opt-out; all = TOTAL non-consent date. */
+export const CONSENT_FLAGS = ['ok', 'contact', 'all', 'unknown'] as const;
+export const isDnc = (c: string | null | undefined) => c === 'contact' || c === 'all';
 /** X19: the four intake types (24 h expiry, admin only, module intakeAdmin). */
 export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
 // locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
 export const CAPABILITIES = ['live', 'shadow', 'locked', 'off'] as const;
-export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan'] as const;
+export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const INTAKE_MODES = ['off', 'on'] as const; // X19 (R3): a plain switch, no shadow
@@ -38,7 +47,8 @@ export const REASONS = ['locked', 'no-room', 'person-unknown', 'report-exists', 
   'did-not-meet-conflict', 'step-moved', 'assignee-needed', 'ambiguous-first-timer', 'too-old', 'not-landed',
   'console-cannot-read', 'unknown', 'lease-lost', 'note-unreadable', 'already', 'console-busy', 'awaiting-approval',
   'group-unknown', 'leader-member', // X18 (T6): the group is gone in Elvanto; a leader is removed in Elvanto only
-  'needs-you', 'plan-changed', 'saved-before', 'chain-not-done', 'bad-answer'] as const; // X19 (T4): intake chains
+  'needs-you', 'plan-changed', 'saved-before', 'chain-not-done', 'bad-answer', // X19 (T4): intake chains
+  'form-unknown'] as const; // rev 6: consentFix's form is not that person's newest approved consent form
 // Spec 3.1 (+ the two existing transient 503 codes from error.middleware.ts).
 export const SYNC_ERROR_CODES = ['UNAUTHORIZED', 'LINK_OFF', 'LINK_CONTRACT_MISMATCH', 'VALIDATION_ERROR',
   'SERVICE_UNAVAILABLE', 'REQUEST_TIMEOUT'] as const;
@@ -100,6 +110,12 @@ export const PAYLOAD_SCHEMAS = {
   consentSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(4) }).strict(),
   intakeText: z.object({ date: Ymd, row: Uuid,
     key: StepKey.refine((k) => k.startsWith('complete:parent:'), 'the parent text step') }).strict(),
+  // Rev 6 (R4): admin/director; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
+  removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
+  // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
+  consentLookup: z.object({ kind: z.enum(['forms', 'mismatches']), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
+  // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
+  consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -111,7 +127,9 @@ export const ClaimRequest = z.object({
   capabilities: z.object({ checkIn: Cap, checkOut: Cap, submitReport: Cap, editReport: Cap, completeStep: Cap, firstTimerCheckIn: Cap,
     addGroupMember: Cap.optional(), removeGroupMember: Cap.optional(),
     // X19: the intake types, sent only when the app's linkRev >= 4 (an older app 400s on unknown keys).
-    intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional() }).strict(),
+    intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
+    // Rev 6: sent only when the app's linkRev >= 6.
+    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional() }).strict(),
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
@@ -155,8 +173,9 @@ export const ResultResponse = z.object({
 });
 
 // ---- POST /sync/push/:kind (spec 3.4). One bad row rejects the whole push.
+const Consent = z.enum(CONSENT_FLAGS);
 const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string().trim().max(60), gender: Gender.nullable(), grade: Grade,
-  kind: z.enum(['student', 'leader', 'other']) });
+  kind: z.enum(['student', 'leader', 'other']), consent: Consent.optional() }); // rev 6 (R1); missing = unknown
 const ServiceRow = z.object({ serviceTimeId: Uuid, serviceId: Uuid, name: Text(120), startsAt: Iso, ymd: Ymd,
   rooms: z.array(z.object({ id: Uuid, name: Text(120) })),
   // T3: the names, so a checked-in person with no roster row still shows by name.
@@ -173,7 +192,7 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   stepOrder: z.number().int().min(0), personId: Uuid.nullable(), name: Text(120), due: Ymd.nullable(), assignedTo: Text(120),
   // T4: the person's own grade/gender, and their mobile as bare digits (else the parent's, mobileIsParent true).
   grade: Grade.optional(), gender: Gender.nullable().optional(), mobile: z.string().regex(/^\d{6,15}$/).nullable().optional(),
-  mobileIsParent: z.boolean().optional() });
+  mobileIsParent: z.boolean().optional(), consent: Consent.optional() }); // rev 6 (R1)
 // T12 (rev 5): one step of a pushed flow, empty or not.
 export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0) });
 const push = <T extends z.ZodTypeAny>(row: T) =>
@@ -235,9 +254,25 @@ export const IntakePush = z.object({ ...intakeEnvelope,
   .refine(uniqueKeys, UNIQUE);
 export const ConsentPush = z.object({ ...intakeEnvelope, rows: z.array(ConsentRow).max(100) }).refine(uniqueKeys, UNIQUE);
 
+// ---- Rev 6 (R2 b/c): the answer to one consentLookup row (requestId = its outbox id); one page (25 rows by default).
+const Dmy40 = Cut(40);
+const OptOuts = z.array(Cut(80)).max(10);
+export const ConsentFormRow = z.object({ subId: Uuid, personId: Uuid.nullable(), name: Cut(120), submitted: Ymd.nullable(),
+  status: z.enum(['approved', 'pending']), consentDate: Dmy40, contactOptOut: z.boolean(), total: Dmy40, otherOptOuts: OptOuts }).strict();
+const ConsentSide = z.object({ consentDate: Dmy40, total: Dmy40, optOuts: OptOuts }).strict();
+export const CONSENT_DIFFS = ['consent date', 'TOTAL non-consent date', 'opt-outs'] as const;
+export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: Cut(120), submitted: Ymd.nullable(),
+  diffs: z.array(z.enum(CONSENT_DIFFS)).min(1).max(3), form: ConsentSide, profile: ConsentSide }).strict();
+const lookupEnvelope = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, requestId: Uuid,
+  page: z.number().int().min(1).max(1000), pageSize: z.number().int().min(1).max(100), total: z.number().int().min(0).nullable() };
+export const ConsentLookupPush = z.discriminatedUnion('kind', [
+  z.object({ ...lookupEnvelope, kind: z.literal('forms'), rows: z.array(ConsentFormRow).max(100) }).strict(),
+  z.object({ ...lookupEnvelope, kind: z.literal('mismatches'), rows: z.array(ConsentMismatchRow).max(100) }).strict(),
+]);
+
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
   flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
-  intakePlan: IntakePush, consentPlan: ConsentPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
+  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
 

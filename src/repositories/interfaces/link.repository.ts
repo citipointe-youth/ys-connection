@@ -1,7 +1,7 @@
 // Elvanto link data (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §4.1). Tables from migration 0017.
 import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, ClaimArgs, ClaimedRow,
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
-  ResultReply, LinkFlowAssign, LinkFlowStep } from '../../core/link-types';
+  ResultReply, LinkFlowAssign, LinkFlowStep, Consent } from '../../core/link-types';
 
 export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
@@ -11,7 +11,7 @@ export interface LinkActionFilter {
 
 /** A roster push row as the console sends it (contract RosterRow). The app keeps student_id/match itself. */
 export interface LinkRosterPushRow { personId: string; firstName: string; lastName: string;
-  gender: 'male' | 'female' | null; grade: number | null; kind: 'student' | 'leader' | 'other'; }
+  gender: 'male' | 'female' | null; grade: number | null; kind: 'student' | 'leader' | 'other'; consent?: Consent; }
 
 /**
  * Rows per kind for replaceMirror: roster = LinkRosterPushRow, services = LinkServiceRow,

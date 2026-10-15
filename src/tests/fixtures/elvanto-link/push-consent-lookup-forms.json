@@ -1,0 +1,47 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T10:01:30.000Z",
+  "requestId": "0a000000-0000-4000-8000-000000000202",
+  "page": 1,
+  "pageSize": 25,
+  "kind": "forms",
+  "total": 3,
+  "rows": [
+    {
+      "subId": "5c000000-0000-4000-8000-000000000001",
+      "personId": "9e000000-0000-4000-8000-000000000001",
+      "name": "Alex Sample",
+      "submitted": "2026-10-10",
+      "status": "approved",
+      "consentDate": "10/10/2026",
+      "contactOptOut": true,
+      "total": "",
+      "otherOptOuts": [
+        "Photos on social media"
+      ]
+    },
+    {
+      "subId": "5c000000-0000-4000-8000-000000000002",
+      "personId": null,
+      "name": "Riley Sample",
+      "submitted": "2026-10-09",
+      "status": "pending",
+      "consentDate": "09/10/2026",
+      "contactOptOut": false,
+      "total": "09/10/2026",
+      "otherOptOuts": []
+    },
+    {
+      "subId": "5c000000-0000-4000-8000-000000000003",
+      "personId": "9e000000-0000-4000-8000-000000000003",
+      "name": "Jamie Test",
+      "submitted": null,
+      "status": "approved",
+      "consentDate": "",
+      "contactOptOut": false,
+      "total": "",
+      "otherOptOuts": []
+    }
+  ]
+}

@@ -170,7 +170,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         const old = this.rosterRows.get(p.personId);
         this.rosterRows.set(p.personId, { personId: p.personId, firstName: p.firstName, lastName: p.lastName,
           gender: p.gender, grade: p.grade, kind: p.kind, active: true, studentId: old?.studentId ?? null,
-          match: old?.match ?? 'none', updatedAt: now });
+          match: old?.match ?? 'none', updatedAt: now, consent: p.consent ?? null });
       }
       for (const r of this.rosterRows.values()) if (!seen.has(r.personId) && r.active) { r.active = false; r.updatedAt = now; }
     } else if (kind === 'services') {
@@ -180,7 +180,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         history: clone(g.history ?? []) }));
     } else {
       this.flowRows = (rows as LinkFlowRow[]).map((f) => ({ ...clone(f), grade: f.grade ?? null, gender: f.gender ?? null,
-        mobile: f.mobile ?? null, mobileIsParent: f.mobileIsParent ?? false }));
+        mobile: f.mobile ?? null, mobileIsParent: f.mobileIsParent ?? false, consent: f.consent ?? null }));
       const keep = new Set(this.flowRows.map((f) => `${f.flowId}:${f.personId}`));
       for (const k of this.assigns.keys()) if (!keep.has(k)) this.assigns.delete(k);
       this.steps = meta.steps ? clone(meta.steps) : null;

@@ -15,6 +15,7 @@ export type Reason = (typeof REASONS)[number];
 export type Capability = 'live' | 'shadow' | 'locked' | 'off';
 /** X18: a type the console does not list (an older console) counts as off: never leased, new rows refused. */
 export type Capabilities = Partial<Record<ActionType, Capability>>;
+export type Consent = 'ok' | 'contact' | 'all' | 'unknown';
 export type Match = 'auto' | 'manual' | 'none' | 'ambiguous' | 'ignored';
 export type IgnoredWhy = 'unknown-id' | 'not-leased' | 'already-final' | 'bad-transition';
 export type ResultItem = z.infer<typeof ResultItemSchema>;
@@ -48,7 +49,7 @@ export interface ClaimedRow { row: OutboxRow; reclaimed: boolean; noteUnreadable
 export interface MirrorStateRow { kind: MirrorKind; takenAt: string; consoleId: string; rowCount: number; appliedAt: string; }
 export interface LinkRosterRow { personId: string; firstName: string; lastName: string; gender: 'male' | 'female' | null;
   grade: number | null; kind: 'student' | 'leader' | 'other'; active: boolean; studentId: string | null; match: Match;
-  updatedAt: string; }
+  updatedAt: string; /** Rev 6 (R1): null = unknown (an older console, or never read). */ consent?: Consent | null; }
 export interface LinkServiceRow { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string;
   rooms: { id: string; name: string }[];
   checkedIn: { personId: string; roomId: string; firstName?: string; lastName?: string }[]; } // T3: names when pushed
@@ -65,7 +66,8 @@ export interface LinkGroupRow { groupId: string; name: string; grade: number | n
 /** T4: grade/gender/mobile are the person's own (null/false from an older console); mobile is plaintext here. */
 export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; stepId: string; stepName: string;
   stepOrder: number; personId: string | null; name: string; due: string | null; assignedTo: string;
-  grade: number | null; gender: 'male' | 'female' | null; mobile: string | null; mobileIsParent: boolean; }
+  grade: number | null; gender: 'male' | 'female' | null; mobile: string | null; mobileIsParent: boolean;
+  /** Rev 6 (R1): null = unknown (an older console). */ consent?: Consent | null; }
 /** T12: one step of a pushed flow (the flows push's optional `steps`). */
 export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; }
 /** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */

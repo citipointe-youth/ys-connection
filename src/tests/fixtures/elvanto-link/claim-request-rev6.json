@@ -1,0 +1,24 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "consoleLabel": "laptop",
+  "consoleVersion": "11.1@185d8d6",
+  "inWindow": true,
+  "pollSeconds": 60,
+  "capabilities": {
+    "checkIn": "shadow",
+    "checkOut": "locked",
+    "submitReport": "shadow",
+    "editReport": "shadow",
+    "completeStep": "shadow",
+    "firstTimerCheckIn": "shadow",
+    "addGroupMember": "live",
+    "removeGroupMember": "live",
+    "removeFromFlowStep": "shadow",
+    "consentLookup": "live",
+    "consentFix": "locked"
+  },
+  "max": 6,
+  "leaseSeconds": 180,
+  "linkRev": 6
+}

@@ -97,6 +97,10 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'intakeSave': return `is:${p.date}:${p.row}`;
     case 'consentSave': return `cs:${p.date}:${p.row}`;
     case 'intakeText': return `it:${p.date}:${p.row}`;
+    // Rev 6: one open removal / fix per row / person; a lookup is its own request (ref = its id).
+    case 'removeFromFlowStep': return `rm:${p.rowId}`;
+    case 'consentLookup': return `cl:${p.ref}`;
+    case 'consentFix': return `cf:${p.personId}`;
   }
 }
 

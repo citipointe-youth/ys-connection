@@ -49,7 +49,7 @@ function toConsole(r: Row): ConsoleRow {
 function toRoster(r: Row): LinkRosterRow {
   return { personId: r.person_id, firstName: r.first_name, lastName: r.last_name, gender: r.gender ?? null,
     grade: r.grade ?? null, kind: r.kind, active: r.active, studentId: r.student_id ?? null, match: r.match as Match,
-    updatedAt: toIso(r.updated_at) };
+    updatedAt: toIso(r.updated_at), consent: r.consent ?? null };
 }
 function toLog(r: Row): LinkLogRow {
   return { id: r.id, at: toIso(r.at), userId: r.user_id, login: r.login, deviceId: r.device_id ?? null,
@@ -275,9 +275,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
         for (const b of chunk(push)) {
           await tx`
             insert into link_roster ${tx(b.map((p) => ({ person_id: p.personId, first_name: p.firstName,
-              last_name: p.lastName, gender: p.gender, grade: p.grade, kind: p.kind, active: true })))}
+              last_name: p.lastName, gender: p.gender, grade: p.grade, kind: p.kind, active: true, consent: p.consent ?? null })))}
             on conflict (person_id) do update set first_name = excluded.first_name, last_name = excluded.last_name,
-              gender = excluded.gender, grade = excluded.grade, kind = excluded.kind, active = true, updated_at = now()`;
+              gender = excluded.gender, grade = excluded.grade, kind = excluded.kind, active = true, consent = excluded.consent,
+              updated_at = now()`;
         }
         const ids = push.map((p) => p.personId);
         if (ids.length) {
@@ -307,7 +308,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
             flow_name: f.flowName, step_id: f.stepId, step_name: f.stepName, step_order: f.stepOrder,
             person_id: f.personId, name: f.name, due: f.due, assigned_to: f.assignedTo, grade: f.grade ?? null,
             gender: f.gender ?? null, mobile: maybeEncrypt(f.mobile ?? null, mobileAad(f.rowId)),
-            mobile_is_parent: f.mobileIsParent ?? false })))}`;
+            mobile_is_parent: f.mobileIsParent ?? false, consent: f.consent ?? null })))}`;
         }
         // T6: an assignment lasts while its person is still in that flow.
         await tx`
@@ -346,7 +347,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
       rowId: r.row_id, flowId: r.flow_id, flowName: r.flow_name, stepId: r.step_id, stepName: r.step_name,
       stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to,
       grade: r.grade ?? null, gender: r.gender ?? null, mobile: readMobile(r),
-      mobileIsParent: r.mobile_is_parent ?? false }));
+      mobileIsParent: r.mobile_is_parent ?? false, consent: r.consent ?? null }));
   }
 
   async flowSteps(): Promise<LinkFlowStep[] | null> {
