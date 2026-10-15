@@ -805,6 +805,18 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-row-act{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
+/* R1 DO NOT CONTACT + R4 flow steps (run 2026-10-15) */
+.c-dnc{background:var(--danger);color:#fff;letter-spacing:.03em}
+.dnc-banner{display:flex;gap:10px;align-items:flex-start;background:var(--danger);color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
+.dnc-banner b{display:block;font-size:17px;font-weight:800;letter-spacing:.05em}.dnc-banner svg{flex:none;margin-top:3px}
+.lk-alert.bad{background:var(--danger-light);color:#991b1b}
+.lk-row.lk-dnc{background:var(--danger-light);box-shadow:inset 4px 0 0 var(--danger)}
+.lk-tick{width:22px;height:22px;flex:none;margin:0;accent-color:var(--accent)}.lk-tick-sp{width:22px;flex:none}
+.lk-selall{font-size:13px;margin:2px 0 8px;min-height:36px;color:var(--ink-mid)}
+.lk-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px}.lk-bulk>span{flex:1;font-weight:700;font-size:14px}
+.fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}
+.fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
+.lk-ff .fc{min-height:36px}
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
@@ -1917,6 +1929,12 @@ function phoneLink(raw, firstName, isParent) {
   const num = esc(String(raw).replace(/['\\]/g, ''));
   return `<a onclick="callPhone('${num}','${fn}',${isParent ? 'true' : 'false'})" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${esc(fmtPhone(raw))}</a>`;
 }
+// R1 DO NOT CONTACT (LINK_REV 6): the server strips mobile + parentPhone for non-admin logins; admin/director keep the
+// numbers and see the same banner. s.dnc is the server's flag (false or missing = show nothing).
+function dncChip(s) { return s && s.dnc ? '<span class="chip c-dnc">DO NOT CONTACT</span>' : ''; }
+function dncBanner(s) {
+  return s && s.dnc ? `<div class="dnc-banner" role="alert">${icS('alert')}<div><b>DO NOT CONTACT</b>The family asked us not to contact this student. Don't call or text the student or their parent.</div></div>` : '';
+}
 // A student is "rising" if their service OR lifegroup rate improved by >=20
 // points vs last term (needs data in both terms to judge).
 function isRising(s) {
@@ -2809,7 +2827,7 @@ function _scopedWeeklyBirthdays(students) {
   const today = new Date();
   return students
     .filter(s => _hasAttended(s) && _isBirthdayInWeek(s.dateOfBirth, today))
-    .map(s => ({ id: s.id, firstName: s.firstName, fullName: `${s.firstName} ${s.lastName}`.trim(), mobile: s.mobile, parentPhone: s.parentPhone }))
+    .map(s => ({ id: s.id, firstName: s.firstName, fullName: `${s.firstName} ${s.lastName}`.trim(), mobile: s.mobile, parentPhone: s.parentPhone, dnc: !!s.dnc }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 function _revalidateHome() {
@@ -3216,7 +3234,7 @@ function _followupListHtml(title, items, emptyMsg, stream) {
     // contrast against those different backgrounds isn't independently tunable).
     h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(15,23,42,.12)">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px">${esc(s.fullName)}</div>
+        <div style="font-weight:600;font-size:14px">${esc(s.fullName)} ${dncChip(s)}</div>
       </div>
       ${phone ? `<div style="font-size:13px;white-space:nowrap" onclick="event.stopPropagation()">${phoneLink(phone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}
     </div>`;
@@ -4036,7 +4054,7 @@ async function renderUpcomingBirthdays() {
     body += `<div class="li" style="position:relative;align-items:flex-start">
       <div class="li-body">
         <div style="padding-right:56px">
-          <div class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</div>
+          <div class="li-title">${esc(s.firstName)} ${esc(s.lastName)} ${dncChip(s)}</div>
           ${turns != null ? `<div class="li-sub">Turns ${turns}</div>` : ''}
         </div>
         ${(leadersByStudent[s.id] || []).length
@@ -4171,7 +4189,7 @@ async function renderMyStudents() {
         body += `<div class="li" style="align-items:flex-start">
           <div class="li-body">
             <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(s.fullName)}</span>
+              <span class="li-title">${esc(s.fullName)}</span>${dncChip(s)}
               <span style="font-size:11px;color:var(--ink-mid)">Yr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</span>${riskChip(s.atRiskStatus)}
             </div>
             ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
@@ -4209,7 +4227,7 @@ async function exportConnectCSV() {
         leaderRowIdx.add(aoa.length - 1);
         lastLeader = r.leaderName;
       }
-      aoa.push([r.studentName, r.studentGrade ?? '', r.studentGender, r.health || '', r.svcPct, r.grpPct, r.dateOfBirth || '', r.mobile || '', r.parentPhone || '']);
+      aoa.push([r.studentName, r.studentGrade ?? '', r.studentGender, r.health || '', r.svcPct, r.grpPct, r.dateOfBirth || '', ((r.dnc ? 'DO NOT CONTACT ' : '') + (r.mobile || '')).trim(), r.parentPhone || '']);
     }
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 9 }, { wch: 11 }, { wch: 9 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
@@ -4687,7 +4705,7 @@ function _arSectionsHtml(scoped, u) {
           <div class="li-body">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              ${u.role !== 'grade' ? quadChip(s.quad) : ''}
+              ${u.role !== 'grade' ? quadChip(s.quad) : ''}${dncChip(s)}
             </div>
             <div class="li-sub" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span>Gr ${s.grade||'—'} · ${s.gender}</span>
@@ -4845,7 +4863,7 @@ function _studentResultsHtml(vis) {
       <div class="li-body">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-          ${qualChips(s)}
+          ${dncChip(s)}${qualChips(s)}
         </div>
         <div class="li-sub">Gr ${s.grade||'—'} · ${s.gender}${fmtBday(s.dateOfBirth) ? ' · ' + fmtBday(s.dateOfBirth) : ''}</div>
         ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
@@ -4986,6 +5004,7 @@ async function showStudentDetail(id, opts) {
 
   modal(`
     <div class="mo-title">${esc(s.firstName)} ${esc(s.lastName)}</div>
+    ${dncBanner(s)}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
       ${quadChip(s.quad)} ${qualChips(s)}
       <span class="chip c-neutral">Gr ${s.grade||'—'}</span>
@@ -9635,6 +9654,7 @@ function _lkFresh() {
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 const LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
+const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep']; // rev 6: one open action per flow row
 const LK_GROUP_TYPES = ['submitReport', 'editReport', 'addGroupMember', 'removeGroupMember'];
 // Elvanto features (T10, 2026-10-12): each has its own Off / Shadow / On switch under ministryConfig.modules.
 // A stored config without the key inherits the New person value (same rule as the server).
@@ -9688,7 +9708,7 @@ function _lkDayCheck() {
 // The practice line by action type (contract X9).
 function _lkPracticeLine(type) {
   if (type === 'checkOut') return 'Practice mode: not sent to Elvanto. Check out the usual way.';
-  if (type === 'submitReport' || type === 'editReport' || type === 'completeStep' || type === 'addGroupMember' || type === 'removeGroupMember') return 'Practice mode: not sent to Elvanto. Do it in Elvanto as usual.';
+  if (type === 'submitReport' || type === 'editReport' || type === 'completeStep' || type === 'removeFromFlowStep' || type === 'addGroupMember' || type === 'removeGroupMember') return 'Practice mode: not sent to Elvanto. Do it in Elvanto as usual.';
   return 'Practice mode: not sent to Elvanto. Check in the usual way.';
 }
 // The leader line for one action (contract §5.3 / §5.4, word for word; X9 picks some lines by type). Two app-only
@@ -9728,10 +9748,14 @@ function _lkStatusText(row, lastSeen) {
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Goes to Elvanto within 15 minutes.' : '');
     case 'claimed': return 'Sending to Elvanto…';
-    case 'sent': if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
+    case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
+      if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'shadowed': return _lkPracticeLine(row.type);
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
+      if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (Form Approve & Consent > Consents).';
+      // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
+      if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
       return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
     case 'cancelled': return 'Cancelled.';
@@ -9774,14 +9798,28 @@ function _lkBanner(types, st) {
   if (st === undefined) st = LINK.status;
   if (!st) return '';
   const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
-  const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', firstTimerCheckIn: 'First-timer check-in', addGroupMember: 'Adding students', removeGroupMember: 'Removing students' };
-  if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', removeFromFlowStep: 'Removing from steps', firstTimerCheckIn: 'First-timer check-in', addGroupMember: 'Adding students', removeGroupMember: 'Removing students' };
+  const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
+  if (off) out.push(['bad', 'Console offline since ' + _lkSeen(off) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  else if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
   types.filter((t) => caps[t] === 'shadow').map(_lkPracticeLine)
     .forEach((l) => { if (!out.some((x) => x[1] === l)) out.push(['practice', l]); });
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
+}
+// R8: admin/director see "Console offline since HH:MM" once the console's last check-in (GET /link/status
+// console.lastSeenAt) is over 15 minutes old. Returns that lastSeenAt, else ''. Never seen = '' (the warn line covers it).
+const LK_OFFLINE_MS = 15 * 60000;
+function _lkOfflineSince(st, now) {
+  const c = st && st.console, t = c && c.lastSeenAt ? Date.parse(c.lastSeenAt) : NaN;
+  return isFinite(t) && now - t > LK_OFFLINE_MS ? c.lastSeenAt : '';
+}
+function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
+function _lkOfflineHtml() {
+  const at = _lkBoss() ? _lkOfflineSince(LINK.status, Date.now()) : '';
+  return at ? `<div class="lk-alert bad" role="alert">${icS('alert')}<div>Console offline since ${esc(_lkSeen(at))}. Elvanto changes from the app wait until it is back.</div></div>` : '';
 }
 // ── The phone queue (§9.2): localStorage['ysc.lkq.' + login id], every access in try/catch. ──
 function _lkKey() { return 'ysc.lkq.' + ((S.user && S.user.id) || ''); }
@@ -9931,7 +9969,7 @@ function _lkResults(items, results) {
     if (r.outcome === 'refused' && r.code === 'RATE_LIMITED') { rate = true; return; }
     done[it.kind + ':' + it.id] = true;
     const gid = it.kind === 'action' && (it.type === 'submitReport' || it.type === 'editReport') && it.payload ? it.payload.groupId : null;
-    const fr = it.kind === 'action' && it.type === 'completeStep' && it.payload ? it.payload.rowId : null;
+    const fr = it.kind === 'action' && LK_FLOW_TYPES.includes(it.type) && it.payload ? it.payload.rowId : null;
     const mg = it.kind === 'action' && LK_MEM_TYPES.includes(it.type) && it.payload ? it.payload.groupId : null;
     if (mg) { // T6: a member change shows on that person's row in the members list
       const ans = r.outcome === 'refused' ? { status: 'refused', reason: r.reason || null, message: r.message || '' }
@@ -9941,7 +9979,7 @@ function _lkResults(items, results) {
       if (r.outcome === 'refused') say = r.message || say;
       memGroups[mg] = true;
     } else if (gid || fr) { // a lifegroup report or a flow step: the answer shows on the group's or the step's row
-      const ans = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' }
+      const ans = r.outcome === 'refused' ? { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, code: r.code || null, message: r.message || '' }
         : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
       if (gid) { if (!LINK.gres) LINK.gres = {}; LINK.gres[gid] = ans; }
       else { if (!LINK.fres) LINK.fres = {}; LINK.fres[fr] = ans; }
@@ -10099,7 +10137,7 @@ function _lkRefreshView() {
   try {
     if (!_lkOnPage()) return;
     const top = document.getElementById('lk-top');
-    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? ['completeStep'] : []);
+    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
     const gl = document.getElementById('lk-glist');
@@ -10959,7 +10997,7 @@ function _lkFlowAct(r) {
   try { q = _lkQGet(); } catch (e) {}
   for (let i = q.length - 1; i >= 0; i--) {
     const it = q[i];
-    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === r.rowId) return { id: it.id, type: it.type, status: 'queued', reason: null };
+    if (it.kind === 'action' && LK_FLOW_TYPES.includes(it.type) && it.payload && it.payload.rowId === r.rowId) return { id: it.id, type: it.type, status: 'queued', reason: null };
   }
   return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || null;
 }
@@ -10992,6 +11030,7 @@ function _lkSmsHref(digits, body, ua) {
 }
 // The text link for a flow person ('' without a mobile). The body starts "Hey <first name> ".
 function _lkTextHref(r) {
+  if (r && r.dnc) return ''; // R1: no Text on a DO NOT CONTACT row, whoever is logged in
   const d = String((r && r.mobile) || '').replace(/\D/g, '');
   return d ? _lkSmsHref(d, 'Hey ' + _lkFirstName(r.name) + ' ') : '';
 }
@@ -11002,17 +11041,107 @@ function _lkMyFlowRows(rows, leaderId, today) {
   return (rows || []).filter((r) => r.assignedLeaderId === leaderId).sort((a, b) => late(a) - late(b)
     || (a.due || '9999').localeCompare(b.due || '9999') || String(a.name || '').localeCompare(String(b.name || '')));
 }
+// R4 filters (admin/director): junior = the quad bracket Y7-9 (+Y6 when Include Grade 6, jMin 6), senior Y10-12.
+// null = unknown grade or gender, or a grade outside both brackets: always shown.
+const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
+function _lkFlowBucket(r, jMin) {
+  const g = Number(r && r.grade), sx = r && r.gender === 'male' ? 'g' : r && r.gender === 'female' ? 'f' : '';
+  const age = g >= jMin && g <= 9 ? 'j' : g >= 10 && g <= 12 ? 's' : '';
+  return age && sx ? age + sx : null;
+}
+function _lkFlowShown(rows, on, jMin) {
+  return (rows || []).filter((r) => { const b = _lkFlowBucket(r, jMin); return !b || on.includes(b); });
+}
+// The chips that are on: memory first (a blocked localStorage still toggles), then this device's pick, else all four.
+function _lkFfGet() {
+  if (Array.isArray(LINK.ff)) return LINK.ff;
+  try { const v = JSON.parse(localStorage.getItem('yap_lk_flowf') || 'null'); if (Array.isArray(v)) return (LINK.ff = v.filter((k) => LK_FF.some((x) => x[0] === k))); } catch (e) {}
+  return (LINK.ff = LK_FF.map((x) => x[0]));
+}
+function _lkFfToggle(k) {
+  const on = _lkFfGet().slice(), i = on.indexOf(k);
+  if (i >= 0) on.splice(i, 1); else on.push(k);
+  LINK.ff = on;
+  try { localStorage.setItem('yap_lk_flowf', JSON.stringify(on)); } catch (e) {}
+  _lkFlowsDraw();
+}
+function _lkFfHtml(on) {
+  return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
+    const p = on.includes(k);
+    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" onclick="_lkFfToggle('${k}')">${l}</button>`;
+  }).join('')}</div>`;
+}
+// The rows this login sees on the screen (filters only for admin/director).
+function _lkFlowVisible() {
+  return _lkBoss() ? _lkFlowShown(LINK.flows, _lkFfGet(), _juniorMin()) : (LINK.flows || []);
+}
+// Why Complete is blocked ('' = not blocked). DO NOT CONTACT = Remove only; the New People consent step needs the consent
+// check first (the server has the final word: CONSENT_CHECK_FIRST also covers a not-done consent row we can't see).
+function _lkStepBlock(r) {
+  if (r && r.dnc) return 'Do not contact: this person can only be removed from the step.';
+  if (r && r.consentStep && r.consent !== 'ok') return 'Do the consent check first (Form Approve & Consent > Consents).';
+  return '';
+}
+// Free = nothing open for the row (none, or the last one was refused / cancelled).
+function _lkFlowFree(r) { const a = _lkFlowAct(r); return !(a && !['refused', 'cancelled'].includes(a.status)); }
+// Bulk Complete (admin/director): only rows that are shown, free and not blocked can be ticked.
+function _lkTickable(r) { return _lkCanComplete(r); }
+function _lkSelIds(rows, sel) { return (rows || []).filter((r) => sel && sel[r.rowId] && _lkTickable(r)).map((r) => r.rowId); }
+function _lkSel(id, on) {
+  if (!LINK.fsel) LINK.fsel = {};
+  if (on) LINK.fsel[id] = true; else delete LINK.fsel[id];
+  _lkFlowsDraw();
+}
+function _lkSelAll(key, on) {
+  if (!LINK.fsel) LINK.fsel = {};
+  ((LINK.fstep && LINK.fstep[key]) || []).forEach((id) => { if (on) LINK.fsel[id] = true; else delete LINK.fsel[id]; });
+  _lkFlowsDraw();
+}
+function _lkSelClear() { LINK.fsel = {}; _lkFlowsDraw(); }
+function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml(); }
+// One shared note, one completeStep item per person, all through the phone queue (the console works them one at a time;
+// each row shows its own Waiting / In Elvanto / refusal line).
+function _lkBulkOpen() {
+  const n = _lkSelIds(_lkFlowVisible(), LINK.fsel).length;
+  if (!n) return;
+  if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
+  LINK.fb = { note: '', priv: false };
+  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div><p class="lk-sub">The same note goes on each person.</p>
+    <div class="fg"><label class="fl" for="lk-fb-note">Note</label><textarea id="lk-fb-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fb)LINK.fb.note=this.value"></textarea></div>
+    <label class="lk-chk"><input type="checkbox" onchange="if(LINK.fb)LINK.fb.priv=this.checked"> Keep note private</label>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_lkBulkSend()">${icS('check')} Complete ${n}</button></div>`, () => { LINK.fb = null; });
+}
+function _lkBulkSend() {
+  const f = LINK.fb, lid = getMyLeaderId(), ids = _lkSelIds(_lkFlowVisible(), LINK.fsel);
+  if (!f || !lid || !ids.length) return;
+  const note = String(f.note || '').trim() ? String(f.note).slice(0, 1800) : null, priv = !!f.priv;
+  LINK.fsel = {};
+  closeModal();
+  ids.forEach((id, i) => {
+    const r = _lkFlowRow(id);
+    if (!r) return;
+    if (LINK.fres) delete LINK.fres[id];
+    _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
+      payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: priv },
+      note, leaderId: lid, _f: r.rowId }, i === ids.length - 1);
+  });
+  toast(ids.length + ' queued to complete', 2500);
+}
 function _lkFlowDue(r, today) {
   return r.due ? `<span${r.due < today ? ' class="lk-late"' : ''}>${r.due < today ? 'Overdue · ' : ''}Due ${esc(_lkDay(r.due))}</span>` : '';
 }
-function _lkFlowRowHtml(r, today) {
+function _lkFlowRowHtml(r, today, boss) {
   const a = _lkFlowAct(r), rid = esc(r.rowId);
   const who = r.assignedLeaderName || r.assignedTo || '';
   const meta = [_lkFlowDue(r, today), who ? esc(who) : ''].filter(Boolean).join(' · ');
   let btn = '';
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepUndo('${rid}')">Undo</button>`;
   else if (a && a.status === 'pending' && LINK.fres && LINK.fres[r.rowId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepCancel('${rid}')">Cancel</button>`;
-  return `<div class="li lk-row" role="button" onclick="_lkOpenStep('${rid}')">${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
+  const tick = !boss ? '' : _lkTickable(r)
+    ? `<input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)">`
+    : '<span class="lk-tick-sp"></span>';
+  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
     ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
 }
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
@@ -11020,12 +11149,23 @@ function _lkFlowsHtml() {
   const rs = LINK.flows;
   if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : '<p class="lk-hint">Loading...</p>';
   if (!rs.length && !(LINK.fSteps || []).length) return '<p class="lk-hint">No flow steps for this login.</p>';
-  const today = _lkToday();
-  return _lkFlowGroups(rs, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
+  const today = _lkToday(), boss = _lkBoss(), shown = _lkFlowVisible();
+  LINK.fstep = {};
+  let top = '';
+  if (boss) {
+    const n = _lkSelIds(shown, LINK.fsel).length;
+    top = _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button></div>` : '');
+  }
+  return top + _lkFlowGroups(shown, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
     const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, ''), open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
+    const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
+    LINK.fstep[id] = tk;
+    const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
+    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall"><input type="checkbox"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length})</label>` : '';
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
-      <div class="drop-body">${s.rows.map((r) => _lkFlowRowHtml(r, today)).join('')}</div></div>`;
+      <div class="drop-body">${selAll}${s.rows.map((r) => _lkFlowRowHtml(r, today, boss)).join('')}</div></div>`;
   }).join('')).join('');
 }
 function _lkFlowDrop(id) {
@@ -11041,14 +11181,19 @@ function _lkHomeFlowsHtml() {
   const today = _lkToday(), rows = _lkMyFlowRows(LINK.flows, getMyLeaderId(), today);
   if (!rows.length) return '';
   return `<div class="sh" style="font-size:13px">My flow people</div>` + rows.map((r) => {
-    const href = _lkTextHref(r), inner = `${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div>
+    const href = _lkTextHref(r), inner = `${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}</div>
       <div class="lk-d">${esc(r.stepName)}${r.due && r.due < today ? ' · <span class="lk-late">Overdue</span>' : ''}</div></div>${href ? icS('chevr') : ''}`;
-    return href ? `<a class="li lk-row lk-a" href="${esc(href)}">${inner}</a>` : `<div class="li lk-row">${inner}</div>`;
+    return href ? `<a class="li lk-row lk-a" href="${esc(href)}">${inner}</a>` : `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}">${inner}</div>`;
   }).join('');
 }
 async function _lkHomeFlows() {
-  const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''; };
+  const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _lkOfflineHtml() + (_linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''); };
   draw();
+  // R8: admin/director Home shows the red console-offline line too (status read at most once a minute).
+  if (_lkBoss() && _linkOn() && Date.now() - (LINK.statusAt || 0) > 60000) {
+    LINK.statusAt = Date.now();
+    API.fresh('/link/status', true).then((st) => { LINK.status = st; draw(); }).catch(() => {});
+  }
   if (!_linkOn('flows') || !getMyLeaderId() || Date.now() - LINK.flowsAt < 30000) return;
   LINK.flowsAt = Date.now(); // set before the load so a failure also waits 30 s (a success sets it again)
   if (await _lkLoadFlows(true)) draw();
@@ -11056,8 +11201,11 @@ async function _lkHomeFlows() {
 // The detail sheet for one person on one step: text them, assign a leader, complete the step.
 // "I am" is only needed to complete (decision 11): without it, Complete opens the picker first.
 function _lkCanComplete(r) {
-  const a = _lkFlowAct(r);
-  return !_lkCapOff('completeStep') && !(a && !['refused', 'cancelled'].includes(a.status));
+  return !_lkCapOff('completeStep') && !_lkStepBlock(r) && _lkFlowFree(r);
+}
+// Remove from step (rev 6): admin/director, while the console lists the type and nothing is open for the row.
+function _lkCanRemove(r) {
+  return _lkBoss() && !_lkMemOff('removeFromFlowStep') && _lkFlowFree(r);
 }
 function _lkOpenStep(id) {
   const r = _lkFlowRow(id);
@@ -11070,7 +11218,11 @@ function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r) return '';
   const today = _lkToday(), href = _lkTextHref(r);
-  const text = href ? `<a class="btn btn-secondary btn-full lk-mb" href="${esc(href)}">Text ${r.mobileIsParent ? 'Parent' : esc(_lkFirstName(r.name))} · ${esc(fmtPhone(r.mobile))}</a>` : '<p class="lk-sub">No mobile number for this person.</p>';
+  if (f.rm) return _lkRemoveHtml(r);
+  const text = r.dnc ? dncBanner(r) + (r.mobile ? `<p class="lk-sub">Number (admin only): ${esc(fmtPhone(r.mobile))}</p>` : '')
+    : href ? `<a class="btn btn-secondary btn-full lk-mb" href="${esc(href)}">Text ${r.mobileIsParent ? 'Parent' : esc(_lkFirstName(r.name))} · ${esc(fmtPhone(r.mobile))}</a>` : '<p class="lk-sub">No mobile number for this person.</p>';
+  const why = _lkStepBlock(r), blocked = r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
+    : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>${_ikModuleOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="closeModal();go('link-intake')">Consents</button>` : ''}` : '';
   let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
   if (r.personId) {
     const ls = (LINK.ldrs || []).filter((l) => l && (l.active !== false || l.id === r.assignedLeaderId)).sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
@@ -11082,14 +11234,40 @@ function _lkStepHtml() {
   const done = _lkCanComplete(r) ? `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
+  const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>
-    ${text}${assign}${done}`;
+    ${text}${blocked}${assign}${done}${rm}`;
+}
+// The remove confirm (in the same sheet): an optional note goes to the person's Elvanto notes.
+function _lkRemoveHtml(r) {
+  const f = LINK.fs;
+  return `<div class="mo-title">Remove ${esc(r.name)}?</div><p class="lk-sub">From ${esc(r.stepName)} · ${esc(r.flowName)}. This takes them out of the step in Elvanto.</p>
+    <div class="fg"><label class="fl" for="lk-rm-note">Note (optional)</label><textarea id="lk-rm-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fs)LINK.fs.rmNote=this.value">${esc(f.rmNote || '')}</textarea>
+    <div class="lk-d">Goes on their Elvanto notes. The console may hold a remove with a note until notes are switched on; leave it empty to just remove.</div></div>`;
+}
+function _lkRemoveAsk() { if (LINK.fs) { LINK.fs.rm = true; _lkStepDraw(); } }
+function _lkRemoveBack() { if (LINK.fs) { LINK.fs.rm = false; _lkStepDraw(); } }
+function _lkRemoveSend() {
+  const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
+  if (!r) return;
+  const note = String(f.rmNote || '').trim() ? String(f.rmNote).slice(0, 1800) : null, lid = getMyLeaderId();
+  if (note && !lid) { _lkIamPick(() => _lkOpenStep(r.rowId)); return; } // "I am" is needed only with a note
+  if (LINK.fres) delete LINK.fres[r.rowId];
+  LINK.fs = null;
+  closeModal();
+  _lkPush({ kind: 'action', id: _lkUuid(), type: 'removeFromFlowStep',
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null },
+    note, leaderId: lid || null, _f: r.rowId }, true);
 }
 // The sheet's buttons sit outside #lk-fs so they stick to the bottom of the sheet (APP-66).
-function _lkStepActions() {
-  const r = LINK.fs && _lkFlowRow(LINK.fs.rowId), can = !!r && _lkCanComplete(r);
-  return `<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">${can ? 'Cancel' : 'Close'}</button>
-      ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} Complete</button>` : ''}</div>`;
+function _lkStepActions() { return `<div class="bus-sheet-actions" id="lk-fs-act">${_lkStepBtns()}</div>`; }
+function _lkStepBtns() {
+  const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
+  if (r && f.rm) return `<button type="button" class="btn btn-secondary" onclick="_lkRemoveBack()">Back</button>
+      <button type="button" class="btn btn-danger" onclick="_lkRemoveSend()">Remove</button>`;
+  const can = !!r && _lkCanComplete(r);
+  return `<button type="button" class="btn btn-secondary" onclick="closeModal()">${can ? 'Cancel' : 'Close'}</button>
+      ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} Complete</button>` : ''}`;
 }
 // Assign or unassign (app only, never sent to Elvanto). One assignment covers the person's rows in that flow.
 async function _lkAssign(leaderId) {
@@ -11102,7 +11280,11 @@ async function _lkAssign(leaderId) {
   _lkStepDraw(); _lkRefreshView();
   toast(l ? 'Assigned to ' + l.fullName : 'Unassigned');
 }
-function _lkStepDraw() { const b = document.getElementById('lk-fs'); if (b) b.innerHTML = _lkStepHtml(); }
+function _lkStepDraw() {
+  const b = document.getElementById('lk-fs'), a = document.getElementById('lk-fs-act');
+  if (b) b.innerHTML = _lkStepHtml();
+  if (a) a.innerHTML = _lkStepBtns();
+}
 // The note stops at 1,800 characters (the console adds the leader line in front).
 function _lkStepNote(el) {
   const f = LINK.fs;
@@ -11132,7 +11314,7 @@ function _lkStepUndo(id) {
   const q = _lkQGet();
   for (let i = q.length - 1; i >= 0; i--) {
     const it = q[i];
-    if (it.kind === 'action' && it.type === 'completeStep' && it.payload && it.payload.rowId === id) {
+    if (it.kind === 'action' && LK_FLOW_TYPES.includes(it.type) && it.payload && it.payload.rowId === id) {
       if (_lkTakeBack(it, { _f: id })) return;
       q.splice(i, 1); _lkQSet(q); break;
     }
@@ -11146,8 +11328,9 @@ function _lkStepCancel(id) {
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _f: id }, true);
 }
 function _lkPaintFlows() {
-  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div><div id="lk-top">${_lkTop(['completeStep'])}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div><div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
 }
+function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
   try {
     const r = await API.fresh('/link/flows', quiet);
@@ -11545,7 +11728,8 @@ const IK_HOLD = {
   'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
   'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
   'Late consent form': 'The consent form came in after Friday 9 am, so it counts for next week.',
-  'Unmatched consent form': "A consent form couldn't be matched to anyone, so no-one is assumed to consent until it's sorted.",
+  'Unmatched consent form': "This consent form doesn't match any student for this date. Check it in Elvanto.",
+  'Waiting for replies until Friday 9 am': "Parents can still reply until Friday 9 am, so consent isn't assumed yet. Check again after 9 am.",
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
   'Possible existing profile': 'Someone with this name may already be in Elvanto. Check before creating a new profile.',
@@ -13395,7 +13579,7 @@ function _busMyCarHtml() {
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
-      <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''}</div>
+      <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
       <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">

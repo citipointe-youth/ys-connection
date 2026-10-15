@@ -7,7 +7,7 @@ const HOSTILE = '<img src=x onerror=alert(1)>';
 
 describe('leader names render inert', () => {
   it('student detail: a hostile leader name is escaped in Leader Assignments', async () => {
-    const f = loadFns(['esc', 'showStudentDetail'],
+    const f = loadFns(['esc', 'dncBanner', 'showStudentDetail'],
       `let _sdStudent, _sdLeaders, _sdAssigned; let html = '';
        const S = { user: { role: 'admin' } };
        const API = { get: async (p) => p.startsWith('/students/') ? { id: 's1', firstName: 'Jess', lastName: 'Tran', grade: 9, gender: 'female', grpTotal: 0 }

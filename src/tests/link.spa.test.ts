@@ -18,7 +18,12 @@ const FNS = ['esc', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
-  '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep'];
+  '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
+  // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
+  '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFfGet',
+  '_lkFfHtml', '_lkFfToggle', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
+  '_lkBulkOpen', '_lkBulkSend', '_lkRemoveHtml', '_lkRemoveAsk', '_lkRemoveBack', '_lkRemoveSend', '_lkStepBtns', 'dncChip', 'dncBanner',
+  '_structure', '_juniorMin', '_ikModuleOn'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -26,8 +31,8 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 // APP-49: the real constant, read from the page (a copy here would hide a change).
-const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES']
-  .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = \\[[^\\]]*\\];`, 'm'))![0]).join('\n');
+const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_OFFLINE_MS']
+  .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
   fresh?: (path: string) => Promise<any>;
@@ -1653,6 +1658,103 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2));
     expect(h.calls.modals[0]).not.toContain('_lkStepSend');
     expect(h.calls.modals[0]).toContain('Close');
+  });
+  // ── run 2026-10-15 lane B (R1 / R4) ──
+  const boss = (rows: any[] = ROWS(), post?: Env['post']) => {
+    const h = makeEnv({ role: 'admin', leaderId: 'L1', post });
+    const L = h.get().LINK;
+    L.today = '2026-10-16'; L.flows = rows; L.ldrs = [];
+    return h;
+  };
+  it('R4 bulk: Complete N queues one completeStep per ticked row with the same note; DNC rows are skipped', () => {
+    vi.useFakeTimers();
+    const h = boss([row(1), row(2), row(3, { dnc: true, consent: 'all' })]);
+    const L = h.get().LINK;
+    L.fsel = { [F(1)]: true, [F(2)]: true, [F(3)]: true };
+    expect(strip(h.fns._lkFlowsHtml())).toContain('2 selected');
+    h.fns._lkBulkOpen();
+    expect(h.calls.modals[0]).toContain('Complete 2');
+    L.fb.note = 'Rang them'; L.fb.priv = true;
+    h.fns._lkBulkSend();
+    const q = h.fns._lkQGet();
+    expect(q.map((x: any) => x.payload.rowId)).toEqual([F(1), F(2)]);
+    expect(new Set(q.map((x: any) => x.id)).size).toBe(2);
+    q.forEach((x: any) => expect(x).toMatchObject({ type: 'completeStep', note: 'Rang them', leaderId: 'L1', payload: { notePrivate: true } }));
+    expect(L.fsel).toEqual({});
+    expect(strip(h.fns._lkFlowsHtml())).toContain('Waiting to send.');
+  });
+  it('R4 bulk: needs "I am" first; leaders never get tick boxes or chips', () => {
+    const h = makeEnv({ role: 'admin', leaderId: null });
+    h.get().LINK.flows = [row(1)]; h.get().LINK.fsel = { [F(1)]: true }; h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody', active: true }];
+    h.fns._lkBulkOpen();
+    expect(h.calls.modals[0]).toContain('Who are you?');
+    const g = setup('L1', [row(1)]);
+    const out = g.fns._lkFlowsHtml();
+    expect(out).not.toContain('lk-tick');
+    expect(out).not.toContain('Junior Guys');
+  });
+  it('R1 DNC sheet: red banner, no Text, no Complete; admin still sees the number and can Remove', () => {
+    const h = boss([row(1, { dnc: true, consent: 'contact', mobile: '0412345678' })]);
+    h.fns._lkOpenStep(F(1));
+    const sheet = h.calls.modals[0]!;
+    expect(sheet).toContain('DO NOT CONTACT');
+    expect(sheet).not.toContain('sms:');
+    expect(sheet).not.toContain('_lkStepSend');
+    expect(sheet).toContain('0412 345 678');
+    expect(sheet).toContain('_lkRemoveAsk()');
+  });
+  it('R4 Remove: confirm view, optional note, queues removeFromFlowStep (no "I am" needed without a note)', () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ role: 'director', leaderId: null });
+    h.get().LINK.flows = [row(1)];
+    h.fns._lkOpenStep(F(1));
+    h.fns._lkRemoveAsk();
+    expect(strip(h.fns._lkStepHtml())).toContain('Remove Person 1?');
+    expect(h.fns._lkStepBtns()).toContain('_lkRemoveSend()');
+    h.fns._lkRemoveSend();
+    const q = h.fns._lkQGet();
+    expect(q[0]).toMatchObject({ kind: 'action', type: 'removeFromFlowStep', note: null, leaderId: null, _f: F(1),
+      payload: { rowId: F(1), flowId: F(100), stepId: F(200), personId: P(1) } });
+    expect(q[0].payload.notePrivate).toBeUndefined();
+    // with a note "I am" is asked first
+    const k = makeEnv({ role: 'admin', leaderId: null });
+    k.get().LINK.flows = [row(2)]; k.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody', active: true }];
+    k.fns._lkOpenStep(F(2)); k.fns._lkRemoveAsk(); k.get().LINK.fs.rmNote = 'Moved church';
+    k.fns._lkRemoveSend();
+    expect(k.fns._lkQGet()).toEqual([]);
+    expect(k.calls.modals[1]).toContain('Who are you?');
+  });
+  it('R4 Remove is hidden for leaders', () => {
+    const h = setup('L1', [row(1, { dnc: true })]);
+    h.fns._lkOpenStep(F(1));
+    expect(h.calls.modals[0]).not.toContain('_lkRemoveAsk');
+  });
+  it('R4 refusals show honestly on the row: locked note path, CONSENT_CHECK_FIRST', async () => {
+    const reply = (id: string, outcome: string, extra: any) => () => Promise.resolve({ results: [{ id, kind: 'action', outcome, ...extra }] });
+    const h = boss([row(1)], reply(P(90), 'refused', { code: 'LINK_LOCKED', reason: 'locked', message: 'x' }));
+    h.fns._lkQSet([{ kind: 'action', id: P(90), type: 'removeFromFlowStep', payload: { rowId: F(1) }, note: 'n', leaderId: 'L1', _f: F(1) }]);
+    await h.fns._lkFlush();
+    expect(strip(h.fns._lkFlowsHtml())).toContain("Not sent: a remove with a note isn't switched on yet.");
+    const k = boss([row(2, { consentStep: true, consent: 'ok' })], reply(P(91), 'refused', { code: 'CONSENT_CHECK_FIRST', message: 'Do the consent check first (Form Approve & Consent > Consents).' }));
+    k.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1', _f: F(2) }]);
+    await k.fns._lkFlush();
+    expect(strip(k.fns._lkFlowsHtml())).toContain('Do the consent check first');
+  });
+  it('R4 consent step: Complete off until consent is ok, with a Consents button for the admin', () => {
+    const h = makeEnv({ role: 'admin', leaderId: 'L1', modules: { intakeAdmin: 'on' } });
+    h.get().LINK.flows = [row(1, { consentStep: true, consent: 'unknown' })];
+    h.fns._lkOpenStep(F(1));
+    expect(h.calls.modals[0]).not.toContain('_lkStepSend');
+    expect(strip(h.calls.modals[0]!)).toContain('Do the consent check first');
+    expect(h.calls.modals[0]).toContain("go('link-intake')");
+  });
+  it('R8 console offline: red line on the flows banner for admin/director only', () => {
+    const st = { console: { lastSeenAt: new Date(Date.now() - 20 * 60000).toISOString(), online: false, capabilities: {} } };
+    expect(strip(boss().fns._lkBanner(['completeStep'], st))).toContain('Console offline since');
+    expect(boss().fns._lkBanner(['completeStep'], st)).toContain('lk-alert bad');
+    expect(strip(setup().fns._lkBanner(['completeStep'], st))).not.toContain('Console offline since');
+    const fresh = { console: { lastSeenAt: new Date(Date.now() - 5 * 60000).toISOString(), online: true, inWindow: true, capabilities: {} } };
+    expect(strip(boss().fns._lkBanner(['completeStep'], fresh))).not.toContain('offline');
   });
 });
 
