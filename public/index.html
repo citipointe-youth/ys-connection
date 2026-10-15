@@ -3035,6 +3035,12 @@ function _revalidateHome() {
     .finally(() => { _homeRevalidating = false; });
 }
 // fromCache (T7/T8): a grade-filter repaint; the Follow Up card also reads from the cache.
+// GAP-1: on the service day, a login that may use Check-in gets it as a Home tile (saves the More tap).
+function _homeCheckinTile() {
+  if (!_linkOn('checkin') || new Date(_lkSvcDay() + 'T00:00:00Z').getUTCDay() !== _serviceDow()) return '';
+  return `<div class="bus-tile" onclick="go('link-checkin')" role="button" tabindex="0">
+    <div class="bt-ic">${icN('check')}</div><div class="bt-label">Check-in</div></div>`;
+}
 async function _renderHomeInner(stale, fromCache) {
   const qu = S.user; // the login; `u` below is who Home is drawn for
   const _pg = S.page;
@@ -3145,13 +3151,11 @@ async function _renderHomeInner(stale, fromCache) {
   }
   body += `</div>`;
   if (qu.role === 'quad') body += _homeGradeBar(_hg);
+  body += _homeCheckinTile();
   /*BUS-HOOK*/ body += _busHomeTile();
   /*BUS-HOOK*/ body += _busNewPeopleCard();
 
   if (stats) {
-    if (stats.unconnectedTotal === 0 && stats.ministryTotal > 0) {
-      body += `<div class="alert al-ok">${icS('check')} All students are connected!</div>`;
-    }
     if (u.role === 'admin' && stats.ministryTotal === 0) {
       body += `<div class="first-run">
         <h3 style="display:flex;align-items:center;gap:8px">${icN('target')} Welcome — let's get started</h3>
@@ -3305,6 +3309,7 @@ async function _renderHomeInner(stale, fromCache) {
 async function renderLeaderHome() {
   const u = S.user;
   let body = `<div class="sh" style="margin-top:0">${esc(u.displayName)} · ${esc(_roleLabel('leader'))}</div>`;
+  body += _homeCheckinTile();
   /*BUS-HOOK*/ body += _busHomeTile();
   // The base list, so Prayers stays a plain button here even when the nav shows More.
   const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
@@ -3691,6 +3696,7 @@ async function loadConnectData(G) {
 // Fetched once in the background, then repainted; Cache.del('/leaders') after an edit also drops it. Edit = the
 // existing leader sheet, whose Active box reactivates. Hidden when there are none.
 let _inactiveLdrsLoading = false;
+// OP-1: the open state lives on the function (like LINK.doneOpen), so a background repaint of Setup keeps it open.
 function _inactiveLeadersHtml() {
   const path = '/leaders?inactive=1';
   const ls = Cache.getStale(path);
@@ -3704,7 +3710,7 @@ function _inactiveLeadersHtml() {
   if (!ls.length) return '';
   const rows = ls.slice().sort((a, b) => String(a.fullName).localeCompare(String(b.fullName))).map(l =>
     `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--paper-dark)"><span style="flex:1;min-width:0">${esc(l.fullName)} <span style="font-size:12px;color:var(--ink-faint)">· Gr ${esc((l.grades || []).join(', ') || 'All')}</span></span><button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" aria-label="Edit ${esc(l.fullName)}" onclick="showEditLeader('${esc(l.id)}')">${icS('edit')}</button></div>`).join('');
-  return `<details class="card" id="inactive-leaders" style="margin-top:16px;padding:11px"><summary style="cursor:pointer;font-size:13px;font-weight:700">Inactive leaders (${ls.length})</summary><div style="margin-top:6px">${rows}</div></details>`;
+  return `<details class="card" id="inactive-leaders"${_inactiveLeadersHtml.open ? ' open' : ''} ontoggle="_inactiveLeadersHtml.open = this.open" style="margin-top:16px;padding:11px"><summary style="cursor:pointer;font-size:13px;font-weight:700">Inactive leaders (${ls.length})</summary><div style="margin-top:6px">${rows}</div></details>`;
 }
 function renderConnectView() {
   const { students, leaders, allocs, gf, df } = _aS;
@@ -6344,9 +6350,9 @@ async function renderAdminView(settings, users, history) {
             <div class="li-sub">${esc(u.email)}</div>
           </div>
           <div class="li-right">
+            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" style="margin-right:16px" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
-            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)" ${isProtectedAdmin?'disabled':''} onclick="confirmDelUser('${u.id}')" title="${delTitle}" aria-label="${delTitle}">${icS('trash')}</button>
           </div>
@@ -6550,7 +6556,7 @@ const EL_HELP = {
   'lease-lost': ['The console went offline while sending.', 'Check Elvanto for the result before repeating.', 1],
   'note-unreadable': ['A saved note is corrupted.', 'Re-enter it and tell the developer.', 1],
   'intake-unreadable': ['A saved intake plan is corrupted.', 'Re-enter it and tell the developer.', 1],
-  'pending-24h': ['Actions have waited a day: the console computer has not picked them up.', 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
+  'pending-24h': ["Actions waited a day: the console PC hasn't picked them up.", 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
   PUSH_FAILED: ['A notice was sent, but the phone alert for it did not reach some phones.', 'Nothing to do: the notice is still in the app. Tell the developer if it happens on every notice.', 0],
   PUSH_OFF: ['Someone tried to turn on notice alerts, but alerts are not set up yet.', 'Ask the owner to add the VAPID keys in Vercel.', 1],
   HTTP_401: ['A login had expired.', 'Safe to ignore unless many people see it.', 0],
@@ -7708,7 +7714,7 @@ function _setupFlowHiddenHtml(md) {
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
   const v = md && md.intakeAdmin === 'on' ? 'on' : 'off';
-  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Form Approve & Consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Each save still follows the console's Practice or Live switch. Off deletes the stored plans.")}</label>
+  return `<div class="fg"><label class="fl" for="setup-intakeAdmin">Form Approve & Consent (Elvanto) ${helpTip("New youth intakes and parent consents from the console's plan, for the admin login only. Off deletes the stored plans.")}</label>
       <select class="fs" id="setup-intakeAdmin" onchange="_setupSet('modules.intakeAdmin', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
 }
 function _setupSetModule(key, val) {
@@ -8179,11 +8185,10 @@ function confirmEnterPreview(id) {
   const u = (_adminData.users || []).find(x => x.id === id);
   if (!u) return;
   modal(`
-    <div class="mo-title">Preview Account?</div>
-    <p style="color:var(--ink-mid);margin-bottom:14px">Do you want to preview the <strong>${esc(u.displayName)}</strong> login?</p>
+    <div class="mo-title" style="margin-bottom:14px">Preview as <strong>${esc(u.displayName)}</strong>?</div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal(); enterPreview('${id}')">Preview</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal(); enterPreview('${id}')">Preview</button>
     </div>`);
 }
 async function enterPreview(id) {
@@ -14324,9 +14329,9 @@ function _busMyCarHtml() {
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id">I am: <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
+    ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id">I am: <select class="fs" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
