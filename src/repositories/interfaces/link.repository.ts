@@ -1,5 +1,5 @@
 // Elvanto link data (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §4.1). Tables from migration 0017.
-import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, ClaimArgs, ClaimedRow,
+import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, LinkProgress, ClaimArgs, ClaimedRow,
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
   ResultReply, LinkFlowAssign, LinkFlowStep, Consent } from '../../core/link-types';
 
@@ -38,6 +38,8 @@ export interface ILinkRepository {
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
   applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply>;
   listConsoles(): Promise<ConsoleRow[]>;
+  /** S5: store one progress entry on that console (stamped now); entries over 10 min old are dropped. Unknown console: no-op. */
+  setProgress(consoleId: string, key: string, p: Omit<LinkProgress, 'at'>): Promise<void>;
   /** T12: meta.steps (flows only) is stored with the mirror state; absent = null (an older console). */
   replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }):
     Promise<{ applied: boolean; rows: number }>;

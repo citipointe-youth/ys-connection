@@ -98,6 +98,7 @@ export function makeSyncService(d: SyncDeps) {
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
         // X19: only a console at rev >= 4 knows the hint (an older one would strip it anyway).
         ...((req.linkRev ?? 1) >= 4 && d.intake ? { intake: await d.intake.hint(settings) } : {}),
+        progress: true as const, // S5: this app takes POST /sync/push/progress (an older console ignores the key)
       };
     },
 
@@ -134,6 +135,11 @@ export function makeSyncService(d: SyncDeps) {
         const req = parseBody(PUSH_SCHEMAS[pk], body) as z.infer<typeof IntakePush> | z.infer<typeof ConsentPush>;
         if (!d.intake) return { applied: false };
         return d.intake.push(pk, req, await d.settings.getSettings());
+      }
+      if (pk === 'progress') { // S5: a hint only; stored on the console's row, read by the screens that wait on it
+        const req = parseBody(PUSH_SCHEMAS.progress, body);
+        await d.link.setProgress(req.consoleId, req.key, { done: req.done, total: req.total, stage: req.stage });
+        return { applied: true };
       }
       if (pk === 'consentLookup') { // rev 6 (R2 b/c): the answer to one consentLookup row this console holds
         const req = parseBody(PUSH_SCHEMAS.consentLookup, body) as z.infer<typeof ConsentLookupPush>;

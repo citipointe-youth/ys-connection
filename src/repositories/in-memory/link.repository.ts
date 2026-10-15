@@ -2,7 +2,7 @@
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
 import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import { CONSENT_LOOKUP_KEEP_MS } from '../interfaces/link.repository';
-import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkRosterRow,
+import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkProgress, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -27,6 +27,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private outbox = new Map<string, { row: OutboxRow; seq: number }>();
   private seq = 0;
   private consoles = new Map<string, ConsoleRow>();
+  private progress = new Map<string, Record<string, LinkProgress>>(); // S5: per console (its own column in Postgres)
   private rosterRows = new Map<string, LinkRosterRow>();
   private serviceRows: LinkServiceRow[] = [];
   private groupRows: LinkGroupRow[] = [];
@@ -158,7 +159,14 @@ export class InMemoryLinkRepository implements ILinkRepository {
     return reply;
   }
 
-  async listConsoles(): Promise<ConsoleRow[]> { return clone([...this.consoles.values()]); }
+  async listConsoles(): Promise<ConsoleRow[]> {
+    return clone([...this.consoles.values()].map((c) => ({ ...c, progress: this.progress.get(c.consoleId) ?? {} })));
+  }
+  async setProgress(consoleId: string, key: string, p: Omit<LinkProgress, 'at'>): Promise<void> {
+    if (!this.consoles.has(consoleId)) return;
+    const now = this.nowMs(), keep = Object.entries(this.progress.get(consoleId) ?? {}).filter(([, v]) => now - Date.parse(v.at) < 10 * 60_000);
+    this.progress.set(consoleId, { ...Object.fromEntries(keep), [key]: { ...clone(p), at: this.nowIso() } });
+  }
 
   async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }) {
     const prev = this.mirror.get(kind);

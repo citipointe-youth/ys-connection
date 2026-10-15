@@ -7,7 +7,7 @@ import { chunk } from './bulk';
 import { maybeEncrypt, maybeDecrypt } from '../../utils/field-crypto';
 import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import { putConsentLookup, readConsentLookup } from './supabase.link-consent';
-import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow,
+import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkProgress, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow,
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -45,7 +45,7 @@ function toOutbox(r: Row, note: string | null): OutboxRow {
 function toConsole(r: Row): ConsoleRow {
   return { consoleId: r.console_id, label: r.label, lastSeenAt: toIso(r.last_seen_at), contractVersion: r.contract_version,
     consoleVersion: r.console_version, inWindow: r.in_window, pollSeconds: r.poll_seconds,
-    capabilities: r.capabilities as Capabilities, linkRev: r.link_rev ?? 1 };
+    capabilities: r.capabilities as Capabilities, linkRev: r.link_rev ?? 1, progress: r.progress ?? {} };
 }
 function toRoster(r: Row): LinkRosterRow {
   return { personId: r.person_id, firstName: r.first_name, lastName: r.last_name, gender: r.gender ?? null,
@@ -263,6 +263,15 @@ export class SupabaseLinkRepository implements ILinkRepository {
 
   async listConsoles(): Promise<ConsoleRow[]> {
     return (await this.sql`select * from link_console order by last_seen_at desc`).map(toConsole);
+  }
+
+  /** S5 (migration 0030): merge one key into the console row's progress, dropping entries over 10 min old. */
+  async setProgress(consoleId: string, key: string, p: Omit<LinkProgress, 'at'>): Promise<void> {
+    await this.sql`
+      update link_console set progress = coalesce((select jsonb_object_agg(k, v) from jsonb_each(progress) e(k, v)
+          where (v->>'at')::timestamptz > now() - interval '10 minutes'), '{}')
+        || ${this.j({ [key]: { ...p, at: new Date().toISOString() } })}
+      where console_id = ${consoleId}`;
   }
 
   async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }) {

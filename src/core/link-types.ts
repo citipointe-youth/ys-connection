@@ -40,7 +40,11 @@ export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 
 export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: string; contractVersion: number;
   consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities;
   /** T1: the console's LINK_REV from its last claim (missing = 1). */
-  linkRev: number; }
+  linkRev: number;
+  /** S5 (migration 0030): key -> the console's last progress post for that job (link-contract PROGRESS_KEY). */
+  progress?: Record<string, LinkProgress>; }
+/** S5: at = when the app stored it (server clock). */
+export interface LinkProgress { done: number | null; total: number | null; stage: string; at: string }
 export interface ClaimArgs { console: Omit<ConsoleRow, 'lastSeenAt'>; max: number; leaseSeconds: number;
   cutoffDays: number; leaseLostMs: number;
   /** T3: the repo pushes each row its sweep closed (too-old / lease-lost) here, for the admin Error log. */

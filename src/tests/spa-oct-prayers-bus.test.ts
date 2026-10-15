@@ -137,7 +137,7 @@ describe('S2.3 Bus All cars', () => {
     }],
   };
   it('_busAllCarsHtml escapes names and suburbs, ticks dropped, and has no buttons', () => {
-    const g = loadFns(['_busAllCarsHtml'], `const BUS = { cars: ${JSON.stringify(cars)} }; ${PRE}`);
+    const g = loadFns(['_busAllCarsHtml', 'progBar'], `const BUS = { cars: ${JSON.stringify(cars)} }; ${PRE}`);
     const h = g._busAllCarsHtml();
     for (const raw of ['<b>', '<i>', '<u>']) expect(h).not.toContain(raw);
     expect(h).toContain('&lt;b&gt;Car&lt;/b&gt;');
@@ -149,12 +149,12 @@ describe('S2.3 Bus All cars', () => {
     expect(h).not.toMatch(/<button|onclick/);
   });
   it('_busAllCarsHtml shows a loading line before the data arrives', () => {
-    const g = loadFns(['_busAllCarsHtml'], `const BUS = { cars: null, carsErr: false, carsLoading: null }; function busCarsRefresh() {} ${PRE}`);
+    const g = loadFns(['_busAllCarsHtml', 'progBar'], `const BUS = { cars: null, carsErr: false, carsLoading: null }; function busCarsRefresh() {} ${PRE}`);
     expect(g._busAllCarsHtml()).toContain('Loading');
   });
   it('renderBus has no All cars tab (T7); the section is a collapsed <details> labelled All cars (n)', () => {
     expect(extractFn(loadIndexHtml(), 'renderBus')).not.toContain("id: 'allcars'");
-    const g = loadFns(['_busAllCarsSection', '_busAllCarsHtml'], `const BUS = { carsOpen: true, cars: ${JSON.stringify(cars)} }; ${PRE}`);
+    const g = loadFns(['_busAllCarsSection', '_busAllCarsHtml', 'progBar'], `const BUS = { carsOpen: true, cars: ${JSON.stringify(cars)} }; ${PRE}`);
     const h = g._busAllCarsSection();
     expect(h).toContain('<details');
     expect(h).toContain('All cars (1)');

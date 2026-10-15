@@ -640,7 +640,7 @@ describe('_busMyCarHtml identity picker goes through a full reload (Task B)', ()
       function getMyLeaderId() { return null; }
       function esc(s) { return String(s); }
     `;
-    const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar'], prelude);
     const html = _busMyCarHtml();
     expect(html).toContain('_busIdentityChanged(this.value)');
     expect(html).not.toContain('renderBus()');
@@ -652,7 +652,7 @@ describe('_busMyCarHtml identity picker goes through a full reload (Task B)', ()
       function getMyLeaderId() { return 'L1'; }
       function esc(s) { return String(s); }
     `;
-    const { _busMyCarHtml } = loadFns(['_busMyCarHtml'], prelude);
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar'], prelude);
     const html = _busMyCarHtml();
     expect(html).toContain('_busIdentityChanged(null)');
     expect(html).not.toContain('renderBus()');
@@ -1130,7 +1130,7 @@ describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 
       function _busPinnedIcon() { return ''; }
       function _busFmtTime() { return ''; }
     `;
-    return loadFns(['_busMyCarHtml'], prelude)._busMyCarHtml();
+    return loadFns(['_busMyCarHtml', 'progBar'], prelude)._busMyCarHtml();
   };
   it('tells a plain leader to ask an admin', () => {
     expect(mk('leader', false)).toContain('Ask an admin to set the church address');

@@ -20,6 +20,9 @@ export const LINK_CONTRACT_VERSION = 1;
 // LINK_REV 6 (run 2026-10-15, lane A; ux-run-2026-10-15/CONTRACT-REV6.md), optional only: roster + flow rows carry `consent`
 // (R1 DO NOT CONTACT); types removeFromFlowStep (R4), consentLookup + consentFix (R2 b/c); push kind consentLookup (the
 // answer to one consentLookup row). The console sends them only when the app's claim reply says linkRev >= 6.
+// Run 2026-10-15b (S5), optional only, no rev bump: the claim reply's `progress: true` says this app takes POST
+// /sync/push/progress (how far a lookup, the flows read or an intake ask has got). An older app sends no flag, so the
+// console never posts it; an older console ignores the flag. Progress is a hint: a lost or refused post changes nothing.
 export const LINK_REV = 6;
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
@@ -40,7 +43,7 @@ export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'sh
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
 // locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
 export const CAPABILITIES = ['live', 'shadow', 'locked', 'off'] as const;
-export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup'] as const;
+export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const INTAKE_MODES = ['off', 'on'] as const; // X19 (R3): a plain switch, no shadow
@@ -148,7 +151,7 @@ export const ClaimRow = z.object({
 export const IntakeHint = z.object({ mode: z.enum(INTAKE_MODES), hurry: z.boolean(),
   refresh: z.array(z.object({ mode: z.enum(['intake', 'consent']), date: Ymd })).max(4) });
 export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Iso, rows: z.array(ClaimRow).max(20), linkRev: LinkRev,
-  intake: IntakeHint.optional() });
+  intake: IntakeHint.optional(), progress: z.literal(true).optional() }); // S5: this app takes POST /sync/push/progress
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence
@@ -274,9 +277,15 @@ export const ConsentLookupPush = z.discriminatedUnion('kind', [
   z.object({ ...lookupEnvelope, kind: z.literal('mismatches'), rows: z.array(ConsentMismatchRow).max(100) }).strict(),
 ]);
 
+// ---- S5 (run 2026-10-15b): progress of one long console job. key: flows (the flows read), lookup:<consentLookup row id>,
+// intake:<mode>:<date> (an intake / consent push). done/total null = not known (the app shows a sliding bar). Never a name.
+export const PROGRESS_KEY = /^(flows|lookup:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|intake:(intake|consent):\d{4}-\d{2}-\d{2})$/;
+export const ProgressPush = z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, key: z.string().regex(PROGRESS_KEY),
+  done: z.number().int().min(0).max(100000).nullable(), total: z.number().int().min(1).max(100000).nullable(), stage: Cut(60) }).strict();
+
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
   flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
-  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
+  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
 
