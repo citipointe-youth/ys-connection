@@ -12185,8 +12185,24 @@ function _ikFieldLabel(k) {
 }
 
 // ── Save, one step, the parent text, a consent save: each its own confirm sheet, each its own outbox row. ──
-function _ikSheetHtml(title, steps, foot, go) {
-  return `<div class="mo-title">${esc(title)}</div>` + steps.map((s) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
+// F-14: the Save approves each form onto its linked profile and the form wins, so name each name field that changes
+// ("Surname: Strange → LEstrange"). Nothing for a person who gets a new profile.
+function _ikNameChanges(d, choices) {
+  const out = [], F = (d && d.forms) || {}, P = (d && d.profiles) || {};
+  ['student', 'parent'].forEach((role) => {
+    const f = F[role], p = P[role], v = ((d && d.verdicts) || []).find((x) => x.role === role);
+    if (!f || !p || !p.name || (v && ((choices || {})[v.subId] || v.chosen) === 'new')) return;
+    const first = _ikVal(f, 'first').trim(), last = _ikVal(f, 'last').trim(), was = String(p.name).trim(), now = [first, last].filter(Boolean).join(' ');
+    if (!now || was === now) return;
+    const pre = role === 'parent' ? 'Parent ' : '', lab = (w) => pre ? pre + w.toLowerCase() : w;
+    if (first && was.indexOf(first + ' ') === 0) out.push(lab('Surname') + ': ' + was.slice(first.length + 1) + ' → ' + last);
+    else if (last && was.endsWith(' ' + last)) out.push(lab('First name') + ': ' + was.slice(0, -last.length - 1) + ' → ' + first);
+    else out.push(lab('Name') + ': ' + was + ' → ' + now);
+  });
+  return out;
+}
+function _ikSheetHtml(title, steps, foot, go, warn) {
+  return `<div class="mo-title">${esc(title)}</div>` + (warn || []).map((w) => `<div class="ik-line ik-warn">${esc(w)}</div>`).join('') + steps.map((s) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(s.text)}</span>${_ikTagHtml(_ikDTag(s))}</div>`).join('')
     + (foot ? `<p class="lk-sub lk-mt">${esc(foot)}</p>` : '')
     + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">${esc(go)}</button></div>`;
 }
@@ -12196,7 +12212,8 @@ function _ikSaveOpen() {
   const steps = _ikTodo(det.detail), consent = I.tab === 'consent';
   I.sheet = { type: consent ? 'consentSave' : 'intakeSave', key: det.row.key, keys: steps.map((s) => s.key), one: false };
   modal(_ikSheetHtml(consent ? 'Save ' + det.row.title + ' to Elvanto?' : 'Save ' + det.row.title + "'s family to Elvanto?", steps,
-    consent ? (det.detail.outcome === 'No reply: assume consent' ? _ikD26() : '') : 'The parent text is separate.', 'Save'));
+    consent ? (det.detail.outcome === 'No reply: assume consent' ? _ikD26() : '') : 'The parent text is separate.', 'Save',
+    consent ? [] : _ikNameChanges(det.detail, _ikAns().choices)));
 }
 function _ikOneOpen(i) {
   const I = _ik(), det = I.det, s = det && _ikAlone(det.detail)[i];
