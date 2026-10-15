@@ -143,7 +143,7 @@ describe('CSS fixes', () => {
     expect(css).toMatch(/\.bot-nav a\{flex:1;[^}]*color:var\(--ink-mid\)/);
     // The "My / Connections" second line carries an inline 7.5px (bottomNavItems, lane C): only !important beats it.
     expect(html).toContain('<span class="ni-lbl"><span>My</span><span style="opacity:.75;font-size:7.5px">');
-    expect(css).toContain('.bot-nav .ni-lbl>span{font-size:11px!important;opacity:1!important}');
+    expect(css).toContain('.bot-nav .ni-lbl>span{font-size:11px!important;opacity:1!important;text-transform:none;letter-spacing:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}');
   });
   it('F-45 inputs 16 px with a #94a3b8 border; the viewport meta is unchanged', () => {
     expect(css).toMatch(/\.fi,\.fs,\.ft\{[^}]*border:1\.5px solid #94a3b8;[^}]*font-size:16px/);
