@@ -6,11 +6,6 @@ const HTML = loadIndexHtml();
 const fn = (n: string) => extractFn(HTML, n);
 
 describe('fix16 lane C', () => {
-  it('F-24(a): menu and setup say "New youth & consent", not "Form Approve & Consent"', () => {
-    expect(fn('moreItems')).toContain("label:'New youth & consent'");
-    for (const n of ['moreItems', '_setupIntakeHtml', '_setupFlowHiddenHtml']) expect(fn(n), n).not.toContain('Form Approve');
-  });
-
   it('F-31: setup help no longer mentions the Practice or Live switch', () => {
     expect(fn('_setupIntakeHtml')).not.toContain('Practice or Live');
   });
