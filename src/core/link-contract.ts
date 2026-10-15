@@ -30,6 +30,10 @@ export const CONSENT_TYPES = ['consentLookup', 'consentFix'] as const;
 /** Rev 6 (R1): the profile consent flag. contact = the "contact with my child" opt-out; all = TOTAL non-consent date. */
 export const CONSENT_FLAGS = ['ok', 'contact', 'all', 'unknown'] as const;
 export const isDnc = (c: string | null | undefined) => c === 'contact' || c === 'all';
+/** Resilience H3: a known DNC is sticky. Only a readable flag ('ok', 'contact', 'all') replaces it; an 'unknown' or a
+ *  missing flag (read blip, older console) keeps the last known DNC, so the phones never reappear on a blip. */
+export const stickyConsent = <C extends string>(old: C | null | undefined, next: C | null | undefined): C | null =>
+  (next == null || next === 'unknown') && isDnc(old) ? (old as C) : (next ?? null);
 /** X19: the four intake types (24 h expiry, admin only, module intakeAdmin). */
 export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;

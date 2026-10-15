@@ -917,12 +917,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
           const l = f.personId ? assigned.get(`${f.flowId}:${f.personId}`) : undefined; // a deleted leader reads as none
-          const dnc = isDnc(f.consent);
+          // Resilience H3: an unreadable flow profile (unknown) falls back to the roster's sticky flag.
+          const known = f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all';
+          const consent = known ? f.consent! : (f.personId && isDnc(byId.get(f.personId)?.consent) ? byId.get(f.personId)!.consent! : f.consent ?? 'unknown');
+          const dnc = isDnc(consent);
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
-            consent: f.consent ?? 'unknown', dnc, consentStep: isConsentStep(f) };
+            consent, dnc, consentStep: isConsentStep(f) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
       const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
@@ -943,11 +946,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!row || row.type !== 'consentLookup') throw new NotFoundError('That lookup is not known.');
       const p = row.payload as { kind: 'forms' | 'mismatches'; page: number };
       const base = { id, kind: p.kind, page: p.page, pageSize: 25, total: null, takenAt: null, rows: [] as unknown[] };
-      if (row.status === 'pending') return { ...base, status: 'waiting', reason: null };
+      if (row.status === 'pending') return { ...base, status: 'waiting', reason: row.reason ?? null }; // a retry carries why (resilience M5)
       if (row.status === 'claimed') return { ...base, status: 'working', reason: null };
       if (row.status !== 'sent') return { ...base, status: 'failed', reason: row.reason ?? row.status };
       const got = await d.link.consentLookup(id);
       if (!got) return { ...base, status: 'failed', reason: 'expired' };
+      if (got.unreadable) return { ...base, status: 'failed', reason: 'unreadable' }; // never an empty 'all clear' (resilience M3)
       return { id, kind: got.kind, status: 'ready', reason: null, page: got.page, pageSize: got.pageSize, total: got.total, takenAt: got.takenAt, rows: got.rows };
     },
 

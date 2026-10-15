@@ -26,7 +26,7 @@ export async function readConsentLookup(sql: SqlClient, requestId: string): Prom
   const [r] = await sql`select * from link_consent_lookup where request_id = ${requestId}
     and created_at >= now() - make_interval(secs => ${keepS})`;
   if (!r) return null;
-  let rows: unknown[] = [];
-  try { rows = JSON.parse(maybeDecrypt(r.rows, aad(requestId)) ?? '[]'); } catch { logger.warn('consent lookup unreadable', { requestId }); }
-  return { requestId, kind: r.kind, page: r.page, pageSize: r.page_size, total: r.total ?? null, rows, takenAt: toIso(r.taken_at) };
+  let rows: unknown[] = [], unreadable = false;
+  try { rows = JSON.parse(maybeDecrypt(r.rows, aad(requestId)) ?? '[]'); } catch { unreadable = true; logger.warn('consent lookup unreadable', { requestId }); }
+  return { ...(unreadable && { unreadable: true as const }), requestId, kind: r.kind, page: r.page, pageSize: r.page_size, total: r.total ?? null, rows, takenAt: toIso(r.taken_at) };
 }

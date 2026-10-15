@@ -24,9 +24,9 @@ const student = (id: string, first: string): Student => ({
   prevSvcAttended: 3, prevSvcTotal: 4, prevGrpAttended: 0, prevGrpTotal: 0, // "stopped" + follow-up eligible
   atRiskStatus: 'stopped', dataSource: null, createdAt: T0, updatedAt: T0,
 });
-// sC/sA = DNC ('contact'/'all'); sK = 'ok'; sU = no roster row; sI = inactive 'all' row; sN = 'unknown'.
+// sC/sA = DNC ('contact'/'all'); sK = 'ok'; sU = no roster row; sI = inactive 'all' row (still DNC: resilience H3); sN = 'unknown'.
 const IDS = ['sC01', 'sA02', 'sK03', 'sU04', 'sI05', 'sN06'];
-const DNC_IDS = new Set(['sC01', 'sA02']);
+const DNC_IDS = new Set(['sC01', 'sA02', 'sI05']);
 const row = (studentId: string, consent: LinkRosterRow['consent'], active = true): LinkRosterRow => ({
   personId: 'p-' + studentId, firstName: 'X', lastName: 'Y', gender: 'female', grade: 9, kind: 'student', active,
   studentId, match: 'auto', updatedAt: T0, consent,
@@ -164,5 +164,40 @@ describe('R1 makeDnc cache', () => {
     fail = false;
     const mark = await dnc.forActor(actor('grade'));
     expect(mark({ mobile: '0400' }, 'sC01')).toEqual({ mobile: null, dnc: true });
+  });
+});
+
+describe('R1 review H1: the unused PATCH /students/:id/at-risk is gone', () => {
+  it('no route writes a student except the admin/director student:write ones', async () => {
+    const { buildContainer } = await import('../container');
+    const { buildRoutes } = await import('../api/http/router');
+    const { services } = await buildContainer();
+    const writes = buildRoutes(services).filter((r) => r.method !== 'GET' && /^\/students\//.test(r.path)).map((r) => `${r.method} ${r.path}`);
+    // It returned the raw Student (DNC phones included) to leader/grade/quad with no scope check.
+    expect(writes).not.toContain('PATCH /students/:id/at-risk');
+    expect(writes.sort()).toEqual(['DELETE /students/:id', 'PATCH /students/:id']);
+  });
+});
+
+describe('resilience H3: a known DO NOT CONTACT is sticky', () => {
+  it('stickyConsent: only a readable flag replaces a known DNC', async () => {
+    const { stickyConsent } = await import('../core/link-contract');
+    expect(stickyConsent('contact', 'unknown')).toBe('contact');
+    expect(stickyConsent('all', undefined)).toBe('all');
+    expect(stickyConsent('contact', 'ok')).toBe('ok');
+    expect(stickyConsent('ok', 'unknown')).toBe('unknown');
+    expect(stickyConsent(null, 'contact')).toBe('contact');
+  });
+  it('the in-memory roster push keeps a DNC through an unknown read and clears it on ok', async () => {
+    const { InMemoryLinkRepository } = await import('../repositories/in-memory/link.repository');
+    const repo = new InMemoryLinkRepository();
+    const push = (consent: any, t: string) => repo.replaceMirror('roster', [{ personId: 'p1', firstName: 'A', lastName: 'B', gender: 'female', grade: 9, kind: 'student', consent }], { takenAt: t, consoleId: 'c1' });
+    await push('contact', '2026-10-15T01:00:00.000Z');
+    await push('unknown', '2026-10-15T02:00:00.000Z');
+    expect((await repo.roster())[0]!.consent).toBe('contact');
+    await push(undefined, '2026-10-15T03:00:00.000Z');
+    expect((await repo.roster())[0]!.consent).toBe('contact');
+    await push('ok', '2026-10-15T04:00:00.000Z');
+    expect((await repo.roster())[0]!.consent).toBe('ok');
   });
 });

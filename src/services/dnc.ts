@@ -1,5 +1,6 @@
-// R1 (LINK_REV 6): DO NOT CONTACT. A student is DNC when an ACTIVE link_roster row matched to it
-// (studentId) carries consent 'contact' or 'all'. Every student-shaped response gets `dnc`, and a
+// R1 (LINK_REV 6): DO NOT CONTACT. A student is DNC when a link_roster row matched to it (studentId) carries consent
+// 'contact' or 'all'. An inactive row counts too (resilience H3): a person dropped from one roster push keeps the last
+// known flag instead of getting their phones back. Every student-shaped response gets `dnc`, and a
 // non-admin/director login gets mobile / parentPhone stripped to null for a DNC student.
 import { isDnc } from '../core/link-contract';
 import { canSeeDncPhones } from './access-control';
@@ -22,7 +23,7 @@ export function makeDnc(link?: Pick<ILinkRepository, 'roster'>): Dnc {
     const now = Date.now();
     if (!cache || now - cache.at > TTL_MS) {
       const p = link.roster().then((rows) => new Set(rows
-        .filter((r) => r.active && r.studentId && isDnc(r.consent)).map((r) => r.studentId as string)));
+        .filter((r) => r.studentId && isDnc(r.consent)).map((r) => r.studentId as string)));
       const entry = { at: now, ids: p };
       cache = entry;
       p.catch(() => { if (cache === entry) cache = null; }); // a failed read is not cached

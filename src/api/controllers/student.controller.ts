@@ -28,11 +28,6 @@ export function makeStudentController(deps: { student: StudentService }) {
       return deps.student.update(req.ctx, req.params['id']!, req.body);
     },
 
-    async updateAtRisk(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
-      const { status } = req.body as { status: string };
-      return deps.student.updateAtRisk(req.ctx, req.params['id']!, status);
-    },
 
     async remove(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();

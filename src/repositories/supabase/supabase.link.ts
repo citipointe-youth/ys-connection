@@ -278,7 +278,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
             insert into link_roster ${tx(b.map((p) => ({ person_id: p.personId, first_name: p.firstName,
               last_name: p.lastName, gender: p.gender, grade: p.grade, kind: p.kind, active: true, consent: p.consent ?? null })))}
             on conflict (person_id) do update set first_name = excluded.first_name, last_name = excluded.last_name,
-              gender = excluded.gender, grade = excluded.grade, kind = excluded.kind, active = true, consent = excluded.consent,
+              gender = excluded.gender, grade = excluded.grade, kind = excluded.kind, active = true,
+              -- resilience H3 (stickyConsent): an unknown/missing flag never clears a known DO NOT CONTACT
+              consent = case when (excluded.consent is null or excluded.consent = 'unknown')
+                and link_roster.consent in ('contact', 'all') then link_roster.consent else excluded.consent end,
               updated_at = now()`;
         }
         const ids = push.map((p) => p.personId);

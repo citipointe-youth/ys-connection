@@ -37,7 +37,6 @@ export function buildRoutes(services: Services): Route[] {
   const atRisk = makeAtRiskController({
     atRisk: services.atRisk,
     importService: services.importService,
-    student: services.student,
   });
   const importCtrl = makeImportController({ importService: services.importService });
   const settings = makeSettingsController({ settings: services.settings, setup: services.setup });
@@ -95,7 +94,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/students/search',             auth: true, handler: (r) => student.search(r) },
     { method: 'GET',    path: '/students/:id',                auth: true, handler: (r) => student.get(r) },
     { method: 'PATCH',  path: '/students/:id',                auth: true, handler: (r) => student.update(r) },
-    { method: 'PATCH',  path: '/students/:id/at-risk',        auth: true, handler: (r) => student.updateAtRisk(r) },
     { method: 'DELETE', path: '/students/:id',                auth: true, handler: (r) => student.remove(r) },
 
     // ----- Leaders -----

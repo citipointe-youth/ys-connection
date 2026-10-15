@@ -7,7 +7,7 @@ import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, Li
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
-import { INTAKE_TYPES } from '../../core/link-contract';
+import { INTAKE_TYPES, stickyConsent } from '../../core/link-contract';
 
 const INTAKE = INTAKE_TYPES as readonly string[];
 
@@ -171,7 +171,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         const old = this.rosterRows.get(p.personId);
         this.rosterRows.set(p.personId, { personId: p.personId, firstName: p.firstName, lastName: p.lastName,
           gender: p.gender, grade: p.grade, kind: p.kind, active: true, studentId: old?.studentId ?? null,
-          match: old?.match ?? 'none', updatedAt: now, consent: p.consent ?? null });
+          match: old?.match ?? 'none', updatedAt: now, consent: stickyConsent(old?.consent, p.consent) });
       }
       for (const r of this.rosterRows.values()) if (!seen.has(r.personId) && r.active) { r.active = false; r.updatedAt = now; }
     } else if (kind === 'services') {

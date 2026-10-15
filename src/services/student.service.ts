@@ -4,7 +4,6 @@ import { assertCan, can, canAccessGender, canAccessStudent, type StructureScope 
 import type { IStudentRepository, ISettingsRepository, IConnectionRepository, IPrayerRepository } from '../repositories/interfaces/entity-repositories';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
-import type { AtRiskStatus } from '../core/types/enums';
 import { computeQuad } from '../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-config';
 import { NotFoundError, BadRequestError } from '../core/errors/app-error';
@@ -24,14 +23,12 @@ const CreateStudentSchema = z.object({
   dataSource: z.string().nullable().optional(),
 });
 
-const AT_RISK_VALUES = ['regular', 'declining', 'atrisk', 'stopped', 'watch', 'new'] as const;
 
 export interface StudentService {
   list(actor: Actor, filter?: { grade?: number; gender?: string; query?: string; unconnected?: boolean; crossGrade?: boolean }): Promise<StudentView[]>;
   get(actor: Actor, id: string): Promise<StudentView>;
   create(actor: Actor, input: unknown): Promise<Student>;
   update(actor: Actor, id: string, input: unknown): Promise<Student>;
-  updateAtRisk(actor: Actor, id: string, status: string): Promise<Student>;
   remove(actor: Actor, id: string): Promise<void>;
   search(actor: Actor, query: string): Promise<StudentView[]>;
 }
@@ -181,19 +178,6 @@ export function makeStudentService(
       });
     },
 
-    async updateAtRisk(actor, id, status) {
-      assertCan(actor, 'atrisk:read');
-      if (!AT_RISK_VALUES.includes(status as AtRiskStatus)) {
-        throw new BadRequestError(`Invalid at-risk status: ${status}`);
-      }
-      const existing = await repo.findById(id);
-      if (!existing) throw new NotFoundError('Student not found');
-      return repo.save({
-        ...existing,
-        atRiskStatus: status as AtRiskStatus,
-        updatedAt: new Date().toISOString(),
-      });
-    },
 
     async remove(actor, id) {
       assertCan(actor, 'student:write');
