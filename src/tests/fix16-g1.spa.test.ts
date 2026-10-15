@@ -183,3 +183,23 @@ describe('F-41 the Keep as is button stays short (fits at 360 px)', () => {
     expect(h).toContain(`<div class="ik-line">The text goes to the parent form's mobile.</div>`);
   });
 });
+
+describe('F-46(b) plain words: no "stale", no "Plan", no "Shadow check"', () => {
+  it('an old plan says "Over 2 hours old. Tap Refresh." everywhere, and the list says "old"', () => {
+    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
+    const old = LIST({ stale: true, takenAt: new Date(Date.now() - 3 * 36e5).toISOString() });
+    const want = 'Over 2 hours old. Tap Refresh.';
+    expect(f._ikSaveBlock(DET(), old, ST())).toBe(want);
+    expect(f._ikTextBlock(DET(), old, ST())).toBe(want);
+    expect(strip(f._ikBanner(ST(), old, 'intake'))).toContain(want);
+    I.dates = [{ date: '2026-10-09' }]; I.head = ST(); I.list = old;
+    const t = strip(f._ikListPage());
+    expect(t).toMatch(/Checked .* · old/);
+    expect(t).not.toMatch(/stale|Plan /);
+  });
+  it('the admin link page calls the check "Kiosk vs app check"', () => {
+    const { f } = env();
+    expect(f._lkAdmShadowHtml()).toContain('Kiosk vs app check');
+    expect(f._lkAdmShadowHtml()).not.toContain('Shadow check');
+  });
+});

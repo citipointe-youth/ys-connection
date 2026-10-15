@@ -11679,7 +11679,7 @@ function _lkAdmShadowHtml() {
   else if (r && !r.imported) body = '<p class="lk-sub">Not in the import</p>';
   else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
     + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(V[x.verdict] || x.verdict)}</b></div>`).join('');
-  return `<div class="lk-sec">Shadow check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
+  return `<div class="lk-sec">Kiosk vs app check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
     <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
     <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;
 }
@@ -11803,7 +11803,7 @@ function _ikBanner(st, list, tab) {
   if (tab !== 'consent' && caps.intakeText === 'locked') out.push(['practice', "The parent text isn't connected yet. Send it in Elvanto."]);
   if (list) {
     if (!list.takenAt) out.push(['warn', 'Not checked yet. Press Refresh to ask the console.']);
-    else if (list.stale) out.push(['warn', 'Plan ' + _ikAge(list.takenAt) + ' old. Refresh first.']);
+    else if (list.stale) out.push(['warn', 'Over 2 hours old. Tap Refresh.']);
     if (list.cut) out.push(['warn', 'Some forms were cut off: every family needs a look']);
   }
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
@@ -11850,7 +11850,7 @@ function _ikSaveBlock(det, list, st) {
   if (!det || !det.detail) return det && det.unreadable ? 'Unreadable: refresh' : 'Nothing to save.';
   const row = det.row || {}, acts = det.actions || [];
   if (row.status === 'done') return 'Done.';
-  if (!list || !list.takenAt || list.stale) return 'Plan is over 2 hours old. Refresh first.';
+  if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
   if (row.status === 'needs-you') return _ikHoldReason(det.detail) || 'Sort the lines at the top first.';
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'consentSave', 'intakeText'])) return 'Waiting for the console';
@@ -11861,7 +11861,7 @@ function _ikSaveBlock(det, list, st) {
 function _ikTextBlock(det, list, st) {
   if (_ikRev(st) < 4) return _ikOldConsole();
   { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
-  if (!list || !list.takenAt || list.stale) return 'Plan is over 2 hours old. Refresh first.';
+  if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
   const acts = (det && det.actions) || [];
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'intakeText'])) return 'Waiting for the console';
@@ -12296,7 +12296,7 @@ function _ikListPage() {
   const dates = consent ? _ikWeekHtml(I) : I.dates.length
     ? `<div class="tbbar">${I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">${esc(_lkDay(x.date))}${x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : ''}</button>`).join('')}</div>`
     : '<div class="lk-hint">No dates yet. Press Refresh to ask the console.</div>';
-  const checked = L && L.takenAt ? `<div class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · stale' : ''}</div>` : '';
+  const checked = L && L.takenAt ? `<div class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · old' : ''}</div>` : '';
   return `<div class="lk-svc lk-mb">${tabs}${ref}</div>${I.ref ? _ikRefBar(I.ref, st) : ''}${sub}${_ikBanner(st, L, I.tab)}${dates}${checked}${I.tab === 'consent' ? _ikConsentHelp() : ''}`
     + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="ik-rows">${I.date ? _ikRowsHtml(L, st, I.doneOpen) : ''}</div>`;
