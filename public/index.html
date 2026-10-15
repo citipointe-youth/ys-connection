@@ -11428,7 +11428,7 @@ function _lkRemoveHtml(r) {
   const f = LINK.fs;
   return `<div class="mo-title">Remove ${esc(r.name)}?</div><p class="lk-sub">From ${esc(r.stepName)} · ${esc(r.flowName)}. This takes them out of the step in Elvanto.</p>
     <div class="fg"><label class="fl" for="lk-rm-note">Note (optional)</label><textarea id="lk-rm-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fs)LINK.fs.rmNote=this.value">${esc(f.rmNote || '')}</textarea>
-    <div class="lk-d">Goes on their Elvanto notes. The console may hold a remove with a note until notes are switched on; leave it empty to just remove.</div></div>`;
+    <div class="lk-d">Goes on their Elvanto notes. Leave empty to just remove.</div></div>`;
 }
 function _lkRemoveAsk() { if (LINK.fs) { LINK.fs.rm = true; _lkStepDraw(); } }
 function _lkRemoveBack() { if (LINK.fs) { LINK.fs.rm = false; _lkStepDraw(); } }
