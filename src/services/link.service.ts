@@ -16,7 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, CONSENT_TYPES, LINK_REV, MIRROR_KINDS, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
+import { ACTION_TYPES, CONSENT_TYPES, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -116,7 +116,9 @@ export interface CheckinView { today: string; services: ServiceView[]; defaultSe
 export interface ActionListRow { id: string; type: ActionType; status: Status; reason: string | null; detail?: string | null;
   createdAt: string; resultAt: string | null; leaderName: string; login: string; hasNote: boolean;
   /** B3 / T-7, B17: the person (or group / flow row) of an `unclear` row or a first-timer, for link:admin only. */
-  name?: string | null }
+  name?: string | null;
+  /** C-1 (F-37): 'failed' = a sent remove whose Elvanto note was not saved; missing otherwise. */
+  note?: 'failed' }
 /** T8: `history` newest first (<= 8, the last report included); the list comes sorted grade, girls then boys. */
 export interface LifegroupView { groupId: string; name: string; grade: number | null; gender: LinkGroupRow['gender'];
   meets: string; members: LinkGroupRow['members']; thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null;
@@ -826,7 +828,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
         ...(c.admin ? { detail: r.detail } : {}), createdAt: r.createdAt, resultAt: r.resultAt, leaderName: r.leaderName,
-        login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true, ...(names.has(r.id) ? { name: names.get(r.id) } : {}) }));
+        login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true, ...(names.has(r.id) ? { name: names.get(r.id) } : {}),
+        ...(r.status === 'sent' && r.detail === NOTE_FAILED_DETAIL ? { note: 'failed' as const } : {}) }));
     },
 
     async batch(actor, body) {

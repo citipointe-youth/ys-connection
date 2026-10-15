@@ -9786,7 +9786,13 @@ async function nySend(ev, send) {
   const p = send ? NY.last : _nyRead();
   // No "I am" yet (ledger 22): the picker opens first, then the send carries on.
   // APP-69: the leaders list (the host's name) may still be loading: wait for it before deciding.
-  if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) { await _lkLoadLeaders(); p.host = _nyHost(); }
+  // F-06: a second tap while the leaders load must not send twice: hold the send flag (and the button) across the wait.
+  if (!send && !p.host && getMyLeaderId() && !LINK.ldrs) {
+    const b0 = document.getElementById('ny-send');
+    NY.sending = true; if (b0) b0.disabled = true;
+    try { await _lkLoadLeaders(); } finally { NY.sending = false; if (b0) b0.disabled = false; }
+    p.host = _nyHost();
+  }
   if (!send && !p.host) { _nyPickHost(() => nySend()); return; }
   const dobBad = send ? '' : _nyDobProblem((document.getElementById('ny-dob') || {}).value, _nyToday());
   if (dobBad) { toast(dobBad); return; }
@@ -9795,6 +9801,8 @@ async function nySend(ev, send) {
     ['parentFirst', 'parent first name'], ['parentLast', 'parent last name'], ['parentMobile', 'parent mobile']].find(([f]) => !p[f]);
   if (need) { toast('Add the ' + need[1]); return; }
   if (!send) { const bad = Object.values(_nyFieldMsgs({ ...p, postcode: p.address ? p.address.postcode : '' }).block)[0]; if (bad) { _nyShowMsgs(); toast(bad); const f = document.querySelector('[aria-invalid="true"]'); if (f) { f.focus(); if (f.scrollIntoView) f.scrollIntoView({ block: 'center' }); } return; } }
+  // F-34: offline: nothing is sent and the form stays as typed.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) { toast("You're offline. Nothing was sent.", 5000); return; }
   // Hold THIS send's state object: the host may go Home and start another student while the reply is on its way,
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
@@ -9951,7 +9959,7 @@ function _lkStatusText(row, lastSeen) {
     case 'queued': return 'Waiting to send.';
     case 'mirror': return 'In Elvanto.';
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
-      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Goes to Elvanto within 15 minutes.' : '');
+      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
@@ -9969,7 +9977,11 @@ function _lkStatusText(row, lastSeen) {
 }
 // The status line as HTML: the contract's tick is the SVG check icon (the SPA has no Unicode symbols).
 function _lkStatusHtml(row, lastSeen) {
-  const t = _lkStatusText(row, lastSeen);
+  let t = _lkStatusText(row, lastSeen);
+  // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
+  const role = S.user && S.user.role;
+  if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.');
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
@@ -10004,10 +10016,14 @@ function _lkBanner(types, st) {
   if (!st) return '';
   const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
   const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', removeFromFlowStep: 'Removing from steps', firstTimerCheckIn: 'First-timer check-in', addGroupMember: 'Adding students', removeGroupMember: 'Removing students' };
-  const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
-  if (off) out.push(['bad', 'Console offline since ' + _lkSeen(off) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  else if (!c || !c.lastSeenAt) out.push(['warn', 'The console has not been seen yet. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
-  else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + '. Actions are queued, not in Elvanto yet. Use the kiosk too.']);
+  // F-11/F-12: the console's own online flag decides; one plain line. Leaders get the pill only, except on
+  // Check-in, where the kiosk line matters to whoever is on the door.
+  const door = types.indexOf('checkIn') >= 0;
+  if ((!c || !c.online) && (_lkBoss() || door)) {
+    const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
+    const at = c && c.lastSeenAt;
+    out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
+  }
   types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
@@ -10017,12 +10033,13 @@ function _lkBanner(types, st) {
 const LK_OFFLINE_MS = 15 * 60000;
 function _lkOfflineSince(st, now) {
   const c = st && st.console, t = c && c.lastSeenAt ? Date.parse(c.lastSeenAt) : NaN;
+  if (c && c.online) return ''; // F-11: the server's online flag (2 x poll + 60 s) wins over the 15-minute guess
   return isFinite(t) && now - t > LK_OFFLINE_MS ? c.lastSeenAt : '';
 }
 function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
 function _lkOfflineHtml() {
   const at = _lkBoss() ? _lkOfflineSince(LINK.status, Date.now()) : '';
-  return at ? `<div class="lk-alert bad" role="alert">${icS('alert')}<div>Console offline since ${esc(_lkSeen(at))}. Elvanto changes from the app wait until it is back.</div></div>` : '';
+  return at ? `<div class="lk-alert bad" role="status">${icS('alert')}<div>No link to Elvanto since ${esc(_lkSeen(at))}. Your taps send later.</div></div>` : ''; // F-12 wording, F-51 status
 }
 // ── The phone queue (§9.2): localStorage['ysc.lkq.' + login id], every access in try/catch. ──
 function _lkKey() { return 'ysc.lkq.' + ((S.user && S.user.id) || ''); }
@@ -10051,6 +10068,8 @@ function _lkQSet(q) {
       LINK.memOnly = true;
     }
   }
+  // F-33: say so once: a reload now loses the taps that are not sent yet.
+  if (q.length && !LINK.memWarned) { LINK.memWarned = true; try { toast("This phone can't keep taps. Keep the app open until All saved.", 6000); } catch (e) {} }
   LINK.mem[_lkKey()] = q.slice();
 }
 function _lkUuid() {
@@ -10232,6 +10251,11 @@ function _lkPill() {
   try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
   if (LINK.red && n) return `<button type="button" class="lk-pill bad" onclick="_lkRetry()">Not saved — tap to retry</button>`;
   if (n) return `<span class="lk-pill wait">${n} waiting to send</span>`;
+  // F-13: off the phone is not in Elvanto: while any of my rows still waits for the console, no "All saved".
+  const acts = [];
+  Object.keys(LINK.people || {}).forEach((k) => { const d = LINK.people[k] || {}; [].concat(d.people || [], d.leaders || []).forEach((p) => { if (p.mine) acts.push(p.action); }); });
+  [LINK.gres, LINK.fres, LINK.mres].forEach((m) => Object.keys(m || {}).forEach((k) => acts.push(m[k])));
+  if (acts.some((a) => a && (a.status === 'pending' || a.status === 'claimed'))) { LINK.flash = false; return '<span class="lk-pill wait">Sent. Waiting for Elvanto.</span>'; }
   if (LINK.flash) { LINK.flash = false; return `<span class="lk-pill ok fade">All saved</span>`; }
   return '';
 }
@@ -10300,14 +10324,16 @@ function _lkSoftReset() {
   if (LINK.tick) clearInterval(LINK.tick);
   if (LINK.toastT) clearTimeout(LINK.toastT);
   if (LINK.ik) { clearTimeout(LINK.ik.debT); clearTimeout(LINK.ik.poll); } // T4: the intake answers live in memory only
-  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly };
+  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned };
   LINK = _lkFresh();
   Object.assign(LINK, keep);
 }
 // ── Status and refresh (only while a link page is visible) ──
 function _lkOnPage() { return !!S.user && String(S.page || '').indexOf('link-') === 0; }
 function _lkStatusLoad() {
-  return API.fresh('/link/status', true).then((st) => { LINK.status = st; LINK.statusAt = Date.now(); _lkRefreshView(); }).catch(() => {});
+  // F-19: a failed load is remembered, so the admin status shows Try again instead of Loading for ever.
+  return API.fresh('/link/status', true).then((st) => { LINK.status = st; LINK.statusAt = Date.now(); LINK.statusErr = null; _lkRefreshView(); })
+    .catch((e) => { LINK.statusErr = (e && e.message) || 'Could not load the status.'; _lkRefreshView(); });
 }
 function _lkTickStart() {
   if (LINK.tick) return;
@@ -10452,8 +10478,10 @@ function _lkLists() {
   let all = d.people;
   try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
   const list = _lkFilter(all, LINK.q);
+  // F-02: the row just tapped stays where it was for 600 ms, so the next row does not slide under the finger.
+  const held = Date.now() - (LINK.doorAt || 0) < 600 ? LINK.doorHeld : null;
   // T7: nobody is listed to check in until a name is typed; the Checked in list always shows.
-  return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn) : [], done: list.filter((p) => p.checkedIn) };
+  return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn || p.personId === held) : [], done: list.filter((p) => p.checkedIn && p.personId !== held) };
 }
 // T7: matches while typing, then the collapsed Checked in list. APP-74: its rows are built only while it is open.
 function _lkListHtml() {
@@ -10486,10 +10514,12 @@ function _lkRowHtml(p) {
   const queued = !!act && act.status === 'queued';
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
-  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkUndo('${pid}')">Undo</button>`;
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!(LINK.doorHeld==='${pid}'&&Date.now()-(LINK.doorAt||0)<600))_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
-  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut')) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
+  // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
+  const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc), past = !!sv && sv.ymd < _lkSvcDay();
+  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
@@ -10498,7 +10528,12 @@ function _lkRowHtml(p) {
 function _lkCheck(pid, type) {
   try {
     const svc = LINK.svc, s = _lkSvc();
-    if (!svc || !s) return;
+    // F-02: a double tap must not undo, or tick the row that slid up. _lkLists keeps the tapped row in place for
+    // 600 ms (so the next row does not move under the finger), and a second tap on it (or its Undo) is ignored.
+    if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
+    LINK.doorAt = Date.now(); LINK.doorHeld = pid;
+    const at = LINK.doorAt; // r1: only this tap's own hold is cleared, never a later tap's
+    setTimeout(() => { if (LINK.doorAt === at) LINK.doorHeld = null; _lkRefreshView(); }, 620);
     delete LINK.refusals[svc + ':' + pid];
     const q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
@@ -10537,6 +10572,7 @@ function _lkToastUndo() {
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {
   try {
+    LINK.doorHeld = null; // F-02: a deliberate Undo ends the 600 ms hold on that row
     const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
@@ -11659,7 +11695,7 @@ function _lkRevLine(st) {
 // Status: the console, each type's mode, mirror ages, today's counts by status, unclear rows named with the action.
 function _lkAdmStatusHtml() {
   const st = LINK.status, c = st && st.console;
-  if (!st) return '<div class="lk-sec">Status</div>' + progBar('Loading');
+  if (!st) return '<div class="lk-sec">Status</div>' + (LINK.statusErr ? `<div class="card"><p>${esc(LINK.statusErr)}</p><button class="btn btn-secondary btn-sm" onclick="_lkStatusLoad()">Try again</button></div>` : progBar('Loading'));
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};

@@ -220,13 +220,13 @@ describe('F1.1 _lkBanner', () => {
   it('offline shows the last-seen time', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
     try {
-      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('The console was last seen 4:12 pm. Actions are queued, not in Elvanto yet. Use the kiosk too.');
+      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since 4:12 pm. Your taps send later. Use the kiosk too.'); // fix16 F-12 wording
     } finally { vi.useRealTimers(); }
   });
   it('T-17 / APP-52: a last-seen time on another day carries the day', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T00:00:00.000Z')); // Mon 10:00 Brisbane
     try {
-      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('The console was last seen Fri 16 Oct 4:12 pm.');
+      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since Fri 16 Oct 4:12 pm.'); // fix16 F-12 wording
       const h = makeEnv();
       h.get().LINK.status = st({ online: false });
       expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct 4:12 pm');
@@ -269,7 +269,7 @@ describe('F1.1 _lkBanner', () => {
 // ── F1.2 the phone queue ──
 function door(h: ReturnType<typeof makeEnv>, people: any[] = [], leaders: any[] = []) {
   const L = h.get().LINK;
-  L.services = [SVC]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders };
+  L.services = [{ ...SVC, ymd: h.fns._lkSvcDay() }]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders }; // fix16 F-28: today, so Check out shows
   L.okDay = { [SVC.serviceTimeId]: true }; // B9: the "Not today" confirm is tested on its own
 }
 
@@ -393,7 +393,7 @@ describe('F1.2 queue', () => {
     expect(q[0].payload.personId).toBe(P(1));
     expect(h.calls.toasts).toContain('Too many taps. Wait a minute.');
     const row = h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[1]);
-    expect(strip(row)).toContain('Do this in Elvanto for now.');
+    expect(strip(row)).toContain('Tell the admin.'); // fix16 F-35: a grade login is told to pass it on
     expect(strip(row)).toContain('Check in');
   });
   it('network errors back off 5 s, 15 s, 45 s, then 60 s; the pill turns red after the 45 s step fails', async () => {
@@ -463,6 +463,7 @@ describe('F1.2 queue', () => {
     h.fns._lkCheck(P(1), 'checkIn');
     const first = h.fns._lkQGet()[0];
     const f = h.fns._lkFlush();
+    vi.advanceTimersByTime(600); // fix16 F-02: a second tap on the same row within 600 ms is ignored
     h.fns._lkCheck(P(1), 'checkIn'); // the second tap lands while the first is on the wire
     release();
     await f;
@@ -1638,7 +1639,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
-    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Do it there.');
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Tell the admin.'); // fix16 F-35
     expect(h.calls.toasts).toEqual([]);
     const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
     k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
@@ -1746,9 +1747,9 @@ describe('F3 flow steps', () => {
   });
   it('R8 console offline: red line on the flows banner for admin/director only', () => {
     const st = { console: { lastSeenAt: new Date(Date.now() - 20 * 60000).toISOString(), online: false, capabilities: {} } };
-    expect(strip(boss().fns._lkBanner(['completeStep'], st))).toContain('Console offline since');
+    expect(strip(boss().fns._lkBanner(['completeStep'], st))).toContain('No link to Elvanto since'); // fix16 F-12 wording
     expect(boss().fns._lkBanner(['completeStep'], st)).toContain('lk-alert bad');
-    expect(strip(setup().fns._lkBanner(['completeStep'], st))).not.toContain('Console offline since');
+    expect(strip(setup().fns._lkBanner(['completeStep'], st))).not.toContain('No link to Elvanto'); // fix16 F-12: leaders get the pill only
     const fresh = { console: { lastSeenAt: new Date(Date.now() - 5 * 60000).toISOString(), online: true, inWindow: true, capabilities: {} } };
     expect(strip(boss().fns._lkBanner(['completeStep'], fresh))).not.toContain('offline');
   });
@@ -1936,10 +1937,10 @@ describe('F4.2 admin page', () => {
 describe('T-17 / X14 outside the window a pending row says when it goes', () => {
   const st = (c: any) => ({ console: { lastSeenAt: '2026-10-16T06:12:00.000Z', online: true, inWindow: false, pollSeconds: 900,
     capabilities: null, consoles: 1, ...c }, mirrors: {} });
-  it('online, outside the window: "Goes to Elvanto within 15 minutes."; inside the window or offline: not', () => {
+  it('online, outside the window: "Usually under a minute. (fix16 GAP-3)"; inside the window or offline: not', () => {
     const h = makeEnv();
     h.get().LINK.status = st({});
-    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Goes to Elvanto within 15 minutes.');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Usually under a minute.');
     expect(h.fns._lkStatusText({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
     h.get().LINK.status = st({ inWindow: true });
     expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console.');
@@ -2016,7 +2017,7 @@ describe('T-46 UI minors', () => {
     expect(extractFn(html, '_lkStepHtml')).not.toContain('Completing may send');
   });
   it('APP-69: Send waits for the leaders list before deciding the host; the loader keeps one list', async () => {
-    expect(extractFn(html, 'nySend')).toMatch(/if \(!send && !p\.host && getMyLeaderId\(\) && !LINK\.ldrs\) \{ await _lkLoadLeaders\(\); p\.host = _nyHost\(\); \}/);
+    expect(extractFn(html, 'nySend')).toMatch(/if \(!send && !p\.host && getMyLeaderId\(\) && !LINK\.ldrs\) \{[\s\S]*?await _lkLoadLeaders\(\);[\s\S]*?p\.host = _nyHost\(\);/); // fix16 F-06 holds the send flag
     const h = makeEnv();
     expect(await h.fns._lkLoadLeaders()).toEqual([]); // the stub API.get rejects: an empty list, nothing kept
     expect(h.get().LINK.ldrs).toBeNull();

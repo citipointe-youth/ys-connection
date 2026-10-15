@@ -3,6 +3,7 @@
 import type {
   ActionType, IgnoredWhy, LinkRosterRow, LinkServiceRow, Match, OutboxRow, ResultItem, Status,
 } from '../core/link-types';
+import { NOTE_FAILED_DETAIL } from '../core/link-contract';
 
 export const LINK_CUTOFF_DAYS = 3;
 export const LEASE_LOST_MS = 3_600_000;
@@ -200,7 +201,7 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
       ? { ...(item.steps ? { steps: item.steps } : {}), ...(item.stop ? { stop: item.stop } : {}) } : {};
     const base = { updatedAt: at, ...chain };
     switch (item.outcome) {
-      case 'sent': return { next: { ...base, status: 'sent', reason: null, detail: null, resultAt: at,
+      case 'sent': return { next: { ...base, status: 'sent', reason: null, detail: item.note === 'failed' ? NOTE_FAILED_DETAIL : null, resultAt: at,
         sentLogKey: item.sentLogKey, reportId: item.reportId ?? row.reportId, personId: item.personId ?? row.personId } };
       case 'already': return { next: { ...base, status: 'sent', reason: 'already', detail: null, resultAt: at } };
       case 'planned': return { next: { ...base, status: 'sent', reason: 'planned', detail: null, resultAt: at } };
