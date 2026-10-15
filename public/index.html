@@ -1597,6 +1597,7 @@ function setMyLeaderId(id) {
   let prev = null;
   try { prev = localStorage.getItem('yap_leader_id') || null; } catch {}
   try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {}
+  if (id && id !== prev) _vgSnap(); // R5: a new "I am" starts on that leader's own grades
   // Elvanto link (spec §6.2): log the "I am" switch with the next flush, only while the screens are on.
   try { if ((id || null) !== prev && _linkOn()) _lkPush({ kind: 'identity', id: _lkUuid(), at: new Date().toISOString(), from: prev, to: id || null }, false); } catch {}
 }
@@ -1621,10 +1622,20 @@ function _vgGrades() {
   if (!id) return null;
   const bracket = quadGrades(S.user.quad);
   const l = _vgLeader(id);
+  // R5: /leaders not loaded yet -> no filter until it is (then repaint), never the whole bracket by default.
+  if (!l && Cache.getStale('/leaders') == null) { API.get('/leaders').then(() => _vgRepaint(), () => {}); return null; }
   const saved = Object.prototype.hasOwnProperty.call(_vgLocal, id) ? _vgLocal[id] : (l ? l.viewGrades : null);
   const base = saved != null ? saved : ((l && l.grades) || []);
   const pick = bracket.filter(g => base.includes(g));
   return pick.length ? pick : bracket.slice();
+}
+// R5: drop the remembered view (local + server) for the current "I am" = "My grades". Runs on every
+// "I am" change and every login; chip taps afterwards behave as before. Never saved during a preview.
+function _vgSnap() {
+  const id = getMyLeaderId();
+  if (!id || !_vgActive()) return;
+  _vgLocal[id] = null;
+  if (!_previewStash) _vgSave(id);
 }
 function _vgSet(grades) {
   const id = getMyLeaderId();
@@ -2453,6 +2464,7 @@ async function doLogin() {
   try {
     const res = await API.post('/auth/login', { email, password, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
     API.setToken(res.token); S.user = res.user;
+    _vgSnap(); // R5: every login starts on the remembered "I am" leader's own grades
     _offerSaveCredential(email, password);
     // Safari's own save-password heuristic (no Credential Management API to
     // call directly, see _offerSaveCredential above) partly relies on noticing

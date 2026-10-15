@@ -70,3 +70,35 @@ describe('Junior/Senior Home grade buttons', () => {
     expect(body.indexOf('_homeGradeBar(_hg)')).toBeLessThan(body.indexOf('_busHomeTile()'));
   });
 });
+
+describe('R5 leader switch / login snaps the grade filter to the leader\'s own grades', () => {
+  const mk = (stale: any, local: any = {}) => {
+    const calls: string[] = ((globalThis as any).__calls = []);
+    const f = loadFns(['getMyLeaderId', '_vgActive', 'setMyLeaderId', '_vgSnap', '_vgLeader', '_vgGrades', '_vgSave'], `
+      const store = { yap_leader_id: 'old' };
+      const localStorage = { getItem(k) { return store[k] ?? null; }, setItem(k, v) { store[k] = v; }, removeItem(k) { delete store[k]; } };
+      const S = { user: { role: 'quad', quad: 'g79' } };
+      const _previewStash = null;
+      let _vgLocal = ${JSON.stringify(local)};
+      const Cache = { getStale() { return ${JSON.stringify(stale)}; } };
+      const calls = globalThis.__calls; const API = { patch(u, b) { calls.push(u + JSON.stringify(b)); return Promise.resolve(); }, get() { calls.push('GET'); return Promise.resolve([]); } };
+      function _linkOn() { return false; } function _vgRepaint() {} function toast() {}
+      function quadGrades() { return [7, 8, 9]; }`, ['setMyLeaderId', '_vgGrades', '_vgSnap']);
+    return { f, calls };
+  };
+  it('switching "I am" clears a remembered viewGrades and uses the leader\'s grades', () => {
+    const { f, calls } = mk([{ id: 'y8', grades: [8], viewGrades: [7, 8, 9] }]);
+    f.setMyLeaderId('y8');
+    expect(f._vgGrades()).toEqual([8]);
+    expect(calls.some((c) => c.startsWith('/leaders/y8/view-grades'))).toBe(true);
+  });
+  it('cold /leaders cache: no filter and a fetch, not a silent full-bracket fallback', () => {
+    const { f, calls } = mk(null, { y8: null });
+    expect(f._vgGrades()).toBe(null);
+    expect(calls).toContain('GET');
+  });
+  it('doLogin snaps after S.user is set', () => {
+    const body = extractFn(html, 'doLogin');
+    expect(body.indexOf('S.user = res.user')).toBeLessThan(body.indexOf('_vgSnap()'));
+  });
+});
