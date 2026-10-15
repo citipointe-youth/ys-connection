@@ -11114,7 +11114,13 @@ function _lkFlowGroups(rows, today, steps) {
   out.forEach((f) => {
     delete f.by;
     f.steps.sort((a, b) => a.stepOrder - b.stepOrder || String(a.stepId).localeCompare(String(b.stepId)));
-    f.steps.forEach((s) => s.rows.sort(byName));
+    f.steps.forEach((s) => {
+      s.rows.sort(byName);
+      // Two Elvanto profiles with the same name in one step look identical: say so on both rows.
+      const n = {}, k = (r) => String(r.name || '').trim().toLowerCase();
+      s.rows.forEach((r) => { n[k(r)] = (n[k(r)] || 0) + 1; });
+      s.rows.forEach((r) => { r.sameName = n[k(r)] > 1; });
+    });
   });
   return out.sort((a, b) => String(a.flowName || '').localeCompare(String(b.flowName || '')) || String(a.flowId).localeCompare(String(b.flowId)));
 }
@@ -11237,7 +11243,7 @@ function _lkFlowRowHtml(r, today, boss) {
   const tick = !boss ? '' : _lkTickable(r)
     ? `<input type="checkbox" class="lk-tick" aria-label="Select ${esc(r.name)}"${LINK.fsel && LINK.fsel[r.rowId] ? ' checked' : ''} onclick="event.stopPropagation()" onchange="_lkSel('${rid}',this.checked)">`
     : '<span class="lk-tick-sp"></span>';
-  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
+  return `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}" role="button" onclick="_lkOpenStep('${rid}')">${tick}${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}${r.sameName ? ' <span class="lk-od" style="color:var(--ca-muted);background:var(--ca-surface-2,#eee)">same name as another row</span>' : ''}</div>${meta ? `<div class="lk-d">${meta}</div>` : ''}
     ${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${btn}${icS('chevr')}</div>`;
 }
 // Each step is a collapsed .drop (toggled in the DOM, so a refresh keeps the open ones via LINK.fOpen).
@@ -11258,7 +11264,7 @@ function _lkFlowsHtml() {
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
     const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
-    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall"><input type="checkbox"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length})</label>` : '';
+    const selAll = tk.length > 1 ? `<label class="lk-chk lk-selall"><input type="checkbox"${all ? ' checked' : ''} onchange="_lkSelAll('${id}',this.checked)"> Select all shown here (${tk.length}${tk.length < s.rows.length ? ' of ' + s.rows.length + ' - the rest are Do Not Contact, need the consent check or are already queued' : ''})</label>` : '';
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
       <div class="drop-body">${selAll}${s.rows.map((r) => _lkFlowRowHtml(r, today, boss)).join('')}</div></div>`;
