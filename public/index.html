@@ -12873,7 +12873,8 @@ function _ikFixBanner(st) {
   return t ? `<div class="lk-alert practice">${icS('info')}<div>${esc(t)}</div></div>` : '';
 }
 function _ikLkPage(kind, st) {
-  const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st);
+  const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st)
+    || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
   const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Returned consent forms with no person in Elvanto. Find the person to link one. Only the console remembers the link, so Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
   if (gate) return intro + `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
   const busy = _ikLkBusy(x);

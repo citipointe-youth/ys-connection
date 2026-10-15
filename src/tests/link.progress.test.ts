@@ -42,6 +42,7 @@ describe('S5 progress', () => {
     const r = await h.claim();
     expect(r.progress).toBe(true);
     expect(ClaimResponse.parse(r).progress).toBe(true);
+    expect(ClaimResponse.parse(r).consentLink).toBe(true); // L6 review: the console sends the consentLink key only on this flag
     const base = { contractVersion: 1, consoleId: CONSOLE, takenAt: T0, done: 1, total: 2, stage: 'x' };
     expect(() => PUSH_SCHEMAS.progress.parse({ ...base, key: 'roster' })).toThrow();
     expect(() => PUSH_SCHEMAS.progress.parse({ ...base, key: 'flows', name: 'Kid' })).toThrow();

@@ -21,7 +21,8 @@ export const LINK_CONTRACT_VERSION = 1;
 // (R1 DO NOT CONTACT); types removeFromFlowStep (R4), consentLookup + consentFix (R2 b/c); push kind consentLookup (the
 // answer to one consentLookup row). The console sends them only when the app's claim reply says linkRev >= 6.
 // Run 2026-10-15b (L6), optional only, no rev bump (migration 0031): outbox type consentLink and consentLookup kind `unlinked`; the
-// console offers consentLink only after an app reply with linkRev >= 6, and an older console never sees either.
+// console offers consentLink only after a claim reply with linkRev >= 6 AND consentLink: true (a rev 6 app before 0031 400s on the
+// key), and an older console never sees either.
 // Run 2026-10-15b (S5), optional only, no rev bump: the claim reply's `progress: true` says this app takes POST
 // /sync/push/progress (how far a lookup, the flows read or an intake ask has got). An older app sends no flag, so the
 // console never posts it; an older console ignores the flag. Progress is a hint: a lost or refused post changes nothing.
@@ -155,7 +156,8 @@ export const ClaimRow = z.object({
 export const IntakeHint = z.object({ mode: z.enum(INTAKE_MODES), hurry: z.boolean(),
   refresh: z.array(z.object({ mode: z.enum(['intake', 'consent']), date: Ymd })).max(4) });
 export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Iso, rows: z.array(ClaimRow).max(20), linkRev: LinkRev,
-  intake: IntakeHint.optional(), progress: z.literal(true).optional() }); // S5: this app takes POST /sync/push/progress
+  intake: IntakeHint.optional(), progress: z.literal(true).optional(), // S5: this app takes POST /sync/push/progress
+  consentLink: z.literal(true).optional() }); // L6 review: this app takes the consentLink capability key
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence

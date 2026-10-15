@@ -558,3 +558,4 @@ before touching `client.ts`'s pool config.
 - **Pending-form DNC:** root cause was consentOf/personFacts reading only the profile, so an unapproved returned form 3 (opt-out or total non-consent) never made a person DNC. Fix is on the console (newest form per person wins, flag contact/all, unchanged values). See 11.1 debug.md.
 - **Flow steps findings:** only 1 flow is configured; the select-all count counts tickable rows only; same-name rows are duplicate Elvanto profiles (hence the same-name chip).
 - **Progress contract:** console posts `/sync/push/progress` (stored in `link_console.progress`, migration 0030) and claims `progress:true`.
+- **L6 / migration 0031:** if a `consentLink` insert fails with a CHECK violation, the build did not apply 0031 (`/health` `schema.current` must be `0031`). New capability keys must sit behind a claim-reply flag (`consentLink: true`): `ClaimRequest.capabilities` is strict, so a key an app does not know 400s every claim.
