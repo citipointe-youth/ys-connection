@@ -126,3 +126,19 @@ describe('F-17 the late-text hold is one plain sentence, shown once', () => {
     expect(why).not.toContain('texted');
   });
 });
+
+describe('F-19 a failed date load offers Try again, never an endless Loading', () => {
+  it('an error with no list renders Try again, not the Loading bar', () => {
+    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
+    I.dates = [{ date: '2026-10-09', counts: {} }]; I.head = ST(); I.err = "Can't reach the server"; I.list = null;
+    const h = f._ikListPage();
+    expect(h).toContain('Try again');
+    expect(h).not.toContain('Loading');
+  });
+  it('re-tapping the same date after a failure loads it again', () => {
+    const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
+    I.dates = [{ date: '2026-10-09' }]; I.list = null;
+    f._ikPickDate(0);
+    expect(calls.loads).toBe(1);
+  });
+});

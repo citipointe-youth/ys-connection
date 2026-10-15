@@ -12310,7 +12310,7 @@ function _ikRefBar(ref, st) {
 }
 // The list in three sections (§7.1): NEEDS YOU, READY, DONE (collapsed). Greyed while the plan is stale.
 function _ikRowsHtml(list, st, open) {
-  if (!list) return progBar('Loading');
+  if (!list) return _ik().err ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>' : progBar('Loading'); // F-19
   const rows = list.rows || [];
   if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
     ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>'
@@ -12580,8 +12580,8 @@ function _ikTab(m) {
 }
 function _ikPickDate(i) {
   const I = _ik(), x = I.dates && I.dates[i];
-  if (!x || x.date === I.date) return;
-  navPush();
+  if (!x || (x.date === I.date && I.list)) return; // F-19: the same date again retries a failed load
+  if (x.date !== I.date) navPush();
   I.date = x.date; I.list = null; I.key = null; I.det = null; I.saErr = {};
   _ikDraw(); _ikLoad(false);
 }
