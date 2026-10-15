@@ -1163,7 +1163,7 @@ describe('F2 lifegroup report', () => {
     expect(out).toContain('Tue 6 Oct 18:30');
     expect(out).not.toContain('Service');
     expect(out).toContain('Guests2');
-    expect(out).toContain('Here (2)Ava Example, Dana Testleader');
+    expect(out).toContain('Students here (2)Ava Example, Dana Testleader');
     const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
     expect(strip(dnm.fns._lkReportHtml(dnm.get().LINK.groups[0], dnm.get().LINK.groups[0].lastReport))).toContain('Group did not meet');
   });
@@ -1173,7 +1173,7 @@ describe('F2 lifegroup report', () => {
     const h = setup('L1', { history: [lr, dup] });
     const g = h.get().LINK.groups[0];
     const one = h.fns._lkReportHtml(g, lr);
-    expect(one).toMatch(/<details class="lk-here"><summary>Here \(2\)<\/summary>/); // closed: no open attribute
+    expect(one).toMatch(/<details class="lk-here"><summary>Students here \(2\)<\/summary>/); // closed: no open attribute
     expect(one).not.toContain('Sent by'); // made in Elvanto: no sender
     const w = { start: '2026-10-05', end: '2026-10-11' };
     const body = h.fns._lkWeekBodyHtml(g, w);
@@ -1207,7 +1207,7 @@ describe('F2 lifegroup report', () => {
     h.fns._lkReportSend();
     expect(h.fns._lkQGet()[0].payload).toMatchObject({ didNotMeet: true, attendees: [], serviceTimeId: null });
   });
-  it('T3: Add report sits under the week reports; a same-date report warns but sends', () => {
+  it('T3: Add report sits under the week reports; a same-date report is blocked (F-03)', () => {
     const h = setup();
     const w = h.fns._lkWeeks('2026-10-16')[1]; // the week of the 6 Oct report
     const body = h.fns._lkWeekBodyHtml(h.get().LINK.groups[0], w);
@@ -1218,11 +1218,10 @@ describe('F2 lifegroup report', () => {
     expect(rf.add).toBe(true);
     h.fns._lkRfDate('2026-10-06'); h.fns._lkRfSvc('none');
     const form = h.fns._lkFormHtml();
-    expect(strip(form)).toContain('There is already a report for that date. You can still add another.');
-    expect(form).not.toMatch(/disabled onclick="_lkReportSend()"/);
+    expect(strip(form)).toContain("There's already a report for that date. Edit it.");
+    expect(form).toMatch(/disabled onclick="_lkReportSend\(\)"/);
     h.fns._lkReportSend();
-    expect(h.fns._lkQGet()).toHaveLength(1);
-    expect(h.fns._lkQGet()[0].payload.date).toBe('2026-10-06');
+    expect(h.fns._lkQGet()).toHaveLength(0);
   });
   it('T2: the report card has no Service row', () => {
     const h = setup();
@@ -1266,6 +1265,7 @@ describe('F2 lifegroup report', () => {
   });
   it('no "I am": the picker opens first (for New report, Edit and Send)', () => {
     const h = setup(null);
+    h.get().LINK.iamPick = new Set(['L1']);
     h.fns._lkNewReport();
     expect(h.get().LINK.rf).toBeNull();
     expect(h.calls.modals).toHaveLength(1);
@@ -1335,7 +1335,7 @@ describe('F2 lifegroup report', () => {
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfDate('2026-10-16');
-    expect(h.get().LINK.rf.svc).toBe('none'); // no auto-pick: a new report stays on No service
+    expect(h.get().LINK.rf.svc).toBe(P(50)); // F-25: a new report starts on that day's default service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
     expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');
@@ -1418,7 +1418,7 @@ describe('F2 lifegroup report', () => {
     const L = h.get().LINK;
     L.gwk = 2;
     const out = h.fns._lkGroupHtml(L.groups[0]);
-    expect(strip(out)).toContain('Here (1)Ben &lt;b&gt;Sample&lt;/b&gt;');
+    expect(strip(out)).toContain('Students here (1)Ben &lt;b&gt;Sample&lt;/b&gt;');
     h.fns._lkEditReport(G(8));
     expect(L.rf).toMatchObject({ mode: 'edit', date: '2026-09-29', reportId: G(8), ticks: { [P(63)]: true } });
     h.fns._lkReportSend();
@@ -1827,13 +1827,13 @@ describe('F4.2 admin page', () => {
   const logRow = (over: any = {}) => ({ id: P(300), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'grade9<b>g</b>', deviceId: 'dev-<1>',
     deviceLabel: 'iPhone · <i>Safari</i>', event: 'identity', leaderId: P(301), leaderName: 'Sam <u>S</u>', prevLeaderId: P(302),
     prevLeaderName: 'Cody <s>C</s>', targetKind: null, targetId: null, targetName: null, outboxId: null, outcome: 'logged', ...over });
-  it('four cards render: Status, Matching, Shadow check, Activity', () => {
+  it('four cards render: Status, Matching, Kiosk vs app check, Activity', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.today = '2026-10-16';
     const out = h.fns._lkAdminHtml();
     for (const id of ['lk-adm-status', 'lk-adm-match', 'lk-adm-shadow', 'lk-adm-log']) expect(out).toContain(`id="${id}"`);
     const text = strip(out);
-    for (const t of ['Status', 'Matching', 'Shadow check', 'Activity']) expect(text).toContain(t);
+    for (const t of ['Status', 'Matching', 'Kiosk vs app check', 'Activity']) expect(text).toContain(t);
   });
   it('A4 / X17: the Status card says how to stop all data flow', () => {
     const h = makeEnv({ role: 'admin' });
@@ -1987,6 +1987,7 @@ describe('T-46 UI minors', () => {
     const many = Array.from({ length: 14 }, (_, i) => ({ id: 'L' + i, fullName: (i === 3 ? 'Zed <b>Z</b>' : 'Leader ' + i), active: true }));
     const h = makeEnv();
     h.get().LINK.ldrs = many;
+    h.get().LINK.iamPick = new Set(many.map((l) => l.id));
     h.fns._lkIamPick(() => {});
     const m = h.calls.modals[0]!;
     expect(m).toContain('<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>');
