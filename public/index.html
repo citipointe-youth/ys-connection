@@ -11154,16 +11154,22 @@ function _lkYpDraw() {
   if (!LINK.youth) { el.innerHTML = LINK.youthErr ? `<p class="lk-sub">${esc(LINK.youthErr)}</p>` : progBar('Loading'); return; }
   const v = LINK.gm[p.gid], ex = {};
   if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state !== 'not-added') ex[r.personId] = true; });
+  if (p.just) delete ex[p.just]; // F-02: the tapped row stays in place, greyed, for 600 ms (no row slides under the finger)
   const list = _lkYouthFilter(LINK.youth, p.q, p.grade, ex);
-  el.innerHTML = list.slice(0, 60).map((r) => `<div class="lk-lq-row" role="button" onclick="_lkYpAdd('${esc(r.personId)}')"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div>`
+  el.innerHTML = list.slice(0, 60).map((r) => r.personId === p.just
+    ? `<div class="lk-lq-row dis" aria-disabled="true"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div><span class="lk-d">Adding…</span></div>`
+    : `<div class="lk-lq-row" role="button" onclick="_lkYpAdd('${esc(r.personId)}')"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div>`
     + `${r.grade != null ? `<span class="lk-chip">Gr ${esc(r.grade)}</span>` : ''}${icS('plus')}</div>`).join('')
     + (list.length > 60 ? `<p class="lk-sub">${list.length - 60} more. Type more of the name.</p>` : list.length ? '' : '<p class="lk-sub">Nobody found.</p>');
 }
 function _lkYpAdd(pid) {
   const p = LINK.yp, r = p && (LINK.youth || []).find((x) => x.personId === pid);
-  if (!r) return;
+  // F-02: ignore every picker tap for 600 ms after an add (a double tap must not add the next row).
+  if (!r || Date.now() - (p.at || 0) < 600) return;
+  p.at = Date.now(); p.just = pid;
   _lkMemQueue(p.gid, pid, 'addGroupMember', r.name);
   toast('Adding ' + r.name, 2000);
+  setTimeout(() => { if (LINK.yp === p && p.just === pid) { p.just = null; _lkYpDraw(); } }, 600);
 }
 // ── Flow steps (F3; spec §11.3) ──
 // Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
