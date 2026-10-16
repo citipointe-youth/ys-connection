@@ -219,7 +219,12 @@ export function makeNewYouthService(
       let held: string | undefined;
       if (live && reqId && opts.unsent) {
         const c = await claim(reqId, actor.id);
-        if (c && !c.fresh) return { ...((c.result as NewYouthResult | null) ?? { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false }), repeat: true };
+        if (c && !c.fresh) {
+          // C-B2: an admin resend of the same row is still running (its key holds the row's updatedAt).
+          // ponytail: a finish lost to a DB blip keeps this row busy until it changes; the admin can Delete it.
+          if (retryId && c.result == null) throw new AppError('UNSENT_BUSY', 'Already resending. Wait for it to finish.', 409);
+          return { ...((c.result as NewYouthResult | null) ?? { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false }), repeat: true };
+        }
         if (c) held = reqId;
       }
 
@@ -296,7 +301,7 @@ export function makeNewYouthService(
       if (row.reason === 'unconfirmed' && (body as { confirm?: unknown } | undefined)?.confirm !== true) {
         throw new AppError('UNSENT_CHECK_ELVANTO', 'This may already be in Elvanto: check before retrying.', 409);
       }
-      return run(actor, row.input, id);
+      return run(actor, row.input, id, `retry:${id}:${row.updatedAt}`); // C-B2: never the phone's requestId
     },
 
     async unsentDelete(actor, id) {

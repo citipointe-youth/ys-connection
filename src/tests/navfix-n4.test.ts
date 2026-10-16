@@ -181,3 +181,26 @@ describe('S-5/D4 New person request id', () => {
     expect(JSON.parse(decryptField(row!.payload, `newperson_unsent.payload:${row!.id}`))).not.toHaveProperty('requestId');
   });
 });
+
+describe('C-B2 Unsent retry lock (server)', () => {
+  it('two concurrent retries of one row -> one student+parent POST pair; the second is 409 UNSENT_BUSY', async () => {
+    const t = await setup(['fail', 'ok', 'ok', 'ok', 'ok'], 30);
+    await t.svc.send(ADMIN, INPUT); // student rejected -> saved as failed
+    const [row] = await t.unsent.list();
+    t.n.posts = 0;
+    const res = await Promise.allSettled([t.svc.unsentRetry(ADMIN, row!.id, {}), t.svc.unsentRetry(ADMIN, row!.id, {})]);
+    expect(t.n.posts).toBe(2);
+    expect(res.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const bad = res.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(bad.reason).toMatchObject({ code: 'UNSENT_BUSY', statusCode: 409 });
+    expect(bad.reason.message).toBe('Already resending. Wait for it to finish.');
+  });
+  it('a retry that failed again can be retried (the row changed, so a new key)', async () => {
+    const t = await setup(['fail', 'fail', 'ok', 'ok']);
+    await t.svc.send(ADMIN, INPUT);
+    const [row] = await t.unsent.list();
+    await new Promise((r) => setTimeout(r, 5)); // updatedAt moves on
+    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('failed');
+    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('sent');
+  });
+});

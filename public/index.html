@@ -6666,10 +6666,13 @@ function _usRowHtml(r) {
     <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
     ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
     <div class="el-acts">
-      ${r.name ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>` : ''}
+      ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
+        : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
       <button class="btn btn-ghost btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>
     </div></div>`;
 }
+// C-B2: ids with a resend in flight. A re-render (tab switch, Admin reopened) must not draw a fresh, tappable Retry.
+const _usBusy = new Set();
 function _usPaint() {
   const el = document.getElementById('unsent-list');
   if (el && _usRows) el.innerHTML = `<div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted.</div>`
@@ -6683,11 +6686,13 @@ async function _usLoad() {
 async function usRetry(id) {
   const btn = document.getElementById('us-retry-' + id);
   const r = (_usRows || []).find(x => x.id === id);
-  if (!btn || btn.disabled) return;
+  if (!btn || btn.disabled || _usBusy.has(id)) return;
   if (r && r.reason === 'unconfirmed' && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Checked Elvanto? Tap to retry'; return; }
   btn.disabled = true; btn.textContent = 'Sending...';
+  _usBusy.add(id);
   try { toast(_nyMessage(await API.post('/admin/unsent/' + encodeURIComponent(id) + '/retry', { confirm: true }, 45000)).lines.join(' '), 8000); }
-  catch (e) { toast(e.message, 8000); }
+  catch (e) { toast(e.message, 8000); } // 409 UNSENT_BUSY: another phone is resending it
+  finally { _usBusy.delete(id); }
   _usLoad();
 }
 // Two-tap confirm, like the Error log.
