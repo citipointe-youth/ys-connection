@@ -36,7 +36,9 @@ export interface OutboxRow {
   steps?: ResultStep[] | null; stop?: ResultStop | null;
 }
 export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 'dedupeKey' | 'serviceDate' |
-  'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'>;
+  'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'> & {
+  /** S-4 / D8: in the same transaction, cancel the pending rows of `type` that match every given field, before the insert. */
+  supersede?: { type: ActionType; dedupeKey?: string; createdBy?: string; kind?: string } };
 export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: string; contractVersion: number;
   consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities;
   /** T1: the console's LINK_REV from its last claim (missing = 1). */

@@ -643,9 +643,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     // phone can make, and a busy door's retries and duplicates never stall it.
     if (d.limiter.isBlocked(c.actor.id)) throw new TooManyRequestsError('Too many taps. Wait a minute.');
     const studentId = personId ? roster.find((x) => x.personId === personId)?.studentId ?? null : null;
+    const key = dedupeKey(it.type, p);
+    // S-4 / D5: a new intakeAnswer replaces the family's pending one in the same transaction (no separate cancel item).
+    const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key } : undefined;
     try {
-      const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: dedupeKey(it.type, p),
-        serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name });
+      const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
+        serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });
       return ok(row, 'saved');
     } catch (e) {
       if (e instanceof LinkIdExists) { // a concurrent flush stored the same id first (APP-72): re-read, then replay

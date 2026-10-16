@@ -74,8 +74,9 @@ export class SupabaseLinkRepository implements ILinkRepository {
 
   async insertAction(n: NewOutboxRow): Promise<OutboxRow> {
     const sql = this.sql;
-    try {
-      const [r] = await sql`
+    // The insert statement is unchanged; S-4 only decides which client runs it (the shared one, or the supersede tx).
+    const insert = async (q: SqlClient): Promise<Row> => {
+      const [r] = await q`
         insert into link_outbox (id, type, payload, note, dedupe_key, service_date, student_id, person_id, created_by,
                                  leader_id, leader_name)
         values (${n.id}, ${n.type}, ${this.j(n.payload)}, ${maybeEncrypt(n.note, noteAad(n.id))}, ${n.dedupeKey},
@@ -83,6 +84,22 @@ export class SupabaseLinkRepository implements ILinkRepository {
         on conflict (id) do nothing
         returning *`;
       if (!r) throw new LinkIdExists(n.id); // the caller re-reads and runs the replay check (APP-72)
+      return r;
+    };
+    const s = n.supersede;
+    try {
+      // S-4 / D5, D8: cancel the matching pending rows and insert in ONE transaction; a failed insert (id exists, open
+      // duplicate) rolls the cancel back. A claimed row is not touched (its insert then answers duplicate, as before).
+      const r = !s ? await insert(sql) : await sql.begin(async (tx) => {
+        const none = tx``;
+        await tx`
+          update link_outbox set status = 'cancelled', updated_at = now(), detail = ${'cancelled-by:' + n.id}
+          where status = 'pending' and type = ${s.type}
+            ${s.dedupeKey !== undefined ? tx`and dedupe_key = ${s.dedupeKey}` : none}
+            ${s.createdBy !== undefined ? tx`and created_by = ${s.createdBy}` : none}
+            ${s.kind !== undefined ? tx`and payload->>'kind' = ${s.kind}` : none}`;
+        return insert(tx as unknown as SqlClient);
+      });
       return toOutbox(r, n.note);
     } catch (err) {
       if (err instanceof LinkIdExists) throw err;

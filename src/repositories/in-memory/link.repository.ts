@@ -47,12 +47,18 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private nowMs() { return this.clock().getTime(); }
   private nowIso() { return this.clock().toISOString(); }
 
-  async insertAction(n: NewOutboxRow): Promise<OutboxRow> {
+  async insertAction(input: NewOutboxRow): Promise<OutboxRow> {
+    const { supersede: s, ...n } = input;
     if (this.outbox.has(n.id)) throw new LinkIdExists(n.id); // on conflict (id) do nothing
+    // S-4 / D8: the pending rows the insert supersedes; cancelled only when the insert goes through (one transaction).
+    const gone = !s ? [] : [...this.outbox.values()].map((e) => e.row).filter((r) => r.status === 'pending' && r.type === s.type
+      && (s.dedupeKey === undefined || r.dedupeKey === s.dedupeKey) && (s.createdBy === undefined || r.createdBy === s.createdBy)
+      && (s.kind === undefined || (r.payload as { kind?: unknown }).kind === s.kind));
     for (const { row } of this.outbox.values()) {
-      if (row.dedupeKey === n.dedupeKey && OPEN.includes(row.status)) throw new LinkOpenDuplicate(row.id);
+      if (row.dedupeKey === n.dedupeKey && OPEN.includes(row.status) && !gone.includes(row)) throw new LinkOpenDuplicate(row.id);
     }
     const now = this.nowIso();
+    for (const r of gone) Object.assign(r, { status: 'cancelled', detail: `cancelled-by:${n.id}`, updatedAt: now });
     const row: OutboxRow = { ...clone(n), status: 'pending', reason: null, detail: null, attempts: 0, retryAt: null,
       leaseOwner: null, leaseUntil: null, resultAt: null, sentLogKey: null, reportId: null, createdAt: now, updatedAt: now,
       steps: null, stop: null };
