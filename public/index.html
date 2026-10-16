@@ -12248,7 +12248,7 @@ function _ikAns() {
 function _ikPost(items) {
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
-  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 20000).then((r) => (r && r.results) || []);
+  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000).then((r) => (r && r.results) || []); // S-3: past the server's 20 s 503 guard
 }
 function _ikOutcome(results, id) { return (results || []).find((r) => r && r.kind === 'action' && r.id === id) || null; }
 // Show a just-sent action at once (the next load brings the server's row).
