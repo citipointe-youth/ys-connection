@@ -1703,7 +1703,10 @@ async function renderNotices() {
   const _pg = S.page;
   let list = Cache.getStale('/notices');
   if (list == null) { setApp(shell('')); try { list = await API.get('/notices'); } catch { list = []; } if (S.page !== _pg) return; }
-  setApp(shell(_noticesHtml(list)));
+  const d = _noticeSender() && _ntDraftGet();
+  const warn = d && d.requestId !== _ntBusy ? `<div class="card" style="border-left:4px solid var(--amber,#d97706)"><div style="font-size:13px">Not sure this went: <b>${esc(d.title || '')}</b></div>
+    <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn btn-primary btn-sm" onclick="ntResend()">Send again</button><button type="button" class="btn btn-secondary btn-sm" onclick="ntDiscard()">Discard</button></div></div>` : '';
+  setApp(shell(_noticesHtml(list).replace('<div id="nt-push"></div>', (m) => m + warn)));
   _ntPushDraw();
 }
 async function submitNotice() {
@@ -1713,9 +1716,27 @@ async function submitNotice() {
   if (!title || !body) { toast('Add a title and a message'); return; }
   if (!recipients.length) { toast('Pick at least one login to send to'); return; }
   const btn = document.getElementById('nt-send'); if (btn) btn.disabled = true;
-  try { await API.post('/notices', { title, body, recipients }); Cache.del('/notices'); toast('Notice sent'); renderNotices(); }
-  catch (e) { toast(e.message || 'Could not send'); if (btn) btn.disabled = false; }
+  return _ntSend({ requestId: _lkUuid(), title, body, recipients, at: new Date().toISOString() }, btn);
 }
+// D3: an unsent notice is kept on this phone (ysc.ntDraft.<uid>) until the server answers; a resend reuses its requestId,
+// so the server returns the first notice instead of making a second one.
+let _ntBusy = null; // requestId of the send in flight (its draft is not "unsure" yet)
+function _ntKey() { return 'ysc.ntDraft.' + (S.user ? S.user.id : ''); }
+function _ntDraftGet() { try { return JSON.parse(localStorage.getItem(_ntKey()) || 'null'); } catch { return null; } }
+function _ntDraftSet(d) { try { if (d) localStorage.setItem(_ntKey(), JSON.stringify(d)); else localStorage.removeItem(_ntKey()); } catch {} }
+async function _ntSend(d, btn) {
+  const h = _here(); _ntBusy = d.requestId; _ntDraftSet(d);
+  try {
+    await API.post('/notices', { title: d.title, body: d.body, recipients: d.recipients, requestId: d.requestId }, 0, false, true);
+    _ntDraftSet(null); Cache.del('/notices'); toast('Notice sent');
+    if (_still(h)) renderNotices();
+  } catch (e) {
+    if (e.status >= 400 && e.status < 500) _ntDraftSet(null); // refused: nothing was saved
+    toast(e.message || 'Could not send'); if (btn) btn.disabled = false;
+  } finally { if (_ntBusy === d.requestId) _ntBusy = null; }
+}
+function ntResend() { const d = _ntDraftGet(); if (!d) return; const p = _ntSend(d); renderNotices(); return p; }
+function ntDiscard() { _ntDraftSet(null); renderNotices(); }
 async function deleteNotice(id) {
   if (!confirm('Delete this notice?')) return;
   try { await API.del('/notices/' + id); Cache.del('/notices'); renderNotices(); }

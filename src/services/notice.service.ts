@@ -15,6 +15,7 @@ const SendSchema = z.object({
   title: z.string().trim().min(1).max(120),
   body: z.string().trim().min(1).max(1000),
   recipients: z.array(z.enum(NOTICE_QUADS)).min(1).max(4),
+  requestId: z.string().uuid().optional(), // D3: the phone's id for this send; a resend returns the first notice
 });
 
 const SubscribeSchema = z.object({
@@ -107,8 +108,9 @@ export function makeNoticeService(
       await assertOn();
       assertCan(actor, 'notice:write');
       const d = SendSchema.parse(input);
+      if (d.requestId) { const dup = await repo.findById(d.requestId); if (dup) return dup; }
       const saved = await repo.save({
-        id: generateId(), title: d.title, body: d.body, recipients: [...new Set(d.recipients)],
+        id: d.requestId ?? generateId(), title: d.title, body: d.body, recipients: [...new Set(d.recipients)],
         senderId: actor.id, senderName: actor.displayName, createdAt: now().toISOString(),
       });
       await pushNotice(saved);
