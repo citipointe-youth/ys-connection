@@ -233,6 +233,8 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
     },
 
     async changeOwnPassword(actor, currentPassword, newPassword) {
+      // Review 2026-10-16 minor: a missing/non-string body is a 400, not a bcrypt 500.
+      if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') throw new BadRequestError('Enter your current password and a new password');
       const existing = await users.findById(actor.id);
       if (!existing) throw new NotFoundError('User not found');
       if (!existing.passwordHash || !(await verifyPassword(currentPassword, existing.passwordHash))) {

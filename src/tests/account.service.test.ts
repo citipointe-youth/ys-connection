@@ -25,6 +25,13 @@ async function buildService() {
 }
 
 describe('Account Service — self-service password change', () => {
+  it('an empty body is a 400, not a bcrypt 500 (review 2026-10-16 minor)', async () => {
+    const { svc, grade } = await buildService();
+    await expect(svc.changeOwnPassword(actorFor(grade.id, 'grade'), undefined as unknown as string, undefined as unknown as string))
+      .rejects.toBeInstanceOf(BadRequestError);
+    await expect(svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'correcthorse1', 42 as unknown as string))
+      .rejects.toBeInstanceOf(BadRequestError);
+  });
   it('rejects an incorrect current password', async () => {
     const { svc, grade } = await buildService();
     await expect(
