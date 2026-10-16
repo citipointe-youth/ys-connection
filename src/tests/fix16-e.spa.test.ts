@@ -10,7 +10,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
-  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
+  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
@@ -194,17 +194,44 @@ describe('F-03 a date that already has a report blocks Send and offers Edit', ()
 });
 
 describe('F-25 report form: default service, a draft per group and date, Discard asks', () => {
-  it('a new form starts on that day\'s default service and follows a date change until a service is picked', () => {
+  it('operator 2026-10-17: a new form starts on No service on every date, even a day with a default service', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16'); // RSVC marks P(50) as this day's default
+    expect(h.get().LINK.rf.svc).toBe('none');
+    expect(h.fns._lkFormHtml()).toContain('<option value="none" selected>No service</option>');
+    h.fns._lkRfDate('2026-10-13'); // also a day with a default (P(52))
+    expect(h.get().LINK.rf.svc).toBe('none');
+  });
+  it('a picked service survives a date change', () => {
     const h = setup();
     h.fns._lkNewReport('2026-10-16');
-    expect(h.get().LINK.rf.svc).toBe(P(50));
-    h.fns._lkRfDate('2026-10-13');
+    h.fns._lkRfSvc(P(52));
+    h.fns._lkRfDate('2026-10-14');
     expect(h.get().LINK.rf.svc).toBe(P(52));
-    h.fns._lkRfSvc('none');
-    h.fns._lkRfDate('2026-10-16');
+  });
+  it('Group did not meet on then off comes back on No service, not Pick a service', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    h.fns._lkRfDnm(true);
+    expect(h.get().LINK.rf.svc).toBe('');
+    h.fns._lkRfDnm(false);
     expect(h.get().LINK.rf.svc).toBe('none');
-    h.fns._lkRfDate('2026-10-10'); // no service that day
-    expect(h.get().LINK.rf.svc).toBe('none');
+    expect(h.fns._lkFormHtml()).not.toContain('Pick a service</option>');
+  });
+  it('an untouched new report queues serviceTimeId null', () => {
+    const h = setup();
+    h.fns._lkNewReport('2026-10-16');
+    h.fns._lkRfTick(P(61));
+    h.fns._lkReportSend();
+    expect(h.fns._lkQGet()[0].payload.serviceTimeId).toBeNull();
+  });
+  it('Edit keeps the saved service (a real one, and none)', () => {
+    const a = setup('L1', { lastReport: { ...grp().lastReport, serviceTimeId: P(52) } });
+    a.fns._lkEditReport(G(9));
+    expect(a.get().LINK.rf.svc).toBe(P(52));
+    const b = setup(); // grp().lastReport.serviceTimeId is null
+    b.fns._lkEditReport(G(9));
+    expect(b.get().LINK.rf.svc).toBe('none');
   });
   it('a back gesture keeps the draft: reopening the same group and date restores the ticks and note', () => {
     const h = setup();

@@ -10,7 +10,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
-  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays', '_lkDefaultSvcFor',
+  '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
@@ -1326,16 +1326,11 @@ describe('F2 lifegroup report', () => {
     expect(form).not.toContain('Elvanto will show');
     expect(form).toContain('Ben &lt;b&gt;Sample&lt;/b&gt;');
   });
-  it('service default per §2.3 and the older-than-7-days line', () => {
-    const f = makeEnv().fns;
-    expect(f._lkDefaultSvcFor('2026-10-16', RSVC)).toBe(P(50));
-    expect(f._lkDefaultSvcFor('2026-10-11', RSVC)).toBe(P(52));
-    expect(f._lkDefaultSvcFor('2026-10-13', RSVC)).toBeNull();
-    expect(f._lkDefaultSvcFor('2026-10-16', [{ ...RSVC[0], isDefault: false }, RSVC[1]])).toBeNull(); // the server decides (APP-43)
+  it('a new report starts on No service; the older-than-7-days line', () => {
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfDate('2026-10-16');
-    expect(h.get().LINK.rf.svc).toBe(P(50)); // F-25: a new report starts on that day's default service
+    expect(h.get().LINK.rf.svc).toBe('none'); // operator 2026-10-17 (reverses F-25): every new report starts on No service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
     expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');

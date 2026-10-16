@@ -10888,11 +10888,6 @@ function _lkAddDays(ymd, n) {
   const t = Date.parse(String(ymd || '') + 'T00:00:00Z');
   return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : '';
 }
-// §2.3 for a report date: the server marks each day's default service (APP-43: the rule lives in link-rules only).
-function _lkDefaultSvcFor(day, services) {
-  const s = (services || []).find((x) => x.ymd === day && x.isDefault);
-  return s ? s.serviceTimeId : null;
-}
 // T8: the summary line under a group name. N = attendees + guests.
 function _lkLastReportLabel(g) {
   const r = g && g.lastReport;
@@ -11129,12 +11124,12 @@ function _lkFormOpen(mode, arg) {
     const ticks = {};
     base.attendees.forEach((pid) => { ticks[pid] = true; });
     LINK.rf = { mode, date: r.date, didNotMeet: base.didNotMeet, ticks, guests: Math.min(base.guests, 99), svc: base.didNotMeet ? '' : (base.serviceTimeId || 'none'),
-      svcSet: true, note: '', priv: false, reportId: r.reportId, base, err: '' };
+      note: '', priv: false, reportId: r.reportId, base, err: '' };
   } else {
     const date = arg || g.defaultDate || LINK.today || '';
-    // F-25: a draft per group and date comes back (Back never loses ticks); a new form starts on that day's service.
+    // F-25: a draft per group and date comes back (Back never loses ticks). Operator 2026-10-17: a new form starts on No service.
     const rfd = LINK.rfd || (LINK.rfd = {}), key = g.groupId + '|' + date;
-    LINK.rf = rfd[key] || (rfd[key] = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.services) || 'none', svcSet: false,
+    LINK.rf = rfd[key] || (rfd[key] = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: 'none',
       note: '', priv: false, reportId: null, base: null, err: '' });
     LINK.rf.err = ''; // B16: a restored draft never shows a stale error
   }
@@ -11150,7 +11145,6 @@ function _lkRfDate(v) {
   if (g && rfd[g.groupId + '|' + f.date] === f) delete rfd[g.groupId + '|' + f.date];
   f.date = String(v || ''); f.err = ''; f.dirty = true;
   if (g) rfd[g.groupId + '|' + f.date] = f;
-  if (!f.svcSet && !f.didNotMeet) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || 'none'; // F-25: follow the date
   _lkPaintGroups();
 }
 // Group did not meet: clears and hides the ticks and the service.
@@ -11158,13 +11152,13 @@ function _lkRfDnm(on) {
   const f = LINK.rf;
   if (!f) return;
   f.didNotMeet = !!on; f.err = ''; f.dirty = true;
-  if (on) { f.ticks = {}; f.svc = ''; f.svcSet = false; }
-  else if (!f.svc) f.svc = _lkDefaultSvcFor(f.date, LINK.services) || 'none';
+  if (on) { f.ticks = {}; f.svc = ''; }
+  else if (!f.svc) f.svc = 'none';
   _lkPaintGroups();
 }
 function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; f.dirty = true; _lkPaintGroups(); }
 function _lkRfGuests(v) { const f = LINK.rf; if (!f) return; const n = parseInt(v, 10); f.guests = isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; f.dirty = true; }
-function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.svcSet = true; f.err = ''; f.dirty = true; }
+function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.err = ''; f.dirty = true; }
 // The note stops at 1,800 characters (the console adds the leader line in front, inside Elvanto's 1,900).
 function _lkRfNote(el) {
   const f = LINK.rf;
