@@ -23,9 +23,13 @@ export class SupabaseUnsentRepository implements IUnsentRepository {
     await this.sql`delete from newperson_requests where created_at < ${iso}`;
   }
   // S-5/D4: table from migration 0032. The insert is the lock: a second claim of the same id loses the conflict.
-  async claimRequest(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null }> {
+  async claimRequest(id: string, by: string, staleMs?: number): Promise<{ fresh: boolean; result: unknown | null }> {
     const ins = await this.sql`insert into newperson_requests (id, created_by) values (${id}, ${by}) on conflict (id) do nothing returning id`;
     if (ins.length) return { fresh: true, result: null };
+    if (staleMs) { // RV-S-m4: take over an unfinished claim whose finish was lost (one statement: only one taker wins)
+      const took = await this.sql`update newperson_requests set created_at = now(), created_by = ${by} where id = ${id} and result is null and created_at < now() - make_interval(secs => ${staleMs / 1000}) returning id`;
+      if (took.length) return { fresh: true, result: null };
+    }
     const [r] = await this.sql`select result from newperson_requests where id = ${id}`;
     return { fresh: false, result: (r as Record<string, any> | undefined)?.result ?? null };
   }

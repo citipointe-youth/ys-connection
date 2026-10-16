@@ -16,9 +16,9 @@ export class InMemoryUnsentRepository implements IUnsentRepository {
     for (const [k, r] of this.rows) if (r.createdAt < iso) this.rows.delete(k);
     for (const [k, r] of this.reqs) if (r.createdAt < iso) this.reqs.delete(k);
   }
-  async claimRequest(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null }> {
+  async claimRequest(id: string, by: string, staleMs?: number): Promise<{ fresh: boolean; result: unknown | null }> {
     const r = this.reqs.get(id);
-    if (r) return { fresh: false, result: r.result };
+    if (r && !(staleMs && r.result == null && Date.parse(r.createdAt) < Date.now() - staleMs)) return { fresh: false, result: r.result };
     this.reqs.set(id, { by, result: null, createdAt: new Date().toISOString() });
     return { fresh: true, result: null };
   }

@@ -14,7 +14,8 @@ export interface IUnsentRepository {
   purgeBefore(iso: string): Promise<void>;
   /** S-5/D4 (migration 0032): claim a New person request id. `fresh` when this call made the claim; otherwise the
    *  stored result, or null while the first send is still running (or its finish was lost). */
-  claimRequest(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null }>;
+  /** staleMs (RV-S-m4, admin retries only): an unfinished claim older than this is taken over (fresh). */
+  claimRequest(id: string, by: string, staleMs?: number): Promise<{ fresh: boolean; result: unknown | null }>;
   /** Store the final result, or null to drop the claim so a fixed retry can go (nothing posted, or rejected). */
   finishRequest(id: string, result: unknown | null): Promise<void>;
 }

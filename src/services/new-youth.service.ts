@@ -96,6 +96,7 @@ const Schema = z.object({
 const GET_TIMEOUT_MS = 8_000;
 const POST_TIMEOUT_MS = 10_000;
 const DEDUPE_MS = 2 * 60 * 1000;
+const RETRY_STALE_MS = 10 * 60 * 1000; // RV-S-m4: an admin retry runs well under a minute; an older unfinished claim was lost
 const UA = 'Mozilla/5.0 (compatible; YS-Connection)';
 export const UNSENT_KEEP_DAYS = 14;
 const unsentAad = (id: string) => `newperson_unsent.payload:${id}`;
@@ -182,8 +183,8 @@ export function makeNewYouthService(
 
   // S-5/D4: the DB request claim. It must FAIL OPEN: a DB blip never blocks a Friday host (error log NY_REQ_FAILED).
   const reqFailed = () => opts.errorLog?.record({ category: 'elvanto-form', code: 'NY_REQ_FAILED', route: 'POST /intake/new-youth' }).catch(() => {});
-  async function claim(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null } | null> {
-    try { return await opts.unsent!.claimRequest(id, by); } catch { await reqFailed(); return null; }
+  async function claim(id: string, by: string, staleMs?: number): Promise<{ fresh: boolean; result: unknown | null } | null> {
+    try { return await opts.unsent!.claimRequest(id, by, staleMs); } catch { await reqFailed(); return null; }
   }
   async function finish(id: string | undefined, result: NewYouthResult | null) {
     if (!id) return;
@@ -218,10 +219,9 @@ export function makeNewYouthService(
       // S-5/D4: a request id seen before (any instance) is never posted again. Null claim = DB error: carry on.
       let held: string | undefined;
       if (live && reqId && opts.unsent) {
-        const c = await claim(reqId, actor.id);
+        const c = await claim(reqId, actor.id, retryId ? RETRY_STALE_MS : undefined); // RV-S-m4: a lost finish frees the row after 10 min
         if (c && !c.fresh) {
           // C-B2: an admin resend of the same row is still running (its key holds the row's updatedAt).
-          // ponytail: a finish lost to a DB blip keeps this row busy until it changes; the admin can Delete it.
           if (retryId && c.result == null) throw new AppError('UNSENT_BUSY', 'Already resending. Wait for it to finish.', 409);
           return { ...((c.result as NewYouthResult | null) ?? { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false }), repeat: true };
         }

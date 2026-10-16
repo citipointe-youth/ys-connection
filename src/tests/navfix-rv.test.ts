@@ -78,3 +78,34 @@ describe('RV-S-M1 partial New person send keeps the claim', () => {
     expect(again2).toMatchObject({ student: 'sent', parent: 'failed', ref: first.ref, repeat: true });
   });
 });
+
+describe('RV-S-m4 an Unsent retry claim whose finish was lost expires after 10 min', () => {
+  it('in memory: an unfinished claim older than staleMs is taken over (fresh); a younger one or a finished one is not', async () => {
+    const r = new InMemoryUnsentRepository();
+    await r.claimRequest('retry:x:1', 'a');
+    expect(await r.claimRequest('retry:x:1', 'a', 600_000)).toEqual({ fresh: false, result: null });
+    (r as any).reqs.get('retry:x:1').createdAt = new Date(Date.now() - 11 * 60_000).toISOString();
+    expect(await r.claimRequest('retry:x:1', 'a')).toEqual({ fresh: false, result: null }); // no staleMs: never taken over
+    expect(await r.claimRequest('retry:x:1', 'a', 600_000)).toEqual({ fresh: true, result: null });
+    expect(await r.claimRequest('retry:x:1', 'a', 600_000)).toEqual({ fresh: false, result: null }); // the takeover is fresh again
+  });
+  it('service: a lost finish blocks the row with 409 only until the claim is 10 min old', async () => {
+    const t = await setup(['fail', 'ok', 'ok']);
+    await t.svc.send(ADMIN, INPUT); // student rejected -> saved
+    const [row] = await t.unsent.list();
+    const key = `retry:${row!.id}:${row!.updatedAt}`;
+    await t.unsent.claimRequest(key, ADMIN.id); // a retry whose finish never came back
+    await expect(t.svc.unsentRetry(ADMIN, row!.id, {})).rejects.toMatchObject({ code: 'UNSENT_BUSY' });
+    (t.unsent as any).reqs.get(key).createdAt = new Date(Date.now() - 11 * 60_000).toISOString();
+    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('sent');
+  });
+  it('Supabase: the takeover is one conditional update, only when staleMs is passed', async () => {
+    const calls: string[] = [];
+    const sql: any = (strings: TemplateStringsArray, ...v: unknown[]) => {
+      const text = strings.join('?').replace(/\s+/g, ' ').trim(); calls.push(text);
+      return Promise.resolve(text.startsWith('insert') ? [] : text.startsWith('update') ? [{ id: 'k' }] : [{ result: null }]);
+    };
+    expect(await new SupabaseUnsentRepository(sql).claimRequest('k', 'u', 600_000)).toEqual({ fresh: true, result: null });
+    expect(calls[1]).toBe('update newperson_requests set created_at = now(), created_by = ? where id = ? and result is null and created_at < now() - make_interval(secs => ?) returning id');
+  });
+});
