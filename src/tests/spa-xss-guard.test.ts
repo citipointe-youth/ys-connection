@@ -27,8 +27,8 @@ export function scanTemplates(src: string): Hit[] {
   const n = src.length;
   let i = 0;
   const lineOf = (p: number) => { let l = 1; for (let k = 0; k < p; k++) if (src.charCodeAt(k) === 10) l++; return l; };
-  const prevNonSpace = (p: number) => { let k = p - 1; while (k >= 0 && /\s/.test(src[k])) k--; return k; };
-  const regexOk = (p: number) => { const k = prevNonSpace(p); return k < 0 || /[(,=:[!&|?{};+\-*%<>~^]/.test(src[k]) || /\b(return|typeof|case)$/.test(src.slice(Math.max(0, k - 6), k + 1)); };
+  const prevNonSpace = (p: number) => { let k = p - 1; while (k >= 0 && /\s/.test(src[k] ?? '')) k--; return k; };
+  const regexOk = (p: number) => { const k = prevNonSpace(p); return k < 0 || /[(,=:[!&|?{};+\-*%<>~^]/.test(src[k] ?? '') || /\b(return|typeof|case)$/.test(src.slice(Math.max(0, k - 6), k + 1)); };
   const skipStr = (q: string) => { i++; while (i < n && src[i] !== q && src[i] !== '\n') { if (src[i] === '\\') i++; i++; } i++; };
   const skipRegex = () => { i++; let cls = false; while (i < n && src[i] !== '\n') { const c = src[i]; if (c === '\\') { i += 2; continue; } if (c === '[') cls = true; else if (c === ']') cls = false; else if (c === '/' && !cls) break; i++; } i++; while (/[gimsuy]/.test(src[i] || '')) i++; };
   function code(untilBrace: boolean) {
@@ -76,7 +76,7 @@ export function scanTemplates(src: string): Hit[] {
       else if (text[k] === '(') {
         if (depth > 0) { depth--; continue; }
         const id = /([A-Za-z_$][\w$]*)\s*$/.exec(text.slice(0, k));
-        if (id && SAFE_WRAPPERS.has(id[1])) return true;
+        if (id && SAFE_WRAPPERS.has(id[1]!)) return true;
       }
     }
     return false;
