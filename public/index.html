@@ -1806,10 +1806,30 @@ function _ntPushCardHtml(st) {
     : st === 'off' ? `<button type="button" class="btn btn-primary btn-sm" id="nt-push-btn" onclick="noticePushOn()">Turn on alerts</button>` : '';
   return `<div class="card" style="margin-bottom:10px;display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0;font-size:13px;color:var(--ink-mid)">${icS('bell')} ${esc(msg)}</div>${btn}</div>`;
 }
+function _isStandalone() { try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } }
+// I4 (R2-G2): from the installed app, open Elvanto in the real browser (in-app sheets don't share its sign-in).
+// ponytail: x-safari-https is undocumented (iOS 17+); anything else keeps today's target=_blank sheet.
+function _extOpen(ev, url) {
+  if (!/^https:\/\//.test(url) || !_isStandalone()) return true;
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) {
+    ev.preventDefault();
+    location.href = 'intent://' + url.slice(8) + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+    return false;
+  }
+  const v = /(iPhone|iPad|iPod).* OS (\d+)_/.exec(ua);
+  if (v && +v[2] >= 17) {
+    ev.preventDefault();
+    location.href = 'x-safari-' + url;
+    setTimeout(() => { if (document.visibilityState === 'visible') window.open(url, '_blank', 'noopener'); }, 900);
+    return false;
+  }
+  return true;
+}
 async function _ntPushEnv() {
   let ios = false, standalone = false;
   try { ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch {}
-  try { standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch {}
+  standalone = _isStandalone();
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const o = { ios, standalone, supported, publicKey: null, permission: supported ? Notification.permission : 'default', subscribed: false };
   if (!supported) return o;
@@ -12953,7 +12973,7 @@ function _ikCompareHtml(d, a) {
     const R0 = role === 'student' ? 'Student' : 'Parent', pr = (d.profiles || {})[role];
     return '<td>' + links.filter((l) => String(l[0]).indexOf(R0) === 0).map((l) => {
       const prof = String(l[0]).indexOf(R0 + ' profile') === 0;
-      return `<a href="${esc(l[1])}" target="_blank" rel="noopener">${esc(prof ? ((pr && pr.name) || 'Profile') + (pr && pr.archived ? ' (archived)' : '') : 'Form')}</a>`;
+      return `<a href="${esc(l[1])}" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">${esc(prof ? ((pr && pr.name) || 'Profile') + (pr && pr.archived ? ' (archived)' : '') : 'Form')}</a>`;
     }).join('') + '</td>';
   });
   const linkRow = links.length ? `<tr><th scope="row">In Elvanto</th>${linkTd.join('')}</tr>` : '';
@@ -13558,7 +13578,7 @@ function _ikLkResHtml(kind, x, st) {
 // Consents "Other (no date)" (2026-10-16, rev 8): one step-0 student in no pushed consent week. Display only: no write button.
 function _ikOtherRow(o, grey) {
   const when = o.date ? 'Parent texted ~' + String(o.date).split('-').reverse().join('/') + ' (' + o.source + ')' : 'No date found: ' + (o.why || 'no record');
-  const link = /^https:\/\/\S+$/.test(String(o.link || '')) ? '<a class="btn btn-secondary btn-sm" href="' + esc(o.link) + '" target="_blank" rel="noopener">Profile</a>' : '';
+  const link = /^https:\/\/\S+$/.test(String(o.link || '')) ? '<a class="btn btn-secondary btn-sm" href="' + esc(o.link) + '" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">Profile</a>' : '';
   return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(o.name) + '</div><div class="lk-d">' + esc(when) + '</div></div>' + link + '</div>';
 }
 

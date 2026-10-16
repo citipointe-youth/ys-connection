@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_ntPushState', '_ntPushCardHtml', '_ntPushEnv', 'noticePushOn'];
+const FNS = ['esc', '_ntPushState', '_ntPushCardHtml', '_ntPushEnv', '_isStandalone', 'noticePushOn'];
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 
 function env(o: { ua?: string; standalone?: boolean; push?: boolean; perm?: string; key?: string | null; subscribed?: boolean } = {}) {
