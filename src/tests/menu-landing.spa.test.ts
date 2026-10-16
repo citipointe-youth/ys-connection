@@ -26,7 +26,7 @@ function world(page = 'home') {
   return { env, ...fns };
 }
 const intake = (o: any = {}) => ({ tab: 'consent', dates: [{ date: '2026-10-16' }], date: '2026-10-09', list: {}, key: 'fam1', det: { row: {} }, detErr: null,
-  pick: null, hideText: null, csub: 'forms', doneOpen: true, saErr: {}, ans: { fam1: { a: 1 } }, busy: 0, ...o });
+  pick: null, csub: 'forms', doneOpen: true, saErr: {}, ans: { fam1: { a: 1 } }, busy: 0, ...o });
 
 describe('menu tap opens the landing screen', () => {
   it('New youth & consent: a family left open -> the list, consent sub-tab back to Last, tab and answers kept', () => {

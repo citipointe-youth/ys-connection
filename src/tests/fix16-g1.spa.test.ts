@@ -6,7 +6,7 @@ const HTML = loadIndexHtml();
 const IK = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkAt', '_lkSeen', '_ik', '_ikFresh', '_ikRev', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct',
   '_ikOpenOf', '_ikAge', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
-  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv', '_ikTextCardHtml',
+  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv',
   '_ikRowsHtml', '_ikListPage', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn', '_lkAdmShadowHtml'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');
@@ -104,22 +104,7 @@ describe('F-15 Save result lines are plain and counted', () => {
   });
 });
 
-describe('F-16 text card warns when the form is old', () => {
-  const t = { key: 'complete:parent:' + P(2), sms: { name: 'Ree LEstrange', last3: '111' } };
-  const now = Date.UTC(2026, 9, 11, 0, 0); // Sun 11 Oct 10:00 Brisbane
-  it('the console\'s "Fri 2 Oct 7:42pm" (no year) reads as 8 days old', () => {
-    const { f } = env();
-    expect(strip(f._ikTextCardHtml(t, DETAIL(), '', now))).toContain('Form sent 8 days ago');
-    expect(f._ikWhenMs('Fri 2 Oct 7:42pm', now)).toBe(Date.UTC(2026, 9, 2, 9, 42));
-    expect(f._ikWhenMs('Wed 30 Dec 9:00am', Date.UTC(2027, 0, 2))).toBe(Date.UTC(2026, 11, 29, 23, 0)); // last year
-    expect(f._ikWhenMs('', now)).toBeNaN();
-  });
-  it('no warning for a form 3 days old or less', () => {
-    const { f } = env();
-    expect(strip(f._ikTextCardHtml(t, DETAIL(), '', Date.UTC(2026, 9, 5, 9, 0)))).not.toContain('days ago');
-  });
-});
-
+// F-16's text card was deleted by I8 (R2-G4, 2026-10-17): the parent text is sent from Flow steps.
 describe('F-17 the late-text hold is one plain sentence, shown once', () => {
   it('says when the parent was texted and which week it missed; the Save reason does not repeat it', () => {
     const { f, I } = env({ tab: 'consent', date: '2026-10-09' });

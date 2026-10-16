@@ -268,7 +268,7 @@ describe('T9 the Bus nav slot label is escaped and short on the bottom bar', () 
 
 describe('T10 grade chips are 40 px touch targets', () => {
   it('the coarse-pointer block sizes .vg-bar .fc', () => {
-    expect(loadIndexHtml()).toMatch(/@media\(pointer:coarse\)\{[^}]*\}?[^@]*\.vg-bar \.fc\{min-height:40px;min-width:40px\}/);
+    expect(loadIndexHtml()).toMatch(/@media\(pointer:coarse\)\{[^}]*\}?[^@]*\.vg-bar \.fc\{min-height:40px;min-width:31px\}/); // I1: 30% narrower, height kept
   });
 });
 

@@ -70,18 +70,19 @@ describe('R12 same-name blocks both parent fields', () => {
   });
 });
 
-describe('R14 hidden Text card leaves a link', () => {
-  it('shows Text the parent when hidden, Not now on the card', () => {
-    const f = loadFns(['_ikFamilyHtml', '_ikTextCardHtml'], `${esc}
+describe('I8 (R2-G4): no parent-text card on the family review', () => {
+  it('the family review has no Text card, Not now or Text the parent button', () => {
+    const f = loadFns(['_ikFamilyHtml'], `${esc}
       const icS = () => '', _ikHead = () => '', _ikMatchHtml = () => '', _ikCompareHtml = () => '', _ikVerdictHtml = () => '', _ikStepsHtml = () => '',
         _ikSaveHtml = () => '', _ikResultHtml = () => '', _ikOpenOf = () => null, _ikAct = () => null, _ikAlone = () => [], _ikTextBlock = () => '',
-        _ikShowText = () => ({ sms: { name: 'P', last3: '123' } }), _ikKv = () => '', _ik = () => ({ hideText: 'k' });`);
+        _ikShowText = () => ({ sms: { name: 'P', last3: '123' } }), _ikKv = () => '', _ik = () => ({});`);
     const det = { detail: { forms: {} }, row: { key: 'k' }, actions: [] };
-    expect(f._ikFamilyHtml(det, {}, {}, { fixes: {}, keeps: {} })).toContain('Text the parent');
-    expect(f._ikTextCardHtml({ sms: { name: 'P', last3: '1' } }, { forms: {} }, '')).toContain('Not now');
+    const h = f._ikFamilyHtml(det, {}, {}, { fixes: {}, keeps: {} });
+    expect(h).not.toContain('Text the parent');
+    expect(h).not.toContain('Not now');
+    expect(h).not.toContain('now?');
   });
 });
-
 describe('R15 delete-all arm text', () => {
   it('names N and M ignored; ignore toasts', async () => {
     const btn: any = { dataset: {}, textContent: '' };

@@ -5,14 +5,14 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
-  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikWhenMs', '_ikResultLine',
+  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
   '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikTextOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
   '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
-  '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikTextCardHtml', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
+  '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
   '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave',
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
   '_ikSubBar', '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
@@ -238,16 +238,18 @@ describe('Text card (R4)', () => {
     expect(show(d, [act({ type: 'intakeText' })])).toBe(null);
     expect(show(d, [act({ type: 'intakeText', status: 'sent' })])).toBe(null);
   });
-  it('the review renders the card with its own confirm, never inside the Save sheet', () => {
+  it('I8 (R2-G4): a ready family with the parent text pending shows none of the deleted parent-text commentary', () => {
     const e = makeEnv();
     const det = DET({ actions: [act({ status: 'sent', stop: { code: 'sms', text: 'Stopped before the parent text.' }, steps: [] })] });
     const h = strip(e.fns._ikFamilyHtml(det, LIST(), ST(), e.fns._ikSeed(det.detail)));
-    expect(h).toContain('Text Jo Nguyen now?');
-    expect(h).toContain('ends in 111');
-    expect(h).toContain("Elvanto sends the consent text. It can't be recalled.");
-    expect(h).toContain('Send the text');
-    const none = strip(e.fns._ikFamilyHtml(DET(), LIST(), ST(), e.fns._ikSeed(DETAIL())));
-    expect(none).not.toContain('now?');
+    for (const s of ['Text Jo Nguyen now?', 'ends in 111', "It can't be recalled.", 'Send the text', 'Not now', 'Text the parent',
+      'Only the parent text is left.', 'then asks about the parent text', 'The parent text is separate.', 'The parent texts are separate.'])
+      expect(h).not.toContain(s);
+    const only = DET({ detail: DETAIL({ steps: [step({ state: 'done' }), TEXT] }) });
+    const t2 = strip(e.fns._ikFamilyHtml(only, LIST(), ST(), e.fns._ikSeed(only.detail)));
+    expect(t2).not.toContain('Only the parent text is left.');
+    expect(t2).toContain('In Flow steps');
+    expect(typeof e.fns._ikTextOpen).toBe('function'); // the intakeText plumbing stays
   });
 });
 
@@ -353,7 +355,7 @@ describe('answers and saves go straight to /link/batch (never the phone queue)',
     expect(sheet).toContain('Set Jo to Affiliate');
     expect(sheet).not.toContain('D25');
     expect(sheet).toContain('Provisional rule: New People or Inactive parents become Affiliate.');
-    expect(sheet).toContain('The parent text is separate.');
+    expect(sheet).not.toContain('The parent text is separate.'); // I8
     expect(sheet).not.toContain('Approve the student form'); // done
     expect(sheet).not.toContain('Text Jo');
     await e.fns._ikSheetGo();
@@ -479,7 +481,7 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     const d = DETAIL({ steps: [step({ key: 'a', state: 'done', text: 'Approve the student form' }), step({ key: 'b', role: 'parent', text: 'Approve the parent form', locked: true }), TEXT] });
     const h = raw(d), t = strip(h);
     expect(t).toContain('What saving does');
-    expect(t).toContain('Jo Nguyen (parent) Approve the parent form Do in Elvanto Text Jo Nguyen (…111) Asked separately');
+    expect(t).toContain('Jo Nguyen (parent) Approve the parent form Do in Elvanto Text Jo Nguyen (…111) In Flow steps'); // I8 row 7
     expect(h).toMatch(/<details class="lk-done"><summary>Already done \(1\)/);
     expect(t).toContain('Approved the student form');
     expect(t).not.toMatch(/own confirm|not connected|waits/);
@@ -490,7 +492,7 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     const h = raw(d), t = strip(h);
     expect(h.match(/_ikOneOpen\(/g)!.length).toBe(1);
     expect(t).toContain("Set Ava's grade to 8 in Elvanto");
-    expect(t).toContain("Makes 1 change for Ava Nguyen's family, then asks about the parent text. You'll confirm first.");
+    expect(t).toContain("Makes 1 change for Ava Nguyen's family. You'll confirm first."); // I8 row 4
   });
 });
 
