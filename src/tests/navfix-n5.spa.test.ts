@@ -205,3 +205,14 @@ describe('B09 "Students here (N)" leaves ticked leaders out (ruling 4)', () => {
     expect(out).not.toContain('Dana Testleader');
   });
 });
+
+describe('B11 _lkFirstName with nothing after the comma', () => {
+  it('"Smith," -> "Smith"; "Smith, Jo" -> "Jo"; plain and empty unchanged', () => {
+    const h = setup();
+    expect(h.fns._lkFirstName('Smith,')).toBe('Smith');
+    expect(h.fns._lkFirstName('Smith,  ')).toBe('Smith');
+    expect(h.fns._lkFirstName('Smith, Jo')).toBe('Jo');
+    expect(h.fns._lkFirstName('Sam Smith')).toBe('Sam');
+    expect(h.fns._lkFirstName('')).toBe('');
+  });
+});
