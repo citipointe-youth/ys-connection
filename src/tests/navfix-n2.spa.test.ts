@@ -182,3 +182,14 @@ describe('C-B9 intake queue (D2/D3): kept until answered, resent with the SAME i
     expect(kept(store).length).toBe(1);
   });
 });
+
+describe('S-4 client: no cancel item (the server supersedes the open answer)', () => {
+  it('a new answer with a pending one open sends ONE action item, no cancel', async () => {
+    const { f, calls } = ikEnv();
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'r1'; I.det = ROW('r1');
+    I.det.actions = [{ id: P(80), type: 'intakeAnswer', status: 'pending' }];
+    await f._ikAnswerSend(false);
+    expect(calls.posts[0].b.items).toHaveLength(1);
+    expect(calls.posts[0].b.items[0]).toMatchObject({ kind: 'action', type: 'intakeAnswer' });
+  });
+});

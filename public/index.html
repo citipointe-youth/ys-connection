@@ -12361,7 +12361,8 @@ function _ikUnlocal(key, a) {
   [I.det && I.det.row && I.det.row.key === key ? I.det : null, I.list && (I.list.rows || []).find((x) => x.key === key)]
     .forEach((o) => { if (o) o.actions = (o.actions || []).filter((y) => y !== a); });
 }
-// Send the answer set now. One open answer row per family: a still-pending one is cancelled in the same batch.
+// Send the answer set now. One open answer row per family: the server cancels a still-pending one in the same
+// statement as the insert (S-4, supersede), so no cancel item is sent.
 async function _ikAnswerSend(undo) {
   const I = _ik();
   if (I.debT) { clearTimeout(I.debT); I.debT = null; }
@@ -12371,9 +12372,8 @@ async function _ikAnswerSend(undo) {
   if (I.busy) { I.resend[key] = true; return; }
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
-  const old = _ikOpenOf(det.actions, ['intakeAnswer']), id = _lkUuid(), items = [];
+  const id = _lkUuid(), items = [];
   let ok = false; // review 2026-10-15b: Save answers closes the form only on a saved answer
-  if (old && old.status === 'pending') items.push({ kind: 'cancel', id: old.id });
   items.push({ kind: 'action', id, type: 'intakeAnswer', payload: b.payload, note: b.note, leaderId: null });
   I.busy = true;
   try {
