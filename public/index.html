@@ -1638,8 +1638,8 @@ function _initShell() {
   if (!u) return;
   const items = navItems();
   const bn = bottomNavItems();
-  const dlinks = items.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${it.label}</span></a>`).join('');
-  const mlinks = bn.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||it.label}</span></a>`).join('');
+  const dlinks = items.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span class="nav-lbl"> ${esc(it.label)}</span></a>`).join('');
+  const mlinks = bn.map(it => `<a data-nav-page="${it.id}"${it.action ? ' aria-haspopup="dialog"' : ''} onclick="${_navClick(it)}">${icN(it.ic)}<span>${it.mbl||esc(it.label)}</span></a>`).join('');
   document.getElementById('app').innerHTML = `
     <div class="hdr">
       ${_previewStash ? _previewBannerHtml(u) : ''}
@@ -1910,7 +1910,7 @@ function roleBadge(u) {
   else if (u.role === 'quad') { label = quadLabel(u.quad); }
   else { label = _roleLabel(u.role); }
   tip = (ROLE_TIPS[u.role]||(() => ''))(u);
-  return `<span class="role-badge" data-tip="${tip}">${label}</span>`;
+  return `<span class="role-badge" data-tip="${esc(tip)}">${esc(label)}</span>`;
 }
 function roleBadgeInner(u) {
   // Returns just the label string for use inside shell() where we can't return HTML
@@ -2243,7 +2243,7 @@ function _qualChip(label, q, iconClass) {
   const st = _QUAL_STYLE[q];
   if (!st) return '';
   const icon = iconClass ? `<svg class="${iconClass}" viewBox="0 0 24 24">${IC[st[2]]||''}</svg>` : icS(st[2]);
-  return `<span class="chip" style="background:${st[0]};color:${st[1]};display:inline-flex;align-items:center;gap:3px">${icon} ${label}</span>`;
+  return `<span class="chip" style="background:${st[0]};color:${st[1]};display:inline-flex;align-items:center;gap:3px">${icon} ${esc(label)}</span>`;
 }
 // Dynamic status chip(s) for the search / at-risk screens (replaces the at-risk
 // chip). '' when steady.
@@ -3239,7 +3239,7 @@ async function _renderHomeInner(stale, fromCache) {
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         const wide = x.wide ? ';grid-column:1/-1' : '';
-        body += `<button class="btn btn-secondary" style="justify-content:flex-start${wide}${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${x.label}</button>`;
+        body += `<button class="btn btn-secondary" style="justify-content:flex-start${wide}${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${esc(x.label)}</button>`;
       }
       body += '</div>';
     }
@@ -3381,7 +3381,7 @@ async function renderLeaderHome() {
   const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
   if (acts.length) {
     body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
-    for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${a.label}</button>`;
+    for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${esc(a.label)}</button>`;
     body += `</div>`;
   }
   body += '<div id="home-flows"></div><div id="home-followup"></div>';
@@ -3897,7 +3897,6 @@ function renderConnectView() {
       }
 
       const gi = l.gender==='female'?icS('genderF'):l.gender==='male'?icS('genderM'):'';
-      const nm = l.fullName.replace(/'/g,"\\'");
       body += `<div class="connect-leader">
         <div style="display:flex;align-items:flex-start;gap:6px">
           <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
@@ -8095,7 +8094,7 @@ async function showEditUser(id) {
     <div class="mo-title">Edit Account</div>
     <div id="uerr"></div>
     <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" value="${esc(u.displayName)}"></div>
-    <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${(u.email||'').replace(/"/g,'&quot;')}" autocomplete="off" ${_protectedEdit?'disabled':''}>${_protectedEdit?`<p style="font-size:11px;color:var(--ink-mid);margin-top:3px">This account's username can't be changed</p>`:''}</div>
+    <div class="fg"><label class="fl">Username</label><input class="fi" id="u-email" type="text" value="${esc(u.email||'')}" autocomplete="off" ${_protectedEdit?'disabled':''}>${_protectedEdit?`<p style="font-size:11px;color:var(--ink-mid);margin-top:3px">This account's username can't be changed</p>`:''}</div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields()">${_accRoleOptions(u.role)}</select>
     </div>
@@ -12833,7 +12832,7 @@ function _ikHead(det, st, d) {
   return `<div class="card"><div class="lk-svc-t">${esc(row.title)}</div>` + (nx ? `<div class="lk-d">${esc(nx)}</div>` : '')
     + (d ? _ikHoldLines(d) : []).map((t) => `<div class="lk-st bad">${esc(t)}</div>`).join('') + '</div>';
 }
-function _ikKv(label, val) { return `<div class="lk-kv"><span>${esc(label)}</span><b>${val}</b></div>`; }
+function _ikKv(label, val) { return `<div class="lk-kv"><span>${esc(label)}</span><b>${esc(val)}</b></div>`; }
 // The two forms side by side (spec 2026-10-14 §2): one row per question, the parent-name and parent-mobile mismatch
 // highlighted, flagged answers marked with what is wrong, Keep as is on its own row, the Elvanto links last.
 function _ikCompareHtml(d, a) {
@@ -12949,7 +12948,7 @@ function _ikTextCardHtml(t, d, block, now) {
   const sms = t.sms || { name: '', last3: '' }, n = now == null ? Date.now() : now;
   const when = d && d.forms && d.forms.student ? _ikWhenMs(d.forms.student.when, n) : NaN;
   const days = isFinite(when) ? Math.floor((n - when) / 864e5) : 0;
-  return `<div class="card ik-text"><div class="lk-svc-t">${esc('Text ' + sms.name + ' now?')}</div>${_ikKv('Parent', esc(sms.name))}${_ikKv('Mobile', esc('ends in ' + sms.last3))}`
+  return `<div class="card ik-text"><div class="lk-svc-t">${esc('Text ' + sms.name + ' now?')}</div>${_ikKv('Parent', sms.name)}${_ikKv('Mobile', 'ends in ' + sms.last3)}`
     + (days > 3 ? `<div class="ik-line ik-warn">${esc('Form sent ' + days + ' days ago')}</div>` : '')
     + `<p class="lk-sub lk-mt">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` + (block ? `<div class="lk-d">${esc(block)}</div>` : '')
     + `<div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_ikTextHide()">Not now</button><button type="button" class="btn btn-primary"${block ? ' disabled' : ''} onclick="_ikTextOpen()">Send the text</button></div></div>`;
