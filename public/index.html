@@ -12245,11 +12245,108 @@ function _ikAns() {
   if (!I.ans[k]) I.ans[k] = _ikSeed(det.detail, I.keepMem[k]);
   return I.ans[k];
 }
-function _ikPost(items) {
+// D2/D3 (fix round 2026-10-16): every intake write goes through a small phone queue, localStorage['ysc.ikq.' + login id]
+// = [{ at, items }]. The entry is written BEFORE the POST (keepalive, so a closed app still finishes it) and leaves only
+// once the server has answered its ids, or refused the request (a 4xx other than 401/408/429). A kept entry is resent as
+// it is, same ids, so the server answers replay: it is NEVER resent with a new id. Kept at most 24 h (the server refuses
+// older intake items anyway). It can hold an answer note (name/phone fixes) on this admin phone until sent.
+// A newer answer set for a family replaces that family's kept one (the older set must never land after it).
+// Consent lookups are reads: never kept. quiet = a background resend (no loading bar).
+function _ikPost(items, quiet) {
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
-  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000).then((r) => (r && r.results) || []); // S-3: past the server's 20 s 503 guard
+  const k = _ikQKey(), ids = items.map((it) => it.id), keep = items.filter((it) => it.type !== 'consentLookup');
+  const fams = keep.filter((it) => it.type === 'intakeAnswer').map(_ikQRow);
+  const drop = (gone) => _ikQSet(_ikQGet(k).map((e) => ({ at: e.at, items: e.items.filter((it) => !gone(it)) })).filter((e) => e.items.length), k);
+  if (keep.length) {
+    const q = _ikQGet(k), was = q.filter((e) => e.items.some((it) => ids.includes(it.id))).map((e) => e.at).sort()[0]; // a resend keeps its first time
+    _ikQSet(q.map((e) => ({ at: e.at, items: e.items.filter((it) => !ids.includes(it.id) && !(it.type === 'intakeAnswer' && fams.includes(_ikQRow(it)))) }))
+      .filter((e) => e.items.length).concat([{ at: was || new Date().toISOString(), items: keep }]), k);
+  }
+  const fly = LINK.ikFly || (LINK.ikFly = {});
+  ids.forEach((id) => { fly[id] = true; });
+  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000, !!quiet, true) // S-3: past the server's 20 s 503 guard
+    .then((r) => { const res = (r && r.results) || [], got = res.map((x) => x && x.id); drop((it) => ids.includes(it.id) && got.includes(it.id)); return res; },
+      (e) => { const st = e && e.status; if (st >= 400 && st < 500 && ![401, 408, 429].includes(st)) drop((it) => ids.includes(it.id)); throw e; })
+    .finally(() => ids.forEach((id) => { delete fly[id]; }));
 }
+function _ikQKey() { return 'ysc.ikq.' + ((S.user && S.user.id) || ''); }
+// The family an item is for: date|row (date|student key for an answer).
+function _ikQRow(it) { const p = (it && it.payload) || {}; return p.date + '|' + (it && it.type === 'intakeAnswer' ? (p.family || [])[0] : p.row); }
+function _ikQGet(k) {
+  k = k || _ikQKey();
+  if (!LINK.ikMemOnly) {
+    let raw = null;
+    try { raw = localStorage.getItem(k); } catch (e) { LINK.ikMemOnly = true; }
+    if (!LINK.ikMemOnly) { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  }
+  return ((LINK.ikMem || {})[k] || []).slice();
+}
+function _ikQSet(q, k) {
+  k = k || _ikQKey();
+  if (!LINK.ikMemOnly) {
+    try { if (q.length) localStorage.setItem(k, JSON.stringify(q)); else localStorage.removeItem(k); return; }
+    catch (e) { try { localStorage.removeItem(k); } catch (e2) {} LINK.ikMemOnly = true; } // full or blocked: memory only from now
+  }
+  (LINK.ikMem || (LINK.ikMem = {}))[k] = q.slice();
+}
+// The kept (not yet answered) item of this type for this row and date, or null.
+function _ikQFind(type, row, date) {
+  const want = date + '|' + row;
+  for (const e of _ikQGet()) for (const it of e.items) if (it.type === type && _ikQRow(it) === want) return it;
+  return null;
+}
+// Resend what is kept, oldest first, one POST per entry, same ids. Runs on each intake load, when the app comes back
+// (visibilitychange / online, below) and at boot (_lkBoot). Over 24 h: dropped with a toast. Another login's entries over
+// 24 h are swept (phones are shared); its fresh ones wait for that login.
+function _ikQFlush() {
+  if (!S.user) return Promise.resolve(false);
+  if (LINK.ikFlushing) return LINK.ikFlushing;
+  const k = _ikQKey(), cut = Date.now() - 864e5, fresh = (e) => !!e && Date.parse(e.at) > cut;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const x = localStorage.key(i);
+      if (!x || x.indexOf('ysc.ikq.') !== 0 || x === k) continue;
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem(x)); } catch (e) {}
+      if (!Array.isArray(v) || !v.some(fresh)) localStorage.removeItem(x);
+    }
+  } catch (e) {}
+  const q = _ikQGet(k), old = q.filter((e) => !fresh(e));
+  if (old.length) {
+    _ikQSet(q.filter(fresh), k);
+    const n = old.reduce((t, e) => t + ((e && e.items) || []).length, 0), t = Date.parse(old[0] && old[0].at);
+    const day = isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) : 'earlier';
+    toast(n === 1 ? '1 save from ' + day + ' was not sent' : n + ' saves from ' + day + ' were not sent', 6000);
+  }
+  const fly = LINK.ikFly || {}, due = q.filter((e) => fresh(e) && !e.items.some((it) => fly[it.id]));
+  if (!due.length) return Promise.resolve(false);
+  const p = (async () => {
+    let any = false;
+    for (const e of due) {
+      let res;
+      try { res = await _ikPost(e.items, true); }
+      catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
+      if (!S.user || _ikQKey() !== k) break;
+      any = true;
+      const I = LINK.ik;
+      e.items.forEach((it) => {
+        if (!I || it.type !== 'intakeAnswer') return;
+        const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
+        if (r && (r.outcome === 'saved' || r.outcome === 'replay')) delete I.resend[fam];
+        else if (r && r.outcome !== 'duplicate' && r.message) { delete I.resend[fam]; toast(r.message); }
+      });
+    }
+    if (any && S.page === 'link-intake') _ikLoad(true);
+    return any;
+  })().finally(() => { LINK.ikFlushing = null; });
+  LINK.ikFlushing = p;
+  return p;
+}
+try {
+  window.addEventListener('online', () => { if (S.user) _ikQFlush(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'hidden' && S.user) _ikQFlush(); });
+} catch (e) {}
 function _ikOutcome(results, id) { return (results || []).find((r) => r && r.kind === 'action' && r.id === id) || null; }
 // Show a just-sent action at once (the next load brings the server's row).
 function _ikLocal(key, a) {
@@ -12257,6 +12354,12 @@ function _ikLocal(key, a) {
   if (I.det && I.det.row && I.det.row.key === key) I.det.actions = [a].concat(I.det.actions || []);
   const r = I.list && (I.list.rows || []).find((x) => x.key === key);
   if (r) r.actions = [a].concat(r.actions || []);
+}
+// Take back a row _ikLocal showed (the save did not go in).
+function _ikUnlocal(key, a) {
+  const I = _ik();
+  [I.det && I.det.row && I.det.row.key === key ? I.det : null, I.list && (I.list.rows || []).find((x) => x.key === key)]
+    .forEach((o) => { if (o) o.actions = (o.actions || []).filter((y) => y !== a); });
 }
 // Send the answer set now. One open answer row per family: a still-pending one is cancelled in the same batch.
 async function _ikAnswerSend(undo) {
@@ -12401,19 +12504,28 @@ async function _ikSheetGo() {
   closeModal();
   I.sheet = null;
   if (!x || !I.date || !x.keys.length) return;
-  const date = I.date, id = _lkUuid();
-  const payload = x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
-    : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one };
+  const date = I.date;
+  // C-B9: a kept (unanswered) save of this type for this row goes again as it was, same id, so the server answers
+  // replay instead of queueing a second Elvanto write.
+  const item = _ikQFind(x.type, x.key, date) || { kind: 'action', id: _lkUuid(), type: x.type, note: null, leaderId: null,
+    payload: x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
+      : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one } };
+  const id = item.id, pend = { id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null };
+  _ikLocal(x.key, pend); _ikDraw(); // C-B9: Pending at once, not after the reply
+  let ok = false;
   try {
-    const r = _ikOutcome(await _ikPost([{ kind: 'action', id, type: x.type, payload, note: null, leaderId: null }]), id);
+    const r = _ikOutcome(await _ikPost([item]), id);
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
+      ok = true;
       toast(x.type === 'intakeText' ? 'The text is waiting for the console.' : 'Saving. Waiting for the console.');
-      _ikLocal(x.key, { id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
     } else if (r && r.outcome === 'duplicate') toast('Already waiting for the console.');
     else toast((r && r.message) || 'Not saved. Try again.');
-  } catch (e) { if (_ik() === I) toast(e.message || 'Not saved. Try again.'); }
+  } catch (e) {
+    if (_ik() === I) toast(_ikQFind(x.type, x.key, date) ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.');
+  }
   if (_ik() !== I) return;
+  if (!ok) _ikUnlocal(x.key, pend);
   _ikDraw(); _ikLoad(true);
 }
 
@@ -12706,8 +12818,10 @@ function _ikAfterLoad() {
     else if (L && L.takenAt && (!I.ref.prev || Date.parse(L.takenAt) > Date.parse(I.ref.prev))) { I.ref = null; toast('Checked just now.'); }
     else if (Date.now() - I.ref.since > 120000) { I.ref = null; toast("The console hasn't answered yet. Try again later."); }
   }
+  _ikQFlush(); // C-B9: kept saves and answers go again with their own ids
   const det = I.det, key = det && det.row && det.row.key;
-  if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer'])) { delete I.resend[key]; _ikAnswerSend(false); }
+  // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
+  if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer']) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
