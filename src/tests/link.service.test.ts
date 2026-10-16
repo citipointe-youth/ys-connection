@@ -1448,6 +1448,18 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: u(418) });
     expect((await h.svc.lifegroups(GRADE)).groups[0]!.history.map((x) => x.reportId)).toEqual([u(418), R1, u(417)]);
   });
+  it('I2: within a grade + gender, Mon..Sun then no day, then name', async () => {
+    const h = await setup();
+    const gs0 = await h.link.groups();
+    await h.link.replaceMirror('groups', [...gs0,
+      group({ groupId: u(441), name: 'Grade 8 Girls Thu', meets: 'Thursday 7pm', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(442), name: 'Grade 8 Girls none', meets: '', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(443), name: 'Grade 8 Girls Mon', meets: 'Mon 6:30 PM', members: [], thisWeek: 'none', lastReport: null }),
+      group({ groupId: u(444), name: 'Grade 8 Girls Sun', meets: 'Sunday', members: [], thisWeek: 'none', lastReport: null }),
+    ], { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
+    const names = (await h.svc.lifegroups(DIRECTOR)).groups.filter((g) => g.grade === 8 && g.gender === 'female').map((g) => g.name);
+    expect(names).toEqual(['Grade 8 Girls Mon', 'Grade 8 Girls Thu', 'Grade 8 Girls Sun', 'Grade 8 Girls none']);
+  });
 });
 
 // =====================================================================================================================

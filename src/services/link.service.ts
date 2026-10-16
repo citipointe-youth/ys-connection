@@ -34,7 +34,7 @@ import {
   can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
 import {
-  LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
+  LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
@@ -971,9 +971,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
       const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
       const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId) ?? null });
-      // T8: grade 6..12, girls then boys within a grade, no grade last; then by name.
-      const rank = (g: LinkGroupRow) => [g.grade ?? 99, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2] as const;
-      const order = (a: LinkGroupRow, b: LinkGroupRow) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1] || a.name.localeCompare(b.name);
+      // T8 + R2 (2026-10-17): grade 6..12, girls then boys, then Mon..Sun (no day last), then name; no grade last.
+      const rank = (g: LinkGroupRow) => {
+        const wd = meetsWeekday(g.meets || '');
+        return [g.grade ?? 99, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2, wd < 0 ? 7 : (wd + 6) % 7] as const;
+      };
+      const order = (a: LinkGroupRow, b: LinkGroupRow) => {
+        const x = rank(a), y = rank(b);
+        return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.name.localeCompare(b.name);
+      };
       return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).sort(order).map((g) => {
         const o = open.find((r) => (r.payload as { groupId?: string }).groupId === g.groupId);
         const last0 = lastReportOf(g, sent, gAt), last = last0 && withBy(last0);

@@ -61,11 +61,16 @@ const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_RE = /\b(?:(sun|mon|tue|wed|thu|fri|sat)|(sun|mon|tues|wednes|thurs|fri|satur)days?)\b/;
 const LONG = ['sun', 'mon', 'tues', 'wednes', 'thurs', 'fri', 'satur'];
 
+/** Weekday named in `meets`, 0=Sun..6=Sat, or -1 (same T-49 rule: "Tues" alone is not a day). */
+export function meetsWeekday(meets: string): number {
+  const m = meets.toLowerCase().match(DAY_RE);
+  return !m ? -1 : m[1] ? WEEKDAYS.indexOf(m[1]) : LONG.indexOf(m[2]!);
+}
+
 /** The latest date ≤ today on the weekday named in `meets` ("Tue 6:30 PM", "Tuesday"); today if none. */
 export function lastMeetingDate(meets: string, today: string): string {
-  const m = meets.toLowerCase().match(DAY_RE);
-  if (!m) return today;
-  const target = m[1] ? WEEKDAYS.indexOf(m[1]) : LONG.indexOf(m[2]!);
+  const target = meetsWeekday(meets);
+  if (target < 0) return today;
   const back = (weekdayOf(today) - target + 7) % 7;
   return addDays(today, -back);
 }

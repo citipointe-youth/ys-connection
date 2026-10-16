@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
- nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, dedupeKey,
+ nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
   LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
@@ -86,6 +86,18 @@ describe('defaultService', () => {
   });
   it('a weekday -> none', () => {
     expect(defaultService('2026-10-14', [svc(1, '2026-10-14', '2026-10-14T08:30:00Z')])).toBeNull();
+  });
+});
+
+describe('meetsWeekday (I2)', () => {
+  it('names the weekday 0=Sun..6=Sat, or -1', () => {
+    expect(meetsWeekday('Tuesday')).toBe(2);
+    expect(meetsWeekday('Tues')).toBe(-1); // T-49: only full names or exact 3-letter forms
+    expect(meetsWeekday('Mon 6:30 PM')).toBe(1);
+    expect(meetsWeekday('Sunday')).toBe(0);
+    expect(meetsWeekday('Monthly')).toBe(-1);
+    expect(meetsWeekday('Sunset')).toBe(-1);
+    expect(meetsWeekday('')).toBe(-1);
   });
 });
 
