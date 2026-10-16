@@ -10828,7 +10828,8 @@ function _lkReportDateFor(meets, w, today) {
   return d < _lkAddDays(today, -14) ? { state: 'old', date: null } : { state: 'ok', date: d };
 }
 function _lkGroup() { return (LINK.groups || []).find((g) => g.groupId === LINK.gid) || null; }
-// The group's report action: still on this phone, else this phone's last answer, else the server's open row.
+// The group's report action: still on this phone, else this phone's last answer, else the server's open row, else the
+// server's last refusal (S-1/D7: a refusal after the leader left still shows on return; absent on an older server).
 function _lkGroupAct(g) {
   let q = [];
   try { q = _lkQGet(); } catch (e) {}
@@ -10838,7 +10839,7 @@ function _lkGroupAct(g) {
       return { id: it.id, type: it.type, status: 'queued', reason: null };
     }
   }
-  return (LINK.gres && LINK.gres[g.groupId]) || g.openAction || null;
+  return (LINK.gres && LINK.gres[g.groupId]) || g.openAction || g.lastRefused || null;
 }
 function _lkGroupsHtml() {
   const gs = LINK.groups;
@@ -11289,7 +11290,8 @@ function _lkYpAdd(pid) {
 // Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
 function _lkToday() { return LINK.today || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
 function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
-// The step's action: still on this phone, else this phone's last answer, else the server's open row.
+// The step's action: still on this phone, else this phone's last answer, else the server's open row, else the server's
+// last refusal (S-1/D7; absent on an older server).
 function _lkFlowAct(r) {
   let q = [];
   try { q = _lkQGet(); } catch (e) {}
@@ -11297,7 +11299,7 @@ function _lkFlowAct(r) {
     const it = q[i];
     if (it.kind === 'action' && LK_FLOW_TYPES.includes(it.type) && it.payload && it.payload.rowId === r.rowId) return { id: it.id, type: it.type, status: 'queued', reason: null };
   }
-  return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || null;
+  return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || r.lastRefused || null;
 }
 // Flows A-Z, each flow's steps in Elvanto order, each step's people A-Z. overdue = due before today.
 // T12: `steps` (GET /link/flows) seeds every step first, so an empty one still shows (· 0).
