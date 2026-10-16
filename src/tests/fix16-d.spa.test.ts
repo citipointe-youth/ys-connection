@@ -31,11 +31,11 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
     expect(f.state().pushed.length).toBe(1);
     expect(f.state().Q.map((x: any) => x.payload.personId)).toEqual(['tom']);
   });
-  it('the tapped row stays in the match list for 600 ms, then moves to Checked in', () => {
+  it('the tapped row stays where it is in the match list (R2-G6: a search lists checked-in matches too) and is in Checked in', () => {
     expect(f._lkLists().due.map((p: any) => p.personId)).toEqual(['tom', 'ree']);
     f.setT(700);
     const l = f._lkLists();
-    expect(l.due.map((p: any) => p.personId)).toEqual(['ree']);
+    expect(l.due.map((p: any) => p.personId)).toEqual(['tom', 'ree']);
     expect(l.done.map((p: any) => p.personId)).toEqual(['tom']);
   });
   it('another person can be tapped straight away', () => {

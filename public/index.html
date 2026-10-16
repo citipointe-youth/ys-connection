@@ -782,6 +782,8 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
+.lk-done-h{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
+.lk-asof{font-weight:400;font-size:12px}
 .lk-hint{font-size:12px;color:var(--ink-mid);text-align:center;margin:12px 4px}
 /* S5 progress bar (progBar): every wait. A fill to done/total when the console says how far it is, else a sliding segment.
    Reduced motion: the segment stands still (the stage text still says what is happening). */
@@ -10468,7 +10470,12 @@ try {
     if (document.visibilityState === 'hidden') { _lkTickStop(); return; }
     if (!S.user) return;
     _lkFlush();
-    if (_lkOnPage()) { if (_lkDayCheck() && S.page === 'link-checkin') renderLinkCheckin(); _lkTickStart(); _lkStatusLoad(); }
+    if (_lkOnPage()) {
+      if (_lkDayCheck() && S.page === 'link-checkin') renderLinkCheckin();
+      // R2-G6: waking the phone reloads the door list too (renderLinkCheckin above already does when the day changed).
+      else if (S.page === 'link-checkin' && LINK.svc) { const L = LINK; _lkLoadPeople(LINK.svc, true).then((ok) => { if (ok && LINK === L && S.page === 'link-checkin') _lkRefreshView(); }); }
+      _lkTickStart(); _lkStatusLoad();
+    }
   });
 } catch (e) {}
 // Repaint the parts of a link screen that show queue or status state (never the inputs, so focus stays).
@@ -10592,8 +10599,11 @@ async function renderLinkCheckin() {
   // The services may already be here from the reports page (APP-42): the default still applies.
   if (!LINK.svc) LINK.svc = LINK.defaultSvc;
   if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); _lkPickService(); return; }
-  if (!LINK.people[LINK.svc]) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
+  // R2-G6: coming back to the page paints the cached list at once and still reloads it (not up to 60 s old).
+  let cached = !!LINK.people[LINK.svc];
+  if (!cached) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
   _lkPaintDoor();
+  if (cached) { const L = LINK, svc = LINK.svc; _lkLoadPeople(svc, true).then((ok) => { if (ok && LINK === L && LINK.svc === svc && S.page === 'link-checkin') _lkRefreshView(); }); }
   _lkRefreshView(); // fills an open leader sheet that was still loading (APP-56)
 }
 function _lkPaintDoor() {
@@ -10629,27 +10639,39 @@ function _lkLists() {
   if (!d) return null;
   let all = d.people;
   try { all = _lkMerge(d.people, _lkQGet(), LINK.svc); } catch (e) {}
-  const list = _lkFilter(all, LINK.q);
-  // F-02: the row just tapped stays where it was for 600 ms, so the next row does not slide under the finger.
-  const held = Date.now() - (LINK.doorAt || 0) < 600 ? LINK.doorHeld : null;
-  // T7: nobody is listed to check in until a name is typed; the Checked in list always shows.
-  return { due: String(LINK.q.search || '').trim() ? list.filter((p) => !p.checkedIn || p.personId === held) : [], done: list.filter((p) => p.checkedIn && p.personId !== held) };
+  // T7: nobody is listed until a name is typed. R2-G6: a typed name lists EVERY match, checked-in ones too (status
+  // line + Check out), so the tapped row stays where it was (F-02) and "Nobody here" means nobody. done is the whole
+  // service (the count never drops while typing), newest first.
+  const done = all.filter((p) => p.checkedIn);
+  // ponytail: in-memory order, a page reload forgets it; upgrade = server stamps first-seen in replaceMirror (keep
+  // previous seenAt per person, stamp new ones with takenAt). The first list this phone sees counts as "earlier".
+  const sa = LINK.seenAt || (LINK.seenAt = {}), first = !sa[LINK.svc], seen = sa[LINK.svc] || (sa[LINK.svc] = {}), now = Date.now(), inNow = {};
+  done.forEach((p) => { inNow[p.personId] = 1; if (seen[p.personId] == null) seen[p.personId] = first ? 0 : now; });
+  Object.keys(seen).forEach((id) => { if (!inNow[id]) delete seen[id]; }); // checked out: a new check-in counts as new
+  done.sort((a, b) => (seen[b.personId] - seen[a.personId]) || String(a.name || '').localeCompare(String(b.name || '')));
+  return { due: String(LINK.q.search || '').trim() ? _lkFilter(all, LINK.q) : [], done };
 }
-// T7: matches while typing, then the collapsed Checked in list. APP-74: its rows are built only while it is open.
+// T7: matches while typing, then Checked in. R2-G6 (operator ruling): it starts closed with the 3 most recent rows and
+// a "Show all N" button; APP-74: no more than those 3 rows are built while closed. R2-G1 G0: the header says how fresh
+// the kiosk check-ins are (the console's services push), amber when over 10 min old on the service day.
 function _lkListHtml() {
   const l = _lkLists();
   if (!l) return LINK.loadErr ? `<div class="card"><p>${esc(LINK.loadErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkCheckin()">Try again</button></div>` : progBar('Loading');
-  const typed = !!String(LINK.q.search || '').trim();
+  const typed = !!String(LINK.q.search || '').trim(), n = l.done.length;
+  const m = LINK.status && LINK.status.mirrors && LINK.status.mirrors.services, at = m && m.takenAt, hm = at ? _lkTime(at) : '';
+  const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc);
+  const stale = !!hm && !!sv && sv.ymd === _lkSvcDay() && Date.now() - Date.parse(at) > 600000;
+  const asOf = !hm ? '' : stale ? `<span class="chip c-warn">${icS('alert')} ${esc('Kiosk check-ins as of ' + hm)}</span>` : `<span class="lk-asof">${esc('Kiosk check-ins as of ' + hm)}</span>`;
   return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' : '<p class="lk-hint">Type a name to check someone in.</p>')}
-    <details class="lk-done"${LINK.doneOpen ? ' open' : ''} ontoggle="_lkDoneToggle(this.open)"><summary><span>Checked in · ${l.done.length}</span>${icS('chevd')}</summary>
-    <div id="lk-done-rows">${LINK.doneOpen ? l.done.map(_lkRowHtml).join('') : ''}</div></details>`;
+    <div class="lk-done"><div class="lk-done-h"><span>Checked in · ${n}</span>${asOf}</div>
+    <div id="lk-done-rows">${_lkDoneRowsHtml(l)}</div>
+    ${n > 3 ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkDoneToggle(!LINK.doneOpen)">${LINK.doneOpen ? 'Show fewer' : 'Show all ' + n}</button>` : ''}</div>`;
 }
-function _lkDoneRowsHtml() { const l = _lkLists(); return l ? l.done.map(_lkRowHtml).join('') : ''; }
+function _lkDoneRowsHtml(l) { l = l || _lkLists(); return l ? (LINK.doneOpen ? l.done : l.done.slice(0, 3)).map(_lkRowHtml).join('') : ''; }
 function _lkDoneToggle(open) {
-  if (LINK.doneOpen === open) return; // a repaint with the open attribute fires toggle again
-  LINK.doneOpen = open;
-  const el = document.getElementById('lk-done-rows');
-  if (el) el.innerHTML = open ? _lkDoneRowsHtml() : '';
+  LINK.doneOpen = !!open;
+  const el = document.getElementById('lk-list');
+  if (el) el.innerHTML = _lkListHtml();
 }
 // One door row: a grade chip (neutral) or a Leader chip, the name, a status line and one button.
 function _lkRowHtml(p) {

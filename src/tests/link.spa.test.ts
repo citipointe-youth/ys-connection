@@ -765,9 +765,39 @@ describe('F1.3 door', () => {
     const typed = h.fns._lkListHtml();
     expect(typed).toContain('Mary Jane Smith');
     expect(typed).not.toContain('Ava Example');
-    expect(strip(typed)).toContain('Checked in · 0');
+    expect(strip(typed)).toContain('Checked in · 3'); // R2-G6: the count is the whole service, typed or not
     h.get().LINK.q.search = 'zzz';
     expect(strip(h.fns._lkListHtml())).toContain('Nobody here by that name.');
+  });
+  it('R2-G6: a name search lists people already checked in, with their status and Check out', () => {
+    const h = setup();
+    h.get().LINK.q.search = 'hana';
+    const out = h.fns._lkListHtml();
+    const due = strip(out.slice(0, out.indexOf('class="lk-done"')));
+    expect(due).toContain('Hana Invented');
+    expect(due).toContain('In Elvanto.');
+    expect(due).toContain('Check out');
+    expect(strip(out)).not.toContain('Nobody here by that name.');
+    expect(strip(out)).toContain('Checked in · 3');
+    h.get().LINK.q.search = 'zzz';
+    expect(strip(h.fns._lkListHtml())).toContain('Nobody here by that name.');
+  });
+  it('R2-G1 G0: "Kiosk check-ins as of h:mm" from the services push; amber when over 10 min old on the service day', () => {
+    const h = setup();
+    const at = (minAgo: number) => ({ mirrors: { services: { takenAt: new Date(Date.now() - minAgo * 60000).toISOString(), ageSeconds: minAgo * 60 } } });
+    expect(strip(h.fns._lkListHtml())).not.toContain('Kiosk check-ins');
+    h.get().LINK.status = at(3);
+    const fresh = h.fns._lkListHtml();
+    expect(strip(fresh)).toContain('Kiosk check-ins as of ' + h.fns._lkTime(h.get().LINK.status.mirrors.services.takenAt));
+    expect(fresh).not.toContain('c-warn');
+    h.get().LINK.status = at(15);
+    const old = h.fns._lkListHtml();
+    expect(old).toContain('c-warn');
+    expect(old).toContain('data-ic="alert"');
+    h.get().LINK.services[0].ymd = '2026-01-02'; // a past service picked on purpose: no warning
+    expect(h.fns._lkListHtml()).not.toContain('c-warn');
+    h.get().LINK.status = { mirrors: { services: { takenAt: null, ageSeconds: null } } };
+    expect(strip(h.fns._lkListHtml())).not.toContain('Kiosk check-ins');
   });
   it('T3: a checked-in person with no grade (not on the roster) still shows as a named row; a nameless one is labelled', () => {
     const h = makeEnv();
@@ -779,16 +809,53 @@ describe('F1.3 door', () => {
     expect(strip(out)).toContain('Checked in · 2');
     expect(strip(out)).toContain('Unknown person');
   });
-  it('APP-74: the "Checked in" rows are built only while that list is open', () => {
-    const h = setup();
-    expect(strip(h.fns._lkListHtml())).toContain('Checked in · 3');
-    expect(h.fns._lkListHtml()).not.toContain('Hana Invented');
+  it('APP-74 / R2-G6: Checked in starts closed with the 3 most recent rows and Show all N; no more rows are built while closed', () => {
+    expect(extractFn(html, '_lkFresh')).toContain('doneOpen: false');
+    const h = makeEnv();
+    const ci = (n: number, name: string) => ({ personId: P(n), name, grade: 9, leader: false, checkedIn: true, action: null, mine: false });
+    door(h, [ci(1, 'Ava One'), ci(2, 'Ben Two'), ci(3, 'Cal Three'), ci(4, 'Dee Four'), ci(5, 'Eli Five')]);
+    h.get().LINK.seenAt = { [SVC.serviceTimeId]: { [P(1)]: 0, [P(2)]: 0, [P(3)]: 300, [P(4)]: 100, [P(5)]: 200 } };
+    const closed = h.fns._lkListHtml();
+    expect(strip(closed)).toContain('Checked in · 5');
+    expect(strip(closed)).toContain('Show all 5');
+    expect((closed.match(/class="li lk-row"/g) ?? []).length).toBe(3);
+    const t = strip(closed);
+    expect(t.indexOf('Cal Three')).toBeLessThan(t.indexOf('Eli Five'));
+    expect(t.indexOf('Eli Five')).toBeLessThan(t.indexOf('Dee Four'));
+    for (const nm of ['Ava One', 'Ben Two']) expect(closed).not.toContain(nm);
     h.fns._lkDoneToggle(true);
     expect(h.get().LINK.doneOpen).toBe(true);
-    expect(h.fns._lkListHtml()).toContain('Hana Invented');
-    expect(h.fns._lkDoneRowsHtml()).toContain('Hana Invented');
+    const open = h.fns._lkListHtml();
+    for (const nm of ['Ava One', 'Ben Two', 'Cal Three', 'Dee Four', 'Eli Five']) expect(open).toContain(nm);
+    expect(strip(open)).toContain('Show fewer');
+    expect(strip(open).indexOf('Ava One')).toBeLessThan(strip(open).indexOf('Ben Two')); // first seen together: by name
+    expect(h.fns._lkDoneRowsHtml()).toContain('Ava One');
     h.fns._lkDoneToggle(false);
-    expect(h.fns._lkListHtml()).not.toContain('Hana Invented');
+    expect((h.fns._lkListHtml().match(/class="li lk-row"/g) ?? []).length).toBe(3);
+  });
+  it('R2-G6: the first list this phone sees counts as earlier; a later check-in goes to the top; 3 or fewer need no Show all', () => {
+    const h = makeEnv();
+    const ci = (n: number, name: string, inn = true) => ({ personId: P(n), name, grade: 9, leader: false, checkedIn: inn, action: null, mine: false });
+    door(h, [ci(1, 'Ava One'), ci(2, 'Ben Two'), ci(3, 'Zed Late', false)]);
+    const first = h.fns._lkListHtml();
+    expect(strip(first)).not.toContain('Show all');
+    expect(h.get().LINK.seenAt[SVC.serviceTimeId]).toEqual({ [P(1)]: 0, [P(2)]: 0 });
+    h.get().LINK.people[SVC.serviceTimeId].people[2].checkedIn = true;
+    const t = strip(h.fns._lkListHtml());
+    expect(t.indexOf('Zed Late')).toBeLessThan(t.indexOf('Ava One'));
+    h.get().LINK.people[SVC.serviceTimeId].people[2].checkedIn = false; // checked out: forgotten
+    h.fns._lkListHtml();
+    expect(h.get().LINK.seenAt[SVC.serviceTimeId][P(3)]).toBeUndefined();
+  });
+  it('R2-G6: waking the phone and coming back to Check-in both reload the door list', () => {
+    const at = html.search(/document\.addEventListener\('visibilitychange', \(\) => \{\r?\n    if \(document\.visibilityState === 'hidden'\) \{ _lkTickStop\(\); return; \}/);
+    expect(at).toBeGreaterThan(0);
+    const wake = html.slice(at, html.indexOf('} catch (e) {}', at));
+    expect(wake).toContain("S.page === 'link-checkin'");
+    expect(wake).toContain('_lkLoadPeople(LINK.svc, true)');
+    const r = extractFn(html, 'renderLinkCheckin');
+    expect(r).toContain('if (cached)');
+    expect(r).toContain('_lkLoadPeople(svc, true)');
   });
   it('APP-74: search repaints after an 80 ms pause; the filter value is kept at once', () => {
     const h = setup();
@@ -944,7 +1011,7 @@ describe('B9 / T-32 wrong service (D3)', () => {
     expect(L).toMatchObject({ services: null, defaultSvc: null, svc: null, people: {} });
     expect(h.fns._lkQGet()).toHaveLength(1);
     expect(html).toMatch(/async function renderLinkCheckin\(\) \{\r?\n  _lkDayCheck\(\);/);
-    expect(html).toMatch(/if \(_lkOnPage\(\)\) \{ if \(_lkDayCheck\(\) && S\.page === 'link-checkin'\) renderLinkCheckin\(\);/);
+    expect(html).toMatch(/if \(_lkOnPage\(\)\) \{\r?\n\s*if \(_lkDayCheck\(\) && S\.page === 'link-checkin'\) renderLinkCheckin\(\);/);
   });
   it('no service today: "Tonight\u2019s service is not here yet" line (kiosk)', () => {
     const h = setupDay('2026-10-17T09:00:00.000Z');
