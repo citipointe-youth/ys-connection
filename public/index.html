@@ -12990,7 +12990,9 @@ function _ikLkApply(x, r, now) {
   if (s !== 'waiting' && s !== 'working') { x.st = 'failed'; x.msg = _ikLkReason(null); return false; }
   if (now - x.since > (x.kind === 'mismatches' ? 15 : 5) * 60000) {
     x.st = 'timeout';
-    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.' : "The console hasn't picked this up yet. Tap Ask again later.";
+    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.'
+      : (r.reason || x.reason) === 'console-busy' ? 'The console is busy with the service. Lists open again after the service. Tap Ask again then.' // B02
+      : "The console hasn't picked this up yet. Tap Ask again later.";
     return false;
   }
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5

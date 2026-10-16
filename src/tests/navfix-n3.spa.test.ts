@@ -146,3 +146,20 @@ describe('C-B9 consent fix / link: a retry after no answer reuses the same reque
     expect(t.posts[2][0].id).not.toBe('x');
   });
 });
+
+describe('B02 a lookup that times out while the console is busy with the service keeps the busy reason', () => {
+  it('waiting + console-busy for 6 min -> the busy sentence, not "hasn\'t picked this up"', () => {
+    const { fns } = env(['_ikLkApply']);
+    const now = Date.now(), x: any = { kind: 'forms', since: now };
+    expect(fns._ikLkApply(x, { status: 'waiting', reason: 'console-busy' }, now + 6 * 60000)).toBe(false);
+    expect(x.st).toBe('timeout');
+    expect(x.msg).toContain('busy with the service');
+    expect(x.msg).toContain('Ask again');
+    const y: any = { kind: 'forms', since: now, reason: 'console-busy' }; // the reason from an earlier poll counts too
+    fns._ikLkApply(y, { status: 'waiting' }, now + 6 * 60000);
+    expect(y.msg).toContain('busy with the service');
+    const z: any = { kind: 'forms', since: now };
+    fns._ikLkApply(z, { status: 'waiting' }, now + 6 * 60000);
+    expect(z.msg).toBe("The console hasn't picked this up yet. Tap Ask again later.");
+  });
+});
