@@ -288,3 +288,34 @@ describe('S-1 / D7: the last refused result comes back from the server after you
     expect(many.some((r) => r.id === fix.id)).toBe(false); // newest first: the oldest fell off
   });
 });
+
+// ---------------------------------------------------------------- B03
+
+describe('B03: the claim hint hurries only for rows the console can lease now', () => {
+  const T = new Date('2026-10-16T08:00:00Z');
+  const svc = (pending: Record<string, unknown>[]) => makeIntakeService({
+    link: { listActions: async () => pending } as never,
+    intake: { purge: async () => undefined, viewedAt: async () => null, dates: async () => [] } as never,
+    settings: {} as never, status: async () => ({}) as never, now: () => T });
+  const S = (intakeAdmin: string) => ({ ministryConfig: { modules: { intakeAdmin } } }) as never;
+  const later = new Date(T.getTime() + 300_000).toISOString(), before = new Date(T.getTime() - 1000).toISOString();
+  it('only a future-retryAt row -> hurry false (on and off); a due retry -> true', async () => {
+    for (const m of ['on', 'off']) {
+      expect((await svc([{ type: 'consentLookup', reason: 'console-busy', retryAt: later }]).hint(S(m))).hurry).toBe(false);
+      expect((await svc([{ type: 'consentLookup', reason: 'console-busy', retryAt: before }]).hint(S(m))).hurry).toBe(true);
+    }
+  });
+  it('a type the console does not lease (capability off or missing) -> no hurry; no caps given -> as before', async () => {
+    const rows = [{ type: 'intakeText', reason: null, retryAt: null }];
+    expect((await svc(rows).hint(S('on'), { checkIn: 'live', intakeText: 'off' } as Capabilities)).hurry).toBe(false);
+    expect((await svc(rows).hint(S('on'), { checkIn: 'live' } as Capabilities)).hurry).toBe(false);
+    expect((await svc(rows).hint(S('on'), { intakeText: 'locked' } as Capabilities)).hurry).toBe(true);
+    expect((await svc(rows).hint(S('on'))).hurry).toBe(true);
+  });
+  it('the claim passes its own (intake-stripped) capabilities to the hint', async () => {
+    const h = await setup();
+    const spy = vi.spyOn(h.intake, 'hint');
+    await h.sync.claim({ ...fx('claim-request.json'), linkRev: 7, max: 0 });
+    expect(spy.mock.calls[0]![1]).toEqual(expect.objectContaining({ checkIn: expect.any(String) }));
+  });
+});

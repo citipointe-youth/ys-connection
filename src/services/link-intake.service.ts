@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { AppSettings } from '../core/entities/settings';
-import type { ActionType, OutboxRow } from '../core/link-types';
+import type { ActionType, Capabilities, OutboxRow } from '../core/link-types';
 import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
@@ -171,12 +171,15 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     },
 
     /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
-    async hint(settings: AppSettings): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
+    async hint(settings: AppSettings, caps?: Capabilities): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
       // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s,
       // except awaiting-approval rows, which can wait days (review r1: no 10 s polling for 3 days).
-      const soon = (rows: { reason: string | null }[]) => rows.some((r) => r.reason !== 'awaiting-approval');
+      // B03: and only rows the claim could lease now: no future retryAt, and a type the console (caps = the claim's own
+      // capabilities, intake keys stripped when off) has not switched off. No caps: every type counts.
+      const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
+        && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
       const today = brisbaneToday(t);
       await purgeIfDue(t);
