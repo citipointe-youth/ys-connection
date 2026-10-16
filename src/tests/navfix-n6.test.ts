@@ -319,3 +319,21 @@ describe('B03: the claim hint hurries only for rows the console can lease now', 
     expect(spy.mock.calls[0]![1]).toEqual(expect.objectContaining({ checkIn: expect.any(String) }));
   });
 });
+
+// ---------------------------------------------------------------- B18
+
+describe('B18: GET /link/intake marks the view only on page entry (view=1), not on every quiet reload', () => {
+  it('no view param -> viewed_at unchanged; view=1 -> marked (dates list or one date)', async () => {
+    const h = await setup();
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    await h.intake.list(ADMIN, { mode: 'intake', date: DATE });
+    expect(await h.intakeRepo.viewedAt()).toBeNull();
+    await h.intake.list(ADMIN, { mode: 'intake', date: DATE, view: '1' });
+    expect(await h.intakeRepo.viewedAt()).toBe(NOW.toISOString());
+    h.clock.now = new Date(NOW.getTime() + 60_000);
+    await h.intake.list(ADMIN, { mode: 'intake', view: '0' });
+    expect(await h.intakeRepo.viewedAt()).toBe(NOW.toISOString());
+    await h.intake.list(ADMIN, { mode: 'intake', view: '1' });
+    expect(await h.intakeRepo.viewedAt()).toBe(h.clock.now.toISOString());
+  });
+});

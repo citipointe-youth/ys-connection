@@ -117,10 +117,10 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     /** GET /link/intake?mode=[&date=]: the dates (counts), or one date's rows with their latest outbox actions. */
     async list(actor: Actor, q: unknown) {
       await gate(actor);
-      const f = z.object({ mode: Mode, date: Ymd.optional() }).parse(q ?? {});
+      const f = z.object({ mode: Mode, date: Ymd.optional(), view: z.string().optional() }).parse(q ?? {});
       const t = clock();
       await purgeIfDue(t);
-      if (!f.date) await d.intake.markViewed();
+      if (f.view === '1') await d.intake.markViewed(); // B18: page entry only (the SPA's quiet 5 s reloads send no view)
       const st = await d.status(actor);
       const head = { console: st.console, consoleLinkRev: st.consoleLinkRev, appLinkRev: st.appLinkRev };
       const [dates, rows] = await Promise.all([d.intake.dates(f.mode), d.intake.rows(f.mode, f.date)]);
