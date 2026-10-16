@@ -306,3 +306,13 @@ describe('RV-I-m7 LINK_ID_REUSED on a resend means it landed earlier', () => {
     expect(I.fixes.p1).toMatchObject({ id: P(1), status: 'pending' });
   });
 });
+
+describe('RV-I-m8 _lkSoftReset keeps the intake queue\'s in-flight and lock state', () => {
+  it('ikFly, ikFam, ikFlushing, ikMem, ikMemOnly survive a soft reset (preview, expiry)', () => {
+    const { f } = ikEnv({ fns: [...Q_FNS, '_lkSoftReset'], prelude: 'const _lkFresh = () => ({ ik: null });' });
+    const L = f.LINK, st = { ikFly: { a: true }, ikFam: { 'd|Y': 1 }, ikFlushing: Promise.resolve(false), ikMem: { 'ysc.ikq.u1': [] }, ikMemOnly: true };
+    Object.assign(L, st);
+    f._lkSoftReset();
+    for (const [k, v] of Object.entries(st)) expect(f.LINK[k], k).toBe(v);
+  });
+});

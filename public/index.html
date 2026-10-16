@@ -10413,7 +10413,9 @@ function _lkSoftReset() {
   if (LINK.tick) clearInterval(LINK.tick);
   if (LINK.toastT) clearTimeout(LINK.toastT);
   if (LINK.ik) { clearTimeout(LINK.ik.debT); clearTimeout(LINK.ik.poll); } // T4: the intake answers live in memory only
-  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned, ikStop: LINK.ikStop };
+  // RV-I-m8: the intake queue's in-flight ids/families, flush lock and memory-only copy survive too (no double flush, no lost queue).
+  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned, ikStop: LINK.ikStop,
+    ikFly: LINK.ikFly, ikFam: LINK.ikFam, ikFlushing: LINK.ikFlushing, ikMem: LINK.ikMem, ikMemOnly: LINK.ikMemOnly };
   LINK = _lkFresh();
   Object.assign(LINK, keep);
 }
