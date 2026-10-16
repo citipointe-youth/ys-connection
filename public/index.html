@@ -9994,6 +9994,8 @@ function _lkStatusText(row, lastSeen) {
     case 'queued': return 'Waiting to send.';
     case 'mirror': return 'In Elvanto.';
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
+      // D6: open over 15 min (the server sweeps it too-old later): say so, with the time it was sent.
+      : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS ? "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').'
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
