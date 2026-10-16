@@ -1436,8 +1436,21 @@ function _egTe(e) { if (_egTouchX == null) return; const dx = e.changedTouches[0
 function go(page) {
   if (page === 'at-risk' && S.page !== 'at-risk') _arNameFilter = '';
   if (page !== S.page) navPush();
+  _navLanding(page);
   S.page = page;
   render();
+}
+// Every menu tap (bottom/desk nav, the More sheet, Home tiles) goes through go(), so a section always opens on its
+// landing screen, never the sub-screen last seen (operator 2026-10-16). Back is untouched: _navPop sets S.page itself.
+// View state only: queued writes, report drafts (LINK.rfd), an unsent answer (_ikLeave sends it) are kept, and an
+// edited (changed) report stays open, since it has no draft to come back to. Tabs left as they were: Trends, Admin, Intakes/Consents.
+function _navLanding(page) {
+  if (page === 'link-groups' && !(LINK.rf && LINK.rf.dirty && LINK.rf.mode === 'edit')) { LINK.gid = null; LINK.rf = null; }
+  if (page === 'link-intake' && LINK.ik) {
+    _ikLeave();
+    Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, hideText: null, date: null, list: null, saErr: {}, csub: 'last', doneOpen: false });
+  }
+  if (page === 'bus') { BUS.tab = 'mycar'; BUS.carsOpen = false; }
 }
 // ── NAV HISTORY (S3, 2026-10-15) ── every screen change and sub-screen open pushes a lightweight snapshot + a
 // history entry; the header arrow, Android back and iPhone swipe-back all pop the same stack.
@@ -2489,11 +2502,11 @@ function _navSlots(u) {
 }
 function navItems() { return _navSlots().filter(Boolean); }
 function openMore() {
-  // The row for the page you are on only closes the sheet: re-running its entry would wipe that page
-  // (nyOpen resets the New person form, which could hide a "we don't know if it went in" result).
+  // The row for the page you are on re-opens its landing screen (go -> _navLanding), except New person: it only closes
+  // the sheet, since re-running nyOpen resets the form, which could hide a "we don't know if it went in" result.
   const rows = moreItems().map(m => {
     const here = S.page === m.id;
-    return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
+    return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
   }).join('');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);

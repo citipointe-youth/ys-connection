@@ -409,7 +409,8 @@ describe('the More menu (in the Prayers slot)', () => {
   it('the sheet marks the page you are on', () => {
     let shown = '';
     navFns({ ...modeOf('off', 'grade', true), page: 'bus' }, (h) => { shown = h; }).openMore();
-    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i bus>/);
+    // 2026-10-16 (operator): the current page's row re-opens its landing screen (New person still only closes).
+    expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);go\('bus'\)"><i bus>/);
     expect(shown).toMatch(/class="more-row" onclick="closeModal\(\);go\('prayers'\)"><i pray>/);
   });
   it('the row for the page you are on only closes the sheet: it never re-runs nyOpen over a form or result', () => {
