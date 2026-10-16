@@ -13163,7 +13163,8 @@ async function _ikSaveAllGo() {
   I.sa = null;
   if (!x || !x.items.length) return;
   I.saErr = {};
-  const all = x.items.map((it) => ({ it, id: _lkUuid() }));
+  // RV-I-m4: a row whose earlier save is still kept with the same payload goes again with that id (replay, never twice).
+  const all = x.items.map((it) => { const p = it.payload || {}, was = _ikQFind(x.type, p.row, p.date); return { it, id: was && _ikSame(was.payload, p) ? was.id : _lkUuid() }; });
   let ok = 0;
   for (let i = 0; i < all.length; i += 20) { // S-3: 20 a call keeps each well inside the server's 20 s guard
     const part = all.slice(i, i + 20);

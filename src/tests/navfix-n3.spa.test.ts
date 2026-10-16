@@ -22,6 +22,7 @@ function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: an
     const API = { fresh: (p) => { __t.fresh.push(p); return Promise.resolve().then(() => __fresh(p)); } };
     const _ikPost = (items) => { __t.posts.push(items); return Promise.resolve().then(() => { const r = __post(items); return (r && r.results) || []; }); };
     const _ikOutcome = (res, id) => (res || []).find((r) => r && r.id === id) || null;
+    const _ikQFind = () => null, _ikSame = () => false; // RV-I-m4: nothing kept here
     const _lkUuid = () => 'id-' + (++__t.uuid);
     const modal = (h) => __t.modals.push(h);
     const closeModal = () => { __t.closed++; };

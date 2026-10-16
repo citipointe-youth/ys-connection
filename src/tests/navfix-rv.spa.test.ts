@@ -208,3 +208,17 @@ describe('RV-I-m3 sheet Save reuses a kept entry only for the same payload', () 
     expect(kept(store).flatMap((e: any) => e.items).length).toBe(2);
   });
 });
+
+describe('RV-I-m4 Save all reuses the ids of kept rows', () => {
+  it('a row whose save is kept with the same payload goes with its kept id; other rows get new ids', async () => {
+    const { f, calls, store } = ikEnv({ fns: [...Q_FNS, '_ikSaveAllGo'] });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [SAVE(P(1), 'r1', ['k1'])] }]));
+    const I = f._ik(); I.date = '2026-10-09';
+    const it = (row: string) => ({ key: row, title: 'T ' + row, payload: { date: '2026-10-09', row, confirmed: ['k1'], one: false } });
+    I.sa = { type: 'intakeSave', date: '2026-10-09', items: [it('r1'), it('r2')] };
+    await f._ikSaveAllGo();
+    const ids = calls.posts[0].b.items.map((i: any) => i.id);
+    expect(ids[0]).toBe(P(1));
+    expect(ids[1]).not.toBe(P(1));
+  });
+});
