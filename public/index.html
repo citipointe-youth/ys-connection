@@ -11112,6 +11112,7 @@ function _lkFormOpen(mode, arg) {
     const rfd = LINK.rfd || (LINK.rfd = {}), key = g.groupId + '|' + date;
     LINK.rf = rfd[key] || (rfd[key] = { mode, date, didNotMeet: false, ticks: {}, guests: 0, svc: _lkDefaultSvcFor(date, LINK.services) || 'none', svcSet: false,
       note: '', priv: false, reportId: null, base: null, err: '' });
+    LINK.rf.err = ''; // B16: a restored draft never shows a stale error
   }
   _lkPaintGroups();
 }
