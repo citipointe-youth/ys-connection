@@ -308,3 +308,23 @@ describe('D6 intake wording: a pending row over 15 min says the console has not 
     expect(f._ikChip({ actions: [{ type: 'intakeSave', status: 'claimed', createdAt: old }] }).line).toBe('Sending to Elvanto…');
   });
 });
+
+describe('C-B10 Refresh: one ask at a time, mode read before the await', () => {
+  it('double tap -> one POST; a tab switch mid-ask keeps the asked mode', async () => {
+    const posts: any[] = [];
+    let release: () => void = () => {};
+    const f = new Function('posts', 'rel', `
+      const I0 = { tab: 'intake', date: '2026-10-09', dates: [], ref: null };
+      function _ik() { return I0; }
+      const API = { post: (p, b) => { posts.push(b); return new Promise((r) => { rel.set(() => r({ asked: true })); }); } };
+      const toast = () => {}, _ikDraw = () => {}, _ikLoad = () => {}, _lkLastFriday = () => '2026-10-09';
+      ${extractFn(HTML, '_ikRefresh')}
+      return { _ikRefresh, I: I0 };`)(posts, { set: (fn: () => void) => { release = fn; } });
+    const p = f._ikRefresh();
+    f._ikRefresh();
+    expect(posts.length).toBe(1);
+    f.I.tab = 'consent';
+    release(); await p;
+    expect(f.I.ref.mode).toBe('intake');
+  });
+});

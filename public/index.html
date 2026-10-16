@@ -12891,15 +12891,18 @@ function _ikBack() {
 async function _ikRefresh() {
   const I = _ik();
   const date = I.date || _lkLastFriday(new Date(Date.now() + 36e6).toISOString().slice(0, 10));
-  if (!date || I.ref) return;
+  if (!date || I.ref || I.refBusy) return; // C-B10: one ask at a time (a double tap sent two)
+  const mode = I.tab; // C-B10: the mode asked for, not whatever tab is showing when the reply lands
+  I.refBusy = true;
   try {
-    const r = await API.post('/link/intake/refresh', { mode: I.tab, date });
+    const r = await API.post('/link/intake/refresh', { mode, date });
     if (_ik() !== I) return;
     const was = (I.dates || []).find((x) => x.date === date);
-    I.ref = { mode: I.tab, date, since: Date.now(), prev: (was && was.takenAt) || null };
+    I.ref = { mode, date, since: Date.now(), prev: (was && was.takenAt) || null };
     if (!I.date) I.date = date;
     if (r && r.asked === false) toast('Asked a moment ago. Waiting for the console.');
   } catch (e) { if (_ik() === I) toast(e.message || 'Could not ask the console.'); return; }
+  finally { I.refBusy = false; }
   _ikDraw(); _ikLoad(true);
 }
 // ── R2 Consents sub-menus (run 2026-10-15): Last Friday (the consent plan + Save all ready), All consent forms and
