@@ -275,14 +275,14 @@ describe('C-B1 Save answers: a late ok goes back only if the user is still on th
     const t = mk(() => {});
     await t.f._ikAnswersSave();
     expect(t.env.backs).toBe(1);
-    expect(t.env.toasts).toContain('Answers saved for Ava Nguyen');
+    expect(t.env.toasts).toContain('Answers noted for Ava Nguyen');
   });
   it('family changed or page left before the reply -> no navBack (toast still names the family)', async () => {
     for (const move of [(e: any) => { e.LINK.ik.key = 'B'; }, (e: any) => { e.S.page = 'home'; }]) {
       const t = mk(move);
       await t.f._ikAnswersSave();
       expect(t.env.backs).toBe(0);
-      expect(t.env.toasts).toContain('Answers saved for Ava Nguyen');
+      expect(t.env.toasts).toContain('Answers noted for Ava Nguyen');
     }
   });
 });

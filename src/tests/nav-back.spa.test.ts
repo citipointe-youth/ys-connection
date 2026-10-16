@@ -85,12 +85,12 @@ describe('S6 Save answers', () => {
     const t = mk(false);
     await t._ikAnswersSave();
     expect(t.env.backs).toBe(0);
-    expect(t.env.toasts).not.toContain('Answers saved');
+    expect(t.env.toasts).not.toContain('Answers noted');
   });
   it('a saved answer says so and goes back', async () => {
     const t = mk(true);
     await t._ikAnswersSave();
     expect(t.env.backs).toBe(1);
-    expect(t.env.toasts).toContain('Answers saved');
+    expect(t.env.toasts).toContain('Answers noted');
   });
 });

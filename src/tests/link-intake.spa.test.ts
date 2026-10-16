@@ -168,9 +168,13 @@ describe('chips per action status (§7.5)', () => {
     expect(f._ikClText({ status: 'pending', createdAt: old }, ST())).toEqual(['wait', 'Queued behind other saves.']);
     expect(f._ikClText({ status: 'pending', createdAt: old }, ST({ online: false }))[1]).toMatch(/^Console hasn't picked this up yet/);
   });
-  it('a sent answer reads Answers saved, never Saved; the older Save behind it shows', () => {
+  it('I9b (R2-G7): a sent answer reads Noted, never Saved; the older Save behind it shows', () => {
     const e = makeEnv();
-    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toEqual({ label: 'Answers saved', tone: 'ok', line: 'Answers saved' });
+    const noted = { label: 'Noted', tone: 'ok', line: 'Answer noted. The plan is updated.' };
+    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toEqual(noted);
+    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST()).label).not.toBe('Saved');
+    expect(chip(act({ type: 'intakeSave', status: 'sent', resultAt: iso(1000) })).label).toBe('Saved'); // an Elvanto write stays "Saved"
+    expect(e.fns._ikResultHtml(act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), DETAIL(), ST())).not.toContain('>Saved');
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), act({ status: 'shadowed' })] }, ST()).label).toBe('Practice');
   });
   it('sent, already, unclear, refused (reason wins, else the detail), shadowed', () => {
@@ -491,6 +495,19 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     expect(t).toContain('No, someone new (new profile)');
     expect(t).toContain('Before this family can be saved, answer the question below.');
     expect(t).not.toMatch(/D17|is linked to|active/);
+  });
+  it('I9b (R2-G7): a linked-profile hold says how to fix it in Elvanto, then Refresh', () => {
+    for (const text of ['Linked profile unclear', "Linked to a profile the form page doesn't confirm"]) {
+      const d = DETAIL({ status: 'needs-you', holds: [{ role: 'student', text }] });
+      const t = fam(d, { row: { key: P(1), status: 'needs-you', title: 'Ava Nguyen' } });
+      expect(t).toContain('Fix in Elvanto, then Refresh');
+      expect(t).toContain("Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.");
+      expect(t).not.toContain('answer the question');
+    }
+    // an answerable hold beside it still asks for the answer
+    const d2 = DETAIL({ status: 'needs-you', holds: [{ role: 'student', text: 'Same person?' }],
+      verdicts: [{ role: 'student', subId: P(1), verdict: 'unsure', chosen: null, options: ['same', 'new'], linked: { name: 'Ava Nguyen', age: 14, archived: false }, candidates: [], diff: [] }] });
+    expect(fam(d2, { row: { key: P(1), status: 'needs-you', title: 'Ava Nguyen' } })).not.toContain('Fix in Elvanto, then Refresh');
   });
   it('steps: to-dos first by person, done ones under Already done, console chips', () => {
     const d = DETAIL({ steps: [step({ key: 'a', state: 'done', text: 'Approve the student form' }), step({ key: 'b', role: 'parent', text: 'Approve the parent form', locked: true }), TEXT] });

@@ -12239,7 +12239,7 @@ function _ikAct(actions) {
 // The overlay chip for a list row (§7.5): { label, tone, line } or null. rows = the list it sits in (counts the queue ahead).
 function _ikChip(row, st, rows) {
   const a = _ikAct(row && row.actions);
-  if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
+  if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Noted', tone: 'ok', line: 'Answer noted. The plan is updated.' } : null; // I9b (R2-G7): "Saved" is for Elvanto writes
   if (_ikOpenAct(a)) {
     // Consent-pending fix 1: claimed = the console has it and is writing (a row takes ~5 min).
     if (a.status === 'claimed') return { label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' };
@@ -12253,6 +12253,7 @@ function _ikChip(row, st, rows) {
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
     return { label: 'Pending', tone: 'wait', line: 'Waiting for the console.' }; // F-47: the banner says when it was last seen
   }
+  if (a.status === 'sent' && a.type === 'intakeAnswer') return { label: 'Noted', tone: 'ok', line: 'Answer noted. The plan is updated.' };
   if (a.status === 'sent') return { label: 'Saved', tone: 'ok', line: a.reason === 'already' ? 'Already in Elvanto' : 'Saved' + (a.resultAt ? ' ' + _lkSeen(a.resultAt) : '') };
   if (a.status === 'unclear') return { label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" };
   if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: _ikReasons()[a.reason] || a.detail || "The console couldn't do this. Do it in Elvanto." };
@@ -12319,7 +12320,8 @@ function _ikNames(d) {
 function _ikPoss(name, role) { return name ? name + "'s" : 'the ' + role + "'s"; }
 const IK_HOLD = {
   'Approved but not linked': 'Form approved but not linked to anyone. Link it in Elvanto.',
-  'Linked profile unclear': "Elvanto shows a linked profile, but the console can't tell which one. Open the form in Elvanto.",
+  'Linked profile unclear': "Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.",
+  "Linked to a profile the form page doesn't confirm": "Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.", // Plan D Task 5b's split of the hold above
   'Linked profile unreadable': "Couldn't read the linked profile. Press Refresh, or open it in Elvanto.",
   'Linked profile differs': 'Elvanto linked this form to someone else. Choose "Make a new profile", or fix the link in Elvanto.',
   'Profile unreadable': "Couldn't read a profile. Press Refresh once. If it comes back, open the profile in Elvanto: it may be archived.",
@@ -12385,6 +12387,9 @@ function _ikNext(det, d) {
   if (status === 'done') return 'Everything for this ' + who + ' is in Elvanto.';
   if (status === 'ready') return _ikTodo(d).length ? 'Ready to save. Check the list below, then press Save to Elvanto.' : 'Nothing left to save here.'; // I8
   if (hs.length && hs.every((h) => h.text === 'Waiting for parent form')) return '';
+  // I9b: holds the phone can answer (a verdict, a parent-form pick, Keep as is); any other hold is fixed in Elvanto.
+  const app = IK_VERDICT_HOLDS.concat(['Check the match', 'Siblings share one parent form', 'Waiting for parent form', 'Fix the flagged items', 'Picked profile no longer matches']);
+  if (hs.length && hs.every((h) => !app.includes(h.text))) return 'Fix in Elvanto, then Refresh:';
   if (!_ikHoldLines(d).length) return 'Before this ' + who + ' can be saved, answer ' + (hs.filter((h) => IK_VERDICT_HOLDS.includes(h.text)).length > 1 ? 'both questions' : 'the question') + ' below.';
   return 'Before this ' + who + ' can be saved:';
 }
@@ -13233,7 +13238,7 @@ async function _ikAnswersSave() {
   const ok = await _ikAnswerSend(false);
   if (_ik() !== I) return;
   if (!ok) return; // not saved: the toast already said why; stay on the form
-  toast(title ? 'Answers saved for ' + title : 'Answers saved');
+  toast(title ? 'Answers noted for ' + title : 'Answers noted'); // I9b: no Elvanto write, so not "saved"
   if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
 }
 function _ikBack() {
