@@ -238,3 +238,32 @@ describe('B26 report back', () => {
     expect(w.NAV.stack).toHaveLength(1);
   });
 });
+
+// ── B04: the Home Check-in tile is keyboard reachable via the global [role=button] Enter/Space handler ──
+describe('B04 Check-in tile keyboard', () => {
+  const start = HTML.indexOf('// Enter/Space on a focused [role=button] clicks it');
+  const src = HTML.slice(start, HTML.indexOf('});', start) + 3);
+  const tileHtml = new Function('_linkOn', '_lkSvcDay', '_serviceDow', 'icN',
+    `${extractFn(HTML, '_homeCheckinTile')}; return _homeCheckinTile();`)(() => true, () => '2026-10-16', () => 5, () => '');
+  const run = (key: string) => {
+    let handler: any; const document = { addEventListener: (_t: string, h: any) => { handler = h; } };
+    new Function('document', src)(document);
+    const clicks: string[] = [];
+    const attrs: Record<string, string> = {};
+    tileHtml.replace(/(\w[\w-]*)="([^"]*)"/g, (_m: string, k: string, v: string) => { attrs[k] = v; return ''; });
+    const el = { getAttribute: (k: string) => attrs[k] ?? null, click: () => clicks.push(attrs.onclick) };
+    let prevented = false;
+    handler({ key, target: el, preventDefault: () => { prevented = true; } });
+    return { clicks, prevented, attrs };
+  };
+  it('tile markup has role=button + tabindex=0, and Enter / Space click it', () => {
+    expect(start).toBeGreaterThan(0);
+    const e = run('Enter');
+    expect(e.attrs.role).toBe('button');
+    expect(e.attrs.tabindex).toBe('0');
+    expect(e.clicks).toEqual(["go('link-checkin')"]);
+    expect(e.prevented).toBe(true);
+    expect(run(' ').clicks).toHaveLength(1);
+    expect(run('a').clicks).toHaveLength(0);
+  });
+});
