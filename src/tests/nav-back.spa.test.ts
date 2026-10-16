@@ -77,7 +77,8 @@ describe('S6 Save answers', () => {
       function _ik() { return I0; }
       async function _ikAnswerSend() { return env.ok; }
       function toast(m) { env.toasts.push(m); }
-      function navBack() { env.backs++; }`);
+      function navBack() { env.backs++; }
+      function _here() { return {}; } function _still() { return true; } // C-B1: same screen, so a saved answer goes back`);
     return { env, _ikAnswersSave };
   };
   it('a refused answer (server message, nothing queued for resend) stays on the form and never says saved', async () => {

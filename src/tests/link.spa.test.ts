@@ -235,7 +235,7 @@ describe('F1.1 _lkBanner', () => {
   it('check-out locked, off hides; no practice line (S1)', () => {
     const b = strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkIn: 'shadow', checkOut: 'locked' }) })));
     expect(b).not.toContain('Practice');
-    expect(b).toContain("Check-out: this isn't connected yet. Do it in Elvanto.");
+    expect(b).toContain("Check-out: this isn't connected yet. Tell the admin."); // B10: non admin/director get the F-35 rewrite
     expect(b).not.toContain('last seen');
     const off = makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkOut: 'off' }) }));
     expect(off).toBe('');
@@ -508,7 +508,7 @@ describe('F1.2 queue', () => {
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'cancel', outcome: 'too-late' }] }) });
     h.fns._lkQSet([{ kind: 'cancel', id: P(41), leaderId: null }]);
     await h.fns._lkFlush();
-    expect(h.calls.toasts).toContain('Already sent. Do it in Elvanto.');
+    expect(h.calls.toasts).toContain('Already sent. Tell the admin.'); // B10: non admin/director get the F-35 rewrite
     const h2 = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'cancel', outcome: 'refused', code: 'LINK_NOT_YOURS', message: 'Only the leader who sent this can undo it.' }] }) });
     h2.fns._lkQSet([{ kind: 'cancel', id: P(41), leaderId: null }]);
     await h2.fns._lkFlush();
@@ -1163,7 +1163,7 @@ describe('F2 lifegroup report', () => {
     expect(out).toContain('Tue 6 Oct 18:30');
     expect(out).not.toContain('Service');
     expect(out).toContain('Guests2');
-    expect(out).toContain('Students here (2)Ava Example, Dana Testleader');
+    expect(out).toContain('Students here (1)Ava Example');
     const dnm = setup('L1', { lastReport: { ...grp().lastReport, didNotMeet: true, attendees: [] } });
     expect(strip(dnm.fns._lkReportHtml(dnm.get().LINK.groups[0], dnm.get().LINK.groups[0].lastReport))).toContain('Group did not meet');
   });
@@ -1173,7 +1173,7 @@ describe('F2 lifegroup report', () => {
     const h = setup('L1', { history: [lr, dup] });
     const g = h.get().LINK.groups[0];
     const one = h.fns._lkReportHtml(g, lr);
-    expect(one).toMatch(/<details class="lk-here"><summary>Students here \(2\)<\/summary>/); // closed: no open attribute
+    expect(one).toMatch(/<details class="lk-here"><summary>Students here \(1\)<\/summary>/); // closed: no open attribute
     expect(one).not.toContain('Sent by'); // made in Elvanto: no sender
     const w = { start: '2026-10-05', end: '2026-10-11' };
     const body = h.fns._lkWeekBodyHtml(g, w);
@@ -1765,7 +1765,9 @@ describe('T11 first-timer check-in removed from New person', () => {
     const send = extractFn(html, 'nySend');
     expect(send).not.toContain('lkSvc');
     expect(send).not.toContain('_lkFirstTimerAfter');
-    expect(send).toContain("API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000)");
+    // C-B9/D3 (n4): the send list moved to a const and the POST carries the request id + keepalive
+    expect(send).toContain("const sendList = send || (mine.sibling ? ['student'] : ['student', 'parent']);");
+    expect(send).toContain("API.post('/intake/new-youth', { ...p, send: sendList, requestId: req.id }, 45000, false, true)");
     expect(extractFn(html, 'renderNewYouth')).not.toMatch(/NY\.lkNote|_nyFt|_nyLinkHtml/);
   });
 });

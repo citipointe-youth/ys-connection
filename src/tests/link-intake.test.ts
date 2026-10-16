@@ -207,7 +207,7 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
   });
   it('the dates list: counts, stale flag, inputs, the console; opening it marks the view (hurry hint)', async () => {
     const h = await setup();
-    const r = await h.intake.list(ADMIN, { mode: 'intake' });
+    const r = await h.intake.list(ADMIN, { mode: 'intake', view: '1' });
     expect(r.consoleLinkRev).toBe(4);
     expect(r.console.online).toBe(true);
     expect((r as any).dates).toEqual([{ date: DATE, takenAt: '2026-10-16T09:41:00.000Z', stale: false, cut: false,
@@ -252,7 +252,7 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
   it('R6: list purges at most hourly, and only the dates list marks the view', async () => {
     const h = await setup();
     const purge = vi.spyOn(h.intakeRepo, 'purge'); const viewed = vi.spyOn(h.intakeRepo, 'markViewed');
-    await h.intake.list(ADMIN, { mode: 'intake' }); await h.intake.list(ADMIN, { mode: 'intake' });
+    await h.intake.list(ADMIN, { mode: 'intake', view: '1' }); await h.intake.list(ADMIN, { mode: 'intake', view: '1' }); // B18: view=1 on page entry
     expect(purge).toHaveBeenCalledTimes(1);
     expect(viewed).toHaveBeenCalledTimes(2);
     await h.intake.list(ADMIN, { mode: 'intake', date: DATE });
@@ -347,7 +347,7 @@ describe('sync: intake hint, pushes, results', () => {
     expect((await h.sync.claim(fx('claim-request.json'))).intake).toBeUndefined();
     let reply = await h.sync.claim(CLAIM4());
     expect(ClaimResponse.parse(reply).intake).toEqual({ mode: 'on', hurry: false, refresh: [] });
-    await h.intake.list(ADMIN, { mode: 'intake' }); // viewed now
+    await h.intake.list(ADMIN, { mode: 'intake', view: '1' }); // viewed now
     expect((await h.sync.claim(CLAIM4())).intake!.hurry).toBe(true);
     h.clock.now = new Date(NOW.getTime() + 31 * 60_000);
     expect((await h.sync.claim(CLAIM4())).intake!.hurry).toBe(false);

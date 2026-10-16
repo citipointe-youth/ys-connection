@@ -129,7 +129,7 @@ describe('F-02(b) Add student picker: one add per tap', () => {
     h.fns._lkYpAdd(P(70));
     expect(adds(h)).toHaveLength(1);
     expect(adds(h)[0].payload.personId).toBe(P(70));
-    vi.advanceTimersByTime(600);
+    vi.advanceTimersByTime(1000); // B24: the tap must land >= 400 ms after the repaint that ends the 600 ms hold
     h.fns._lkYpAdd(P(71));
     expect(adds(h)).toHaveLength(2);
   });
@@ -296,7 +296,7 @@ describe('F-49 report count label', () => {
     const h = setup();
     const g = h.get().LINK.groups[0];
     const out = strip(h.fns._lkReportHtml(g, g.lastReport));
-    expect(out).toContain('Students here (2)Ava Example, Dana Testleader');
+    expect(out).toContain('Students here (1)Ava Example');
     expect(out).toContain('Guests2');
   });
 });

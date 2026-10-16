@@ -8,7 +8,7 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid
   '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikWhenMs', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
   '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
-  '_ikAns', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
+  '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikTextOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
   '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
@@ -22,7 +22,9 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid
   // integration review fixes (run 2026-10-15)
   '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', '_ikFixChanges', '_ikDncLine',
   // L6 Unlinked consent forms (run 2026-10-15b)
-  '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo'];
+  '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
+  // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
+  '_navSnap', '_navSame', '_here', '_still'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
@@ -42,12 +44,13 @@ function makeEnv(e: Env = {}) {
     const S = { user: { id: 'u1', role: ${JSON.stringify(e.role ?? 'admin')} }, page: 'link-intake',
       settings: { ministryConfig: { modules: Object.assign({ newYouthForms: 'off' }, ${JSON.stringify(e.modules ?? { intakeAdmin: 'on' })}) } } };
     let LINK = _lkFresh();
+    const NAV = { stack: [] };
     function navPush() {}
     ${CONSTS}
     const localStorage = __ls;
     const navigator = { userAgent: 'iPhone Safari' };
     const window = { scrollTo() {} };
-    const document = { getElementById: () => null, visibilityState: 'visible' };
+    const document = { getElementById: () => null, querySelector: () => null, visibilityState: 'visible' };
     const API = { post: (p, b) => __post(p, b), fresh: (p) => __fresh(p) };
     const setApp = (h) => __calls.apps.push(h);
     const shell = (h) => h;
@@ -111,7 +114,7 @@ describe('module gating', () => {
     const on = makeEnv({ fresh: (p) => (p.includes('date=') ? LIST() : { ...ST(), dates: [{ date: '2026-10-09', takenAt: iso(1000), counts: { needsYou: 1 } }] }) });
     await on.fns.renderLink('link-intake');
     expect(on.calls.gos).toEqual([]);
-    expect(on.calls.fresh).toContain('/link/intake?mode=intake');
+    expect(on.calls.fresh).toContain('/link/intake?mode=intake&view=1'); // B18: page entry marks the view
     expect(on.calls.fresh).toContain('/link/intake?mode=intake&date=2026-10-09');
     expect(on.calls.apps.length).toBe(1);
   });
@@ -300,7 +303,7 @@ describe('answers and saves go straight to /link/batch (never the phone queue)',
     a.pairs[P(1)] = 'none';
     expect(e.fns._ikAnswerBody('2026-10-09', P(1), d, a, false).payload.family).toEqual([P(1)]);
   });
-  it('a new answer cancels the still-pending one in the same batch; nothing is written to localStorage', async () => {
+  it('a new answer is one item (S-4: the server supersedes the still-pending one); nothing is left in localStorage', async () => {
     const e = makeEnv({ post: (_p, b) => ({ results: b.items.map((it: any) => ({ id: it.id, kind: it.kind, outcome: it.kind === 'cancel' ? 'cancelled' : 'saved' })) }) });
     const I = e.fns._ik();
     I.date = '2026-10-09'; I.key = P(1);
@@ -311,8 +314,8 @@ describe('answers and saves go straight to /link/batch (never the phone queue)',
     expect(e.calls.posts.length).toBe(1);
     const { p, b } = e.calls.posts[0];
     expect(p).toBe('/link/batch');
-    expect(b.items[0]).toEqual({ kind: 'cancel', id: P(80) });
-    expect(b.items[1]).toMatchObject({ kind: 'action', type: 'intakeAnswer', leaderId: null, payload: { date: '2026-10-09', family: [P(1), P(2)], undo: false } });
+    expect(b.items).toHaveLength(1); // S-4: no client {kind:'cancel'}; n6 insertAction supersede cancels P(80) in one transaction
+    expect(b.items[0]).toMatchObject({ kind: 'action', type: 'intakeAnswer', leaderId: null, payload: { date: '2026-10-09', family: [P(1), P(2)], undo: false } });
     expect(b.device).toEqual({ id: 'dev-1', label: 'iPhone' });
     expect([...e.storage.keys()]).toEqual([]);
     expect(I.det.actions[0]).toMatchObject({ type: 'intakeAnswer', status: 'pending' }); // shown as Updating plan at once

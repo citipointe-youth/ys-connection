@@ -77,6 +77,9 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-consent-lookup-unlinked.json': C.PUSH_SCHEMAS.consentLookup,
   'result-request-rev6.json': C.ResultRequest,
   'push-progress.json': C.PUSH_SCHEMAS.progress, // S5 (run 2026-10-15b)
+  // Rev 7 (B13, nav/save fix round 2026-10-16)
+  'result-request-rev7.json': C.ResultRequest,
+  'push-consent-lookup-mismatches-rev7.json': C.PUSH_SCHEMAS.consentLookup,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
