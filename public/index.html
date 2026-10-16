@@ -880,7 +880,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-warn{color:#b45309}
 .ik-warn .ic-s,.ik-line .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-tag.ik-ok{color:#047857;border-color:#a7f3d0}.lk-tag.ik-bad{color:#b91c1c;border-color:#fecaca}.lk-tag.ik-wait{color:#b45309;border-color:#fde68a}.lk-tag.ik-prac{color:var(--ink-mid);border-color:var(--line)}
-.ik-sub{margin:-4px 0 10px;gap:4px;-webkit-mask-image:none;mask-image:none}.ik-sub .tbbtn{flex:1 1 0;min-width:0;padding:7px 6px;font-size:12px;border-radius:8px;text-align:center}
+.ik-subl{display:flex;align-items:center;gap:8px;margin-top:-4px}.ik-sub{flex:1;min-width:0;min-height:44px}
 .ik-srch{display:flex;gap:8px;align-items:center;margin-bottom:8px}.ik-srch .fi{flex:1;min-width:0}
 .ik-ics{display:inline-flex;gap:4px;flex:none}
 .ik-ic{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -13213,12 +13213,16 @@ async function _ikRefresh() {
 // form (consentFix, ships LOCKED in the console). R8 Save all: one confirm queues N saves in one /link/batch call; the
 // console runs them one at a time; each row's chip shows its own status. Handlers take indexes, never ids or names.
 // F-48: "Last Friday" is lit only on the newest week; another week picked in Other weeks leaves no pill lit.
+// I5 (R2-G3): a native dropdown. "Last Friday" is selected only on the newest week (F-48); an older week shows "Older week".
+// this.blur() matters: _ikDraw skips redrawing while a SELECT in #ik-page has focus.
 function _ikSubBar(cur) {
   const I = _ik(), older = !!(I && I.dates && I.dates.length && I.date && I.date !== I.dates[0].date);
-  return `<div class="tbbar ik-sub">${[['last', 'Last Friday'], ['forms', 'All forms'], ['unlinked', 'Unlinked'], ['mismatches', 'Mismatches'], ['other', 'Other (no date)']].map(([k, l]) => {
-    const on = cur === k && !(k === 'last' && older);
-    return `<button type="button" class="tbbtn ${on ? 'on' : ''}"${on ? ' aria-current="true"' : ''} onclick="_ikConsentSub('${k}')">${l}</button>`;
-  }).join('')}</div>`;
+  const wk = cur === 'last' && older;
+  const subs = [['last', 'Last Friday · consent plan to save'], ['forms', 'All forms · every parent form'], ['unlinked', 'Unlinked · forms with no person'],
+    ['mismatches', 'Mismatches · form differs from profile'], ['other', 'Other (no date) · step 0, no week']];
+  const opts = (wk ? [['week', 'Older week · consent plan']] : []).concat(subs).map(([k, l]) =>
+    `<option value="${k}"${(wk ? k === 'week' : cur === k) ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  return `<label class="lk-d lk-mb ik-subl">Show <select class="fs ik-sub" aria-label="Show" onchange="this.blur();_ikConsentSub(this.value)">${opts}</select></label>`;
 }
 function _ikConsentSub(k) {
   const I = _ik();

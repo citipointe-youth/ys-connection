@@ -36,15 +36,20 @@ const ROWS = [
 ];
 
 describe('Consents Other: the 5th pill', () => {
-  it('the sub-bar has five pills, the last "Other (no date)"; tapping it opens the Other page', () => {
+  it('the sub-bar (I5: a native dropdown) has five options, the last "Other (no date)"; choosing it opens the Other page', () => {
     const { fns, I, t } = env();
     const bar = fns._ikSubBar('last');
-    expect((bar.match(/<button/g) || []).length).toBe(5);
-    expect(strip(bar)).toBe('Last FridayAll formsUnlinkedMismatchesOther (no date)');
+    expect((bar.match(/<option/g) || []).length).toBe(5);
+    expect(bar).toContain('<option value="other">Other (no date) · step 0, no week</option>');
+    expect(strip(bar)).toBe('Show Last Friday · consent plan to saveAll forms · every parent formUnlinked · forms with no personMismatches · form differs from profileOther (no date) · step 0, no week');
+    expect(bar).toContain('onchange="this.blur();_ikConsentSub(this.value)"');
+    // every option: 2-4 descriptive words after the "·"
+    for (const m of bar.matchAll(/<option[^>]*>([^<]*)<\/option>/g)) expect(m[1]!.split(' · ')[1]!.trim().split(/\s+/).length).toBeGreaterThanOrEqual(2);
+    for (const m of bar.matchAll(/<option[^>]*>([^<]*)<\/option>/g)) expect(m[1]!.split(' · ')[1]!.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
     fns._ikConsentSub('other');
     expect(I.csub).toBe('other');
     expect(t.pushes).toBe(1);
-    expect(fns._ikSubBar('other')).toMatch(/class="tbbtn on"[^>]*>Other \(no date\)/);
+    expect(fns._ikSubBar('other')).toMatch(/<option value="other" selected>Other \(no date\)/);
   });
   it('an older console (rev 7) says it needs an update and offers no Load', () => {
     const { fns } = env();

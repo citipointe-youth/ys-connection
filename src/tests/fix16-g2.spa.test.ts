@@ -37,9 +37,14 @@ const ST = (caps: Record<string, string> = {}) => ({ consoleLinkRev: 7, console:
 describe('F-48(a) Last Friday pill', () => {
   it('is lit only on the newest week; tapping it from an older week goes back to the newest', () => {
     const { fns, t, I } = env();
-    expect(fns._ikSubBar('last')).toMatch(/class="tbbtn on"[^>]*>Last Friday/);
+    expect(fns._ikSubBar('last')).toMatch(/<option value="last" selected>Last Friday/);
+    expect(fns._ikSubBar('last')).not.toContain('value="week"');
     I.date = '2026-10-09';
-    expect(fns._ikSubBar('last')).not.toMatch(/class="tbbtn on"[^>]*>Last Friday/);
+    // I5: an older week shows "Older week" selected, and "Last Friday" is not
+    expect(fns._ikSubBar('last')).toMatch(/^<label[^>]*>Show <select[^>]*><option value="week" selected>Older week · consent plan<\/option>/);
+    expect(fns._ikSubBar('last')).not.toMatch(/<option value="last" selected/);
+    fns._ikConsentSub('week'); // ignored
+    expect(t.picked).toEqual([]);
     fns._ikConsentSub('last');
     expect(t.picked).toEqual([0]);
   });
@@ -49,7 +54,7 @@ describe('F-48(a) Last Friday pill', () => {
     fns._ikConsentSub('last');
     expect(t.picked).toEqual([0]);
     expect(I.csub).toBe('last');
-    expect(fns._ikSubBar(I.csub)).toMatch(/class="tbbtn on"[^>]*>Last Friday/);
+    expect(fns._ikSubBar(I.csub)).toMatch(/<option value="last" selected>Last Friday/);
   });
 });
 

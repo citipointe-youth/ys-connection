@@ -507,7 +507,7 @@ describe('consents sub-menus (R2)', () => {
     await e.fns._ikLoad(false);
     const h = e.fns._ikPageHtml(), t = strip(h);
     expect(e.fns._ik().csub).toBe('last');
-    expect(t).toContain('Last Friday All forms Unlinked Mismatches Other (no date)');
+    expect(t).toMatch(/Show\s+Last Friday · consent plan to save\s+All forms · every parent form\s+Unlinked · forms with no person\s+Mismatches · form differs from profile\s+Other \(no date\) · step 0, no week/);
     expect(t).toContain('New people from ' + e.fns._lkDay('2026-10-09'));
     expect(h).not.toContain('onclick="_ikPickDate(');
     expect(h).toContain('onchange="this.blur();_ikPickDate(+this.value)"');
