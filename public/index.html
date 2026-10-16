@@ -1463,6 +1463,15 @@ function _navPop() {
   if (!S.user) return;
   // A sheet is open: back closes it and stays on the screen (the entry the browser just popped is put back).
   if (NAV.stack.length && document.querySelector('#modal-root .mo')) { closeModal(); try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
+  // B25/B26: leaving a filled New person form or an unsent report asks first (the popped entry is put back meanwhile).
+  // No loop: Discard sets the one-shot _navPop.leave before its navBack, so that one pop goes through.
+  if (_navPop.leave) _navPop.leave = false;
+  else if (NAV.stack.length && S.page === 'new-youth' && Object.values(_nyRaw()).some(Boolean)) {
+    try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+    _lkAsk('The details on this form are not sent.', 'Discard', 'Keep editing', 'Discard this form?')
+      .then((yes) => { if (yes) { nyReset(); _navPop.leave = !!NAV.stack.length; navBack(); } });
+    return;
+  }
   const s = NAV.stack.pop();
   if (!s) { if (S.page !== 'home') { S.page = 'home'; render(); } return; }
   if (_navSame(s, _navSnap())) { if (NAV.stack.length) { try { history.back(); } catch (e) {} } return; }

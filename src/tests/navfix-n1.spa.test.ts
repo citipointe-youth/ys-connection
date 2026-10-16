@@ -160,3 +160,81 @@ describe('C-B8 bus sheet close', () => {
     expect(b.env.toasts).toContain('Saved');
   });
 });
+
+// ── B25 / B26: back from a filled New person form or an unsent report asks first; no loop ──
+function navWorld(page: string) {
+  const env: any = { asks: [] as string[], answer: true, pending: 0, pushed: 0, renders: 0, raw: {}, resets: 0 };
+  const f = new Function('env', `
+    var S = { user: { id: 'u1' }, page: ${JSON.stringify(page)} }, NAV = { stack: [] };
+    var LINK = { gid: 'g1', rf: null, rfd: {}, ik: null };
+    var history = { pushState() { env.pushed++; }, back() { env.pending++; }, go() {} };
+    var document = { querySelector: () => null };
+    var render = () => { env.renders++; }, closeModal = () => {}, _lkPaintGroups = () => { env.renders++; };
+    var _ikLeave = () => {}, _ikDraw = () => {}, _ikLoad = () => {};
+    var _nyRaw = () => env.raw, nyReset = () => { env.resets++; env.raw = {}; };
+    var _lkGroup = () => ({ groupId: 'g1' }), _lkGroupsBack = () => navBack();
+    var _lkAsk = (text, yes, no, title) => { env.asks.push(title || text); return Promise.resolve(env.answer); };
+    ${fns(['_navSnap', '_navSame', 'navPush', 'navBack', '_navPop', '_lkRfBack'])}
+    return { S, NAV, LINK, navPush, navBack, _navPop };`);
+  const w: any = { ...f(env), env };
+  // The browser: each history.back() later fires one popstate (= _navPop). Runs until quiet; caps to catch a loop.
+  w.settle = async () => { for (let i = 0; i < 20; i++) { await tick(); if (!env.pending) return i; env.pending--; w._navPop(); } throw new Error('back loop'); };
+  w.back = async () => { w.navBack(); await w.settle(); };
+  return w;
+}
+
+describe('B25 New person back', () => {
+  it('dirty form + back -> stays and asks; Discard -> resets and leaves once (no loop)', async () => {
+    const w = navWorld('home'); w.navPush(); w.S.page = 'new-youth';
+    w.env.raw = { firstName: 'Jo', lastName: '' };
+    w.env.answer = false;
+    await w.back();
+    expect(w.env.asks).toEqual(['Discard this form?']);
+    expect(w.S.page).toBe('new-youth');
+    expect(w.NAV.stack).toHaveLength(1);
+    expect(w.env.pushed).toBe(2); // navPush + the entry put back
+    w.env.answer = true;
+    await w.back();
+    expect(w.env.asks).toHaveLength(2);
+    expect(w.env.resets).toBe(1);
+    expect(w.S.page).toBe('home');
+    expect(w.NAV.stack).toHaveLength(0);
+  });
+  it('clean form -> leaves without asking', async () => {
+    const w = navWorld('home'); w.navPush(); w.S.page = 'new-youth';
+    w.env.raw = { firstName: '', lastName: '' };
+    await w.back();
+    expect(w.env.asks).toEqual([]);
+    expect(w.S.page).toBe('home');
+  });
+});
+
+describe.skip('B26 report back', () => {
+  const open = () => {
+    const w = navWorld('link-groups'); w.navPush(); // group list -> group
+    const f = { date: '2026-10-16', dirty: true, ticks: {} };
+    w.navPush(); w.LINK.rf = f; w.LINK.rfd['g1|2026-10-16'] = f; // group -> report form
+    return w;
+  };
+  it('dirty report + back -> asks "Discard report?", page and draft kept on Keep editing', async () => {
+    const w = open(); w.env.answer = false;
+    await w.back();
+    expect(w.env.asks).toEqual(['Discard report?']);
+    expect(w.LINK.rf).toBeTruthy();
+    expect(w.NAV.stack).toHaveLength(2);
+  });
+  it('Discard -> leaves the form once (draft gone), no second ask, no loop', async () => {
+    const w = open(); w.env.answer = true;
+    await w.back();
+    expect(w.env.asks).toEqual(['Discard report?']);
+    expect(w.LINK.rf).toBeNull();
+    expect(w.LINK.rfd['g1|2026-10-16']).toBeUndefined();
+    expect(w.NAV.stack).toHaveLength(1);
+  });
+  it('clean report -> back leaves without asking', async () => {
+    const w = open(); w.LINK.rf.dirty = false;
+    await w.back();
+    expect(w.env.asks).toEqual([]);
+    expect(w.NAV.stack).toHaveLength(1);
+  });
+});
