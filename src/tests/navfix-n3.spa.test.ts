@@ -198,7 +198,7 @@ describe('S-1 consent fix / link lines come back after the app was closed (_ikFi
     expect(I.fixes[P(6)]).toBeUndefined(); // newest is sent: nothing to show
     expect(I.fixes[P(7)].id).toBe('live');
     expect(I.fixes['cn:' + P(1)]).toMatchObject({ id: P(97), status: 'pending' });
-    expect(I.fixes[P(4)].createdAt).toBe(rows.consentFix[0].createdAt); // D6 since-line uses the server time
+    expect(I.fixes[P(4)].createdAt).toBe(rows.consentFix![0]!.createdAt); // D6 since-line uses the server time
     expect(Object.keys(I.fixes).length).toBe(4);
     expect(t.timers.length).toBe(1); // polling resumes for the open ones
     await fns._ikFixRestore();
