@@ -1,7 +1,7 @@
 # debug.md — YS Connection debugging map
 
 > Companion to `CLAUDE.md`. Read **both** when picking up a bug report.
-> CLAUDE.md = system/architecture/contract + the dated changelog of what shipped and why.
+> CLAUDE.md = system/architecture/contract (current truth). docs/HISTORY.md = the dated changelog of what shipped and why.
 > This file = "where does this symptom live?" — a fast router, not a duplicate of CLAUDE.md.
 
 ## How to use this file (per bug report)
@@ -34,7 +34,7 @@
 >   `vercel inspect ys-connection.vercel.app` — if its `id` isn't your new deployment, run
 >   `vercel alias set <new-deployment-url> ys-connection.vercel.app` explicitly, then re-check
 >   with `curl` (`/`, `/auth/me` should 401 not 500, `/settings` should return real JSON). See
->   CLAUDE.md's "Prayers feature + a real deployment incident" entry for the full story — this
+>   docs/HISTORY.md "Prayers feature + a real deployment incident: the custom domain does NOT auto-alias (2026-07-18)" for the full story — this
 >   is what caused an apparently-broken deploy earlier the same day.
 > - Before any destructive local testing (Full Reset, admin/reset), use `PERSISTENCE=memory`
 >   locally — never test destructive admin actions against the real Supabase-backed prod data.
@@ -298,7 +298,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   expected to be imperfect — Safari has no Credential Management API, so `_offerSaveCredential()`
   (public/index.html, Chrome/Edge/Android only) is a no-op there; Safari's own save prompt
   depends on the real `<form>`/`autocomplete` hardening on `renderLogin`, `renderMustChangePassword`,
-  and `showChangeOwnPassword` (2026-07-24, see CLAUDE.md's two dated password-manager sections).
+  and `showChangeOwnPassword` (2026-07-24, see docs/HISTORY.md "Password-manager save hardening ... (2026-07-24)" and "Login form hardened further ... (2026-07-24)").
   "Sometimes" specifically on the **login** form pointed at a timing race — `go('home')` used to
   wipe the login DOM (incl. the just-submitted password field) in the same tick as the response,
   giving Safari's disappearing-field heuristic no time to fire; now wrapped in
@@ -519,8 +519,8 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
 
 ### Production performance / DB connection issues
 
-Don't re-diagnose from scratch — CLAUDE.md's "Production performance incident" section (search
-for "RESOLVED — the actual root cause was the pooler CONNECTION MODE") has the full multi-day
+Don't re-diagnose from scratch — CLAUDE.md "Production database" (levers + remedy) and docs/HISTORY.md
+"✅ RESOLVED — the actual root cause was the pooler CONNECTION MODE (2026-07-06)" (full investigation) has the full multi-day
 investigation, dead ends, and the actual fix (session-mode pooler + per-account rate limiting).
 The mitigation levers (idle_timeout, pool size, `max`) are listed there too — check that section
 before touching `client.ts`'s pool config.

@@ -53,7 +53,7 @@ api (Express) → controllers → services → repositories (interfaces) → cor
 - `src/container.ts` — composition root (the only file naming concrete repositories).
 - `public/index.html` — the phone-first SPA (single file, vanilla JS).
 
-See `CLAUDE.md` for the full architecture reference, gotchas, and history —
+See `CLAUDE.md` for the architecture reference and gotchas, and `docs/HISTORY.md` for the dated history —
 it's written for an AI coding assistant but is equally useful as an engineer's
 onboarding doc.
 
