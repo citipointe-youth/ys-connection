@@ -91,6 +91,17 @@ describe('C-B9 intake queue (D2/D3): kept until answered, resent with the SAME i
     await f._ikPost([SAVE(P(1)), SAVE(P(2), 'r2')]);
     expect(kept(store).flatMap((e: any) => e.items.map((i: any) => i.id))).toEqual([P(2)]);
   });
+  it('integrate (n4 _lkBoot calls it unawaited): a bad kept entry or a failing reload never throws or rejects', async () => {
+    const { f, store, calls } = ikEnv();
+    f.LINK.ik = {}; // no resend map: handling the answer's reply throws inside the async part
+    const ANS = { kind: 'action', id: P(1), type: 'intakeAnswer', payload: { date: '2026-10-09', family: [P(9)] }, note: null, leaderId: null };
+    store.set('ysc.ikq.u1', JSON.stringify([null, { at: new Date().toISOString() }, { at: new Date().toISOString(), items: [ANS] }]));
+    let p: any;
+    expect(() => { p = f._ikQFlush(); }).not.toThrow(); // the entry with no items is skipped, not a TypeError
+    await expect(p).resolves.toBe(false); // caught: never an unhandled rejection
+    expect(calls.posts.length).toBe(1);
+    expect(calls.posts[0].b.items).toEqual([ANS]); // the good entry still went, as stored
+  });
   it('_ikQFlush resends kept items byte-identical (same ids), then drops them once answered', async () => {
     let fail = true;
     const { f, calls, store } = ikEnv({ post: (b) => (fail ? netErr() : ok(b, 'replay')) });

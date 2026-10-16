@@ -12376,7 +12376,7 @@ function _ikQGet(k) {
   if (!LINK.ikMemOnly) {
     let raw = null;
     try { raw = localStorage.getItem(k); } catch (e) { LINK.ikMemOnly = true; }
-    if (!LINK.ikMemOnly) { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+    if (!LINK.ikMemOnly) { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v.filter((e) => e && Array.isArray(e.items)) : []; } catch (e) { return []; } } // a bad entry never throws in a caller
   }
   return ((LINK.ikMem || {})[k] || []).slice();
 }
@@ -12441,7 +12441,7 @@ function _ikQFlush() {
     }
     if (any && S.page === 'link-intake') _ikLoad(true);
     return any;
-  })().finally(() => { LINK.ikFlushing = null; });
+  })().catch(() => false).finally(() => { LINK.ikFlushing = null; }); // callers (_lkBoot, online, visibilitychange) never await: never reject
   LINK.ikFlushing = p;
   return p;
 }
