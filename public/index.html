@@ -542,6 +542,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
   .btn-sm,.tbbtn,.btn-icon{min-height:40px}
   .btn-sm,.btn-icon{min-width:40px}
   .vg-bar .fc{min-height:40px;min-width:40px}
+  .filter-row .fc,button[onclick="go('trends')"]{min-height:44px;min-width:44px}
 }
 @media(max-width:767px){
   .tbbar{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
@@ -1463,6 +1464,23 @@ function _navPop() {
   if (!S.user) return;
   // A sheet is open: back closes it and stays on the screen (the entry the browser just popped is put back).
   if (NAV.stack.length && document.querySelector('#modal-root .mo')) { closeModal(); try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
+  // B25/B26: leaving a filled New person form or an unsent report asks first (the popped entry is put back meanwhile).
+  // No loop: Discard sets the one-shot _navPop.leave before its navBack, so that one pop goes through.
+  if (_navPop.leave) _navPop.leave = false;
+  else if (NAV.stack.length && S.page === 'new-youth' && Object.values(_nyRaw()).some(Boolean)) {
+    try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+    _lkAsk('The details on this form are not sent.', 'Discard', 'Keep editing', 'Discard this form?')
+      .then((yes) => { if (yes) { nyReset(); _navPop.leave = !!NAV.stack.length; navBack(); } });
+    return;
+  }
+  // B26: an unsent report still kept as a draft. _lkRfBack asks "Discard report?"; its Discard drops the draft
+  // from LINK.rfd before its navBack, so that pop no longer matches here (no loop). Same for its Cancel button.
+  const rf = S.page === 'link-groups' && LINK.rf, rg = rf && rf.dirty && NAV.stack.length && _lkGroup();
+  if (rg && LINK.rfd && LINK.rfd[rg.groupId + '|' + rf.date] === rf) {
+    try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+    _lkRfBack();
+    return;
+  }
   const s = NAV.stack.pop();
   if (!s) { if (S.page !== 'home') { S.page = 'home'; render(); } return; }
   if (_navSame(s, _navSnap())) { if (NAV.stack.length) { try { history.back(); } catch (e) {} } return; }
@@ -1703,7 +1721,10 @@ async function renderNotices() {
   const _pg = S.page;
   let list = Cache.getStale('/notices');
   if (list == null) { setApp(shell('')); try { list = await API.get('/notices'); } catch { list = []; } if (S.page !== _pg) return; }
-  setApp(shell(_noticesHtml(list)));
+  const d = _noticeSender() && _ntDraftGet();
+  const warn = d && d.requestId !== _ntBusy ? `<div class="card" style="border-left:4px solid var(--amber,#d97706)"><div style="font-size:13px">Not sure this went: <b>${esc(d.title || '')}</b></div>
+    <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn btn-primary btn-sm" onclick="ntResend()">Send again</button><button type="button" class="btn btn-secondary btn-sm" onclick="ntDiscard()">Discard</button></div></div>` : '';
+  setApp(shell(_noticesHtml(list).replace('<div id="nt-push"></div>', (m) => m + warn)));
   _ntPushDraw();
 }
 async function submitNotice() {
@@ -1713,9 +1734,27 @@ async function submitNotice() {
   if (!title || !body) { toast('Add a title and a message'); return; }
   if (!recipients.length) { toast('Pick at least one login to send to'); return; }
   const btn = document.getElementById('nt-send'); if (btn) btn.disabled = true;
-  try { await API.post('/notices', { title, body, recipients }); Cache.del('/notices'); toast('Notice sent'); renderNotices(); }
-  catch (e) { toast(e.message || 'Could not send'); if (btn) btn.disabled = false; }
+  return _ntSend({ requestId: _lkUuid(), title, body, recipients, at: new Date().toISOString() }, btn);
 }
+// D3: an unsent notice is kept on this phone (ysc.ntDraft.<uid>) until the server answers; a resend reuses its requestId,
+// so the server returns the first notice instead of making a second one.
+let _ntBusy = null; // requestId of the send in flight (its draft is not "unsure" yet)
+function _ntKey() { return 'ysc.ntDraft.' + (S.user ? S.user.id : ''); }
+function _ntDraftGet() { try { return JSON.parse(localStorage.getItem(_ntKey()) || 'null'); } catch { return null; } }
+function _ntDraftSet(d) { try { if (d) localStorage.setItem(_ntKey(), JSON.stringify(d)); else localStorage.removeItem(_ntKey()); } catch {} }
+async function _ntSend(d, btn) {
+  const h = _here(); _ntBusy = d.requestId; _ntDraftSet(d);
+  try {
+    await API.post('/notices', { title: d.title, body: d.body, recipients: d.recipients, requestId: d.requestId }, 0, false, true);
+    _ntDraftSet(null); Cache.del('/notices'); toast('Notice sent');
+    if (_still(h)) renderNotices();
+  } catch (e) {
+    if (e.status >= 400 && e.status < 500) _ntDraftSet(null); // refused: nothing was saved
+    toast(e.message || 'Could not send'); if (btn) btn.disabled = false;
+  } finally { if (_ntBusy === d.requestId) _ntBusy = null; }
+}
+function ntResend() { const d = _ntDraftGet(); if (!d) return; const p = _ntSend(d); renderNotices(); return p; }
+function ntDiscard() { _ntDraftSet(null); renderNotices(); }
 async function deleteNotice(id) {
   if (!confirm('Delete this notice?')) return;
   try { await API.del('/notices/' + id); Cache.del('/notices'); renderNotices(); }
@@ -2711,6 +2750,7 @@ async function renderSystemCheck() {
 /* ── END SETUP MODULE ── */
 
 function renderLogin() {
+  _inactiveLeadersHtml.open = false; // B15: the next login starts with Inactive leaders collapsed
   _shellReady = false;
   Cache.clear();
   document.getElementById('app').innerHTML = `
@@ -9057,6 +9097,10 @@ async function saveAudit(){
   // (stage-1-only people come solely from these overlays' hasConnect/hasDecision
   // marks and unmatched caOnly names — see model() below).
   const carry=(kind)=>PENDING[kind].length?PENDING[kind]:((AUDIT&&AUDIT.uploads&&AUDIT.uploads[kind])||[]);
+  if(saveAudit.busy)return; // C-B7: one save at a time (up to 90 s)
+  saveAudit.busy=true;
+  const btn=document.querySelector('[onclick="CA.saveAudit()"]');if(btn)btn.disabled=true;
+  const h=_here();
   try{
     const a=await API.post('/audits',{
       service:PENDING.service,
@@ -9068,8 +9112,9 @@ async function saveAudit(){
     await auditLoad(a.year);
     PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};
     toast('Audit saved for '+a.year);
-    await render('ca-overview');
+    if(_still(h))await render('ca-overview');
   }catch(e){toast((e&&e.message)||'Save failed');}
+  finally{saveAudit.busy=false;if(btn)btn.disabled=false;}
 }
 
 // Public entry point: builds the deck for whichever term is currently active,
@@ -13955,6 +14000,7 @@ function busBulkAddOther() {
 }
 async function busBulkSave() {
   if (_busBlockWrite() || BUS.bulkBusy) return;
+  const h = _here(); // C-B8: close only this sheet, never one opened while the loop ran
   const picks = BUS.bulk.filter((b) => b.on); if (!picks.length) { toast('Tick someone first'); return; }
   BUS.bulkBusy = true; _busBulkCount();
   const btn = document.getElementById('bus-bulk-go'); if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
@@ -13963,7 +14009,7 @@ async function busBulkSave() {
     try { await API.post('/bus/riders?' + _busQs(), { ...(b.studentId ? { studentId: b.studentId } : { guestId: b.guestId }), ...b.addr }); }
     catch (e) { failed.push(`${b.name} (${e.message})`); }
   }
-  BUS.bulkBusy = false; closeModal();
+  BUS.bulkBusy = false; if (_stillSheet(h)) closeModal();
   toast(failed.length ? `Added ${picks.length - failed.length}. Not added: ${failed.join(', ')}` : `${picks.length} added`);
   await busRefresh();
 }
@@ -14841,9 +14887,10 @@ function _busEmcRemove(btn, id) {
   _busRenderEditMyCar();
 }
 async function busSaveMyCarStops() {
+  const h = typeof _here === 'function' ? _here() : null; // C-B8 (typeof: spa-bus.test's harness has no _here)
   try {
     await _busSend('POST', '/bus/run/my-car/stops', { riderIds: BUS._emcOrder, removeIds: BUS._emcRemoved });
-    closeModal(); toast('Saved');
+    if (!h || _stillSheet(h)) closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
 }
 // "Car details" (own car only) hands off to the existing own-car sheet, pre-filled from the
