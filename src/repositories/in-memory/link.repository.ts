@@ -2,7 +2,7 @@
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
 import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import { CONSENT_LOOKUP_KEEP_MS } from '../interfaces/link.repository';
-import type { ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkProgress, LinkRosterRow,
+import type { ActionType, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkProgress, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
@@ -97,12 +97,10 @@ export class InMemoryLinkRepository implements ILinkRepository {
     const now = this.nowMs(); const nowIso = this.nowIso();
     this.consoles.set(a.console.consoleId, { ...clone(a.console), lastSeenAt: nowIso });
     // sweep
+    const tooOld = await this.sweepTooOld(a.cutoffDays); // not inside `?.push(...)`: that skips the call when swept is unset
+    a.swept?.push(...tooOld);
     for (const { row } of this.outbox.values()) {
-      const maxAge = INTAKE.includes(row.type) ? DAY : a.cutoffDays * DAY; // X19: an intake row waits at most 24 h
-      if (row.status === 'pending' && Date.parse(row.createdAt) < now - maxAge) {
-        Object.assign(row, { status: 'refused', reason: 'too-old', resultAt: nowIso, updatedAt: nowIso });
-        a.swept?.push({ type: row.type, reason: 'too-old' });
-      } else if (row.status === 'claimed' && row.leaseOwner !== a.console.consoleId && row.leaseUntil
+      if (row.status === 'claimed' && row.leaseOwner !== a.console.consoleId && row.leaseUntil
         && Date.parse(row.leaseUntil) < now - a.leaseLostMs) { // B1 / X6: the owner reclaims its own rows instead
         Object.assign(row, { status: 'unclear', reason: 'lease-lost', resultAt: nowIso, updatedAt: nowIso });
         a.swept?.push({ type: row.type, reason: 'lease-lost' });
@@ -148,6 +146,19 @@ export class InMemoryLinkRepository implements ILinkRepository {
         continue;
       }
       out.push({ row: { ...clone(row), note }, reclaimed, noteUnreadable: false });
+    }
+    return out;
+  }
+
+  async sweepTooOld(cutoffDays: number): Promise<{ type: ActionType; reason: 'too-old' }[]> {
+    const now = this.nowMs(); const nowIso = this.nowIso();
+    const out: { type: ActionType; reason: 'too-old' }[] = [];
+    for (const { row } of this.outbox.values()) {
+      const maxAge = INTAKE.includes(row.type) ? DAY : cutoffDays * DAY; // X19: an intake row waits at most 24 h
+      if (row.status === 'pending' && Date.parse(row.createdAt) < now - maxAge) {
+        Object.assign(row, { status: 'refused', reason: 'too-old', resultAt: nowIso, updatedAt: nowIso });
+        out.push({ type: row.type, reason: 'too-old' });
+      }
     }
     return out;
   }

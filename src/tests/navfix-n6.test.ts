@@ -176,3 +176,43 @@ describe('S-6 / D8: a new consentLookup cancels the same login\'s pending lookup
     expect(await h.svc.consentLookup(ADMIN, { id: a.id })).toMatchObject({ status: 'failed' });
   });
 });
+
+// ---------------------------------------------------------------- S-2 / D6
+
+describe('S-2 / D6: the too-old sweep also runs on link reads (gate), at most every 5 min per instance', () => {
+  it('a 4-day pending check-in: GET /link/status refuses it too-old and logs it, with no console claim', async () => {
+    const h = await setup();
+    const r = await h.link.insertAction(newRow());
+    const intake = await h.link.insertAction(newRow({ type: 'intakeSave', dedupeKey: 'is' }));
+    h.clock.now = new Date(NOW.getTime() + 4 * 86_400_000);
+    await h.svc.status(ADMIN);
+    expect(await h.link.getAction(r.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+    expect(await h.link.getAction(intake.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+    expect(h.errorLog.record).toHaveBeenCalledWith({ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 1 });
+  });
+  it('thresholds unchanged: a 2-day check-in stays pending; a 25 h intake row is swept', async () => {
+    const h = await setup();
+    const r = await h.link.insertAction(newRow());
+    const intake = await h.link.insertAction(newRow({ type: 'intakeSave', dedupeKey: 'is' }));
+    h.clock.now = new Date(NOW.getTime() + 25 * 3_600_000);
+    await h.svc.status(ADMIN);
+    expect(await h.link.getAction(r.id)).toMatchObject({ status: 'pending' });
+    expect(await h.link.getAction(intake.id)).toMatchObject({ status: 'refused', reason: 'too-old' });
+  });
+  it('throttled: one sweep per 5 min; a sweep failure never fails the read', async () => {
+    const h = await setup();
+    const spy = vi.spyOn(h.link, 'sweepTooOld');
+    await h.svc.status(ADMIN); await h.svc.status(ADMIN);
+    expect(spy).toHaveBeenCalledTimes(1);
+    h.clock.now = new Date(NOW.getTime() + 5 * 60_000);
+    spy.mockRejectedValueOnce(new Error('db down'));
+    await expect(h.svc.status(ADMIN)).resolves.toBeTruthy();
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+  it('Supabase: claim and the read path share sweepTooOld (same too-old SQL, skip locked)', () => {
+    const src = readFileSync(join(__dirname, '..', 'repositories', 'supabase', 'supabase.link.ts'), 'utf8').replace(/\s+/g, ' ');
+    expect(src).toContain('await this.sweepTooOld(a.cutoffDays, tx as unknown as SqlClient)');
+    expect(src).toMatch(/async sweepTooOld\(cutoffDays: number, q: SqlClient = this\.sql\)/);
+    expect(src).toMatch(/set status = 'refused', reason = 'too-old'.*created_at < now\(\) - make_interval\(days => \$\{cutoffDays\}\) order by id for update skip locked/);
+  });
+});

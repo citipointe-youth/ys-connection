@@ -158,12 +158,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
           link_rev = excluded.link_rev`;
       // sweep: lock in id order and skip rows another transaction holds (no deadlock with applyResults; APP-2).
       // lease-lost skips this console's own rows: it reclaims them below and its sent-log decides (B1 / X6).
-      const tooOld = await tx`
-        update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
-        where id in (
-          select id from link_outbox where status = 'pending' and created_at < now() - make_interval(days => ${a.cutoffDays})
-          order by id for update skip locked)
-        returning type`;
+      const tooOld = await this.sweepTooOld(a.cutoffDays, tx as unknown as SqlClient);
       const lost = await tx`
         update link_outbox set status = 'unclear', reason = 'lease-lost', result_at = now(), updated_at = now()
         where id in (
@@ -171,16 +166,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
             and lease_owner <> ${c.consoleId}
           order by id for update skip locked)
         returning type`;
-      // X19: an intake row waits at most 24 h (a plan that old is no use; the admin re-decides from a fresh one).
-      const tooOldIntake = await tx`
-        update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
-        where id in (
-          select id from link_outbox where status = 'pending' and created_at < now() - interval '24 hours'
-            and type in ('intakeAnswer','intakeSave','consentSave','intakeText')
-          order by id for update skip locked)
-        returning type`;
-      tooOld.push(...tooOldIntake);
-      a.swept?.push(...tooOld.map((r) => ({ type: r.type as ActionType, reason: 'too-old' as const })),
+      a.swept?.push(...tooOld,
         ...lost.map((r) => ({ type: r.type as ActionType, reason: 'lease-lost' as const })));
       // purge (§4.3)
       await tx`
@@ -244,6 +230,25 @@ export class SupabaseLinkRepository implements ILinkRepository {
       }
       return out;
     });
+  }
+
+  /** S-2 / D6: the too-old sweep, run by claim (in its transaction) and by the link read path (sweepIfDue). */
+  async sweepTooOld(cutoffDays: number, q: SqlClient = this.sql): Promise<{ type: ActionType; reason: 'too-old' }[]> {
+    const tooOld = await q`
+      update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
+      where id in (
+        select id from link_outbox where status = 'pending' and created_at < now() - make_interval(days => ${cutoffDays})
+        order by id for update skip locked)
+      returning type`;
+    // X19: an intake row waits at most 24 h (a plan that old is no use; the admin re-decides from a fresh one).
+    const tooOldIntake = await q`
+      update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
+      where id in (
+        select id from link_outbox where status = 'pending' and created_at < now() - interval '24 hours'
+          and type in ('intakeAnswer','intakeSave','consentSave','intakeText')
+        order by id for update skip locked)
+      returning type`;
+    return [...tooOld, ...tooOldIntake].map((r) => ({ type: r.type as ActionType, reason: 'too-old' as const }));
   }
 
   /**

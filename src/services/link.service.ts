@@ -48,6 +48,7 @@ const logger = createLogger('link');
 const REPORT_BACK_DAYS = 14;
 const CONSOLE_RECENT_MS = 600_000;
 const BRISBANE_MS = 10 * 3_600_000;
+const SWEEP_EVERY_MS = 5 * 60_000; // S-2: the read-path too-old sweep, per instance
 
 const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep', 'removeFromFlowStep'];
 /** Rev 6: the flow-row types (one open per row between them). */
@@ -294,6 +295,27 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    * always (its page reads status and actions, and cancels through the batch).
    */
   async function gate(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
+    const settings = await access(actor, need);
+    await sweepIfDue();
+    return settings;
+  }
+  // S-2 / D6: the claim's too-old sweep also runs on link reads, so a row never sits pending forever while the console
+  // is off. Thresholds are the claim's (3 days, intake 24 h). Never fails the read; swept rows go to the error log as
+  // the claim's do. ponytail: throttled per instance (serverless), a DB-side schedule if that ever bites.
+  let lastSweep = -Infinity;
+  async function sweepIfDue(): Promise<void> {
+    const t = clock().getTime();
+    if (t - lastSweep < SWEEP_EVERY_MS) return;
+    lastSweep = t;
+    try {
+      const n = new Map<string, number>();
+      for (const s of await d.link.sweepTooOld(LINK_CUTOFF_DAYS)) n.set(s.type, (n.get(s.type) ?? 0) + 1);
+      await Promise.all([...n].map(([route, count]) => d.errorLog?.record({ category: 'link', code: 'too-old', route, role: 'console', count })));
+    } catch (e) {
+      logger.warn('too-old sweep failed', { message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  async function access(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await d.settings.getSettings();
     const admin = can(actor, 'link:admin');
     if (need === 'admin') {
