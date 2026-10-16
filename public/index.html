@@ -11038,6 +11038,9 @@ function _lkRfDate(v) {
   const f = LINK.rf;
   if (!f || f.mode === 'edit') return;
   const g = _lkGroup(), rfd = LINK.rfd || (LINK.rfd = {});
+  // B16: another draft already sits on the new date -> switch to it (never overwrite it); this one stays on its own date.
+  const other = g && rfd[g.groupId + '|' + String(v || '')];
+  if (other && other !== f) { other.err = ''; if (f.add) other.add = true; LINK.rf = other; _lkPaintGroups(); return; }
   if (g && rfd[g.groupId + '|' + f.date] === f) delete rfd[g.groupId + '|' + f.date];
   f.date = String(v || ''); f.err = ''; f.dirty = true;
   if (g) rfd[g.groupId + '|' + f.date] = f;

@@ -240,3 +240,33 @@ describe('B12 two completeStep rows leaving the open list -> one ids=a1,a2 call;
     expect(calls).toEqual(['/link/flows']);
   });
 });
+
+describe('B16 moving a draft onto a date that already has a draft switches to it (never overwrites)', () => {
+  it('both drafts survive; the restored one has no stale error', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    h.fns._lkFormOpen('submit', '2026-10-06');
+    const a = L.rf; a.ticks[P(61)] = true; a.err = 'Old error';
+    h.fns._lkFormOpen('submit', '2026-10-05');
+    const b = L.rf; b.ticks[P(63)] = true;
+    expect(b).not.toBe(a);
+    h.fns._lkRfDate('2026-10-06');
+    expect(L.rf).toBe(a);
+    expect(a.err).toBe('');
+    expect(a.ticks).toEqual({ [P(61)]: true });
+    expect(L.rfd[G(1) + '|2026-10-05']).toBe(b);
+    expect(b.date).toBe('2026-10-05');
+    expect(b.ticks).toEqual({ [P(63)]: true });
+  });
+  it('a free date still moves the draft', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    h.fns._lkFormOpen('submit', '2026-10-05');
+    const b = L.rf;
+    h.fns._lkRfDate('2026-10-06');
+    expect(L.rf).toBe(b);
+    expect(b.date).toBe('2026-10-06');
+    expect(L.rfd[G(1) + '|2026-10-06']).toBe(b);
+    expect(L.rfd[G(1) + '|2026-10-05']).toBeUndefined();
+  });
+});
