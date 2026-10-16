@@ -2815,8 +2815,9 @@ async function doLogin() {
 
 async function doLogout() {
   if (!(await _lkLogoutGuard())) return; /*LINK*/
+  const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
   await _ikQLogout(5000); // R7: send the intake queue once (max 5 s), then clear it
-  _lkClear(); /*LINK: before S.user goes, the queue key holds the login id */
+  _lkClear(lkK); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
   navReset();
   API.setToken(null); S.user = null; S.page = 'home';
@@ -10401,9 +10402,10 @@ function _lkAsk(text, yes, no, title) {
 }
 function _lkAnswer(v) { const f = LINK.ask; LINK.ask = null; closeModal(); if (f) f(v); }
 // After logout (phones are shared): drop the queue and everything in memory.
-function _lkClear() {
-  try { localStorage.removeItem(_lkKey()); } catch (e) {}
-  delete LINK.mem[_lkKey()];
+function _lkClear(k) {
+  k = k || _lkKey();
+  try { localStorage.removeItem(k); } catch (e) {}
+  delete LINK.mem[k];
   _lkSoftReset();
 }
 // Session gone (expired, logout) or the login swapped (preview): forget the lists in memory; each login's queue

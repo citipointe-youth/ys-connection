@@ -424,6 +424,6 @@ describe('R7 logout: flush the intake queue once, then clear it', () => {
     const src = extractFn(HTML, 'doLogout');
     const i = src.indexOf('await _ikQLogout(');
     expect(i).toBeGreaterThan(src.indexOf('_lkLogoutGuard'));
-    expect(i).toBeLessThan(src.indexOf('_lkClear()'));
+    expect(i).toBeLessThan(src.indexOf('_lkClear(')); // RV-I-m9: _lkClear(lkK)
   });
 });

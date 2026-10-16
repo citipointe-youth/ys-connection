@@ -316,3 +316,23 @@ describe('RV-I-m8 _lkSoftReset keeps the intake queue\'s in-flight and lock stat
     for (const [k, v] of Object.entries(st)) expect(f.LINK[k], k).toBe(v);
   });
 });
+
+describe('RV-I-m9 dead token at logout: the link tap queue is still cleared by the captured key', () => {
+  it('doLogout captures the lkq key before _ikQLogout and passes it to _lkClear', () => {
+    const src = extractFn(HTML, 'doLogout');
+    const cap = src.indexOf('= _lkKey()');
+    expect(cap).toBeGreaterThan(-1);
+    expect(cap).toBeLessThan(src.indexOf('await _ikQLogout('));
+    expect(src).toMatch(/_lkClear\(\w+\)/);
+  });
+  it('_lkClear(k) removes that key even when S.user is already gone', () => {
+    const store = new Map<string, string>([['ysc.lkq.u1', '[]']]);
+    const f = new Function('__s', `var S = { user: null }; var LINK = { mem: { 'ysc.lkq.u1': [] } };
+      const localStorage = { removeItem: (k) => __s.delete(k) }; let resets = 0; const _lkSoftReset = () => { resets++; };
+      ${extractFn(HTML, '_lkKey')}\n${extractFn(HTML, '_lkClear')}
+      return { _lkClear, get LINK() { return LINK; } };`)(store);
+    f._lkClear('ysc.lkq.u1');
+    expect(store.has('ysc.lkq.u1')).toBe(false);
+    expect(f.LINK.mem['ysc.lkq.u1']).toBeUndefined();
+  });
+});
