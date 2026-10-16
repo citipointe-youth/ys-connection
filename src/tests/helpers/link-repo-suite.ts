@@ -442,6 +442,15 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
       });
     });
 
+    describe('consent lookup', () => {
+      it('Consents Other (migration 0033): a kind other answer is stored and read back whole', async () => {
+        const p = JSON.parse(readFileSync(join(__dirname, '..', 'fixtures', 'elvanto-link', 'push-consent-lookup-other.json'), 'utf8'));
+        const requestId = randomUUID();
+        await repo.putConsentLookup({ requestId, kind: 'other', page: 1, pageSize: 25, total: p.total, rows: p.rows, takenAt: p.takenAt, consoleId: randomUUID() });
+        expect(await repo.consentLookup(requestId)).toEqual({ requestId, kind: 'other', page: 1, pageSize: 25, total: 2, rows: p.rows, takenAt: p.takenAt });
+      });
+    });
+
     describe('applyResults', () => {
       const FIX = join(__dirname, '..', 'fixtures', 'elvanto-link');
       const fx = (f: string) => JSON.parse(readFileSync(join(FIX, f), 'utf8'));

@@ -30,13 +30,19 @@ export const LINK_CONTRACT_VERSION = 1;
 // console linked that form itself; fix it in Elvanto), and a removeFromFlowStep `sent` result may carry `note` (F-37:
 // 'failed' = the remove landed but the Elvanto note did not). The console sends either only when the claim reply says
 // linkRev >= 7; an older app would 400 on the keys. The app stores note 'failed' as the row's detail (NOTE_FAILED_DETAIL).
-export const LINK_REV = 7;
+// LINK_REV 8 (Consents Other, 2026-10-16; migration 0033), optional only: consentLookup kind `other` (step-0 students in no pushed
+// consent week, with the earliest parent-texted date or why there is none; DISPLAY ONLY). The app offers the pill only when the
+// console's link_rev >= 8; an older console would refuse the kind (unknown).
+export const LINK_REV = 8;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
   'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'] as const;
+/** The Consents screen's lookups: rev 6 forms + mismatches, L6 unlinked (0031), rev 8 other (0033). */
+export const CONSENT_LOOKUP_KINDS = ['forms', 'mismatches', 'unlinked', 'other'] as const;
+export type ConsentLookupKind = (typeof CONSENT_LOOKUP_KINDS)[number];
 /** Rev 6: the Consents screen's two types (admin only, module intakeAdmin; never leased while it is off). */
 export const CONSENT_TYPES = ['consentLookup', 'consentFix', 'consentLink'] as const;
 /** Rev 6 (R1): the profile consent flag. contact = the "contact with my child" opt-out; all = TOTAL non-consent date. */
@@ -129,7 +135,7 @@ export const PAYLOAD_SCHEMAS = {
   // Rev 6 (R4): admin/director; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
   removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
   // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
-  consentLookup: z.object({ kind: z.enum(['forms', 'mismatches', 'unlinked']), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
+  consentLookup: z.object({ kind: z.enum(CONSENT_LOOKUP_KINDS), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
   // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
   // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
@@ -287,12 +293,19 @@ export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: 
 // Run 2026-10-15b (L6): a consent form with no person in Elvanto, or one the console linked (linked = that person).
 export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend({ names: z.array(Cut(80)).max(4),
   linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable() }).strict();
+// Rev 8 (Consents Other): a step-0 student in no pushed consent week. date = the earliest sign a parent was texted (Parent Consent
+// step 1 Complete): a confirmed console send ('console text') or a parent note naming the student ('parent note'); null = none, and
+// why says so. Display only: never an input to a consent save or check.
+export const ConsentOtherRow = z.object({ personId: Uuid, rowId: Uuid, name: Cut(120), date: Ymd.nullable(),
+  source: z.enum(['console text', 'parent note']).nullable(), why: Cut(120), link: z.string().regex(/^https:\/\/\S+$/).max(300).nullable() }).strict()
+  .refine((r) => (r.date === null) === (r.source === null), 'a date needs its source');
 const lookupEnvelope = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, requestId: Uuid,
   page: z.number().int().min(1).max(1000), pageSize: z.number().int().min(1).max(100), total: z.number().int().min(0).nullable() };
 export const ConsentLookupPush = z.discriminatedUnion('kind', [
   z.object({ ...lookupEnvelope, kind: z.literal('forms'), rows: z.array(ConsentFormRow).max(100) }).strict(),
   z.object({ ...lookupEnvelope, kind: z.literal('mismatches'), rows: z.array(ConsentMismatchRow).max(100) }).strict(),
   z.object({ ...lookupEnvelope, kind: z.literal('unlinked'), rows: z.array(ConsentUnlinkedRow).max(100) }).strict(),
+  z.object({ ...lookupEnvelope, kind: z.literal('other'), rows: z.array(ConsentOtherRow).max(100) }).strict(),
 ]);
 
 // ---- S5 (run 2026-10-15b): progress of one long console job. key: flows (the flows read), lookup:<consentLookup row id>,

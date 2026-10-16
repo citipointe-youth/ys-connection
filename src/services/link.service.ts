@@ -16,7 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
-import { ACTION_TYPES, CONSENT_TYPES, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
+import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -142,7 +142,7 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
-export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches' | 'unlinked'; status: 'waiting' | 'working' | 'ready' | 'failed';
+export interface ConsentLookupView { id: string; kind: ConsentLookupKind; status: 'waiting' | 'working' | 'ready' | 'failed';
   reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[];
   /** S5: while working, how far the console has got (null = not known). */
   progress?: ProgressView | null }
@@ -1018,7 +1018,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const { id } = z.object({ id: Uuid }).parse(q ?? {});
       const row = await d.link.getAction(id);
       if (!row || row.type !== 'consentLookup') throw new NotFoundError('That lookup is not known.');
-      const p = row.payload as { kind: 'forms' | 'mismatches' | 'unlinked'; page: number };
+      const p = row.payload as { kind: ConsentLookupKind; page: number };
       const base = { id, kind: p.kind, page: p.page, pageSize: 25, total: null, takenAt: null, rows: [] as unknown[] };
       if (row.status === 'pending') return { ...base, status: 'waiting', reason: row.reason ?? null }; // a retry carries why (resilience M5)
       if (row.status === 'claimed') return { ...base, status: 'working', reason: null,

@@ -319,12 +319,12 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
   it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
     const { svc, link } = await setup();
     const old = await svc.claim(claimReq);
-    expect(old.linkRev).toBe(7);
+    expect(old.linkRev).toBe(8);
     expect(old.intake).toBeUndefined(); // X19: no intake hint for a console below rev 4
     expect((await link.listConsoles())[0]!.linkRev).toBe(1);
     await svc.claim({ ...claimReq, linkRev: 2 });
     expect((await link.listConsoles())[0]!.linkRev).toBe(2);
-    expect(ClaimResponse.parse(old).linkRev).toBe(7); // fix16 C-1
+    expect(ClaimResponse.parse(old).linkRev).toBe(8); // rev 8: Consents Other; fix16 C-1
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

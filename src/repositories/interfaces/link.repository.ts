@@ -2,9 +2,10 @@
 import type { ActionType, Status, MirrorKind, Match, OutboxRow, NewOutboxRow, ConsoleRow, LinkProgress, ClaimArgs, ClaimedRow,
   MirrorStateRow, LinkRosterRow, LinkServiceRow, LinkGroupRow, LinkFlowRow, LinkLogRow, LogEvent, ResultItem,
   ResultReply, LinkFlowAssign, LinkFlowStep, Consent } from '../../core/link-types';
+import type { ConsentLookupKind } from '../../core/link-contract';
 
 /** Rev 6 (R2 b/c): a consentLookup answer as stored (rows = the pushed ConsentFormRow / ConsentMismatchRow list). */
-export interface ConsentLookupStored { requestId: string; kind: 'forms' | 'mismatches' | 'unlinked'; page: number; pageSize: number;
+export interface ConsentLookupStored { requestId: string; kind: ConsentLookupKind; page: number; pageSize: number;
   total: number | null; rows: unknown[]; takenAt: string; /** the stored rows could not be decrypted / parsed */ unreadable?: true }
 export const CONSENT_LOOKUP_KEEP_MS = 24 * 3_600_000;
 

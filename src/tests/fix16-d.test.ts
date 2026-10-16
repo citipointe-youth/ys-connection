@@ -18,7 +18,7 @@ const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 describe('C-1: LINK_REV 7, optional linked + note', () => {
   it('LINK_REV is 7; the contract version stays 1', () => {
-    expect(C.LINK_REV).toBe(7);
+    expect(C.LINK_REV).toBeGreaterThanOrEqual(7); // 8 since Consents Other (2026-10-16)
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('a sent result may carry note sent|failed; anything else is refused; missing still parses', () => {

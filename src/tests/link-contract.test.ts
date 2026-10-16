@@ -80,6 +80,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   // Rev 7 (B13, nav/save fix round 2026-10-16)
   'result-request-rev7.json': C.ResultRequest,
   'push-consent-lookup-mismatches-rev7.json': C.PUSH_SCHEMAS.consentLookup,
+  // Rev 8 (Consents Other, 2026-10-16)
+  'push-consent-lookup-other.json': C.PUSH_SCHEMAS.consentLookup,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -168,7 +170,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(7); // fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(8); // 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -382,6 +384,25 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     const u = clone(load('push-consent-lookup-unlinked.json')); u.rows[0].personId = person; rejects(C.PUSH_SCHEMAS.consentLookup, u);
     const v = clone(load('push-consent-lookup-unlinked.json')); v.rows[0].names = ['a', 'b', 'c', 'd', 'e']; rejects(C.PUSH_SCHEMAS.consentLookup, v);
     const w = clone(load('push-consent-lookup-unlinked.json')); w.kind = 'forms'; rejects(C.PUSH_SCHEMAS.consentLookup, w);
+  });
+  it('Consents Other (rev 8): kind other, strict rows, date and source go together, display fields only', () => {
+    C.PAYLOAD_SCHEMAS.consentLookup.parse({ kind: 'other', page: 1, ref: '0a000000-0000-4000-8000-000000000206' });
+    const ok = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-other.json'));
+    expect(ok.kind).toBe('other');
+    expect(C.CONSENT_LOOKUP_KINDS).toEqual(['forms', 'mismatches', 'unlinked', 'other']);
+    const x = clone(load('push-consent-lookup-other.json')); x.rows[0].subId = x.rows[0].personId; rejects(C.PUSH_SCHEMAS.consentLookup, x); // strict
+    const y = clone(load('push-consent-lookup-other.json')); y.rows[0].source = null; rejects(C.PUSH_SCHEMAS.consentLookup, y); // a date needs its source
+    const z2 = clone(load('push-consent-lookup-other.json')); z2.rows[1].source = 'parent note'; rejects(C.PUSH_SCHEMAS.consentLookup, z2); // no date, no source
+    const s = clone(load('push-consent-lookup-other.json')); s.rows[0].source = 'step due'; rejects(C.PUSH_SCHEMAS.consentLookup, s); // no step-0 due fallback
+    const l = clone(load('push-consent-lookup-other.json')); l.rows[0].link = 'http://x.test/'; rejects(C.PUSH_SCHEMAS.consentLookup, l);
+    const k = clone(load('push-consent-lookup-other.json')); k.kind = 'unlinked'; rejects(C.PUSH_SCHEMAS.consentLookup, k);
+  });
+  it('0033: widens only the consentLookup kind check (same shape as 0031), additive', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0033_link_consent_other.sql'), 'utf8');
+    expect(sql).toMatch(/alter table link_consent_lookup drop constraint if exists link_consent_lookup_kind_check;/);
+    expect(sql).toMatch(/kind in \('forms','mismatches','unlinked','other'\)/);
+    expect(sql).not.toMatch(/link_outbox/);
+    expect(sql).not.toMatch(/(drop table|rename|alter column)/i);
   });
   it('a consentLookup push is strict: unknown keys and a mismatch row with no diff are refused', () => {
     const f = clone(load('push-consent-lookup-forms.json')); f.rows[0].email = 'x@example.com'; rejects(C.PUSH_SCHEMAS.consentLookup, f);

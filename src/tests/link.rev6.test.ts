@@ -187,6 +187,19 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'planned' }] });
     expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'ready', kind: 'unlinked', total: 2, rows: p.rows });
   });
+  it('Consents Other (rev 8): an other lookup queues, is claimed, stored and read back (display only: no person, no dedupe on a person)', async () => {
+    const h = await setup();
+    const p = JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-other.json'), 'utf8')), id = p.requestId as string;
+    expect(h.oc(await h.one(ADMIN, { ...lookup(id, null), payload: { kind: 'other', page: 1, ref: id } }))).toBe('saved');
+    const got = (await h.claim()).rows.find((r) => r.id === id)!;
+    expect(got.payload).toEqual({ kind: 'other', page: 1, ref: id });
+    expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'working', kind: 'other' });
+    expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE, kind: 'forms', rows: [] })).toEqual({ applied: false }); // kind must match the request
+    expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE })).toEqual({ applied: true, rows: 2 });
+    await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'planned' }] });
+    expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'ready', kind: 'other', total: 2, rows: p.rows });
+    await expect(h.svc.consentLookup(DIRECTOR, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
   it('L6: the consents person search needs the intake gate; the lifegroup one is unchanged', async () => {
     const h = await setup();
     await expect(h.svc.youth(DIRECTOR, { scope: 'consents' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
