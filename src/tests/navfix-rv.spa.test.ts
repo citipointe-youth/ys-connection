@@ -108,3 +108,23 @@ describe('RV-I-M2 after the logout clear nothing is sent or written back', () =>
     expect(src.indexOf('_ikQLogin(')).toBeGreaterThan(src.indexOf('S.user = res.user'));
   });
 });
+
+describe('RV-R8 expired session keeps that login\'s queue; another login signing in clears it', () => {
+  const fns = [...Q_FNS, '_ikQLogin', '_lkSoftReset'];
+  const prelude = 'const _lkFresh = () => ({ ik: null });';
+  it('expiry keeps ysc.ikq.<uid>; the same login resends it; signing in clears other logins\' keys (fresh or not)', async () => {
+    const { f, calls, store } = ikEnv({ fns, prelude });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(30), items: [SAVE(P(1))] }]));
+    store.set('ysc.ikq.u2', JSON.stringify([{ at: at(5), items: [SAVE(P(2))] }]));
+    f._lkSoftReset(); // _handleAuthExpired
+    expect(store.has('ysc.ikq.u1')).toBe(true);
+    f._ikQLogin(); // u1 signs in again
+    expect(store.has('ysc.ikq.u2')).toBe(false);
+    expect(store.has('ysc.ikq.u1')).toBe(true);
+    await f._ikQFlush(); // _lkBoot after login
+    expect(calls.posts.map((c) => c.b.items[0].id)).toEqual([P(1)]);
+  });
+  it('_handleAuthExpired never clears the intake queue', () => {
+    expect(extractFn(HTML, '_handleAuthExpired')).not.toMatch(/ikq|_ikQSet|_ikQLogout/);
+  });
+});

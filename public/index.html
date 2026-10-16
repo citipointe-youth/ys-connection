@@ -12468,8 +12468,14 @@ async function _ikQLogout(ms) {
   _ikQSet([], k);
   if (n) toast(n === 1 ? '1 unsent intake save was dropped' : n + ' unsent intake saves were dropped', 6000);
 }
-// At login (doLogin): the logout stop is lifted.
-function _ikQLogin() { LINK.ikStop = null; }
+// At login (doLogin): the logout stop is lifted. Ruling 8: an expired session keeps its queue (24 h max, the flush drops
+// older) for that same login's return; any OTHER login signing in on this phone clears those queues.
+function _ikQLogin() {
+  LINK.ikStop = null;
+  const k = _ikQKey();
+  try { for (let i = localStorage.length - 1; i >= 0; i--) { const x = localStorage.key(i); if (x && x.indexOf('ysc.ikq.') === 0 && x !== k) localStorage.removeItem(x); } } catch (e) {}
+  Object.keys(LINK.ikMem || {}).forEach((x) => { if (x !== k) delete LINK.ikMem[x]; });
+}
 try {
   window.addEventListener('online', () => { if (S.user) _ikQFlush(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'hidden' && S.user) _ikQFlush(); });
