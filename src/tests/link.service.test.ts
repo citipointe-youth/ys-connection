@@ -891,6 +891,18 @@ describe('D3 cancel, undo, listActions', () => {
     expect(all.find((r) => r.id === b.id)).toMatchObject({ detail: 'console sentence', login: 'g79', hasNote: false });
     expect((await h.svc.listActions(ADMIN, { serviceDate: TODAY, type: 'checkIn' })).map((r) => r.id)).toEqual([b.id]);
   });
+  it('Plan F: a door login (check-in the only feature on) reads its own check-in rows by id with the console result; other logins see the pending tap as checked in', async () => {
+    const h = await setup({ newYouthForms: 'off', checkin: 'on', lifegroupReport: 'off', flows: 'off' });
+    const a = checkIn(P_AMY), b = checkIn(P_BEN);
+    await enq(h.svc, LEADER, a, DEV);
+    await enq(h.svc, GRADE, b, DEV);
+    // Other phones: a pending tap from another login already counts as checked in on their 60 s list reload.
+    expect((await h.svc.checkin(GRADE, ST)).people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, mine: false, action: { id: a.id, status: 'pending' } });
+    setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
+    const rows = await h.svc.listActions(LEADER, { ids: [a.id, b.id].join(',') });
+    expect(rows.map((r) => r.id)).toEqual([a.id]); // another login's tap is never returned to a non-admin
+    expect(rows[0]).toMatchObject({ type: 'checkIn', status: 'sent', resultAt: NOW.toISOString() });
+  });
   it('B3 / T-7: an unclear row carries the person for link:admin only; other rows and other roles never do', async () => {
     const h = await setup();
     const a = checkIn(P_BEN);

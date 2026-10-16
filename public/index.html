@@ -10489,6 +10489,7 @@ function _lkRefreshView() {
     if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml();
     const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
     if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
+    if (S.page === 'link-checkin') _lkCiPoll(); // Plan F: every door repaint (re)arms the result poll
   } catch (e) {}
 }
 function _lkTop(types) { return _lkPill() + _lkBanner(types); }
@@ -10533,6 +10534,47 @@ async function _lkLoadPeople(svc, quiet) {
     LINK.loadErr = null;
     return true;
   } catch (e) { LINK.loadErr = e.message || 'Could not load the list.'; return false; }
+}
+// Plan F (#0): this login's check-in / check-out rows still waiting for the console: { actionId: personId }.
+function _lkCiWaiting() {
+  const d = LINK.people[LINK.svc], out = {};
+  if (!d) return out;
+  [].concat(d.people || [], d.leaders || []).forEach((p) => {
+    const a = p.mine && p.action;
+    if (a && a.id && (a.status === 'pending' || a.status === 'claimed')) out[a.id] = p.personId;
+  });
+  return out;
+}
+// Plan F (#0): while my taps wait, ask for just those rows by id (5 s, 15 s once all are over 2 min old; a row drops out
+// after 10 min and the 60 s list reload covers it). Sent flips in place; refused/cancelled reloads the list (the server
+// decides the checked-in state). Stops when none wait, the page or service changes, the phone sleeps or the login swaps.
+// _lkRefreshView re-arms it, so a batch answer, a list load and a wake (status load) all start it.
+function _lkCiPoll() {
+  if (LINK.ciT || S.page !== 'link-checkin' || document.visibilityState === 'hidden') return;
+  const seen = LINK.ciSeen || (LINK.ciSeen = {}), now = Date.now(), wait = _lkCiWaiting();
+  Object.keys(seen).forEach((id) => { if (!wait[id]) delete seen[id]; });
+  Object.keys(wait).forEach((id) => { if (seen[id] == null) seen[id] = now; });
+  const ids = Object.keys(wait).filter((id) => now - seen[id] < 600000).slice(-200); // the route takes at most 200
+  if (!ids.length) return;
+  const L = LINK, svc = LINK.svc;
+  LINK.ciT = setTimeout(async () => {
+    L.ciT = null;
+    if (LINK !== L || S.page !== 'link-checkin' || LINK.svc !== svc || document.visibilityState === 'hidden') return;
+    let reload = false;
+    try {
+      const rows = await API.fresh('/link/actions?ids=' + ids.map(encodeURIComponent).join(','), true);
+      if (LINK !== L || LINK.svc !== svc) return;
+      const w = _lkCiWaiting();
+      (Array.isArray(rows) ? rows : []).forEach((a) => {
+        const pid = w[a.id];
+        if (!pid || a.status === 'pending' || a.status === 'claimed') return;
+        if (a.status === 'refused' || a.status === 'cancelled') reload = true;
+        else _lkApply(svc, pid, { id: a.id, type: a.type, status: a.status, reason: a.reason || null, resultAt: a.resultAt || null }, true);
+      });
+    } catch (e) {}
+    if (reload) await _lkLoadPeople(svc, true);
+    _lkRefreshView();
+  }, ids.some((id) => now - seen[id] < 120000) ? 5000 : 15000);
 }
 // The door screen (mockup frame 1). Loads the pick list once, then one service's list once (60 s refresh).
 async function renderLinkCheckin() {
