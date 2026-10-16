@@ -141,3 +141,29 @@ describe('S-1 / D7 a refusal shows on return (server lastRefused), reason-only c
     expect(h.fns._lkFlowAct({ rowId: 'r1', openAction: open, lastRefused: ref })).toBe(open);
   });
 });
+
+describe('B05 an add the console already sent is a member: the button says Remove', () => {
+  const mem = (status: string) => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gmOpen[G(1)] = true;
+    L.gm[G(1)] = { canEdit: true, members: [], changes: [{ id: 'c1', type: 'addGroupMember', personId: P(70), name: 'Tom LEstrange', status, reason: null }] };
+    return h;
+  };
+  it('sent add -> "Remove" button and a Remove question', async () => {
+    const h = mem('sent');
+    const html = h.fns._lkMembersHtml(h.get().LINK.groups[0]);
+    expect(html).toMatch(/_lkMemRemove\([^)]*\)">Remove<\/button>/);
+    expect(html).not.toContain('>Cancel</button>');
+    h.answers.push(false);
+    await h.fns._lkMemRemove(G(1), P(70));
+    expect(h.calls.asks[0]).toMatch(/^Remove Tom LEstrange from .* in Elvanto\? \| Remove \| Keep$/);
+  });
+  it('pending add -> still "Cancel" / "Stop adding"', async () => {
+    const h = mem('pending');
+    expect(h.fns._lkMembersHtml(h.get().LINK.groups[0])).toMatch(/_lkMemRemove\([^)]*\)">Cancel<\/button>/);
+    h.answers.push(false);
+    await h.fns._lkMemRemove(G(1), P(70));
+    expect(h.calls.asks[0]).toMatch(/^Stop adding Tom LEstrange/);
+  });
+});

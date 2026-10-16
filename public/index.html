@@ -11182,7 +11182,8 @@ function _lkMembersHtml(g) {
       const c = r.change, nm = esc(r.name || 'Someone'), b = `${a},'${esc(r.personId)}'`;
       let btn = '';
       if (r.state === 'member' && !r.leader && canRm) btn = `<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove ${nm}" onclick="event.stopPropagation();_lkMemRemove(${b})">${icS('trash')}</button>`;
-      else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">Cancel</button>`;
+      // B05: an add the console already sent is in Elvanto (the members push has not caught up): it is a Remove, not a Cancel.
+      else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">${c && c.status === 'sent' ? 'Remove' : 'Cancel'}</button>`;
       // F-38: a remove still on this phone or pending on the server can be cancelled; once sent it is an add back; while
       // the console is sending it (claimed) nothing can stop it, so no button.
       else if (r.state === 'removing' && canAdd && c.status !== 'claimed') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemKeep(${b})">${c.status === 'queued' || c.status === 'pending' ? 'Cancel remove' : 'Add back'}</button>`;
@@ -11215,7 +11216,7 @@ async function _lkMemRemove(gid, pid) {
   const v = LINK.gm[gid], g = _lkGroup();
   const r = v && !v.err ? _lkMemberRows(v, _lkQGet(), LINK.mres, gid).find((x) => x.personId === pid) : null;
   if (!r) return;
-  const gn = g ? lgDisplayName(g.name) : 'this group', adding = r.state === 'adding';
+  const gn = g ? lgDisplayName(g.name) : 'this group', adding = r.state === 'adding' && !(r.change && r.change.status === 'sent'); // B05
   const ok = await _lkAsk(adding ? 'Stop adding ' + (r.name || 'this person') + ' to ' + gn + '?'
     : 'Remove ' + (r.name || 'this person') + ' from ' + gn + ' in Elvanto?', adding ? 'Stop adding' : 'Remove', 'Keep', adding ? 'Stop adding?' : 'Remove from group?');
   if (ok) _lkMemQueue(gid, pid, 'removeGroupMember', r.name);
