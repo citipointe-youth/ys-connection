@@ -272,9 +272,12 @@ describe('B04 Check-in tile keyboard', () => {
 describe('B14 coarse-pointer targets', () => {
   const style = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
   const at = style.indexOf('@media(pointer:coarse){'), coarse = style.slice(at, style.indexOf('@media', at + 5));
-  it('filter chips and the Home Trends pill are at least 44x44 on touch screens', () => {
-    expect(coarse).toMatch(/\.filter-row \.fc[^{]*\{[^}]*min-height:44px;min-width:44px/);
-    expect(coarse).toMatch(/button\[onclick="go\('trends'\)"\][^{]*\{[^}]*min-height:44px;min-width:44px/);
+  it('filter chips and the Home Trends pill keep 44px tap height, 30% narrower (I1)', () => {
+    expect(coarse).toMatch(/\.filter-row \.fc[^{]*\{[^}]*min-height:44px;min-width:31px/);
+    expect(coarse).toMatch(/button\[onclick="go\('trends'\)"\][^{]*\{[^}]*min-height:44px;min-width:31px/);
+    expect(coarse).toContain('.filter-row .fc{padding-inline:5px}');
+    expect(coarse).toContain('.filter-row{gap:4px}');
+    expect(coarse).toContain('.vg-bar .fc{min-height:40px;min-width:31px}');
   });
 });
 
