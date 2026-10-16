@@ -267,3 +267,13 @@ describe('B04 Check-in tile keyboard', () => {
     expect(run('a').clicks).toHaveLength(0);
   });
 });
+
+// ── B14: phone touch targets (P1-22) ──
+describe('B14 coarse-pointer targets', () => {
+  const style = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+  const at = style.indexOf('@media(pointer:coarse){'), coarse = style.slice(at, style.indexOf('@media', at + 5));
+  it('filter chips and the Home Trends pill are at least 44x44 on touch screens', () => {
+    expect(coarse).toMatch(/\.filter-row \.fc[^{]*\{[^}]*min-height:44px;min-width:44px/);
+    expect(coarse).toMatch(/button\[onclick="go\('trends'\)"\][^{]*\{[^}]*min-height:44px;min-width:44px/);
+  });
+});
