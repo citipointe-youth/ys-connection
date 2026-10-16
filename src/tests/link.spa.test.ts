@@ -797,9 +797,9 @@ describe('F1.3 door', () => {
     expect(extractFn(html, '_lkSetSearch')).toMatch(/setTimeout\([^]*, 80\)/);
   });
   it('APP-75: background link calls are quiet (no loading bar): the flush, the status and the 60 s refresh', () => {
-    expect(html).toMatch(/async function r\(method, path, body, timeoutMs, quiet\) \{\r?\n    if \(!quiet\) _npStart\(\);/);
+    expect(html).toMatch(/async function r\(method, path, body, timeoutMs, quiet, keepalive\) \{\r?\n    if \(!quiet\) _npStart\(\);/);
     expect(html).toMatch(/if \(!quiet\) _npDone\(\);/);
-    expect(html).toContain("post: (p, b, timeoutMs, quiet) => r('POST', p, b, timeoutMs, quiet),");
+    expect(html).toContain("post: (p, b, timeoutMs, quiet, keepalive) => r('POST', p, b, timeoutMs, quiet, keepalive),");
     expect(extractFn(html, '_lkFlush')).toContain('20000, true)');
     expect(extractFn(html, '_lkStatusLoad')).toContain("API.fresh('/link/status', true)");
     const tick = extractFn(html, '_lkTick');

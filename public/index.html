@@ -1006,14 +1006,15 @@ const API = (() => {
   let _t = _lsGet('yap_token') || null;
   const hdr = () => ({ 'Content-Type': 'application/json', ...(_t ? { Authorization: `Bearer ${_t}` } : {}) });
   // quiet: a background call (the link queue flush, status and 60 s refresh) never shows the loading bar (APP-75).
-  async function r(method, path, body, timeoutMs, quiet) {
+  // keepalive: small JSON saves only (<64 KB), never imports/audits; lets the request finish if the page closes.
+  async function r(method, path, body, timeoutMs, quiet, keepalive) {
     if (!quiet) _npStart();
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(new Error('Request timed out')), timeoutMs || 25000);
     try {
       let res;
       try {
-        res = await fetch(path, { method, headers: hdr(), signal: ac.signal, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
+        res = await fetch(path, { method, headers: hdr(), signal: ac.signal, keepalive: !!keepalive, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
       } catch (networkErr) {
         // fetch itself rejected — no response came back at all. Covers Safari's "Load
         // failed", Chrome's "Failed to fetch", Firefox's "NetworkError when attempting
@@ -1099,7 +1100,7 @@ const API = (() => {
       }
       return Promise.all(jobs);
     },
-    post: (p, b, timeoutMs, quiet) => r('POST', p, b, timeoutMs, quiet),
+    post: (p, b, timeoutMs, quiet, keepalive) => r('POST', p, b, timeoutMs, quiet, keepalive),
     patch: (p, b) => r('PATCH', p, b),
     del: (p) => r('DELETE', p),
     /*BUS-HOOK*/ fresh: (p, quiet) => r('GET', p, undefined, undefined, quiet), // uncached GET — Bus Ministry data must never come from the 30s cache
@@ -1481,6 +1482,10 @@ function _navPop() {
   }
   render();
 }
+// D1: capture before an await; after it, navigate/open a sheet/paint only if the user is still on that screen and entity.
+function _here() { return { s: _navSnap(), k: LINK.ik ? LINK.ik.key : null, n: NAV.stack.length, mo: document.querySelector('#modal-root .mo') }; }
+function _still(h) { return !!h && _navSame(h.s, _navSnap()) && h.k === (LINK.ik ? LINK.ik.key : null) && h.n === NAV.stack.length; }
+function _stillSheet(h) { return !!h && !!h.mo && h.mo === document.querySelector('#modal-root .mo'); }
 window.addEventListener('popstate', _navPop);
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
