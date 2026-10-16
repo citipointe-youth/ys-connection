@@ -216,3 +216,27 @@ describe('B11 _lkFirstName with nothing after the comma', () => {
     expect(h.fns._lkFirstName('')).toBe('');
   });
 });
+
+describe('B12 two completeStep rows leaving the open list -> one ids=a1,a2 call; the next load asks nothing', () => {
+  it('batches the ask and does not repeat it', async () => {
+    const calls: string[] = [];
+    const row = (id: string, oa: any) => ({ rowId: id, flowId: 'F1', flowName: 'New People', stepId: 'S2', stepName: 'Call', stepOrder: 2,
+      personId: P(90), name: 'X, Y', consent: 'ok', dnc: false, openAction: oa });
+    const fresh = (p: string) => {
+      calls.push(p);
+      if (p.startsWith('/link/actions')) return Promise.resolve([
+        { id: 'a1', type: 'completeStep', status: 'sent', reason: null }, { id: 'a2', type: 'completeStep', status: 'sent', reason: null }]);
+      return Promise.resolve({ rows: [row('r1', null), row('r2', null)], steps: [] });
+    };
+    const h = setup('L1', {}, { fresh });
+    const L = h.get().LINK;
+    L.flows = [row('r1', { id: 'a1', type: 'completeStep', status: 'pending', reason: null }),
+      row('r2', { id: 'a2', type: 'completeStep', status: 'claimed', reason: null })];
+    await h.fns._lkLoadFlows(true);
+    expect(calls.filter((c) => c.startsWith('/link/actions'))).toEqual(['/link/actions?ids=a1,a2']);
+    calls.length = 0;
+    await h.fns._lkLoadFlows(true);
+    expect(calls.filter((c) => c.startsWith('/link/actions'))).toEqual([]);
+    expect(calls).toEqual(['/link/flows']);
+  });
+});
