@@ -2750,6 +2750,7 @@ async function renderSystemCheck() {
 /* ── END SETUP MODULE ── */
 
 function renderLogin() {
+  _inactiveLeadersHtml.open = false; // B15: the next login starts with Inactive leaders collapsed
   _shellReady = false;
   Cache.clear();
   document.getElementById('app').innerHTML = `

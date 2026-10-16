@@ -277,3 +277,21 @@ describe('B14 coarse-pointer targets', () => {
     expect(coarse).toMatch(/button\[onclick="go\('trends'\)"\][^{]*\{[^}]*min-height:44px;min-width:44px/);
   });
 });
+
+// ── B15: the Inactive leaders open state does not survive logout ──
+describe('B15 renderLogin resets Inactive leaders open state', () => {
+  it('open=true, renderLogin -> false', () => {
+    const r = new Function(`
+      function _inactiveLeadersHtml() {} _inactiveLeadersHtml.open = true;
+      var _shellReady = true, Cache = { clear() {} };
+      var el = { innerHTML: '', querySelector: () => null, addEventListener() {} };
+      var document = { getElementById: () => el, querySelector: () => null, querySelectorAll: () => [] };
+      var navigator = { userAgent: '' }, window = {}, localStorage = { getItem: () => null };
+      var brandMark = () => '', esc = (s) => s, appName = () => 'A', ministryName = () => 'M', icS = () => '', icN = () => '';
+      var _positionNprog = () => {}, setTimeout = () => {};
+      ${extractFn(HTML, 'renderLogin')}
+      try { renderLogin(); } catch (e) {}
+      return _inactiveLeadersHtml.open;`)();
+    expect(r).toBe(false);
+  });
+});
