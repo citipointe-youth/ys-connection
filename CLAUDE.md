@@ -55,7 +55,7 @@ Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supa
 |---|---|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` |
 | Students | `GET/POST /students`, `GET /students/search`, `GET/PATCH/DELETE /students/:id`. `GET /students` takes `?crossGrade=1` — widens a grade/quad login's scoping from "own grade/bracket + own gender" to "own gender only" (Connect Setup's Add Students picker; see "Add Students picker now actually offers a broadened leader's other grade(s)" below) |
-| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id`, `PATCH /leaders/:id/sms-template` (self-service, no ownership check — see the SMS templates note below), `PATCH /leaders/:id/grades` (self-service grade broadening, same no-ownership-check pattern — see "Leader self-service grade broadening" below) |
+| Leaders | `GET/POST /leaders`, `GET/PATCH/DELETE /leaders/:id`, `PATCH /leaders/:id/sms-template` (self-service; since 2026-10-17 the leader must be in `leaderInScope`, the Home-picker rule — no creator check; see the SMS templates note below), `PATCH /leaders/:id/grades` (self-service grade broadening; since 2026-10-17 the leader must be in `leaderInScope` — no creator check; see "Leader self-service grade broadening" below). `GET /leaders/:id` is also `leaderInScope` (403) since 2026-10-17 |
 | Prayers | `GET/POST /prayers`, `GET /prayers/export`, `POST /prayers/import`, `GET /prayers/student/:studentId`, `PATCH /prayers/:id`, `PATCH /prayers/:id/status`, `DELETE /prayers/:id` — `student_id` is nullable (a "general" prayer has no student); a general prayer is scoped by its creator's grade+gender, not read-role RBAC (see "Prayers screen" in debug.md for the gotchas) |
 | Connections | `GET/POST /connections` (also takes `?crossGrade=1`, same widening as `/students` above), `GET /connections/export` (own-gender-only for grade/quad, unconditionally), `GET /connections/student/:id`, `GET /connections/leader/:id`, `DELETE /connections/:studentId/:leaderId`, `GET /connections/allocations/export`, `POST /connections/allocations/import` (admin-only allocation CSV round-trip; body optionally takes `autoCreateLeaders: true` — see "Admin bug/improvement batch" below) |
 | Overview | `GET /overview` |
@@ -145,6 +145,9 @@ account creation on it.
 - Connect exception: a `grade`/`quad` login may connect/search a student of **another grade**
   but only of **their own gender** (`student.get`/`search` are gender-only; `connection.assign`
   enforces the leader-gender match; the picker keeps searches within the leader's gender).
+  Since 2026-10-17 the other-grade student comes back **without mobile / parent phone**
+  (`studentRecordVisible` + the `phonesHidden` strip in `student.service`); the picker and detail
+  modal need names only. `GET /connections/student/:id` follows the same rule.
 
 **Status model:** there are **no manual at-risk thresholds**. `atRiskStatus` (`computeStatus`
 in `atrisk.service.ts`) is **threshold-free** and mirrors the SPA's `attendQual`: never-engaged
@@ -2171,11 +2174,14 @@ editor) reveals only ciphertext, while every service/export still sees plaintext
   blocking external script/resource loads + base-uri/form-action). **Always wrap new
   user-data interpolations in `esc()`** — including `e.message`/`err.message` (server errors can echo names). The 2026-10-12 audit found raw leader names (student detail, Connect picker note), import filenames and error messages; all now go through `esc()`, and `src/tests/spa-xss-escape.test.ts` pins the two name sinks. Residual gap: a few `onclick` handlers pass names
   as JS-string args with only `'`-escaping — don't widen that surface.
+  **Ship gate (2026-10-17):** `src/tests/spa-xss-guard.test.ts` fails the suite on any `.name/.label/.email/...` read inside an HTML template literal that is not wrapped in `esc()` (or a `SAFE_WRAPPERS` helper that escapes itself, e.g. `_ikKv`; reviewed exceptions go in its `ALLOW` map with a reason). Gaps by design: bare identifiers, string concatenation, JS-string-in-attribute (see `review-2026-10-16/S2-xss-taint.md`).
 - **Session token** is stored in `localStorage` (`yap_token`). Accepted risk, mitigated by
   the escaping + CSP above; switch to an httpOnly cookie if that ever regresses. Admin account
   preview (2026-07-12) stashes a SECOND live token alongside it during a preview session — its
   TTL is deliberately short (`PREVIEW_TOKEN_TTL_MS`, 1h) specifically to bound that extra window;
   see "Independent review follow-up" above.
+  **Revocation (2026-10-17, F5):** `resolveToken` re-reads the account (per-instance cache 60 s) and returns the current role/scope, `null` when inactive; the token carries `pw` = sha256(password_hash)[0:16], so an admin reset or a self-change signs out every other device within a minute (the self-change caller gets a fresh token from `POST /accounts/me/password`; a fingerprint mismatch forces one uncached re-read so that token works at once). **Logout is still stateless (operator ruling 2026-10-17) — to sign a shared login out everywhere, change its password.** Tokens from before this deploy carry no `pw` and are honoured until their 12 h expiry. `users.token_version` deliberately not added (operator ruling: revoke by password fingerprint; a migration is only needed for "sign out everywhere without a new password"). `mustChangePassword` now follows the DB (the old stale-flag gotcha is gone); a preview token's `mustChangePassword: false` override still wins.
+- **SPA shell headers (2026-10-17, F6):** Express's security headers never reached `/`, `index.html`, `sw.js` on Vercel (served by the filesystem handler). `vercel.json` now has a `routes` entry with `headers` + `continue: true` (legacy `routes` cannot coexist with a `headers` block) mirroring `express-adapter.ts`, plus `Content-Security-Policy: frame-ancestors 'none'`. No Cache-Control there: the shell and `sw.js` stay cacheable. `route-registration.test.ts` pins it; verify with `curl -sI` after deploy.
 - **Admin-supplied branding markup**: the one raw-`innerHTML` custom-branding path
   (`branding.logoSvg`, rendered unescaped by design so admins could paste `<svg>` markup) was
   **removed entirely 2026-07-12** after an independent review found its denylist sanitiser didn't
@@ -2764,6 +2770,7 @@ Release branch `release/2026-10-16` = lanes A, B, C, D, E, F, G1, G2 (`fix16/*`)
 - **Shell (B):** SW update reload waits for an idle screen (`_swOnUpdate`/`_swIdle`); 44 px header targets; nav second line fits 360 px; offline `/?nav=...` gets the shell (`ignoreSearch`).
 - **Names:** the admin intake screen is "New youth & consent" everywhere (menu, Setup, page title, the `CONSENT_CHECK_FIRST` text). The More menu shows both "New person" (host) and "New youth & consent" (admin) on purpose.
 - **Lifegroups (E):** a date that already has a report blocks Send and offers Edit (the console refuses it anyway); a new report starts on that day's default service (reverses 70641c1 "No service" default); "Students here (N)" (leaders ticked count too); week-jump button; Cancel remove / Add back on members.
+  (Superseded 2026-10-17: operator ruling, every new report starts on "No service"; see "Lifegroup report default" below.)
 - **Flows (F):** sent Remove/Complete shows a done line, then hides; pills "Jr/Sr Guys/Girls"; first-name greeting. F-37 note line stays inert until `listActions` returns `note`.
 - **Intake (G1):** plain past-tense result lines with "Made N changes"; form-name change lines on the Save sheet (warning only); "Over 2 hours old. Tap Refresh."; refused chip shows the reason sentence, else the console detail; no per-row console last seen; 5 s pending poll that re-arms when hidden.
 - **Consents (G2):** busy/offline/timeout lines name the button; Unlinked tag "(not in Elvanto)"; Last Friday pill only on the newest week.
@@ -2784,3 +2791,22 @@ Release branch `release/2026-10-16b` = `navfix/base` (C0) + lanes n6, n4, n2, n3
 - Consents gets a 5th pill **Other (no date)**: students on step 0 of the New People flow with no approved, linked student form in any pushed consent week. Each row: name, then "Parent texted ~dd/mm/yyyy (console text | parent note)" (the EARLIEST confirmed console send or parent note naming the student; "parent texted" = Parent Consent step 1 Complete) or "No date found: <why>", plus a Profile link (Elvanto, https only). Empty: "Every student on step 0 has a week." **Display only**: no button writes, and the date never feeds consentSave, textProof or `CONSENT_CHECK_FIRST`.
 - Contract: `consentLookup` kind `other` (`CONSENT_LOOKUP_KINDS`), push rows `ConsentOtherRow {personId,rowId,name,date|null,source|null,why,link|null}` (date and source go together; no `step due` source). Gated: the pill's page says "The console needs an update" until the console's link_rev >= 8 (an older console refuses the kind `unknown`).
 - **Migration 0033** only widens `link_consent_lookup.kind` (same shape as 0031). It must be applied (the promoted build) BEFORE the rev 8 console answers an Other lookup, else the push insert fails the CHECK. Tests: `consents-other.spa.test.ts`, `link-contract.test.ts` (rev 8 + 0033), `link.rev6.test.ts`, repo suite "consent lookup".
+
+### Access tidy-ups, session revocation, SPA headers, XSS guard (2026-10-17; branch `release/2026-10-17-access`; no migration; SW `ysc-vNNN` set at merge; `LINK_REV` stays 8)
+
+From the 2026-10-16 read-only review (`C:\Users\ThomasPC\src\review-2026-10-16\S1-authz-matrix.md`, `S2-xss-taint.md`; plan `plans\PLAN-B-ys-access-session.md`). Bus `?as=` untouched (operator-accepted).
+- **F1** `link.service` `resolveLeader`/`iAm` (`scopedLeader`): a grade/quad login may act only as a leader in `leaderInScope` (the `?pick=1` rule; strict, operator ruling: `grades: []` or `gender: null` leaders fail); an out-of-scope or unknown "I am" counts as no leader — a plain check-in is recorded under the login's own name, notes are refused "Pick who you are first." (operator ruling 2026-10-17). Director/admin unchanged. `identity` log items untouched.
+- **F2** `GET /leaders/:id`, `PATCH /leaders/:id/grades`, `PATCH /leaders/:id/sms-template`: `assertLeaderInScope` (403). Grade/quad can no longer broaden a `grades: []` / `gender: null` leader — admin/director do that.
+- **F3** `studentRecordVisible` (access-control) is the one rule for `GET /students/:id` and `GET /connections/student/:id`; other-grade same-gender students come back without phones (`phonesHidden`) on `/students?crossGrade=1`, `/batch studentsConnect`, `/students/:id`. Junior leader/director/admin unchanged.
+- **F4** `GET /bus/run`: `fleet[]`/`vehicles[]` `endsAddress`/`endsPlaceId` null for the My-car-only leader except its own car. Grade/quad keep them (Car setup).
+- **F5** see Security notes → Session token (re-read + `pw` fingerprint; 60 s cache; logout still stateless).
+- **F6** see Security notes → SPA shell headers.
+- **S2** `esc()` on the nav/More/quick-action labels (admin Terminology), `roleBadge`, Accounts username, `_qualChip`, `_ikKv` (escapes its value; its one caller no longer pre-escapes); dead `nm` removed; `spa-xss-guard.test.ts` is now a ship gate.
+- **R2-G1 G1-2** `enqueueChecked`'s B8 stale loop skips newer rows of the SAME type: a check-in a few seconds behind another leader's check-in answers `duplicate` (`mine: false`, their row), not "Someone else changed this after your tap". A newer opposite row is still stale (APP-16 B).
+- Minor: `POST /accounts/me/password` with no body → 400.
+- Probe re-run: `review-2026-10-16\probe\matrix.md` vs `matrix.baseline.md` — remaining LEAK cells are the documented design (names via the connect exception; Bus ministry-wide; junior leader's unfiltered `GET /leaders` names; `/link/checkin?serviceTime=` roster); see the plan's expected-delta table and `review-2026-10-16\run\lane-BH.md`.
+
+### Lifegroup report default (2026-10-17, folded into `release/2026-10-17-access`; no migration; `LINK_REV` unchanged)
+- **Ruling (operator 2026-10-17): every NEW lifegroup report starts with Service = "No service"** (New report, Add report, any date, and Group did not meet switched off again). Do not reintroduce a day's-service default. That was F-25, a Claude phone-test suggestion, now reversed. **Operator rulings are not flipped on test findings.** History: 70641c1 No service → a5bb1e7 day's service (F-25) → this.
+- Edit report keeps the saved service (`base.serviceTimeId || 'none'`). `_lkDefaultSvcFor` and `LINK.rf.svcSet` are gone. The server's `ServiceView.isDefault` stays (contract field), but the report form does not read it.
+- Wire: an untouched new report now sends `serviceTimeId: null`. The console maps that to `service: ''` (11.1 `ys-link.js:216`). No console change.
