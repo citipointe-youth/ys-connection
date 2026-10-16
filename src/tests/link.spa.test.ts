@@ -20,7 +20,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
-  '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFfGet',
+  '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFfGet',
   '_lkFfHtml', '_lkFfToggle', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
   '_lkBulkOpen', '_lkBulkSend', '_lkRemoveHtml', '_lkRemoveAsk', '_lkRemoveBack', '_lkRemoveSend', '_lkStepBtns', 'dncChip', 'dncBanner',
   '_structure', '_juniorMin', '_ikModuleOn'];
@@ -1805,7 +1805,7 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(1));
     expect(h.calls.modals[0]).not.toContain('_lkStepSend');
     expect(strip(h.calls.modals[0]!)).toContain('Do the consent check first');
-    expect(h.calls.modals[0]).toContain("go('link-intake')");
+    expect(h.calls.modals[0]).toContain('onclick="_lkStepConsents()"'); // I6
   });
   it('R8 console offline: red line on the flows banner for admin/director only', () => {
     const st = { console: { lastSeenAt: new Date(Date.now() - 20 * 60000).toISOString(), online: false, capabilities: {} } };

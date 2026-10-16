@@ -767,6 +767,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-svc{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lk-svc-t{font-weight:700;font-size:16px}
 .lk-mb{margin-bottom:10px}
+.lk-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.lk-tiles .btn{min-height:44px}.lk-tiles .btn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-light);color:var(--accent-dark)}
 .lk-filters{display:flex;gap:8px;margin-bottom:10px}
 .lk-filters .fs{flex:0 0 132px}
 .lk-filters.wrap{flex-wrap:wrap}.lk-filters.wrap .fi{min-width:0;flex:1 1 140px}
@@ -10001,7 +10002,7 @@ function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
-    groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, gm: {}, gmOpen: {}, mres: {}, youth: null, youthErr: null, yp: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh(), ik: null };
+    groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, gm: {}, gmOpen: {}, mres: {}, youth: null, youthErr: null, yp: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, fFlow: '', adm: _lkAdmFresh(), ik: null };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 const LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
@@ -11588,7 +11589,38 @@ function _lkFfHtml(on) {
 }
 // The rows this login sees on the screen (filters only for admin/director).
 function _lkFlowVisible() {
-  return _lkBoss() ? _lkFlowShown(LINK.flows, _lkFfGet(), _juniorMin()) : (LINK.flows || []);
+  const k = _lkTilesOn() ? LINK.fFlow : '';
+  if (k === 'parent') { const f = _lkFirstStep('parent'); return (LINK.flows || []).filter((r) => f && r.flowId === f.flowId && r.stepId === f.stepId); }
+  const rows = k ? (LINK.flows || []).filter((r) => _lkFlowKind(r) === k) : (LINK.flows || []);
+  return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), _juniorMin()) : rows;
+}
+// I7 (R2-G4): admin-only tiles "New Students" / "Parent text" (the Parent Consent flow's first step), shown when both flows are pushed.
+function _lkFlowKind(r) {
+  const n = String((r && r.flowName) || '');
+  return /^Brisbane - Youth - New People/.test(n) ? 'people' : /^Brisbane - Youth - Parent Consent/.test(n) ? 'parent' : '';
+}
+// The first Elvanto step (lowest stepOrder) of that kind's flow, from the pushed steps and rows.
+function _lkFirstStep(k) {
+  let best = null;
+  (LINK.fSteps || []).concat(LINK.flows || []).forEach((x) => {
+    if (_lkFlowKind(x) === k && (!best || (x.stepOrder || 0) < (best.stepOrder || 0))) best = x;
+  });
+  return best && { flowId: best.flowId, stepId: best.stepId, stepOrder: best.stepOrder || 0 };
+}
+function _lkTilesOn() {
+  if (!(S.user && S.user.role === 'admin')) return false;
+  const all = (LINK.fSteps || []).concat(LINK.flows || []);
+  return all.some((x) => _lkFlowKind(x) === 'people') && all.some((x) => _lkFlowKind(x) === 'parent');
+}
+function _lkFlowPick(k) {
+  LINK.fFlow = LINK.fFlow === k ? '' : k;
+  LINK.fsel = {};
+  _lkFlowsDraw();
+}
+function _lkTilesHtml() {
+  const n = (k) => { const f = _lkFirstStep(k); return f ? (LINK.flows || []).filter((r) => r.flowId === f.flowId && r.stepId === f.stepId).length : 0; };
+  return `<div class="lk-tiles" role="group" aria-label="Flows">${[['people', 'New Students'], ['parent', 'Parent text']].map(([k, l]) =>
+    `<button type="button" class="btn btn-secondary" aria-pressed="${LINK.fFlow === k}" onclick="_lkFlowPick('${k}')">${l} · ${n(k)}</button>`).join('')}</div>`;
 }
 // Why Complete is blocked ('' = not blocked). DO NOT CONTACT = Remove only; the New People consent step needs the consent
 // check first (the server has the final word: CONSENT_CHECK_FIRST also covers a not-done consent row we can't see).
@@ -11617,23 +11649,24 @@ function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl
 // One shared note, one completeStep item per person, all through the phone queue (the console works them one at a time;
 // each row shows its own Waiting / In Elvanto / refusal line).
 function _lkBulkOpen() {
-  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
+  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length, par = _lkTilesOn() && LINK.fFlow === 'parent';
   if (!n) return;
+  if (n > 50) { toast('Select 50 or fewer.'); return; } // I7: one /link/batch holds at most 50
   if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
   LINK.fb = { note: '', priv: false };
   // B06: name who is ticked (a tick inside a collapsed step is otherwise invisible); after 5, the rest fold away.
   const nm = ids.map((id) => { const r = _lkFlowRow(id); return esc((r && r.name) || 'Someone'); });
   const who = `<p class="lk-sub">${nm.slice(0, 5).join(', ')}</p>`
     + (nm.length > 5 ? `<details><summary class="lk-sub">${nm.length - 5} more</summary><p class="lk-sub">${nm.slice(5).join(', ')}</p></details>` : '');
-  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div>${who}<p class="lk-sub">The same note goes on each person.</p>
+  modal(`<div class="mo-title">${par ? `Send parent text to ${n} famil${n === 1 ? 'y' : 'ies'}?` : `Complete ${n} step${n === 1 ? '' : 's'}`}</div>${who}${par ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : ''}<p class="lk-sub">The same note goes on each person.</p>
     <div class="fg"><label class="fl" for="lk-fb-note">Note</label><textarea id="lk-fb-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fb)LINK.fb.note=this.value"></textarea></div>
     <label class="lk-chk"><input type="checkbox" onchange="if(LINK.fb)LINK.fb.priv=this.checked"> Keep note private</label>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="_lkBulkSend()">${icS('check')} Complete ${n}</button></div>`, () => { LINK.fb = null; });
+      <button type="button" class="btn btn-primary" onclick="_lkBulkSend()">${icS('check')} ${par ? 'Send' : 'Complete'} ${n}</button></div>`, () => { LINK.fb = null; });
 }
 function _lkBulkSend() {
-  const f = LINK.fb, lid = getMyLeaderId(), ids = _lkSelIds(_lkFlowVisible(), LINK.fsel);
-  if (!f || !lid || !ids.length) return;
+  const f = LINK.fb, lid = getMyLeaderId(), ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), par = _lkTilesOn() && LINK.fFlow === 'parent';
+  if (!f || !lid || !ids.length || ids.length > 50) return;
   const note = String(f.note || '').trim() ? String(f.note).slice(0, 1800) : null, priv = !!f.priv;
   LINK.fsel = {};
   closeModal();
@@ -11645,7 +11678,7 @@ function _lkBulkSend() {
       payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: priv },
       note, leaderId: lid, _f: r.rowId }, i === ids.length - 1);
   });
-  toast(ids.length + ' queued to complete', 2500);
+  toast(par ? ids.length + ' parent text' + (ids.length === 1 ? '' : 's') + ' queued' : ids.length + ' queued to complete', 2500);
 }
 function _lkFlowDue(r, today) {
   return r.due ? `<span${r.due < today ? ' class="lk-late"' : ''}>${r.due < today ? 'Overdue · ' : ''}Due ${esc(_lkDay(r.due))}</span>` : '';
@@ -11670,15 +11703,18 @@ function _lkFlowsHtml() {
   const fp = LINK.fProg, bar = fp ? progBar(fp.stage || 'Reading flow steps', fp.done, fp.total) : ''; // S5: the console is updating these
   if (!rs.length && !(LINK.fSteps || []).length) return bar || '<p class="lk-hint">No flow steps for this login.</p>';
   const today = _lkToday(), boss = _lkBoss(), shown = _lkFlowVisible();
+  const tiles = _lkTilesOn(), k = tiles ? LINK.fFlow : '', first = k === 'parent' ? _lkFirstStep('parent') : null;
+  const steps = !k ? LINK.fSteps : (LINK.fSteps || []).filter((x) => _lkFlowKind(x) === k && (!first || (x.flowId === first.flowId && x.stepId === first.stepId)));
   LINK.fstep = {};
-  let top = '';
+  let top = tiles ? _lkTilesHtml() : '';
   if (boss) {
     const n = _lkSelIds(shown, LINK.fsel).length;
-    top = _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button></div>` : '');
+    top += (k === 'parent' ? '' : _lkFfHtml(_lkFfGet())) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} ${k === 'parent' ? `Send parent text (${n})` : `Complete ${n}`}</button></div>` : '');
   }
-  return bar + top + _lkFlowGroups(shown, today, LINK.fSteps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
-    const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, ''), open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
+  return bar + top + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
+    const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, '');
+    const open = (k === 'parent' ? !(LINK.fOpen && LINK.fOpen[id] === false) : !!(LINK.fOpen && LINK.fOpen[id])) && s.rows.length > 0; // parent view opens by default
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
     const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
@@ -11767,7 +11803,7 @@ function _lkStepHtml() {
       ${r.assignedLeaderId && !known ? `<option value="${esc(r.assignedLeaderId)}" selected>${esc(r.assignedLeaderName || 'A leader')}</option>` : ''}
       ${ls.map((l) => `<option value="${esc(l.id)}"${l.id === r.assignedLeaderId ? ' selected' : ''}>${esc(l.fullName)}</option>`).join('')}</select></div>`;
   }
-  const done = _lkCanComplete(r) ? `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
+  const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
@@ -11803,7 +11839,7 @@ function _lkStepBtns() {
       <button type="button" class="btn btn-danger" onclick="_lkRemoveSend()">Remove</button>`;
   const can = !!r && _lkCanComplete(r);
   return `<button type="button" class="btn btn-secondary" onclick="closeModal()">${can ? 'Cancel' : 'Close'}</button>
-      ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} Complete</button>` : ''}`;
+      ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} ${_lkFlowKind(r) === 'parent' ? 'Send parent text' : 'Complete'}</button>` : ''}`;
 }
 // Assign or unassign (app only, never sent to Elvanto). One assignment covers the person's rows in that flow.
 async function _lkAssign(leaderId) {

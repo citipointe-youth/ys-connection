@@ -5,7 +5,7 @@ import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
-  '_lkFfHtml', '_lkFlowVisible', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkPracticeLine', '_lkFlowTypes',
+  '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkPracticeLine', '_lkFlowTypes',
   '_lkMemOff', '_lkCanRemove'];
 const PRELUDE = `
   var STORE = {}, THROW = false, ROLE = 'admin', QUEUE = [];
