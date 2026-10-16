@@ -272,7 +272,8 @@ export function makeNewYouthService(
         const reason: UnsentReason = [student, parent].includes('unconfirmed') ? 'unconfirmed' : 'failed';
         if (await keep(retryId, reason, { ...(input as object), send: data.send.filter((f) => outs[f] !== 'sent') })) result.queued = true;
       } else await clear(retryId, data);
-      if (student !== 'failed' && parent !== 'failed') { recent.set(key, { at: now, result }); await finish(held, result); }
+      // RV-S-M1: free the id only when nothing can have landed; a partial send answers its stored result on repeat.
+      if ([student, parent].some((o) => o === 'sent' || o === 'unconfirmed')) { recent.set(key, { at: now, result }); await finish(held, result); }
       else { recent.delete(key); await finish(held, null); } // a clear rejection: let the fixed retry through
       return result;
   }
