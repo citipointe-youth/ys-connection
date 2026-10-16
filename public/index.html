@@ -10315,6 +10315,7 @@ function _lkBoot() {
     old.forEach((k) => localStorage.removeItem(k));
   } catch (e) {}
   try { if (_lkQGet().length) _lkSchedule(1000); } catch (e) {}
+  if (typeof _ikQFlush === 'function') _ikQFlush(); // C-B9: resend kept intake saves (n2's queue) at boot
 }
 // Flush again and again until the queue is empty, a flush fails or makes no progress, or ms pass (B14 / APP-22).
 async function _lkDrain(ms) {
