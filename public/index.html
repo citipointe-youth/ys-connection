@@ -10864,7 +10864,8 @@ function _lkReportDateFor(meets, w, today) {
   return d < _lkAddDays(today, -14) ? { state: 'old', date: null } : { state: 'ok', date: d };
 }
 function _lkGroup() { return (LINK.groups || []).find((g) => g.groupId === LINK.gid) || null; }
-// The group's report action: still on this phone, else this phone's last answer, else the server's open row.
+// The group's report action: still on this phone, else this phone's last answer, else the server's open row, else the
+// server's last refusal (S-1/D7: a refusal after the leader left still shows on return; absent on an older server).
 function _lkGroupAct(g) {
   let q = [];
   try { q = _lkQGet(); } catch (e) {}
@@ -10874,7 +10875,7 @@ function _lkGroupAct(g) {
       return { id: it.id, type: it.type, status: 'queued', reason: null };
     }
   }
-  return (LINK.gres && LINK.gres[g.groupId]) || g.openAction || null;
+  return (LINK.gres && LINK.gres[g.groupId]) || g.openAction || g.lastRefused || null;
 }
 function _lkGroupsHtml() {
   const gs = LINK.groups;
@@ -10908,7 +10909,7 @@ function _lkSvcName(id) {
 // One report: date, service, did-not-meet, guests, ticked members. Never notes. Edit only when the console says it can.
 function _lkReportHtml(g, r) {
   const att = r.attendees || [];
-  const names = (g.members || []).filter((m) => att.includes(m.personId)).map((m) => m.name);
+  const names = (g.members || []).filter((m) => !m.leader && att.includes(m.personId)).map((m) => m.name); // B09: students only (ruling 4)
   const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
   if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
@@ -11073,6 +11074,9 @@ function _lkRfDate(v) {
   const f = LINK.rf;
   if (!f || f.mode === 'edit') return;
   const g = _lkGroup(), rfd = LINK.rfd || (LINK.rfd = {});
+  // B16: another draft already sits on the new date -> switch to it (never overwrite it); this one stays on its own date.
+  const other = g && rfd[g.groupId + '|' + String(v || '')];
+  if (other && other !== f) { other.err = ''; if (f.add) other.add = true; LINK.rf = other; _lkPaintGroups(); return; }
   if (g && rfd[g.groupId + '|' + f.date] === f) delete rfd[g.groupId + '|' + f.date];
   f.date = String(v || ''); f.err = ''; f.dirty = true;
   if (g) rfd[g.groupId + '|' + f.date] = f;
@@ -11217,7 +11221,8 @@ function _lkMembersHtml(g) {
       const c = r.change, nm = esc(r.name || 'Someone'), b = `${a},'${esc(r.personId)}'`;
       let btn = '';
       if (r.state === 'member' && !r.leader && canRm) btn = `<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove ${nm}" onclick="event.stopPropagation();_lkMemRemove(${b})">${icS('trash')}</button>`;
-      else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">Cancel</button>`;
+      // B05: an add the console already sent is in Elvanto (the members push has not caught up): it is a Remove, not a Cancel.
+      else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">${c && c.status === 'sent' ? 'Remove' : 'Cancel'}</button>`;
       // F-38: a remove still on this phone or pending on the server can be cancelled; once sent it is an add back; while
       // the console is sending it (claimed) nothing can stop it, so no button.
       else if (r.state === 'removing' && canAdd && c.status !== 'claimed') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemKeep(${b})">${c.status === 'queued' || c.status === 'pending' ? 'Cancel remove' : 'Add back'}</button>`;
@@ -11250,7 +11255,7 @@ async function _lkMemRemove(gid, pid) {
   const v = LINK.gm[gid], g = _lkGroup();
   const r = v && !v.err ? _lkMemberRows(v, _lkQGet(), LINK.mres, gid).find((x) => x.personId === pid) : null;
   if (!r) return;
-  const gn = g ? lgDisplayName(g.name) : 'this group', adding = r.state === 'adding';
+  const gn = g ? lgDisplayName(g.name) : 'this group', adding = r.state === 'adding' && !(r.change && r.change.status === 'sent'); // B05
   const ok = await _lkAsk(adding ? 'Stop adding ' + (r.name || 'this person') + ' to ' + gn + '?'
     : 'Remove ' + (r.name || 'this person') + ' from ' + gn + ' in Elvanto?', adding ? 'Stop adding' : 'Remove', 'Keep', adding ? 'Stop adding?' : 'Remove from group?');
   if (ok) _lkMemQueue(gid, pid, 'removeGroupMember', r.name);
@@ -11306,6 +11311,7 @@ function _lkYpDraw() {
   if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state !== 'not-added') ex[r.personId] = true; });
   if (p.just) delete ex[p.just]; // F-02: the tapped row stays in place, greyed, for 600 ms (no row slides under the finger)
   const list = _lkYouthFilter(LINK.youth, p.q, p.grade, ex);
+  p.drawn = Date.now(); // B24: rows may have moved under the finger; _lkYpAdd ignores taps for 400 ms
   el.innerHTML = list.slice(0, 60).map((r) => r.personId === p.just
     ? `<div class="lk-lq-row dis" aria-disabled="true"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div><span class="lk-d">Adding…</span></div>`
     : `<div class="lk-lq-row" role="button" onclick="_lkYpAdd('${esc(r.personId)}')"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div>`
@@ -11315,7 +11321,8 @@ function _lkYpDraw() {
 function _lkYpAdd(pid) {
   const p = LINK.yp, r = p && (LINK.youth || []).find((x) => x.personId === pid);
   // F-02: ignore every picker tap for 600 ms after an add (a double tap must not add the next row).
-  if (!r || Date.now() - (p.at || 0) < 600) return;
+  // B24 (ruling 2): and for 400 ms after the list repaints (a row that slid under the finger is not the one aimed at).
+  if (!r || Date.now() - (p.at || 0) < 600 || Date.now() - (p.drawn || 0) < 400) return;
   p.at = Date.now(); p.just = pid;
   _lkMemQueue(p.gid, pid, 'addGroupMember', r.name);
   toast('Adding ' + r.name, 2000);
@@ -11325,7 +11332,8 @@ function _lkYpAdd(pid) {
 // Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
 function _lkToday() { return LINK.today || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
 function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
-// The step's action: still on this phone, else this phone's last answer, else the server's open row.
+// The step's action: still on this phone, else this phone's last answer, else the server's open row, else the server's
+// last refusal (S-1/D7; absent on an older server).
 function _lkFlowAct(r) {
   let q = [];
   try { q = _lkQGet(); } catch (e) {}
@@ -11333,7 +11341,7 @@ function _lkFlowAct(r) {
     const it = q[i];
     if (it.kind === 'action' && LK_FLOW_TYPES.includes(it.type) && it.payload && it.payload.rowId === r.rowId) return { id: it.id, type: it.type, status: 'queued', reason: null };
   }
-  return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || null;
+  return (LINK.fres && LINK.fres[r.rowId]) || r.openAction || r.lastRefused || null;
 }
 // Flows A-Z, each flow's steps in Elvanto order, each step's people A-Z. overdue = due before today.
 // T12: `steps` (GET /link/flows) seeds every step first, so an empty one still shows (· 0).
@@ -11362,8 +11370,11 @@ function _lkFlowGroups(rows, today, steps) {
   });
   return out.sort((a, b) => String(a.flowName || '').localeCompare(String(b.flowName || '')) || String(a.flowId).localeCompare(String(b.flowId)));
 }
-// Elvanto pushes flow names as "Last, First" (F-23): the first name is after the comma.
-function _lkFirstName(n) { const s = String(n || ''), c = s.indexOf(','); return (c >= 0 ? s.slice(c + 1) : s).trim().split(/\s+/)[0] || ''; }
+// Elvanto pushes flow names as "Last, First" (F-23): the first name is after the comma; B11: nothing after it -> the part before.
+function _lkFirstName(n) {
+  const s = String(n || ''), c = s.indexOf(','), a = c >= 0 ? s.slice(c + 1).trim() : '';
+  return (a || (c >= 0 ? s.slice(0, c) : s)).trim().split(/\s+/)[0] || '';
+}
 // sms: link. iPhone joins the body with &, everything else with ? (the shared callPhone sheet cannot be a plain link).
 function _lkSmsHref(digits, body, ua) {
   const u = ua == null ? ((typeof navigator !== 'undefined' && navigator.userAgent) || '') : ua;
@@ -11443,11 +11454,15 @@ function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl
 // One shared note, one completeStep item per person, all through the phone queue (the console works them one at a time;
 // each row shows its own Waiting / In Elvanto / refusal line).
 function _lkBulkOpen() {
-  const n = _lkSelIds(_lkFlowVisible(), LINK.fsel).length;
+  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
   if (!n) return;
   if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
   LINK.fb = { note: '', priv: false };
-  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div><p class="lk-sub">The same note goes on each person.</p>
+  // B06: name who is ticked (a tick inside a collapsed step is otherwise invisible); after 5, the rest fold away.
+  const nm = ids.map((id) => { const r = _lkFlowRow(id); return esc((r && r.name) || 'Someone'); });
+  const who = `<p class="lk-sub">${nm.slice(0, 5).join(', ')}</p>`
+    + (nm.length > 5 ? `<details><summary class="lk-sub">${nm.length - 5} more</summary><p class="lk-sub">${nm.slice(5).join(', ')}</p></details>` : '');
+  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div>${who}<p class="lk-sub">The same note goes on each person.</p>
     <div class="fg"><label class="fl" for="lk-fb-note">Note</label><textarea id="lk-fb-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fb)LINK.fb.note=this.value"></textarea></div>
     <label class="lk-chk"><input type="checkbox" onchange="if(LINK.fb)LINK.fb.priv=this.checked"> Keep note private</label>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
