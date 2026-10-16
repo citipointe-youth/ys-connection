@@ -21,4 +21,22 @@ describe('every route is registered in vercel.json and sw.js', () => {
       expect(apiRe.test(t), `sw.js API_RE ${t}`).toBe(true);
     }
   });
+  it('the SPA shell gets the same security headers as the API (F6: vercel.json header route before the filesystem handler)', () => {
+    const routes = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8')).routes as
+      { src?: string; headers?: Record<string, string>; continue?: boolean; handle?: string; dest?: string }[];
+    const hdr = routes.find((r) => r.headers && r.continue);
+    expect(hdr?.src).toBe('/(.*)');
+    expect(routes.indexOf(hdr!)).toBeLessThan(routes.findIndex((r) => r.handle === 'filesystem'));
+    expect(routes.indexOf(hdr!)).toBeGreaterThan(routes.findIndex((r) => r.dest === '/api/index.ts'));
+    expect(hdr!.headers).toEqual({
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "frame-ancestors 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    });
+    expect(hdr!.headers!['Cache-Control']).toBeUndefined(); // sw.js / shell stay cacheable
+  });
 });
