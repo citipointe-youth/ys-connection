@@ -10,7 +10,7 @@ describe('R1 resend flag', () => {
     const I: any = { debT: null, busy: false, resend: {}, det: { detail: {}, row: { key: 'k1' }, actions: [] }, date: '2026-10-09', keepMem: {} };
     (globalThis as any).__c = { I, post, outcome };
     const f = loadFns(['_ikAnswerSend', '_ikSaveBlock', '_ikTextBlock'], `
-      const I = __c.I; const toasts = [];
+      const I = __c.I; const toasts = []; const LINK = {};
       const _ik = () => I, _ikAns = () => ({ fixes: {}, keeps: {} }), _ikAnswerBody = () => ({ payload: {}, note: '' }),
         _ikOpenOf = () => null, _lkUuid = () => 'u1', _ikPost = __c.post, _ikOutcome = () => __c.outcome, _ikLocal = () => {},
         toast = (m) => toasts.push(m), _ikDraw = () => {}, _ikSchedule = () => {}, _ikRev = () => 4, _ikOldConsole = () => 'old', _ikTodo = () => [1];`);
