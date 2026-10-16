@@ -51,15 +51,15 @@ describe('C-B2 Unsent retry: a re-render during the retry keeps the button busy'
 });
 
 // The real New person functions against small stubs (pattern from new-youth.spa.test.ts).
-const NY_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'toAuMobile', 'tidyName', '_nyFieldMsgs', '_nyRaw', '_nyShowMsgs', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth'];
-function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<any>, store: Record<string, string> = {}) {
+const NY_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'toAuMobile', 'tidyName', '_nyFieldMsgs', '_nyRaw', '_nyShowMsgs', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth', '_nyReqDismiss'];
+function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<any>, store: Record<string, string> = {}, lsOverride?: any) {
   const S: any = { user: { id: 'u1', role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
   const pages: string[] = [];
   const toasts: string[] = [];
   const button: any = { disabled: false, textContent: 'Send to Elvanto', isConnected: true };
   const body = { host: 'H', firstName: 'Alex', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
   const ref: any = {};
-  const ls = { getItem: (k: string) => (k in store ? store[k]! : null), setItem: (k: string, v: string) => { store[k] = String(v); }, removeItem: (k: string) => { delete store[k]; } };
+  const ls = lsOverride ?? { getItem: (k: string) => (k in store ? store[k]! : null), setItem: (k: string, v: string) => { store[k] = String(v); }, removeItem: (k: string) => { delete store[k]; } };
   const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : null), querySelector: () => null };
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS', 'navigator',
@@ -103,5 +103,66 @@ describe('C-B5 an unseen New person outcome survives reopening New person', () =
     await t.h.nySend({ preventDefault() {} }); // reply off the page
     t.h.nyOpen();
     expect(t.last()).toContain('Student form is in Elvanto.');
+  });
+});
+
+describe('C-B9/D3 New person request id + unsent marker', () => {
+  const KEY = 'ysc.nyReq.u1';
+  it('the marker is written BEFORE the POST, the POST carries its id with keepalive, and a definite reply clears it', async () => {
+    let seen: any = null;
+    const t = nyHarness(async (_p, body, ms, quiet, keep) => {
+      seen = { body, ms, quiet, keep, stored: JSON.parse(t.store[KEY]!) };
+      return { student: 'sent', parent: 'sent', dryRun: false };
+    });
+    await t.h.nySend({ preventDefault() {} });
+    expect(seen.stored.id).toBe(seen.body.requestId);
+    expect(seen.body.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(seen.stored.first).toBe('Alex');
+    expect(seen.stored).not.toHaveProperty('lastName');
+    expect(seen.ms).toBe(45000);
+    expect(seen.keep).toBe(true);
+    expect(t.store[KEY]).toBeUndefined();
+  });
+  it('an unknown outcome keeps the marker; the same person sent again reuses the id', async () => {
+    const bodies: any[] = [];
+    const t = nyHarness(async (_p, body) => { bodies.push(body); throw Object.assign(new Error('x'), { status: 502 }); });
+    await t.h.nySend({ preventDefault() {} });
+    expect(JSON.parse(t.store[KEY]!).id).toBe(bodies[0].requestId);
+    t.h.nyBack();
+    await t.h.nySend({ preventDefault() {} });
+    expect(bodies[1].requestId).toBe(bodies[0].requestId);
+  });
+  it('a different person, or a marker over 24 h old, gets a new id', async () => {
+    const bodies: any[] = [];
+    const t = nyHarness(async (_p, body) => { bodies.push(body); throw Object.assign(new Error('x'), { status: 502 }); });
+    await t.h.nySend({ preventDefault() {} });
+    const m = JSON.parse(t.store[KEY]!);
+    t.store[KEY] = JSON.stringify({ ...m, at: Date.now() - 25 * 3600e3 });
+    t.h.nyBack();
+    await t.h.nySend({ preventDefault() {} });
+    expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
+    t.store[KEY] = JSON.stringify({ ...m, h: 'other' });
+    t.h.nyBack();
+    await t.h.nySend({ preventDefault() {} });
+    expect(bodies[2].requestId).not.toBe(bodies[0].requestId);
+  });
+  it('a refusal before any POST clears the marker (nothing was sent)', async () => {
+    const t = nyHarness(async () => { throw Object.assign(new Error('Check the parent mobile'), { status: 400, code: 'BAD_REQUEST' }); });
+    await t.h.nySend({ preventDefault() {} });
+    expect(t.store[KEY]).toBeUndefined();
+  });
+  it('the form page warns about an unfinished send on this phone, with Dismiss', () => {
+    const t = nyHarness(async () => ({}), { [KEY]: JSON.stringify({ id: 'x', first: 'Alex', h: 'h', at: Date.now() }) });
+    t.h.renderNewYouth();
+    expect(t.last()).toMatch(/A send for Alex at .+ didn't finish on this phone\. Check Elvanto before sending again\./);
+    expect(t.last()).toContain('Dismiss');
+    expect(extractFn(html, '_nyReqDismiss')).toContain('renderNewYouth');
+  });
+  it('storage that throws never blocks a send', async () => {
+    let posted = 0;
+    const no = () => { throw new Error('denied'); };
+    const t = nyHarness(async () => { posted++; return { student: 'sent', parent: 'sent', dryRun: false }; }, {}, { getItem: no, setItem: no, removeItem: no });
+    await t.h.nySend({ preventDefault() {} });
+    expect(posted).toBe(1);
   });
 });
