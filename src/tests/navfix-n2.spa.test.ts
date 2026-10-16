@@ -19,7 +19,7 @@ describe('B01 Tick Youth result line', () => {
 // ── Intake env: the real queue/send functions against a Map-backed localStorage and a recording API.post. ──
 const IK_FNS = ['_ikFresh', '_ik', '_ikOpenAct', '_ikOpenOf', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikSheetGo',
   '_ikAfterLoad', '_ikAnswersSave'];
-const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
+const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
 type PostFn = (b: any, n: number) => any;
 function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
   const store = new Map<string, string>();
@@ -175,7 +175,7 @@ describe('C-B9 intake queue (D2/D3): kept until answered, resent with the SAME i
     expect(I.det.actions.length).toBe(0); // network error: the optimistic row is taken back
     expect(kept(store).length).toBe(1);
     fail = false;
-    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1', 'k2'], one: false }; // the plan moved on: still the kept attempt
+    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1'], one: false }; // same payload: the kept attempt (RV-I-m3: a changed payload gets a new id, navfix-rv)
     await f._ikSheetGo();
     expect(calls.posts[1].b.items[0].id).toBe(calls.posts[0].b.items[0].id);
     expect(calls.posts[1].b.items[0].payload).toEqual(calls.posts[0].b.items[0].payload);

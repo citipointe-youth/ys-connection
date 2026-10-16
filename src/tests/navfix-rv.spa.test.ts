@@ -8,7 +8,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 // ── Intake env: the real queue/send functions against a Map-backed localStorage and a recording API.post. ──
 const IK_FNS = ['_ikFresh', '_ik', '_ikOpenAct', '_ikOpenOf', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikSheetGo',
   '_ikAfterLoad', '_ikAnswersSave'];
-const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
+const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
 type PostFn = (b: any, n: number) => any;
 function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
   const store = new Map<string, string>();
@@ -168,5 +168,43 @@ describe('RV-C-m1 New person: an "unconfirmed" repeat reply keeps the stored req
     await t.h.nySend({ preventDefault() {} });
     expect(bodies[1].requestId).toBe(bodies[0].requestId);
     expect(t.store[KEY]).toBeUndefined();
+  });
+});
+
+describe('RV-I-m3 sheet Save reuses a kept entry only for the same payload', () => {
+  it('kept save with other keys: the newer Save gets a new id and replaces the kept one (only the new one is ever sent again)', async () => {
+    let fail = true;
+    const { f, calls, store } = ikEnv({ post: (b) => (fail ? netErr() : Promise.resolve(okb(b))) });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'r1'; I.det = ROW('r1');
+    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1'], one: true };
+    await f._ikSheetGo();
+    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1', 'k2'], one: false };
+    await f._ikSheetGo();
+    const [a, b] = calls.posts.map((c) => c.b.items[0]);
+    expect(b.id).not.toBe(a.id);
+    expect(b.payload).toMatchObject({ confirmed: ['k1', 'k2'], one: false });
+    expect(kept(store).flatMap((e: any) => e.items.map((i: any) => i.id))).toEqual([b.id]);
+    fail = false;
+    await f._ikQFlush();
+    expect(calls.posts.slice(2).flatMap((c) => c.b.items.map((i: any) => i.id))).toEqual([b.id]);
+  });
+  it('same payload again: the kept id is reused', async () => {
+    const { f, calls } = ikEnv({ post: (b, n) => (n === 1 ? netErr() : Promise.resolve(okb(b))) });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'r1'; I.det = ROW('r1');
+    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1'], one: false };
+    await f._ikSheetGo();
+    I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1'], one: false };
+    await f._ikSheetGo();
+    expect(calls.posts[1].b.items[0].id).toBe(calls.posts[0].b.items[0].id);
+  });
+  it('a kept text for another key is left alone (both texts go)', async () => {
+    const { f, calls, store } = ikEnv({ post: () => netErr() });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'r1'; I.det = ROW('r1');
+    I.sheet = { type: 'intakeText', key: 'r1', keys: ['complete:parent:x'], one: true };
+    await f._ikSheetGo();
+    I.sheet = { type: 'intakeText', key: 'r1', keys: ['complete:student:y'], one: true };
+    await f._ikSheetGo();
+    expect(calls.posts[1].b.items[0].id).not.toBe(calls.posts[0].b.items[0].id);
+    expect(kept(store).flatMap((e: any) => e.items).length).toBe(2);
   });
 });

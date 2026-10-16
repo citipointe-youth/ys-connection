@@ -12359,11 +12359,11 @@ function _ikPost(items, quiet) {
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
   const k = _ikQKey(), ids = items.map((it) => it.id), keep = items.filter((it) => it.type !== 'consentLookup');
   if (LINK.ikStop === k) return Promise.reject(new Error('Logged out. Not sent.')); // RV-I-M2: after the logout clear, nothing is kept or sent
-  const fams = keep.filter((it) => it.type === 'intakeAnswer').map(_ikQRow);
+  const fams = keep.filter((it) => it.type === 'intakeAnswer').map(_ikQRow), slots = keep.map(_ikQSlot).filter(Boolean);
   const drop = (gone) => _ikQSet(_ikQGet(k).map((e) => ({ at: e.at, items: e.items.filter((it) => !gone(it)) })).filter((e) => e.items.length), k);
   if (keep.length) {
     const q = _ikQGet(k), was = q.filter((e) => e.items.some((it) => ids.includes(it.id))).map((e) => e.at).sort()[0]; // a resend keeps its first time
-    _ikQSet(q.map((e) => ({ at: e.at, items: e.items.filter((it) => !ids.includes(it.id) && !(it.type === 'intakeAnswer' && fams.includes(_ikQRow(it)))) }))
+    _ikQSet(q.map((e) => ({ at: e.at, items: e.items.filter((it) => !ids.includes(it.id) && !slots.includes(_ikQSlot(it))) }))
       .filter((e) => e.items.length).concat([{ at: was || new Date().toISOString(), items: keep }]), k);
   }
   const fly = LINK.ikFly || (LINK.ikFly = {}), ff = LINK.ikFam || (LINK.ikFam = {}); // RV-I-M1: answer families in flight (date|key), works at boot
@@ -12377,6 +12377,17 @@ function _ikPost(items, quiet) {
 function _ikQKey() { return 'ysc.ikq.' + ((S.user && S.user.id) || ''); }
 // The family an item is for: date|row (date|student key for an answer).
 function _ikQRow(it) { const p = (it && it.payload) || {}; return p.date + '|' + (it && it.type === 'intakeAnswer' ? (p.family || [])[0] : p.row); }
+// RV-I-m3: one kept item per slot: a newer one (new id) replaces the kept older one, which must never land after it.
+// Answers per family; sheet saves per type + row (a text also per text key). Fixes/links/lookups have no slot.
+function _ikQSlot(it) {
+  if (!it || !['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'].includes(it.type)) return null;
+  return it.type + '|' + _ikQRow(it) + (it.type === 'intakeText' ? '|' + (it.payload || {}).key : '');
+}
+// Same payload whatever the key order.
+function _ikSame(a, b) {
+  const c = (o) => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((x) => [x, v[x]])) : v));
+  return c(a) === c(b);
+}
 function _ikQGet(k) {
   k = k || _ikQKey();
   if (!LINK.ikMemOnly) {
@@ -12645,9 +12656,11 @@ async function _ikSheetGo() {
   const say = (m) => toast(title && _ik().key !== x.key ? title + ': ' + m : m); // C-B11: name the family once another is open
   // C-B9: a kept (unanswered) save of this type for this row goes again as it was, same id, so the server answers
   // replay instead of queueing a second Elvanto write.
-  const item = _ikQFind(x.type, x.key, date) || { kind: 'action', id: _lkUuid(), type: x.type, note: null, leaderId: null,
-    payload: x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
-      : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one } };
+  // RV-I-m3: only for the SAME payload; the user's newer edits get a new id, and _ikPost drops the kept older one.
+  const payload = x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
+    : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one };
+  const was = _ikQFind(x.type, x.key, date);
+  const item = was && _ikSame(was.payload, payload) ? was : { kind: 'action', id: _lkUuid(), type: x.type, payload, note: null, leaderId: null };
   const id = item.id, pend = { id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null };
   _ikLocal(x.key, pend); _ikDraw(); // C-B9: Pending at once, not after the reply
   let ok = false;
