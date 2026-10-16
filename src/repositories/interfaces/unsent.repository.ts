@@ -10,6 +10,11 @@ export interface IUnsentRepository {
   /** Oldest first. */
   list(): Promise<UnsentRow[]>;
   remove(id: string): Promise<boolean>;
-  /** Deletes rows created before `iso`. */
+  /** Deletes rows (and New person request claims) created before `iso`. */
   purgeBefore(iso: string): Promise<void>;
+  /** S-5/D4 (migration 0032): claim a New person request id. `fresh` when this call made the claim; otherwise the
+   *  stored result, or null while the first send is still running (or its finish was lost). */
+  claimRequest(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null }>;
+  /** Store the final result, or null to drop the claim so a fixed retry can go (nothing posted, or rejected). */
+  finishRequest(id: string, result: unknown | null): Promise<void>;
 }

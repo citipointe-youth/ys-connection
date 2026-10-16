@@ -99,6 +99,7 @@ const DEDUPE_MS = 2 * 60 * 1000;
 const UA = 'Mozilla/5.0 (compatible; YS-Connection)';
 export const UNSENT_KEEP_DAYS = 14;
 const unsentAad = (id: string) => `newperson_unsent.payload:${id}`;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function makeNewYouthService(
   settingsRepo: ISettingsRepository,
@@ -150,7 +151,9 @@ export function makeNewYouthService(
     try {
       await purge();
       const rid = id ?? randomUUID(), at = new Date().toISOString();
-      await opts.unsent.save({ id: rid, reason, payload: encryptField(JSON.stringify(payload), unsentAad(rid)), createdAt: at, updatedAt: at });
+      // S-5: never keep the phone's requestId: an admin resend claims its own `retry:` key.
+      const { requestId: _drop, ...form } = payload as Record<string, unknown>;
+      await opts.unsent.save({ id: rid, reason, payload: encryptField(JSON.stringify(form), unsentAad(rid)), createdAt: at, updatedAt: at });
       return true;
     } catch {
       await opts.errorLog?.record({ category: 'elvanto-form', code: 'UNSENT_SAVE_FAILED', route: 'POST /intake/new-youth' });
@@ -177,7 +180,17 @@ export function makeNewYouthService(
     } catch { /* the send itself landed; a stale row only stays until the admin deletes it or it is purged */ }
   }
 
-  async function run(actor: Actor, input: unknown, retryId?: string): Promise<NewYouthResult> {
+  // S-5/D4: the DB request claim. It must FAIL OPEN: a DB blip never blocks a Friday host (error log NY_REQ_FAILED).
+  const reqFailed = () => opts.errorLog?.record({ category: 'elvanto-form', code: 'NY_REQ_FAILED', route: 'POST /intake/new-youth' }).catch(() => {});
+  async function claim(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null } | null> {
+    try { return await opts.unsent!.claimRequest(id, by); } catch { await reqFailed(); return null; }
+  }
+  async function finish(id: string | undefined, result: NewYouthResult | null) {
+    if (!id) return;
+    try { await opts.unsent!.finishRequest(id, result); } catch { await reqFailed(); }
+  }
+
+  async function run(actor: Actor, input: unknown, retryId?: string, reqId?: string): Promise<NewYouthResult> {
       assertCan(actor, 'intake:write');
       const settings = await settingsRepo.getSettings();
       if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New person');
@@ -202,6 +215,14 @@ export function makeNewYouthService(
         throw new AppError('RATE_LIMITED', 'Too many forms from this login. Try again in an hour.', 429);
       }
 
+      // S-5/D4: a request id seen before (any instance) is never posted again. Null claim = DB error: carry on.
+      let held: string | undefined;
+      if (live && reqId && opts.unsent) {
+        const c = await claim(reqId, actor.id);
+        if (c && !c.fresh) return { ...((c.result as NewYouthResult | null) ?? { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false }), repeat: true };
+        if (c) held = reqId;
+      }
+
       // Remember the send BEFORE the form GETs (live mode only): a second tap while this one is still
       // fetching or posting gets "unconfirmed" back instead of posting the same student again.
       if (live) recent.set(key, { at: now, result: { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, ref } });
@@ -217,6 +238,7 @@ export function makeNewYouthService(
         }
       } catch (e) {
         recent.delete(key); // nothing was posted: let a fixed retry through
+        await finish(held, null);
         // T10: Elvanto unreachable or its form changed. Nothing was posted, so the whole send is kept for the admin.
         if (live && e instanceof AppError && e.statusCode === 502
           && await keep(retryId, e.code === 'ELVANTO_FORM_CHANGED' ? 'form-changed' : 'unreachable', { ...(input as object), send: data.send })
@@ -245,13 +267,17 @@ export function makeNewYouthService(
         const reason: UnsentReason = [student, parent].includes('unconfirmed') ? 'unconfirmed' : 'failed';
         if (await keep(retryId, reason, { ...(input as object), send: data.send.filter((f) => outs[f] !== 'sent') })) result.queued = true;
       } else await clear(retryId, data);
-      if (student !== 'failed' && parent !== 'failed') recent.set(key, { at: now, result });
-      else recent.delete(key); // a clear rejection: let the fixed retry through
+      if (student !== 'failed' && parent !== 'failed') { recent.set(key, { at: now, result }); await finish(held, result); }
+      else { recent.delete(key); await finish(held, null); } // a clear rejection: let the fixed retry through
       return result;
   }
 
   return {
-    send: (actor, input) => run(actor, input),
+    send: (actor, input) => {
+      // S-5: optional client request id (a UUID made at Send, reused on resend). Anything else is ignored, never refused.
+      const r = (input as { requestId?: unknown } | null)?.requestId;
+      return run(actor, input, undefined, typeof r === 'string' && UUID_RE.test(r) ? r : undefined);
+    },
 
     async unsentList(actor) {
       assertCan(actor, 'admin:manage');

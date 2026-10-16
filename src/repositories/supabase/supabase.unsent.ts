@@ -1,4 +1,4 @@
-// Supabase New person unsent queue (T10). Table from migration 0023 (RLS on; the API is the superuser).
+// Supabase New person unsent queue (T10). Table from migration 0023; request claims from 0032 (RLS on; the API is the superuser).
 import type { SqlClient } from './client';
 import { toIso } from './client';
 import type { IUnsentRepository, UnsentRow } from '../interfaces/unsent.repository';
@@ -20,5 +20,17 @@ export class SupabaseUnsentRepository implements IUnsentRepository {
   }
   async purgeBefore(iso: string): Promise<void> {
     await this.sql`delete from newperson_unsent where created_at < ${iso}`;
+    await this.sql`delete from newperson_requests where created_at < ${iso}`;
+  }
+  // S-5/D4: table from migration 0032. The insert is the lock: a second claim of the same id loses the conflict.
+  async claimRequest(id: string, by: string): Promise<{ fresh: boolean; result: unknown | null }> {
+    const ins = await this.sql`insert into newperson_requests (id, created_by) values (${id}, ${by}) on conflict (id) do nothing returning id`;
+    if (ins.length) return { fresh: true, result: null };
+    const [r] = await this.sql`select result from newperson_requests where id = ${id}`;
+    return { fresh: false, result: (r as Record<string, any> | undefined)?.result ?? null };
+  }
+  async finishRequest(id: string, result: unknown | null): Promise<void> {
+    if (result === null) await this.sql`delete from newperson_requests where id = ${id}`;
+    else await this.sql`update newperson_requests set result = ${this.sql.json(result as Parameters<typeof this.sql.json>[0])} where id = ${id}`;
   }
 }
