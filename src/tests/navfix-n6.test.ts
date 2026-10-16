@@ -13,6 +13,7 @@ import {
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
 } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { Actor } from '../core/entities/user';
 import type { Capabilities, NewOutboxRow } from '../core/link-types';
 import { LinkIdExists } from '../core/errors/link-errors';
@@ -335,5 +336,27 @@ describe('B18: GET /link/intake marks the view only on page entry (view=1), not 
     expect(await h.intakeRepo.viewedAt()).toBe(NOW.toISOString());
     await h.intake.list(ADMIN, { mode: 'intake', view: '1' });
     expect(await h.intakeRepo.viewedAt()).toBe(h.clock.now.toISOString());
+  });
+});
+
+// ---------------------------------------------------------------- B13 (YS half)
+
+describe('B13: the shared rev-7 fixtures parse with the link-contract schemas (11.1 keeps byte-identical copies)', () => {
+  const raw = (f: string) => readFileSync(join(DIR, f));
+  it('result-request-rev7.json: a sent removeFromFlowStep with note failed (C-1, F-37)', () => {
+    const r = ResultRequest.parse(fx('result-request-rev7.json'));
+    expect(r.results[0]).toMatchObject({ outcome: 'sent', note: 'failed' });
+  });
+  it('push-consent-lookup-mismatches-rev7.json: a mismatch row with linked true (C-1, F-36)', () => {
+    const p = PUSH_SCHEMAS.consentLookup.parse(fx('push-consent-lookup-mismatches-rev7.json'));
+    expect(p.kind).toBe('mismatches');
+    expect((p.rows[0] as { linked?: boolean }).linked).toBe(true);
+  });
+  it('both are LF only and listed in the manifest', () => {
+    const m = fx('manifest.json').files;
+    for (const f of ['result-request-rev7.json', 'push-consent-lookup-mismatches-rev7.json']) {
+      expect(raw(f).includes(0x0d)).toBe(false);
+      expect(m[f]).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });
