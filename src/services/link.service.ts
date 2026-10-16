@@ -645,7 +645,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const studentId = personId ? roster.find((x) => x.personId === personId)?.studentId ?? null : null;
     const key = dedupeKey(it.type, p);
     // S-4 / D5: a new intakeAnswer replaces the family's pending one in the same transaction (no separate cancel item).
-    const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key } : undefined;
+    // S-6 / D8: a new consentLookup cancels this login's pending lookups of the same kind (abandoned searches); claimed ones still run.
+    const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key }
+      : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) } : undefined;
     try {
       const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
         serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });

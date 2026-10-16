@@ -153,3 +153,26 @@ describe('S-4 / D5: insertAction supersede (intakeAnswer is one atomic server op
     expect(await link.getAction(pending.id)).toMatchObject({ status: 'pending' });
   });
 });
+
+// ---------------------------------------------------------------- S-6 / D8
+
+describe('S-6 / D8: a new consentLookup cancels the same login\'s pending lookups of that kind', () => {
+  const ADMIN2 = { ...ADMIN, id: u(3) };
+  const look = (kind: string, page = 1) => { const id = nid(); return act('consentLookup', { kind, page, ref: id }, null, id); };
+  it('same login + kind -> the first is cancelled-by the second; a claimed one still runs; other kind / login untouched', async () => {
+    const h = await setup();
+    const a = await one(h, look('mismatches'));
+    const forms = await one(h, look('forms'));
+    const other = await one(h, look('mismatches'), ADMIN2);
+    const b = await one(h, look('mismatches', 2));
+    expect(b.outcome).toBe('saved');
+    expect(await h.link.getAction(a.id)).toMatchObject({ status: 'cancelled', detail: `cancelled-by:${b.id}` });
+    expect(await h.link.getAction(forms.id)).toMatchObject({ status: 'pending' });
+    expect(await h.link.getAction(other.id)).toMatchObject({ status: 'pending' });
+    await claimAll(h);
+    const c = await one(h, look('mismatches'));
+    expect(c.outcome).toBe('saved');
+    expect(await h.link.getAction(b.id)).toMatchObject({ status: 'claimed' });
+    expect(await h.svc.consentLookup(ADMIN, { id: a.id })).toMatchObject({ status: 'failed' });
+  });
+});
