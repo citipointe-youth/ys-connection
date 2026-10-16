@@ -31,7 +31,7 @@ import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
 import {
-  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, modeAllows, type StructureScope,
+  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate,
@@ -372,10 +372,18 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
   const leaderName = async (c: Ctx, id: string | null) => (id ? (await c.leaders()).find((l) => l.id === id)?.fullName ?? null : null);
 
-  /** "I am" (spec §2.2): a junior leader login always uses its bound leader; required for the three note types. */
+  /** "I am" (spec §2.2): a junior leader login always uses its bound leader; required for the three note types.
+   *  F1 (review 2026-10-16): every other login may only act as a leader inside leaderInScope — the same rule as the
+   *  Home / link "I am" pickers (GET /leaders?pick=1). An out-of-scope id is treated exactly like an unknown id:
+   *  a plain action is recorded under the login's own name, a note type is refused, cancel/undo compares against null.
+   *  Director/admin may act as anyone. `identity` log items are not actions and are left alone. */
+  async function scopedLeader(c: Ctx, id: string | null): Promise<Leader | null> {
+    if (!id) return null;
+    const l = (await c.leaders()).find((x) => x.id === id);
+    return l && leaderInScope(c.actor, l, c.structure) ? l : null;
+  }
   async function resolveLeader(c: Ctx, given: string | null | undefined, required: boolean): Promise<{ id: string | null; name: string }> {
-    const id = c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : (given ?? null);
-    const l = id ? (await c.leaders()).find((x) => x.id === id) ?? null : null;
+    const l = await scopedLeader(c, c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : (given ?? null));
     if (required && !l) throw new BadRequestError('Pick who you are first.');
     return l ? { id: l.id, name: l.fullName } : { id: null, name: c.actor.displayName };
   }
@@ -735,22 +743,23 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     return { res, log };
   }
 
-  /** Cancel/undo ownership (spec §8.2): same login and same "I am" (null = null), or link:admin. */
-  const iAm = (c: Ctx, leaderId: string | null) => (c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : leaderId);
-  function owns(c: Ctx, row: OutboxRow, leaderId: string | null): boolean {
-    return c.admin || (row.createdBy === c.actor.id && (row.leaderId ?? null) === iAm(c, leaderId));
+  /** Cancel/undo ownership (spec §8.2): same login and same "I am" (null = null), or link:admin. F1: the "I am" is scoped. */
+  const iAm = async (c: Ctx, leaderId: string | null): Promise<string | null> =>
+    (await scopedLeader(c, c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : leaderId))?.id ?? null;
+  async function owns(c: Ctx, row: OutboxRow, leaderId: string | null): Promise<boolean> {
+    return c.admin || (row.createdBy === c.actor.id && (row.leaderId ?? null) === await iAm(c, leaderId));
   }
 
   async function doCancel(c: Ctx, id: string, leaderId: string | null, device: Device): Promise<{ res: ItemResult; log: LinkLogRow }> {
     const res = await (async (): Promise<ItemResult> => {
       const row = await d.link.getAction(id);
       if (!row) return refused(id, 'cancel', new NotFoundError('This action is not on the server.'));
-      if (!owns(c, row, leaderId)) return refused(id, 'cancel', new LinkNotYours());
+      if (!(await owns(c, row, leaderId))) return refused(id, 'cancel', new LinkNotYours());
       if (row.status === 'cancelled' || await d.link.cancelPending(id)) return { id, kind: 'cancel', outcome: 'cancelled' };
       return { id, kind: 'cancel', outcome: 'too-late', code: 'LINK_TOO_LATE',
         message: 'Too late: this has already been picked up.' };
     })();
-    const me = iAm(c, leaderId);
+    const me = await iAm(c, leaderId);
     const log = await logRow(c, device, { event: 'cancel', leaderId: me, leaderName: await leaderName(c, me),
       targetKind: 'action', targetId: id, outboxId: id, outcome: outcomeText(res) });
     return { res, log };
@@ -767,7 +776,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       // B6 / APP-5: the owner rule applies only to a cancel (the check-in is still pending). Past that, Undo is a
       // plain check-out, which anyone on the door may do (a shared login has several "I am" leaders).
       if (row.status === 'pending') {
-        if (!owns(c, row, leaderId)) return refused(id, 'undo', new LinkNotYours());
+        if (!(await owns(c, row, leaderId))) return refused(id, 'undo', new LinkNotYours());
         if (await d.link.cancelPending(id)) return { id, kind: 'undo', outcome: 'cancelled' };
       }
       const p = row.payload as { serviceTimeId: string; personId: string };
@@ -776,7 +785,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (out.res.outcome !== 'refused') outboxId = out.res.existingId ?? newId;
       return { ...out.res, id, kind: 'undo' };
     })();
-    const me = iAm(c, leaderId);
+    const me = await iAm(c, leaderId);
     const log = await logRow(c, device, { event: 'undo', leaderId: me, leaderName: await leaderName(c, me),
       targetKind: 'action', targetId: id, outboxId, outcome: outcomeText(res) });
     return { res, log };

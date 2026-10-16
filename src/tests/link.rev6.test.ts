@@ -42,7 +42,7 @@ async function setup(o: { intakeAdmin?: 'on' | 'off' } = {}) {
   for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [QUAD_ID, 'g79', 'quad']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
-  await leaders.save({ id: L_DANA, fullName: 'Dana Day', gender: 'female', grades: [], active: true, createdByGrade: null,
+  await leaders.save({ id: L_DANA, fullName: 'Dana Day', gender: 'female', grades: [8, 9], active: true, createdByGrade: null,
     smsTemplate: null, createdAt: T0, updatedAt: T0 } as never);
   const row = (rowId: string, flowId: string, flowName: string, stepId: string, stepName: string, personId: string, consent: string) => ({
     rowId, flowId, flowName, stepId, stepName, stepOrder: 2, personId, name: 'Sample Kid', due: null, assignedTo: '',

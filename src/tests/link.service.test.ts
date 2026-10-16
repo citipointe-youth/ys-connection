@@ -61,7 +61,7 @@ const student = (id: string, first: string, last: string, gender: 'male' | 'fema
   createdAt: T0, updatedAt: T0,
 });
 const leader = (id: string, fullName: string, gender: 'male' | 'female' | null, active = true) => ({
-  id, fullName, gender, grades: [], active, createdByGrade: null, smsTemplate: null, createdAt: T0, updatedAt: T0,
+  id, fullName, gender, grades: [9, 10], active, createdByGrade: null, smsTemplate: null, createdAt: T0, updatedAt: T0,
 });
 
 const group = (g: Omit<LinkGroupRow, 'grade' | 'gender' | 'history'> & Partial<Pick<LinkGroupRow, 'history'>>): LinkGroupRow =>
@@ -463,7 +463,7 @@ describe('D2 enqueue', () => {
     const h = await setup();
     expect((await enq(h.svc, DIRECTOR, step({ rowId: u(996) }), DEV)).code).toBe('BAD_REQUEST');
     expect((await enq(h.svc, DIRECTOR, step({ stepId: STEP2 }), DEV)).code).toBe('BAD_REQUEST');
-    expect((await enq(h.svc, GRADE2, step(), DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, GRADE2, step({}, { leaderId: L_CODY }), DEV)).code).toBe('FORBIDDEN'); // F1: an in-scope "I am" for the boys login
     expect((await enq(h.svc, GRADE, step({ rowId: FR2, stepId: STEP2, personId: null }), DEV)).code).toBe('FORBIDDEN');
     const ok = step();
     expect(await enq(h.svc, GRADE, ok, DEV)).toMatchObject({ outcome: 'saved' });
@@ -1337,7 +1337,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T4/T11: a step-0 row cannot be completed by a leader login (it moves on its own); admin can', async () => {
     const h = await setup();
     const s = step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN });
-    expect((await enq(h.svc, GRADE2, s, DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(h.svc, GRADE2, { ...s, leaderId: L_CODY }, DEV)).code).toBe('FORBIDDEN'); // F1: in-scope "I am"
     expect((await enq(h.svc, ADMIN, { ...s, id: nid() }, DEV)).outcome).toBe('saved'); // T11: admin can complete it
   });
 
@@ -1506,5 +1506,46 @@ describe('UX batch 2026-10-14b (T8, T12)', () => {
     expect((await h.svc.flows(QUAD)).steps.map((x) => x.stepId)).toEqual([STEP3, STEP1, STEP2, EMPTY]);
     expect((await h.svc.flows(DIRECTOR)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]); // T11: director sees the hidden step
     expect((await h.svc.flows(ADMIN)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]);
+  });
+});
+
+describe('F1 (review 2026-10-16): "I am" is limited to leaders in scope', () => {
+  // GRADE = grade-9 girls login; L_CODY is male -> out of leaderInScope. L_DANA is female, grades [9, 10] -> in scope.
+  it('a plain action under an out-of-scope leader is recorded under the login, not that leader', async () => {
+    const h = await setup();
+    const it1 = checkIn(P_AMY, { leaderId: L_CODY });
+    expect((await enq(h.svc, GRADE, it1, DEV)).outcome).toBe('saved');
+    expect(await h.link.getAction(it1.id)).toMatchObject({ leaderId: null, leaderName: 'grade login' });
+  });
+  it('a note type under an out-of-scope leader is refused like a missing "I am"', async () => {
+    const h = await setup();
+    expect(await enq(h.svc, GRADE, step({}, { note: 'Called mum', leaderId: L_CODY }), DEV))
+      .toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
+  });
+  it('a leader with no grades (CSV import shape) counts as no leader for a grade login, but admin may still act as them', async () => {
+    const h = await setup();
+    const noGrades = u(399);
+    await h.leaders.save({ ...leader(noGrades, 'Gail Grades', 'female'), grades: [] } as never);
+    const a = checkIn(P_AMY, { leaderId: noGrades });
+    await enq(h.svc, GRADE, a, DEV);
+    expect(await h.link.getAction(a.id)).toMatchObject({ leaderId: null });
+    const b = checkIn(P_BEN, { leaderId: noGrades });
+    await enq(h.svc, ADMIN, b, DEV);
+    expect(await h.link.getAction(b.id)).toMatchObject({ leaderId: noGrades, leaderName: 'Gail Grades' });
+  });
+  it('an out-of-scope "I am" never owns a pending row (cancel refused); director may act as any leader', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY, { leaderId: L_DANA });
+    await enq(h.svc, GRADE, a, DEV);
+    expect(await cancel(h.svc, GRADE, a.id, L_CODY, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
+    const d = checkIn(P_BEN, { leaderId: L_CODY });
+    await enq(h.svc, DIRECTOR, d, DEV);
+    expect(await h.link.getAction(d.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
+  });
+  it('a junior leader login still resolves to its bound leader whatever id it sends', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY, { leaderId: L_DANA });
+    await enq(h.svc, LEADER, a, DEV);
+    expect(await h.link.getAction(a.id)).toMatchObject({ leaderId: L_CODY });
   });
 });

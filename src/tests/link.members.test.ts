@@ -20,7 +20,7 @@ const NOW = new Date('2026-10-16T09:00:00.000Z');
 const T0 = '2026-10-01T00:00:00.000Z';
 const ADMIN_ID = u(1), DIR_ID = u(2), GRADE_ID = u(4), QB_ID = u(7);
 const P_AMY = u(101), P_BEA = u(102), P_DANA = u(103), P_TOM = u(104), P_PAT = u(105), P_ZOE = u(106);
-const L_DANA = u(301), L_EVE = u(302);
+const L_DANA = u(301), L_EVE = u(302), L_MAX = u(303);
 const G9F = u(401);
 const CONSOLE = u(601);
 const S_AMY = u(701), S_TOM = u(703);
@@ -67,9 +67,12 @@ async function setup(o: { caps?: Capabilities | null } = {}) {
   await students.save(student(S_AMY, 'Amy', 'Adams', 'female', 9) as never);
   await students.save(student(S_TOM, 'Tom', 'Ten', 'male', 10) as never);
   for (const [id, fullName] of [[L_DANA, 'Dana Day'], [L_EVE, 'Eve Evans']]) {
-    await leaders.save({ id, fullName, gender: 'female', grades: [], active: true, createdByGrade: null, smsTemplate: null,
+    await leaders.save({ id, fullName, gender: 'female', grades: [9], active: true, createdByGrade: null, smsTemplate: null,
       createdAt: T0, updatedAt: T0 } as never);
   }
+  // F1 (2026-10-16): QUAD_B's "I am" must be in its own scope (boys 10-12) for the group-scope refusal to be reached.
+  await leaders.save({ id: L_MAX, fullName: 'Max Male', gender: 'male', grades: [10], active: true, createdByGrade: null,
+    smsTemplate: null, createdAt: T0, updatedAt: T0 } as never);
   const meta = (takenAt: string) => ({ takenAt, consoleId: CONSOLE });
   const person = (personId: string, firstName: string, lastName: string, gender: 'male' | 'female' | null, grade: number | null,
     kind: 'student' | 'leader' | 'other') => ({ personId, firstName, lastName, gender, grade, kind });
@@ -167,7 +170,7 @@ describe('T6 enqueue addGroupMember / removeGroupMember', () => {
     const h = await setup();
     expect(await one(h, GRADE, act('addGroupMember', P_BEA, null))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
     expect(await one(h, GRADE, act('addGroupMember', P_BEA, L_EVE))).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
-    expect(await one(h, QUAD_B, act('addGroupMember', P_BEA))).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
+    expect(await one(h, QUAD_B, act('addGroupMember', P_BEA, L_MAX))).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
     expect(await one(h, GRADE, act('addGroupMember', P_ZOE))).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
   });
   it('refused: already a member, an adult (other), removing a leader, removing a non-member, a note', async () => {
