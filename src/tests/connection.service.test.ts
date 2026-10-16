@@ -188,3 +188,24 @@ describe('Connection Service — listAll crossGrade (Connect Setup Add Students 
     expect(seen[0]?.studentId).toBe(student2.id);
   });
 });
+
+describe('F3 (review 2026-10-16): listByStudent is scoped like GET /students/:id', () => {
+  it('grade login: same gender any grade ok (connect exception); other gender 403', async () => {
+    const { connSvc, student2, student3, leaderF, leaderM } = await buildServices();
+    await connSvc.assign(ADMIN, { studentId: student2.id, leaderId: leaderF.id });
+    await connSvc.assign(ADMIN, { studentId: student3.id, leaderId: leaderM.id });
+    const GRADE9F = actor('grade', { grade: 9, gender: 'female' });
+    expect(await connSvc.listByStudent(GRADE9F, student2.id)).toHaveLength(1);
+    await expect(connSvc.listByStudent(GRADE9F, student3.id)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+  it('quad login: other bracket 403, own bracket ok; director any', async () => {
+    const { connSvc, studentSvc, leaderSvc, student } = await buildServices();
+    const senior = await studentSvc.create(ADMIN, { firstName: 'Sen', lastName: 'Ior', gender: 'female', grade: 11 });
+    const lead = await leaderSvc.create(ADMIN, { fullName: 'Any', gender: 'female', grades: [9, 11] });
+    await connSvc.assign(ADMIN, { studentId: senior.id, leaderId: lead.id });
+    await connSvc.assign(ADMIN, { studentId: student.id, leaderId: lead.id });
+    await expect(connSvc.listByStudent(G79, senior.id)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await connSvc.listByStudent(G79, student.id)).toHaveLength(1);
+    expect(await connSvc.listByStudent(actor('director'), senior.id)).toHaveLength(1);
+  });
+});

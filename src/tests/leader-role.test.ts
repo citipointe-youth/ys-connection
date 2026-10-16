@@ -78,6 +78,7 @@ describe('leader student scope (own connections only)', () => {
   it('student.get allows a connected student, 404s an unconnected one', async () => {
     const h = await harness();
     expect((await h.studentSvc.get(leaderActor, h.mine1.id)).id).toBe(h.mine1.id);
+    expect((await h.studentSvc.get(leaderActor, h.mine1.id)).mobile).toBe('0400000000'); // F3: own student keeps phones
     await expect(h.studentSvc.get(leaderActor, h.theirs.id)).rejects.toThrow();
     await expect(h.studentSvc.get(leaderActor, h.unconnected.id)).rejects.toThrow();
   });

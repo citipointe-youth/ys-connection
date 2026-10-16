@@ -145,3 +145,34 @@ describe('Student Service — cascade delete of prayers on student removal (M1, 
     await expect(svc.remove(ADMIN, s1.id)).resolves.toBeUndefined();
   });
 });
+
+describe('F3 (review 2026-10-16): the cross-grade connect exception shows names, not phones', () => {
+  async function seeded() {
+    const repo = new InMemoryStudentRepository(); await repo.init();
+    const svc = makeStudentService(repo);
+    const alice = await svc.create(ADMIN, { firstName: 'Alice', lastName: 'Smith', gender: 'female', grade: 9, mobile: '0400000001', parentPhone: '0400000002' });
+    const carol = await svc.create(ADMIN, { firstName: 'Carol', lastName: 'White', gender: 'female', grade: 10, mobile: '0400000003', parentPhone: '0400000004' });
+    const bob = await svc.create(ADMIN, { firstName: 'Bob', lastName: 'Jones', gender: 'male', grade: 10, mobile: '0400000005', parentPhone: '0400000006' });
+    return { svc, alice, carol, bob };
+  }
+  const G9F = actor('grade', { grade: 9, gender: 'female' });
+  it('list(crossGrade): own grade keeps phones, the other grade is names only', async () => {
+    const { svc } = await seeded();
+    const rows = await svc.list(G9F, { crossGrade: true });
+    expect(rows.map((s) => s.firstName).sort()).toEqual(['Alice', 'Carol']);
+    expect(rows.find((s) => s.firstName === 'Alice')).toMatchObject({ mobile: '0400000001', parentPhone: '0400000002' });
+    expect(rows.find((s) => s.firstName === 'Carol')).toMatchObject({ mobile: null, parentPhone: null });
+  });
+  it('get(): same rule — other grade same gender 200 without phones; other gender 404; admin keeps phones', async () => {
+    const { svc, carol, bob } = await seeded();
+    expect(await svc.get(G9F, carol.id)).toMatchObject({ firstName: 'Carol', mobile: null, parentPhone: null });
+    await expect(svc.get(G9F, bob.id)).rejects.toBeInstanceOf(NotFoundError);
+    expect(await svc.get(ADMIN, carol.id)).toMatchObject({ mobile: '0400000003' });
+  });
+  it('quad: the other bracket stays hidden on get() (bracket + gender), names only on list(crossGrade)', async () => {
+    const { svc, carol } = await seeded();
+    const g79 = actor('quad', { quad: 'g79' });
+    await expect(svc.get(g79, carol.id)).rejects.toBeInstanceOf(NotFoundError);
+    expect((await svc.list(g79, { crossGrade: true })).find((s) => s.firstName === 'Carol')).toMatchObject({ mobile: null });
+  });
+});

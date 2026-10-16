@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessStudent, canAccessGender, actorGrades, assertLeaderSelf, assertLeaderInScope, leaderStudentVisible } from './access-control';
+import { assertCan, canAccessStudent, canAccessGender, actorGrades, assertLeaderSelf, assertLeaderInScope, leaderStudentVisible, studentRecordVisible } from './access-control';
 import {
   parseAllocationRows,
   planAllocationSync,
@@ -132,13 +132,18 @@ export function makeConnectionService(
   return {
     async listByStudent(actor, studentId) {
       assertCan(actor, 'student:read');
-      const [conns, { studentsById, leadersById }] = await Promise.all([
+      const [conns, { studentsById, leadersById }, settings] = await Promise.all([
         connRepo.findByStudent(studentId),
         buildLookups(),
+        settingsRepo.getSettings(),
       ]);
-      // A junior leader may only see a student they are themselves connected to.
-      if (actor.role === 'leader' && !conns.some((c) => c.leaderId === actor.leaderId)) {
-        throw new ForbiddenError('Junior leaders can only view their own students');
+      if (actor.role === 'leader') {
+        // A junior leader may only see a student they are themselves connected to.
+        if (!conns.some((c) => c.leaderId === actor.leaderId)) throw new ForbiddenError('Junior leaders can only view their own students');
+      } else {
+        // F3 (review 2026-10-16): same visibility as GET /students/:id (connect exception kept).
+        const s = studentsById.get(studentId);
+        if (s && !studentRecordVisible(actor, s, settings.ministryConfig.structure)) throw new ForbiddenError('This student is not one of yours');
       }
       return enrichWith(conns, studentsById, leadersById);
     },

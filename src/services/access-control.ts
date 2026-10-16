@@ -240,6 +240,19 @@ export function leaderStudentVisible(actor: Actor, s: { grade: number | null; ge
 }
 
 /**
+ * F3 (review 2026-10-16): the one rule for reading ONE student's record by id — `GET /students/:id` and
+ * `GET /connections/student/:id` — so the detail modal's two calls always agree. Keeps the connect exception:
+ * a grade login may open a same-gender student of any grade (Connect's cross-grade picker); a quad login stays
+ * on its bracket + gender. Junior leaders are decided by their own connections (the caller checks that).
+ */
+export function studentRecordVisible(actor: Actor, s: { grade: number | null; gender: string }, structure?: StructureScope): boolean {
+  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'grade') return canAccessGender(actor, s.gender, structure);
+  if (actor.role === 'quad') return canAccessStudent(actor, s.grade, s.gender, structure);
+  return false;
+}
+
+/**
  * Structure config relevant to scoping (§5.1/§5.2 of the generalisation design).
  * Passed by services from `settings.ministryConfig.structure`. Optional at every
  * call site so the existing tests (which don't pass it) and any not-yet-migrated

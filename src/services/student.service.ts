@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, can, canAccessGender, canAccessStudent, type StructureScope } from './access-control';
+import { assertCan, can, canAccessGender, canAccessGrade, canAccessStudent, studentRecordVisible, type StructureScope } from './access-control';
 import type { IStudentRepository, ISettingsRepository, IConnectionRepository, IPrayerRepository } from '../repositories/interfaces/entity-repositories';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
@@ -63,6 +63,10 @@ export function makeStudentService(
     const conns = await connRepo.findByLeader(actor.leaderId);
     return new Set(conns.map((c) => c.studentId));
   }
+  // F3 (review 2026-10-16): the cross-grade connect exception shows a same-gender student of another grade — names only, no phones.
+  const phonesHidden = (actor: Actor, s: Student, structure: StructureScope) =>
+    !can(actor, 'student:read:sensitive') ||
+    ((actor.role === 'grade' || actor.role === 'quad') && !canAccessGrade(actor, s.grade, structure));
   return {
     async list(actor, filter) {
       assertCan(actor, 'student:read');
@@ -96,9 +100,7 @@ export function makeStudentService(
         );
       }
 
-      if (!can(actor, 'student:read:sensitive')) {
-        students = students.map(stripSensitive);
-      }
+      students = students.map((s) => (phonesHidden(actor, s, structure) ? stripSensitive(s) : s));
 
       const mark = await dnc.forActor(actor);
       return students.map((s) => mark(s, s.id)).sort((a, b) => a.lastName.localeCompare(b.lastName));
@@ -115,17 +117,12 @@ export function makeStudentService(
         if (!myIds || !myIds.has(s.id)) throw new NotFoundError('Student not found');
       }
       // Grade logins may fetch a student of ANY grade (the cross-grade connect
-      // exception) but only of their OWN gender.
+      // exception) but only of their OWN gender; quad stays on bracket + gender (studentRecordVisible, F3).
       const structure = await structureScope();
-      if (actor.role === 'grade' && !canAccessGender(actor, s.gender, structure)) {
-        throw new NotFoundError('Student not found');
-      }
-      if (actor.role === 'quad' && !canAccessStudent(actor, s.grade, s.gender, structure)) {
-        throw new NotFoundError('Student not found');
-      }
+      if (actor.role !== 'leader' && !studentRecordVisible(actor, s, structure)) throw new NotFoundError('Student not found');
 
       const mark = await dnc.forActor(actor);
-      return mark(can(actor, 'student:read:sensitive') ? s : stripSensitive(s), s.id);
+      return mark(phonesHidden(actor, s, structure) ? stripSensitive(s) : s, s.id);
     },
 
     async create(actor, input) {
