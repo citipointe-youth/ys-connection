@@ -2814,6 +2814,7 @@ async function doLogin() {
 
 async function doLogout() {
   if (!(await _lkLogoutGuard())) return; /*LINK*/
+  await _ikQLogout(5000); // R7: send the intake queue once (max 5 s), then clear it
   _lkClear(); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
   navReset();
@@ -12445,6 +12446,18 @@ function _ikQFlush() {
   })().catch(() => false).finally(() => { LINK.ikFlushing = null; }); // callers (_lkBoot, online, visibilitychange) never await: never reject
   LINK.ikFlushing = p;
   return p;
+}
+// R7 (ruling 7): at logout, one try to send what is kept (capped, so a dead network never blocks logout), then the key
+// is cleared; anything still unsent is dropped and the toast says how many.
+// ponytail: an item a sheet Save is sending at that instant counts as dropped even if it lands later.
+async function _ikQLogout(ms) {
+  if (!S.user) return;
+  const k = _ikQKey();
+  let t;
+  try { await Promise.race([_ikQFlush(), new Promise((r) => { t = setTimeout(r, ms); })]); } catch (e) {} finally { clearTimeout(t); }
+  const n = _ikQGet(k).reduce((c, e) => c + e.items.length, 0);
+  _ikQSet([], k);
+  if (n) toast(n === 1 ? '1 unsent intake save was dropped' : n + ' unsent intake saves were dropped', 6000);
 }
 try {
   window.addEventListener('online', () => { if (S.user) _ikQFlush(); });

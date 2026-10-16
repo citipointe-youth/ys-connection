@@ -389,3 +389,41 @@ describe('C-B3 a change made while that family is sending is not lost', () => {
     expect(I.busy).toBeFalsy();
   });
 });
+
+describe('R7 logout: flush the intake queue once, then clear it', () => {
+  const SAVE = (id: string) => ({ kind: 'action', id, type: 'intakeSave', payload: { date: '2026-10-09', row: 'r1' }, note: null, leaderId: null });
+  const fns = [...Q_FNS, '_ikQLogout'];
+  const seed = (store: Map<string, string>, n = 1) =>
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: new Date().toISOString(), items: Array.from({ length: n }, (_, i) => SAVE(P(i + 1))) }]));
+  it('sends what is kept, then the key is gone and nothing is said', async () => {
+    const { f, calls, store } = ikEnv({ fns });
+    seed(store);
+    await f._ikQLogout(5000);
+    expect(calls.posts.length).toBe(1);
+    expect(calls.posts[0].b.items[0].id).toBe(P(1));
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(calls.toasts).toEqual([]);
+  });
+  it('network down: logout is not blocked, the key is cleared, the toast counts what was dropped', async () => {
+    const { f, calls, store } = ikEnv({ fns, post: () => Promise.reject(new Error("Can't reach the server")) });
+    seed(store, 2);
+    await f._ikQLogout(5000);
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(calls.toasts).toEqual(['2 unsent intake saves were dropped']);
+  });
+  it('a send that hangs is capped: logout goes on after the cap', async () => {
+    const { f, calls, store } = ikEnv({ fns, post: () => new Promise(() => {}) });
+    seed(store);
+    const t = Date.now();
+    await f._ikQLogout(50);
+    expect(Date.now() - t).toBeLessThan(1000);
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(calls.toasts).toEqual(['1 unsent intake save was dropped']);
+  });
+  it('doLogout runs it after the guard and before _lkClear / the token goes', () => {
+    const src = extractFn(HTML, 'doLogout');
+    const i = src.indexOf('await _ikQLogout(');
+    expect(i).toBeGreaterThan(src.indexOf('_lkLogoutGuard'));
+    expect(i).toBeLessThan(src.indexOf('_lkClear()'));
+  });
+});
