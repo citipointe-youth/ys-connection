@@ -20,7 +20,7 @@ function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: an
     const navigator = { onLine: true };
     const _ik = () => LINK.ik;
     const API = { fresh: (p) => { __t.fresh.push(p); return Promise.resolve().then(() => __fresh(p)); } };
-    const _ikPost = (items) => { __t.posts.push(items); return Promise.resolve().then(() => __post(items)); };
+    const _ikPost = (items) => { __t.posts.push(items); return Promise.resolve().then(() => { const r = __post(items); return (r && r.results) || []; }); };
     const _ikOutcome = (res, id) => (res || []).find((r) => r && r.id === id) || null;
     const _lkUuid = () => 'id-' + (++__t.uuid);
     const modal = (h) => __t.modals.push(h);
@@ -75,5 +75,29 @@ describe('C-B4 Save all opens its sheet only where it started', () => {
     const { fns, t } = run((f) => { f.LINK.ik.key = P(9); });
     await fns._ikSaveAllOpen();
     expect(t.modals.length).toBe(0);
+  });
+});
+
+describe('S-3 Save all sends chunks of 20 and says when a chunk will go again by itself', () => {
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ key: P(i + 1), title: 'Kid ' + i, outcome: '', payload: { row: P(i + 1) } }));
+  it('45 items -> 3 POSTs of 20, 20, 5', async () => {
+    const { fns, t, I } = env(['_ikSaveAllGo']);
+    I.sa = { type: 'consentSave', date: '2026-10-16', items: items(45) };
+    await fns._ikSaveAllGo();
+    expect(t.posts.map((p: any[]) => p.length)).toEqual([20, 20, 5]);
+  });
+  it('a chunk that never got an answer (kept on the phone) says it goes again; a 4xx says why', async () => {
+    let n = 0;
+    const { fns, I } = env(['_ikSaveAllGo'], { post: () => { n++; if (n === 1) throw new Error("Can't reach the server"); const e: any = new Error('Only the admin can do this.'); e.status = 403; throw e; } });
+    I.sa = { type: 'consentSave', date: '2026-10-16', items: items(25) };
+    await fns._ikSaveAllGo();
+    expect(I.saErr[P(1)]).toBe('Not sent yet. It goes again by itself.');
+    expect(I.saErr[P(21)]).toBe('Only the admin can do this.');
+  });
+  it('a 5xx is kept too', async () => {
+    const { fns, I } = env(['_ikSaveAllGo'], { post: () => { const e: any = new Error('Server error'); e.status = 503; throw e; } });
+    I.sa = { type: 'consentSave', date: '2026-10-16', items: items(1) };
+    await fns._ikSaveAllGo();
+    expect(I.saErr[P(1)]).toBe('Not sent yet. It goes again by itself.');
   });
 });

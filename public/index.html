@@ -12896,11 +12896,17 @@ async function _ikSaveAllGo() {
   I.saErr = {};
   const all = x.items.map((it) => ({ it, id: _lkUuid() }));
   let ok = 0;
-  for (let i = 0; i < all.length; i += 50) { // /link/batch takes up to 50 items
-    const part = all.slice(i, i + 50);
+  for (let i = 0; i < all.length; i += 20) { // S-3: 20 a call keeps each well inside the server's 20 s guard
+    const part = all.slice(i, i + 20);
     let res;
     try { res = await _ikPost(part.map((p) => ({ kind: 'action', id: p.id, type: x.type, payload: p.it.payload, note: null, leaderId: null }))); }
-    catch (e) { if (_ik() !== I) return; part.forEach((p) => { I.saErr[p.it.key] = e.message || 'Not saved. Try again.'; }); continue; }
+    catch (e) {
+      if (_ik() !== I) return;
+      // No answer or a 5xx: _ikPost keeps the chunk on the phone and resends it with the same ids.
+      const msg = !e || !e.status || e.status >= 500 ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.';
+      part.forEach((p) => { I.saErr[p.it.key] = msg; });
+      continue;
+    }
     if (_ik() !== I) return;
     for (const p of part) {
       const r = _ikOutcome(res, p.id);
