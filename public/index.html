@@ -11734,6 +11734,22 @@ function _lkOpenStep(id) {
   modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`, () => { LINK.fs = null; });
   if (!LINK.ldrs) _lkLoadLeaders().then(() => { if (LINK.fs) _lkStepDraw(); });
 }
+// I6 (R2-G3): the step 0 "Consents" button opens this student on the Consents tab: their sheet when they are in a pushed
+// consent week, else "Other" with the name filled in and searched (_ikFind, run once from _ikAfterLoad).
+function _lkStepConsents() {
+  const r = LINK.fs && _lkFlowRow(LINK.fs.rowId);
+  if (!r) return;
+  const find = { personId: r.personId || null, name: String(r.name || '') };
+  const I = _ik();
+  if (I.tab !== 'consent') { // _ikTab's reset without its navPush (go() pushes one)
+    _ikLeave();
+    try { localStorage.setItem('ysc.intakeTab', 'consent'); } catch (e) {}
+    Object.assign(I, { tab: 'consent', dates: null, date: null, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
+  }
+  I.find = find;
+  closeModal();
+  go('link-intake');
+}
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r) return '';
@@ -11742,7 +11758,7 @@ function _lkStepHtml() {
   const text = r.dnc ? dncBanner(r) + (r.mobile ? `<p class="lk-sub">Number (admin only): ${esc(fmtPhone(r.mobile))}</p>` : '')
     : href ? `<a class="btn btn-secondary btn-full lk-mb" href="${esc(href)}">Text ${r.mobileIsParent ? 'Parent' : esc(_lkFirstName(r.name))} · ${esc(fmtPhone(r.mobile))}</a>` : '<p class="lk-sub">No mobile number for this person.</p>';
   const why = _lkStepBlock(r), blocked = r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
-    : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>${_ikModuleOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="closeModal();go('link-intake')">Consents</button>` : ''}` : '';
+    : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>${_ikModuleOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkStepConsents()">Consents</button>` : ''}` : '';
   let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
   if (r.personId) {
     const ls = (LINK.ldrs || []).filter((l) => l && (l.active !== false || l.id === r.assignedLeaderId)).sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
@@ -13129,6 +13145,29 @@ function _ikAfterLoad() {
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
   // RV-I-m6: only a CLAIMED answer blocks it; a pending one is superseded by the server (S-4), so a parked change never sticks.
   if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && a.status === 'claimed') && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
+  if (I.find && I.tab === 'consent') { const f = I.find; I.find = null; _ikFind(f); } // I6: once, so a refresh never jumps
+}
+// I6: look for the student in the pushed consent weeks (this one, then at most 2 more GETs); open their sheet, else "Other".
+async function _ikFind(f) {
+  const I = _ik(), at = (l) => ((l && l.rows) || []).findIndex((r) => r && r.key === f.personId);
+  const gone = () => _ik() !== I || S.page !== 'link-intake' || I.tab !== 'consent';
+  if (f.personId) {
+    let i = at(I.list);
+    if (i < 0) {
+      for (const x of (I.dates || []).filter((d) => d.date !== I.date).slice(0, 2)) {
+        let l = null;
+        try { l = await API.fresh('/link/intake?mode=consent&date=' + encodeURIComponent(x.date), true); } catch (e) {}
+        if (gone()) return;
+        if (at(l) >= 0) { I.date = x.date; I.list = l; i = at(l); break; }
+      }
+    }
+    if (i >= 0) { I.csub = 'last'; _ikOpen(i); return; }
+  }
+  I.csub = 'other';
+  const x = _ikLk('other'), st = _ikSt();
+  x.q = f.name.trim().slice(0, 60);
+  if (x.q && !_ikLkGate(st) && _ikRev(st) >= 8) _ikLkGo('other', 1, x.q);
+  else _ikDraw();
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
