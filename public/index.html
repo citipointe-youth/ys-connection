@@ -9073,6 +9073,10 @@ async function saveAudit(){
   // (stage-1-only people come solely from these overlays' hasConnect/hasDecision
   // marks and unmatched caOnly names — see model() below).
   const carry=(kind)=>PENDING[kind].length?PENDING[kind]:((AUDIT&&AUDIT.uploads&&AUDIT.uploads[kind])||[]);
+  if(saveAudit.busy)return; // C-B7: one save at a time (up to 90 s)
+  saveAudit.busy=true;
+  const btn=document.querySelector('[onclick="CA.saveAudit()"]');if(btn)btn.disabled=true;
+  const h=_here();
   try{
     const a=await API.post('/audits',{
       service:PENDING.service,
@@ -9084,8 +9088,9 @@ async function saveAudit(){
     await auditLoad(a.year);
     PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};
     toast('Audit saved for '+a.year);
-    await render('ca-overview');
+    if(_still(h))await render('ca-overview');
   }catch(e){toast((e&&e.message)||'Save failed');}
+  finally{saveAudit.busy=false;if(btn)btn.disabled=false;}
 }
 
 // Public entry point: builds the deck for whichever term is currently active,
