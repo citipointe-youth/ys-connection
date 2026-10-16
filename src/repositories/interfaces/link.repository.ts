@@ -12,6 +12,8 @@ export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
   types?: ActionType[]; statuses?: Status[]; personId?: string;
   serviceTimeId?: string; groupId?: string;                                              // matched on the payload
+  /** S-1: at most this many rows (newest first). */
+  limit?: number;
 }
 
 /** A roster push row as the console sends it (contract RosterRow). The app keeps student_id/match itself. */
@@ -36,6 +38,8 @@ export interface ILinkRepository {
   cancelPending(id: string, by?: string): Promise<boolean>;
   /** ONE transaction, DB clock: console upsert + sweep + purge + lease. */
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
+  /** S-2 / D6: pending rows past the cut-off (cutoffDays; intake types 24 h) -> refused too-old. Also run inside claim. */
+  sweepTooOld(cutoffDays: number): Promise<{ type: ActionType; reason: 'too-old' }[]>;
   applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply>;
   listConsoles(): Promise<ConsoleRow[]>;
   /** S5: store one progress entry on that console (stamped now); entries over 10 min old are dropped. Unknown console: no-op. */

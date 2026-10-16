@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { AppSettings } from '../core/entities/settings';
-import type { ActionType, OutboxRow } from '../core/link-types';
+import type { ActionType, Capabilities, OutboxRow } from '../core/link-types';
 import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
@@ -117,10 +117,10 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     /** GET /link/intake?mode=[&date=]: the dates (counts), or one date's rows with their latest outbox actions. */
     async list(actor: Actor, q: unknown) {
       await gate(actor);
-      const f = z.object({ mode: Mode, date: Ymd.optional() }).parse(q ?? {});
+      const f = z.object({ mode: Mode, date: Ymd.optional(), view: z.string().optional() }).parse(q ?? {});
       const t = clock();
       await purgeIfDue(t);
-      if (!f.date) await d.intake.markViewed();
+      if (f.view === '1') await d.intake.markViewed(); // B18: page entry only (the SPA's quiet 5 s reloads send no view)
       const st = await d.status(actor);
       const head = { console: st.console, consoleLinkRev: st.consoleLinkRev, appLinkRev: st.appLinkRev };
       const [dates, rows] = await Promise.all([d.intake.dates(f.mode), d.intake.rows(f.mode, f.date)]);
@@ -171,12 +171,15 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     },
 
     /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
-    async hint(settings: AppSettings): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
+    async hint(settings: AppSettings, caps?: Capabilities): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
       // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s,
       // except awaiting-approval rows, which can wait days (review r1: no 10 s polling for 3 days).
-      const soon = (rows: { reason: string | null }[]) => rows.some((r) => r.reason !== 'awaiting-approval');
+      // B03: and only rows the claim could lease now: no future retryAt, and a type the console (caps = the claim's own
+      // capabilities, intake keys stripped when off) has not switched off. No caps: every type counts.
+      const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
+        && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
       const today = brisbaneToday(t);
       await purgeIfDue(t);

@@ -46,8 +46,11 @@ export const LINK_RATE_WINDOW_MS = 600_000; // … per 10 minutes (container bui
 const LOG_MAX = 2000;
 const logger = createLogger('link');
 const REPORT_BACK_DAYS = 14;
+const FLOW_BACK_DAYS = 7;       // S-1: a refused flow step is shown back for a week
+const TYPE_ONLY_MAX = 100;      // S-1: GET /link/actions?type= alone returns the newest 100
 const CONSOLE_RECENT_MS = 600_000;
 const BRISBANE_MS = 10 * 3_600_000;
+const SWEEP_EVERY_MS = 5 * 60_000; // S-2: the read-path too-old sweep, per instance
 
 const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep', 'removeFromFlowStep'];
 /** Rev 6: the flow-row types (one open per row between them). */
@@ -118,11 +121,15 @@ export interface ActionListRow { id: string; type: ActionType; status: Status; r
   /** B3 / T-7, B17: the person (or group / flow row) of an `unclear` row or a first-timer, for link:admin only. */
   name?: string | null;
   /** C-1 (F-37): 'failed' = a sent remove whose Elvanto note was not saved; missing otherwise. */
-  note?: 'failed' }
+  note?: 'failed';
+  /** S-1 / D7 (link:admin only): the consent fix/link screen's key: personId (consentFix), 'cn:'+subId (consentLink). */
+  fixKey?: string }
 /** T8: `history` newest first (<= 8, the last report included); the list comes sorted grade, girls then boys. */
 export interface LifegroupView { groupId: string; name: string; grade: number | null; gender: LinkGroupRow['gender'];
   meets: string; members: LinkGroupRow['members']; thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null;
-  history: LinkLastReport[]; defaultDate: string; openAction: ActionView | null }
+  history: LinkLastReport[]; defaultDate: string; openAction: ActionView | null;
+  /** S-1 / D7: the newest report row of the last 14 days when it was refused and nothing is open; else the key is absent. */
+  lastRefused?: ActionView }
 /** T4/T6: the person's own grade/gender/mobile (decrypted, bare digits) and the app-side assignee. */
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
   personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null;
@@ -131,7 +138,9 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/director login). */
   consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
-  consentStep: boolean }
+  consentStep: boolean;
+  /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
+  lastRefused?: ActionView }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
 export interface ConsentLookupView { id: string; kind: 'forms' | 'mismatches' | 'unlinked'; status: 'waiting' | 'working' | 'ready' | 'failed';
   reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[];
@@ -190,6 +199,17 @@ export interface LinkServiceDeps {
 
 const fullName = (r: { firstName: string; lastName: string }) => `${r.firstName} ${r.lastName}`.trim();
 const view = (r: OutboxRow): ActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason });
+/** S-1 / D7: `{lastRefused}` = of one group's / row's final rows (newest first) the newest, when it was refused and no
+ *  row is open (a later sent one clears it); otherwise `{}`, so the key is absent (the SPA hides the line). */
+const refusedLast = (open: OutboxRow | undefined, rows: OutboxRow[]): { lastRefused?: ActionView } =>
+  (!open && rows[0]?.status === 'refused' ? { lastRefused: view(rows[0]) } : {});
+/** S-1 / D7: the key the consent fix/link screen keeps its state under (I.fixes). */
+function fixKeyOf(r: OutboxRow): string | null {
+  const p = r.payload as { personId?: unknown; subId?: unknown };
+  if (r.type === 'consentFix' && typeof p.personId === 'string') return p.personId;
+  if (r.type === 'consentLink' && typeof p.subId === 'string') return `cn:${p.subId}`;
+  return null;
+}
 const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';
 /** S5: how far a long console job has got (POST /sync/push/progress); stale after 2 min, or once `after` (the push it
  *  leads to) has landed. null = nothing known (the SPA slides its bar). */
@@ -294,6 +314,27 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    * always (its page reads status and actions, and cancels through the batch).
    */
   async function gate(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
+    const settings = await access(actor, need);
+    await sweepIfDue();
+    return settings;
+  }
+  // S-2 / D6: the claim's too-old sweep also runs on link reads, so a row never sits pending forever while the console
+  // is off. Thresholds are the claim's (3 days, intake 24 h). Never fails the read; swept rows go to the error log as
+  // the claim's do. ponytail: throttled per instance (serverless), a DB-side schedule if that ever bites.
+  let lastSweep = -Infinity;
+  async function sweepIfDue(): Promise<void> {
+    const t = clock().getTime();
+    if (t - lastSweep < SWEEP_EVERY_MS) return;
+    lastSweep = t;
+    try {
+      const n = new Map<string, number>();
+      for (const s of await d.link.sweepTooOld(LINK_CUTOFF_DAYS)) n.set(s.type, (n.get(s.type) ?? 0) + 1);
+      await Promise.all([...n].map(([route, count]) => d.errorLog?.record({ category: 'link', code: 'too-old', route, role: 'console', count })));
+    } catch (e) {
+      logger.warn('too-old sweep failed', { message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  async function access(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await d.settings.getSettings();
     const admin = can(actor, 'link:admin');
     if (need === 'admin') {
@@ -643,9 +684,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     // phone can make, and a busy door's retries and duplicates never stall it.
     if (d.limiter.isBlocked(c.actor.id)) throw new TooManyRequestsError('Too many taps. Wait a minute.');
     const studentId = personId ? roster.find((x) => x.personId === personId)?.studentId ?? null : null;
+    const key = dedupeKey(it.type, p);
+    // S-4 / D5: a new intakeAnswer replaces the family's pending one in the same transaction (no separate cancel item).
+    // S-6 / D8: a new consentLookup cancels this login's pending lookups of the same kind (abandoned searches); claimed ones still run.
+    const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key }
+      : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) } : undefined;
     try {
-      const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: dedupeKey(it.type, p),
-        serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name });
+      const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
+        serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });
       return ok(row, 'saved');
     } catch (e) {
       if (e instanceof LinkIdExists) { // a concurrent flush stored the same id first (APP-72): re-read, then replay
@@ -816,7 +862,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         : z.array(Uuid).max(200).parse((Array.isArray(f.ids) ? f.ids : f.ids.split(',')).map((s) => s.trim()).filter(Boolean));
       if (!ids && !f.serviceDate && !f.type) throw new BadRequestError('Give ids, or a serviceDate and type.');
       const rows = await d.link.listActions({ ids, serviceDateFrom: f.serviceDate, serviceDateTo: f.serviceDate,
-        types: f.type ? [f.type] : undefined, createdBy: c.admin ? undefined : actor.id });
+        types: f.type ? [f.type] : undefined, createdBy: c.admin ? undefined : actor.id,
+        ...(!ids && !f.serviceDate ? { limit: TYPE_ONLY_MAX } : {}) }); // S-1: a type-only read is the newest 100
       const logins = new Map<string, string>();
       await Promise.all([...new Set(rows.map((r) => r.createdBy))].map(async (id) =>
         logins.set(id, (await d.users.findById(id))?.email ?? '')));
@@ -829,7 +876,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
         ...(c.admin ? { detail: r.detail } : {}), createdAt: r.createdAt, resultAt: r.resultAt, leaderName: r.leaderName,
         login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true, ...(names.has(r.id) ? { name: names.get(r.id) } : {}),
-        ...(r.status === 'sent' && r.detail === NOTE_FAILED_DETAIL ? { note: 'failed' as const } : {}) }));
+        ...(r.status === 'sent' && r.detail === NOTE_FAILED_DETAIL ? { note: 'failed' as const } : {}),
+        ...(c.admin && fixKeyOf(r) ? { fixKey: fixKeyOf(r)! } : {}) }));
     },
 
     async batch(actor, body) {
@@ -904,9 +952,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     async lifegroups(actor) {
       const c = context(actor, await gate(actor, ['lifegroupReport']));
-      const [groups, mirrors, sent, open] = await Promise.all([c.groups(), c.mirror(),
+      const [groups, mirrors, sent, open, done] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
-        d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN })]);
+        d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN }),
+        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused'], serviceDateFrom: addDays(c.today, -REPORT_BACK_DAYS) })]);
       const gAt = takenAt(mirrors, 'groups');
       // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
       const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
@@ -921,7 +970,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const history = [...(last ? [last] : []), ...g.history.filter((h) => h.reportId !== last?.reportId).map(withBy)]
           .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
         return { groupId: g.groupId, name: g.name, grade: g.grade, gender: g.gender, meets: g.meets, members: g.members,
-          thisWeek: g.thisWeek, lastReport: last, history, defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null };
+          thisWeek: g.thisWeek, lastReport: last, history, defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null,
+          ...refusedLast(o, done.filter((r) => (r.payload as { groupId?: string }).groupId === g.groupId)) };
       }) };
     },
 
@@ -929,6 +979,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const c = context(actor, await gate(actor, ['flows']));
       const [flows, roster, open, assigns, leaders, pushed, consoles, mirrors] = await Promise.all([c.flows(), c.roster(),
         d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
+      const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
@@ -945,7 +996,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
-            consent, dnc, consentStep: isConsentStep(f) };
+            consent, dnc, consentStep: isConsentStep(f),
+            ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
       const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
