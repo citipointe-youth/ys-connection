@@ -423,6 +423,21 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     expect(h).not.toMatch(/<tr class="ik-diff"><th scope="row">Parent&#39;s name/); // Jo Nguyen = Jo Nguyen
     expect(t).toContain("Matched with Jo Nguyen's parent form.");
   });
+  it("I9 (R2-G4): Parent's name / mobile rows show the student form's answer only, spanning both columns", () => {
+    const d = DETAIL({ forms: { student: form(P(1), { values: { first: 'Ava', last: 'Nguyen', mobile: '0412345678', gender: 'Female', parentName: 'Jo Nguyen', parentPhone: '0412 999 000' } }),
+      parent: form(P(2), { values: { first: 'Joanne', last: 'Parentname', mobile: '0412999111', gender: 'Female' }, caps: {}, status: 'approved' }) } });
+    const h = raw(d);
+    const row = (label: string) => h.match(new RegExp(`<tr[^>]*><th scope="row">${label}[\\s\\S]*?</tr>`))![0];
+    for (const r of [row('Parent&#39;s name'), row('Parent&#39;s mobile')]) {
+      expect(r.match(/<td/g)!.length).toBe(1);
+      expect(r).toContain('<td colspan="2"');
+      expect(r).not.toContain('Joanne');
+      expect(r).not.toContain('Parentname');
+      expect(r).not.toContain('999 111');
+    }
+    expect(row('Parent&#39;s mobile')).toContain('Differs'); // still compared with the parent form
+    expect(row('First name').match(/<td/g)!.length).toBe(2); // the other rows keep both forms
+  });
   it('no editable cells: no fix sheet, no Undo my changes, no tappable values', () => {
     const h = raw(DETAIL());
     expect(h).not.toContain('_ikFix');

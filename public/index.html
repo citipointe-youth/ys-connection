@@ -12982,17 +12982,16 @@ function _ikCompareHtml(d, a) {
   if (!cols.length) return '';
   const sk = s ? s.subId : null, mine = (sk && a.keeps && a.keeps[sk]) || {}, keptAll = d.kept || [], n = cols.length;
   const L = (x) => String(x || '').toLowerCase().replace(/[^a-z]/g, '');
-  // [key, student field, parent field ('=name' / '=mobile' derive from the parent's own answers; null = student only)]
-  const R = [['first', 'first'], ['last', 'last'], ['birthday', null], ['mobile', 'mobile'], ['parentName', '=name'], ['parentPhone', '=mobile'],
+  // [key, parent field (null = student only)]. I9 (R2-G4): Parent's name / number are student-form answers only (the parent
+  // form's own name and mobile are not repeated beside them); "Differs" still compares them with the parent form.
+  const R = [['first', 'first'], ['last', 'last'], ['birthday', null], ['mobile', 'mobile'], ['parentName', null], ['parentPhone', null],
     ['gender', 'gender'], ['school', null], ['grade', null]];
-  const valOf = (role, f, k, pk) => role === 'student' ? _ikVal(f, k) : pk === '=name' ? _ikNm(f) : pk === '=mobile' ? _ikVal(f, 'mobile') : _ikVal(f, pk);
+  const valOf = (role, f, k, pk) => _ikVal(f, role === 'student' ? k : pk);
   const keepRows = [], seen = {};
   const body = R.map(([k, pk]) => {
     const live = cols.filter(([role]) => role === 'student' || pk);
-    if (!s && pk && pk.charAt(0) === '=') return '';
     const cells = live.map(([role, f, fi]) => {
-      const own = role === 'student' || (pk && pk.charAt(0) !== '=');
-      const iss = own ? (f.issues || []).map((x, ii) => [x, ii]).filter(([x]) => x.key === k) : [];
+      const iss = (f.issues || []).map((x, ii) => [x, ii]).filter(([x]) => x.key === k);
       iss.forEach(([x, ii]) => { if (x.keep && !seen[x.keep.field]) { seen[x.keep.field] = 1; keepRows.push([x, fi, ii]); } });
       return { role, v: valOf(role, f, k, pk), iss };
     });
