@@ -469,6 +469,18 @@ describe('leader role sees "My car only" on the shared run view (I1)', () => {
     expect(v.fleet.map((f) => f.name)).toEqual(['Big Bus']);
     expect(v.canCoordinate).toBe(false);
   });
+  it("F4: a non-coordinating junior leader does not get drivers' end addresses (fleet + tonight's cars), except a car it is on", async () => {
+    const t = await withFleet(); // Big Bus has L1 on it
+    const van = await t.svc.saveVehicle(t.ctx('admin'), { name: 'Van', seats: 8, endsAt: 'address', endsAddress: '5 Driver St, Manly', endsPlaceId: 'fake:5-driver-st' });
+    const junior: BusCtx = { actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM };
+    const v = await t.svc.getRun(junior);
+    expect(v.fleet.find((f) => f.id === van.id)).toMatchObject({ endsAt: 'address', endsAddress: null, endsPlaceId: null });
+    expect(v.vehicles.find((x) => x.vehicleId === van.id)).toMatchObject({ endsAddress: null, endsPlaceId: null });
+    expect(v.vehicles.find((x) => x.id === t.rvId)!.leaderIds).toContain('L1'); // own car untouched (church end anyway)
+    const g = await t.svc.getRun(t.ctx('grade'));
+    expect(g.fleet.find((f) => f.id === van.id)!.endsAddress).toBe('5 Driver St, Manly'); // grade keeps it (Car setup)
+    expect(g.vehicles.find((x) => x.vehicleId === van.id)!.endsAddress).toBe('5 Driver St, Manly');
+  });
 });
 
 describe('/bus/search returns labels + suburb only, never the full street address (I2)', () => {

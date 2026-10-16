@@ -390,10 +390,15 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // suburb only; this is also what their read-only Assign shows). Leaders + fleet stay:
     // Car setup is open to every Bus login since 2026-10-15 and they hold no student data.
     const redacted = isRedactedLeader(ctx, c);
+    // F4 (review 2026-10-16): a driver's end address is their home. The "My car only" leader gets it blanked on
+    // every car but its own (grade/quad logins keep it: Car setup is open to them).
+    const me = selfLeaderId(ctx);
+    const hideEnds = <T extends { endsAddress: string | null; endsPlaceId: string | null }>(v: T, own = false): T =>
+      redacted && !own ? { ...v, endsAddress: null, endsPlaceId: null } : v;
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
         lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: lockName(run.lockBy), lockUntil: run.lockUntil, undoUntil: run.undoUntil },
-      vehicles,
+      vehicles: vehicles.map((v) => hideEnds(v, !!me && (v.ownerLeaderId === me || v.leaderIds.includes(me)))),
       riders: redacted ? riderViews.map((r) => ({
         id: r.id, studentId: null, guestId: null, addressId: null,
         runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
@@ -402,7 +407,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         droppedAt: r.droppedAt, droppedBy: r.droppedBy,
       })) : riderViews,
       leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
-      fleet: fleet.filter((v) => !v.archived), canCoordinate,
+      fleet: fleet.filter((v) => !v.archived).map((v) => hideEnds(v)), canCoordinate,
       canSeeCars: true, // T10: All cars follows the Bus module only (gate() above)
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
