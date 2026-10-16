@@ -294,3 +294,17 @@ describe('B18 client: only a real page entry marks the intake viewed', () => {
     expect((await run(true)).some((u) => u.includes('view=1'))).toBe(false);
   });
 });
+
+describe('D6 intake wording: a pending row over 15 min says the console has not picked it up', () => {
+  const f = new Function(`const _lkSeen = (iso) => 'SEEN(' + iso + ')';
+    ${['_ikOpenAct', '_ikAct', '_ikReasons', '_ikChip'].map((n) => extractFn(HTML, n)).join('\n')}
+    return { _ikChip };`)();
+  const at = (min: number) => new Date(Date.now() - min * 60e3).toISOString();
+  it('16 min pending -> since-line; 14 min -> the usual line; claimed -> Sending', () => {
+    const old = at(16);
+    expect(f._ikChip({ actions: [{ type: 'intakeSave', status: 'pending', createdAt: old }] }).line).toBe("Console hasn't picked this up yet (since SEEN(" + old + '))');
+    expect(f._ikChip({ actions: [{ type: 'intakeAnswer', status: 'pending', createdAt: old }] }).line).toBe("Console hasn't picked this up yet (since SEEN(" + old + '))');
+    expect(f._ikChip({ actions: [{ type: 'intakeSave', status: 'pending', createdAt: at(14) }] }).line).toBe('Waiting for the console.');
+    expect(f._ikChip({ actions: [{ type: 'intakeSave', status: 'claimed', createdAt: old }] }).line).toBe('Sending to Elvanto…');
+  });
+});

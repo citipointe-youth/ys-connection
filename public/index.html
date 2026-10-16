@@ -11975,6 +11975,8 @@ function _ikChip(row, st) {
   const a = _ikAct(row && row.actions);
   if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
+    // D6: still not leased after 15 min (the console is off or behind): say since when.
+    if (a.status === 'pending' && Date.now() - Date.parse(a.createdAt) > 15 * 60e3) return { label: 'Pending', tone: 'wait', line: "Console hasn't picked this up yet (since " + _lkSeen(a.createdAt) + ')' };
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
     return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') }; // F-47: the banner says when it was last seen
   }
