@@ -12196,12 +12196,12 @@ function _ikResultLine(x, d, now) {
     unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: 'Set the parent to Affiliate',
     locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
     consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
-    complete: parent ? 'Parent texted' : 'Completed New People step 0' };
+    complete: parent ? 'Parent texted' : 'Completed New People step 0', youthDemo: 'Ticked ' + of + ' Youth' };
   const t = W[x.action] || 'Saved a change';
   if (!now) return t;
   if (t === 'Parent texted') return 'Text the parent';
   const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
-    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save' }, w = t.split(' ')[0];
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick' }, w = t.split(' ')[0];
   return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
