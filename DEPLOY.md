@@ -4,12 +4,12 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-scr
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
 
 <!-- live -->
-- master sha: 2979c5d (chore/ship-gate-ci)
-- last ship: 2026-10-17 08:12 EAST
+- master sha: b9292db (feat/checkin-poll)
+- last ship: 2026-10-17 08:19 EAST
 - migration: 0033
-- SW version: ysc-v120
-- promote: live ysc-v120 (auto-promoted within ~1 min, verified 2026-10-17 08:14 EAST; read-only live checks green); last promoted: 2b80286 (ysc-v120, 2026-10-17 08:13)
-- pending branches: chore/ship feat/checkin-poll release/2026-10-17-ux ux17/bus 
+- SW version: ysc-v121
+- promote: pending (Vercel) — update this line by hand once promoted; last promoted: 2b80286 (ysc-v120, 2026-10-17 08:13)
+- pending branches: chore/ship release/2026-10-17-ux ux17/bus 
 <!-- /live -->
 
 Link contract changes (`src/core/link-*`, link/sync services+controllers, `src/tests/fixtures/elvanto-link/`): ship YS before the 11.1 console; console e2e = `spike/e2e-ys-link.js` in 11.1.
