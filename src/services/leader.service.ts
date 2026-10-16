@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades, leaderInScope } from './access-control';
+import { assertCan, canAccessGrade, canAccessGender, canSetViewGrades, quadGenderOf, quadGradesOf, actorGrades, leaderInScope, assertLeaderInScope } from './access-control';
 import type { ILeaderRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import { MINISTRY_CONFIG_DEFAULTS, gradeRange, assertGradesInRange } from '../core/ministry-config';
 import type { Leader } from '../core/entities/leader';
@@ -26,11 +26,12 @@ export interface LeaderService {
   // Self-service grade broadening: a leader (grade/quad login self-identifying
   // as this record) can add OTHER grades to their own coverage so they can see
   // and connect students from those grades too. Deliberately skips the
-  // creator/quad-scope ownership checks used by update() — same rationale as
+  // creator ownership check used by update() — same rationale as
   // updateSmsTemplate() (no server-side binding between an Actor and "the
   // leader they identify as"; most real leaders are auto-created by CSV
-  // import). Gender is NEVER touched here — that lock stays enforced by
-  // simply not accepting it as an input.
+  // import, createdByGrade: null). F2 (review 2026-10-16): the leader must be
+  // inside leaderInScope (the Home-picker rule). Gender is NEVER touched here —
+  // that lock stays enforced by simply not accepting it as an input.
   updateGrades(actor: Actor, id: string, grades: unknown): Promise<Leader>;
   // The quad grade filter (Simple logins). input = { grades: number[] | null };
   // null = "back to my grades". Writes only viewGrades (repo.setViewGrades).
@@ -55,6 +56,7 @@ function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
 export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsRepository): LeaderService {
   const assertInRange = async (grades: number[]) =>
     assertGradesInRange((settings ? (await settings.getSettings()).ministryConfig : MINISTRY_CONFIG_DEFAULTS).structure, grades);
+  const structureOf = async () => (settings ? (await settings.getSettings()).ministryConfig.structure : undefined);
   return {
     async list(actor, opts) {
       assertCan(actor, 'leader:read');
@@ -95,6 +97,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       assertCan(actor, 'leader:read');
       const l = await repo.findById(id);
       if (!l) throw new NotFoundError('Leader not found');
+      assertLeaderInScope(actor, l, await structureOf()); // F2 (2026-10-16): same rule as /leaders?pick=1 and /connections/leader/:id
       return l;
     },
 
@@ -203,11 +206,12 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
     // leaders were auto-created by CSV import (createdByGrade: null), which the
     // grade-role ownership check in update() would otherwise reject. The template
     // is a low-stakes preference field — it doesn't affect grade/gender/active
-    // scoping — so any actor who can see the leader may set it.
+    // scoping — so only a leader inside leaderInScope may have it set (F2, review 2026-10-16).
     async updateSmsTemplate(actor, id, smsTemplate) {
       assertCan(actor, 'leader:write');
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
+      assertLeaderInScope(actor, existing, await structureOf()); // F2
       const parsed = z.string().max(500).nullable().parse(smsTemplate);
       const updated: Leader = { ...existing, smsTemplate: parsed, updatedAt: new Date().toISOString() };
       return repo.save(updated);
@@ -217,6 +221,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       assertCan(actor, 'leader:write');
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
+      assertLeaderInScope(actor, existing, await structureOf()); // F2
       const parsed = z.array(z.number().int().min(6).max(12)).parse(grades);
       await assertInRange(parsed);
       const updated: Leader = { ...existing, grades: parsed as Grade[], updatedAt: new Date().toISOString() };

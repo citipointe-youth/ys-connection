@@ -4,8 +4,9 @@ import { InMemoryLeaderRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
 import { ForbiddenError, BadRequestError } from '../core/errors/app-error';
 
-function actor(role: string, opts: { grade?: number; quad?: string } = {}): Actor {
-  return { id: 'a', role: role as any, displayName: 'T', grade: (opts.grade ?? null) as any, quad: (opts.quad ?? null) as any };
+function actor(role: string, opts: { grade?: number; quad?: string; gender?: 'male' | 'female'; leaderId?: string } = {}): Actor {
+  return { id: 'a', role: role as any, displayName: 'T', grade: (opts.grade ?? null) as any, quad: (opts.quad ?? null) as any,
+    gender: opts.gender ?? null, leaderId: opts.leaderId ?? null };
 }
 const ADMIN = actor('admin');
 const G79 = actor('quad', { quad: 'g79' }); // Girls Yr 7-9
@@ -68,7 +69,7 @@ describe('Leader Service — quad add/edit parity (scoped to gender + bracket)',
 });
 
 describe('Leader Service — updateGrades (self-service grade broadening)', () => {
-  it('a grade login can broaden grades on a leader it did NOT create (no ownership check)', async () => {
+  it('a grade login can broaden grades on an in-scope leader it did NOT create (no creator check)', async () => {
     const s = await svc();
     const GRADE9 = actor('grade', { grade: 9 });
     const leader = await s.create(ADMIN, { fullName: 'Auto-imported Leader', gender: 'male', grades: [9] });
@@ -86,7 +87,7 @@ describe('Leader Service — updateGrades (self-service grade broadening)', () =
   it('never changes gender, regardless of what broadened the grades', async () => {
     const s = await svc();
     const leader = await s.create(ADMIN, { fullName: 'Locked Gender', gender: 'female', grades: [7] });
-    const updated = await s.updateGrades(B1012, leader.id, [7, 12]);
+    const updated = await s.updateGrades(G79, leader.id, [7, 12]); // F2: G79 covers a female grade-7 leader
     expect(updated.gender).toBe('female');
   });
 
@@ -191,5 +192,36 @@ describe('Leader Service — inactive list (Setup "Inactive leaders")', () => {
   it('a junior leader login (no Setup screen) cannot read the inactive list', async () => {
     const s = await svc();
     await expect(s.list(actor('leader'), { inactive: true })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
+describe('F2 (review 2026-10-16): leader detail + self-service writes are limited to leaders in scope', () => {
+  const G9F = actor('grade', { grade: 9, gender: 'female' });
+  it('get(): a grade login cannot read a leader of another gender or grade; admin can', async () => {
+    const s = await svc();
+    const senior = await s.create(ADMIN, { fullName: 'Senior', gender: 'female', grades: [11] });
+    const boy = await s.create(ADMIN, { fullName: 'Boys', gender: 'male', grades: [9] });
+    const mine = await s.create(ADMIN, { fullName: 'Mine', gender: 'female', grades: [9] });
+    await expect(s.get(G9F, senior.id)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.get(G9F, boy.id)).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await s.get(G9F, mine.id)).id).toBe(mine.id);
+    expect((await s.get(ADMIN, senior.id)).id).toBe(senior.id);
+  });
+  it('updateGrades / updateSmsTemplate: 403 outside scope, ok inside (quad bracket + gender)', async () => {
+    const s = await svc();
+    const senior = await s.create(ADMIN, { fullName: 'Senior', gender: 'female', grades: [11] });
+    const junior = await s.create(ADMIN, { fullName: 'Junior', gender: 'female', grades: [8] });
+    await expect(s.updateGrades(G79, senior.id, [11, 12])).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.updateSmsTemplate(G79, senior.id, 'hi')).rejects.toBeInstanceOf(ForbiddenError);
+    expect([...(await s.updateGrades(G79, junior.id, [8, 11])).grades].sort((a, b) => a - b)).toEqual([8, 11]);
+    expect((await s.updateSmsTemplate(G79, junior.id, 'hi <first name>')).smsTemplate).toBe('hi <first name>');
+  });
+  it('a junior leader login reads its own record only', async () => {
+    const s = await svc();
+    const me = await s.create(ADMIN, { fullName: 'Me', gender: 'female', grades: [9] });
+    const other = await s.create(ADMIN, { fullName: 'Other', gender: 'female', grades: [9] });
+    const JL = actor('leader', { leaderId: me.id });
+    expect((await s.get(JL, me.id)).id).toBe(me.id);
+    await expect(s.get(JL, other.id)).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
