@@ -132,7 +132,8 @@ export class SupabaseLinkRepository implements ILinkRepository {
         ${f.personId ? s`and person_id = ${f.personId}` : none}
         ${f.serviceTimeId ? s`and payload->>'serviceTimeId' = ${f.serviceTimeId}` : none}
         ${f.groupId ? s`and payload->>'groupId' = ${f.groupId}` : none}
-      order by created_at desc, id desc`;
+      order by created_at desc, id desc
+      ${f.limit ? s`limit ${f.limit}` : none}`;
     return rows.map((r) => toOutbox(r, null));
   }
 

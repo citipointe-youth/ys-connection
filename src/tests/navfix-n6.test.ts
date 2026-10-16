@@ -216,3 +216,75 @@ describe('S-2 / D6: the too-old sweep also runs on link reads (gate), at most ev
     expect(src).toMatch(/set status = 'refused', reason = 'too-old'.*created_at < now\(\) - make_interval\(days => \$\{cutoffDays\}\) order by id for update skip locked/);
   });
 });
+
+// ---------------------------------------------------------------- S-1 / D7
+
+describe('S-1 / D7: the last refused result comes back from the server after you leave the screen', () => {
+  const G1 = '6a000000-0000-4000-8000-000000000001', G2 = '6a000000-0000-4000-8000-000000000002';
+  const ROW1 = fx('push-flows-rev6.json').rows[0], ROW3 = fx('push-flows-rev6.json').rows[2];
+  const rep = (groupId: string, date = DATE) => newRow({ type: 'submitReport', dedupeKey: `report:${groupId}:${date}:${nid()}`, serviceDate: date,
+    payload: { groupId, date, didNotMeet: false, attendees: [], guests: 0, serviceTimeId: null } });
+  const step = (r: any) => newRow({ type: 'completeStep', dedupeKey: `complete:${r.rowId}:${nid()}`,
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId } });
+  async function finish(h: Hx, id: string, outcome: 'refused' | 'sent') {
+    await claimAll(h);
+    const item = outcome === 'refused' ? { id, outcome, reason: 'report-exists', detail: 'x' } : { id, outcome, sentLogKey: `k:${id}` };
+    const res = await h.link.applyResults(CONSOLE, [item as never], h.clock.now);
+    expect(res.applied).toEqual([id]);
+  }
+  async function pushed(h: Hx) {
+    await h.sync.push('groups', fx('push-groups.json'));
+    await h.sync.push('flows', fx('push-flows-rev6.json'));
+  }
+  const grp = async (h: Hx, id: string) => (await h.svc.lifegroups(ADMIN)).groups.find((g) => g.groupId === id)!;
+  const flow = async (h: Hx, rowId: string) => (await h.svc.flows(ADMIN)).rows.find((r) => r.rowId === rowId)!;
+
+  it('lifegroups: a refused report -> lastRefused (reason only); a later sent report -> null; an open row -> null', async () => {
+    const h = await setup(); await pushed(h);
+    const a = await h.link.insertAction(rep(G1));
+    await finish(h, a.id, 'refused');
+    expect((await grp(h, G1)).lastRefused).toEqual({ id: a.id, type: 'submitReport', status: 'refused', reason: 'report-exists' });
+    expect((await grp(h, G2)).lastRefused).toBeUndefined();
+    const b = await h.link.insertAction(rep(G1, '2026-10-15'));
+    await finish(h, b.id, 'sent');
+    expect((await grp(h, G1)).lastRefused).toBeUndefined();
+    const c = await h.link.insertAction(rep(G2));
+    await finish(h, c.id, 'refused');
+    await h.link.insertAction(rep(G2, '2026-10-14'));
+    const g2 = await grp(h, G2);
+    expect(g2.openAction).not.toBeNull();
+    expect(g2.lastRefused).toBeUndefined();
+  });
+  it('lifegroups: a refusal older than 14 days is not shown', async () => {
+    const h = await setup(); await pushed(h);
+    const a = await h.link.insertAction(rep(G1, '2026-09-30'));
+    await finish(h, a.id, 'refused');
+    expect((await grp(h, G1)).lastRefused).toBeUndefined();
+  });
+  it('flows: a refused Complete -> lastRefused on that row; a later sent one -> null', async () => {
+    const h = await setup(); await pushed(h);
+    const a = await h.link.insertAction(step(ROW1));
+    await finish(h, a.id, 'refused');
+    expect((await flow(h, ROW1.rowId)).lastRefused).toMatchObject({ id: a.id, status: 'refused', reason: 'report-exists' });
+    expect((await flow(h, ROW3.rowId)).lastRefused).toBeUndefined();
+    const b = await h.link.insertAction(step(ROW1));
+    await finish(h, b.id, 'sent');
+    expect((await flow(h, ROW1.rowId)).lastRefused).toBeUndefined();
+  });
+  it('listActions: fixKey (consentFix = personId, consentLink = cn:<subId>) for the admin only; type-only capped at 100', async () => {
+    const h = await setup();
+    const P = u(900), S = u(901);
+    const fix = await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: `cf:${P}`, personId: P, payload: { personId: P } }));
+    const ln = await h.link.insertAction(newRow({ type: 'consentLink', dedupeKey: `cn:${S}`, payload: { subId: S, personId: P } }));
+    expect((await h.svc.listActions(ADMIN, { type: 'consentFix' })).map((r) => [r.id, r.fixKey])).toEqual([[fix.id, P]]);
+    expect((await h.svc.listActions(ADMIN, { type: 'consentLink' })).map((r) => [r.id, r.fixKey])).toEqual([[ln.id, `cn:${S}`]]);
+    await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: 'cf:d', createdBy: DIR_ID, payload: { personId: P } }));
+    const dir = await h.svc.listActions(DIRECTOR, { type: 'consentFix' });
+    expect(dir).toHaveLength(1);
+    expect(dir[0]).not.toHaveProperty('fixKey');
+    for (let i = 0; i < 105; i++) await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: `cf:${i}`, payload: { personId: P } }));
+    const many = await h.svc.listActions(ADMIN, { type: 'consentFix' });
+    expect(many).toHaveLength(100);
+    expect(many.some((r) => r.id === fix.id)).toBe(false); // newest first: the oldest fell off
+  });
+});

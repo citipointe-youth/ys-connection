@@ -81,6 +81,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
         (!f.personId || r.personId === f.personId) && (!f.serviceTimeId || p(r, 'serviceTimeId') === f.serviceTimeId) &&
         (!f.groupId || p(r, 'groupId') === f.groupId))
       .sort((a, b) => cmpDesc(a, b))
+      .slice(0, f.limit)
       .map(({ row }) => ({ ...clone(row), note: null, hasNote: row.note !== null }));
   }
 

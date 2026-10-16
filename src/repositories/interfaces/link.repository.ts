@@ -12,6 +12,8 @@ export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
   types?: ActionType[]; statuses?: Status[]; personId?: string;
   serviceTimeId?: string; groupId?: string;                                              // matched on the payload
+  /** S-1: at most this many rows (newest first). */
+  limit?: number;
 }
 
 /** A roster push row as the console sends it (contract RosterRow). The app keeps student_id/match itself. */
