@@ -9728,6 +9728,7 @@ function renderNewYouth() {
     return;
   }
   if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
+    NY.seen = true; // C-B5: nyOpen may reset it from now on
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
       ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
@@ -9739,6 +9740,7 @@ function renderNewYouth() {
     const m = _nyMessage(NY.result);
     const colour = m.tone === 'good' ? 'var(--success)' : m.tone === 'bad' ? 'var(--danger)' : 'var(--warn)';
     const failed = [NY.result.student, NY.result.parent].includes('failed');
+    NY.seen = true; // C-B5
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
@@ -9817,7 +9819,7 @@ async function nySend(ev, send) {
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
   mine.last = p;
-  mine.sending = true; mine.error = null;
+  mine.sending = true; mine.error = null; mine.seen = false; // C-B5: this send's outcome has not been seen yet
   const here = () => NY === mine && S.page === 'new-youth';
   const btn = document.getElementById('ny-send');
   const label = btn ? btn.textContent : '';
@@ -9858,8 +9860,9 @@ function nySibling() {
   renderNewYouth();
 }
 function nyReset() { NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }; }
-// The Home tile: start fresh, unless a send is still in flight (then go back to it; resetting would lose its outcome).
-function nyOpen() { if (!NY.sending) nyReset(); go('new-youth'); }
+// The More entry: start fresh, unless a send is still in flight or its outcome arrived off the page and was
+// never shown (C-B5: then go back to it; resetting would lose an "unknown" outcome and invite a duplicate).
+function nyOpen() { if (!NY.sending && !((NY.unknown || NY.result) && !NY.seen)) nyReset(); go('new-youth'); }
 function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unknown = false; renderNewYouth(); }
 
 /* ── LINK MODULE ── Elvanto link screens (spec 2026-10-12-elvanto-link-app-design.md §9.2, §11).
