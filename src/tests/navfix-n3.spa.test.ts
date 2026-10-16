@@ -8,7 +8,7 @@ const src = (names: string[]) => names.map((n) => extractFn(HTML, n)).join('\n')
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 // One intake state + the stubs every lane-n3 function touches. `t` records what happened.
-function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: any[]) => any; I?: any } = {}) {
+function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: any[]) => any; I?: any; extra?: string } = {}) {
   const t: any = { modals: [] as string[], toasts: [] as string[], posts: [] as any[][], fresh: [] as string[], draws: 0, closed: 0, timers: [] as any[], uuid: 0 };
   const I: any = Object.assign({ tab: 'consent', date: '2026-10-16', key: null, csub: 'last', list: { rows: [] }, fixes: {}, lk: {}, saErr: {},
     saBusy: false, sa: null, fixPoll: null, head: null }, o.I || {});
@@ -35,6 +35,7 @@ function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: an
     const setTimeout = (cb, ms) => { __t.timers.push(ms); return 1; };
     const clearTimeout = () => {};
     const esc = (s) => String(s);
+    ${o.extra || ''}
     ${src(names)}
     return { ${names.join(', ')}, S, NAV, LINK };`)(t, I, o.fresh ?? (() => ({})), o.post ?? ((items: any[]) => ({ results: items.map((i) => ({ id: i.id, kind: 'action', outcome: 'saved' })) })));
   return { fns, t, I };
@@ -175,5 +176,52 @@ describe('D6 a fix / link the console has not picked up after 15 min says since 
     expect(fns._ikFixText({ status: 'pending', since: Date.now() - 5 * 60000 }, null)).toEqual(['wait', 'Waiting for the console.']);
     expect(fns._ikClText({ status: 'pending', since: Date.now() - 5 * 60000 })).toEqual(['wait', 'Waiting for the console.']);
     expect(fns._ikClText({ status: 'claimed', createdAt: at })[1]).toBe('The console is saving the link…');
+  });
+});
+
+describe('S-1 consent fix / link lines come back after the app was closed (_ikFixRestore)', () => {
+  const row = (o: any) => ({ id: P(90), type: 'consentFix', status: 'pending', reason: null, detail: null, createdAt: new Date(Date.now() - 60000).toISOString(), resultAt: null, ...o });
+  const rows: Record<string, any[]> = {
+    consentFix: [row({ id: P(91), fixKey: P(4) }), row({ id: P(92), fixKey: P(5), status: 'claimed' }), row({ id: P(93) }) /* old server: no fixKey */,
+      row({ id: P(94), fixKey: P(6), status: 'sent', createdAt: new Date().toISOString() }), row({ id: P(95), fixKey: P(6), status: 'pending' }) /* older than the sent one */,
+      row({ id: P(96), fixKey: P(7) })],
+    consentLink: [row({ id: P(97), type: 'consentLink', fixKey: 'cn:' + P(1) })],
+  };
+  const fresh = (p: string) => rows[p.split('type=')[1]!] || [];
+  it('seeds open rows by fixKey, newest per key, never over a live entry, skips rows with no fixKey', async () => {
+    const { fns, t, I } = env(['_ikFixRestore', '_ikFixPoll'], { fresh });
+    I.fixes[P(7)] = { id: 'live', status: 'asking', since: Date.now() };
+    await fns._ikFixRestore();
+    expect(t.fresh).toEqual(['/link/actions?type=consentFix', '/link/actions?type=consentLink']);
+    expect(I.fixes[P(4)]).toMatchObject({ id: P(91), status: 'pending' });
+    expect(I.fixes[P(5)]).toMatchObject({ id: P(92), status: 'claimed' });
+    expect(I.fixes[P(6)]).toBeUndefined(); // newest is sent: nothing to show
+    expect(I.fixes[P(7)].id).toBe('live');
+    expect(I.fixes['cn:' + P(1)]).toMatchObject({ id: P(97), status: 'pending' });
+    expect(I.fixes[P(4)].createdAt).toBe(rows.consentFix[0].createdAt); // D6 since-line uses the server time
+    expect(Object.keys(I.fixes).length).toBe(4);
+    expect(t.timers.length).toBe(1); // polling resumes for the open ones
+    await fns._ikFixRestore();
+    expect(t.fresh.length).toBe(2); // once per intake state
+  });
+  it('a server without fixKey, or an error, leaves the screen as it was', async () => {
+    const a = env(['_ikFixRestore', '_ikFixPoll'], { fresh: () => [row({})] });
+    await a.fns._ikFixRestore();
+    expect(a.I.fixes).toEqual({});
+    const b = env(['_ikFixRestore', '_ikFixPoll'], { fresh: () => { throw Object.assign(new Error('Bad'), { status: 400 }); } });
+    await b.fns._ikFixRestore();
+    expect(b.I.fixes).toEqual({});
+    expect(b.t.draws).toBe(0);
+  });
+  it('opening Mismatches or Unlinked asks once; Forms does not', async () => {
+    const stubs = `const _ikLkGate = () => ''; const _ikClCap = () => true; const _ikFixBanner = () => ''; const _ikLkStatusHtml = () => ''; const _ikLkResHtml = () => '';
+      const icS = () => '';`;
+    const { fns, t } = env(['_ikLk', '_ikLkBusy', '_ikLkPage', '_ikFixRestore', '_ikFixPoll'], { fresh: () => [], extra: stubs });
+    fns._ikLkPage('forms', null);
+    expect(t.fresh.length).toBe(0);
+    fns._ikLkPage('mismatches', null);
+    fns._ikLkPage('unlinked', null);
+    await Promise.resolve(); await Promise.resolve();
+    expect(t.fresh).toEqual(['/link/actions?type=consentFix', '/link/actions?type=consentLink']);
   });
 });
