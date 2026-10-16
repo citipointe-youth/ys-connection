@@ -427,3 +427,18 @@ describe('R7 logout: flush the intake queue once, then clear it', () => {
     expect(i).toBeLessThan(src.indexOf('_lkClear(')); // RV-I-m9: _lkClear(lkK)
   });
 });
+
+describe('Student category step: moved to New People, no parent D25 tag', () => {
+  const f = new Function(`${['_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikResultLine', '_ikDTag'].map((n) => extractFn(HTML, n)).join('\n')}
+    return { _ikResultLine, _ikDTag };`)();
+  const d = { forms: { student: { values: { first: 'Ava', last: 'Nguyen' } }, parent: { values: { first: 'Jo', last: 'Nguyen' } } } };
+  it('result line: student -> Moved Ava to New People; parent unchanged', () => {
+    expect(f._ikResultLine({ action: 'category', role: 'student' }, d)).toBe('Moved Ava to New People');
+    expect(f._ikResultLine({ action: 'category', role: 'student' }, d, true)).toBe('Move Ava to New People');
+    expect(f._ikResultLine({ action: 'category', role: 'parent' }, d)).toBe('Set the parent to Affiliate');
+  });
+  it('D25 tag only on the parent category step', () => {
+    expect(f._ikDTag({ action: 'category', role: 'parent' })[0]).toBe('D25');
+    expect(f._ikDTag({ action: 'category', role: 'student', key: 'category:student:newPeople:x' })).toBeNull();
+  });
+});

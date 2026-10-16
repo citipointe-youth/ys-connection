@@ -12156,7 +12156,7 @@ function _ikShowText(d, actions) {
 }
 // Provisional-rule tags (§10), from this one place; deleted when the operator settles the ruling.
 function _ikDTag(s) {
-  if (s && s.action === 'category') return ['D25', 'Provisional rule: New People or Inactive parents become Affiliate.'];
+  if (s && s.action === 'category' && s.role === 'parent') return ['D25', 'Provisional rule: New People or Inactive parents become Affiliate.'];
   if (s && s.action === 'consentNotReceived') return ['D20(b)', 'Provisional: this re-saves the whole profile form.'];
   return null;
 }
@@ -12324,7 +12324,7 @@ function _ikResultLine(x, d, now) {
   const n = _ikNames(d), parent = x.role === 'parent', who = ((parent ? n.parent : n.student) || '').split(' ')[0];
   const of = _ikPoss(who, parent ? 'parent' : 'student'), frm = x.role === 'consent' ? ' consent form' : ' form';
   const W = { approve: 'Approved ' + of + frm, approveNew: 'Approved ' + of + frm + ' (new profile)', unlink: 'Unlinked ' + of + ' form',
-    unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: 'Set the parent to Affiliate',
+    unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: parent ? 'Set the parent to Affiliate' : 'Moved ' + (who || 'the student') + ' to New People',
     locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
     consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
     complete: parent ? 'Parent texted' : 'Completed New People step 0', youthDemo: 'Ticked ' + of + ' Youth' };
@@ -12332,7 +12332,7 @@ function _ikResultLine(x, d, now) {
   if (!now) return t;
   if (t === 'Parent texted') return 'Text the parent';
   const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
-    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick' }, w = t.split(' ')[0];
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick', Moved: 'Move' }, w = t.split(' ')[0];
   return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
