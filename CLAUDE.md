@@ -2792,7 +2792,7 @@ Release branch `release/2026-10-16b` = `navfix/base` (C0) + lanes n6, n4, n2, n3
 - Contract: `consentLookup` kind `other` (`CONSENT_LOOKUP_KINDS`), push rows `ConsentOtherRow {personId,rowId,name,date|null,source|null,why,link|null}` (date and source go together; no `step due` source). Gated: the pill's page says "The console needs an update" until the console's link_rev >= 8 (an older console refuses the kind `unknown`).
 - **Migration 0033** only widens `link_consent_lookup.kind` (same shape as 0031). It must be applied (the promoted build) BEFORE the rev 8 console answers an Other lookup, else the push insert fails the CHECK. Tests: `consents-other.spa.test.ts`, `link-contract.test.ts` (rev 8 + 0033), `link.rev6.test.ts`, repo suite "consent lookup".
 
-### Access tidy-ups, session revocation, SPA headers, XSS guard (2026-10-17; branch `release/2026-10-17-access`; no migration; SW `ysc-vNNN` set at merge; `LINK_REV` stays 8)
+### Access tidy-ups, session revocation, SPA headers, XSS guard (2026-10-17; branch `release/2026-10-17-access`; no migration; SW `ysc-v119`; `LINK_REV` stays 8)
 
 From the 2026-10-16 read-only review (`C:\Users\ThomasPC\src\review-2026-10-16\S1-authz-matrix.md`, `S2-xss-taint.md`; plan `plans\PLAN-B-ys-access-session.md`). Bus `?as=` untouched (operator-accepted).
 - **F1** `link.service` `resolveLeader`/`iAm` (`scopedLeader`): a grade/quad login may act only as a leader in `leaderInScope` (the `?pick=1` rule; strict, operator ruling: `grades: []` or `gender: null` leaders fail); an out-of-scope or unknown "I am" counts as no leader — a plain check-in is recorded under the login's own name, notes are refused "Pick who you are first." (operator ruling 2026-10-17). Director/admin unchanged. `identity` log items untouched.
@@ -2806,7 +2806,7 @@ From the 2026-10-16 read-only review (`C:\Users\ThomasPC\src\review-2026-10-16\S
 - Minor: `POST /accounts/me/password` with no body → 400.
 - Probe re-run: `review-2026-10-16\probe\matrix.md` vs `matrix.baseline.md` — remaining LEAK cells are the documented design (names via the connect exception; Bus ministry-wide; junior leader's unfiltered `GET /leaders` names; `/link/checkin?serviceTime=` roster); see the plan's expected-delta table and `review-2026-10-16\run\lane-BH.md`.
 
-### Lifegroup report default (2026-10-17, folded into `release/2026-10-17-access`; no migration; `LINK_REV` unchanged)
+### Lifegroup report default (2026-10-17, folded into `release/2026-10-17-access`; SW `ysc-v119`; no migration; `LINK_REV` unchanged)
 - **Ruling (operator 2026-10-17): every NEW lifegroup report starts with Service = "No service"** (New report, Add report, any date, and Group did not meet switched off again). Do not reintroduce a day's-service default. That was F-25, a Claude phone-test suggestion, now reversed. **Operator rulings are not flipped on test findings.** History: 70641c1 No service → a5bb1e7 day's service (F-25) → this.
 - Edit report keeps the saved service (`base.serviceTimeId || 'none'`). `_lkDefaultSvcFor` and `LINK.rf.svcSet` are gone. The server's `ServiceView.isDefault` stays (contract field), but the report form does not read it.
 - Wire: an untouched new report now sends `serviceTimeId: null`. The console maps that to `service: ''` (11.1 `ys-link.js:216`). No console change.
