@@ -200,7 +200,7 @@ export interface LinkServiceDeps {
 const fullName = (r: { firstName: string; lastName: string }) => `${r.firstName} ${r.lastName}`.trim();
 const view = (r: OutboxRow): ActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason });
 /** S-1 / D7: `{lastRefused}` = of one group's / row's final rows (newest first) the newest, when it was refused and no
- *  row is open (a later sent one clears it); otherwise `{}`, so the key is absent (the SPA hides the line). */
+ *  row is open (a later sent or cancelled one clears it, RV-S-m3); otherwise `{}`, so the key is absent (the SPA hides the line). */
 const refusedLast = (open: OutboxRow | undefined, rows: OutboxRow[]): { lastRefused?: ActionView } =>
   (!open && rows[0]?.status === 'refused' ? { lastRefused: view(rows[0]) } : {});
 /** S-1 / D7: the key the consent fix/link screen keeps its state under (I.fixes). */
@@ -955,7 +955,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const [groups, mirrors, sent, open, done] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN }),
-        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused'], serviceDateFrom: addDays(c.today, -REPORT_BACK_DAYS) })]);
+        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -REPORT_BACK_DAYS) })]);
       const gAt = takenAt(mirrors, 'groups');
       // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
       const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
@@ -979,7 +979,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const c = context(actor, await gate(actor, ['flows']));
       const [flows, roster, open, assigns, leaders, pushed, consoles, mirrors] = await Promise.all([c.flows(), c.roster(),
         d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
-      const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
+      const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));

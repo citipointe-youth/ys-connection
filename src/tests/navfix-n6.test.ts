@@ -256,6 +256,15 @@ describe('S-1 / D7: the last refused result comes back from the server after you
     expect(g2.openAction).not.toBeNull();
     expect(g2.lastRefused).toBeUndefined();
   });
+  it('RV-S-m3: a later row that was cancelled clears the refused line (it is the newest final row)', async () => {
+    const h = await setup(); await pushed(h);
+    const a = await h.link.insertAction(rep(G1));
+    await finish(h, a.id, 'refused');
+    h.clock.now = new Date(NOW.getTime() + 1000);
+    const b = await h.link.insertAction(rep(G1, '2026-10-15'));
+    expect(await h.link.cancelPending(b.id)).toBe(true);
+    expect((await grp(h, G1)).lastRefused).toBeUndefined();
+  });
   it('lifegroups: a refusal older than 14 days is not shown', async () => {
     const h = await setup(); await pushed(h);
     const a = await h.link.insertAction(rep(G1, '2026-09-30'));
