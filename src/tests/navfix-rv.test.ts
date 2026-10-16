@@ -109,3 +109,17 @@ describe('RV-S-m4 an Unsent retry claim whose finish was lost expires after 10 m
     expect(calls[1]).toBe('update newperson_requests set created_at = now(), created_by = ? where id = ? and result is null and created_at < now() - make_interval(secs => ?) returning id');
   });
 });
+
+describe('RV-S-m5 newperson_requests are purged on the send path (already: clear()/keep() purge on every live send)', () => {
+  it('a successful send purges request rows over 14 days; so does a failed one', async () => {
+    const old = () => ({ by: 'x', result: { student: 'sent' }, createdAt: new Date(Date.now() - 15 * 86_400_000).toISOString() });
+    const t = await setup(['ok', 'ok']);
+    t.unsent.reqs.set('old', old());
+    expect((await t.svc.send(ADMIN, { ...INPUT, requestId: randomUUID() })).student).toBe('sent');
+    expect(t.unsent.reqs.has('old')).toBe(false);
+    const u = await setup(['fail']);
+    u.unsent.reqs.set('old', old());
+    expect((await u.svc.send(ADMIN, { ...INPUT, requestId: randomUUID() })).student).toBe('failed');
+    expect(u.unsent.reqs.has('old')).toBe(false);
+  });
+});
