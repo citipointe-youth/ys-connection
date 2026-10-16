@@ -225,3 +225,17 @@ describe('S-1 consent fix / link lines come back after the app was closed (_ikFi
     expect(t.fresh).toEqual(['/link/actions?type=consentFix', '/link/actions?type=consentLink']);
   });
 });
+
+describe('D7 a refusal that came after the user left shows on return (existing reason-only line)', () => {
+  it('newest refused row per fixKey is restored and reads as the usual refused line', async () => {
+    const at = new Date(Date.now() - 60000).toISOString();
+    const fresh = (p: string) => (p.endsWith('consentFix') ? [{ id: P(91), type: 'consentFix', status: 'refused', reason: 'step-moved', detail: null, createdAt: at, fixKey: P(4) }]
+      : [{ id: P(92), type: 'consentLink', status: 'refused', reason: null, detail: 'Only the admin can do this.', createdAt: at, fixKey: 'cn:' + P(1) },
+        { id: P(93), type: 'consentLink', status: 'unclear', reason: null, detail: null, createdAt: at, fixKey: 'cn:' + P(2) }]);
+    const { fns, I } = env(['_ikFixRestore', '_ikFixPoll', '_ikFixText', '_ikClText'], { fresh, extra: `const IK_FIX_REASON = ${HTML.match(/^const IK_FIX_REASON = (\{[\s\S]*?\});$/m)![1]};` });
+    await fns._ikFixRestore();
+    expect(fns._ikFixText(I.fixes[P(4)], null)).toEqual(['bad', 'Not sent: the profile changed in Elvanto. Search again.']);
+    expect(fns._ikClText(I.fixes['cn:' + P(1)])).toEqual(['bad', 'Not saved: Only the admin can do this.']);
+    expect(I.fixes['cn:' + P(2)]).toBeUndefined();
+  });
+});

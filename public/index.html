@@ -13330,7 +13330,8 @@ function _ikFixPoll() {
   }, slow ? 15000 : 3000);
 }
 // S-1: after the app was closed, the fix / link lines come back from the server, once per intake state. The newest row per
-// fixKey (consentFix: personId, consentLink: 'cn:'+subId) is shown while it is open; a live entry on this phone is never
+// fixKey (consentFix: personId, consentLink: 'cn:'+subId) is shown while it is open, or refused (D7: the existing
+// reason-only line, ruling 3); a live entry on this phone is never
 // replaced. A server that sends no fixKey changes nothing.
 async function _ikFixRestore() {
   const I = _ik();
@@ -13344,7 +13345,7 @@ async function _ikFixRestore() {
   }
   let n = 0;
   for (const [k, a] of Object.entries(newest)) {
-    if (I.fixes[k] || !['pending', 'claimed'].includes(a.status)) continue;
+    if (I.fixes[k] || !['pending', 'claimed', 'refused'].includes(a.status)) continue;
     I.fixes[k] = { id: a.id, status: a.status, reason: a.reason || null, detail: a.detail || null, createdAt: a.createdAt, since: Date.parse(a.createdAt) || Date.now() };
     n++;
   }
