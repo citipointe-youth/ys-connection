@@ -11275,6 +11275,7 @@ function _lkYpDraw() {
   if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state !== 'not-added') ex[r.personId] = true; });
   if (p.just) delete ex[p.just]; // F-02: the tapped row stays in place, greyed, for 600 ms (no row slides under the finger)
   const list = _lkYouthFilter(LINK.youth, p.q, p.grade, ex);
+  p.drawn = Date.now(); // B24: rows may have moved under the finger; _lkYpAdd ignores taps for 400 ms
   el.innerHTML = list.slice(0, 60).map((r) => r.personId === p.just
     ? `<div class="lk-lq-row dis" aria-disabled="true"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div><span class="lk-d">Adding…</span></div>`
     : `<div class="lk-lq-row" role="button" onclick="_lkYpAdd('${esc(r.personId)}')"><div class="lk-grow"><div class="lk-nm">${esc(r.name)}</div></div>`
@@ -11284,7 +11285,8 @@ function _lkYpDraw() {
 function _lkYpAdd(pid) {
   const p = LINK.yp, r = p && (LINK.youth || []).find((x) => x.personId === pid);
   // F-02: ignore every picker tap for 600 ms after an add (a double tap must not add the next row).
-  if (!r || Date.now() - (p.at || 0) < 600) return;
+  // B24 (ruling 2): and for 400 ms after the list repaints (a row that slid under the finger is not the one aimed at).
+  if (!r || Date.now() - (p.at || 0) < 600 || Date.now() - (p.drawn || 0) < 400) return;
   p.at = Date.now(); p.just = pid;
   _lkMemQueue(p.gid, pid, 'addGroupMember', r.name);
   toast('Adding ' + r.name, 2000);

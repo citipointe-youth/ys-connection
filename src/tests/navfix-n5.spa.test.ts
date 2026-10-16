@@ -270,3 +270,43 @@ describe('B16 moving a draft onto a date that already has a draft switches to it
     expect(L.rfd[G(1) + '|2026-10-05']).toBeUndefined();
   });
 });
+
+describe('B24 Add student picker ignores taps for 400 ms after the list repaints (ruling 2)', () => {
+  const pick = () => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gm[G(1)] = { canEdit: true, members: [], changes: [] };
+    L.youth = [{ personId: P(70), name: 'Tom LEstrange', grade: 11 }, { personId: P(71), name: 'Tom Other', grade: 11 }];
+    L.yp = { gid: G(1), q: 'tom', grade: '' };
+    h.calls.els['lk-yp-list'] = { innerHTML: '' };
+    return h;
+  };
+  const adds = (h: any) => h.fns._lkQGet().filter((it: any) => it.type === 'addGroupMember');
+  it('tap 100 ms after a repaint -> nothing queued; 500 ms -> queued', () => {
+    vi.useFakeTimers();
+    const h = pick();
+    h.fns._lkYpDraw();
+    vi.advanceTimersByTime(100);
+    h.fns._lkYpAdd(P(70));
+    expect(adds(h)).toHaveLength(0);
+    vi.advanceTimersByTime(400); // 500 ms after the repaint
+    h.fns._lkYpAdd(P(70));
+    expect(adds(h)).toHaveLength(1);
+  });
+  it('the post-add hold stays, and the repaint that ends it starts a new 400 ms guard', () => {
+    vi.useFakeTimers();
+    const h = pick();
+    h.fns._lkYpDraw();
+    vi.advanceTimersByTime(500);
+    h.fns._lkYpAdd(P(70));
+    vi.advanceTimersByTime(450); // inside the 600 ms hold
+    h.fns._lkYpAdd(P(71));
+    expect(adds(h)).toHaveLength(1);
+    vi.advanceTimersByTime(250); // 700 ms: the hold ended with a repaint at 600 ms, 100 ms ago
+    h.fns._lkYpAdd(P(71));
+    expect(adds(h)).toHaveLength(1);
+    vi.advanceTimersByTime(350); // 450 ms after that repaint
+    h.fns._lkYpAdd(P(71));
+    expect(adds(h)).toHaveLength(2);
+  });
+});
