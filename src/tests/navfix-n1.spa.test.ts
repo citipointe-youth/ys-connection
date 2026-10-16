@@ -295,3 +295,14 @@ describe('B15 renderLogin resets Inactive leaders open state', () => {
     expect(r).toBe(false);
   });
 });
+
+describe('RV-C-m4 a failed Send again shows the "Not sure this went" card again', () => {
+  it('ntResend hides the card while busy; a network failure repaints it once the send is over', async () => {
+    const t = notices({ post: () => Promise.reject(Object.assign(new Error('offline'), { status: undefined })) });
+    await t.submitNotice();
+    await t.ntResend();
+    await tick(); await tick();
+    expect(t.env.store['ysc.ntDraft.u1']).toBeTruthy();
+    expect(t.env.app).toContain('Not sure this went');
+  });
+});

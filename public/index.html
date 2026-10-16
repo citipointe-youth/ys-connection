@@ -1744,14 +1744,19 @@ function _ntDraftGet() { try { return JSON.parse(localStorage.getItem(_ntKey()) 
 function _ntDraftSet(d) { try { if (d) localStorage.setItem(_ntKey(), JSON.stringify(d)); else localStorage.removeItem(_ntKey()); } catch {} }
 async function _ntSend(d, btn) {
   const h = _here(); _ntBusy = d.requestId; _ntDraftSet(d);
+  let unsure = false;
   try {
     await API.post('/notices', { title: d.title, body: d.body, recipients: d.recipients, requestId: d.requestId }, 0, false, true);
     _ntDraftSet(null); Cache.del('/notices'); toast('Notice sent');
     if (_still(h)) renderNotices();
   } catch (e) {
     if (e.status >= 400 && e.status < 500) _ntDraftSet(null); // refused: nothing was saved
+    else unsure = true;
     toast(e.message || 'Could not send'); if (btn) btn.disabled = false;
-  } finally { if (_ntBusy === d.requestId) _ntBusy = null; }
+  } finally {
+    if (_ntBusy === d.requestId) _ntBusy = null;
+    if (unsure && _still(h)) renderNotices(); // RV-C-m4: the draft is still kept: show its "Not sure this went" card again
+  }
 }
 function ntResend() { const d = _ntDraftGet(); if (!d) return; const p = _ntSend(d); renderNotices(); return p; }
 function ntDiscard() { _ntDraftSet(null); renderNotices(); }
