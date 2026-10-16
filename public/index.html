@@ -2793,6 +2793,7 @@ async function doLogin() {
   try {
     const res = await API.post('/auth/login', { email, password, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
     API.setToken(res.token); S.user = res.user;
+    _ikQLogin(); /*LINK: RV-I-M2/ruling 8 */
     _vgSnap(); // R5: every login starts on the remembered "I am" leader's own grades
     _offerSaveCredential(email, password);
     // Safari's own save-password heuristic (no Credential Management API to
@@ -10411,7 +10412,7 @@ function _lkSoftReset() {
   if (LINK.tick) clearInterval(LINK.tick);
   if (LINK.toastT) clearTimeout(LINK.toastT);
   if (LINK.ik) { clearTimeout(LINK.ik.debT); clearTimeout(LINK.ik.poll); } // T4: the intake answers live in memory only
-  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned };
+  const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned, ikStop: LINK.ikStop };
   LINK = _lkFresh();
   Object.assign(LINK, keep);
 }
@@ -12356,6 +12357,7 @@ function _ikPost(items, quiet) {
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
   const k = _ikQKey(), ids = items.map((it) => it.id), keep = items.filter((it) => it.type !== 'consentLookup');
+  if (LINK.ikStop === k) return Promise.reject(new Error('Logged out. Not sent.')); // RV-I-M2: after the logout clear, nothing is kept or sent
   const fams = keep.filter((it) => it.type === 'intakeAnswer').map(_ikQRow);
   const drop = (gone) => _ikQSet(_ikQGet(k).map((e) => ({ at: e.at, items: e.items.filter((it) => !gone(it)) })).filter((e) => e.items.length), k);
   if (keep.length) {
@@ -12367,8 +12369,8 @@ function _ikPost(items, quiet) {
   ids.forEach((id) => { fly[id] = true; });
   fams.forEach((f) => { ff[f] = (ff[f] || 0) + 1; });
   return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000, !!quiet, true) // S-3: past the server's 20 s 503 guard
-    .then((r) => { const res = (r && r.results) || [], got = res.map((x) => x && x.id); drop((it) => ids.includes(it.id) && got.includes(it.id)); return res; },
-      (e) => { const st = e && e.status; if (st >= 400 && st < 500 && ![401, 408, 429].includes(st)) drop((it) => ids.includes(it.id)); throw e; })
+    .then((r) => { const res = (r && r.results) || [], got = res.map((x) => x && x.id); if (LINK.ikStop !== k) drop((it) => ids.includes(it.id) && got.includes(it.id)); return res; },
+      (e) => { const st = e && e.status; if (LINK.ikStop !== k && st >= 400 && st < 500 && ![401, 408, 429].includes(st)) drop((it) => ids.includes(it.id)); throw e; })
     .finally(() => { ids.forEach((id) => { delete fly[id]; }); fams.forEach((f) => { if (!(--ff[f] > 0)) delete ff[f]; }); });
 }
 function _ikQKey() { return 'ysc.ikq.' + ((S.user && S.user.id) || ''); }
@@ -12427,7 +12429,7 @@ function _ikQFlush() {
     for (const e of due) {
       let res;
       // RV-I-M1: re-read before each post: a newer set may have replaced (removed) an item since the snapshot.
-      if (!S.user || _ikQKey() !== k) break;
+      if (!S.user || _ikQKey() !== k || LINK.ikStop === k) break; // RV-I-M2: logged out meanwhile
       const have = new Set([].concat(..._ikQGet(k).map((x) => x.items.map((it) => it.id)))), fl = LINK.ikFly || {};
       const items = e.items.filter((it) => have.has(it.id) && !fl[it.id]);
       if (!items.length) continue;
@@ -12437,7 +12439,7 @@ function _ikQFlush() {
       try { res = await _ikPost(items, true); }
       catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
       finally { if (I0) { fams.forEach((f) => { delete I0.busyKey[f]; }); I0.busy = Math.max(0, (I0.busy || 0) - fams.length); } }
-      if (!S.user || _ikQKey() !== k) break;
+      if (!S.user || _ikQKey() !== k || LINK.ikStop === k) break;
       any = true;
       const I = LINK.ik;
       items.forEach((it) => {
@@ -12461,10 +12463,13 @@ async function _ikQLogout(ms) {
   const k = _ikQKey();
   let t;
   try { await Promise.race([_ikQFlush(), new Promise((r) => { t = setTimeout(r, ms); })]); } catch (e) {} finally { clearTimeout(t); }
+  LINK.ikStop = k; // RV-I-M2: a reply after this point never sends the next entry nor writes the key back (cleared at login)
   const n = _ikQGet(k).reduce((c, e) => c + e.items.length, 0);
   _ikQSet([], k);
   if (n) toast(n === 1 ? '1 unsent intake save was dropped' : n + ' unsent intake saves were dropped', 6000);
 }
+// At login (doLogin): the logout stop is lifted.
+function _ikQLogin() { LINK.ikStop = null; }
 try {
   window.addEventListener('online', () => { if (S.user) _ikQFlush(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'hidden' && S.user) _ikQFlush(); });

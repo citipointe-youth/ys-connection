@@ -79,3 +79,32 @@ describe('RV-I-M1 an older answer set is never posted after a newer one', () => 
     expect(I.busy).toBeFalsy();
   });
 });
+
+describe('RV-I-M2 after the logout clear nothing is sent or written back', () => {
+  const fns = [...Q_FNS, '_ikQLogout', '_lkSoftReset'];
+  const prelude = 'const _lkFresh = () => ({ ik: null });';
+  it('a hanging first post answered after the cap: key stays absent, no second POST (also across _lkSoftReset)', async () => {
+    let release: () => void = () => {};
+    const { f, calls, store } = ikEnv({ fns, prelude, post: (b, n) => (n === 1 ? new Promise((r) => { release = () => r(okb(b)); }) : Promise.resolve(okb(b))) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(2), items: [SAVE(P(1))] }, { at: at(1), items: [SAVE(P(2), 'r2')] }]));
+    await f._ikQLogout(30);
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    f._lkSoftReset(); // doLogout's _lkClear runs while POST /auth/logout is still out
+    release(); await tick(); await tick();
+    expect(calls.posts.length).toBe(1);
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    await expect(f._ikPost([SAVE(P(3), 'r3')])).rejects.toBeTruthy(); // a sheet Save in the same window: refused, not kept
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(calls.posts.length).toBe(1);
+  });
+  it('the next login lifts the stop; doLogin calls _ikQLogin right after S.user is set', async () => {
+    const { f, calls, store } = ikEnv({ fns: [...fns, '_ikQLogin'], prelude });
+    await f._ikQLogout(30);
+    f._ikQLogin();
+    await f._ikPost([SAVE(P(4))]);
+    expect(calls.posts.length).toBe(1);
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    const src = extractFn(HTML, 'doLogin');
+    expect(src.indexOf('_ikQLogin(')).toBeGreaterThan(src.indexOf('S.user = res.user'));
+  });
+});
