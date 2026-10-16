@@ -251,7 +251,7 @@ describe('B04 Check-in tile keyboard', () => {
     const clicks: string[] = [];
     const attrs: Record<string, string> = {};
     tileHtml.replace(/(\w[\w-]*)="([^"]*)"/g, (_m: string, k: string, v: string) => { attrs[k] = v; return ''; });
-    const el = { getAttribute: (k: string) => attrs[k] ?? null, click: () => clicks.push(attrs.onclick) };
+    const el = { getAttribute: (k: string) => attrs[k] ?? null, click: () => clicks.push(attrs.onclick ?? '') };
     let prevented = false;
     handler({ key, target: el, preventDefault: () => { prevented = true; } });
     return { clicks, prevented, attrs };
