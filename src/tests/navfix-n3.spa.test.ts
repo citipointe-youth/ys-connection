@@ -101,3 +101,48 @@ describe('S-3 Save all sends chunks of 20 and says when a chunk will go again by
     expect(I.saErr[P(1)]).toBe('Not sent yet. It goes again by itself.');
   });
 });
+
+describe('C-B9 consent fix / link: a retry after no answer reuses the same request id', () => {
+  const netErr = () => { throw new Error("Can't reach the server"); };
+  it('_ikFixGo: no answer, then again for the same form -> same id (server replay, not a second write)', async () => {
+    let n = 0;
+    const { fns, t, I } = env(['_ikFixGo', '_ikFixPoll'], { post: (items) => { n++; if (n === 1) netErr(); return { results: [{ id: items[0].id, kind: 'action', outcome: 'replay' }] }; } });
+    I.fixPick = { personId: P(4), subId: P(3), dnc: null };
+    await fns._ikFixGo();
+    expect(I.fixes[P(4)].status).toBe('failed');
+    expect(I.fixes[P(4)].detail).toBe('Not sent yet. It goes again by itself.');
+    I.fixPick = { personId: P(4), subId: P(3), dnc: null };
+    await fns._ikFixGo();
+    expect(t.posts[1][0].id).toBe(t.posts[0][0].id);
+    expect(I.fixes[P(4)].status).toBe('pending');
+  });
+  it('_ikFixGo: a different form, or an answered refusal (4xx), gets a new id', async () => {
+    let n = 0;
+    const { fns, t, I } = env(['_ikFixGo', '_ikFixPoll'], { post: () => { n++; if (n === 1) netErr(); const e: any = new Error('No.'); e.status = 400; throw e; } });
+    I.fixPick = { personId: P(4), subId: P(3) };
+    await fns._ikFixGo();
+    I.fixPick = { personId: P(4), subId: P(5) };
+    await fns._ikFixGo();
+    expect(t.posts[1][0].id).not.toBe(t.posts[0][0].id);
+    expect(I.fixes[P(4)].detail).toBe('No.');
+    I.fixPick = { personId: P(4), subId: P(5) };
+    await fns._ikFixGo();
+    expect(t.posts[2][0].id).not.toBe(t.posts[1][0].id);
+  });
+  it('_ikClGo: same form + same person after no answer -> same id; a different person -> new id', async () => {
+    let n = 0;
+    const { fns, t, I } = env(['_ikClGo', '_ikFixPoll'], { post: (items) => { n++; if (n !== 2) netErr(); return { results: [{ id: items[0].id, kind: 'action', outcome: 'saved' }] }; } });
+    const to = { personId: P(70), name: 'Riley' };
+    I.clPick = { sub: P(1), to, dnc: false };
+    await fns._ikClGo();
+    expect(I.fixes['cn:' + P(1)].detail).toBe('Not sent yet. It goes again by itself.');
+    I.clPick = { sub: P(1), to, dnc: false };
+    await fns._ikClGo();
+    expect(t.posts[1][0].id).toBe(t.posts[0][0].id);
+    expect(I.fixes['cn:' + P(1)].status).toBe('pending');
+    I.fixes['cn:' + P(1)] = { id: 'x', status: 'failed', noAns: true, sub: P(1), to };
+    I.clPick = { sub: P(1), to: null, dnc: false };
+    await fns._ikClGo();
+    expect(t.posts[2][0].id).not.toBe('x');
+  });
+});

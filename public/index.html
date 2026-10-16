@@ -13231,7 +13231,9 @@ async function _ikClGo() {
   closeModal();
   I.clPick = null;
   if (!p) return;
-  const key = 'cn:' + p.sub, id = _lkUuid();
+  // C-B9: a try that got no answer may have landed (or is kept by _ikPost): the same link again reuses its id (replay).
+  const key = 'cn:' + p.sub, was = I.fixes[key], pid = (v) => (v ? v.personId : null);
+  const id = was && was.status === 'failed' && was.noAns && pid(was.to) === pid(p.to) ? was.id : _lkUuid();
   I.fixes[key] = { id, status: 'asking', since: Date.now(), to: p.to };
   _ikDraw();
   try {
@@ -13240,7 +13242,11 @@ async function _ikClGo() {
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) I.fixes[key] = { id, status: 'pending', since: Date.now(), to: p.to };
     else if (r && r.outcome === 'duplicate' && r.existingId) I.fixes[key] = { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now(), to: p.to };
     else I.fixes[key] = { id, status: 'failed', detail: (r && r.message) || 'Not saved. Try again.' };
-  } catch (e) { if (_ik() !== I) return; I.fixes[key] = { id, status: 'failed', detail: e.message || 'Not saved. Try again.' }; }
+  } catch (e) {
+    if (_ik() !== I) return;
+    const noAns = !e || !e.status || e.status >= 500;
+    I.fixes[key] = { id, status: 'failed', detail: noAns ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.', noAns, to: p.to };
+  }
   _ikDraw(); _ikFixPoll();
 }
 
@@ -13277,7 +13283,8 @@ async function _ikFixGo() {
   closeModal();
   I.fixPick = null;
   if (!p) return;
-  const id = _lkUuid();
+  // C-B9: a try that got no answer may have landed (or is kept by _ikPost): the same form again reuses its id (replay).
+  const was = I.fixes[p.personId], id = was && was.status === 'failed' && was.noAns && was.sub === p.subId ? was.id : _lkUuid();
   I.fixes[p.personId] = { id, status: 'asking', since: Date.now() };
   _ikDraw();
   try {
@@ -13286,7 +13293,11 @@ async function _ikFixGo() {
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) I.fixes[p.personId] = { id, status: 'pending', since: Date.now(), dnc: p.dnc };
     else if (r && r.outcome === 'duplicate' && r.existingId) I.fixes[p.personId] = { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now() };
     else I.fixes[p.personId] = { id, status: 'failed', detail: (r && r.message) || 'Not sent. Try again.' };
-  } catch (e) { if (_ik() !== I) return; I.fixes[p.personId] = { id, status: 'failed', detail: e.message || 'Not sent. Try again.' }; }
+  } catch (e) {
+    if (_ik() !== I) return;
+    const noAns = !e || !e.status || e.status >= 500;
+    I.fixes[p.personId] = { id, status: 'failed', detail: noAns ? 'Not sent yet. It goes again by itself.' : e.message || 'Not sent. Try again.', noAns, sub: p.subId };
+  }
   _ikDraw(); _ikFixPoll();
 }
 // Every 3 s while a fix is open (15 s after the first 2 minutes); stops when none is open or the page is left.
