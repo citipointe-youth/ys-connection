@@ -2825,7 +2825,7 @@ From the 2026-10-16 read-only review (`C:\Users\ThomasPC\src\review-2026-10-16\S
 - **Verified already on master (not re-done):** GAP-3 hurry filter = B03 `faa22e8`; `viewed_at` only on `view=1` = B18 `1889e1e`. Neither is in `ad0ce91`; any build since (live is v118 = 62ed842) has them.
 - **Skipped (review #13, #15, #16):** claim purges (sub-ms; X19 note purge must stay per-call), `/link/lifegroups` all-time `sent` read (bounding drops "sent by" names on older history), `no-store` (no ETag path; Plan B owns headers).
 
-### UX batch (2026-10-17, Plan I, branch release/2026-10-17-ux; migration 0034; SW ysc-vNNN; LINK_REV 8)
+### UX batch (2026-10-17, Plan I, branch release/2026-10-17-ux; migration 0034; SW `ysc-v122`; LINK_REV 8)
 UI group (I1-I9b, worktree `wt-plan-i`) + Bus group (I10-I12, branch `ux17/bus`) merged. SW number is set at ship. Plan and lane notes: `C:\Users\ThomasPC\src\review-2026-10-16\plans\PLAN-I-ys-ux-batch-2026-10-17.md`, `run\lane-I-UI.md`, `run\lane-I-Bus.md`.
 - **I1 chips:** chips are global on phones (coarse block: `.filter-row` gap 4px, chips ~31px wide, 44px tap height). Tests: navfix-n1 B14, spa-oct-r8 T10.
 - **I2 LG sort:** LG sort is grade → girls → Mon-Sun → name, no day last. `meetsWeekday()` exported from `link-rules.ts` (full day names; "Tues" is not a day, T-49 kept). Internal sort only: no contract change, ship.sh's link-contract path warning is informational.
