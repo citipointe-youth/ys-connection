@@ -209,7 +209,7 @@ describe('B25 New person back', () => {
   });
 });
 
-describe.skip('B26 report back', () => {
+describe('B26 report back', () => {
   const open = () => {
     const w = navWorld('link-groups'); w.navPush(); // group list -> group
     const f = { date: '2026-10-16', dirty: true, ticks: {} };

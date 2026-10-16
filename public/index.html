@@ -1472,6 +1472,14 @@ function _navPop() {
       .then((yes) => { if (yes) { nyReset(); _navPop.leave = !!NAV.stack.length; navBack(); } });
     return;
   }
+  // B26: an unsent report still kept as a draft. _lkRfBack asks "Discard report?"; its Discard drops the draft
+  // from LINK.rfd before its navBack, so that pop no longer matches here (no loop). Same for its Cancel button.
+  const rf = S.page === 'link-groups' && LINK.rf, rg = rf && rf.dirty && NAV.stack.length && _lkGroup();
+  if (rg && LINK.rfd && LINK.rfd[rg.groupId + '|' + rf.date] === rf) {
+    try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+    _lkRfBack();
+    return;
+  }
   const s = NAV.stack.pop();
   if (!s) { if (S.page !== 'home') { S.page = 'home'; render(); } return; }
   if (_navSame(s, _navSnap())) { if (NAV.stack.length) { try { history.back(); } catch (e) {} } return; }
