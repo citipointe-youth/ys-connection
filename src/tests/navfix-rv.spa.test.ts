@@ -128,3 +128,45 @@ describe('RV-R8 expired session keeps that login\'s queue; another login signing
     expect(extractFn(HTML, '_handleAuthExpired')).not.toMatch(/ikq|_ikQSet|_ikQLogout/);
   });
 });
+
+// New person harness (copied from navfix-n4.spa.test.ts).
+const fns = (names: string[]) => names.map((n) => extractFn(HTML, n)).join('\n');
+// The real New person functions against small stubs (pattern from new-youth.spa.test.ts).
+const NY_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'toAuMobile', 'tidyName', '_nyFieldMsgs', '_nyRaw', '_nyShowMsgs', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth', '_nyReqDismiss'];
+function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<any>, store: Record<string, string> = {}, lsOverride?: any) {
+  const S: any = { user: { id: 'u1', role: 'admin' }, page: 'new-youth', settings: { ministryConfig: { modules: { newYouthForms: 'on' } } } };
+  const pages: string[] = [];
+  const toasts: string[] = [];
+  const button: any = { disabled: false, textContent: 'Send to Elvanto', isConnected: true };
+  const body = { host: 'H', firstName: 'Alex', lastName: 'T', dob: '2012-04-03', gender: 'm', grade: '8', school: 'S', mobile: '0412345678', parentFirst: 'P', parentLast: 'T', parentMobile: '0498765432' };
+  const ref: any = {};
+  const ls = lsOverride ?? { getItem: (k: string) => (k in store ? store[k]! : null), setItem: (k: string, v: string) => { store[k] = String(v); }, removeItem: (k: string) => { delete store[k]; } };
+  const doc = { getElementById: (id: string) => (id === 'ny-send' ? button : null), querySelector: () => null };
+  const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
+    'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS', 'navigator',
+    `let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
+    ${fns(NY_FNS)}
+    return { nySend, nyOpen, nyReset, nyBack, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
+  const h = factory(S, { post }, (m: string) => toasts.push(m), doc, ls,
+    (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },
+    () => ({ ...body }), [], [], () => 'L1', () => 'H', () => {}, () => [7, 8, 9, 10, 11, 12], ['mobile'], { onLine: true });
+  ref.h = h;
+  return { h, S, pages, toasts, store, body, last: () => pages[pages.length - 1] ?? '' };
+}
+
+
+describe('RV-C-m1 New person: an "unconfirmed" repeat reply keeps the stored request id', () => {
+  const KEY = 'ysc.nyReq.u1';
+  it('repeat + unconfirmed keeps the marker, so the next Send for the same person reuses the id; a definite repeat clears it', async () => {
+    const bodies: any[] = [];
+    let reply: any = { student: 'unconfirmed', parent: 'unconfirmed', dryRun: false, repeat: true };
+    const t = nyHarness(async (_p, body) => { bodies.push(body); return reply; });
+    await t.h.nySend({ preventDefault() {} });
+    expect(JSON.parse(t.store[KEY]!).id).toBe(bodies[0].requestId);
+    t.h.nyBack();
+    reply = { student: 'sent', parent: 'sent', dryRun: false, repeat: true };
+    await t.h.nySend({ preventDefault() {} });
+    expect(bodies[1].requestId).toBe(bodies[0].requestId);
+    expect(t.store[KEY]).toBeUndefined();
+  });
+});

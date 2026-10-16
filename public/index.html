@@ -9892,7 +9892,8 @@ async function nySend(ev, send) {
     // 45 s: the server can spend about 28 s plus the settings read (8 s form GETs in parallel, two 10 s POSTs); the default 25 s would wrongly report "unknown".
     // keepalive: the send still reaches the server if the host closes the app mid-send.
     const result = await API.post('/intake/new-youth', { ...p, send: sendList, requestId: req.id }, 45000, false, true);
-    rset(null); // a definite answer
+    // a definite answer; RV-C-m1: a repeat still "unconfirmed" (the first send may still be running) keeps the id
+    if (!(result && result.repeat && [result.student, result.parent].includes('unconfirmed'))) rset(null);
     mine.sending = false; // before drawing: renderNewYouth shows a Sending page while it is set
     mine.result = result;
     if (here()) renderNewYouth();
