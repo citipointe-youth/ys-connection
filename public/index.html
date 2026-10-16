@@ -12092,15 +12092,22 @@ function _ikReasons() {
 function _ikAct(actions) {
   return (actions || []).find((a) => a && a.status !== 'cancelled' && !(a.type === 'intakeAnswer' && a.status === 'sent')) || null;
 }
-// The overlay chip for a list row (§7.5): { label, tone, line } or null.
-function _ikChip(row, st) {
+// The overlay chip for a list row (§7.5): { label, tone, line } or null. rows = the list it sits in (counts the queue ahead).
+function _ikChip(row, st, rows) {
   const a = _ikAct(row && row.actions);
   if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
-    // D6: still not leased after 15 min (the console is off or behind): say since when.
-    if (a.status === 'pending' && Date.now() - Date.parse(a.createdAt) > 15 * 60e3) return { label: 'Pending', tone: 'wait', line: "Console hasn't picked this up yet (since " + _lkSeen(a.createdAt) + ')' };
+    // Consent-pending fix 1: claimed = the console has it and is writing (a row takes ~5 min).
+    if (a.status === 'claimed') return { label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' };
+    // D6: still not leased after 15 min. Console online = it is busy with older saves (drained oldest first); off = say since when.
+    if (Date.now() - Date.parse(a.createdAt) > 15 * 60e3) {
+      if (!(st && st.console && st.console.online)) return { label: 'Pending', tone: 'wait', line: "Console hasn't picked this up yet (since " + _lkSeen(a.createdAt) + ')' };
+      // ponytail: counts this list's open saves only; other dates/types in the queue aren't visible here.
+      const n = (rows || []).filter((r) => { const b = _ikAct(r && r.actions); return b && b !== a && _ikOpenAct(b) && Date.parse(b.createdAt) < Date.parse(a.createdAt); }).length;
+      return { label: 'Pending', tone: 'wait', line: n ? 'Queued behind ' + n + (n === 1 ? ' save' : ' saves') : 'Queued behind other saves' };
+    }
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
-    return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') }; // F-47: the banner says when it was last seen
+    return { label: 'Pending', tone: 'wait', line: 'Waiting for the console.' }; // F-47: the banner says when it was last seen
   }
   if (a.status === 'sent') return { label: 'Saved', tone: 'ok', line: a.reason === 'already' ? 'Already in Elvanto' : 'Saved' + (a.resultAt ? ' ' + _lkSeen(a.resultAt) : '') };
   if (a.status === 'unclear') return { label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" };
@@ -12787,7 +12794,7 @@ function _ikRowsHtml(list, st, open) {
     : '<div class="lk-hint">No families for this date.</div>';
   const grey = list.stale ? ' ik-grey' : '', I = _ik(), consent = I.tab === 'consent';
   const one = (r) => {
-    const i = rows.indexOf(r), c = _ikChip(r, st), tag = consent ? _ikConsentTag(r) : null, se = I.saErr && I.saErr[r.key];
+    const i = rows.indexOf(r), c = _ikChip(r, st, rows), tag = consent ? _ikConsentTag(r) : null, se = I.saErr && I.saErr[r.key];
     return `<div class="li lk-row${grey}" role="button" tabindex="0" onclick="_ikOpen(${i})"><div class="lk-grow"><div class="lk-nm">${esc(r.title)}</div>`
       + (r.reason ? `<div class="lk-d">${esc(r.reason)}</div>` : '') + (c ? `<div class="lk-st ${c.tone}">${esc(c.line)}</div>` : '')
       + (se ? `<div class="lk-st bad">${esc(se)}</div>` : '') + '</div>'
@@ -13495,12 +13502,12 @@ function _ikClNow(f) {
   const fx = _ik().fixes['cn:' + f.subId];
   return fx && fx.status === 'sent' && fx.to !== undefined ? fx.to : f.linked;
 }
-function _ikClText(a) {
+function _ikClText(a, st) {
   if (!a) return null;
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
   if (a.status === 'pending') { // D6: not picked up after 15 min says since when
     const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
-    return ['wait', isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.'];
+    return ['wait', isFinite(t) && Date.now() - t > 9e5 ? (st && st.console && st.console.online ? 'Queued behind other saves.' : "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').') : 'Waiting for the console.'];
   }
   if (a.status === 'claimed') return ['wait', 'The console is saving the link…'];
   if (a.status === 'sent') return null;
@@ -13509,7 +13516,7 @@ function _ikClText(a) {
 }
 function _ikClRow(f, i, grey, st) {
   const ics = _ikFormIcons(f), other = (f.otherOptOuts || []).length ? 'Other opt-outs: ' + f.otherOptOuts.join(', ') : '';
-  const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
+  const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Form filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const act = open ? '' : !_ikClCap(st) ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Console needs an update</span></div>'
     : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok" style="white-space:normal">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
@@ -13599,7 +13606,7 @@ function _ikFixText(a, st, name) {
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
   if (a.status === 'pending') { // D6: not picked up after 15 min says since when
     const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
-    return ['wait', (isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.') + _ikSeenLine(st)];
+    return ['wait', (isFinite(t) && Date.now() - t > 9e5 ? (st && st.console && st.console.online ? 'Queued behind other saves.' : "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').') : 'Waiting for the console.') + _ikSeenLine(st)];
   }
   if (a.status === 'claimed') return ['wait', 'Changing the profile in Elvanto…'];
   if (a.status === 'sent') return ['ok', a.reason === 'already' ? 'Already matched the form. Nothing changed.' : 'Done: the profile now matches the form.' + (a.dnc ? ' ' + _ikDncLine(a.dnc, name || 'this person') : '')];

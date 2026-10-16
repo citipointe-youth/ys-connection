@@ -146,6 +146,28 @@ describe('chips per action status (§7.5)', () => {
     expect(chip(act({ status: 'claimed' })).line).toBe('Sending to Elvanto…');
     expect(chip(act({ type: 'intakeAnswer' }))).toEqual({ label: 'Pending', tone: 'wait', line: 'Updating plan…' });
   });
+  it('claimed reads Saving, never Pending (consent-pending fix 1)', () => {
+    expect(chip(act({ status: 'claimed' }))).toEqual({ label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' });
+    expect(chip(act({ type: 'consentSave', status: 'claimed', createdAt: iso(40 * 60_000) }))).toEqual({ label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' });
+  });
+  it('pending > 15 min: online says queued behind the open saves ahead; offline keeps the old line', () => {
+    const f = makeEnv().fns, old = iso(30 * 60_000);
+    const mine = act({ id: P(91), type: 'consentSave', createdAt: old });
+    const rows = [LROW(1, { actions: [act({ type: 'consentSave', status: 'claimed', createdAt: iso(40 * 60_000) })] }),
+      LROW(2, { actions: [act({ type: 'consentSave', createdAt: iso(35 * 60_000) })] }),
+      LROW(3, { actions: [mine] }),
+      LROW(4, { actions: [act({ type: 'consentSave', createdAt: iso(20 * 60_000) })] }), // behind, not ahead
+      LROW(5, { actions: [act({ type: 'consentSave', status: 'sent', createdAt: iso(50 * 60_000) })] })]; // done, not open
+    expect(f._ikChip(rows[2], ST(), rows)).toEqual({ label: 'Pending', tone: 'wait', line: 'Queued behind 2 saves' });
+    expect(f._ikChip(rows[1], ST(), rows).line).toBe('Queued behind 1 save');
+    expect(f._ikChip(rows[2], ST()).line).toBe('Queued behind other saves'); // no list: n unknown
+    expect(f._ikChip(rows[0], ST(), rows).label).toBe('Saving');
+    expect(f._ikChip(rows[2], ST({ online: false }), rows).line).toMatch(/^Console hasn't picked this up yet \(since /);
+    expect(f._ikRowsHtml(LIST({ rows }), ST(), false)).toContain('Queued behind 2 saves');
+    expect(f._ikFixText({ status: 'pending', createdAt: old }, ST())).toEqual(['wait', 'Queued behind other saves.']);
+    expect(f._ikClText({ status: 'pending', createdAt: old }, ST())).toEqual(['wait', 'Queued behind other saves.']);
+    expect(f._ikClText({ status: 'pending', createdAt: old }, ST({ online: false }))[1]).toMatch(/^Console hasn't picked this up yet/);
+  });
   it('a sent answer reads Answers saved, never Saved; the older Save behind it shows', () => {
     const e = makeEnv();
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST())).toEqual({ label: 'Answers saved', tone: 'ok', line: 'Answers saved' });
