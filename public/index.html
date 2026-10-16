@@ -13019,11 +13019,12 @@ async function _ikSaveAllOpen() {
   const I = _ik(), rows = _ikReadyRows(I.list), date = I.date, mode = I.tab, type = mode === 'consent' ? 'consentSave' : 'intakeSave';
   if (!rows.length || I.saBusy || !date) return;
   I.saBusy = true; _ikDraw();
+  const h = _here(); // C-B4: the sheet opens only if the user is still on this list
   const dets = await Promise.all(rows.map((r) => API.fresh('/link/intake/row?mode=' + mode + '&date=' + encodeURIComponent(date) + '&key=' + encodeURIComponent(r.key), true)
     .catch(() => ({ row: { key: r.key, title: r.title }, detail: null }))));
   if (_ik() !== I) return;
   I.saBusy = false;
-  if (I.tab !== mode || I.date !== date) { _ikDraw(); return; }
+  if (!_still(h) || I.tab !== mode || I.date !== date) { _ikDraw(); return; }
   const x = _ikSaveAllItems(dets, date, type, I.list, _ikSt()), n = x.items.length, consent = type === 'consentSave';
   _ikDraw();
   if (!n) { toast('Nothing to save yet. Open each one to see why.'); return; }
@@ -13059,11 +13060,17 @@ async function _ikSaveAllGo() {
   I.saErr = {};
   const all = x.items.map((it) => ({ it, id: _lkUuid() }));
   let ok = 0;
-  for (let i = 0; i < all.length; i += 50) { // /link/batch takes up to 50 items
-    const part = all.slice(i, i + 50);
+  for (let i = 0; i < all.length; i += 20) { // S-3: 20 a call keeps each well inside the server's 20 s guard
+    const part = all.slice(i, i + 20);
     let res;
     try { res = await _ikPost(part.map((p) => ({ kind: 'action', id: p.id, type: x.type, payload: p.it.payload, note: null, leaderId: null }))); }
-    catch (e) { if (_ik() !== I) return; part.forEach((p) => { I.saErr[p.it.key] = e.message || 'Not saved. Try again.'; }); continue; }
+    catch (e) {
+      if (_ik() !== I) return;
+      // No answer or a 5xx: _ikPost keeps the chunk on the phone and resends it with the same ids.
+      const msg = !e || !e.status || e.status >= 500 ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.';
+      part.forEach((p) => { I.saErr[p.it.key] = msg; });
+      continue;
+    }
     if (_ik() !== I) return;
     for (const p of part) {
       const r = _ikOutcome(res, p.id);
@@ -13147,7 +13154,9 @@ function _ikLkApply(x, r, now) {
   if (s !== 'waiting' && s !== 'working') { x.st = 'failed'; x.msg = _ikLkReason(null); return false; }
   if (now - x.since > (x.kind === 'mismatches' ? 15 : 5) * 60000) {
     x.st = 'timeout';
-    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.' : "The console hasn't picked this up yet. Tap Ask again later.";
+    x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.'
+      : (r.reason || x.reason) === 'console-busy' ? 'The console is busy with the service. Lists open again after the service. Tap Ask again then.' // B02
+      : "The console hasn't picked this up yet. Tap Ask again later.";
     return false;
   }
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
@@ -13253,6 +13262,7 @@ function _ikLkPage(kind, st) {
     || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
   const intro = `<p class="lk-d lk-mb">${esc(kind === 'unlinked' ? 'Consent forms with no person. Tap Find person to link one. Elvanto is not changed.' : forms ? 'Every parent consent form in Elvanto, newest first.' : 'People whose newest consent form says something different from their Elvanto profile. The form always wins.')}</p>`;
   if (gate) return intro + `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
+  if (kind !== 'forms' && typeof _ikFixRestore === 'function') _ikFixRestore(); // S-1: once per intake state
   const busy = _ikLkBusy(x);
   const search = `<div class="ik-srch"><input class="fi" id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
     + `<button type="button" class="btn btn-secondary btn-sm"${busy ? ' disabled' : ''} onclick="_ikLkSearch('${kind}')">Search</button></div>`;
@@ -13317,7 +13327,10 @@ function _ikClNow(f) {
 function _ikClText(a) {
   if (!a) return null;
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
-  if (a.status === 'pending') return ['wait', 'Waiting for the console.'];
+  if (a.status === 'pending') { // D6: not picked up after 15 min says since when
+    const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
+    return ['wait', isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.'];
+  }
   if (a.status === 'claimed') return ['wait', 'The console is saving the link…'];
   if (a.status === 'sent') return null;
   if (a.status === 'refused') return ['bad', /^Not (saved|sent)\b/i.test(a.detail || '') ? a.detail : 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
@@ -13388,7 +13401,9 @@ async function _ikClGo() {
   closeModal();
   I.clPick = null;
   if (!p) return;
-  const key = 'cn:' + p.sub, id = _lkUuid();
+  // C-B9: a try that got no answer may have landed (or is kept by _ikPost): the same link again reuses its id (replay).
+  const key = 'cn:' + p.sub, was = I.fixes[key], pid = (v) => (v ? v.personId : null);
+  const id = was && was.status === 'failed' && was.noAns && pid(was.to) === pid(p.to) ? was.id : _lkUuid();
   I.fixes[key] = { id, status: 'asking', since: Date.now(), to: p.to };
   _ikDraw();
   try {
@@ -13397,7 +13412,11 @@ async function _ikClGo() {
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) I.fixes[key] = { id, status: 'pending', since: Date.now(), to: p.to };
     else if (r && r.outcome === 'duplicate' && r.existingId) I.fixes[key] = { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now(), to: p.to };
     else I.fixes[key] = { id, status: 'failed', detail: (r && r.message) || 'Not saved. Try again.' };
-  } catch (e) { if (_ik() !== I) return; I.fixes[key] = { id, status: 'failed', detail: e.message || 'Not saved. Try again.' }; }
+  } catch (e) {
+    if (_ik() !== I) return;
+    const noAns = !e || !e.status || e.status >= 500;
+    I.fixes[key] = { id, status: 'failed', detail: noAns ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.', noAns, to: p.to };
+  }
   _ikDraw(); _ikFixPoll();
 }
 
@@ -13407,7 +13426,10 @@ const IK_FIX_REASON = { 'step-moved': 'the profile changed in Elvanto. Search ag
 function _ikFixText(a, st, name) {
   if (!a) return null;
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
-  if (a.status === 'pending') return ['wait', 'Waiting for the console.' + _ikSeenLine(st)];
+  if (a.status === 'pending') { // D6: not picked up after 15 min says since when
+    const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
+    return ['wait', (isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.') + _ikSeenLine(st)];
+  }
   if (a.status === 'claimed') return ['wait', 'Changing the profile in Elvanto…'];
   if (a.status === 'sent') return ['ok', a.reason === 'already' ? 'Already matched the form. Nothing changed.' : 'Done: the profile now matches the form.' + (a.dnc ? ' ' + _ikDncLine(a.dnc, name || 'this person') : '')];
   if (a.status === 'refused') return ['bad', a.reason === 'locked' ? 'Not sent. Waiting for first live approval in the console.'
@@ -13434,7 +13456,8 @@ async function _ikFixGo() {
   closeModal();
   I.fixPick = null;
   if (!p) return;
-  const id = _lkUuid();
+  // C-B9: a try that got no answer may have landed (or is kept by _ikPost): the same form again reuses its id (replay).
+  const was = I.fixes[p.personId], id = was && was.status === 'failed' && was.noAns && was.sub === p.subId ? was.id : _lkUuid();
   I.fixes[p.personId] = { id, status: 'asking', since: Date.now() };
   _ikDraw();
   try {
@@ -13443,7 +13466,11 @@ async function _ikFixGo() {
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) I.fixes[p.personId] = { id, status: 'pending', since: Date.now(), dnc: p.dnc };
     else if (r && r.outcome === 'duplicate' && r.existingId) I.fixes[p.personId] = { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now() };
     else I.fixes[p.personId] = { id, status: 'failed', detail: (r && r.message) || 'Not sent. Try again.' };
-  } catch (e) { if (_ik() !== I) return; I.fixes[p.personId] = { id, status: 'failed', detail: e.message || 'Not sent. Try again.' }; }
+  } catch (e) {
+    if (_ik() !== I) return;
+    const noAns = !e || !e.status || e.status >= 500;
+    I.fixes[p.personId] = { id, status: 'failed', detail: noAns ? 'Not sent yet. It goes again by itself.' : e.message || 'Not sent. Try again.', noAns, sub: p.subId };
+  }
   _ikDraw(); _ikFixPoll();
 }
 // Every 3 s while a fix is open (15 s after the first 2 minutes); stops when none is open or the page is left.
@@ -13465,6 +13492,28 @@ function _ikFixPoll() {
     } catch (e) {}
     _ikDraw(); _ikFixPoll();
   }, slow ? 15000 : 3000);
+}
+// S-1: after the app was closed, the fix / link lines come back from the server, once per intake state. The newest row per
+// fixKey (consentFix: personId, consentLink: 'cn:'+subId) is shown while it is open, or refused (D7: the existing
+// reason-only line, ruling 3); a live entry on this phone is never
+// replaced. A server that sends no fixKey changes nothing.
+async function _ikFixRestore() {
+  const I = _ik();
+  if (I.fixRestored) return;
+  I.fixRestored = true;
+  const lists = await Promise.all(['consentFix', 'consentLink'].map((t) => API.fresh('/link/actions?type=' + t, true).catch(() => [])));
+  if (_ik() !== I) return;
+  const newest = {};
+  for (const a of [].concat(...lists.map((l) => (Array.isArray(l) ? l : [])))) {
+    if (a && a.fixKey && (!newest[a.fixKey] || String(a.createdAt) > String(newest[a.fixKey].createdAt))) newest[a.fixKey] = a;
+  }
+  let n = 0;
+  for (const [k, a] of Object.entries(newest)) {
+    if (I.fixes[k] || !['pending', 'claimed', 'refused'].includes(a.status)) continue;
+    I.fixes[k] = { id: a.id, status: a.status, reason: a.reason || null, detail: a.detail || null, createdAt: a.createdAt, since: Date.parse(a.createdAt) || Date.now() };
+    n++;
+  }
+  if (n) { _ikDraw(); _ikFixPoll(); }
 }
 /* ── END LINK MODULE ── */
 
