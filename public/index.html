@@ -12855,11 +12855,12 @@ async function _ikSaveAllOpen() {
   const I = _ik(), rows = _ikReadyRows(I.list), date = I.date, mode = I.tab, type = mode === 'consent' ? 'consentSave' : 'intakeSave';
   if (!rows.length || I.saBusy || !date) return;
   I.saBusy = true; _ikDraw();
+  const h = _here(); // C-B4: the sheet opens only if the user is still on this list
   const dets = await Promise.all(rows.map((r) => API.fresh('/link/intake/row?mode=' + mode + '&date=' + encodeURIComponent(date) + '&key=' + encodeURIComponent(r.key), true)
     .catch(() => ({ row: { key: r.key, title: r.title }, detail: null }))));
   if (_ik() !== I) return;
   I.saBusy = false;
-  if (I.tab !== mode || I.date !== date) { _ikDraw(); return; }
+  if (!_still(h) || I.tab !== mode || I.date !== date) { _ikDraw(); return; }
   const x = _ikSaveAllItems(dets, date, type, I.list, _ikSt()), n = x.items.length, consent = type === 'consentSave';
   _ikDraw();
   if (!n) { toast('Nothing to save yet. Open each one to see why.'); return; }
