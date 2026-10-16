@@ -12782,7 +12782,7 @@ function _ikConsentHtml(det, list, st) {
 async function _ikLoad(quiet) {
   const I = _ik(), gen = ++I.gen, mode = I.tab;
   try {
-    const r = await API.fresh('/link/intake?mode=' + mode, quiet);
+    const r = await API.fresh('/link/intake?mode=' + mode + (quiet ? '' : '&view=1'), quiet); // B18: only a real page entry marks it viewed
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: r && r.console, consoleLinkRev: r && r.consoleLinkRev, appLinkRev: r && r.appLinkRev };
     I.dates = (r && r.dates) || [];

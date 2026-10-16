@@ -275,3 +275,22 @@ describe('C-B1 Save answers: a late ok goes back only if the user is still on th
     }
   });
 });
+
+describe('B18 client: only a real page entry marks the intake viewed', () => {
+  const run = async (quiet: boolean) => {
+    const urls: string[] = [];
+    const f = new Function('urls', `
+      const I0 = { tab: 'intake', gen: 0, date: null, key: null };
+      function _ik() { return I0; }
+      const API = { fresh: (p) => { urls.push(p); return Promise.resolve(p.includes('date=') ? { rows: [] } : { dates: [{ date: '2026-10-09' }] }); } };
+      const _intakeOn = () => true, _ikLoadRow = async () => {}, _ikAfterLoad = () => {}, _ikDraw = () => {}, _ikSchedule = () => {};
+      ${extractFn(HTML, '_ikLoad')}
+      return { _ikLoad };`)(urls);
+    await f._ikLoad(quiet);
+    return urls;
+  };
+  it('first load adds view=1 to the dates call; a quiet poll never does', async () => {
+    expect((await run(false))[0]).toBe('/link/intake?mode=intake&view=1');
+    expect((await run(true)).some((u) => u.includes('view=1'))).toBe(false);
+  });
+});
