@@ -6,7 +6,7 @@ import { assertCan, can, receivesNoticePush } from './access-control';
 import type { INoticePushRepository, INoticeRepository, ISettingsRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import { NOTICE_QUADS, type Notice } from '../core/entities/notice';
 import type { Actor } from '../core/entities/user';
-import { AppError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
+import { AppError, ConflictError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
 import type { ErrorLogService } from './error-log.service';
 
 export const NOTICE_HISTORY_DAYS = 30;
@@ -108,7 +108,11 @@ export function makeNoticeService(
       await assertOn();
       assertCan(actor, 'notice:write');
       const d = SendSchema.parse(input);
-      if (d.requestId) { const dup = await repo.findById(d.requestId); if (dup) return dup; }
+      if (d.requestId) {
+        const dup = await repo.findById(d.requestId);
+        if (dup && dup.senderId !== actor.id) throw new ConflictError('This send id is already used. Send again.'); // never another sender's notice
+        if (dup) return dup;
+      }
       const saved = await repo.save({
         id: d.requestId ?? generateId(), title: d.title, body: d.body, recipients: [...new Set(d.recipients)],
         senderId: actor.id, senderName: actor.displayName, createdAt: now().toISOString(),

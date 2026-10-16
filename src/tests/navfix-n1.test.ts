@@ -18,6 +18,17 @@ describe('C-B6 notice requestId', () => {
     expect(b.id).toBe(RID);
     expect((await repo.findAll()).length).toBe(1);
   });
+  it('S-notice: the same requestId from a different sender is refused (409) and creates nothing', async () => {
+    const repo = new InMemoryNoticeRepository();
+    const svc = makeNoticeService(repo, settings);
+    const first = await svc.send(admin, { title: 't', body: 'b', recipients: ['b79'], requestId: RID });
+    const director = { id: 'dir-1', role: 'director', displayName: 'Dir', grade: null, quad: null } as unknown as Actor;
+    await expect(svc.send(director, { title: 'x', body: 'y', recipients: ['g79'], requestId: RID })).rejects.toMatchObject({ statusCode: 409 });
+    const all = await repo.findAll();
+    expect(all.length).toBe(1);
+    expect(all[0]).toMatchObject({ id: RID, senderId: 'admin-1', title: 't' });
+    expect((await svc.send(admin, { title: 't', body: 'b', recipients: ['b79'], requestId: RID })).id).toBe(first.id); // same sender: replay
+  });
   it('no requestId -> a fresh id each send (unchanged)', async () => {
     const repo = new InMemoryNoticeRepository();
     const svc = makeNoticeService(repo, settings);
