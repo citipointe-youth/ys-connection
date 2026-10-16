@@ -505,7 +505,7 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
     function _busRoutesHead() { return ''; }
     function _busUndoBar() { return ''; }
   `;
-  const car = (over: any = {}) => ({ id: 'rv1', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
+  const car = (over: any = {}) => ({ id: 'rv1', name: 'Van A', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
     eligibility: { female: true, male: true, unknown: false }, ...over });
   it('shows "No female leader" when the server flags the car', () => {
     const v = { run: { readOnly: false }, riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P1' }],
@@ -1435,7 +1435,7 @@ describe('_busRoutesHtml Lock control (I11)', () => {
     function _busRoutesHead() { return ''; }
     function _busUndoBar() { return ''; }
   `;
-  const car = (over: any = {}) => ({ id: 'rv1', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
+  const car = (over: any = {}) => ({ id: 'rv1', name: 'Van A', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
     eligibility: { female: true, male: true, unknown: false }, locked: false, ...over });
   const html = (vehicles: any[], canCoordinate: boolean) => {
     const v = { run: { readOnly: false }, canCoordinate, riders: [], vehicles };
@@ -1443,7 +1443,7 @@ describe('_busRoutesHtml Lock control (I11)', () => {
   };
   it('a coordinator gets the Lock checkbox, ticked when locked, with the id in data-rv', () => {
     expect(html([car()], true)).toContain('onchange="busLockCar(this)" data-rv="rv1"> Lock</label>');
-    expect(html([car({ locked: true })], true)).toContain('<input type="checkbox" checked onchange="busLockCar(this)"');
+    expect(html([car({ locked: true })], true)).toContain('<input type="checkbox" checked aria-label="Lock Van A" title="Generate and Unassign all leave this car alone" onchange="busLockCar(this)"');
   });
   it('read-only viewers see a Locked chip only when locked, never the checkbox', () => {
     expect(html([car({ locked: true })], false)).toContain('Locked</span>');

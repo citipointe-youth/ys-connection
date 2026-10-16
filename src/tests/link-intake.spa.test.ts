@@ -501,7 +501,7 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
       const d = DETAIL({ status: 'needs-you', holds: [{ role: 'student', text }] });
       const t = fam(d, { row: { key: P(1), status: 'needs-you', title: 'Ava Nguyen' } });
       expect(t).toContain('Fix in Elvanto, then Refresh');
-      expect(t).toContain("Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.");
+      expect(t).toContain("Elvanto links this student form to a profile the console can't confirm. Open the Student form, then approve it to the right person or Unlink it in Elvanto, then Refresh.");
       expect(t).not.toContain('answer the question');
     }
     // an answerable hold beside it still asks for the answer

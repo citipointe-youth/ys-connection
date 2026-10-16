@@ -609,13 +609,16 @@ UI group (I1-I9b, worktree `wt-plan-i`) + Bus group (I10-I12, branch `ux17/bus`)
 - **I4 Elvanto links:** `x-safari-https:` is undocumented, with fallback. Top-level `_isStandalone()` + `_extOpen(ev,url)` on the intake "In Elvanto" and Profile links (fallback `target=_blank`). Test: `ext-links.spa.test.ts`.
 - **I5 Consents filter:** `_ikSubBar` is a native `<select class="fs ik-sub">`; "Older week · consent plan" option when an older week shows.
 - **I6 step 0 "Consents":** `_lkStepConsents()` finds the student on Consents (current week, then at most 2 more GETs, else Other when rev >= 8). Test: `consents-find.spa.test.ts`.
-- **I7 Flow tiles:** Parent text tiles are admin only, bulk cap 50. "New Students" / "Parent text" tiles show only when both flows are pushed; Parent view = first step only; "Send parent text" + can't-be-recalled line; cap 50 (`Select 50 or fewer.`) on every bulk path. Test: `flows-tiles.spa.test.ts`.
+- **I7 Flow tiles:** Parent text tiles are admin only, bulk cap 50. "New Students" / "Parent text" tiles show only when both flows are pushed; Parent view = first step only; "Send parent text" + can't-be-recalled line; cap 50 (`Up to 50 at a time. Untick some first.`, Phase R) on every bulk path. Test: `flows-tiles.spa.test.ts`.
 - **I8 commentary:** default deletion table shipped: rows 1-6 deleted (`_ikTextCardHtml` and its show/hide, "Text the parent" button, Save-all footer, `_ikConseq` clause, `_ikWhenMs`), row 7 "Asked separately" → "In Flow steps", rows 8-9 kept. `_ikTextOpen`/intakeText plumbing kept.
 - **I9 Parent-form cells:** `_ikCompareHtml` no longer shows the display-only parent name/mobile cells; "Differs" unchanged.
 - **I9b:** sent intake answers say "Noted" (not "Saved"); linked-profile holds say approve or Unlink in Elvanto, then Refresh; `_ikNext` says "Fix in Elvanto, then Refresh:" when no hold is phone-answerable.
 - **I10 tidy names:** `tidyName` (bus-logic.ts) on `NewGuest` first/last name (both create paths); toast `<name> added`.
 - **I11 Bus Lock (migration 0034, adds `bus_run_vehicles.locked`):** Bus Lock is per car per night, coordinator only, and does not block manual moves. Fleet cars only. `fixedCarIdsOf` (own + locked cars) used by prepareFleet, undo, unassignAll: Generate, Fit in, Try +N cars and pool auto-fill skip a locked car; Undo neither pulls from nor puts into one. PATCH with `locked` needs `bus:coordinate` (403 otherwise); car off clears the lock. Every car locked → 400 "Every car is locked...". `LATEST_MIGRATION = '0034'`.
 - **I12 Car setup totals:** client-only `bus-totals` card: youth seats over running cars, car count, students tonight, `N short` chip when riders > seats.
+
+### Phase R polish (2026-10-17)
+- **Phase R polish (2026-10-17, branch `polish/phase-r-ys`; SW `ysc-v123`; no migration; `LINK_REV` 8):** copy/spacing/aria only. Bus nav slot label no longer pre-escaped in `_navSlots` (every renderer `esc()`s it; fixes a literal "&amp;" in the desktop label); reset-password modal says old sessions sign out within a minute; expired toast "Signed out. Please log in again."; door stale chip `gap:4px`; linked-profile hold says "in Elvanto" once; bulk cap toast "Up to 50 at a time. Untick some first."; Bus Re-generate / Unassign all sheets mention locked cars; Lock checkbox `aria-label="Lock <car>"` + tooltip. Notes: `review-2026-10-16\run\ship-polish-ys.md`.
 
 ## History
 

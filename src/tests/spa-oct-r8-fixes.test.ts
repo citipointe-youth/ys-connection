@@ -252,16 +252,15 @@ describe('T7/T8 grade filter repaints from the cache', () => {
   });
 });
 
-describe('T9 the Bus nav slot label is escaped and short on the bottom bar', () => {
-  it('a label with <img onerror> comes out escaped; mbl is Bus', () => {
+describe('T9 the Bus nav slot label is raw (renderers escape it once) and short on the bottom bar', () => {
+  it('a label with <img onerror> stays raw in the slot; mbl is Bus', () => {
     const f = loadFns(['moreItems', '_navSlots'], `const S = { user: { role: 'admin' } };
       const _lbl = '<img src=x onerror=alert(1)>'; function L(k) { return k === 'busMinistry' ? _lbl : k; }
       function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
       function _prayersOn() { return false; } function _busOn() { return true; } function _nyOn() { return false; } function _linkOn() { return false; } function _linkAdminOn() { return false; }
       function _navItemsBase() { return [{ id: 'home' }, { id: 'prayers' }]; }`);
     const slot = f._navSlots()[1];
-    expect(slot.label).toBe('&lt;img src=x onerror=alert(1)&gt;');
-    expect(slot.label).not.toContain('<img');
+    expect(slot.label).toBe('<img src=x onerror=alert(1)>'); // no pre-escape: _initShell, home quick actions and leader home esc() it once
     expect(slot.mbl).toBe('Bus');
   });
 });

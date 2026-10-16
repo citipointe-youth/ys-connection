@@ -789,7 +789,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
 .lk-done-h{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
-.lk-asof{font-weight:400;font-size:12px}
+.lk-asof{font-weight:400;font-size:12px}.lk-done-h .chip{gap:4px}
 .lk-hint{font-size:12px;color:var(--ink-mid);text-align:center;margin:12px 4px}
 /* S5 progress bar (progBar): every wait. A fill to done/total when the console says how far it is, else a sliding segment.
    Reduced motion: the segment stands still (the stage text still says what is happening). */
@@ -2523,7 +2523,7 @@ function _navSlots(u) {
     if (more.length === 0) return null;
     const m = more[0];
     if (m.id === 'prayers') return it;
-    if (m.id === 'bus') return { id:'bus', ic:'bus', label:esc(L('busMinistry')), mbl:'Bus' }; // _initShell puts labels in raw: escape here
+    if (m.id === 'bus') return { id:'bus', ic:'bus', label:L('busMinistry'), mbl:'Bus' }; // _initShell escapes labels (Plan B 2026-10-17)
     if (m.id === 'notices') return { id:'notices', ic:'bell', label:'Notices', mbl:'Notices' };
     return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
   });
@@ -8207,7 +8207,7 @@ async function submitSetPassword(id) {
     const u = (_adminData.users || []).find(x => x.id === id);
     modal(`
       <div class="mo-title">Password Updated</div>
-      <p style="color:var(--ink-mid);margin-bottom:14px">New password for <strong>${esc(u ? u.displayName : 'this account')}</strong> — shown once, share it now:</p>
+      <p style="color:var(--ink-mid);margin-bottom:14px">New password for <strong>${esc(u ? u.displayName : 'this account')}</strong> — shown once, share it now. Anyone signed in with the old password is signed out within a minute.</p>
       <div class="fg"><input class="fi" id="u-newpw-reveal" type="text" readonly value="${esc(password)}" onclick="this.select()"></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary" style="flex:1" onclick="copyText(document.getElementById('u-newpw-reveal').value)">Copy</button>
@@ -11654,7 +11654,7 @@ function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl
 function _lkBulkOpen() {
   const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length, par = _lkTilesOn() && LINK.fFlow === 'parent';
   if (!n) return;
-  if (n > 50) { toast('Select 50 or fewer.'); return; } // I7: one /link/batch holds at most 50
+  if (n > 50) { toast('Up to 50 at a time. Untick some first.'); return; } // I7: one /link/batch holds at most 50
   if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
   LINK.fb = { note: '', priv: false };
   // B06: name who is ticked (a tick inside a collapsed step is otherwise invisible); after 5, the rest fold away.
@@ -12323,8 +12323,8 @@ function _ikNames(d) {
 function _ikPoss(name, role) { return name ? name + "'s" : 'the ' + role + "'s"; }
 const IK_HOLD = {
   'Approved but not linked': 'Form approved but not linked to anyone. Link it in Elvanto.',
-  'Linked profile unclear': "Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.",
-  "Linked to a profile the form page doesn't confirm": "Elvanto links this student form to a profile the console can't confirm. Open the Student form in Elvanto: approve it to the right person or Unlink it in Elvanto, then Refresh.", // Plan D Task 5b's split of the hold above
+  'Linked profile unclear': "Elvanto links this student form to a profile the console can't confirm. Open the Student form, then approve it to the right person or Unlink it in Elvanto, then Refresh.",
+  "Linked to a profile the form page doesn't confirm": "Elvanto links this student form to a profile the console can't confirm. Open the Student form, then approve it to the right person or Unlink it in Elvanto, then Refresh.", // Plan D Task 5b's split of the hold above
   'Linked profile unreadable': "Couldn't read the linked profile. Press Refresh, or open it in Elvanto.",
   'Linked profile differs': 'Elvanto linked this form to someone else. Choose "Make a new profile", or fix the link in Elvanto.',
   'Profile unreadable': "Couldn't read a profile. Press Refresh once. If it comes back, open the profile in Elvanto: it may be archived.",
@@ -14778,7 +14778,7 @@ function _busRoutesHead() {
 }
 function busUnassignAllSheet() {
   modal(`<div class="mo-title">Unassign everyone?</div>
-    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders and leaders' own cars goes back to Unassigned. You can undo for 2 minutes.</div>
+    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders, locked cars and leaders' own cars goes back to Unassigned. You can undo for 2 minutes.</div>
     <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button class="btn btn-primary" onclick="busUnassignAll()">Unassign all</button></div>`);
 }
@@ -14790,7 +14790,7 @@ async function busUnassignAll() {
 }
 function busRoutesMenu() {
   modal(`<div class="mo-title">Re-generate all routes?</div>
-    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders is re-planned. You can undo for 2 minutes.</div>
+    <div class="card-sub" style="margin-bottom:14px">Everyone except pinned riders and locked cars is re-planned. You can undo for 2 minutes.</div>
     <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button class="btn btn-primary" onclick="busGenerate('all')">Re-generate all</button></div>`);
 }
@@ -14846,7 +14846,7 @@ function _busRoutesHtml() {
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
     // I11: Lock (fleet cars only; own cars are already left alone). Coordinators tick it; read-only viewers see a chip.
     const lockCtl = !rv.vehicleId ? '' : ro ? (rv.locked ? `<span class="chip c-neutral">${icS('lock')} Locked</span>` : '')
-      : `<label class="bus-lock-chk" onclick="event.stopPropagation()"><input type="checkbox"${rv.locked ? ' checked' : ''} onchange="busLockCar(this)" data-rv="${esc(rv.id)}"> Lock</label>`;
+      : `<label class="bus-lock-chk" onclick="event.stopPropagation()"><input type="checkbox"${rv.locked ? ' checked' : ''} aria-label="Lock ${esc(rv.name)}" title="Generate and Unassign all leave this car alone" onchange="busLockCar(this)" data-rv="${esc(rv.id)}"> Lock</label>`;
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
@@ -15524,7 +15524,7 @@ function _handleAuthExpired() {
   _shellReady = false;
   _vgReset();
   _lkSoftReset(); // F-50c: drop the in-memory link lists; the tap queue stays under its own key for retry
-  toast('Session expired, please log in again');
+  toast('Signed out. Please log in again.');
   render();
 }
 async function boot() {

@@ -115,13 +115,13 @@ describe('I7 Flow steps tiles', () => {
     expect(f.out().PUSHED.length).toBe(3);
     expect(f.out().TOASTS).toEqual(['3 parent texts queued']);
   });
-  it('51 ticked: no sheet, toast "Select 50 or fewer." (generic path too)', () => {
+  it('51 ticked: no sheet, toast "Up to 50 at a time. Untick some first." (generic path too)', () => {
     load('admin', 51);
     f._lkFlowPick('parent');
     L.fsel = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['pp' + i, true]));
     f._lkBulkOpen();
     expect(f.out().MODALS).toEqual([]);
-    expect(f.out().TOASTS).toEqual(['Select 50 or fewer.']);
+    expect(f.out().TOASTS).toEqual(['Up to 50 at a time. Untick some first.']);
     f._lkFlowPick('parent'); // off: the generic Complete path has the same cap
     L.fsel = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['pp' + i, true]));
     f._lkBulkOpen();
