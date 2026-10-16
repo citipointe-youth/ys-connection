@@ -8,7 +8,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 // ── Intake env: the real queue/send functions against a Map-backed localStorage and a recording API.post. ──
 const IK_FNS = ['_ikFresh', '_ik', '_ikOpenAct', '_ikOpenOf', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikSheetGo',
   '_ikAfterLoad', '_ikAnswersSave'];
-const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
+const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal'];
 type PostFn = (b: any, n: number) => any;
 function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
   const store = new Map<string, string>();
@@ -220,5 +220,40 @@ describe('RV-I-m4 Save all reuses the ids of kept rows', () => {
     const ids = calls.posts[0].b.items.map((i: any) => i.id);
     expect(ids[0]).toBe(P(1));
     expect(ids[1]).not.toBe(P(1));
+  });
+});
+
+describe('RV-I-m5 the flush applies consent fix/link and sheet results', () => {
+  const prelude = 'const _ikFixPoll = () => { __calls.fixPolls = (__calls.fixPolls || 0) + 1; };';
+  const FIX = (id: string) => ({ kind: 'action', id, type: 'consentFix', payload: { personId: 'p1', subId: 's1' }, note: null, leaderId: null });
+  it('a kept consentFix that lands turns "goes again by itself" into Pending and starts the poll', async () => {
+    const { f, calls, store } = ikEnv({ prelude });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [FIX(P(1))] }]));
+    const I = f._ik();
+    I.fixes = { p1: { id: P(1), status: 'failed', detail: 'Not sent yet. It goes again by itself.', noAns: true, sub: 's1' } };
+    await f._ikQFlush();
+    expect(I.fixes.p1).toMatchObject({ id: P(1), status: 'pending' });
+    expect((calls as any).fixPolls).toBe(1);
+  });
+  it('a kept fix refused on resend shows the reason; a 4xx for the whole batch too', async () => {
+    const { f, store } = ikEnv({ prelude, post: (b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', message: 'Too old.' }] }) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [FIX(P(1))] }]));
+    const I = f._ik();
+    I.fixes = { p1: { id: P(1), status: 'failed', detail: 'Not sent yet. It goes again by itself.', noAns: true } };
+    await f._ikQFlush();
+    expect(I.fixes.p1).toMatchObject({ status: 'failed', detail: 'Too old.' });
+    const e2 = ikEnv({ prelude, post: () => httpErr(400) });
+    e2.store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [FIX(P(1))] }]));
+    const I2 = e2.f._ik();
+    I2.fixes = { p1: { id: P(1), status: 'failed', detail: 'Not sent yet. It goes again by itself.', noAns: true } };
+    await e2.f._ikQFlush();
+    expect(I2.fixes.p1.detail).toBe('HTTP 400');
+  });
+  it('a kept sheet save refused on resend is toasted, naming the family', async () => {
+    const { f, calls, store } = ikEnv({ prelude, post: (b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', message: 'The plan changed.' }] }) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [SAVE(P(1), 'r1')] }]));
+    const I = f._ik(); I.list = { rows: [{ key: 'r1', title: 'Smith family' }] };
+    await f._ikQFlush();
+    expect(calls.toasts).toEqual(['Smith family: The plan changed.']);
   });
 });

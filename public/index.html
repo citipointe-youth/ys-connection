@@ -12449,10 +12449,16 @@ function _ikQFlush() {
       const I0 = LINK.ik, fams = I0 ? items.filter((it) => it.type === 'intakeAnswer').map((it) => ((it.payload && it.payload.family) || [])[0]) : [];
       if (I0) { const bk = I0.busyKey || (I0.busyKey = {}); fams.forEach((f) => { bk[f] = true; }); I0.busy = (I0.busy || 0) + fams.length; }
       try { res = await _ikPost(items, true); }
-      catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
+      catch (er) {
+        const st = er && er.status;
+        if (st === 401 || !(st >= 400 && st < 500)) break; // offline: next time
+        _ikQApply(items, null, (er && er.message) || 'Not sent. Try again.'); // refused as a whole: dropped, say so on its line
+        continue;
+      }
       finally { if (I0) { fams.forEach((f) => { delete I0.busyKey[f]; }); I0.busy = Math.max(0, (I0.busy || 0) - fams.length); } }
       if (!S.user || _ikQKey() !== k || LINK.ikStop === k) break;
       any = true;
+      _ikQApply(items, res);
       const I = LINK.ik;
       items.forEach((it) => {
         if (!I || it.type !== 'intakeAnswer') return;
@@ -12466,6 +12472,29 @@ function _ikQFlush() {
   })().catch(() => false).finally(() => { LINK.ikFlushing = null; }); // callers (_lkBoot, online, visibilitychange) never await: never reject
   LINK.ikFlushing = p;
   return p;
+}
+// RV-I-m5: a resent consent fix / link updates its line (so "goes again by itself" clears; the poll takes over); a
+// resent sheet save that is refused is toasted, naming the family. bad = the whole POST was refused with that message.
+function _ikQApply(items, res, bad) {
+  const I = LINK.ik;
+  if (!I) return;
+  let fx = false;
+  items.forEach((it) => {
+    const r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
+    if (!r) return;
+    const fk = Object.keys(I.fixes || {}).find((x) => I.fixes[x] && I.fixes[x].id === it.id);
+    if (fk) {
+      const was = I.fixes[fk];
+      fx = true;
+      if (r.outcome === 'saved' || r.outcome === 'replay') I.fixes[fk] = { id: it.id, status: 'pending', since: Date.now(), to: was.to };
+      else if (r.outcome === 'duplicate' && r.existingId) I.fixes[fk] = { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now(), to: was.to };
+      else I.fixes[fk] = { id: it.id, status: 'failed', detail: r.message || 'Not sent. Try again.' };
+    } else if (['intakeSave', 'consentSave', 'intakeText'].includes(it.type) && r.message && !['saved', 'replay', 'duplicate'].includes(r.outcome)) {
+      const row = (it.payload || {}).row, t = ((I.list && (I.list.rows || []).find((x) => x.key === row)) || {}).title;
+      toast(t && I.key !== row ? t + ': ' + r.message : r.message);
+    }
+  });
+  if (fx) { _ikDraw(); _ikFixPoll(); }
 }
 // R7 (ruling 7): at logout, one try to send what is kept (capped, so a dead network never blocks logout), then the key
 // is cleared; anything still unsent is dropped and the toast says how many.

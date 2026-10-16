@@ -19,7 +19,7 @@ describe('B01 Tick Youth result line', () => {
 // ── Intake env: the real queue/send functions against a Map-backed localStorage and a recording API.post. ──
 const IK_FNS = ['_ikFresh', '_ik', '_ikOpenAct', '_ikOpenOf', '_ikPost', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikSheetGo',
   '_ikAfterLoad', '_ikAnswersSave'];
-const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikUnlocal'];
+const Q_FNS = ['_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal'];
 type PostFn = (b: any, n: number) => any;
 function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
   const store = new Map<string, string>();
