@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { makeAuthService, recordDevice } from '../services/auth.service';
 import { InMemoryUserRepository } from '../repositories/in-memory';
 import { hashPassword } from '../utils/crypto';
@@ -14,7 +14,7 @@ async function seedUser(mustChangePassword: boolean) {
     grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
     mustChangePassword, createdAt: now, updatedAt: now,
   });
-  return { users, auth: makeAuthService(users) };
+  return { users, auth: makeAuthService(users, { userTtlMs: 0 }) };
 }
 
 describe('Auth Service — mustChangePassword in the session', () => {
@@ -32,19 +32,14 @@ describe('Auth Service — mustChangePassword in the session', () => {
     expect(actor?.mustChangePassword).toBe(false);
   });
 
-  it('issueTokenFor mints a token reflecting the CURRENT DB state, not the old one', async () => {
+  it('resolveToken re-reads the account: a cleared mustChangePassword is seen without a new token; issueTokenFor still mints a fresh one', async () => {
     const { users, auth } = await seedUser(true);
     const { token: staleToken } = await auth.login({ email: 'director', password: 'correcthorse1' });
     expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(true);
-
-    // Simulate changeOwnPassword() clearing the flag in the DB — the old token
-    // is still trusted as-is (that's the bug this covers) until a fresh one is issued.
     const existing = await users.findById('u-1');
     await users.save({ ...existing!, mustChangePassword: false });
-    expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(true);
-
+    expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(false); // F5: DB wins
     const freshToken = await auth.issueTokenFor('u-1');
-    expect(freshToken).not.toBeNull();
     expect((await auth.resolveToken(freshToken!))?.mustChangePassword).toBe(false);
   });
 
@@ -175,5 +170,56 @@ describe('AuthService.login — a retire during the password check is not undone
     const now = (await users.findById('u-1'))!;
     expect(now.status).toBe('inactive');
     expect(now.updatedAt).toBe('retired');
+  });
+});
+
+describe('F5 (review 2026-10-16): session revocation', () => {
+  it("a deactivated account's token stops resolving", async () => {
+    const { users, auth } = await seedUser(false);
+    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    expect(await auth.resolveToken(token)).not.toBeNull();
+    await users.save({ ...(await users.findById('u-1'))!, status: 'inactive' });
+    expect(await auth.resolveToken(token)).toBeNull();
+  });
+  it("a demoted account's token carries the new role and scope", async () => {
+    const { users, auth } = await seedUser(false);
+    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    await users.save({ ...(await users.findById('u-1'))!, role: 'leader', leaderId: 'L9' });
+    expect(await auth.resolveToken(token)).toMatchObject({ role: 'leader', leaderId: 'L9' });
+  });
+  it('an admin password reset revokes outstanding tokens; a token minted after the reset works', async () => {
+    const { users, auth } = await seedUser(false);
+    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    await users.save({ ...(await users.findById('u-1'))!, passwordHash: await hashPassword('newpassword1') });
+    expect(await auth.resolveToken(token)).toBeNull();
+    const fresh = await auth.issueTokenFor('u-1');
+    expect(await auth.resolveToken(fresh!)).toMatchObject({ id: 'u-1' });
+  });
+  it('the fresh token from a self password change resolves even while the user cache is warm', async () => {
+    const users = new InMemoryUserRepository(); await users.init();
+    const now = new Date().toISOString();
+    await users.save({ id: 'u-1', displayName: 'D', email: 'director', role: 'director', grade: null, quad: null, status: 'active',
+      passwordHash: await hashPassword('correcthorse1'), mustChangePassword: false, createdAt: now, updatedAt: now });
+    const auth = makeAuthService(users, { userTtlMs: 60_000 });
+    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    expect(await auth.resolveToken(token)).not.toBeNull(); // cache warm with the old hash
+    await users.save({ ...(await users.findById('u-1'))!, passwordHash: await hashPassword('newpassword1') });
+    const fresh = await auth.issueTokenFor('u-1');
+    expect(await auth.resolveToken(fresh!)).toMatchObject({ id: 'u-1' }); // forced re-read on fingerprint mismatch
+    expect(await auth.resolveToken(token)).toBeNull();
+  });
+  it('a preview token keeps mustChangePassword:false although the DB row says true', async () => {
+    const { auth } = await seedUser(true);
+    const preview = await auth.issueTokenFor('u-1', { mustChangePassword: false }, 60_000);
+    expect((await auth.resolveToken(preview!))?.mustChangePassword).toBe(false);
+  });
+  it('the per-instance cache serves repeat resolves without hitting the repo (60 s)', async () => {
+    const { users } = await seedUser(false);
+    const auth = makeAuthService(users, { userTtlMs: 60_000 });
+    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const spy = vi.spyOn(users, 'findById');
+    await auth.resolveToken(token); await auth.resolveToken(token); await auth.resolveToken(token);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

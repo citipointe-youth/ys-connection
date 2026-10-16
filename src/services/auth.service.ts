@@ -1,5 +1,5 @@
 import { isProductionEnv } from '../config/is-production';
-import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomBytes, createHmac, createHash, timingSafeEqual } from 'node:crypto';
 import { verifyPassword, hashPassword, needsRehash } from '../utils/crypto';
 import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor, User, SafeUser } from '../core/entities/user';
@@ -60,17 +60,23 @@ function secretOrThrow(): string {
   return rawSecret();
 }
 
-// The signed token carries the full actor so authenticated requests don't need
-// a DB lookup to resolve the caller — the HMAC guarantees it wasn't tampered
-// with. (Trade-off: a role/status change only takes effect on the user's next
-// login, within the 12h token TTL.)
-function signSession(actor: Actor, expiresAt: number): string {
-  const payload = Buffer.from(JSON.stringify({ userId: actor.id, expiresAt, actor })).toString('base64url');
+// The signed token carries the actor as a hint and `pw`, a fingerprint of the password hash.
+// F5 (review 2026-10-16): resolveToken re-reads the account (per-instance cache 60 s), so a
+// deactivation, demotion or password reset bites within a minute, not at the 12 h expiry.
+/** F5: a short fingerprint of the stored password hash, carried in the token so a password reset revokes it. */
+export function passwordFingerprint(hash: string | undefined | null): string {
+  return hash ? createHash('sha256').update(hash).digest('hex').slice(0, 16) : '';
+}
+
+type Session = { userId: string; expiresAt: number; actor?: Actor; pw?: string };
+
+function signSession(actor: Actor, expiresAt: number, pw: string): string {
+  const payload = Buffer.from(JSON.stringify({ userId: actor.id, expiresAt, actor, pw })).toString('base64url');
   const sig = createHmac('sha256', secretOrThrow()).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 
-function parseSession(token: string): { userId: string; expiresAt: number; actor?: Actor } | null {
+function parseSession(token: string): Session | null {
   if (!sessionSecretConfigured()) return null;
   const dot = token.lastIndexOf('.');
   if (dot === -1) return null;
@@ -81,7 +87,7 @@ function parseSession(token: string): { userId: string; expiresAt: number; actor
     const a = Buffer.from(sig, 'base64url');
     const b = Buffer.from(expected, 'base64url');
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-    return JSON.parse(Buffer.from(payload, 'base64url').toString()) as { userId: string; expiresAt: number; actor?: Actor };
+    return JSON.parse(Buffer.from(payload, 'base64url').toString()) as Session;
   } catch {
     return null;
   }
@@ -117,10 +123,9 @@ export interface AuthService {
   resolveToken(token: string): Promise<Actor | null>;
   logout(token: string): Promise<void>;
   // Mint a fresh session token from the user's CURRENT DB state. Needed after
-  // any change that flips a claim baked into the token at login (right now:
-  // mustChangePassword) — resolveToken() trusts the token's embedded actor and
-  // never re-reads the DB, so without this the old token keeps enforcing the
-  // stale claim for the rest of its 12h TTL. Returns null if the user no
+  // a password change: the old token's pw fingerprint no longer matches (F5,
+  // review 2026-10-16; resolveToken now re-reads the account, so other claims
+  // such as mustChangePassword follow the DB anyway). Returns null if the user no
   // longer exists/is inactive. `actorOverrides` layers additional fields onto
   // the freshly-derived actor before signing (used by the admin account-
   // preview feature to force mustChangePassword:false on a minted token
@@ -146,7 +151,18 @@ export function recordDevice(
   return [updated, ...list.filter((d) => d.id !== id)].slice(0, MAX_LOGIN_DEVICES);
 }
 
-export function makeAuthService(users: IUserRepository): AuthService {
+export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: number } = {}): AuthService {
+  // F5 (review 2026-10-16): tokens stay stateless, but each request re-reads the account through a small per-instance
+  // cache, so a deactivation, demotion or password reset bites within USER_TTL instead of at the 12 h expiry.
+  const USER_TTL = opts.userTtlMs ?? 60_000;
+  const recent = new Map<string, { user: User | null; at: number }>();
+  async function currentUser(id: string, force = false): Promise<User | null> {
+    const hit = recent.get(id);
+    if (!force && hit && Date.now() - hit.at < USER_TTL) return hit.user;
+    const user = (await users.findById(id)) ?? null;
+    recent.set(id, { user, at: Date.now() });
+    return user;
+  }
   return {
     async login(input: unknown) {
       secretOrThrow();
@@ -185,31 +201,38 @@ export function makeAuthService(users: IUserRepository): AuthService {
         // Never let a tracking failure block a successful login.
       }
 
-      const token = signSession(toActor(fresh), Date.now() + TOKEN_TTL_MS);
+      // ponytail: the fingerprint is fresh.passwordHash. On the legacy SHA-256 rehash path the tracking save above writes
+      // that same old hash back, so they agree; if that save throws after a rehash, the first request gets 401 and the
+      // user signs in again (legacy hashes only; prod has none).
+      const token = signSession(toActor(fresh), Date.now() + TOKEN_TTL_MS, passwordFingerprint(fresh.passwordHash));
       return { token, user: toSafeUser(fresh) };
     },
 
     async resolveToken(token: string) {
       const session = parseSession(token);
-      if (!session) return null;
-      if (Date.now() > session.expiresAt) return null;
-      // Trusted actor embedded in the signed token — no DB round-trip needed.
-      if (session.actor) return session.actor;
-      // Legacy token without an embedded actor: fall back to a lookup.
-      const user = await users.findById(session.userId);
+      if (!session || Date.now() > session.expiresAt) return null;
+      // F5: the account is re-read (cached 60 s). A fingerprint mismatch forces one uncached read, so the token
+      // POST /accounts/me/password hands back works at once while this instance's cache still holds the old hash.
+      let user = await currentUser(session.userId);
+      if (user && session.pw && session.pw !== passwordFingerprint(user.passwordHash)) user = await currentUser(session.userId, true);
       if (!user || user.status !== 'active') return null;
-      return toActor(user);
+      if (session.pw && session.pw !== passwordFingerprint(user.passwordHash)) return null; // password reset since issue
+      // Tokens from before this deploy carry no pw: honoured until their 12 h expiry.
+      const actor = toActor(user);
+      // The DB clearing mustChangePassword wins; so does a preview token's override (issueTokenFor(..., { mustChangePassword: false })).
+      return { ...actor, mustChangePassword: !!actor.mustChangePassword && (session.actor?.mustChangePassword ?? true) };
     },
 
     async logout(_token: string) {
-      // Stateless tokens — logout is handled client-side by discarding the token
+      // Stateless tokens: logout is client-side (discard the token). To sign a shared login out everywhere,
+      // change its password (F5: the token's pw fingerprint then stops matching on every device).
     },
 
     async issueTokenFor(userId: string, actorOverrides?: Partial<Actor>, ttlMs?: number) {
       const user = await users.findById(userId);
       if (!user || user.status !== 'active') return null;
       const actor = actorOverrides ? { ...toActor(user), ...actorOverrides } : toActor(user);
-      return signSession(actor, Date.now() + (ttlMs ?? TOKEN_TTL_MS));
+      return signSession(actor, Date.now() + (ttlMs ?? TOKEN_TTL_MS), passwordFingerprint(user.passwordHash));
     },
   };
 }
