@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ship <branch>: test, record DEPLOY.md, ff-only master, push, report the Vercel build.
+# Ship <branch>: gate (spa-syntax, typecheck, SW bump), test, record DEPLOY.md, ff-only master, push, report the Vercel build.
 # Usage: bash scripts/ship.sh [--dry-run] [--promote] <branch>   (run from a clean worktree on <branch>)
 set -euo pipefail
 DRY= PROMOTE= BR=
@@ -19,6 +19,15 @@ if git diff --name-only origin/master "$SHA" | grep -qE '^src/(core/link-|servic
   echo "link contract changed: ship this before the console; console e2e = spike/e2e-ys-link.js in 11.1"
 fi
 
+# Gates: cheap and read-only, so they run on --dry-run too. Fail before tests and before DEPLOY.md is touched.
+node scripts/check-spa-syntax.js || { echo "FAIL: an inline <script> in public/index.html does not parse"; exit 1; }
+npm run -s typecheck || { echo "FAIL: typecheck (npm run typecheck)"; exit 1; }
+# SW cache rule (CLAUDE.md "Service worker"): anything under public/ other than sw.js changed => CACHE must be bumped.
+if git diff --name-only origin/master "$SHA" -- public/ | grep -qv '^public/sw\.js$'; then
+  git diff origin/master "$SHA" -- public/sw.js | grep -q '^+const CACHE = ' \
+    || { echo "FAIL: public/ changed but public/sw.js CACHE (ysc-vN) was not bumped"; exit 1; }
+fi
+
 LOG=$(mktemp)
 if [ -n "$DRY" ]; then echo "dry: npm test > $LOG"
 elif npm test >"$LOG" 2>&1; then echo "tests: $(sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E '^\s*Tests ' | tr -s ' ' | tail -1)"
@@ -27,6 +36,7 @@ else echo "FAIL tests (log $LOG):"; { grep -E 'FAIL|AssertionError|Error:' "$LOG
 MIG=$(ls supabase/migrations | tail -1 | cut -c1-4)
 SW=$(grep -oE "ysc-v[0-9]+" public/sw.js | head -1)
 PEND=$(git branch --no-merged "$SHA" --format='%(refname:short)' | tr '\n' ' ')
+LASTP=$(grep -oE 'last promoted: .*$' DEPLOY.md | head -1 | tr -d '\r' || true)   # hand-written after each promote; carried forward
 NOW=$(date '+%Y-%m-%d %H:%M %Z')
 # Rewrite the live block (between the markers); the rest of DEPLOY.md is hand-written.
 BLOCK="<!-- live -->
@@ -34,7 +44,7 @@ BLOCK="<!-- live -->
 - last ship: $NOW
 - migration: $MIG
 - SW version: $SW
-- promote: pending (Vercel) — update this line by hand once promoted
+- promote: pending (Vercel) — update this line by hand once promoted; ${LASTP:-last promoted: unknown}
 - pending branches: ${PEND:-none}
 <!-- /live -->"
 if [ -n "$DRY" ]; then echo "dry: rewrite DEPLOY.md live block (mig $MIG, $SW), commit on $BR"
