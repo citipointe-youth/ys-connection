@@ -257,3 +257,32 @@ describe('RV-I-m5 the flush applies consent fix/link and sheet results', () => {
     expect(calls.toasts).toEqual(['Smith family: The plan changed.']);
   });
 });
+
+describe('RV-I-m6 I.resend cannot stick', () => {
+  it('a flush 4xx that drops a kept answer clears its resend flag', async () => {
+    const { f, store } = ikEnv({ post: () => httpErr(400) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [ANS(P(1))] }]));
+    const I = f._ik(); I.resend.Y = true;
+    await f._ikQFlush();
+    expect(I.resend.Y).toBeUndefined();
+  });
+  it('an answer dropped as over 24 h clears its resend flag', async () => {
+    const { f, store } = ikEnv();
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(25 * 60), items: [ANS(P(1))] }]));
+    const I = f._ik(); I.resend.Y = true;
+    await f._ikQFlush();
+    expect(I.resend.Y).toBeUndefined();
+  });
+  it('a parked change goes after load while the older answer is only pending (the server supersedes it); a claimed one still waits', async () => {
+    const { f, calls } = ikEnv();
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'Y'; I.det = ROW('Y');
+    I.det.actions = [{ id: P(5), type: 'intakeAnswer', status: 'claimed' }];
+    I.resend.Y = 'again';
+    f._ikAfterLoad(); await tick();
+    expect(calls.posts.length).toBe(0);
+    I.det.actions = [{ id: P(5), type: 'intakeAnswer', status: 'pending' }];
+    f._ikAfterLoad(); await tick();
+    expect(calls.posts.length).toBe(1);
+    expect(I.resend.Y).toBeUndefined();
+  });
+});

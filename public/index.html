@@ -12430,6 +12430,8 @@ function _ikQFlush() {
   const q = _ikQGet(k), old = q.filter((e) => !fresh(e));
   if (old.length) {
     _ikQSet(q.filter(fresh), k);
+    const I0 = LINK.ik; // RV-I-m6: a dropped answer is not "retrying" any more
+    if (I0 && I0.resend) old.forEach((e) => (e.items || []).forEach((it) => { const fam = it.type === 'intakeAnswer' && ((it.payload && it.payload.family) || [])[0]; if (fam && I0.resend[fam] !== 'again') delete I0.resend[fam]; }));
     const n = old.reduce((t, e) => t + ((e && e.items) || []).length, 0), t = Date.parse(old[0] && old[0].at);
     const day = isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) : 'earlier';
     toast(n === 1 ? '1 save from ' + day + ' was not sent' : n + ' saves from ' + day + ' were not sent', 6000);
@@ -12482,6 +12484,7 @@ function _ikQApply(items, res, bad) {
   items.forEach((it) => {
     const r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
     if (!r) return;
+    if (bad && it.type === 'intakeAnswer') { const fam = ((it.payload && it.payload.family) || [])[0]; if (I.resend && I.resend[fam] !== 'again') delete I.resend[fam]; } // RV-I-m6
     const fk = Object.keys(I.fixes || {}).find((x) => I.fixes[x] && I.fixes[x].id === it.id);
     if (fk) {
       const was = I.fixes[fk];
@@ -13001,7 +13004,8 @@ function _ikAfterLoad() {
   _ikQFlush(); // C-B9: kept saves and answers go again with their own ids
   const det = I.det, key = det && det.row && det.row.key;
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
-  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !_ikOpenOf(det.actions, ['intakeAnswer']) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
+  // RV-I-m6: only a CLAIMED answer blocks it; a pending one is superseded by the server (S-4), so a parked change never sticks.
+  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && a.status === 'claimed') && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
