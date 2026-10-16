@@ -11410,11 +11410,15 @@ function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl
 // One shared note, one completeStep item per person, all through the phone queue (the console works them one at a time;
 // each row shows its own Waiting / In Elvanto / refusal line).
 function _lkBulkOpen() {
-  const n = _lkSelIds(_lkFlowVisible(), LINK.fsel).length;
+  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
   if (!n) return;
   if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
   LINK.fb = { note: '', priv: false };
-  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div><p class="lk-sub">The same note goes on each person.</p>
+  // B06: name who is ticked (a tick inside a collapsed step is otherwise invisible); after 5, the rest fold away.
+  const nm = ids.map((id) => { const r = _lkFlowRow(id); return esc((r && r.name) || 'Someone'); });
+  const who = `<p class="lk-sub">${nm.slice(0, 5).join(', ')}</p>`
+    + (nm.length > 5 ? `<details><summary class="lk-sub">${nm.length - 5} more</summary><p class="lk-sub">${nm.slice(5).join(', ')}</p></details>` : '');
+  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div>${who}<p class="lk-sub">The same note goes on each person.</p>
     <div class="fg"><label class="fl" for="lk-fb-note">Note</label><textarea id="lk-fb-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fb)LINK.fb.note=this.value"></textarea></div>
     <label class="lk-chk"><input type="checkbox" onchange="if(LINK.fb)LINK.fb.priv=this.checked"> Keep note private</label>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>

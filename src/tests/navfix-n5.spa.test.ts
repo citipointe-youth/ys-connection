@@ -167,3 +167,31 @@ describe('B05 an add the console already sent is a member: the button says Remov
     expect(h.calls.asks[0]).toMatch(/^Stop adding Tom LEstrange/);
   });
 });
+
+describe('B06 bulk Complete sheet lists the ticked names', () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ rowId: 'r' + i, flowId: 'F1', flowName: 'New People', stepId: 'S2', stepName: 'Call',
+    stepOrder: 2, personId: P(80 + i), name: 'Person ' + i + ' <b>', due: null, consent: 'ok', dnc: false, openAction: null }));
+  const open = (n: number, tick: number) => {
+    const h = setup('L1');
+    const L = h.get().LINK;
+    L.flows = rows(n); L.fsel = {};
+    for (let i = 0; i < tick; i++) L.fsel['r' + i] = true;
+    h.fns._lkBulkOpen();
+    return h.calls.modals.at(-1) as string;
+  };
+  it('3 ticks -> the 3 names (escaped), no fold', () => {
+    const m = open(4, 3);
+    expect(m).toContain('Complete 3 steps');
+    for (let i = 0; i < 3; i++) expect(m).toContain('Person ' + i + ' &lt;b&gt;');
+    expect(m).not.toContain('Person 3');
+    expect(m).not.toContain('<details');
+  });
+  it('7 ticks -> 5 names shown, the other 2 folded in <details>', () => {
+    const m = open(7, 7);
+    const fold = m.slice(m.indexOf('<details'));
+    expect(m.indexOf('<details')).toBeGreaterThan(m.indexOf('Person 4'));
+    expect(fold).toContain('2 more');
+    expect(fold).toContain('Person 5');
+    expect(fold).toContain('Person 6');
+  });
+});
