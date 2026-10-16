@@ -12327,16 +12327,20 @@ function _ikQFlush() {
     let any = false;
     for (const e of due) {
       let res;
+      // A kept answer counts as that family's send in flight: a new answer waits (it could land first and lose).
+      const I0 = LINK.ik, fams = I0 ? e.items.filter((it) => it.type === 'intakeAnswer').map((it) => ((it.payload && it.payload.family) || [])[0]) : [];
+      if (I0) { const bk = I0.busyKey || (I0.busyKey = {}); fams.forEach((f) => { bk[f] = true; }); I0.busy = (I0.busy || 0) + fams.length; }
       try { res = await _ikPost(e.items, true); }
       catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
+      finally { if (I0) { fams.forEach((f) => { delete I0.busyKey[f]; }); I0.busy = Math.max(0, (I0.busy || 0) - fams.length); } }
       if (!S.user || _ikQKey() !== k) break;
       any = true;
       const I = LINK.ik;
       e.items.forEach((it) => {
         if (!I || it.type !== 'intakeAnswer') return;
         const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
-        if (r && (r.outcome === 'saved' || r.outcome === 'replay')) delete I.resend[fam];
-        else if (r && r.outcome !== 'duplicate' && r.message) { delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
+        if (r && (r.outcome === 'saved' || r.outcome === 'replay')) { if (I.resend[fam] !== 'again') delete I.resend[fam]; }
+        else if (r && r.outcome !== 'duplicate' && r.message) { if (I.resend[fam] !== 'again') delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
       });
     }
     if (any && S.page === 'link-intake') _ikLoad(true);
@@ -12374,7 +12378,7 @@ async function _ikAnswerSend(undo) {
   const say = (m) => toast(title && _ik().key !== key ? title + ': ' + m : m); // C-B11: name the family once another is open
   // C-B3: busy per family (another family's answer never waits behind this one); I.busy = how many are in flight.
   const bk = I.busyKey || (I.busyKey = {});
-  if (bk[key]) { I.resend[key] = true; return; }
+  if (bk[key]) { I.resend[key] = 'again'; return; } // 'again': a change made while sending; the ok reply keeps it
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
   const id = _lkUuid(), items = [];
@@ -12386,7 +12390,7 @@ async function _ikAnswerSend(undo) {
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
       ok = true;
-      delete I.resend[key];
+      if (I.resend[key] !== 'again') delete I.resend[key];
       if (undo) { a.fixes = {}; a.keeps = {}; I.keepMem[key] = {}; }
       _ikLocal(key, { id, type: 'intakeAnswer', status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
     } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; say('Still updating the plan. Your change goes next.'); }

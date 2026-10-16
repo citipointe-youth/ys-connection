@@ -230,7 +230,7 @@ describe('C-B3 busy per family; a failed answer is resent by the flush without t
     const p = f._ikAnswerSend(false);
     await f._ikAnswerSend(false);
     expect(calls.posts.length).toBe(1);
-    expect(I.resend.A).toBe(true);
+    expect(I.resend.A).toBeTruthy();
     release(); await p;
     expect(I.busy).toBeFalsy();
   });
@@ -345,5 +345,36 @@ describe('C-B11 late toasts name the family when another one is open', () => {
     const I = env.f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A', 'Ava Nguyen');
     await env.f._ikAnswerSend(false);
     expect(env.calls.toasts).toContain('Ava Nguyen: No.');
+  });
+});
+
+describe('C-B3 a change made while that family is sending is not lost', () => {
+  const okb = (b: any) => ({ results: b.items.map((it: any) => ({ id: it.id, kind: 'action', outcome: 'saved' })) });
+  it('own send in flight: the parked change survives the ok reply and goes next (new set, new id)', async () => {
+    let release: () => void = () => {};
+    const { f, calls } = ikEnv({ post: (b, n) => (n === 1 ? new Promise((r) => { release = () => r(okb(b)); }) : Promise.resolve(okb(b))) });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A');
+    const p = f._ikAnswerSend(false);
+    await f._ikAnswerSend(false); // the user changed something while the first was on its way
+    release(); await p;
+    expect(I.resend.A).toBeTruthy();
+    I.det = ROW('A'); // the console has planned the first one: nothing open
+    f._ikAfterLoad();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.posts.length).toBe(2);
+    expect(calls.posts[1].b.items[0].id).not.toBe(calls.posts[0].b.items[0].id);
+  });
+  it('a flush resending a kept answer blocks a new send for that family until it is answered', async () => {
+    let fail = true, release: () => void = () => {};
+    const { f, calls } = ikEnv({ post: (b, n) => (fail ? netErr() : n === 2 ? new Promise((r) => { release = () => r(okb(b)); }) : Promise.resolve(okb(b))) });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A');
+    await f._ikAnswerSend(false);
+    fail = false;
+    const fl = f._ikQFlush();
+    await f._ikAnswerSend(false); // must not race the kept set (it could land after and win)
+    expect(calls.posts.length).toBe(2);
+    release(); await fl;
+    expect(I.resend.A).toBeTruthy(); // the newer change still goes next
+    expect(I.busy).toBeFalsy();
   });
 });
