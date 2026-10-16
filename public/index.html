@@ -13753,6 +13753,7 @@ function busBulkAddOther() {
 }
 async function busBulkSave() {
   if (_busBlockWrite() || BUS.bulkBusy) return;
+  const h = _here(); // C-B8: close only this sheet, never one opened while the loop ran
   const picks = BUS.bulk.filter((b) => b.on); if (!picks.length) { toast('Tick someone first'); return; }
   BUS.bulkBusy = true; _busBulkCount();
   const btn = document.getElementById('bus-bulk-go'); if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
@@ -13761,7 +13762,7 @@ async function busBulkSave() {
     try { await API.post('/bus/riders?' + _busQs(), { ...(b.studentId ? { studentId: b.studentId } : { guestId: b.guestId }), ...b.addr }); }
     catch (e) { failed.push(`${b.name} (${e.message})`); }
   }
-  BUS.bulkBusy = false; closeModal();
+  BUS.bulkBusy = false; if (_stillSheet(h)) closeModal();
   toast(failed.length ? `Added ${picks.length - failed.length}. Not added: ${failed.join(', ')}` : `${picks.length} added`);
   await busRefresh();
 }
@@ -14639,9 +14640,10 @@ function _busEmcRemove(btn, id) {
   _busRenderEditMyCar();
 }
 async function busSaveMyCarStops() {
+  const h = typeof _here === 'function' ? _here() : null; // C-B8 (typeof: spa-bus.test's harness has no _here)
   try {
     await _busSend('POST', '/bus/run/my-car/stops', { riderIds: BUS._emcOrder, removeIds: BUS._emcRemoved });
-    closeModal(); toast('Saved');
+    if (!h || _stillSheet(h)) closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
 }
 // "Car details" (own car only) hands off to the existing own-car sheet, pre-filled from the

@@ -127,3 +127,36 @@ describe('C-B7 CA saveAudit', () => {
     expect(t.env.posts).toBe(1); // PENDING cleared after a save: nothing to send
   });
 });
+
+// ── C-B8: bus sheets closed only if still the same sheet ──
+function bus() {
+  const env: any = { closes: 0, mo: { id: 'bulk' }, toasts: [] as string[] };
+  const f = new Function('env', `
+    var BUS = { bulk: [{ on: true, studentId: 's1', name: 'A', addr: {} }, { on: true, studentId: 's2', name: 'B', addr: {} }], bulkBusy: false, _emcOrder: [], _emcRemoved: [] };
+    var _busBlockWrite = () => false, _busBulkCount = () => {}, _busQs = () => '', busRefresh = async () => {};
+    var API = { post: () => (env.post ? env.post() : Promise.resolve({})) };
+    var _busSend = () => (env.post ? env.post() : Promise.resolve({}));
+    var closeModal = () => { env.closes++; }, toast = (m) => env.toasts.push(m);
+    var _here = () => ({ mo: env.mo }), _stillSheet = (h) => !!h.mo && h.mo === env.mo;
+    var document = { getElementById: () => null };
+    ${fns(['busBulkSave', 'busSaveMyCarStops'])}
+    return { busBulkSave, busSaveMyCarStops };`);
+  return { ...f(env), env };
+}
+
+describe('C-B8 bus sheet close', () => {
+  it('busBulkSave: same sheet -> closes; another sheet opened mid-loop -> left open', async () => {
+    const a = bus(); await a.busBulkSave(); expect(a.env.closes).toBe(1);
+    const b = bus(); b.env.post = () => { b.env.mo = { id: 'edit-rider' }; return Promise.resolve({}); };
+    await b.busBulkSave();
+    expect(b.env.closes).toBe(0);
+    expect(b.env.toasts).toContain('2 added');
+  });
+  it('busSaveMyCarStops: same sheet -> closes; sheet swapped -> left open', async () => {
+    const a = bus(); await a.busSaveMyCarStops(); expect(a.env.closes).toBe(1);
+    const b = bus(); b.env.post = () => { b.env.mo = null; return Promise.resolve({}); };
+    await b.busSaveMyCarStops();
+    expect(b.env.closes).toBe(0);
+    expect(b.env.toasts).toContain('Saved');
+  });
+});
