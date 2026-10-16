@@ -10873,7 +10873,7 @@ function _lkSvcName(id) {
 // One report: date, service, did-not-meet, guests, ticked members. Never notes. Edit only when the console says it can.
 function _lkReportHtml(g, r) {
   const att = r.attendees || [];
-  const names = (g.members || []).filter((m) => att.includes(m.personId)).map((m) => m.name);
+  const names = (g.members || []).filter((m) => !m.leader && att.includes(m.personId)).map((m) => m.name); // B09: students only (ruling 4)
   const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
   if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);

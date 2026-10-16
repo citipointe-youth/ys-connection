@@ -195,3 +195,13 @@ describe('B06 bulk Complete sheet lists the ticked names', () => {
     expect(fold).toContain('Person 6');
   });
 });
+
+describe('B09 "Students here (N)" leaves ticked leaders out (ruling 4)', () => {
+  it('a ticked leader is not counted or named; the label stays', () => {
+    const h = setup(); // attendees: Ava (student) + Dana Testleader (leader)
+    const g = h.get().LINK.groups[0];
+    const out = strip(h.fns._lkReportHtml(g, g.lastReport));
+    expect(out).toContain('Students here (1)Ava Example');
+    expect(out).not.toContain('Dana Testleader');
+  });
+});
