@@ -193,3 +193,53 @@ describe('S-4 client: no cancel item (the server supersedes the open answer)', (
     expect(calls.posts[0].b.items[0]).toMatchObject({ kind: 'action', type: 'intakeAnswer' });
   });
 });
+
+describe('C-B3 busy per family; a failed answer is resent by the flush without that family open', () => {
+  it('A in flight, B sends at once; B fails -> flush with A open resends B with the same id', async () => {
+    let releaseA: () => void = () => {};
+    let bFails = true;
+    const ok = (b: any) => ({ results: b.items.map((it: any) => ({ id: it.id, kind: 'action', outcome: 'saved' })) });
+    const { f, calls, store } = ikEnv({ post: (b, n) => {
+      const fam = b.items[0].payload.family[0];
+      if (fam === 'A' && n === 1) return new Promise((r) => { releaseA = () => r(ok(b)); });
+      if (fam === 'B' && bFails) return netErr();
+      return Promise.resolve(ok(b));
+    } });
+    const I = f._ik(); I.date = '2026-10-09';
+    I.key = 'A'; I.det = ROW('A');
+    const pa = f._ikAnswerSend(false);
+    expect(I.busy).toBeTruthy();
+    I.key = 'B'; I.det = ROW('B');
+    await f._ikAnswerSend(false);
+    expect(calls.posts.length).toBe(2); // not parked behind A
+    expect(I.resend.B).toBe(true);
+    const bId = calls.posts[1].b.items[0].id;
+    expect(kept(store).flatMap((e: any) => e.items.map((i: any) => i.id))).toContain(bId); // A is kept too while in flight
+    I.key = 'A'; I.det = ROW('A');
+    bFails = false;
+    await f._ikQFlush();
+    expect(calls.posts[2].b.items[0].id).toBe(bId);
+    expect(I.resend.B).toBeUndefined();
+    releaseA(); await pa;
+    expect(I.busy).toBeFalsy(); // _swIdle reads it
+  });
+  it('a second send for the SAME family while it is in flight waits (resend), and the busy count stays right', async () => {
+    let release: () => void = () => {};
+    const { f, calls } = ikEnv({ post: (b) => new Promise((r) => { release = () => r({ results: b.items.map((it: any) => ({ id: it.id, kind: 'action', outcome: 'saved' })) }); }) });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A');
+    const p = f._ikAnswerSend(false);
+    await f._ikAnswerSend(false);
+    expect(calls.posts.length).toBe(1);
+    expect(I.resend.A).toBe(true);
+    release(); await p;
+    expect(I.busy).toBeFalsy();
+  });
+  it('the retry after load never makes a new id for a kept answer', async () => {
+    const { f, calls } = ikEnv({ post: () => netErr() });
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A');
+    await f._ikAnswerSend(false);
+    f._ikAfterLoad();
+    await Promise.resolve(); await new Promise((r) => setTimeout(r, 0));
+    expect(new Set(calls.posts.map((c) => c.b.items[0].id)).size).toBe(1);
+  });
+});

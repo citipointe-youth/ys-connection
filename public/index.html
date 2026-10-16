@@ -11910,7 +11910,7 @@ function _ikFresh() {
   let tab = 'intake';
   try { if (localStorage.getItem('ysc.intakeTab') === 'consent') tab = 'consent'; } catch (e) {}
   return { tab, head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
-    ans: {}, keepMem: {}, resend: {}, debT: null, busy: false, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
+    ans: {}, keepMem: {}, resend: {}, debT: null, busy: 0, busyKey: {}, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
     sheet: null, hideText: null, pendingDraw: false, helpOpen: false,
     csub: 'last', lk: {}, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {} };
 }
@@ -12369,13 +12369,15 @@ async function _ikAnswerSend(undo) {
   const det = I.det;
   if (!det || !det.detail || !det.row || !I.date) return;
   const key = det.row.key, date = I.date;
-  if (I.busy) { I.resend[key] = true; return; }
+  // C-B3: busy per family (another family's answer never waits behind this one); I.busy = how many are in flight.
+  const bk = I.busyKey || (I.busyKey = {});
+  if (bk[key]) { I.resend[key] = true; return; }
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
   const id = _lkUuid(), items = [];
   let ok = false; // review 2026-10-15b: Save answers closes the form only on a saved answer
   items.push({ kind: 'action', id, type: 'intakeAnswer', payload: b.payload, note: b.note, leaderId: null });
-  I.busy = true;
+  bk[key] = true; I.busy = (I.busy || 0) + 1;
   try {
     const r = _ikOutcome(await _ikPost(items), id);
     if (_ik() !== I) return;
@@ -12387,7 +12389,7 @@ async function _ikAnswerSend(undo) {
     } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; toast('Still updating the plan. Your change goes next.'); }
     else { if (!(r && r.message)) I.resend[key] = true; toast((r && r.message) || 'Not sent. Try again.'); }
   } catch (e) { I.resend[key] = true; if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
-  finally { I.busy = false; }
+  finally { delete bk[key]; I.busy = Math.max(0, (I.busy || 1) - 1); }
   if (_ik() !== I) return ok;
   _ikDraw(); _ikSchedule();
   return ok;
@@ -12807,7 +12809,7 @@ async function _ikLoadRow(quiet) {
     if (_ik() !== I || I.key !== key || I.date !== date) return;
     I.det = r; I.detErr = null;
     // Follow the latest push unless an answer of mine is still on its way.
-    if (!I.debT && !I.busy && !I.resend[key] && !_ikOpenOf(r && r.actions, ['intakeAnswer'])) delete I.ans[key];
+    if (!I.debT && !(I.busyKey && I.busyKey[key]) && !I.resend[key] && !_ikOpenOf(r && r.actions, ['intakeAnswer'])) delete I.ans[key];
   } catch (e) { if (_ik() === I && I.key === key) I.detErr = e.message || 'Could not load this family.'; }
 }
 function _ikAfterLoad() {
@@ -12821,7 +12823,7 @@ function _ikAfterLoad() {
   _ikQFlush(); // C-B9: kept saves and answers go again with their own ids
   const det = I.det, key = det && det.row && det.row.key;
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
-  if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer']) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
+  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !_ikOpenOf(det.actions, ['intakeAnswer']) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
@@ -12870,7 +12872,7 @@ function _ikOpen(i) {
 async function _ikAnswersSave() {
   const I = _ik(), det = I.det, key = det && det.row && det.row.key;
   if (!key) return;
-  if (I.busy) { toast('Still sending. Try again in a moment.'); return; }
+  if (I.busyKey && I.busyKey[key]) { toast('Still sending. Try again in a moment.'); return; }
   const ok = await _ikAnswerSend(false);
   if (_ik() !== I) return;
   if (!ok) return; // not saved: the toast already said why; stay on the form
