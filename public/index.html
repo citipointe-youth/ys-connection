@@ -12336,7 +12336,7 @@ function _ikQFlush() {
         if (!I || it.type !== 'intakeAnswer') return;
         const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
         if (r && (r.outcome === 'saved' || r.outcome === 'replay')) delete I.resend[fam];
-        else if (r && r.outcome !== 'duplicate' && r.message) { delete I.resend[fam]; toast(r.message); }
+        else if (r && r.outcome !== 'duplicate' && r.message) { delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
       });
     }
     if (any && S.page === 'link-intake') _ikLoad(true);
@@ -12370,7 +12370,8 @@ async function _ikAnswerSend(undo) {
   if (I.debT) { clearTimeout(I.debT); I.debT = null; }
   const det = I.det;
   if (!det || !det.detail || !det.row || !I.date) return;
-  const key = det.row.key, date = I.date;
+  const key = det.row.key, date = I.date, title = det.row.title || '';
+  const say = (m) => toast(title && _ik().key !== key ? title + ': ' + m : m); // C-B11: name the family once another is open
   // C-B3: busy per family (another family's answer never waits behind this one); I.busy = how many are in flight.
   const bk = I.busyKey || (I.busyKey = {});
   if (bk[key]) { I.resend[key] = true; return; }
@@ -12388,9 +12389,9 @@ async function _ikAnswerSend(undo) {
       delete I.resend[key];
       if (undo) { a.fixes = {}; a.keeps = {}; I.keepMem[key] = {}; }
       _ikLocal(key, { id, type: 'intakeAnswer', status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
-    } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; toast('Still updating the plan. Your change goes next.'); }
-    else { if (!(r && r.message)) I.resend[key] = true; toast((r && r.message) || 'Not sent. Try again.'); }
-  } catch (e) { I.resend[key] = true; if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
+    } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; say('Still updating the plan. Your change goes next.'); }
+    else { if (!(r && r.message)) I.resend[key] = true; say((r && r.message) || 'Not sent. Try again.'); }
+  } catch (e) { I.resend[key] = true; if (_ik() === I) say(e.message || 'Not sent. Try again.'); }
   finally { delete bk[key]; I.busy = Math.max(0, (I.busy || 1) - 1); }
   if (_ik() !== I) return ok;
   _ikDraw(); _ikSchedule();
@@ -12508,7 +12509,8 @@ async function _ikSheetGo() {
   closeModal();
   I.sheet = null;
   if (!x || !I.date || !x.keys.length) return;
-  const date = I.date;
+  const date = I.date, title = (I.det && I.det.row && I.det.row.key === x.key && I.det.row.title) || '';
+  const say = (m) => toast(title && _ik().key !== x.key ? title + ': ' + m : m); // C-B11: name the family once another is open
   // C-B9: a kept (unanswered) save of this type for this row goes again as it was, same id, so the server answers
   // replay instead of queueing a second Elvanto write.
   const item = _ikQFind(x.type, x.key, date) || { kind: 'action', id: _lkUuid(), type: x.type, note: null, leaderId: null,
@@ -12522,11 +12524,11 @@ async function _ikSheetGo() {
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
       ok = true;
-      toast(x.type === 'intakeText' ? 'The text is waiting for the console.' : 'Saving. Waiting for the console.');
-    } else if (r && r.outcome === 'duplicate') toast('Already waiting for the console.');
-    else toast((r && r.message) || 'Not saved. Try again.');
+      say(x.type === 'intakeText' ? 'The text is waiting for the console.' : 'Saving. Waiting for the console.');
+    } else if (r && r.outcome === 'duplicate') say('Already waiting for the console.');
+    else say((r && r.message) || 'Not saved. Try again.');
   } catch (e) {
-    if (_ik() === I) toast(_ikQFind(x.type, x.key, date) ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.');
+    if (_ik() === I) say(_ikQFind(x.type, x.key, date) ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.');
   }
   if (_ik() !== I) return;
   if (!ok) _ikUnlocal(x.key, pend);

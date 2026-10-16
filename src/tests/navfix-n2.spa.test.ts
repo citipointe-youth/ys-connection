@@ -328,3 +328,22 @@ describe('C-B10 Refresh: one ask at a time, mode read before the await', () => {
     expect(f.I.ref.mode).toBe('intake');
   });
 });
+
+describe('C-B11 late toasts name the family when another one is open', () => {
+  const refuse = (b: any) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', message: 'No.' }] });
+  it('sheet Save refused after the user opened another family -> "<title>: No."; still on it -> "No."', async () => {
+    for (const [moveAway, want] of [[true, 'Ava Nguyen: No.'], [false, 'No.']] as const) {
+      const env = ikEnv({ post: (b) => { if (moveAway) { env.f.LINK.ik.key = 'r2'; } return refuse(b); } });
+      const I = env.f._ik(); I.date = '2026-10-09'; I.key = 'r1'; I.det = ROW('r1', 'Ava Nguyen');
+      I.sheet = { type: 'intakeSave', key: 'r1', keys: ['k1'], one: false };
+      await env.f._ikSheetGo();
+      expect(env.calls.toasts).toContain(want);
+    }
+  });
+  it('an answer refused after the user moved on names the family', async () => {
+    const env = ikEnv({ post: (b) => { env.f.LINK.ik.key = 'B'; return refuse(b); } });
+    const I = env.f._ik(); I.date = '2026-10-09'; I.key = 'A'; I.det = ROW('A', 'Ava Nguyen');
+    await env.f._ikAnswerSend(false);
+    expect(env.calls.toasts).toContain('Ava Nguyen: No.');
+  });
+});
