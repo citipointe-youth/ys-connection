@@ -13162,7 +13162,10 @@ function _ikClNow(f) {
 function _ikClText(a) {
   if (!a) return null;
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
-  if (a.status === 'pending') return ['wait', 'Waiting for the console.'];
+  if (a.status === 'pending') { // D6: not picked up after 15 min says since when
+    const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
+    return ['wait', isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.'];
+  }
   if (a.status === 'claimed') return ['wait', 'The console is saving the link…'];
   if (a.status === 'sent') return null;
   if (a.status === 'refused') return ['bad', /^Not (saved|sent)\b/i.test(a.detail || '') ? a.detail : 'Not saved: ' + (a.detail || "the console couldn't do this. Try again later.")];
@@ -13258,7 +13261,10 @@ const IK_FIX_REASON = { 'step-moved': 'the profile changed in Elvanto. Search ag
 function _ikFixText(a, st, name) {
   if (!a) return null;
   if (a.status === 'asking') return ['wait', 'Sending to the console…'];
-  if (a.status === 'pending') return ['wait', 'Waiting for the console.' + _ikSeenLine(st)];
+  if (a.status === 'pending') { // D6: not picked up after 15 min says since when
+    const t = a.createdAt ? Date.parse(a.createdAt) : a.since;
+    return ['wait', (isFinite(t) && Date.now() - t > 9e5 ? "Console hasn't picked this up yet (since " + _lkSeen(new Date(t).toISOString()) + ').' : 'Waiting for the console.') + _ikSeenLine(st)];
+  }
   if (a.status === 'claimed') return ['wait', 'Changing the profile in Elvanto…'];
   if (a.status === 'sent') return ['ok', a.reason === 'already' ? 'Already matched the form. Nothing changed.' : 'Done: the profile now matches the form.' + (a.dnc ? ' ' + _ikDncLine(a.dnc, name || 'this person') : '')];
   if (a.status === 'refused') return ['bad', a.reason === 'locked' ? 'Not sent. Waiting for first live approval in the console.'

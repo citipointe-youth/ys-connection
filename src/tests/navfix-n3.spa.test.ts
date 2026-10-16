@@ -163,3 +163,17 @@ describe('B02 a lookup that times out while the console is busy with the service
     expect(z.msg).toBe("The console hasn't picked this up yet. Tap Ask again later.");
   });
 });
+
+describe('D6 a fix / link the console has not picked up after 15 min says since when', () => {
+  it('pending 16 min -> since line; pending 5 min -> waiting; claimed never', () => {
+    const { fns } = env(['_ikFixText', '_ikClText']);
+    const at = new Date(Date.now() - 16 * 60000).toISOString();
+    expect(fns._ikFixText({ status: 'pending', createdAt: at }, null)).toEqual(['wait', "Console hasn't picked this up yet (since SEEN(" + at + ')).']);
+    expect(fns._ikClText({ status: 'pending', createdAt: at })).toEqual(['wait', "Console hasn't picked this up yet (since SEEN(" + at + ')).']);
+    const since = Date.now() - 16 * 60000; // a tap on this phone carries only `since`
+    expect(fns._ikFixText({ status: 'pending', since }, null)[1]).toContain("Console hasn't picked this up yet (since SEEN(" + new Date(since).toISOString());
+    expect(fns._ikFixText({ status: 'pending', since: Date.now() - 5 * 60000 }, null)).toEqual(['wait', 'Waiting for the console.']);
+    expect(fns._ikClText({ status: 'pending', since: Date.now() - 5 * 60000 })).toEqual(['wait', 'Waiting for the console.']);
+    expect(fns._ikClText({ status: 'claimed', createdAt: at })[1]).toBe('The console is saving the link…');
+  });
+});
