@@ -12873,11 +12873,12 @@ async function _ikAnswersSave() {
   const I = _ik(), det = I.det, key = det && det.row && det.row.key;
   if (!key) return;
   if (I.busyKey && I.busyKey[key]) { toast('Still sending. Try again in a moment.'); return; }
+  const h = _here(), title = (det.row && det.row.title) || '';
   const ok = await _ikAnswerSend(false);
   if (_ik() !== I) return;
   if (!ok) return; // not saved: the toast already said why; stay on the form
-  toast('Answers saved');
-  navBack();
+  toast(title ? 'Answers saved for ' + title : 'Answers saved');
+  if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
 }
 function _ikBack() {
   const I = _ik();

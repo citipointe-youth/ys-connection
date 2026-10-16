@@ -243,3 +243,35 @@ describe('C-B3 busy per family; a failed answer is resent by the flush without t
     expect(new Set(calls.posts.map((c) => c.b.items[0].id)).size).toBe(1);
   });
 });
+
+describe('C-B1 Save answers: a late ok goes back only if the user is still on that family', () => {
+  const mk = (move: (env: any) => void) => {
+    const env: any = { backs: 0, toasts: [] as string[], S: { page: 'link-intake' }, LINK: { ik: null } };
+    env.LINK.ik = { key: 'A', det: { row: { key: 'A', title: 'Ava Nguyen' } }, busy: 0, busyKey: {}, resend: {} };
+    const f = new Function('env', `
+      const S = env.S, LINK = env.LINK;
+      function _ik() { return LINK.ik; }
+      async function _ikAnswerSend() { env.move(env); return true; }
+      function toast(m) { env.toasts.push(m); }
+      function navBack() { env.backs++; }
+      function _here() { return { k: LINK.ik.key, p: S.page }; }
+      function _still(h) { return h.k === LINK.ik.key && h.p === S.page; }
+      ${extractFn(HTML, '_ikAnswersSave')}
+      return { _ikAnswersSave };`)(Object.assign(env, { move }));
+    return { env, f };
+  };
+  it('unchanged -> navBack once, toast names the family', async () => {
+    const t = mk(() => {});
+    await t.f._ikAnswersSave();
+    expect(t.env.backs).toBe(1);
+    expect(t.env.toasts).toContain('Answers saved for Ava Nguyen');
+  });
+  it('family changed or page left before the reply -> no navBack (toast still names the family)', async () => {
+    for (const move of [(e: any) => { e.LINK.ik.key = 'B'; }, (e: any) => { e.S.page = 'home'; }]) {
+      const t = mk(move);
+      await t.f._ikAnswersSave();
+      expect(t.env.backs).toBe(0);
+      expect(t.env.toasts).toContain('Answers saved for Ava Nguyen');
+    }
+  });
+});
