@@ -12464,7 +12464,8 @@ function _ikQFlush() {
       const I = LINK.ik;
       items.forEach((it) => {
         if (!I || it.type !== 'intakeAnswer') return;
-        const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
+        const r0 = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
+        const r = r0 && r0.code === 'LINK_ID_REUSED' ? Object.assign({}, r0, { message: 'These answers were already sent.' }) : r0; // RV-I-m7
         if (r && (r.outcome === 'saved' || r.outcome === 'replay')) { if (I.resend[fam] !== 'again') delete I.resend[fam]; }
         else if (r && r.outcome !== 'duplicate' && r.message) { if (I.resend[fam] !== 'again') delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
       });
@@ -12482,8 +12483,9 @@ function _ikQApply(items, res, bad) {
   if (!I) return;
   let fx = false;
   items.forEach((it) => {
-    const r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
+    let r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
     if (!r) return;
+    if (r.code === 'LINK_ID_REUSED') r = { outcome: 'replay' }; // RV-I-m7: the earlier send landed (its note is purged once final)
     if (bad && it.type === 'intakeAnswer') { const fam = ((it.payload && it.payload.family) || [])[0]; if (I.resend && I.resend[fam] !== 'again') delete I.resend[fam]; } // RV-I-m6
     const fk = Object.keys(I.fixes || {}).find((x) => I.fixes[x] && I.fixes[x].id === it.id);
     if (fk) {

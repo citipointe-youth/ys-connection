@@ -286,3 +286,23 @@ describe('RV-I-m6 I.resend cannot stick', () => {
     expect(I.resend.Y).toBeUndefined();
   });
 });
+
+describe('RV-I-m7 LINK_ID_REUSED on a resend means it landed earlier', () => {
+  const reused = (b: any) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'LINK_ID_REUSED', message: 'This action id was already used for a different action.' }] });
+  it('a resent answer: entry dropped, resend cleared, a clear toast naming the family', async () => {
+    const { f, calls, store } = ikEnv({ post: reused });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [ANS(P(1))] }]));
+    const I = f._ik(); I.resend.Y = true; I.list = { rows: [{ key: 'Y', title: 'Lee family' }] };
+    await f._ikQFlush();
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(I.resend.Y).toBeUndefined();
+    expect(calls.toasts).toEqual(['Lee family: These answers were already sent.']);
+  });
+  it('a resent consent fix: shown as sent-earlier (Pending, the poll reads the real status), no "id used" text', async () => {
+    const { f, store } = ikEnv({ post: reused, prelude: 'const _ikFixPoll = () => {};' });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [{ kind: 'action', id: P(1), type: 'consentFix', payload: { personId: 'p1', subId: 's1' }, note: null, leaderId: null }] }]));
+    const I = f._ik(); I.fixes = { p1: { id: P(1), status: 'failed', detail: 'Not sent yet. It goes again by itself.', noAns: true } };
+    await f._ikQFlush();
+    expect(I.fixes.p1).toMatchObject({ id: P(1), status: 'pending' });
+  });
+});
