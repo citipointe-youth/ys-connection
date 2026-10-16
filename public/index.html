@@ -6666,10 +6666,13 @@ function _usRowHtml(r) {
     <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
     ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
     <div class="el-acts">
-      ${r.name ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>` : ''}
+      ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
+        : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
       <button class="btn btn-ghost btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>
     </div></div>`;
 }
+// C-B2: ids with a resend in flight. A re-render (tab switch, Admin reopened) must not draw a fresh, tappable Retry.
+const _usBusy = new Set();
 function _usPaint() {
   const el = document.getElementById('unsent-list');
   if (el && _usRows) el.innerHTML = `<div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted.</div>`
@@ -6683,11 +6686,13 @@ async function _usLoad() {
 async function usRetry(id) {
   const btn = document.getElementById('us-retry-' + id);
   const r = (_usRows || []).find(x => x.id === id);
-  if (!btn || btn.disabled) return;
+  if (!btn || btn.disabled || _usBusy.has(id)) return;
   if (r && r.reason === 'unconfirmed' && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Checked Elvanto? Tap to retry'; return; }
   btn.disabled = true; btn.textContent = 'Sending...';
+  _usBusy.add(id);
   try { toast(_nyMessage(await API.post('/admin/unsent/' + encodeURIComponent(id) + '/retry', { confirm: true }, 45000)).lines.join(' '), 8000); }
-  catch (e) { toast(e.message, 8000); }
+  catch (e) { toast(e.message, 8000); } // 409 UNSENT_BUSY: another phone is resending it
+  finally { _usBusy.delete(id); }
   _usLoad();
 }
 // Two-tap confirm, like the Error log.
@@ -9723,6 +9728,7 @@ function renderNewYouth() {
     return;
   }
   if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
+    NY.seen = true; // C-B5: nyOpen may reset it from now on
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
       ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
@@ -9734,6 +9740,7 @@ function renderNewYouth() {
     const m = _nyMessage(NY.result);
     const colour = m.tone === 'good' ? 'var(--success)' : m.tone === 'bad' ? 'var(--danger)' : 'var(--warn)';
     const failed = [NY.result.student, NY.result.parent].includes('failed');
+    NY.seen = true; // C-B5
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       ${NY.error ? `<div class="card" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
       <div class="card" style="border-left:4px solid ${colour}">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}${m.lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
@@ -9750,7 +9757,12 @@ function renderNewYouth() {
   const sel = (id, label, opts) => `<div class="fg"><label class="fl" for="ny-${id}">${label}</label><select class="fs" id="ny-${id}">${opts.map(([v, l]) => `<option value="${v}" ${k[id] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
   const ticks = (name, list, chosen) => list.map((x) => `<label class="fg" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="${name}" value="${esc(x)}" ${(chosen || []).includes(x) ? 'checked' : ''}> <span>${esc(x)}</span></label>`).join('');
   const addr = k.address || {};
+  let pend = null; // C-B9/D3: a send on this phone that never got an answer (marker written by nySend)
+  try { pend = JSON.parse(localStorage.getItem('ysc.nyReq.' + ((S.user && S.user.id) || '')) || 'null'); } catch (e) {}
+  if (!pend || !pend.id || !(Date.now() - pend.at < 864e5)) pend = null;
+  const pendAt = pend ? new Date(pend.at).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }) : '';
   setApp(shell(`<div class="ph"><h1>New person</h1></div>
+    ${pend ? `<div class="card" style="border-left:4px solid var(--warn)"><p>A send for ${esc(pend.first || 'someone')} at ${esc(pendAt)} didn't finish on this phone. Check Elvanto before sending again.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_nyReqDismiss()">Dismiss</button></div>` : ''}
     ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form was sent with the last student.</div>` : ''}
     <form id="ny-form" onsubmit="nySend(event)" novalidate autocomplete="off">
     <div class="card lk-svc" id="ny-hostc">${_nyHostHtml()}</div>
@@ -9812,20 +9824,35 @@ async function nySend(ev, send) {
   // which swaps NY. The reply must land on this one and only paint if the host is still looking at it.
   const mine = NY;
   mine.last = p;
-  mine.sending = true; mine.error = null;
+  // C-B9/D3: one request id per send, kept on the phone BEFORE the POST and reused for the same person within 24 h,
+  // so a resend after a lost reply or a closed app is answered by the server instead of posting the student again.
+  // Marker ysc.nyReq.<login id> = {id, first, h, at}: first name + an FNV-1a hash only, never the rest of the form.
+  // Inline (not helpers) so the older test harnesses that load nySend alone still run; storage errors never block a send.
+  const sendList = send || (mine.sibling ? ['student'] : ['student', 'parent']);
+  const rk = 'ysc.nyReq.' + ((S.user && S.user.id) || ''), rs = [p.firstName, p.lastName, p.dob, p.parentMobile, sendList.join(',')].join('|');
+  let rh = 0x811c9dc5; for (let i = 0; i < rs.length; i++) { rh ^= rs.charCodeAt(i); rh = Math.imul(rh, 0x01000193) >>> 0; }
+  let old = null; try { old = JSON.parse(localStorage.getItem(rk) || 'null'); } catch (e) {}
+  const req = old && old.id && old.h === rh.toString(16) && Date.now() - old.at < 864e5 ? old
+    : { id: (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16)), first: p.firstName, h: rh.toString(16), at: Date.now() };
+  const rset = (v) => { try { if (v) localStorage.setItem(rk, JSON.stringify(v)); else localStorage.removeItem(rk); } catch (e) {} };
+  rset(req);
+  mine.sending = true; mine.error = null; mine.seen = false; // C-B5: this send's outcome has not been seen yet
   const here = () => NY === mine && S.page === 'new-youth';
   const btn = document.getElementById('ny-send');
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
   try {
     // 45 s: the server can spend about 28 s plus the settings read (8 s form GETs in parallel, two 10 s POSTs); the default 25 s would wrongly report "unknown".
-    const result = await API.post('/intake/new-youth', { ...p, send: send || (mine.sibling ? ['student'] : ['student', 'parent']) }, 45000);
+    // keepalive: the send still reaches the server if the host closes the app mid-send.
+    const result = await API.post('/intake/new-youth', { ...p, send: sendList, requestId: req.id }, 45000, false, true);
+    rset(null); // a definite answer
     mine.sending = false; // before drawing: renderNewYouth shows a Sending page while it is set
     mine.result = result;
     if (here()) renderNewYouth();
     else toast(_nyMessage(result).lines.join(' '), 8000); // the host left the screen: still tell them
   } catch (e) {
     mine.sending = false;
+    if (e.status === 401 || _nyErrorText(e).unsent) rset(null); // refused before any POST: nothing to warn about
     // An expired session: API already drew the login screen (or restored the admin). Drawing the form now would show a student's details with no shell.
     if (e.status === 401 || !S.user) return;
     const err = _nyErrorText(e);
@@ -9846,6 +9873,8 @@ async function nySend(ev, send) {
     if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = label; } // only if the host is still looking at this button
   }
 }
+// C-B9/D3: Dismiss the "didn't finish on this phone" card (nySend writes the ysc.nyReq marker).
+function _nyReqDismiss() { try { localStorage.removeItem('ysc.nyReq.' + ((S.user && S.user.id) || '')); } catch (e) {} renderNewYouth(); }
 function nySibling() {
   const l = NY.last || {};
   NY = { keep: { parentFirst: l.parentFirst, parentLast: l.parentLast, parentMobile: l.parentMobile, parentGender: l.parentGender, address: l.address },
@@ -9853,8 +9882,9 @@ function nySibling() {
   renderNewYouth();
 }
 function nyReset() { NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false }; }
-// The Home tile: start fresh, unless a send is still in flight (then go back to it; resetting would lose its outcome).
-function nyOpen() { if (!NY.sending) nyReset(); go('new-youth'); }
+// The More entry: start fresh, unless a send is still in flight or its outcome arrived off the page and was
+// never shown (C-B5: then go back to it; resetting would lose an "unknown" outcome and invite a duplicate).
+function nyOpen() { if (!NY.sending && !((NY.unknown || NY.result) && !NY.seen)) nyReset(); go('new-youth'); }
 function nyBack() { NY.keep = NY.last; NY.result = null; NY.error = null; NY.unknown = false; renderNewYouth(); }
 
 /* ── LINK MODULE ── Elvanto link screens (spec 2026-10-12-elvanto-link-app-design.md §9.2, §11).
@@ -9964,6 +9994,8 @@ function _lkStatusText(row, lastSeen) {
     case 'queued': return 'Waiting to send.';
     case 'mirror': return 'In Elvanto.';
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
+      // D6: open over 15 min (the server sweeps it too-old later): say so, with the time it was sent.
+      : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS ? "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').'
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
@@ -10029,7 +10061,8 @@ function _lkBanner(types, st) {
     const at = c && c.lastSeenAt;
     out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
   }
-  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
+  // B10 (F-35): only admin/director work in Elvanto; everyone else passes it on.
+  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. " + (_lkBoss() ? 'Do it in Elvanto.' : 'Tell the admin.')]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
 }
@@ -10244,7 +10277,9 @@ function _lkResults(items, results) {
   Object.keys(memGroups).forEach((g) => { if (LINK.gmOpen[g]) _lkMembersLoad(g, true); });
   LINK.fails = 0; LINK.red = false;
   if (rate) toast('Too many taps. Wait a minute.', 4000);
-  else if (say) toast(say, 5000);
+  // B10 (F-35, same rewrite as _lkStatusHtml): refused check-out / undo toasts tell a leader to tell the admin.
+  else if (say) toast(_lkBoss() ? say : say.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.'), 5000);
   // A good batch with more left (none rate-limited, all answered) goes again in 300 ms: a 160-tap backlog drains in
   // about a second, not 15 s steps (B14 / APP-22).
   if (left.length) _lkSchedule(rate || unanswered ? 15000 : 300);
@@ -10280,6 +10315,7 @@ function _lkBoot() {
     old.forEach((k) => localStorage.removeItem(k));
   } catch (e) {}
   try { if (_lkQGet().length) _lkSchedule(1000); } catch (e) {}
+  if (typeof _ikQFlush === 'function') _ikQFlush(); // C-B9: resend kept intake saves (n2's queue) at boot
 }
 // Flush again and again until the queue is empty, a flush fails or makes no progress, or ms pass (B14 / APP-22).
 async function _lkDrain(ms) {
