@@ -180,6 +180,9 @@ export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: numb
       // landed meanwhile must win. The full-row saves below would otherwise write 'active' back.
       const fresh = await users.findById(user.id);
       if (!fresh || fresh.status !== 'active') throw new UnauthorizedError('Invalid credentials');
+      // F5: a sign-in just read the row, so this instance's cache must not answer the new token with an older
+      // (e.g. inactive, before a reactivation) copy. ponytail: per-instance only; another instance may lag <= 60 s.
+      recent.delete(fresh.id);
 
       // Silently upgrade legacy SHA-256 hashes to bcrypt on first login
       if (needsRehash(user.passwordHash)) {
@@ -231,6 +234,7 @@ export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: numb
     async issueTokenFor(userId: string, actorOverrides?: Partial<Actor>, ttlMs?: number) {
       const user = await users.findById(userId);
       if (!user || user.status !== 'active') return null;
+      recent.delete(userId); // F5: as in login
       const actor = actorOverrides ? { ...toActor(user), ...actorOverrides } : toActor(user);
       return signSession(actor, Date.now() + (ttlMs ?? TOKEN_TTL_MS), passwordFingerprint(user.passwordHash));
     },

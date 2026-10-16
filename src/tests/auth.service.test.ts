@@ -208,6 +208,16 @@ describe('F5 (review 2026-10-16): session revocation', () => {
     expect(await auth.resolveToken(fresh!)).toMatchObject({ id: 'u-1' }); // forced re-read on fingerprint mismatch
     expect(await auth.resolveToken(token)).toBeNull();
   });
+  it('a sign-in after a reactivation works at once although the cache still held the inactive row', async () => {
+    const { users } = await seedUser(false);
+    const after = makeAuthService(users, { userTtlMs: 60_000 });
+    const { token } = await after.login({ email: 'director', password: 'correcthorse1' });
+    await users.save({ ...(await users.findById('u-1'))!, status: 'inactive' });
+    expect(await after.resolveToken(token)).toBeNull(); // caches the inactive row
+    await users.save({ ...(await users.findById('u-1'))!, status: 'active' });
+    const { token: again } = await after.login({ email: 'director', password: 'correcthorse1' });
+    expect(await after.resolveToken(again)).toMatchObject({ id: 'u-1' });
+  });
   it('a preview token keeps mustChangePassword:false although the DB row says true', async () => {
     const { auth } = await seedUser(true);
     const preview = await auth.issueTokenFor('u-1', { mustChangePassword: false }, 60_000);
