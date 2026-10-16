@@ -10059,7 +10059,8 @@ function _lkBanner(types, st) {
     const at = c && c.lastSeenAt;
     out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
   }
-  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. Do it in Elvanto."]); });
+  // B10 (F-35): only admin/director work in Elvanto; everyone else passes it on.
+  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. " + (_lkBoss() ? 'Do it in Elvanto.' : 'Tell the admin.')]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
 }
@@ -10274,7 +10275,9 @@ function _lkResults(items, results) {
   Object.keys(memGroups).forEach((g) => { if (LINK.gmOpen[g]) _lkMembersLoad(g, true); });
   LINK.fails = 0; LINK.red = false;
   if (rate) toast('Too many taps. Wait a minute.', 4000);
-  else if (say) toast(say, 5000);
+  // B10 (F-35, same rewrite as _lkStatusHtml): refused check-out / undo toasts tell a leader to tell the admin.
+  else if (say) toast(_lkBoss() ? say : say.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.'), 5000);
   // A good batch with more left (none rate-limited, all answered) goes again in 300 ms: a 160-tap backlog drains in
   // about a second, not 15 s steps (B14 / APP-22).
   if (left.length) _lkSchedule(rate || unanswered ? 15000 : 300);

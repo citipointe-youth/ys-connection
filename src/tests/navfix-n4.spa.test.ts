@@ -166,3 +166,80 @@ describe('C-B9/D3 New person request id + unsent marker', () => {
     expect(posted).toBe(1);
   });
 });
+
+const LK_CONSTS = ['LK_MEM_TYPES', 'LK_FLOW_TYPES', 'LK_OFFLINE_MS'].map((n) => html.match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
+
+describe('B10 leaders are told "Tell the admin", not "Do it in Elvanto"', () => {
+  function results(role: string) {
+    const toasts: string[] = [];
+    const f = new Function('toasts', `
+      ${LK_CONSTS}
+      const S = { user: { role: ${JSON.stringify(role)} } };
+      const LINK = { loadGen: 1, refusals: {}, gmOpen: {}, mres: {} };
+      const toast = (m) => toasts.push(m);
+      const _lkQGet = () => [], _lkQSet = () => {}, _lkApply = () => {}, _lkMembersLoad = () => {}, _lkSchedule = () => {}, _lkRefreshView = () => {};
+      ${fns(['_lkBoss', '_lkResults'])}
+      return _lkResults;`)(toasts);
+    return { run: f, toasts };
+  }
+  const SVC = 's1', PID = 'p1';
+  it('a refused check-out toast from the server message', () => {
+    for (const [role, want] of [['grade', "They aren't in a room. Tell the admin."], ['leader', "They aren't in a room. Tell the admin."], ['admin', "They aren't in a room. Do it in Elvanto."]]) {
+      const t = results(role!);
+      t.run([{ kind: 'action', id: 'a1', type: 'checkOut', payload: { serviceTimeId: SVC, personId: PID } }],
+        [{ kind: 'action', id: 'a1', outcome: 'refused', reason: 'x', message: "They aren't in a room. Do it in Elvanto." }]);
+      expect(t.toasts).toEqual([want]);
+    }
+  });
+  it('a too-late undo / cancel', () => {
+    const t = results('quad');
+    t.run([{ kind: 'undo', id: 'u1' }], [{ kind: 'undo', id: 'u1', outcome: 'too-late' }]);
+    expect(t.toasts).toEqual(['Already sent. Tell the admin.']);
+    const a = results('director');
+    a.run([{ kind: 'undo', id: 'u1' }], [{ kind: 'undo', id: 'u1', outcome: 'too-late' }]);
+    expect(a.toasts).toEqual(['Already sent. Do it in Elvanto.']);
+  });
+  it('the locked line in the screen banner', () => {
+    const banner = (role: string) => new Function(`
+      const S = { user: { role: ${JSON.stringify(role)} } };
+      const esc = (s) => String(s), icS = () => '', _lkSeen = () => '', _lkOfflineSince = () => '';
+      ${fns(['_lkBoss', '_lkBanner'])}
+      return _lkBanner(['checkOut'], { console: { online: true, capabilities: { checkOut: 'locked' } } });`)();
+    expect(banner('grade')).toContain("Check-out: this isn't connected yet. Tell the admin.");
+    expect(banner('grade')).not.toContain('Do it in Elvanto');
+    expect(banner('admin')).toContain("Check-out: this isn't connected yet. Do it in Elvanto.");
+  });
+});
+
+describe('D6 door: a pending row over 15 min says the console has not picked it up', () => {
+  const st = new Function(`
+    ${LK_CONSTS}
+    const _lkOutsideWindow = () => false, _lkPracticeLine = () => '';
+    const _lkSeen = (iso) => 'SEEN(' + iso + ')';
+    ${extractFn(html, '_lkStatusText')}
+    return _lkStatusText;`)();
+  it('16 min old -> since line; 5 min old -> the normal pending line; awaiting-approval unchanged', () => {
+    const old = new Date(Date.now() - 16 * 60000).toISOString();
+    expect(st({ status: 'pending', reason: null, createdAt: old }, '7:02 pm')).toBe(`Console hasn't picked this up yet (since SEEN(${old})).`);
+    expect(st({ status: 'pending', reason: null, createdAt: new Date(Date.now() - 5 * 60000).toISOString() })).toBe('Waiting for the console.');
+    expect(st({ status: 'pending', reason: 'awaiting-approval', createdAt: old })).toBe('Waiting for the new-person form to be approved.');
+  });
+});
+
+describe('_lkBoot flushes the intake queue when n2 is present', () => {
+  it('calls _ikQFlush once when it exists; absent is fine', () => {
+    const boot = (withFlush: boolean) => {
+      const calls: string[] = [];
+      new Function('calls', `
+        const S = { user: { id: 'u1' } }; const LINK = {};
+        const localStorage = { length: 0, key: () => null, getItem: () => null, removeItem: () => {} };
+        const _lkKey = () => 'ysc.lkq.u1', _lkQGet = () => [], _lkSchedule = () => {};
+        ${withFlush ? "function _ikQFlush() { calls.push('flush'); }" : ''}
+        ${extractFn(html, '_lkBoot')}
+        _lkBoot(); _lkBoot();`)(calls);
+      return calls;
+    };
+    expect(boot(true)).toEqual(['flush']);
+    expect(boot(false)).toEqual([]);
+  });
+});
