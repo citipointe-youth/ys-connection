@@ -712,6 +712,25 @@ describe('B8 / T-39 tap time (APP-16), /link/batch only', () => {
   });
 });
 
+describe('R2-G1 G1-2: a same-direction tap after another leader’s answers duplicate, not stale', () => {
+  const at = (iso: string) => new Date(iso);
+  for (const status of ['pending', 'sent'] as const) {
+    it(`B tapped in at 09:00:00, A's check-in row (${status}) was stored at 09:00:01 -> B gets duplicate with A's row`, async () => {
+      const h = await setup();
+      const PHONE_A = { id: 'dev-a', label: 'iPhone · Safari' }, PHONE_B = { id: 'dev-b', label: 'Android · Chrome' };
+      h.clock.now = at('2026-10-16T09:00:01.000Z');
+      const aIn = checkIn(P_AMY);
+      expect((await enq(h.svc, QUAD, aIn, PHONE_A)).outcome).toBe('saved');
+      if (status === 'sent') setRow(h.link, aIn.id, { status: 'sent', result_at: '2026-10-16T09:00:20.000Z' });
+      h.clock.now = at('2026-10-16T09:00:30.000Z');
+      const bIn = { kind: 'action', ...checkIn(P_AMY), queuedAt: '2026-10-16T09:00:00.000Z' };
+      const r = await h.svc.batch(GRADE, { device: PHONE_B, sentAt: '2026-10-16T09:00:30.000Z', items: [bIn] });
+      expect(r.results[0]).toMatchObject({ outcome: 'duplicate', existingId: aIn.id, mine: false });
+      expect(await h.link.getAction(bIn.id)).toBeNull(); // no second row
+    });
+  }
+});
+
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
     const h = await setup();

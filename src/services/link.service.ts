@@ -657,7 +657,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       };
       if (tap) {
         for (const r of rows) {
-          if (r.status === 'cancelled' || r.status === 'refused' || Date.parse(r.createdAt) <= tap.at.getTime()) continue;
+          // R2-G1 G1-2: a newer row of the SAME type (another leader's check-in after a check-in) is not stale; it
+          // reaches the same-type dedupe below and answers duplicate. A newer opposite row is still stale (APP-16 B).
+          if (r.status === 'cancelled' || r.status === 'refused' || r.type === it.type || Date.parse(r.createdAt) <= tap.at.getTime()) continue;
           if (!(await own(r))) throw new LinkStale();
         }
       }
