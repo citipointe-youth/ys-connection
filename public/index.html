@@ -12363,12 +12363,13 @@ function _ikPost(items, quiet) {
     _ikQSet(q.map((e) => ({ at: e.at, items: e.items.filter((it) => !ids.includes(it.id) && !(it.type === 'intakeAnswer' && fams.includes(_ikQRow(it)))) }))
       .filter((e) => e.items.length).concat([{ at: was || new Date().toISOString(), items: keep }]), k);
   }
-  const fly = LINK.ikFly || (LINK.ikFly = {});
+  const fly = LINK.ikFly || (LINK.ikFly = {}), ff = LINK.ikFam || (LINK.ikFam = {}); // RV-I-M1: answer families in flight (date|key), works at boot
   ids.forEach((id) => { fly[id] = true; });
+  fams.forEach((f) => { ff[f] = (ff[f] || 0) + 1; });
   return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000, !!quiet, true) // S-3: past the server's 20 s 503 guard
     .then((r) => { const res = (r && r.results) || [], got = res.map((x) => x && x.id); drop((it) => ids.includes(it.id) && got.includes(it.id)); return res; },
       (e) => { const st = e && e.status; if (st >= 400 && st < 500 && ![401, 408, 429].includes(st)) drop((it) => ids.includes(it.id)); throw e; })
-    .finally(() => ids.forEach((id) => { delete fly[id]; }));
+    .finally(() => { ids.forEach((id) => { delete fly[id]; }); fams.forEach((f) => { if (!(--ff[f] > 0)) delete ff[f]; }); });
 }
 function _ikQKey() { return 'ysc.ikq.' + ((S.user && S.user.id) || ''); }
 // The family an item is for: date|row (date|student key for an answer).
@@ -12425,16 +12426,21 @@ function _ikQFlush() {
     let any = false;
     for (const e of due) {
       let res;
+      // RV-I-M1: re-read before each post: a newer set may have replaced (removed) an item since the snapshot.
+      if (!S.user || _ikQKey() !== k) break;
+      const have = new Set([].concat(..._ikQGet(k).map((x) => x.items.map((it) => it.id)))), fl = LINK.ikFly || {};
+      const items = e.items.filter((it) => have.has(it.id) && !fl[it.id]);
+      if (!items.length) continue;
       // A kept answer counts as that family's send in flight: a new answer waits (it could land first and lose).
-      const I0 = LINK.ik, fams = I0 ? e.items.filter((it) => it.type === 'intakeAnswer').map((it) => ((it.payload && it.payload.family) || [])[0]) : [];
+      const I0 = LINK.ik, fams = I0 ? items.filter((it) => it.type === 'intakeAnswer').map((it) => ((it.payload && it.payload.family) || [])[0]) : [];
       if (I0) { const bk = I0.busyKey || (I0.busyKey = {}); fams.forEach((f) => { bk[f] = true; }); I0.busy = (I0.busy || 0) + fams.length; }
-      try { res = await _ikPost(e.items, true); }
+      try { res = await _ikPost(items, true); }
       catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
       finally { if (I0) { fams.forEach((f) => { delete I0.busyKey[f]; }); I0.busy = Math.max(0, (I0.busy || 0) - fams.length); } }
       if (!S.user || _ikQKey() !== k) break;
       any = true;
       const I = LINK.ik;
-      e.items.forEach((it) => {
+      items.forEach((it) => {
         if (!I || it.type !== 'intakeAnswer') return;
         const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
         if (r && (r.outcome === 'saved' || r.outcome === 'replay')) { if (I.resend[fam] !== 'again') delete I.resend[fam]; }
@@ -12488,7 +12494,7 @@ async function _ikAnswerSend(undo) {
   const say = (m) => toast(title && _ik().key !== key ? title + ': ' + m : m); // C-B11: name the family once another is open
   // C-B3: busy per family (another family's answer never waits behind this one); I.busy = how many are in flight.
   const bk = I.busyKey || (I.busyKey = {});
-  if (bk[key]) { I.resend[key] = 'again'; return; } // 'again': a change made while sending; the ok reply keeps it
+  if (bk[key] || (LINK.ikFam || {})[date + '|' + key]) { I.resend[key] = 'again'; return; } // 'again': a change made while sending; the ok reply keeps it
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
   const id = _lkUuid(), items = [];
