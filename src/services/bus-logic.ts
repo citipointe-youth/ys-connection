@@ -33,6 +33,16 @@ export function normName(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+// I10 (2026-10-17): tidy the case of a new person's typed name.
+// ponytail: only fixes all-lower / ALL-CAPS input; mixed case is trusted as typed. Mac* is not special-cased
+// (Macy/Mack); van/de particles get capitalised. Upgrade: a particle list if asked.
+export function tidyName(s: string): string {
+  const t = s.trim().replace(/\s+/g, ' ');
+  if (t !== t.toLowerCase() && t !== t.toUpperCase()) return t;
+  return t.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (_, p: string, c: string) => p + c.toUpperCase())
+    .replace(/\bMc(\p{L})/gu, (_, c: string) => 'Mc' + c.toUpperCase());
+}
+
 export function nameMatches(query: string, first: string, last: string): boolean {
   const f = normName(first), l = normName(last);
   return normName(query).split(' ').filter(Boolean).every((t) => f.startsWith(t) || l.startsWith(t));

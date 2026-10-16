@@ -146,6 +146,11 @@ describe('roster', () => {
 });
 
 describe('walk-ins', () => {
+  it('I10: a new person typed in lower or upper case is saved tidied', async () => {
+    const { svc, ctx } = await setup();
+    expect(await svc.createGuest(ctx('grade'), { firstName: 'harper', lastName: 'NG', grade: 8, gender: 'female', phone: null }))
+      .toMatchObject({ name: 'Harper Ng' });
+  });
   it('create guest → searchable → add as rider; purge after 28 days unused', async () => {
     const { svc, bus, ctx } = await setup();
     const g = await svc.createGuest(ctx('grade'), { firstName: 'Harper', lastName: 'Ng', grade: 8, gender: 'female', phone: '0400 111 222' });
@@ -275,6 +280,13 @@ describe('own-car newRiders (junior leader, bus:use only, 2026-10-07)', () => {
     const v = await svc.getRun(ctx('admin'));
     const r = v.riders.find((x) => x.name === 'Casey Walker');
     expect(r?.runVehicleId).toBe(own.id);
+  });
+  it('I10: an own-car newPerson typed in lower case is saved tidied', async () => {
+    const { svc, ctx } = await setup();
+    await svc.saveOwnCar(juniorLeaderCtx(), { car: { name: "Tom's car", seats: 4, endsAt: 'church' }, riderIds: [],
+      newRiders: [{ newPerson: { firstName: 'casey', lastName: 'mcwalker', grade: 8, gender: 'male', phone: null },
+        newAddress: { label: 'Home', address: '7 New St, Bulimba', placeId: 'fake:7-new-st-bulimba' } }] });
+    expect((await svc.getRun(ctx('admin'))).riders.some((x) => x.name === 'Casey McWalker')).toBe(true);
   });
   it('someone already on tonight is not duplicated, just placed in the car', async () => {
     const { svc, ctx } = await setup();

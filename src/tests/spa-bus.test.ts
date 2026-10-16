@@ -1061,7 +1061,7 @@ describe('busSaveNewPerson: phone is optional, validated by digit count when pre
       function _busReadAddress() { return { addressId: 'a1' }; }
       function _busQs() { return ''; }
       let __posted = null, __sent = [];
-      const API = { post: async (url, body) => { __posted = body; return { id: 'g1' }; } };
+      const API = { post: async (url, body) => { __posted = body; return { id: 'g1', name: 'Jess Tran' }; } };
       async function _busSend(m, p, b) { __sent.push([m, p, b]); }
       function closeModal() {}
       function toast(m) { globalThis.__toast = m; }
@@ -1075,6 +1075,7 @@ describe('busSaveNewPerson: phone is optional, validated by digit count when pre
     await busSaveNewPerson();
     expect(__state().posted.phone).toBeNull();
     expect(__state().sent).toHaveLength(1);
+    expect(__state().toastMsg).toBe('Jess Tran added'); // I10: the server's tidied name
   });
   it('rejects a phone with fewer than 8 digits', async () => {
     const { busSaveNewPerson, __state } = mk('1234');
@@ -1419,5 +1420,80 @@ describe('past history helpers', () => {
     const { _busPickTab } = loadFns(['_busPickTab']);
     expect(_busPickTab(['mycar'], 'past', true)).toBe('past');
     expect(_busPickTab(['mycar'], 'past', false)).toBe('mycar');
+  });
+});
+
+describe('_busRoutesHtml Lock control (I11)', () => {
+  const mkStubs = `
+    function esc(s) { return String(s); }
+    function icS(k) { return k; }
+    function _busSuburb(a) { return a; }
+    function _busConsentChip() { return ''; }
+    function _busPinChip() { return ''; }
+    function _busCarColour() { return '#000'; }
+    function _busPinnedIcon() { return ''; }
+    function _busRoutesHead() { return ''; }
+    function _busUndoBar() { return ''; }
+  `;
+  const car = (over: any = {}) => ({ id: 'rv1', vehicleId: 'v1', running: true, colourIndex: 0, capacity: 4, leaderNames: [],
+    eligibility: { female: true, male: true, unknown: false }, locked: false, ...over });
+  const html = (vehicles: any[], canCoordinate: boolean) => {
+    const v = { run: { readOnly: false }, canCoordinate, riders: [], vehicles };
+    return loadFns(['_busRoutesHtml', '_busGradeChip'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`)._busRoutesHtml();
+  };
+  it('a coordinator gets the Lock checkbox, ticked when locked, with the id in data-rv', () => {
+    expect(html([car()], true)).toContain('onchange="busLockCar(this)" data-rv="rv1"> Lock</label>');
+    expect(html([car({ locked: true })], true)).toContain('<input type="checkbox" checked onchange="busLockCar(this)"');
+  });
+  it('read-only viewers see a Locked chip only when locked, never the checkbox', () => {
+    expect(html([car({ locked: true })], false)).toContain('Locked</span>');
+    expect(html([car({ locked: true })], false)).not.toContain('busLockCar');
+    expect(html([car()], false)).not.toContain('Locked');
+  });
+  it('own cars get no Lock control', () => {
+    expect(html([car({ vehicleId: null, ownerLeaderId: 'L1' })], true)).not.toContain('busLockCar');
+  });
+  it('busLockCar PATCHes locked for that car, and is undone while Generate holds the lock', () => {
+    const run = (blocked: boolean, checked: boolean) => {
+      const { busLockCar, __calls } = loadFns(['busLockCar'], `
+        let __c = [];
+        function _busBlockWrite() { return ${blocked}; }
+        function busRunVeh(id, patch) { __c.push([id, patch]); }
+        function __calls() { return __c; }`, ['busLockCar', '__calls']);
+      const el = { checked, dataset: { rv: 'rv1' } };
+      busLockCar(el);
+      return { calls: __calls(), el };
+    };
+    expect(run(false, true).calls).toEqual([['rv1', { locked: true }]]);
+    const b = run(true, true);
+    expect(b.calls).toEqual([]);
+    expect(b.el.checked).toBe(false);
+  });
+});
+
+describe('_busCarsHtml header totals (I12)', () => {
+  const mk = (riders: number) => {
+    const rv = (id: string, seats: number, leaders: number, running = true) => ({ id, vehicleId: 'v' + id, running, name: 'Car ' + id, plate: '',
+      seats, capacity: seats - leaders, eligibility: { unknown: false, female: true, male: true },
+      leaderIds: Array.from({ length: leaders }, (_, i) => 'L' + i), leaderNames: [], endsAt: 'church', endsAddress: '' });
+    const v = { run: { lockBy: null, lockUntil: null }, fleet: [], vehicles: [rv('1', 5, 1), rv('2', 9, 2), rv('3', 8, 2, false)],
+      leaders: [], riders: Array.from({ length: riders }, (_, i) => ({ id: 'r' + i, runVehicleId: null, name: 'R' + i })), availablePoolLeaderIds: [] };
+    const prelude = `
+      const BUS = { generating: false, view: ${JSON.stringify(v)} };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _busSuburb(a) { return a; }
+      function _busPrefGradesChip() { return ''; }
+    `;
+    return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
+  };
+  it('counts youth seats in running cars and riders tonight; no chip when there are enough seats', () => {
+    const html = mk(3);
+    expect(html).toContain('<b>11</b> seats for youth in 2 cars');
+    expect(html).toContain('<b>3</b> students tonight');
+    expect(html).not.toContain('short');
+  });
+  it('shows "N short" when riders exceed seats', () => {
+    expect(mk(12)).toContain('1 short</span>');
   });
 });

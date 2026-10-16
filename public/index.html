@@ -752,6 +752,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .mo-box:has(.fi:focus, textarea:focus) > .bus-sheet-actions, .mo-box:has(.fi:focus, textarea:focus) > .btn-primary.btn-full,
 .mo-box:has(.sbar input:focus) > .bus-sheet-actions{position:static;box-shadow:none}
 .mo-box > .bus-sheet-actions{margin-top:12px}
+/* I11 Bus Lock: checkbox in an Assign car header */
+.bus-lock-chk{display:flex;align-items:center;gap:4px;font-size:13px;min-height:40px;padding:0 4px;cursor:pointer}
+.bus-lock-chk input{width:20px;height:20px}
 /* ── END BUS MODULE CSS ── */
 /* LINK CSS (Elvanto link screens; no gender colours anywhere) */
 .lk-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;margin-bottom:10px;border:none;font-family:inherit}
@@ -14326,7 +14329,7 @@ async function busSaveNewPerson() {
   try {
     const g = await API.post('/bus/guests?' + _busQs(), { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone: phone || null });
     await _busSend('POST', '/bus/riders', { guestId: g.id, ...a });
-    _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${firstName} added`); renderBus();
+    _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${g.name} added`); renderBus(); // I10: the server's tidied name
   } catch (e) { toast(e.message); }
 }
 async function busEditRider(id) {
@@ -14476,6 +14479,11 @@ function busOpenCarRoute(runVehicleId) {
   // every link here (>9 stops = 2+ links) stuck to the bottom on top of each other.
   modal(`<div class="mo-title">${esc(rv.name)} route</div>
     <div>${links.map((l) => `<a class="btn btn-primary btn-full" style="margin-bottom:8px" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('')}</div>`);
+}
+// I11: Lock per car per night. The run-vehicle id comes from data-rv (no person id in the handler).
+function busLockCar(el) {
+  if (_busBlockWrite()) { el.checked = !el.checked; return; }
+  busRunVeh(el.dataset.rv, { locked: el.checked });
 }
 async function busRunVeh(id, patch) { try { await _busSend('PATCH', '/bus/run/vehicles/' + id, patch); } catch (e) { toast(e.message); busRefresh(); } }
 // Task 2: turning a running car off would otherwise silently bounce its riders back to
@@ -14679,7 +14687,11 @@ function _busCarsHtml() {
       ${v.canCoordinate ? `<button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button>` : ''}</div>`;
   }).join('');
 
-  return `${lockAlert}<div class="bus-routes">${cards}</div>
+  // I12: total youth seats (fleet + own cars, seats minus leaders) vs riders tonight, "N short" when over.
+  const run = v.vehicles.filter((rv) => rv.running);
+  const seats = run.reduce((n, rv) => n + rv.capacity, 0), kids = v.riders.length;
+  const totals = `<div class="card bus-totals"><b>${seats}</b> seats for youth in ${run.length} car${run.length === 1 ? '' : 's'} · <b>${kids}</b> student${kids === 1 ? '' : 's'} tonight${kids > seats ? ` <span class="chip c-warn">${icS('alert')} ${kids - seats} short</span>` : ''}</div>`;
+  return `${lockAlert}${totals}<div class="bus-routes">${cards}</div>
     <button class="btn btn-secondary btn-full" onclick="busEditVehicle(null)">${icS('plus')} Add vehicle</button>
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
@@ -14832,11 +14844,14 @@ function _busRoutesHtml() {
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
+    // I11: Lock (fleet cars only; own cars are already left alone). Coordinators tick it; read-only viewers see a chip.
+    const lockCtl = !rv.vehicleId ? '' : ro ? (rv.locked ? `<span class="chip c-neutral">${icS('lock')} Locked</span>` : '')
+      : `<label class="bus-lock-chk" onclick="event.stopPropagation()"><input type="checkbox"${rv.locked ? ' checked' : ''} onchange="busLockCar(this)" data-rv="${esc(rv.id)}"> Lock</label>`;
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
         <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min drive` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${needsFemaleLeaderChip}</span>
-        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${routeBtn}<span class="drop-chev">${icS('chevr')}</span></span>
+        <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${lockCtl}${routeBtn}<span class="drop-chev">${icS('chevr')}</span></span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
     </div>`;

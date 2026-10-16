@@ -599,3 +599,50 @@ describe('unassignAll', () => {
     expect(v.riders.every((r) => r.runVehicleId === a)).toBe(true);
   });
 });
+
+// I11 (2026-10-17): Lock per car per night. Bulk actions leave a locked car alone; manual moves don't.
+describe('Bus Lock (I11)', () => {
+  const lock = async (f: Awaited<ReturnType<typeof busFixture>>, id: string) => f.svc.updateRunVehicle(f.admin, id, { locked: true });
+  it('Fit in places no new rider in a locked car; its riders and stop order are unchanged', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van A', 8, ['L1', 'L2']); const b = await f.car('Van B', 8, ['L3', 'L4']);
+    await f.rider('s1'); await f.rider('s2');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    await lock(f, a);
+    const before = (await f.svc.getRun(f.admin)).riders.filter((r) => r.runVehicleId === a).map((r) => [r.id, r.stopOrder]);
+    await f.rider('s3'); await f.rider('s4');
+    await f.svc.generate(f.admin, { mode: 'fit' });
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.filter((r) => r.runVehicleId === a).map((r) => [r.id, r.stopOrder])).toEqual(before);
+    expect(v.riders.filter((r) => ['Riley Kim', 'Mia Lee'].includes(r.name)).every((r) => r.runVehicleId === b)).toBe(true);
+  });
+  it("Generate all leaves a locked car's unpinned riders in place", async () => {
+    const rec = recordingRouting();
+    const f = await busFixture({ routing: rec.provider });
+    const a = await f.car('Van A', 8, ['L1', 'L2']); await f.car('Van B', 8, ['L3', 'L4']);
+    for (const s of ['s1', 's2', 's3']) await f.rider(s);
+    await f.svc.generate(f.admin, { mode: 'all' });
+    const onA = (await f.svc.getRun(f.admin)).riders.filter((r) => r.runVehicleId === a && !r.pinned).map((r) => r.id).sort();
+    expect(onA.length).toBeGreaterThan(0);
+    await lock(f, a);
+    rec.calls.solve.length = 0;
+    await f.svc.generate(f.admin, { mode: 'all' });
+    for (const p of rec.calls.solve) expect(p.vehicles).toHaveLength(1); // the locked car is never sent to the solver
+    expect((await f.svc.getRun(f.admin)).riders.filter((r) => r.runVehicleId === a).map((r) => r.id).sort()).toEqual(onA);
+  });
+  it('pool auto-fill adds no leader to a locked car', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1']); await f.car('Van B', 8, ['L3', 'L4']);
+    await f.rider('s1');
+    await f.svc.setPool(f.admin, { availableLeaderIds: ['L2'] });
+    await lock(f, a);
+    await f.svc.generate(f.admin, { mode: 'all' });
+    expect((await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === a)!.leaderIds).toEqual(['L1']);
+  });
+  it('every running car locked: Generate says so', async () => {
+    const f = await busFixture();
+    const a = await f.car('Van', 8, ['L1', 'L2']); await f.rider('s1');
+    await lock(f, a);
+    await expect(f.svc.generate(f.admin, { mode: 'all' })).rejects.toMatchObject({ statusCode: 400, message: 'Every car is locked. Untick Lock on a car to Generate' });
+  });
+});

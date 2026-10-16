@@ -36,6 +36,8 @@ export interface BusRunVehicle {
   id: ID; runId: ID; vehicleId: ID | null; ownerLeaderId: ID | null;
   name: string; seats: number; plate: string | null; running: boolean; leaderIds: ID[];
   endsAt: EndsAt; endsAddress: string | null; endsPlaceId: string | null; colourIndex: number;
+  // Bus Lock (2026-10-17, coordinators): Generate / Fit in / pool auto-fill / Unassign all / Undo skip this car.
+  locked: boolean;
   // Who was on the car, copied whenever leaderIds is saved — survives a leader being deleted (Full Reset).
   leaderSnap: { id: ID; name: string; gender: BusGender }[];
 }

@@ -150,3 +150,58 @@ describe('junior-leader redacted run view uses the strict suburb', () => {
     expect(v.riders.map((r) => r.address).sort()).toEqual(['', '', 'Carina', 'Mount Gravatt East', 'Petrie Terrace']);
   });
 });
+
+describe('Bus Lock (I11): PATCH, Unassign all, Undo, car off, manual moves', () => {
+  async function setup() {
+    const f = await busFixture();
+    const s = await f.settings.getSettings();
+    await f.settings.updateSettings({ ministryConfig: { ...s.ministryConfig, busMinistry: { ...s.ministryConfig.busMinistry, coordinatorLeaderIds: ['L1'] } } });
+    const a = await f.car('Van A', 8, ['L1', 'L2']); const b = await f.car('Van B', 8, ['L3', 'L4']);
+    const r1 = await f.rider('s1'); const r2 = await f.rider('s2');
+    await f.svc.generate(f.admin, { mode: 'all' });
+    return { ...f, a, b, r1, r2 };
+  }
+  type W = Awaited<ReturnType<typeof setup>>;
+  const carOf = async (f: W, id: string) => (await f.svc.getRun(f.admin)).riders.find((r) => r.id === id)!.runVehicleId;
+  it('only a coordinator can tick Lock (403 otherwise); Car setup writes stay open', async () => {
+    const f = await setup();
+    await expect(f.svc.updateRunVehicle(f.ctx('grade'), f.a, { locked: true })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(f.svc.updateRunVehicle(f.ctx('grade'), f.a, { leaderIds: ['L1', 'L2'] })).resolves.toBeTruthy();
+    expect(await f.svc.updateRunVehicle(f.ctx('grade', 'L1'), f.a, { locked: true })).toMatchObject({ locked: true });
+    expect((await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === f.a)!.locked).toBe(true);
+  });
+  it('Unassign all skips a locked car', async () => {
+    const f = await setup();
+    await f.svc.moveRider(f.admin, f.r1.id, { runVehicleId: f.a }); await f.svc.moveRider(f.admin, f.r1.id, { unpin: true });
+    await f.svc.moveRider(f.admin, f.r2.id, { runVehicleId: f.b }); await f.svc.moveRider(f.admin, f.r2.id, { unpin: true });
+    await f.svc.updateRunVehicle(f.admin, f.a, { locked: true });
+    expect(await f.svc.unassignAll(f.admin)).toEqual({ unassigned: 1 });
+    expect(await carOf(f, f.r1.id)).toBe(f.a);
+    expect(await carOf(f, f.r2.id)).toBeNull();
+  });
+  it('Undo after locking leaves the locked car alone (no rider out, none back in)', async () => {
+    const f = await setup();
+    const run = (await f.svc.getRun(f.admin)).run;
+    await f.svc.moveRider(f.admin, f.r1.id, { runVehicleId: f.a });
+    await f.svc.moveRider(f.admin, f.r2.id, { runVehicleId: f.b });
+    await f.svc.updateRunVehicle(f.admin, f.a, { locked: true });
+    await f.bus.setUndo(run.id, [{ riderId: f.r1.id, runVehicleId: f.b, stopOrder: 1, pinned: false },
+      { riderId: f.r2.id, runVehicleId: f.a, stopOrder: 2, pinned: false }], new Date(Date.now() + 120_000).toISOString());
+    await f.svc.undo(f.admin);
+    expect(await carOf(f, f.r1.id)).toBe(f.a);
+    expect(await carOf(f, f.r2.id)).toBe(f.b);
+  });
+  it('turning the car off clears locked', async () => {
+    const f = await setup();
+    await f.svc.updateRunVehicle(f.admin, f.a, { locked: true });
+    expect(await f.svc.updateRunVehicle(f.ctx('grade'), f.a, { running: false })).toMatchObject({ running: false, locked: false });
+  });
+  it('a manual Move into and out of a locked car still works', async () => {
+    const f = await setup();
+    await f.svc.updateRunVehicle(f.admin, f.a, { locked: true });
+    await f.svc.moveRider(f.admin, f.r2.id, { runVehicleId: f.a });
+    expect(await carOf(f, f.r2.id)).toBe(f.a);
+    await f.svc.moveRider(f.admin, f.r2.id, { runVehicleId: f.b });
+    expect(await carOf(f, f.r2.id)).toBe(f.b);
+  });
+});

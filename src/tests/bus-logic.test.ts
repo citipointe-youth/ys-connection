@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly } from '../services/bus-logic';
+import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, tidyName } from '../services/bus-logic';
 
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
@@ -106,4 +106,11 @@ describe('suburbOnly (strict: blank when unsure, never a street)', () => {
     'St Kilda Rd QLD, Australia',
     'Australia',
   ])('never a number or a street: %s -> ""', (addr) => expect(suburbOnly(addr)).toBe(''));
+});
+
+describe('tidyName (I10)', () => {
+  it.each([
+    ['john', 'John'], ['SMITH', 'Smith'], ["o'brien", "O'Brien"], ['O’NEIL', 'O’Neil'], ['mary-jane', 'Mary-Jane'],
+    ['mcdonald', 'McDonald'], ['MCKENZIE', 'McKenzie'], ['zoë', 'Zoë'], ['DeShawn', 'DeShawn'], ['  ann   lee ', 'Ann Lee'],
+  ])('%s -> %s', (input, out) => expect(tidyName(input)).toBe(out));
 });

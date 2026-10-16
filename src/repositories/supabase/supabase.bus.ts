@@ -63,13 +63,13 @@ function toRun(r: Record<string, any>): BusRun {
     lastChangeAt: iso(r.last_change_at), undoSnapshot: r.undo_snapshot ?? null, undoUntil: iso(r.undo_until),
     createdAt: toIso(r.created_at) };
 }
-function toRunVehicle(r: Record<string, any>): BusRunVehicle {
+export function toRunVehicle(r: Record<string, any>): BusRunVehicle {
   return { id: r.id, runId: r.run_id, vehicleId: r.vehicle_id ?? null, ownerLeaderId: r.owner_leader_id ?? null,
     name: r.name, seats: r.seats, plate: r.plate ?? null, running: r.running, leaderIds: r.leader_ids ?? [],
     endsAt: r.ends_at as EndsAt,
     endsAddress: busCrypt.dec(r.ends_address, `bus_run_vehicles:ends_address:${r.id}`),
     endsPlaceId: busCrypt.dec(r.ends_place_id, `bus_run_vehicles:ends_place_id:${r.id}`),
-    colourIndex: r.colour_index, leaderSnap: r.leader_snap ?? [] };
+    colourIndex: r.colour_index, leaderSnap: r.leader_snap ?? [], locked: r.locked ?? false };
 }
 function toRider(r: Record<string, any>): BusRunRider {
   return { id: r.id, runId: r.run_id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null,
@@ -185,13 +185,13 @@ export class SupabaseBusRepository implements IBusRepository {
   async listRunVehicles(runId: string) { return (await this.sql`select * from bus_run_vehicles where run_id = ${runId} order by colour_index`).map(toRunVehicle); }
   async saveRunVehicle(v: BusRunVehicle) {
     const r = await this.sql`
-      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index, leader_snap)
+      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index, leader_snap, locked)
       values (${v.id}, ${v.runId}, ${v.vehicleId}, ${v.ownerLeaderId}, ${v.name}, ${v.seats}, ${v.plate}, ${v.running}, ${this.j(v.leaderIds)},
         ${v.endsAt}, ${busCrypt.enc(v.endsAddress, `bus_run_vehicles:ends_address:${v.id}`)},
-        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex}, ${this.j(v.leaderSnap)})
+        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex}, ${this.j(v.leaderSnap)}, ${v.locked ?? false})
       on conflict (id) do update set name = excluded.name, seats = excluded.seats, plate = excluded.plate, running = excluded.running,
         leader_ids = excluded.leader_ids, ends_at = excluded.ends_at, ends_address = excluded.ends_address,
-        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index, leader_snap = excluded.leader_snap
+        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index, leader_snap = excluded.leader_snap, locked = excluded.locked
       returning *`;
     return toRunVehicle(r[0]!);
   }

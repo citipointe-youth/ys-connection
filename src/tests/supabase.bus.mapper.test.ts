@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { busCrypt, toPrefs, encSnapAddress, decSnapAddress } from '../repositories/supabase/supabase.bus';
+import { busCrypt, toPrefs, encSnapAddress, decSnapAddress, toRunVehicle } from '../repositories/supabase/supabase.bus';
 
 beforeAll(() => {
   process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(32, 2).toString('base64');
@@ -42,5 +42,18 @@ describe('leader prefs prefGrades (int[] column, not encrypted)', () => {
   it('defaults to [] when the column is absent (pre-migration row)', () => {
     const row = { leader_id: 'L1', in_pool: false, own_car: null, last_own_rider_keys: [] };
     expect(toPrefs(row).prefGrades).toEqual([]);
+  });
+});
+
+describe('run vehicle locked (I11, migration 0034)', () => {
+  const row = (over: Record<string, unknown> = {}) => ({ id: 'rv1', run_id: 'r1', vehicle_id: 'v1', owner_leader_id: null, name: 'Van',
+    seats: 8, plate: null, running: true, leader_ids: [], ends_at: 'church', ends_address: null, ends_place_id: null, colour_index: 0,
+    leader_snap: [], ...over });
+  it('reads locked from the row', () => {
+    expect(toRunVehicle(row({ locked: true })).locked).toBe(true);
+    expect(toRunVehicle(row({ locked: false })).locked).toBe(false);
+  });
+  it('a row from before 0034 (no column) reads as unlocked', () => {
+    expect(toRunVehicle(row()).locked).toBe(false);
   });
 });
