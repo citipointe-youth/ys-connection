@@ -11946,7 +11946,7 @@ function _ikFresh() {
   let tab = 'intake';
   try { if (localStorage.getItem('ysc.intakeTab') === 'consent') tab = 'consent'; } catch (e) {}
   return { tab, head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
-    ans: {}, keepMem: {}, resend: {}, debT: null, busy: false, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
+    ans: {}, keepMem: {}, resend: {}, debT: null, busy: 0, busyKey: {}, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
     sheet: null, hideText: null, pendingDraw: false, helpOpen: false,
     csub: 'last', lk: {}, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {} };
 }
@@ -12011,6 +12011,8 @@ function _ikChip(row, st) {
   const a = _ikAct(row && row.actions);
   if (!a) return (row && row.actions || []).some((x) => x && x.type === 'intakeAnswer' && x.status === 'sent') ? { label: 'Answers saved', tone: 'ok', line: 'Answers saved' } : null;
   if (_ikOpenAct(a)) {
+    // D6: still not leased after 15 min (the console is off or behind): say since when.
+    if (a.status === 'pending' && Date.now() - Date.parse(a.createdAt) > 15 * 60e3) return { label: 'Pending', tone: 'wait', line: "Console hasn't picked this up yet (since " + _lkSeen(a.createdAt) + ')' };
     if (a.type === 'intakeAnswer') return { label: 'Pending', tone: 'wait', line: 'Updating plan…' };
     return { label: 'Pending', tone: 'wait', line: (a.status === 'claimed' ? 'Sending to Elvanto…' : 'Waiting for the console.') }; // F-47: the banner says when it was last seen
   }
@@ -12232,12 +12234,12 @@ function _ikResultLine(x, d, now) {
     unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: 'Set the parent to Affiliate',
     locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
     consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
-    complete: parent ? 'Parent texted' : 'Completed New People step 0' };
+    complete: parent ? 'Parent texted' : 'Completed New People step 0', youthDemo: 'Ticked ' + of + ' Youth' };
   const t = W[x.action] || 'Saved a change';
   if (!now) return t;
   if (t === 'Parent texted') return 'Text the parent';
   const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
-    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save' }, w = t.split(' ')[0];
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick' }, w = t.split(' ')[0];
   return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
@@ -12281,11 +12283,112 @@ function _ikAns() {
   if (!I.ans[k]) I.ans[k] = _ikSeed(det.detail, I.keepMem[k]);
   return I.ans[k];
 }
-function _ikPost(items) {
+// D2/D3 (fix round 2026-10-16): every intake write goes through a small phone queue, localStorage['ysc.ikq.' + login id]
+// = [{ at, items }]. The entry is written BEFORE the POST (keepalive, so a closed app still finishes it) and leaves only
+// once the server has answered its ids, or refused the request (a 4xx other than 401/408/429). A kept entry is resent as
+// it is, same ids, so the server answers replay: it is NEVER resent with a new id. Kept at most 24 h (the server refuses
+// older intake items anyway). It can hold an answer note (name/phone fixes) on this admin phone until sent.
+// A newer answer set for a family replaces that family's kept one (the older set must never land after it).
+// Consent lookups are reads: never kept. quiet = a background resend (no loading bar).
+function _ikPost(items, quiet) {
   let device;
   try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (e) { device = { id: 'unknown', label: 'Unknown device' }; }
-  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 20000).then((r) => (r && r.results) || []);
+  const k = _ikQKey(), ids = items.map((it) => it.id), keep = items.filter((it) => it.type !== 'consentLookup');
+  const fams = keep.filter((it) => it.type === 'intakeAnswer').map(_ikQRow);
+  const drop = (gone) => _ikQSet(_ikQGet(k).map((e) => ({ at: e.at, items: e.items.filter((it) => !gone(it)) })).filter((e) => e.items.length), k);
+  if (keep.length) {
+    const q = _ikQGet(k), was = q.filter((e) => e.items.some((it) => ids.includes(it.id))).map((e) => e.at).sort()[0]; // a resend keeps its first time
+    _ikQSet(q.map((e) => ({ at: e.at, items: e.items.filter((it) => !ids.includes(it.id) && !(it.type === 'intakeAnswer' && fams.includes(_ikQRow(it)))) }))
+      .filter((e) => e.items.length).concat([{ at: was || new Date().toISOString(), items: keep }]), k);
+  }
+  const fly = LINK.ikFly || (LINK.ikFly = {});
+  ids.forEach((id) => { fly[id] = true; });
+  return API.post('/link/batch', { device, sentAt: new Date().toISOString(), items }, 25000, !!quiet, true) // S-3: past the server's 20 s 503 guard
+    .then((r) => { const res = (r && r.results) || [], got = res.map((x) => x && x.id); drop((it) => ids.includes(it.id) && got.includes(it.id)); return res; },
+      (e) => { const st = e && e.status; if (st >= 400 && st < 500 && ![401, 408, 429].includes(st)) drop((it) => ids.includes(it.id)); throw e; })
+    .finally(() => ids.forEach((id) => { delete fly[id]; }));
 }
+function _ikQKey() { return 'ysc.ikq.' + ((S.user && S.user.id) || ''); }
+// The family an item is for: date|row (date|student key for an answer).
+function _ikQRow(it) { const p = (it && it.payload) || {}; return p.date + '|' + (it && it.type === 'intakeAnswer' ? (p.family || [])[0] : p.row); }
+function _ikQGet(k) {
+  k = k || _ikQKey();
+  if (!LINK.ikMemOnly) {
+    let raw = null;
+    try { raw = localStorage.getItem(k); } catch (e) { LINK.ikMemOnly = true; }
+    if (!LINK.ikMemOnly) { try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  }
+  return ((LINK.ikMem || {})[k] || []).slice();
+}
+function _ikQSet(q, k) {
+  k = k || _ikQKey();
+  if (!LINK.ikMemOnly) {
+    try { if (q.length) localStorage.setItem(k, JSON.stringify(q)); else localStorage.removeItem(k); return; }
+    catch (e) { try { localStorage.removeItem(k); } catch (e2) {} LINK.ikMemOnly = true; } // full or blocked: memory only from now
+  }
+  (LINK.ikMem || (LINK.ikMem = {}))[k] = q.slice();
+}
+// The kept (not yet answered) item of this type for this row and date, or null.
+function _ikQFind(type, row, date) {
+  const want = date + '|' + row;
+  for (const e of _ikQGet()) for (const it of e.items) if (it.type === type && _ikQRow(it) === want) return it;
+  return null;
+}
+// Resend what is kept, oldest first, one POST per entry, same ids. Runs on each intake load, when the app comes back
+// (visibilitychange / online, below) and at boot (_lkBoot). Over 24 h: dropped with a toast. Another login's entries over
+// 24 h are swept (phones are shared); its fresh ones wait for that login.
+function _ikQFlush() {
+  if (!S.user) return Promise.resolve(false);
+  if (LINK.ikFlushing) return LINK.ikFlushing;
+  const k = _ikQKey(), cut = Date.now() - 864e5, fresh = (e) => !!e && Date.parse(e.at) > cut;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const x = localStorage.key(i);
+      if (!x || x.indexOf('ysc.ikq.') !== 0 || x === k) continue;
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem(x)); } catch (e) {}
+      if (!Array.isArray(v) || !v.some(fresh)) localStorage.removeItem(x);
+    }
+  } catch (e) {}
+  const q = _ikQGet(k), old = q.filter((e) => !fresh(e));
+  if (old.length) {
+    _ikQSet(q.filter(fresh), k);
+    const n = old.reduce((t, e) => t + ((e && e.items) || []).length, 0), t = Date.parse(old[0] && old[0].at);
+    const day = isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) : 'earlier';
+    toast(n === 1 ? '1 save from ' + day + ' was not sent' : n + ' saves from ' + day + ' were not sent', 6000);
+  }
+  const fly = LINK.ikFly || {}, due = q.filter((e) => fresh(e) && !e.items.some((it) => fly[it.id]));
+  if (!due.length) return Promise.resolve(false);
+  const p = (async () => {
+    let any = false;
+    for (const e of due) {
+      let res;
+      // A kept answer counts as that family's send in flight: a new answer waits (it could land first and lose).
+      const I0 = LINK.ik, fams = I0 ? e.items.filter((it) => it.type === 'intakeAnswer').map((it) => ((it.payload && it.payload.family) || [])[0]) : [];
+      if (I0) { const bk = I0.busyKey || (I0.busyKey = {}); fams.forEach((f) => { bk[f] = true; }); I0.busy = (I0.busy || 0) + fams.length; }
+      try { res = await _ikPost(e.items, true); }
+      catch (er) { const st = er && er.status; if (st === 401 || !(st >= 400 && st < 500)) break; continue; } // offline: next time
+      finally { if (I0) { fams.forEach((f) => { delete I0.busyKey[f]; }); I0.busy = Math.max(0, (I0.busy || 0) - fams.length); } }
+      if (!S.user || _ikQKey() !== k) break;
+      any = true;
+      const I = LINK.ik;
+      e.items.forEach((it) => {
+        if (!I || it.type !== 'intakeAnswer') return;
+        const r = _ikOutcome(res, it.id), fam = ((it.payload && it.payload.family) || [])[0];
+        if (r && (r.outcome === 'saved' || r.outcome === 'replay')) { if (I.resend[fam] !== 'again') delete I.resend[fam]; }
+        else if (r && r.outcome !== 'duplicate' && r.message) { if (I.resend[fam] !== 'again') delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
+      });
+    }
+    if (any && S.page === 'link-intake') _ikLoad(true);
+    return any;
+  })().finally(() => { LINK.ikFlushing = null; });
+  LINK.ikFlushing = p;
+  return p;
+}
+try {
+  window.addEventListener('online', () => { if (S.user) _ikQFlush(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'hidden' && S.user) _ikQFlush(); });
+} catch (e) {}
 function _ikOutcome(results, id) { return (results || []).find((r) => r && r.kind === 'action' && r.id === id) || null; }
 // Show a just-sent action at once (the next load brings the server's row).
 function _ikLocal(key, a) {
@@ -12294,33 +12397,42 @@ function _ikLocal(key, a) {
   const r = I.list && (I.list.rows || []).find((x) => x.key === key);
   if (r) r.actions = [a].concat(r.actions || []);
 }
-// Send the answer set now. One open answer row per family: a still-pending one is cancelled in the same batch.
+// Take back a row _ikLocal showed (the save did not go in).
+function _ikUnlocal(key, a) {
+  const I = _ik();
+  [I.det && I.det.row && I.det.row.key === key ? I.det : null, I.list && (I.list.rows || []).find((x) => x.key === key)]
+    .forEach((o) => { if (o) o.actions = (o.actions || []).filter((y) => y !== a); });
+}
+// Send the answer set now. One open answer row per family: the server cancels a still-pending one in the same
+// statement as the insert (S-4, supersede), so no cancel item is sent.
 async function _ikAnswerSend(undo) {
   const I = _ik();
   if (I.debT) { clearTimeout(I.debT); I.debT = null; }
   const det = I.det;
   if (!det || !det.detail || !det.row || !I.date) return;
-  const key = det.row.key, date = I.date;
-  if (I.busy) { I.resend[key] = true; return; }
+  const key = det.row.key, date = I.date, title = det.row.title || '';
+  const say = (m) => toast(title && _ik().key !== key ? title + ': ' + m : m); // C-B11: name the family once another is open
+  // C-B3: busy per family (another family's answer never waits behind this one); I.busy = how many are in flight.
+  const bk = I.busyKey || (I.busyKey = {});
+  if (bk[key]) { I.resend[key] = 'again'; return; } // 'again': a change made while sending; the ok reply keeps it
   const a = _ikAns(), b = _ikAnswerBody(date, key, det.detail, a, undo);
   if (b.note && b.note.length > 1900) { toast('These answers are too long. Shorten a fix.'); return; }
-  const old = _ikOpenOf(det.actions, ['intakeAnswer']), id = _lkUuid(), items = [];
+  const id = _lkUuid(), items = [];
   let ok = false; // review 2026-10-15b: Save answers closes the form only on a saved answer
-  if (old && old.status === 'pending') items.push({ kind: 'cancel', id: old.id });
   items.push({ kind: 'action', id, type: 'intakeAnswer', payload: b.payload, note: b.note, leaderId: null });
-  I.busy = true;
+  bk[key] = true; I.busy = (I.busy || 0) + 1;
   try {
     const r = _ikOutcome(await _ikPost(items), id);
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
       ok = true;
-      delete I.resend[key];
+      if (I.resend[key] !== 'again') delete I.resend[key];
       if (undo) { a.fixes = {}; a.keeps = {}; I.keepMem[key] = {}; }
       _ikLocal(key, { id, type: 'intakeAnswer', status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
-    } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; toast('Still updating the plan. Your change goes next.'); }
-    else { if (!(r && r.message)) I.resend[key] = true; toast((r && r.message) || 'Not sent. Try again.'); }
-  } catch (e) { I.resend[key] = true; if (_ik() === I) toast(e.message || 'Not sent. Try again.'); }
-  finally { I.busy = false; }
+    } else if (r && r.outcome === 'duplicate') { I.resend[key] = true; say('Still updating the plan. Your change goes next.'); }
+    else { if (!(r && r.message)) I.resend[key] = true; say((r && r.message) || 'Not sent. Try again.'); }
+  } catch (e) { I.resend[key] = true; if (_ik() === I) say(e.message || 'Not sent. Try again.'); }
+  finally { delete bk[key]; I.busy = Math.max(0, (I.busy || 1) - 1); }
   if (_ik() !== I) return ok;
   _ikDraw(); _ikSchedule();
   return ok;
@@ -12437,19 +12549,29 @@ async function _ikSheetGo() {
   closeModal();
   I.sheet = null;
   if (!x || !I.date || !x.keys.length) return;
-  const date = I.date, id = _lkUuid();
-  const payload = x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
-    : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one };
+  const date = I.date, title = (I.det && I.det.row && I.det.row.key === x.key && I.det.row.title) || '';
+  const say = (m) => toast(title && _ik().key !== x.key ? title + ': ' + m : m); // C-B11: name the family once another is open
+  // C-B9: a kept (unanswered) save of this type for this row goes again as it was, same id, so the server answers
+  // replay instead of queueing a second Elvanto write.
+  const item = _ikQFind(x.type, x.key, date) || { kind: 'action', id: _lkUuid(), type: x.type, note: null, leaderId: null,
+    payload: x.type === 'intakeText' ? { date, row: x.key, key: x.keys[0] }
+      : x.type === 'consentSave' ? { date, row: x.key, confirmed: x.keys.slice() } : { date, row: x.key, confirmed: x.keys.slice(), one: !!x.one } };
+  const id = item.id, pend = { id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null };
+  _ikLocal(x.key, pend); _ikDraw(); // C-B9: Pending at once, not after the reply
+  let ok = false;
   try {
-    const r = _ikOutcome(await _ikPost([{ kind: 'action', id, type: x.type, payload, note: null, leaderId: null }]), id);
+    const r = _ikOutcome(await _ikPost([item]), id);
     if (_ik() !== I) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
-      toast(x.type === 'intakeText' ? 'The text is waiting for the console.' : 'Saving. Waiting for the console.');
-      _ikLocal(x.key, { id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
-    } else if (r && r.outcome === 'duplicate') toast('Already waiting for the console.');
-    else toast((r && r.message) || 'Not saved. Try again.');
-  } catch (e) { if (_ik() === I) toast(e.message || 'Not saved. Try again.'); }
+      ok = true;
+      say(x.type === 'intakeText' ? 'The text is waiting for the console.' : 'Saving. Waiting for the console.');
+    } else if (r && r.outcome === 'duplicate') say('Already waiting for the console.');
+    else say((r && r.message) || 'Not saved. Try again.');
+  } catch (e) {
+    if (_ik() === I) say(_ikQFind(x.type, x.key, date) ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.');
+  }
   if (_ik() !== I) return;
+  if (!ok) _ikUnlocal(x.key, pend);
   _ikDraw(); _ikLoad(true);
 }
 
@@ -12704,7 +12826,7 @@ function _ikConsentHtml(det, list, st) {
 async function _ikLoad(quiet) {
   const I = _ik(), gen = ++I.gen, mode = I.tab;
   try {
-    const r = await API.fresh('/link/intake?mode=' + mode, quiet);
+    const r = await API.fresh('/link/intake?mode=' + mode + (quiet ? '' : '&view=1'), quiet); // B18: only a real page entry marks it viewed
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: r && r.console, consoleLinkRev: r && r.consoleLinkRev, appLinkRev: r && r.appLinkRev };
     I.dates = (r && r.dates) || [];
@@ -12731,7 +12853,7 @@ async function _ikLoadRow(quiet) {
     if (_ik() !== I || I.key !== key || I.date !== date) return;
     I.det = r; I.detErr = null;
     // Follow the latest push unless an answer of mine is still on its way.
-    if (!I.debT && !I.busy && !I.resend[key] && !_ikOpenOf(r && r.actions, ['intakeAnswer'])) delete I.ans[key];
+    if (!I.debT && !(I.busyKey && I.busyKey[key]) && !I.resend[key] && !_ikOpenOf(r && r.actions, ['intakeAnswer'])) delete I.ans[key];
   } catch (e) { if (_ik() === I && I.key === key) I.detErr = e.message || 'Could not load this family.'; }
 }
 function _ikAfterLoad() {
@@ -12742,8 +12864,10 @@ function _ikAfterLoad() {
     else if (L && L.takenAt && (!I.ref.prev || Date.parse(L.takenAt) > Date.parse(I.ref.prev))) { I.ref = null; toast('Checked just now.'); }
     else if (Date.now() - I.ref.since > 120000) { I.ref = null; toast("The console hasn't answered yet. Try again later."); }
   }
+  _ikQFlush(); // C-B9: kept saves and answers go again with their own ids
   const det = I.det, key = det && det.row && det.row.key;
-  if (key && I.resend[key] && !I.busy && !_ikOpenOf(det.actions, ['intakeAnswer'])) { delete I.resend[key]; _ikAnswerSend(false); }
+  // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
+  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !_ikOpenOf(det.actions, ['intakeAnswer']) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
 function _ikSchedule() {
@@ -12792,12 +12916,13 @@ function _ikOpen(i) {
 async function _ikAnswersSave() {
   const I = _ik(), det = I.det, key = det && det.row && det.row.key;
   if (!key) return;
-  if (I.busy) { toast('Still sending. Try again in a moment.'); return; }
+  if (I.busyKey && I.busyKey[key]) { toast('Still sending. Try again in a moment.'); return; }
+  const h = _here(), title = (det.row && det.row.title) || '';
   const ok = await _ikAnswerSend(false);
   if (_ik() !== I) return;
   if (!ok) return; // not saved: the toast already said why; stay on the form
-  toast('Answers saved');
-  navBack();
+  toast(title ? 'Answers saved for ' + title : 'Answers saved');
+  if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
 }
 function _ikBack() {
   const I = _ik();
@@ -12808,15 +12933,18 @@ function _ikBack() {
 async function _ikRefresh() {
   const I = _ik();
   const date = I.date || _lkLastFriday(new Date(Date.now() + 36e6).toISOString().slice(0, 10));
-  if (!date || I.ref) return;
+  if (!date || I.ref || I.refBusy) return; // C-B10: one ask at a time (a double tap sent two)
+  const mode = I.tab; // C-B10: the mode asked for, not whatever tab is showing when the reply lands
+  I.refBusy = true;
   try {
-    const r = await API.post('/link/intake/refresh', { mode: I.tab, date });
+    const r = await API.post('/link/intake/refresh', { mode, date });
     if (_ik() !== I) return;
     const was = (I.dates || []).find((x) => x.date === date);
-    I.ref = { mode: I.tab, date, since: Date.now(), prev: (was && was.takenAt) || null };
+    I.ref = { mode, date, since: Date.now(), prev: (was && was.takenAt) || null };
     if (!I.date) I.date = date;
     if (r && r.asked === false) toast('Asked a moment ago. Waiting for the console.');
   } catch (e) { if (_ik() === I) toast(e.message || 'Could not ask the console.'); return; }
+  finally { I.refBusy = false; }
   _ikDraw(); _ikLoad(true);
 }
 // ── R2 Consents sub-menus (run 2026-10-15): Last Friday (the consent plan + Save all ready), All consent forms and
