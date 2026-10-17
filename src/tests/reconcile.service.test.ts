@@ -146,3 +146,16 @@ describe('reconcile.whoLatest', () => {
     expect(await svc.whoLatest(ADMIN)).toEqual({ ranAt: null, ok: null, checkins: [], unmatched: [], lifegroups: [], members: [], noId: [] });
   });
 });
+
+describe('container wiring (C5)', () => {
+  it('a groups import runs reconcile through the container hook', async () => {
+    const { buildContainer } = await import('../container');
+    const c = await buildContainer();
+    const DIRECTOR = { id: 'dir', role: 'director', displayName: 'Dir', grade: null, quad: null } as any;
+    await c.services.importService.importGroupCsv(DIRECTOR, { groups: [{ name: 'Grade 9 Girls', meetings: ['2026-10-20'],
+      members: [{ first_name: 'Ava', last_name: 'Test', attendance: [true] }] }] }, 'g.csv');
+    const r = await c.services.reconcile.latest({ contractVersion: 1, consoleId: P(99) });
+    expect(r.run).not.toBeNull();
+    expect(r.run!.checks.lifegroups).toEqual({ count: 0, noId: 1 });   // no link_groups pushed -> no id
+  });
+});

@@ -95,6 +95,10 @@ import { makeIntakeService, type IntakeService } from './services/link-intake.se
 import { InMemoryLinkIntakeRepository } from './repositories/in-memory/link-intake.repository';
 import { SupabaseLinkIntakeRepository } from './repositories/supabase/supabase.link-intake';
 import type { ILinkIntakeRepository } from './repositories/interfaces/link-intake.repository';
+import { makeReconcileService, type ReconcileService } from './services/reconcile.service';
+import { InMemoryReconcileRunRepository } from './repositories/in-memory/reconcile-run.repository';
+import { SupabaseReconcileRunRepository } from './repositories/supabase/supabase.reconcile-run';
+import type { IReconcileRunRepository } from './repositories/interfaces/reconcile-run.repository';
 import { makeErrorLogService, type ErrorLogService } from './services/error-log.service';
 import { RateLimiter } from './utils/rate-limiter';
 import { cachedProbe } from './utils/cached-probe';
@@ -147,6 +151,8 @@ export interface Services {
   intake: IntakeService;
   /** T3 admin Error log. `errorLog.record(...)` is the helper to log an error from server code. */
   errorLog: ErrorLogService;
+  /** Part 2 reconciliation: runs after each import; POST /sync/reconcile/latest and the admin Who? view. */
+  reconcile: ReconcileService;
   users: IUserRepository;
   setup: SetupService;
   /** Cached (30 s) db + schema probe for GET /health. */
@@ -221,6 +227,7 @@ export async function buildContainer(): Promise<Container> {
   // Elvanto link (memory mode is dev/test only, no json persistence).
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
+  const reconcileRuns: IReconcileRunRepository = useSupabase ? new SupabaseReconcileRunRepository(sql) : new InMemoryReconcileRunRepository();
   const intakeRepo: ILinkIntakeRepository = useSupabase ? new SupabaseLinkIntakeRepository(sql) : new InMemoryLinkIntakeRepository();
 
   // Home/Trends fan out to several endpoints in parallel that each independently
@@ -273,8 +280,12 @@ export async function buildContainer(): Promise<Container> {
   const atRisk = makeAtRiskService(students, settings, connections, dnc);
   const trends = makeTrendsService(students, serviceSessions, serviceAttendance, settings);
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
+  // Bound after `reconcile` is built below; read at call time (same late binding as intake.off).
+  let afterImport: (kind: 'service' | 'lifegroup') => Promise<void> = async () => {};
   const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections, dnc);
-  const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null, () => busSvc.linkGuestsAfterImport());
+  const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null,
+    (kind) => afterImport(kind),
+    async () => new Map((await link.groups()).map((g) => [g.name.trim().toLowerCase(), g.groupId])));
   const settingsSvc = makeSettingsService(settings, audit, users, () => intake.off());
   const account = makeAccountService(users, settings);
   const admin = makeAdminService(
@@ -295,6 +306,13 @@ export async function buildContainer(): Promise<Container> {
     limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), errorLog, intake: intakeRepo });
   const intake = makeIntakeService({ intake: intakeRepo, link, settings, status: (a) => linkSvc.status(a), errorLog });
   const sync = makeSyncService({ link, settings, students, users, errorLog, intake, leaders });
+  const reconcile = makeReconcileService({ link, students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions,
+    serviceAttendance, imports, settings, errorLog, errorRows: errorLogRepo, runs: reconcileRuns });
+  // Never throws: the bus step is caught here, rematch/run catch internally and run() is bounded (10 s).
+  afterImport = async (kind) => {
+    await busSvc.linkGuestsAfterImport().catch(() => undefined);
+    if (kind === 'lifegroup') await reconcile.run(); else await reconcile.rematch();
+  };
 
   const probeDb = async (): Promise<boolean> => {
     if (!useSupabase) return true;
@@ -326,6 +344,7 @@ export async function buildContainer(): Promise<Container> {
     link: linkSvc,
     sync,
     intake,
+    reconcile,
     errorLog,
     users,
     setup,
