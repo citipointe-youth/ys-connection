@@ -324,7 +324,7 @@ export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().in
 export const LeadersRequest = z.object({ contractVersion: Version, consoleId: Uuid });
 export const LeadersResponse = z.object({ contractVersion: Version, names: z.array(z.string().max(200)).max(2000) });
 
-// Part 2 reconciliation (spec 2026-10-17 §5.8). Additive; no contract version bump (an older console never calls it).
+// Part 2 reconciliation (spec 2026-10-17 s5.8). Additive; no contract version bump (an older console never calls it).
 export const ReconcileLatestRequest = z.object({ contractVersion: Version, consoleId: Uuid });
 const CheckState = z.union([z.object({ count: z.number().int().min(0), noId: z.number().int().min(0).optional() }).strict(),
   z.object({ error: z.literal(true) }).strict()]);
