@@ -38,6 +38,7 @@ import {
   noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
+import { compareCheckIns } from './reconcile-rules';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -1167,15 +1168,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         d.link.roster(),
         d.link.listActions({ types: ['checkIn'], statuses: ['sent', 'shadowed'], serviceDateFrom: day, serviceDateTo: day })]);
       const attended = new Set(att.filter((a) => a.attended).map((a) => a.studentId));
-      const byId = new Map(roster.map((r) => [r.personId, r]));
       const linked = new Set<string>();
-      const out: ShadowRow[] = rows.map((r) => {
-        const p = r.personId ? byId.get(r.personId) : undefined;
-        const studentId = r.studentId ?? p?.studentId ?? null;
+      const out: ShadowRow[] = compareCheckIns(attended, roster, rows).map(({ row: r, person: p, studentId, verdict }) => {
         if (studentId) linked.add(studentId);
-        const verdict: ShadowVerdict = !studentId ? 'no-student'
-          : r.status === 'sent' ? (attended.has(studentId) ? 'matched' : 'sent-not-imported')
-            : (attended.has(studentId) ? 'practice-matched' : 'practice-missing');
         return { id: r.id, personId: r.personId, name: p ? fullName(p) : null, status: r.status, studentId, verdict };
       });
       return { date: day, imported: true, rows: out, unlinkedAttenders: [...attended].filter((s) => !linked.has(s)).length };
