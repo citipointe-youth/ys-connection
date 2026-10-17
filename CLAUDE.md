@@ -445,7 +445,7 @@ The app half of the Elvanto link. The other half is Project 11.1, the Elvanto Sy
 - **Flow steps (R4).** Admin/director only: remove from step (`removeFromFlowStep`, perm `link:flowRemove`, confirm + optional note posted to Elvanto notes; allowed on DNC rows), 4 persistent filter toggles (Junior/Senior x Guys/Girls, multi-select, all on, per device in localStorage; unknown grade/gender always shows), bulk Complete (ticks + ONE shared note, up to 50 `completeStep` items in one `/link/batch`; DNC rows cannot be ticked). DNC row: red banner, no number, no Text, Complete refused `LINK_DNC` (409). `LINK_BUSY_ROW` when a remove/complete is already open on the row. **`CONSENT_CHECK_FIRST` (409):** Complete on the New People consent step (step 0) is refused unless that person's consent row is done (or consent is `ok` with no not-done row); the UI hides Complete there and offers a Consents button.
 - **Console offline:** admin/director see red "Console offline since HH:MM" when the console's `lastSeenAt` is older than 15 min.
 - **Writer rule (operator 2026-10-15):** new writers ship live (VERIFIED true); there is no practice/shadow stage and no operator first-click lock. Claude still never writes to live Elvanto or the prod DB itself.
-- **Error log** (Admin tab, `services.errorLog.record`): never throws; stores code, route, status, role, time and a fixed message only: never names, phones or values. **Client whitelist:** the report route must be in the router table (`errorLog.setKnownRoutes()`), otherwise it is stored as `page`. Plain-English help per code in `EL_HELP`.
+- **Error log** (Admin tab, `services.errorLog.record`): never throws; stores code, route, status, role, tier, fold key and the line-1 text only: never names, phones or values. Texts and tiers per code live in `src/services/error-log-text.ts` (`textFor`, computed at read time); same-cause errors fold into one row for 30 min (`fold_key`). **Client whitelist:** the report route must be in the router table (`errorLog.setKnownRoutes()`), otherwise it is stored as `page`.
 
 ### Bus Ministry
 
@@ -539,6 +539,11 @@ Both fields are encrypted at rest with AES-256-GCM (`src/utils/field-crypto.ts`,
 ## Current round (2026-10-16 to 2026-10-17)
 
 Dated sections stay here for one round, then move to `docs/HISTORY.md`.
+### Error log rework Part 1 (2026-10-17, branch `release/2026-10-17-errlog`, migration 0035, SW `ysc-v124`, `LINK_REV` stays 8)
+- Tiers now / later / fyi (Act now, Act later, FYI); two lines per entry from `textFor()`; FYI collapsed; Clear FYI = `DELETE /admin/errors?tier=fyi`.
+- `record(r, setCount?)` unchanged in shape: no setCount folds by `fold_key` (link `link|code|route`, else `code|status`) within 30 min; setCount keeps the fixed id; `setCount 0` deletes. `pending-24h` clears itself when nothing waits.
+- Category `reconcile` exists (0035) for Part 2; the `recon-*` texts are already in `error-log-text.ts`. Part 2 reuses `toView()`.
+
 
 ### Fix round Fri 16 Oct 2026 (phone-test fixes, `LINK_REV` 7, SW `ysc-v113`, no migration)
 Release branch `release/2026-10-16` = lanes A, B, C, D, E, F, G1, G2 (`fix16/*`) merged on 9324fe8, plus integrator commits. Backlog, rulings and lane notes: Project 13 run folder `phone-test-2026-10-16/` (`FIX-RULINGS.md`, `fix/lanes/*.md`, `fix/integrate-ys.md`). Lane tests live in `src/tests/fix16-*.test.ts`.
