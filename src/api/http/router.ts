@@ -42,7 +42,7 @@ export function buildRoutes(services: Services): Route[] {
   const settings = makeSettingsController({ settings: services.settings, setup: services.setup });
   const manifest = makeManifestController({ settings: services.settings });
   const account = makeAccountController({ account: services.account, auth: services.auth });
-  const admin = makeAdminController({ admin: services.admin, errorLog: services.errorLog });
+  const admin = makeAdminController({ admin: services.admin, errorLog: services.errorLog, reconcile: services.reconcile });
   const trends = makeTrendsController({ trends: services.trends });
   const lifegroupStats = makeLifegroupStatsController({ lifegroupStats: services.lifegroupStats });
   const connectionAudit = makeConnectionAuditController({ connectionAudit: services.connectionAudit });
@@ -158,6 +158,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/admin/errors',        auth: true, handler: (r) => admin.errors(r) },
     { method: 'DELETE', path: '/admin/errors',        auth: true, handler: (r) => admin.deleteErrors(r) },
     { method: 'POST',   path: '/admin/errors/client', auth: true, handler: (r) => admin.reportError(r) },
+    { method: 'GET',    path: '/admin/reconcile/latest', auth: true, handler: (r) => admin.reconcileLatest(r) }, // Part 2 Who?
     { method: 'PATCH',  path: '/admin/errors/:id',    auth: true, handler: (r) => admin.setErrorFlags(r) },
     { method: 'DELETE', path: '/admin/errors/:id',    auth: true, handler: (r) => admin.deleteError(r) },
     // T10 Unsent new people: admin only (admin:manage in the service).

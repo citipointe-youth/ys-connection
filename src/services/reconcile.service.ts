@@ -9,6 +9,8 @@ import { parseBody, rematchRoster } from './sync.service';
 import { toView } from './error-log.service';
 import { LINK_CONTRACT_VERSION, ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
 import { nameKey } from './name-key';
+import { assertCan } from './access-control';
+import type { Actor } from '../core/entities/user';
 import type { ErrorLogService } from './error-log.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
@@ -27,8 +29,12 @@ export interface ReconcileDeps {
   errorRows: Pick<IErrorLogRepository, 'list'>; runs: IReconcileRunRepository; now?: () => Date; budgetMs?: number;
 }
 export type ReconcileLatest = z.infer<typeof ReconcileLatestResponse>;
-/** C4 adds whoLatest(actor). */
-export interface ReconcileService { rematch(): Promise<void>; run(): Promise<void>; latest(body: unknown): Promise<ReconcileLatest> }
+/** Names for the admin Who? view. Resolved at read time only: error_log and reconcile_runs hold ids. */
+export interface WhoLatest { ranAt: string | null; ok: boolean | null;
+  checkins: { name: string; date: string }[]; unmatched: { name: string; grade: number | null }[];
+  lifegroups: { group: string; date: string; missing: string[] }[]; members: { group: string; name: string; op: 'add' | 'remove' }[];
+  noId: string[] }
+export interface ReconcileService { rematch(): Promise<void>; run(): Promise<void>; latest(body: unknown): Promise<ReconcileLatest>; whoLatest(actor: Actor): Promise<WhoLatest> }
 
 type CheckName = keyof ReconcileChecks;
 const CODE: Record<CheckName, string> = { checkins: 'recon-checkins', unmatched: 'recon-unmatched', lifegroups: 'recon-lifegroups', members: 'recon-members' };
@@ -135,5 +141,24 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
       run: run ? { ranAt: run.ranAt, ok: run.ok, checks: run.checks } : null, entries });
   }
 
-  return { rematch, run, latest };
+  async function whoLatest(actor: Actor): Promise<WhoLatest> {
+    assertCan(actor, 'admin:manage');
+    const run = await d.runs.latest();
+    const empty: WhoLatest = { ranAt: null, ok: null, checkins: [], unmatched: [], lifegroups: [], members: [], noId: [] };
+    if (!run) return empty;
+    const [roster, lgs] = await Promise.all([d.link.roster(), d.lifegroups.findAll()]);
+    const person = new Map(roster.map((r) => [r.personId, r]));
+    const nm = (id: string) => { const p = person.get(id); return p ? `${p.firstName} ${p.lastName}`.trim() : '(no longer on the roster)'; };
+    const byGroup = new Map(lgs.filter((g) => g.elvantoGroupId).map((g) => [g.elvantoGroupId as string, g.fullName]));
+    const byLg = new Map(lgs.map((g) => [g.id, g.fullName]));
+    const grp = (id: string) => byGroup.get(id) ?? '(group not in the last import)';
+    return { ranAt: run.ranAt, ok: run.ok,
+      checkins: run.items.checkins.map((x) => ({ name: nm(x.personId), date: x.date })),
+      unmatched: run.items.unmatched.map((id) => ({ name: nm(id), grade: person.get(id)?.grade ?? null })),
+      lifegroups: run.items.lifegroups.map((x) => ({ group: grp(x.groupId), date: x.date, missing: x.personIds.map(nm) })),
+      members: run.items.members.map((x) => ({ group: grp(x.groupId), name: nm(x.personId), op: x.op })),
+      noId: run.items.noId.map((id) => byLg.get(id) ?? '(gone)') };
+  }
+
+  return { rematch, run, latest, whoLatest };
 }

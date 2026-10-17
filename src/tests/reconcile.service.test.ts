@@ -28,7 +28,7 @@ async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroup
   const errRepo = new InMemoryErrorLogRepository();
   const errorLog = makeErrorLogService({ repo: errRepo, now: () => NOW });
   const runs = new InMemoryReconcileRunRepository();
-  const lifegroups = { findAll: async () => { if (o.throwIn === 'lifegroups') throw new Error('x'); return [{ id: 'lg1', elvantoGroupId: null }] as any; },
+  const lifegroups = { findAll: async () => { if (o.throwIn === 'lifegroups') throw new Error('x'); return [{ id: 'lg1', elvantoGroupId: null, fullName: 'Grade 9 Girls' }] as any; },
     findRoll: async () => [] };
   const svc = makeReconcileService({ link, students, lifegroups, lifegroupWeeks: { findAll: async () => [] },
     lifegroupAttendance: { findAll: async () => [] }, serviceSessions: { findAll: () => (o.hang === 'sessions' ? new Promise(() => {}) : Promise.resolve([])) },
@@ -123,5 +123,26 @@ describe('reconcile.latest (console endpoint)', () => {
   it('no run yet gives run null', async () => {
     const { svc } = await harness();
     expect((await svc.latest(body)).run).toBeNull();
+  });
+});
+
+describe('reconcile.whoLatest', () => {
+  const ADMIN = { id: 'u-admin', role: 'admin', displayName: 'A', grade: null, quad: null } as any;
+  const LEADER = { id: 'u-l', role: 'leader', displayName: 'L', grade: 9, quad: null } as any;
+  it('resolves ids to names at read time', async () => {
+    const { svc } = await harness();
+    await svc.run();
+    const w = await svc.whoLatest(ADMIN);
+    expect(w.unmatched).toEqual([{ name: 'Ava Test', grade: 9 }]);
+    expect(w.noId).toEqual(['Grade 9 Girls']);
+    expect(w.ok).toBe(true);
+  });
+  it('refuses a non-admin', async () => {
+    const { svc } = await harness();
+    await expect(svc.whoLatest(LEADER)).rejects.toBeTruthy();
+  });
+  it('no run gives empty sections', async () => {
+    const { svc } = await harness();
+    expect(await svc.whoLatest(ADMIN)).toEqual({ ranAt: null, ok: null, checkins: [], unmatched: [], lifegroups: [], members: [], noId: [] });
   });
 });
