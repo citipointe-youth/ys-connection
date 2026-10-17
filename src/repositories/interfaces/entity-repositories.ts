@@ -9,6 +9,7 @@ import type {
   ServiceSession,
   ServiceAttendance,
   Lifegroup,
+  LifegroupRollRow,
   LifegroupWeek,
   LifegroupAttendance,
   ImportRecord,
@@ -103,6 +104,8 @@ export interface IServiceAttendanceRepository {
 export interface ILifegroupRepository extends IRepository<Lifegroup> {
   saveMany(lifegroups: Lifegroup[]): Promise<void>;
   deleteAll(): Promise<void>;
+  saveRoll(rows: LifegroupRollRow[]): Promise<void>;
+  findRoll(): Promise<LifegroupRollRow[]>;
 }
 
 export interface ILifegroupWeekRepository extends IRepository<LifegroupWeek> {

@@ -11,6 +11,7 @@ import type {
   ServiceSession,
   ServiceAttendance,
   Lifegroup,
+  LifegroupRollRow,
   LifegroupWeek,
   LifegroupAttendance,
   ImportRecord,
@@ -345,6 +346,11 @@ export class InMemoryLifegroupRepository
     for (const g of lifegroups) this.store.set(g.id, this.clone(g));
     await this.writeToPersistence();
   }
+
+  private roll = new Map<string, LifegroupRollRow>();
+  async saveRoll(rows: LifegroupRollRow[]): Promise<void> { for (const r of rows) this.roll.set(`${r.lifegroupId}|${r.nameKey}`, { ...r }); }
+  async findRoll(): Promise<LifegroupRollRow[]> { return [...this.roll.values()].map((r) => ({ ...r })); }
+  override async deleteAll(): Promise<void> { this.roll.clear(); await super.deleteAll(); }   // mirrors truncate ... cascade
 }
 
 // ---------------------------------------------------------------------------

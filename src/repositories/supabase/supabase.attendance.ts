@@ -11,6 +11,7 @@ import type {
   ServiceSession,
   ServiceAttendance,
   Lifegroup,
+  LifegroupRollRow,
   LifegroupWeek,
   LifegroupAttendance,
   ImportRecord,
@@ -66,6 +67,7 @@ function toLifegroup(row: Record<string, unknown>): Lifegroup {
     grade: (row['grade'] as number | null) ?? null,
     gender: (row['gender'] as string | null) ?? null,
     createdAt: dateIso(row['created_at']),
+    elvantoGroupId: (row['elvanto_group_id'] as string | null) ?? null,
   };
 }
 
@@ -299,20 +301,22 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
 
   async save(lifegroup: Lifegroup): Promise<Lifegroup> {
     const rows = await this.sql`
-      insert into lifegroups (id, full_name, short_name, grade, gender, created_at)
+      insert into lifegroups (id, full_name, short_name, grade, gender, created_at, elvanto_group_id)
       values (
         ${lifegroup.id},
         ${lifegroup.fullName},
         ${lifegroup.shortName},
         ${lifegroup.grade ?? null},
         ${lifegroup.gender ?? null},
-        ${lifegroup.createdAt}
+        ${lifegroup.createdAt},
+        ${lifegroup.elvantoGroupId ?? null}
       )
       on conflict (id) do update set
         full_name  = excluded.full_name,
         short_name = excluded.short_name,
         grade      = excluded.grade,
-        gender     = excluded.gender
+        gender     = excluded.gender,
+        elvanto_group_id = excluded.elvanto_group_id
       returning *
     `;
     return toLifegroup(rows[0]!);
@@ -330,13 +334,15 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
           grade:      g.grade ?? null,
           gender:     g.gender ?? null,
           created_at: g.createdAt,
+          elvanto_group_id: g.elvantoGroupId ?? null,
         })),
       )}
       on conflict (id) do update set
         full_name  = excluded.full_name,
         short_name = excluded.short_name,
         grade      = excluded.grade,
-        gender     = excluded.gender
+        gender     = excluded.gender,
+        elvanto_group_id = excluded.elvanto_group_id
     `;
     }
   }
@@ -348,6 +354,18 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
 
   async deleteAll(): Promise<void> {
     await this.sql`truncate table lifegroups cascade`;
+  }
+
+  async saveRoll(rows: LifegroupRollRow[]): Promise<void> {
+    for (const batch of chunk(rows)) {
+      await this.sql`insert into lifegroup_roll ${this.sql(batch.map((r) => ({ lifegroup_id: r.lifegroupId, name_key: r.nameKey })))}
+        on conflict do nothing`;
+    }
+  }
+
+  async findRoll(): Promise<LifegroupRollRow[]> {
+    return (await this.sql`select lifegroup_id, name_key from lifegroup_roll`)
+      .map((r) => ({ lifegroupId: r['lifegroup_id'] as string, nameKey: r['name_key'] as string }));
   }
 }
 
