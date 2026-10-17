@@ -95,6 +95,7 @@ const FALLBACK_SERVER: Entry = ['later', 'An error with no description yet ({cod
 const FALLBACK_LINK: Entry = ['later', 'The console refused {type} ({code})', "Add {code} to TEXT in error-log-text.ts; Admin > Elvanto link shows the console's sentence."];
 
 const lc = (s: string) => s.toLowerCase().replace('elvanto link action', 'Elvanto link action'); // proper noun mid-sentence
+const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.hasOwn(o, k) ? o[k] : undefined); // codes can be untrusted
 function label(route: string): string {
   const t = route.startsWith('POST /link/batch ') ? route.slice('POST /link/batch '.length) : route;
   return (LABELS as Record<string, string>)[t] ?? 'Elvanto link action';
@@ -105,10 +106,10 @@ export function textFor(category: string, code: string, route: string, status: n
   let e: Entry;
   if (category === 'client') {
     if (code.startsWith('JS_')) e = CLIENT.JS!;
-    else if (CLIENT[code]) e = CLIENT[code]!;
-    else if (TEXT[code]) e = ['fyi', TEXT[code]![1], TEXT[code]![2]]; // a client copy of a server code: the server row acts
+    else if (own(CLIENT, code)) e = CLIENT[code]!;
+    else if (own(TEXT, code)) e = ['fyi', TEXT[code]![1], TEXT[code]![2]]; // a client copy of a server code: the server row acts
     else e = CLIENT.OTHER!;
-  } else e = TEXT[code] ?? (category === 'link' ? FALLBACK_LINK : FALLBACK_SERVER);
+  } else e = own(TEXT, code) ?? (category === 'link' ? FALLBACK_LINK : FALLBACK_SERVER);
   let tier = e[0];
   if (category === 'link' && code === 'too-old' && route === 'consentLookup') tier = 'fyi';
   if (category === 'link' && tier === 'later' && CONSENT_RAISE.has(route)) tier = 'now';
@@ -118,7 +119,7 @@ export function textFor(category: string, code: string, route: string, status: n
   const type = label(route);
   const aType = (/^[AEIOU]/.test(type) ? 'An ' : 'A ') + type;
   const fill = (s: string) => s.replace(/\{(\w+)\}/g, (m, k: string, off: number) =>
-    k === 'type' ? (off ? lc(type) : type)
+    k === 'type' ? (off ? (type === 'Elvanto link action' && s.slice(0, off).endsWith('refused ') ? 'an ' : '') + lc(type) : type)
       : k === 'a_type' ? (off ? lc(aType) : aType.replace(/ (\S)/, (_x, c: string) => ' ' + (type === 'Elvanto link action' ? c : c.toLowerCase())))
         : k === 'route' ? route : k === 'n' ? String(count) : k === 'code' ? code : m);
   return { tier, line1: fill(l1), line2: fill(e[2]), counted };

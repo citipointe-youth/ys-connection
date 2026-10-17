@@ -71,6 +71,13 @@ describe('error-log-text', () => {
     expect(textFor('link', 'brand-new', 'checkIn', null)).toMatchObject({ tier: 'later', line1: 'The console refused check-in (brand-new)' });
   });
 
+  it('inherited property names are not codes; unknown route reads "an Elvanto link action"', () => {
+    for (const c of ['constructor', 'toString', '__proto__']) for (const cat of ['server', 'link', 'client'])
+      expect(textFor(cat, c, 'x', null).line1, c).toMatch(/\(.*\)|^A /);
+    expect(textFor('link', 'brand-new', 'unknown', null).line1).toBe('The console refused an Elvanto link action (brand-new)');
+    expect(textFor('link', 'unknown', 'unknown', null).line1).toBe('The console refused an Elvanto link action for an unknown reason');
+  });
+
   it('no placeholder survives in any rendered text', () => {
     for (const code of Object.keys(TEXT)) for (const cat of ['server', 'link', 'reconcile']) {
       const t = textFor(cat, code, 'checkIn', 500, 2);
