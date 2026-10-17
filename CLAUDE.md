@@ -545,7 +545,7 @@ Dated sections stay here for one round, then move to `docs/HISTORY.md`.
 - Category `reconcile` exists (0035) for Part 2; the `recon-*` texts are already in `error-log-text.ts`. Part 2 reuses `toView()`.
 ### Reconciliation Part 2 (2026-10-17, branch `release/recon-ys`, migration 0036 `reconcile_runs`, `LATEST_MIGRATION = '0036'`, SW `ysc-v125`, `LINK_REV` stays 8)
 - `src/services/reconcile.service.ts` compares the Elvanto roster (`link_roster`), check-ins and lifegroup CSV data after each import. Report only: it never writes to Elvanto. It writes only roster matching (`rematchRoster`), its own `error_log` rows (category `reconcile`, setCount, ids only, never names) and `reconcile_runs`. Leaders are excluded. Bounded to 10 s, never throws, never fails an import.
-- Hook: the `afterImport(kind)` callback in `container.ts` (called by `sync.service` inside the import request) runs `reconcile.run()` after a lifegroup import and `reconcile.rematch()` otherwise.
+- Hook: the `afterImport(kind)` callback in `container.ts` (called by `import.service` inside the import request) runs `reconcile.run()` after a lifegroup import and `reconcile.rematch()` otherwise.
 - Endpoints: `POST /sync/reconcile/latest` (console sync auth, additive, no contract bump) returns the latest run for the Friday/Tuesday email (counts and `textFor` lines; `reconcile` rows kept at any age); `GET /admin/reconcile/latest` (`admin:manage`) is the admin "Who?" view and the only place names are resolved (at read time).
 - No thresholds: a count above zero raises the entry, 0 deletes it (`record(r, 0)`). Next migration is `0037`.
 
