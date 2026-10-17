@@ -324,5 +324,17 @@ export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().in
 export const LeadersRequest = z.object({ contractVersion: Version, consoleId: Uuid });
 export const LeadersResponse = z.object({ contractVersion: Version, names: z.array(z.string().max(200)).max(2000) });
 
+// Part 2 reconciliation (spec 2026-10-17 §5.8). Additive; no contract version bump (an older console never calls it).
+export const ReconcileLatestRequest = z.object({ contractVersion: Version, consoleId: Uuid });
+const CheckState = z.union([z.object({ count: z.number().int().min(0), noId: z.number().int().min(0).optional() }).strict(),
+  z.object({ error: z.literal(true) }).strict()]);
+export const ReconcileLatestResponse = z.object({
+  contractVersion: Version,
+  run: z.object({ ranAt: z.string(), ok: z.boolean(),
+    checks: z.object({ checkins: CheckState, unmatched: CheckState, lifegroups: CheckState, members: CheckState }) }).nullable(),
+  entries: z.array(z.object({ tier: z.enum(['now', 'later']), code: z.string().max(80), line1: z.string().max(300),
+    count: z.number().int().min(0), counted: z.boolean(), lastSeen: z.string() })).max(200),
+});
+
 // ---- Error bodies (spec 3.1); extra fields (expected, details) pass through.
 export const ErrorBody = z.object({ code: z.enum(SYNC_ERROR_CODES), message: z.string() }).passthrough();

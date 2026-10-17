@@ -113,3 +113,15 @@ describe('check 4 group members', () => {
     expect(checkMembers({ ...mbase, roll: [], actions: [mem('add', 1, '2026-10-20T08:00:00Z'), mem('remove', 1, '2026-10-21T08:00:00Z')] }).count).toBe(0);
   });
 });
+
+import { ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
+describe('reconcile contract', () => {
+  it('request is the leaders base shape; response round-trips', () => {
+    expect(ReconcileLatestRequest.safeParse({ contractVersion: 1, consoleId: P(1) }).success).toBe(true);
+    const res = { contractVersion: 1, run: { ranAt: '2026-10-23T11:15:00.000Z', ok: true,
+      checks: { checkins: { count: 2 }, unmatched: { count: 96 }, lifegroups: { count: 0, noId: 0 }, members: { error: true } } },
+      entries: [{ tier: 'now', code: 'recon-checkins', line1: '2 app check-ins are missing from Elvanto attendance', count: 2, counted: true, lastSeen: '2026-10-23T11:15:00.000Z' }] };
+    expect(ReconcileLatestResponse.parse(res)).toEqual(res);
+    expect(ReconcileLatestResponse.safeParse({ ...res, run: null }).success).toBe(true);
+  });
+});
