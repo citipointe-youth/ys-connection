@@ -74,6 +74,7 @@ describe('error-log-text', () => {
   it('inherited property names are not codes; unknown route reads "an Elvanto link action"', () => {
     for (const c of ['constructor', 'toString', '__proto__']) for (const cat of ['server', 'link', 'client'])
       expect(textFor(cat, c, 'x', null).line1, c).toMatch(/\(.*\)|^A /);
+    for (const r of ['constructor', 'toString', 'POST /link/batch constructor']) expect(textFor('link', 'unclear', r, null).line1, r).toBe('Elvanto link action sent but Elvanto never confirmed it');
     expect(textFor('link', 'brand-new', 'unknown', null).line1).toBe('The console refused an Elvanto link action (brand-new)');
     expect(textFor('link', 'unknown', 'unknown', null).line1).toBe('The console refused an Elvanto link action for an unknown reason');
   });

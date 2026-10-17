@@ -98,7 +98,7 @@ const lc = (s: string) => s.toLowerCase().replace('elvanto link action', 'Elvant
 const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.hasOwn(o, k) ? o[k] : undefined); // codes can be untrusted
 function label(route: string): string {
   const t = route.startsWith('POST /link/batch ') ? route.slice('POST /link/batch '.length) : route;
-  return (LABELS as Record<string, string>)[t] ?? 'Elvanto link action';
+  return own(LABELS as Record<string, string>, t) ?? 'Elvanto link action';
 }
 
 /** The tier and two lines for one stored row. Pure; never throws. */
