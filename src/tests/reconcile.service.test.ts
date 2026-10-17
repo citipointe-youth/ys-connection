@@ -92,3 +92,36 @@ describe('reconcile.run', () => {
     expect((await runs.latest())!.ok).toBe(false);
   });
 });
+
+describe('reconcile.latest (console endpoint)', () => {
+  const body = { contractVersion: 1, consoleId: P(99) };
+  it('shape: run + entries, tier now/later only, ignored left out, 7-day filter for non-reconcile rows', async () => {
+    const { svc, errRepo } = await harness();
+    await svc.run();
+    const old = new Date(NOW.getTime() - 8 * 86_400_000).toISOString();
+    await errRepo.record({ id: 'old1', category: 'link', code: 'unclear', route: 'checkIn', status: null, message: 'x', role: null, at: old, tier: 'now', foldKey: null } as any);
+    await errRepo.record({ id: 'fyi1', category: 'server', code: 'SERVICE_UNAVAILABLE', route: '', status: 503, message: 'x', role: null, at: NOW.toISOString(), tier: 'fyi', foldKey: null } as any);
+    await errRepo.record({ id: 'ign1', category: 'link', code: 'unclear', route: 'consentSave', status: null, message: 'x', role: null, at: NOW.toISOString(), tier: 'now', foldKey: null } as any);
+    await errRepo.setFlags('ign1', { ignored: true });
+    const r = await svc.latest(body);
+    expect(r.run?.ok).toBe(true);
+    expect(r.entries.map((e) => e.code).sort()).toEqual(['recon-lifegroup-noid', 'recon-unmatched']);
+    expect(r.entries.find((e) => e.code === 'recon-unmatched')).toMatchObject({ tier: 'later', count: 1 });
+    expect(r.entries.find((e) => e.code === 'recon-unmatched')).toMatchObject({ counted: true, line1: '1 roster student has no student record in YS' });
+  });
+  it('persistent reconcile row older than 7 days is kept', async () => {
+    const { svc, errRepo } = await harness();
+    await svc.run();
+    const real = errRepo.list.bind(errRepo);   // age every row by 22 days
+    errRepo.list = async () => (await real()).map((x) => ({ ...x, lastSeen: '2026-10-01T00:00:00.000Z' }));
+    expect((await svc.latest(body)).entries.map((e) => e.code)).toContain('recon-unmatched');
+  });
+  it('wrong contract version is a 409 LinkContractMismatch', async () => {
+    const { svc } = await harness();
+    await expect(svc.latest({ ...body, contractVersion: 2 })).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH' });
+  });
+  it('no run yet gives run null', async () => {
+    const { svc } = await harness();
+    expect((await svc.latest(body)).run).toBeNull();
+  });
+});
