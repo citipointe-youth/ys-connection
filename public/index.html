@@ -6660,7 +6660,7 @@ function _elRowHtml(r, seenAt, open) {
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
       <button class="btn btn-ghost btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
     </div>` : '';
-  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}</div>${acts}</div>`;
+  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-ghost btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
 }
 function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const all = rows || [];
@@ -6695,6 +6695,23 @@ async function _elLoad() {
   _elRows = d.rows || [];
   _elPaint();
 }
+// Part 2 Who?: names behind login, resolved by the server at read time. One section per reconcile code.
+async function elWho(code) {
+  let d;
+  try { d = await API.fresh('/admin/reconcile/latest'); } catch (e) { toast(e.message); return; }
+  const li = (s) => `<li>${s}</li>`;
+  const sec = {
+    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}`))],
+    'recon-unmatched': ['Roster students with no YS record', d.unmatched.map((x) => li(`${esc(x.name)}${x.grade != null ? `, Grade ${esc(String(x.grade))}` : ''}`))],
+    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}`))],
+    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}`))],
+    'recon-lifegroup-noid': ['Lifegroups with no Elvanto group id', d.noId.map((g) => li(esc(g)))],
+  }[code];
+  if (!sec) return;
+  const when = d.ranAt ? `Checked ${esc(new Date(d.ranAt).toLocaleString())}` : 'Not checked yet';
+  modal(`<h3>${esc(sec[0])}</h3><p class="help">${when}</p>${sec[1].length ? `<ul>${sec[1].join('')}</ul>` : '<p>Nobody now.</p>'}`);
+}
+// end elWho
 function elToggle(id) { _elOpen = _elOpen === id ? '' : id; _elPaint(); }
 function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
 async function elFlag(id, flags) {
