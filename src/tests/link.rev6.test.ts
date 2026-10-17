@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS } from '../services/link.service';
 import { makeSyncService } from '../services/sync.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
+import { consentFriday, consentFridayPassed, consentStepAllowed } from '../services/link-rules';
 import { InMemoryLinkIntakeRepository } from '../repositories/in-memory/link-intake.repository';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
@@ -215,5 +216,90 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     expect((await off.link.listConsoles())[0]!.capabilities.consentLookup).toBeUndefined();
     expect((await off.link.listConsoles())[0]!.capabilities.removeFromFlowStep).toBe('live');
     expect((await h.claim()).rows.map((r) => r.id)).toContain(id);
+  });
+});
+
+// Consents run 2026-10-17 (R4/R6, LINK_REV 9): step 0 past the student's consent Friday with no reply.
+describe('rev 9: step-0 Complete past the consent Friday records consent not received (R4)', () => {
+  const NPN = 'Brisbane - Youth - New People 2026';
+  const P_A = u(111), P_B = u(112), P_C = u(113), P_D = u(114), P_E = u(115);
+  const FA = u(531), FB = u(532), FC = u(533), FD = u(534), FE = u(535);
+  const step0 = (rowId: string, personId: string, due: string | null, consent: string) => ({ rowId, flowId: NP, flowName: NPN, stepId: STEP0,
+    stepName: 'Step 0 - wait', stepOrder: 1, personId, name: 'Sample Kid', due, assignedTo: '', grade: 8, gender: 'female', mobile: '0400000001', mobileIsParent: false, consent });
+  async function rev9(linkRev = 9) {
+    const h = await setup();
+    await h.link.replaceMirror('flows', [
+      step0(FA, P_A, '2026-10-08', 'unknown'), // consent Fri 9 Oct 9:00: passed (NOW = Fri 16 Oct 19:00 Brisbane)
+      step0(FB, P_B, '2026-10-16', 'unknown'), // due Fri 16 Oct -> consent Fri 23 Oct: not yet
+      step0(FC, P_C, '2026-10-02', 'unknown'), // passed, but a consent row is open for them
+      step0(FD, P_D, '2026-10-02', 'ok'), // consent on the profile: the ordinary Complete, nothing recorded
+      step0(FE, P_E, null, 'unknown'), // no due date: no consent Friday
+    ] as never, { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
+    await h.intake.replace('consent', { date: '2026-10-09', takenAt: NOW.toISOString(), consoleId: CONSOLE, cut: false, inputs: null },
+      [consentRow(P_C, 'needs-you')] as never);
+    await h.sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false, pollSeconds: 60,
+      capabilities: ALL, max: 0, leaseSeconds: 300, linkRev });
+    return h;
+  }
+  const done = (rowId: string, personId: string, extra: Record<string, unknown> = {}) =>
+    ({ ...complete(rowId, NP, STEP0, personId), payload: { rowId, flowId: NP, stepId: STEP0, personId, notePrivate: false, ...extra } });
+
+  it('the rules: consent Friday = the first Friday after the due date; passed at 9:00 Brisbane; the verdicts', () => {
+    expect(consentFriday('2026-10-16')).toBe('2026-10-23'); // a Friday -> the next one
+    expect(consentFriday('2026-10-15')).toBe('2026-10-16');
+    expect(consentFriday('2026-10-17')).toBe('2026-10-23');
+    expect(consentFriday(null)).toBeNull();
+    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T22:59:00Z'))).toBe(false); // 8:59 Brisbane
+    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T23:00:00Z'))).toBe(true); // 9:00
+    const r = (due: string | null, consent: string) => ({ personId: P_A, due, consent });
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW, 9)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW, 8)).toBeNull(); // an older console cannot record it
+    expect(consentStepAllowed(r('2026-10-16', 'unknown'), [], NOW, 9)).toBeNull(); // before the Friday
+    expect(consentStepAllowed(r('2026-10-08', 'contact'), [], NOW, 9)).toBeNull(); // DO NOT CONTACT
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW, 9)).toBeNull(); // open consent row
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW, 9)).toBe('done');
+    expect(consentStepAllowed(r(null, 'ok'), [], NOW, 9)).toBe('done');
+  });
+  it('allowed and stored with notReceived (set by the server); the claim carries it to the console', async () => {
+    const h = await rev9();
+    const a = done(FA, P_A);
+    expect(h.oc(await h.one(ADMIN, a))).toBe('saved');
+    const row = (await h.claim()).rows.find((x) => x.id === a.id)!;
+    expect(row.payload).toMatchObject({ rowId: FA, personId: P_A, notReceived: true });
+    expect(h.oc(await h.one(ADMIN, a))).toBe('replay'); // the phone resends what it sent: a replay, never LINK_ID_REUSED
+  });
+  it('refused CONSENT_CHECK_FIRST before the Friday, with an open consent row, with no due date, or with a rev 8 console', async () => {
+    const h = await rev9();
+    expect(h.oc(await h.one(ADMIN, done(FB, P_B)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, done(FC, P_C)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, done(FE, P_E)))).toBe('CONSENT_CHECK_FIRST');
+    const old = await rev9(8);
+    expect(old.oc(await old.one(ADMIN, done(FA, P_A)))).toBe('CONSENT_CHECK_FIRST');
+  });
+  it('a sticky roster DO NOT CONTACT (flow row read as unknown) never records consent not received', async () => {
+    const h = await rev9();
+    await h.link.replaceMirror('roster', [{ personId: P_A, firstName: 'Sample', lastName: 'Kid', gender: 'female', grade: 8, kind: 'student', consent: 'contact' }] as never,
+      { takenAt: '2026-10-16T08:40:00.000Z', consoleId: CONSOLE });
+    expect(h.oc(await h.one(ADMIN, done(FA, P_A)))).toBe('CONSENT_CHECK_FIRST');
+    expect((await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FA)).toMatchObject({ dnc: true, notReceivedOk: false });
+  });
+  it('a phone-sent notReceived is never trusted: dropped on an ordinary Complete', async () => {
+    const h = await rev9();
+    const d = done(FD, P_D, { notReceived: true });
+    expect(h.oc(await h.one(ADMIN, d))).toBe('saved');
+    const row = (await h.claim()).rows.find((x) => x.id === d.id)!;
+    expect(row.payload).not.toHaveProperty('notReceived');
+  });
+  it('GET /link/flows: consentFriday on step-0 rows, notReceivedOk only once the Friday passed (R6 waiting label)', async () => {
+    const h = await rev9();
+    const rows = (await h.svc.flows(ADMIN)).rows;
+    const by = (id: string) => rows.find((x) => x.rowId === id)!;
+    expect(by(FA)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: true });
+    expect(by(FB)).toMatchObject({ consentFriday: '2026-10-23', notReceivedOk: false });
+    expect(by(FC)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: false }); // an open consent row: the batch would refuse it
+    expect(by(FD)).toMatchObject({ notReceivedOk: false }); // consent ok: the ordinary Complete
+    expect(by(FE)).toMatchObject({ consentFriday: null, notReceivedOk: false });
+    const old = await rev9(8);
+    expect((await old.svc.flows(ADMIN)).rows.find((x) => x.rowId === FA)).toMatchObject({ notReceivedOk: false });
   });
 });

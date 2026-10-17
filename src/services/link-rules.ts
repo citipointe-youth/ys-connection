@@ -3,7 +3,7 @@
 import type {
   ActionType, IgnoredWhy, LinkRosterRow, LinkServiceRow, Match, OutboxRow, ResultItem, Status,
 } from '../core/link-types';
-import { NOTE_FAILED_DETAIL } from '../core/link-contract';
+import { NOTE_FAILED_DETAIL, isDnc } from '../core/link-contract';
 
 export const LINK_CUTOFF_DAYS = 3;
 export const LEASE_LOST_MS = 3_600_000;
@@ -144,15 +144,35 @@ export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editRep
 /** The 7-day consent wait: flow "Brisbane - Youth - New People 2026", step "0" / "Step 0 ..." (youth-gather.js FLOW.people / STEP.people0). */
 export const isConsentStep = (r: { flowName: string; stepName: string }) =>
   /^Brisbane - Youth - New People 2026/i.test(r.flowName) && /^(step\s*)?0\b/i.test(r.stepName.trim());
+/** LINK_REV 9 (consents run 2026-10-17, R4): the console marks consent not received before a step-0 Complete. */
+export const NOT_RECEIVED_REV = 9;
 /**
- * Complete on the consent step is allowed only when that person's consent row (New youth & consent > Consents) is done,
- * or their profile consent is 'ok' and no consent row for them is still open. consentSave (the consent path) never comes here.
+ * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its due date (a row due Fri 16 Oct is that week's
+ * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). null without a due date.
  */
-export function consentStepAllowed(row: { personId: string | null; consent?: string | null }, consentRows: { key: string; status: string }[]): boolean {
-  if (!row.personId) return false;
+export function consentFriday(due: string | null | undefined): string | null {
+  if (!due || !/^\d{4}-\d{2}-\d{2}$/.test(due)) return null;
+  return addDays(due, ((5 - weekdayOf(due) + 6) % 7) + 1);
+}
+/** That Friday's 9:00 Brisbane (the consent cutoff) has passed. */
+export const consentFridayPassed = (friday: string, now: Date) => now.getTime() >= Date.parse(`${friday}T09:00:00+10:00`);
+/**
+ * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent > Consents) is done, or
+ * their profile consent is 'ok' and no consent row for them is open. 'notReceived' (R4): no consent row at all, no consent
+ * on the profile, not DO NOT CONTACT, and their consent Friday 9:00 has passed: allowed, and the console records consent
+ * not received first (only a console at NOT_RECEIVED_REV can, so `consoleRev` gates it). null: refused (CONSENT_CHECK_FIRST).
+ * consentSave (the consent path) never comes here.
+ */
+export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null },
+  consentRows: { key: string; status: string }[], now: Date, consoleRev: number): 'done' | 'notReceived' | null {
+  if (!row.personId) return null;
   const mine = consentRows.filter((r) => r.key === row.personId);
-  if (mine.some((r) => r.status === 'done')) return true;
-  return row.consent === 'ok' && mine.every((r) => r.status === 'done');
+  if (mine.some((r) => r.status === 'done')) return 'done';
+  if (mine.length) return null; // an open consent row: the Consents screen saves it
+  if (row.consent === 'ok') return 'done';
+  if (isDnc(row.consent) || consoleRev < NOT_RECEIVED_REV) return null;
+  const f = consentFriday(row.due);
+  return f && consentFridayPassed(f, now) ? 'notReceived' : null;
 }
 
 /** `Self identified leader: <name> — <note>`, or the name alone when the leader wrote no note. */

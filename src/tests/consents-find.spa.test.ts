@@ -2,16 +2,16 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['_lkStepConsents', '_ikAfterLoad', '_ikFind', '_ikLk', '_ikLkBusy', '_ikLkGate', '_ikRev', '_ikLkItem', '_ikLkGo'];
+const FNS = ['_lkStepConsents', '_ikAfterLoad', '_ikFind', '_ikFormName', '_ikAnd', 'tidyName', '_ikLk', '_ikLkBusy', '_ikLkGate', '_ikRev', '_ikLkItem', '_ikLkGo'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ST = (rev = 8, cap = 'live') => ({ consoleLinkRev: rev, console: { capabilities: { consentLookup: cap } } });
 
-function env(o: { tab?: string; rows?: string[]; other?: Record<string, string[]>; st?: any; personId?: string | null } = {}) {
+function env(o: { tab?: string; rows?: string[]; other?: Record<string, string[]>; st?: any; personId?: string | null; name?: string } = {}) {
   const t = { pushes: 0, opened: [] as number[], posts: [] as any[], gets: [] as string[], draws: 0, stored: [] as string[], went: [] as string[] };
   const I: any = { tab: o.tab ?? 'consent', lk: {}, resend: {}, busyKey: {}, det: null, list: null, dates: null, date: null, csub: 'last' };
-  const row = { rowId: 'r1', personId: o.personId === undefined ? P(1) : o.personId, name: 'Amy Test' };
+  const row = { rowId: 'r1', personId: o.personId === undefined ? P(1) : o.personId, name: o.name ?? 'Amy Test' };
   const fns = new Function('__t', '__I', '__o', '__row', `
     const S = { page: 'link-flows' };
     const LINK = { fs: { rowId: 'r1' }, ik: __I };
@@ -73,6 +73,15 @@ describe('I6 step 0 Consents button', () => {
     expect(t.posts.length).toBe(1);
     expect(t.posts[0]).toMatchObject({ type: 'consentLookup', payload: { kind: 'other', page: 1 }, note: 'Amy Test' });
     expect(t.opened).toEqual([]);
+  });
+  it('R5/R7 (consents run 2026-10-17): the step 0 name "Last, First" is searched and shown First Last, and remembered for the miss line', async () => {
+    const { fns, t, I } = env({ personId: null, name: 'Alway, Kuyi' });
+    fns._lkStepConsents();
+    fns.__load([P(9)], DATES);
+    await flush();
+    expect(fns._ikLk('other').q).toBe('Kuyi Alway');
+    expect(I.findMiss).toBe('Kuyi Alway');
+    expect(t.posts[0]).toMatchObject({ note: 'Kuyi Alway' });
   });
   it('(c2) no person id: straight to Other, no extra GETs', async () => {
     const { fns, t, I } = env({ personId: null });

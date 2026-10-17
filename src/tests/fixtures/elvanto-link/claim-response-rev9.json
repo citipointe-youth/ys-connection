@@ -1,0 +1,28 @@
+{
+  "contractVersion": 1,
+  "serverTime": "2026-10-24T00:01:00.000Z",
+  "linkRev": 9,
+  "rows": [
+    {
+      "id": "0a000000-0000-4000-8000-000000000901",
+      "type": "completeStep",
+      "attempts": 1,
+      "reclaimed": false,
+      "createdAt": "2026-10-24T00:00:01.000Z",
+      "serviceDate": "2026-10-24",
+      "by": {
+        "login": "admin",
+        "leaderName": "Admin"
+      },
+      "payload": {
+        "rowId": "f7000000-0000-4000-8000-000000000901",
+        "flowId": "f1000000-0000-4000-8000-000000000901",
+        "stepId": "f5000000-0000-4000-8000-000000000901",
+        "personId": "9e000000-0000-4000-8000-000000000901",
+        "notePrivate": false,
+        "notReceived": true
+      },
+      "note": "Self identified leader: Sam Example"
+    }
+  ]
+}

@@ -82,6 +82,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-consent-lookup-mismatches-rev7.json': C.PUSH_SCHEMAS.consentLookup,
   // Rev 8 (Consents Other, 2026-10-16)
   'push-consent-lookup-other.json': C.PUSH_SCHEMAS.consentLookup,
+  // Rev 9 (consents run 2026-10-17, R4)
+  'claim-response-rev9.json': C.ClaimResponse,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -170,7 +172,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(8); // 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(9); // 2026-10-17 consents run R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -396,6 +398,15 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     const s = clone(load('push-consent-lookup-other.json')); s.rows[0].source = 'step due'; rejects(C.PUSH_SCHEMAS.consentLookup, s); // no step-0 due fallback
     const l = clone(load('push-consent-lookup-other.json')); l.rows[0].link = 'http://x.test/'; rejects(C.PUSH_SCHEMAS.consentLookup, l);
     const k = clone(load('push-consent-lookup-other.json')); k.kind = 'unlinked'; rejects(C.PUSH_SCHEMAS.consentLookup, k);
+  });
+  it('rev 9 (R4): a completeStep payload may carry notReceived: true only', () => {
+    const row = C.ClaimResponse.parse(load('claim-response-rev9.json')).rows[0]!;
+    expect(row.type).toBe('completeStep');
+    expect(C.PAYLOAD_SCHEMAS.completeStep.parse(row.payload)).toMatchObject({ notReceived: true });
+    const { notReceived: _n, ...plain } = row.payload as Record<string, unknown>;
+    C.PAYLOAD_SCHEMAS.completeStep.parse(plain); // optional: a rev 8 row still parses
+    rejects(C.PAYLOAD_SCHEMAS.completeStep, { ...plain, notReceived: false });
+    rejects(C.PAYLOAD_SCHEMAS.completeStep, { ...plain, notReceived: 'yes' });
   });
   it('0033: widens only the consentLookup kind check (same shape as 0031), additive', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0033_link_consent_other.sql'), 'utf8');

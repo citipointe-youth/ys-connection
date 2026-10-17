@@ -35,7 +35,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed,
+  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed, consentFriday,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
 import { compareCheckIns } from './reconcile-rules';
@@ -140,6 +140,10 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
   consentStep: boolean;
+  /** R4/R6 (rev 9): on the consent step, the consent Friday this row waits for (null elsewhere or with no due date), and whether
+   *  Complete is open as "consent not received" (that Friday 9:00 passed, no consent on the profile, a rev 9 console). The batch
+   *  still refuses it while a consent row for the person is open. */
+  consentFriday: string | null; notReceivedOk: boolean;
   /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
@@ -222,6 +226,13 @@ export function progressOf(con: ConsoleRow | null, key: string, now: number, aft
   return { done: p.done, total: p.total, stage: p.stage };
 }
 const newest = (cs: ConsoleRow[]) => [...cs].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))[0] ?? null;
+/** R4/R6 (rev 9): the FlowView consent-wait fields of one flow row (see FlowView): the batch's own verdict, so the phone offers
+ *  Complete exactly when the batch takes it. `consent` is the row's shown (sticky) flag. */
+function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string; status: string }[], rev: number, now: Date):
+  { consentFriday: string | null; notReceivedOk: boolean } {
+  const fri = isConsentStep(f) ? consentFriday(f.due) : null;
+  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due }, consentRows, now, rev) === 'notReceived' };
+}
 /** Key-order-independent JSON, for the replay check (contract §4.1 "jsonb ="). */
 function stable(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
@@ -460,7 +471,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const replay = async (prev: OutboxRow): Promise<ItemResult> => {
       const noteGiven = it.note != null && it.note.trim() !== '';
       const me0 = await resolveLeader(c, it.leaderId, false);
-      if (prev.type !== it.type || stable(prev.payload) !== stable(it.payload) || prev.hasNote !== noteGiven
+      // R4 (rev 9): notReceived is the server's own mark on a stored completeStep, never part of what the phone sent.
+      const sent = (x: unknown) => { if (it.type !== 'completeStep' || !x || typeof x !== 'object') return x; const { notReceived: _n, ...rest } = x as Record<string, unknown>; return rest; };
+      if (prev.type !== it.type || stable(sent(prev.payload)) !== stable(sent(it.payload)) || prev.hasNote !== noteGiven
         || (prev.leaderId ?? null) !== me0.id) throw new LinkIdReused();
       Object.assign(who, { id: prev.leaderId, name: prev.leaderName });
       Object.assign(tgt, await targetOf(c, prev));
@@ -627,7 +640,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (it.type === 'completeStep') {
         if (isDnc(row.consent)) throw new LinkDnc(); // R4: DO NOT CONTACT = Remove only
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
-        if (isConsentStep(row) && !consentStepAllowed(row, await c.consentRows())) throw new ConsentCheckFirst();
+        // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
+        // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
+        // R4: the roster's sticky DO NOT CONTACT counts too (as GET /link/flows shows it), so a blip never records "not received".
+        const sticky = row.personId ? roster.find((x) => x.personId === row.personId)?.consent : undefined;
+        const seen = { ...row, consent: isDnc(sticky) ? sticky : row.consent };
+        const v = isConsentStep(row) ? consentStepAllowed(seen, await c.consentRows(), clock(), newest(await c.consoles())?.linkRev ?? 1) : 'done';
+        if (!v) throw new ConsentCheckFirst();
+        if (v === 'notReceived') (p as { notReceived?: true }).notReceived = true; else delete (p as { notReceived?: true }).notReceived;
       }
       personId = row.personId;
     }
@@ -999,6 +1019,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
       const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
+      const rev = newest(consoles)?.linkRev ?? 1, now = clock();
+      const cRows = flows.some((f) => isConsentStep(f)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
       const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
@@ -1014,7 +1036,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
-            consent, dnc, consentStep: isConsentStep(f),
+            consent, dnc, consentStep: isConsentStep(f), ...consentWait(f, consent, cRows, rev, now),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).

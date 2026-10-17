@@ -33,7 +33,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // LINK_REV 8 (Consents Other, 2026-10-16; migration 0033), optional only: consentLookup kind `other` (step-0 students in no pushed
 // consent week, with the earliest parent-texted date or why there is none; DISPLAY ONLY). The app offers the pill only when the
 // console's link_rev >= 8; an older console would refuse the kind (unknown).
-export const LINK_REV = 8;
+// LINK_REV 9 (consents run 2026-10-17, R4), optional only: a completeStep payload may carry `notReceived: true` (the app sets it
+// on a New People step-0 Complete whose consent Friday 9:00 passed with no reply; the console marks consent not received on the
+// student, then completes). The app sets it only when the newest console's link_rev >= 9; an older console never sees it.
+export const LINK_REV = 9;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
@@ -117,7 +120,8 @@ export const PAYLOAD_SCHEMAS = {
     base: z.object({ date: Ymd, didNotMeet: z.boolean(), attendees: z.array(Uuid).max(300), guests: z.number().int().min(0).max(999),
       serviceTimeId: Uuid.nullable() }).strict(),
   }).strict().refine(didNotMeetIsEmpty, DID_NOT_MEET),
-  completeStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), notePrivate: z.boolean() }).strict(),
+  completeStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), notePrivate: z.boolean(),
+    notReceived: z.literal(true).optional() }).strict(), // rev 9 (R4): set by the server, never trusted from the phone
   firstTimerCheckIn: z.object({ serviceTimeId: Uuid, serviceId: Uuid, firstName: Name, lastName: Name, grade: Grade, gender: Gender }).strict(),
   // X18 (T6): one Elvanto lifegroup membership change. The console answers `already` when Elvanto is already that way.
   addGroupMember: z.object({ groupId: Uuid, personId: Uuid }).strict(),

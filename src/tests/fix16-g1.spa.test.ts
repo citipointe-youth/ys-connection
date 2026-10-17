@@ -7,7 +7,7 @@ const IK = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkAt', '_lkSeen', '_ik', '_
   '_ikOpenOf', '_ikAge', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
   '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv',
-  '_ikRowsHtml', '_ikListPage', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn', '_lkAdmShadowHtml'];
+  '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn', '_lkAdmShadowHtml'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');
 const extra = (src: string) => (src.match(/^function (_ik[A-Za-z0-9]+)\(/gm) || []).map((s) => s.slice(9, -1));

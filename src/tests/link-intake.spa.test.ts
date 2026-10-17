@@ -10,14 +10,14 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid
   '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikTextOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
-  '_ikListPage', '_ikRowsHtml', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
+  '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
   '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
   '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave',
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
-  '_ikSubBar', '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
+  '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
   '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkSearch', '_ikLkKey', '_ikLkTurn', '_ikLkGo', '_ikLkErr', '_ikLkAgain',
-  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormIconDefs', '_ikFormIcons', '_ikIcHtml', '_ikMisLines', '_ikLkStatusHtml', '_ikFixBanner',
+  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss', '_ikMisLines', '_ikLkStatusHtml', '_ikFixBanner',
   '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
   // integration review fixes (run 2026-10-15)
   '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', '_ikFixChanges', '_ikDncLine',
@@ -175,9 +175,9 @@ describe('chips per action status (§7.5)', () => {
     expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' })] }, ST()).label).not.toBe('Saved');
     expect(chip(act({ type: 'intakeSave', status: 'sent', resultAt: iso(1000) })).label).toBe('Saved'); // an Elvanto write stays "Saved"
     expect(e.fns._ikResultHtml(act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), DETAIL(), ST())).not.toContain('>Saved');
-    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), act({ status: 'shadowed' })] }, ST()).label).toBe('Practice');
+    expect(e.fns._ikChip({ actions: [act({ type: 'intakeAnswer', status: 'sent', reason: 'planned' }), act({ status: 'shadowed' })] }, ST())).toBeNull(); // R1 cut 8: no Practice chip
   });
-  it('sent, already, unclear, refused (reason wins, else the detail), shadowed', () => {
+  it('sent, already, unclear, refused (reason wins, else the detail); shadowed shows nothing (R1: no Practice chip)', () => {
     expect(chip(act({ status: 'sent', resultAt: iso(1000) })).label).toBe('Saved');
     expect(chip(act({ status: 'sent', reason: 'already' })).line).toBe('Already in Elvanto');
     expect(chip(act({ status: 'unclear' }))).toEqual({ label: 'Unclear', tone: 'bad', line: "Not sure it saved. Check in Elvanto or the console's Unclear saves" });
@@ -185,7 +185,7 @@ describe('chips per action status (§7.5)', () => {
     expect(chip(act({ status: 'refused', reason: 'weird', detail: 'The console said this.' })).line).toBe('The console said this.');
     expect(chip(act({ status: 'refused', reason: 'plan-changed' })).line).toBe('Something changed in Elvanto. Review the family again.');
     expect(chip(act({ status: 'refused', reason: 'chain-not-done' })).line).toBe('Finish saving the family before the parent text.');
-    expect(chip(act({ status: 'shadowed' }))).toEqual({ label: 'Practice', tone: 'prac', line: 'Practice: nothing sent' });
+    expect(chip(act({ status: 'shadowed' }))).toBeNull();
     expect(chip(act({ status: 'cancelled' }))).toBe(null);
   });
   it('the list row shows the chip label and its line, escaped', () => {
@@ -536,20 +536,36 @@ describe('consents sub-menus (R2)', () => {
   const consentEnv = () => makeEnv({ storage: new Map([['ysc.intakeTab', 'consent']]), fresh: (p) => (p.includes('date=')
     ? { ...ST6(), ...LIST({ date: '2026-10-16', rows: [LROW(1), LROW(2, { outcome: 'No reply: assume consent' }), LROW(3, { status: 'needs-you', outcome: '' })] }) }
     : { ...ST6(), dates: [{ date: '2026-10-16', takenAt: iso(1000), counts: { needsYou: 1 } }, { date: '2026-10-09', takenAt: iso(1000), counts: {} }] }) });
-  it('Last Friday is the default: newest week, its new people, returned chips, a week picker instead of date tabs', async () => {
+  it('R1 (consents run 2026-10-17): the plan is the default; one control (cohort chips), status line with Refresh, Tidy up and help below', async () => {
     const e = consentEnv();
     await e.fns._ikLoad(false);
     const h = e.fns._ikPageHtml(), t = strip(h);
     expect(e.fns._ik().csub).toBe('last');
-    expect(t).toMatch(/Show\s+Last Friday · consent plan to save\s+All forms · every parent form\s+Unlinked · forms with no person\s+Mismatches · form differs from profile\s+Other \(no date\) · step 0, no week/);
-    expect(t).toContain('New people from ' + e.fns._lkDay('2026-10-09'));
-    expect(h).not.toContain('onclick="_ikPickDate(');
-    expect(h).toContain('onchange="this.blur();_ikPickDate(+this.value)"');
-    expect(t).toContain('Form back: contact OK');
-    expect(t).toContain('No form: assume consent');
-    expect(t).not.toContain('Form returned');
-    expect(t).toContain('Save 2 to Elvanto');
-    expect(t.indexOf('Ready (2)')).toBeLessThan(t.indexOf('Save 2 to Elvanto')); // M2: under the Ready heading
+    expect(h).not.toContain('<select'); // no Show dropdown, no Other weeks dropdown
+    expect(t).not.toContain('Last Friday');
+    expect(t).toContain('New people from');
+    expect(h).toContain('onclick="_ikPickDate(0)"');
+    expect(h).toContain('onclick="_ikPickDate(1)"');
+    expect(t).toContain(e.fns._lkDay('2026-10-09') + ' · 1'); // the cohort, with its needs-you count
+    expect(t).toContain(e.fns._lkDay('2026-10-02'));
+    expect(t).toMatch(/New people from.*Checked [^·]+ ·\s*Refresh/s); // one status line under the chips: Checked … · Refresh
+    expect((h.match(/onclick="_ikRefresh\(\)"/g) || []).length).toBe(1);
+    expect(t).toContain('Contact OK');
+    expect(t).toContain('No form · assume OK');
+    expect(t).not.toContain('Form back');
+    expect(t).toContain('Save all 2');
+    expect(t).toContain('1 contact OK · 1 no form');
+    expect(t.indexOf('Ready to save (2)')).toBeLessThan(t.indexOf('Save all 2')); // M2: under the Ready heading
+    expect(t.indexOf('Ready to save (2)')).toBeLessThan(t.indexOf('Tidy up'));
+    expect(t.indexOf('Tidy up')).toBeLessThan(t.indexOf('How consent is decided'));
+    expect(t).not.toContain('What counts as consent');
+  });
+  it('R1: Ready is sorted Do not contact, Contact OK, No form; the line counts each', () => {
+    const f = makeEnv().fns;
+    const rows = [LROW(1, { title: 'Zed', outcome: 'Contact allowed' }), LROW(2, { title: 'Amy', outcome: 'No reply: assume consent' }),
+      LROW(3, { title: 'Bo', outcome: 'No contact' }), LROW(4, { title: 'Al', outcome: 'Contact allowed' })];
+    expect(f._ikByOutcome(rows).map((r: any) => r.title)).toEqual(['Bo', 'Al', 'Zed', 'Amy']);
+    expect(f._ikOutcomeLine(rows)).toBe('1 do not contact · 2 contact OK · 1 no form');
   });
   it('the other sub-menus load nothing until asked, and the Intakes tab still works', async () => {
     const e = consentEnv();
@@ -635,23 +651,37 @@ describe('lookup request shaping, polling, pagination (R2 b/c)', () => {
   });
 });
 
-describe('form icons and rows (R2 b)', () => {
+describe('form rows (R2 b; consents run 2026-10-17 R1: one chip in words, no icons, no legend)', () => {
   const row = (o: any = {}) => ({ subId: P(1), personId: P(2), name: 'Ava', submitted: '2026-10-09', status: 'approved', consentDate: '09/10/2026', contactOptOut: false, total: '', otherOptOuts: [], ...o });
-  it('maps each flag to its icon with a spoken label', () => {
+  it('one status chip in words; a pending form is never "Consent given"', () => {
     const f = makeEnv().fns;
-    expect(f._ikFormIcons(row()).map((i: any) => i.k)).toEqual(['given']);
-    expect(f._ikFormIcons(row({ contactOptOut: true })).map((i: any) => i.k)).toEqual(['given', 'contact']);
-    expect(f._ikFormIcons(row({ total: '09/10/2026' })).map((i: any) => i.k)).toEqual(['total']);
-    expect(f._ikFormIcons(row({ consentDate: '', otherOptOuts: ['Photos'] })).map((i: any) => i.label)).toEqual(['Other opt-outs: Photos']);
-    expect(f._ikFormIcons(row({ consentDate: '' }))).toEqual([]);
+    expect(f._ikFormChip(row())).toEqual(['Consent given', 'ik-ok']);
+    expect(f._ikFormChip(row({ contactOptOut: true }))).toEqual(['Do not contact', 'ik-bad']);
+    expect(f._ikFormChip(row({ total: '09/10/2026' }))).toEqual(['No consent at all', 'ik-bad']);
+    expect(f._ikFormLines(row({ total: '03/10/2026' }))).toEqual(['No consent at all from Sat 3 Oct 2026']);
+    expect(f._ikFormChip(row({ status: 'pending' }))).toBeNull(); // the meta line says Pending
+    expect(f._ikFormChip(row({ consentDate: '', otherOptOuts: ['Photos'] }))).toEqual(['No consent date', 'ik-prac']); // other opt-outs never count
   });
-  it('rows escape names and labels and carry a legend', () => {
+  it('names read First Last: Last, First pairs split, one surname collapses, shouty caps tidied', () => {
+    const f = makeEnv().fns;
+    expect(f._ikFormName('Lin, Clarissa')).toBe('Clarissa Lin');
+    expect(f._ikFormName('Geissa, Giovanni, Geissa, Vincent')).toBe('Giovanni & Vincent Geissa');
+    expect(f._ikFormName('Ng, Al, Ng, Bo, Ng, Cy')).toBe('Al, Bo & Cy Ng');
+    expect(f._ikFormName('Ng, Al, Tran, Bo')).toBe('Al Ng & Bo Tran');
+    expect(f._ikFormName('HUICHUN LEE')).toBe('Huichun Lee');
+    expect(f._ikFormName('Yun-ting (Tinna) Sun')).toBe('Yun-ting (Tinna) Sun');
+    expect(f._ikFormName('a, b, c')).toBe('A, B, C'); // odd parts: as it came (tidied)
+  });
+  it('rows escape names, show no legend, icons or other opt-outs', () => {
     const e = makeEnv(), x = e.fns._ikLk('forms');
-    Object.assign(x, { st: 'ready', resQ: '', res: { status: 'ready', page: 1, pageSize: 25, total: 1, takenAt: null, rows: [row({ name: HOSTILE, otherOptOuts: [HOSTILE] })] } });
+    Object.assign(x, { st: 'ready', resQ: '', res: { status: 'ready', page: 1, pageSize: 25, total: 1, takenAt: null, rows: [row({ name: HOSTILE, otherOptOuts: [HOSTILE], contactOptOut: true })] } });
     const h = e.fns._ikLkResHtml('forms', x, ST6());
     expect(h).not.toContain('<img');
-    expect(h).toContain('aria-label="Consent given"');
-    expect(strip(h)).toContain('Consent given DO NOT CONTACT Total non-consent from');
+    expect(h).not.toContain('ik-legend');
+    expect(h).not.toContain('ik-ic');
+    expect(strip(h)).not.toContain('Other opt-outs');
+    expect(strip(h)).toContain('Filled in ');
+    expect(strip(h)).toContain('Do not contact');
   });
   it('empty results say why', () => {
     const e = makeEnv(), x = e.fns._ikLk('mismatches');
@@ -750,11 +780,12 @@ describe('integration review fixes (run 2026-10-15)', () => {
     expect(e.fns._ikFixText({ status: 'unclear' }, ST6(), 'Ava')[1]).toBe("Elvanto may not have saved this change. Look at Ava's profile in Elvanto.");
     expect(e.fns._ikFixText({ status: 'refused', reason: 'weird' }, ST6())[1]).toBe("The console couldn't do this. Do it in Elvanto.");
   });
-  it('UI H2: No contact is a red DO NOT CONTACT tag, never green', () => {
+  it('UI H2: No contact is a red tag, never green (R1 copy: no "Form back:" prefix)', () => {
     const f = makeEnv().fns;
-    expect(f._ikConsentTag({ outcome: 'No contact' })).toEqual(['Form back: DO NOT CONTACT', 'ik-bad']);
-    expect(f._ikConsentTag({ outcome: 'Contact allowed' })).toEqual(['Form back: contact OK', 'ik-ok']);
-    expect(f._ikConsentTag({ status: 'needs-you', reason: 'Unmatched consent form' })).toEqual(['Form back?', 'ik-wait']);
+    expect(f._ikConsentTag({ outcome: 'No contact' })).toEqual(['Do not contact', 'ik-bad']);
+    expect(f._ikConsentTag({ outcome: 'Contact allowed' })).toEqual(['Contact OK', 'ik-ok']);
+    expect(f._ikConsentTag({ outcome: 'No reply: assume consent' })).toEqual(['No form · assume OK', 'ik-prac']);
+    expect(f._ikConsentTag({ status: 'needs-you', reason: 'Unmatched consent form' })).toEqual(['Check form', 'ik-wait']);
   });
   it('UI H1: Enter in the search box blurs it before the redraw', () => {
     const e = makeEnv();
@@ -808,14 +839,19 @@ describe('Unlinked consent forms (L6)', () => {
     expect(e.fns._ik().csub).toBe('unlinked');
     expect(e.calls.posts.length).toBe(0);
   });
-  it('rows show names, the icons, and Find person or Unlink by link state; hostile text is escaped', () => {
+  it('rows show names, Parent:, one chip in words, and Find person or Unlink by link state; hostile text is escaped', () => {
     const { e } = env();
     const x = e.fns._ikLk('unlinked');
     x.res.rows[0].name = HOSTILE;
+    x.res.rows[1].names = ['HUICHUN LEE'];
     const h = e.fns._ikLkResHtml('unlinked', x, ST7());
     expect(h).not.toContain(HOSTILE);
-    expect(strip(h)).toContain('Also on the form: Pat Sample');
-    expect(strip(h)).toContain('DO NOT CONTACT');
+    expect(strip(h)).toContain('Parent: Pat Sample');
+    expect(strip(h)).toContain('Parent: Huichun Lee'); // shouty caps tidied
+    expect(strip(h)).not.toContain('Also on the form');
+    expect(strip(h)).not.toContain('Other opt-outs');
+    expect(strip(h)).toContain('Filled in ');
+    expect(strip(h)).toContain('Do not contact');
     expect(strip(h)).toContain('Find person');
     expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
     expect(strip(h)).toContain('Unlink');

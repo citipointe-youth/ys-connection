@@ -3,9 +3,9 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['esc', '_ikSubBar', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkApply', '_ikLkStatusHtml',
-  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormIconDefs',
-  '_ikFormIcons', '_ikIcHtml', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikOtherRow'];
+const FNS = ['esc', '_ikConsentSub', '_ikTidyHtml', '_ikTidyList', '_ikTidyTitle', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkApply', '_ikLkStatusHtml',
+  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
+  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikOtherRow'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
@@ -19,8 +19,8 @@ function env() {
     const S = { page: 'link-intake' };
     const _ik = () => __I;
     const navPush = () => { __t.pushes++; }; const _ikDraw = () => {}; const _ikLoad = () => { __t.loads++; };
-    const _ikPickDate = () => {}; const _ikFixRestore = () => {};
-    const progBar = (s) => '<div>' + s + '</div>'; const icS = (k) => ''; const _ikSeenLine = () => '';
+    const _ikPickDate = () => {}; const _ikFixRestore = () => {}; const icS = () => '';
+    const progBar = (s) => '<div>' + s + '</div>'; const _ikSeenLine = () => '';
     const _lkDay = (d) => d; const _lkSeen = (d) => d;
     ${FIX_REASON}
     const IK_CONTACT_RE = /contact with my child/i;
@@ -36,20 +36,25 @@ const ROWS = [
 ];
 
 describe('Consents Other: the 5th pill', () => {
-  it('the sub-bar (I5: a native dropdown) has five options, the last "Other (no date)"; choosing it opens the Other page', () => {
+  it('R1 (consents run 2026-10-17): no Show dropdown; Tidy up lists four tools, the third "On step 0, not in a week"; a tap opens it', () => {
     const { fns, I, t } = env();
-    const bar = fns._ikSubBar('last');
-    expect((bar.match(/<option/g) || []).length).toBe(5);
-    expect(bar).toContain('<option value="other">Other (no date) · step 0, no week</option>');
-    expect(strip(bar)).toBe('Show Last Friday · consent plan to saveAll forms · every parent formUnlinked · forms with no personMismatches · form differs from profileOther (no date) · step 0, no week');
-    expect(bar).toContain('onchange="this.blur();_ikConsentSub(this.value)"');
-    // every option: 2-4 descriptive words after the "·"
-    for (const m of bar.matchAll(/<option[^>]*>([^<]*)<\/option>/g)) expect(m[1]!.split(' · ')[1]!.trim().split(/\s+/).length).toBeGreaterThanOrEqual(2);
-    for (const m of bar.matchAll(/<option[^>]*>([^<]*)<\/option>/g)) expect(m[1]!.split(' · ')[1]!.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
+    const h = fns._ikTidyHtml();
+    expect(strip(h)).toBe('Tidy upForms with no personProfiles that differ from formOn step 0, not in a weekFind any consent form');
+    expect(h).toContain(`onclick="_ikConsentSub('other')"`);
+    expect(h).not.toContain('<select');
+    expect(fns._ikTidyTitle('other')).toBe('On step 0, not in a week');
     fns._ikConsentSub('other');
     expect(I.csub).toBe('other');
     expect(t.pushes).toBe(1);
-    expect(fns._ikSubBar('other')).toMatch(/<option value="other" selected>Other \(no date\)/);
+    fns._ikConsentSub('other'); // the same tool again: nothing new on the back stack
+    expect(t.pushes).toBe(1);
+  });
+  it('R1: a Tidy up row counts only a list this session already loaded (no search)', () => {
+    const { fns, I } = env();
+    I.lk = { other: { res: { total: 7 }, resQ: '' }, forms: { res: { total: 3 }, resQ: 'sam' } };
+    const h = strip(fns._ikTidyHtml());
+    expect(h).toContain('On step 0, not in a week7');
+    expect(h).toContain('Find any consent form'); expect(h).not.toContain('Find any consent form3');
   });
   it('an older console (rev 7) says it needs an update and offers no Load', () => {
     const { fns } = env();
@@ -57,10 +62,10 @@ describe('Consents Other: the 5th pill', () => {
     expect(h).toContain('The console needs an update before it can list these students.');
     expect(h).not.toContain('Load students');
   });
-  it('a rev 8 console: an intro, a search and one Load button', () => {
+  it('a rev 8 console: no intro sentence (R1: the screen title says it), a search and one Load button', () => {
     const { fns } = env();
     const h = fns._ikLkPage('other', ST());
-    expect(strip(h)).toContain('Students on step 0 with no consent week.');
+    expect(strip(h)).not.toContain('Students on step 0 with no consent week.');
     expect(h).toContain("_ikLkSearch('other')");
     expect(strip(h)).toContain('Load students');
   });
@@ -94,13 +99,15 @@ describe('Consents Other: rows', () => {
     Object.assign(x, { st: 'ready', res: { rows: [{ ...ROWS[0], link: 'javascript:alert(1)' }], page: 1, pageSize: 25, total: 1 } });
     expect(fns._ikLkResHtml('other', x, ST())).not.toContain('javascript:');
   });
-  it('empty: "Every student on step 0 has a week."; a search with no match names the search', () => {
-    const { fns } = env();
+  it('empty: "Every student on step 0 has a week."; R7: a search with no match never blames the search', () => {
+    const { fns, I } = env();
     const x = fns._ikLk('other');
     Object.assign(x, { st: 'ready', res: { rows: [], page: 1, pageSize: 25, total: 0 } });
     expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe('Every student on step 0 has a week.');
     x.resQ = 'zed';
-    expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe('No students match &quot;zed&quot;.'); // esc() encodes the quotes
+    expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe('Nobody on step 0 without a week matches &quot;zed&quot;. Students in a week above, or whose form is approved, are not listed here.'); // esc() encodes the quotes
+    I.findMiss = 'Kuyi Alway'; x.resQ = 'Kuyi Alway'; // from step 0's Consents button: names the student
+    expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe("Kuyi Alway isn&#39;t on a consent list. Their form may already be approved.");
   });
   it('a first Other scan waits 15 minutes before giving up (like Mismatches)', () => {
     const { fns } = env(), now = Date.now();

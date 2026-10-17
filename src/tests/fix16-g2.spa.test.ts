@@ -2,9 +2,9 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['esc', '_ikSubBar', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
-  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormIconDefs',
-  '_ikFormIcons', '_ikIcHtml', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
+const FNS = ['esc', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
+  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
+  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
@@ -34,27 +34,18 @@ function env(o: { fresh?: () => any } = {}) {
 }
 const ST = (caps: Record<string, string> = {}) => ({ consoleLinkRev: 7, console: { capabilities: { consentLookup: 'live', consentFix: 'live', consentLink: 'live', ...caps } } });
 
-describe('F-48(a) Last Friday pill', () => {
-  it('is lit only on the newest week; tapping it from an older week goes back to the newest', () => {
+// Consents run 2026-10-17 (R1): F-48(a) is gone with the Show dropdown: the week is the chips, a Tidy up tool is its own screen.
+describe('R1 Tidy up screens replace the Show dropdown (F-48(a) retired)', () => {
+  it('a tool opens from the plan; "week" or an unknown key is ignored; back to the plan reloads it', () => {
     const { fns, t, I } = env();
-    expect(fns._ikSubBar('last')).toMatch(/<option value="last" selected>Last Friday/);
-    expect(fns._ikSubBar('last')).not.toContain('value="week"');
-    I.date = '2026-10-09';
-    // I5: an older week shows "Older week" selected, and "Last Friday" is not
-    expect(fns._ikSubBar('last')).toMatch(/^<label[^>]*>Show <select[^>]*><option value="week" selected>Older week · consent plan<\/option>/);
-    expect(fns._ikSubBar('last')).not.toMatch(/<option value="last" selected/);
-    fns._ikConsentSub('week'); // ignored
-    expect(t.picked).toEqual([]);
-    fns._ikConsentSub('last');
-    expect(t.picked).toEqual([0]);
-  });
-  it('from All forms with an older week picked, Last Friday opens the newest week with the pill lit', () => {
-    const { fns, t, I } = env();
-    Object.assign(I, { csub: 'forms', date: '2026-10-09' });
-    fns._ikConsentSub('last');
-    expect(t.picked).toEqual([0]);
+    fns._ikConsentSub('week'); // the old fake option: ignored
     expect(I.csub).toBe('last');
-    expect(fns._ikSubBar(I.csub)).toMatch(/<option value="last" selected>Last Friday/);
+    fns._ikConsentSub('forms');
+    expect(I.csub).toBe('forms');
+    fns._ikConsentSub('last');
+    expect(I.csub).toBe('last');
+    expect(t.loads).toBe(1);
+    expect(t.picked).toEqual([]); // the week stays as it was
   });
 });
 
@@ -106,11 +97,10 @@ describe('F-36 linked mismatch rows', () => {
 });
 
 describe('F-42 Unlinked intro + tag', () => {
-  it('intro is short and the tag says not in Elvanto and may wrap', () => {
+  it('no intro sentence (R1: the screen title says it); the tag says not in Elvanto and may wrap', () => {
     const { fns } = env();
-    const intro = strip(fns._ikLkPage('unlinked', ST()).match(/<p class="lk-d lk-mb">[^<]*<\/p>/)![0]);
-    expect(intro).toBe('Consent forms with no person. Tap Find person to link one. Elvanto is not changed.');
-    expect(intro.length).toBeLessThanOrEqual(90);
+    expect(fns._ikLkPage('unlinked', ST())).not.toContain('<p class="lk-d lk-mb">');
+    expect(strip(fns._ikLkPage('unlinked', ST()))).not.toContain('Elvanto is not changed');
     const f = { subId: P(1), name: 'Riley', submitted: '2026-10-09', linked: { personId: P(2), name: 'Riley Sample' } };
     const h = fns._ikClRow(f, 0, '', ST());
     expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
