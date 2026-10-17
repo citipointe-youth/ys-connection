@@ -905,7 +905,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0}
 /* UI standard (E): a Mismatches field as two columns, Form | Profile; an empty side reads "blank" in muted italics. */
 .ik-mis{font-size:13px;margin-top:var(--s2)}.ik-mis b{display:block;font-weight:600;margin-bottom:2px}
-.ik-mis2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.ik-mis2>div{min-width:0;overflow-wrap:anywhere}
+.ik-mis2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);max-width:560px}.ik-mis2>div{min-width:0;overflow-wrap:anywhere}
 .ik-mis2 i{display:block;font-style:normal;font-size:var(--t-micro);font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em}
 .ik-blank{color:var(--ink-faint);font-style:italic}
 .ik-cnt{margin-bottom:var(--s3)}
@@ -925,6 +925,8 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .rc-foot{position:relative;z-index:1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:var(--s2);margin-top:var(--s3)}
 .rc-foot>.lk-st,.rc-foot>.lk-d{flex:1 1 140px;margin:0}
 .rc-foot>.btn:not(:only-of-type){flex:1 1 140px}
+/* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
+.rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
 .rc-go::after{content:'';position:absolute;inset:0;border-radius:inherit}
 .rc-go:focus-visible{outline:none}.rc:has(.rc-go:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
@@ -13164,10 +13166,11 @@ function _ikVerdictHtml(d, a) {
     return `<div class="card"><div>${esc(q)}</div>${sub ? `<div class="ik-line">${esc(sub)}</div>` : ''}${diffs}${btns ? `<div class="lk-mt">${btns}</div>` : ''}</div>`;
   }).join('');
 }
-function _ikSaveHtml(det, list, st, label) {
+function _ikSaveHtml(det, list, st, label, foot) {
   const why = _ikSaveBlock(det, list, st), c = why ? '' : _ikConseq(det.detail);
-  return `<button type="button" class="btn btn-primary btn-full lk-mt"${why ? ' disabled' : ''} onclick="_ikSaveOpen()">${esc(label)}</button>`
-    + (why ? `<div class="lk-d lk-right">${esc(why)}</div>` : c ? `<div class="lk-d">${esc(c)}</div>` : '');
+  const note = why ? `<div class="lk-d lk-right">${esc(why)}</div>` : c ? `<div class="lk-d">${esc(c)}</div>` : '';
+  if (foot != null) return `<div class="rc-foot">${foot}<button type="button" class="btn btn-primary btn-sm"${why ? ' disabled' : ''} onclick="_ikSaveOpen()">${esc(label)}</button></div>` + note;
+  return `<button type="button" class="btn btn-primary btn-full lk-mt"${why ? ' disabled' : ''} onclick="_ikSaveOpen()">${esc(label)}</button>` + note;
 }
 // The family review (§7.2): status + holds, match, the forms side by side, same person, Save, results, what saving does, Text card.
 function _ikFamilyHtml(det, list, st, a) {
@@ -13179,8 +13182,10 @@ function _ikFamilyHtml(det, list, st, a) {
   const alone = _ikAlone(d), tb = _ikTextBlock(det, list, st);
   return _ikHead(det, st, d) + (ans ? `<div class="lk-alert practice">${icS('info')}<div>Updating plan…</div></div>` : '')
     + _ikMatchHtml(d, a) + _ikCompareHtml(d, a) + _ikVerdictHtml(d, a)
-    + `<div class="card"><button type="button" class="btn btn-secondary btn-full" onclick="_ikAnswersSave()">Save answers</button><div class="lk-d">Keeps your links and answers on the console. Nothing goes to Elvanto.</div>${_ikSaveHtml(det, list, st, 'Save to Elvanto')}`
-    + alone.map((s, i) => `<button type="button" class="btn btn-secondary btn-sm lk-mt"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text + ' in Elvanto')}</button>`).join(' ')
+    // ux18 (risk #1): one .rc-foot row, Elvanto one-offs and Save answers secondary, Save to Elvanto the one primary, last.
+    + `<div class="card"><div class="lk-d">Save answers keeps your links and answers on the console. Nothing goes to Elvanto.</div>`
+    + _ikSaveHtml(det, list, st, 'Save to Elvanto', alone.map((s, i) => `<button type="button" class="btn btn-secondary btn-sm"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text + ' in Elvanto')}</button>`).join('')
+      + `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikAnswersSave()">Save answers</button>`)
     + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`; // I8 (R2-G4): the parent text is sent from Flow steps
 }
@@ -13762,7 +13767,7 @@ function _ikLkPage(kind, st) {
   const search = `<div class="sbar"><input id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
     + `<button type="button" class="btn btn-secondary"${busy ? ' disabled' : ''} onclick="_ikLkSearch('${kind}')">Search</button></div>`;
   const load = !x.res && x.st === 'idle' ? `<button type="button" class="btn btn-primary btn-full lk-mt" onclick="_ikLkSearch('${kind}')">${kind === 'other' ? 'Load students' : kind === 'unlinked' ? 'Load unlinked forms' : forms ? 'Load forms' : 'Find mismatches'}</button>`
-    + `<div class="lk-hint">${esc(kind === 'other' ? 'Nothing loaded yet. The console reads step 0 from Elvanto when you ask. A first check can take a few minutes.' : forms ? 'Nothing loaded yet. The console reads the forms from Elvanto when you ask, so it can take a minute.' : 'Nothing checked yet. The console compares each newest form with the profile when you ask. A first check can take a few minutes.')}</div>` : '';
+    + `<div class="lk-hint">${esc(kind === 'other' ? 'Nothing loaded yet. Step 0 loads from Elvanto in the background; tap Load students to ask now. A first check can take a few minutes.' : forms ? 'Nothing loaded yet. The forms load from Elvanto in the background; tap Load to ask now. It can take a minute.' : 'Nothing checked yet. The console compares each newest form with the profile in the background; tap Find mismatches to ask now. A first check can take a few minutes.')}</div>` : '';
   return (forms || kind === 'other' ? '' : _ikFixBanner(st)) + search + load + _ikLkStatusHtml(kind, x, st) + (x.res ? _ikLkResHtml(kind, x, st) : '');
 }
 function _ikLkResHtml(kind, x, st) {

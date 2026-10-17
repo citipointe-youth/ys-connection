@@ -225,6 +225,19 @@ describe('Save disabled reasons', () => {
   });
 });
 
+describe('family review footer (ux18 P9)', () => {
+  it('one .rc-foot row: Save answers secondary, Save to Elvanto the only primary and last', () => {
+    const e = makeEnv();
+    const h = e.fns._ikFamilyHtml(DET(), LIST(), ST(), e.fns._ikSeed(DETAIL()));
+    const foot = h.match(/<div class="rc-foot">(.*?)<\/div>/)![1];
+    const btns = foot.match(/<button[^>]*>[^<]*<\/button>/g)!;
+    expect(btns[btns.length - 1]).toMatch(/btn-primary btn-sm[^>]*onclick="_ikSaveOpen\(\)">Save to Elvanto/);
+    expect(foot).toMatch(/btn-secondary btn-sm" onclick="_ikAnswersSave\(\)">Save answers/);
+    expect((h.match(/btn-primary/g) || []).length).toBe(1);
+    expect(h).not.toContain('btn-full');
+  });
+});
+
 describe('Text card (R4)', () => {
   const show = (d: any, acts: any[]) => makeEnv().fns._ikShowText(d, acts);
   it('not shown while other steps are todo and no Save stopped at the text', () => {

@@ -32,6 +32,13 @@ describe('shared markup', () => {
     expect(html).not.toContain('lk-row-act');
     expect(html).not.toContain('ik-srch');
   });
+  it('ux18 P9: the Mismatches diff is capped; an .rc-foot empty area falls through to the card link', () => {
+    expect(html).toMatch(/\.ik-mis2\{[^}]*max-width:560px/);
+    expect(html).toContain('.rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}');
+  });
+  it('ux18 P9: the empty states no longer say the lists load only "when you ask"', () => {
+    expect(html).not.toContain('when you ask');
+  });
   it('.pg clears the nav from --nav-h, not a literal', () => {
     expect(html).toMatch(/\.pg\{[^}]*calc\(var\(--nav-h\) \+ var\(--s3\) \+ var\(--safe-b\)\)/);
   });
