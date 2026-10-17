@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
+const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
   '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkPracticeLine', '_lkFlowTypes',
   '_lkMemOff', '_lkCanRemove'];
@@ -220,7 +220,7 @@ describe('R4/R6 step 0: waiting for consent, then Complete records consent not r
     reset();
     const r = S0({ consentFriday: '2099-01-02', notReceivedOk: false });
     expect(f._lkConsentWait(r)).toBe(true);
-    expect(f._lkStepBlock(r)).toBe('Waiting for the consent reply. Complete opens after Fri 2 Jan 9am.');
+    expect(f._lkStepBlock(r)).toBe('Waiting for the consent reply. Complete opens after Fri 2 Jan 2099 9am.');
     expect(f._lkCanComplete(r)).toBe(false);
   });
   it('past the Friday with notReceivedOk (server): Complete opens and says what it records', () => {
@@ -230,7 +230,7 @@ describe('R4/R6 step 0: waiting for consent, then Complete records consent not r
     expect(f._lkStepBlock(r)).toBe('');
     expect(f._lkCanComplete(r)).toBe(true);
     expect(f._lkNotReceived(r)).toBe(true);
-    expect(f._lkNotReceivedText(r)).toBe('No consent reply by Fri 3 Jan 9am. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.');
+    expect(f._lkNotReceivedText(r)).toBe('No consent reply by Fri 3 Jan 2020 9am. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.');
     expect(f._lkNotReceived(S0({ consentFriday: '2020-01-03', notReceivedOk: true, consent: 'ok' }))).toBe(false); // the ordinary Complete
   });
   it('past the Friday without notReceivedOk (older console, no due date): still "Do the consent check first"', () => {
@@ -243,8 +243,8 @@ describe('R4/R6 step 0: waiting for consent, then Complete records consent not r
     reset();
     const g = f._lkFlowGroups([S0({ consentFriday: '2099-01-02' }), S0({ consentFriday: '2020-01-03' })], '2026-10-15', []);
     expect(g[0].steps[0].overdue).toBe(1);
-    const d = loadFns(['_lkFlowDue', '_lkConsentWait', '_lkDay'], 'function esc(v) { return String(v); }');
-    expect(d._lkFlowDue(S0({ consentFriday: '2099-01-02' }), '2026-10-15')).toBe('<span>Waiting (consent Fri 2 Jan)</span>');
+    const d = loadFns(['_lkFlowDue', '_lkConsentWait', '_lkDay', 'fmtDay'], 'function esc(v) { return String(v); }');
+    expect(d._lkFlowDue(S0({ consentFriday: '2099-01-02' }), '2026-10-15')).toBe('<span>Waiting (consent Fri 2 Jan 2099)</span>');
     expect(d._lkFlowDue(S0({ consentFriday: '2020-01-03' }), '2026-10-15')).toContain('Overdue');
   });
 });

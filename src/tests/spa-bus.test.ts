@@ -1102,7 +1102,7 @@ describe('_busNewPeopleCard shows "same phone" for a byPhone suggestion (Task 14
       function icS(k) { return ''; }
       function L(k) { return k; }
     `;
-    return loadFns(['_busNewPeopleCard'], prelude)._busNewPeopleCard();
+    return loadFns(['_busNewPeopleCard', 'fmtDay'], prelude)._busNewPeopleCard();
   };
   it('adds "— same phone" when the match is by phone', () => {
     expect(mk(true)).toContain('Is this Jess Tran (Y9) — same phone?');
