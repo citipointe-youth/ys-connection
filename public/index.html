@@ -204,6 +204,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .el-msg{flex:1;font-weight:600;font-size:14px}
 .el-new{background:#fde2e2;color:#a61b1b}
 .el-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.el-h{font-weight:700;font-size:13px;margin:14px 0 6px}
+details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.el-when{font-size:12px;color:var(--ink-faint);white-space:nowrap}
 .la-detail{padding:2px 12px 10px;font-size:12px;color:var(--muted);line-height:1.6}
 .li-title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
@@ -6638,85 +6641,51 @@ function _loginActivityBodyHtml(users) {
     </div>${list}`;
 }
 
-// ── Error log tab (T3) ──
-// GET /admin/errors: one row per fingerprint (category + code + route + status) with a count and first/last seen.
-// Minimise = collapse; Ignore = hidden by default and never "New", still counted; Delete = gone until it happens again.
-// "New" = seen since this device last opened the tab (localStorage, a per-device convenience only).
-const EL_CATS = { server: 'Server', link: 'Elvanto link', 'elvanto-form': 'New person forms', client: 'App (phones)' };
-const EL_HELP = {
-  NETWORK: ['A phone lost signal or wifi while loading a screen.', 'Nothing to do unless many people hit it at once.', 0],
-  INTERNAL_ERROR: ['The app hit a bug or a database hiccup loading this screen.', 'Retry once. If the same screen keeps failing, tell the developer the time shown.', 1],
-  INTERNAL: ['One queued Elvanto action crashed while the console was syncing.', 'Open Elvanto link, look for a stuck item, tell the developer.', 1],
-  SERVICE_UNAVAILABLE: ['The database was briefly busy or unreachable.', 'Wait a minute and retry. Tell the developer only if it lasts.', 0],
-  REQUEST_TIMEOUT: ['A screen took too long to load.', 'Retry. Tell the developer if it repeats.', 0],
-  LINK_OFF: ['The Elvanto link is switched off or not set up.', 'Ask the developer to set the link key.', 1],
-  ELVANTO_FORM_CHANGED: ['The Elvanto form was edited, so a new-person send was blocked to avoid bad data.', 'Check the form in Elvanto, tell the developer, then resend from Unsent new people.', 1],
-  ELVANTO_UNREACHABLE: ['Elvanto was down or unreachable, so the person was not sent.', 'Resend from Unsent new people later.', 1],
-  STUDENT_FORM_UNCONFIRMED: ['The form was sent but Elvanto did not confirm it.', 'Search Elvanto for the person before resending, to avoid a duplicate.', 1],
-  PARENT_FORM_UNCONFIRMED: ['The form was sent but Elvanto did not confirm it.', 'Search Elvanto for the person before resending, to avoid a duplicate.', 1],
-  STUDENT_FORM_FAILED: ['Elvanto refused the student form.', 'Open Unsent new people, check the details and resend.', 1],
-  PARENT_FORM_FAILED: ['Elvanto refused the parent form.', 'Open Unsent new people, check the details and resend.', 1],
-  UNSENT_SAVE_FAILED: ['A failed send could not be saved, so the new person may be lost.', 'Re-enter this new person by hand and tell the developer. Urgent.', 1],
-  unclear: ['An action sent to Elvanto may or may not have worked.', 'Check that person in Elvanto before repeating it.', 1],
-  'too-old': ['A request waited too long (console offline) and was dropped.', 'Redo the action in the app.', 1],
-  'lease-lost': ['The console went offline while sending.', 'Check Elvanto for the result before repeating.', 1],
-  'note-unreadable': ['A saved note is corrupted.', 'Re-enter it and tell the developer.', 1],
-  'intake-unreadable': ['A saved intake plan is corrupted.', 'Re-enter it and tell the developer.', 1],
-  'pending-24h': ["Actions waited a day: the console PC hasn't picked them up.", 'Check the console PC is on and the Elvanto link is running. The number is how many wait now.', 1],
-  PUSH_FAILED: ['A notice was sent, but the phone alert for it did not reach some phones.', 'Nothing to do: the notice is still in the app. Tell the developer if it happens on every notice.', 0],
-  PUSH_OFF: ['Someone tried to turn on notice alerts, but alerts are not set up yet.', 'Ask the owner to add the VAPID keys in Vercel.', 1],
-  HTTP_401: ['A login had expired.', 'Safe to ignore unless many people see it.', 0],
-  HTTP_403: ['Someone tried something their role does not allow.', 'Safe to ignore unless many people see it.', 0],
-};
-function _elHelp(r) {
-  const h = EL_HELP[r.code];
-  if (h) return { what: h[0], todo: h[1], act: !!h[2] };
-  if (/^JS_/.test(r.code)) return { what: 'A screen crashed in a browser.', todo: 'Reload. Tell the developer the time and role if it repeats.', act: true };
-  if (r.category === 'link') return { what: 'The console refused an action.', todo: 'Open Elvanto link for the reason.', act: true };
-  if (r.status && r.status < 500) return { what: 'A request was refused.', todo: 'Usually a permission or expired login. Tell the developer only if many people see it.', act: false };
-  return { what: 'An error this tab has no description for.', todo: 'Tell the developer the code and time shown below.', act: true };
-}
-let _elRows = null, _elCat = '', _elShowIgnored = false, _elSeenAt = 0;
-function _elVisible(rows, cat, showIgnored) {
-  return (rows || []).filter(r => (!cat || r.category === cat) && (showIgnored || !r.ignored));
+// ── Error log tab (T3; Part 1 rework 2026-10-17) ──
+// GET /admin/errors: rows carry tier + line1 + line2 (texts live in src/services/error-log-text.ts) and come sorted.
+// Three groups: Act now, Act later, FYI (closed). Tap an entry for Ignore / Delete. "New" = since this device last opened the tab.
+const EL_GROUPS = [['now', 'Act now', 'Nothing to act on now.'], ['later', 'Act later', 'Nothing here.'], ['fyi', 'FYI', 'Nothing here.']];
+let _elRows = null, _elShowIgnored = false, _elSeenAt = 0, _elOpen = '', _elFyiOpen = false;
+function _elVisible(rows, showIgnored) {
+  return (rows || []).filter(r => showIgnored || !r.ignored);
 }
 function _elIsNew(r, seenAt) { return !r.ignored && Date.parse(r.lastSeen) > seenAt; }
-function _elRowHtml(r, seenAt) {
+function _elRowHtml(r, seenAt, open) {
   const id = esc(r.id);
-  const cls = 'el-row' + (r.ignored ? ' ign' : '');
-  const chips = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
-    + `<span class="chip" style="background:var(--paper-dark,#eee)">×${Number(r.count) || 0}</span>`;
-  const top = `<button type="button" class="el-top" aria-expanded="${!r.minimised}" onclick="elFlag('${id}',{minimised:${!r.minimised}})"><span class="el-msg">${esc(r.message)}</span>${chips}</button>`;
-  const h = _elHelp(r);
-  const help = `<div class="help-text"><span class="chip">${h.act ? 'Needs action' : 'Safe to ignore'}</span> ${esc(h.what)} ${esc(h.todo)}</div>`;
-  const when = `<div class="la-meta">${esc(EL_CATS[r.category] || r.category)} · last ${esc(_laRelTime(r.lastSeen))}</div>`;
-  if (r.minimised) return `<div class="${cls}">${top}${when}</div>`;
-  return `<div class="${cls}">${top}${help}${when}
-    <div class="la-meta">${esc(r.code)}${r.status ? ' · ' + Number(r.status) : ''}${r.route ? ' · ' + esc(r.route) : ''}</div>
-    <div class="la-meta">First ${esc(_laFmtBrisbane(r.firstSeen))} · last ${esc(_laFmtBrisbane(r.lastSeen))}${r.lastRole ? ' · ' + esc(r.lastRole) : ''}</div>
-    <div class="el-acts">
-      <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{minimised:true})">Minimise</button>
+  const n = Number(r.count) || 0;
+  const meta = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
+    + (n > 1 && !r.counted ? `<span class="chip" style="background:var(--paper-dark,#eee)">×${n}</span>` : '')
+    + `<span class="el-when">${esc(_laRelTime(r.lastSeen))}</span>`;
+  const acts = open ? `<div class="el-acts">
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
       <button class="btn btn-ghost btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
-    </div></div>`;
+    </div>` : '';
+  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}</div>${acts}</div>`;
 }
-function _elBodyHtml(rows, cat, showIgnored, seenAt) {
-  const shown = _elVisible(rows, cat, showIgnored);
-  const ignored = (rows || []).filter(r => r.ignored && (!cat || r.category === cat)).length;
-  const opts = '<option value="">All</option>' + Object.keys(EL_CATS).map(k => `<option value="${k}"${cat === k ? ' selected' : ''}>${EL_CATS[k]}</option>`).join('');
-  const any = (rows || []).some(r => !cat || r.category === cat);
-  return `<div class="card" style="margin-bottom:10px">
+function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
+  const all = rows || [];
+  const shown = _elVisible(all, showIgnored);
+  const ignored = all.filter(r => r.ignored).length;
+  const head = `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select class="fs" style="flex:1;min-width:160px" onchange="elSetCat(this.value)" aria-label="Category">${opts}</select>
         <button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>
-        ${any ? `<button class="btn btn-ghost btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all${cat ? ' in ' + EL_CATS[cat] : ''}</button>` : ''}
+        ${all.some(r => r.tier === 'fyi') ? '<button class="btn btn-ghost btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : ''}
+        ${all.length ? '<button class="btn btn-ghost btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all</button>' : ''}
       </div>
-      <div class="help-text" style="margin-top:8px">Same errors are grouped. Only the code, page and role are kept, never names or details. Rows go after 90 days.</div>
-    </div>${shown.length ? shown.map(r => _elRowHtml(r, seenAt)).join('') : '<div class="help-text">No errors to show.</div>'}`;
+      <div class="help-text" style="margin-top:8px">No names or details are stored. Rows go after 90 days.</div>
+    </div>`;
+  return head + EL_GROUPS.map(([tier, title, empty]) => {
+    const list = shown.filter(r => (r.tier || 'later') === tier);
+    const inner = list.length ? list.map(r => _elRowHtml(r, seenAt, r.id === openId)).join('') : `<div class="help-text">${empty}</div>`;
+    const h = `${title} (${list.length})`;
+    return tier === 'fyi'
+      ? `<details class="el-grp"${fyiOpen ? ' open' : ''} ontoggle="_elFyiOpen=this.open"><summary class="el-h">${h}</summary>${inner}</details>`
+      : `<div class="el-grp"><div class="el-h">${h}</div>${inner}</div>`;
+  }).join('');
 }
 function _elPaint() {
   const el = document.getElementById('err-log');
-  if (el && _elRows) el.innerHTML = _elBodyHtml(_elRows, _elCat, _elShowIgnored, _elSeenAt);
+  if (el && _elRows) el.innerHTML = _elBodyHtml(_elRows, _elShowIgnored, _elSeenAt, _elOpen, _elFyiOpen);
 }
 async function _elLoad() {
   let d;
@@ -6726,7 +6695,7 @@ async function _elLoad() {
   _elRows = d.rows || [];
   _elPaint();
 }
-function elSetCat(v) { _elCat = v; _elPaint(); }
+function elToggle(id) { _elOpen = _elOpen === id ? '' : id; _elPaint(); }
 function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
 async function elFlag(id, flags) {
   try { await API.patch('/admin/errors/' + encodeURIComponent(id), flags); } catch (e) { toast(e.message); return; }
@@ -6743,12 +6712,21 @@ async function elDelete(id) {
   _elRows = (_elRows || []).filter(x => x.id !== id);
   _elPaint();
 }
+async function elClearFyi() {
+  const btn = document.getElementById('el-clrfyi');
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to clear ' + (_elRows || []).filter(x => x.tier === 'fyi').length + ' FYI'; return; }
+  let d;
+  try { d = await API.del('/admin/errors?tier=fyi'); } catch (e) { toast(e.message); return; }
+  _elRows = (_elRows || []).filter(x => x.tier !== 'fyi');
+  toast('Cleared ' + ((d && d.deleted) || 0));
+  _elPaint();
+}
 async function elDeleteAll() {
   const btn = document.getElementById('el-delall');
-  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, _elCat, true).length + ' (' + (_elRows || []).filter(x => x.ignored && (!_elCat || x.category === _elCat)).length + " ignored). This can't be undone."; return; }
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, true).length + ' (' + (_elRows || []).filter(x => x.ignored).length + " ignored). This can't be undone."; return; }
   let d;
-  try { d = await API.del('/admin/errors' + (_elCat ? '?category=' + encodeURIComponent(_elCat) : '')); } catch (e) { toast(e.message); return; }
-  _elRows = (_elRows || []).filter(x => _elCat && x.category !== _elCat);
+  try { d = await API.del('/admin/errors'); } catch (e) { toast(e.message); return; }
+  _elRows = [];
   toast('Deleted ' + ((d && d.deleted) || 0));
   _elPaint();
 }
