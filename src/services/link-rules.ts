@@ -47,12 +47,18 @@ export function pickList(services: LinkServiceRow[], today: string): LinkService
     .sort((a, b) => (a.ymd === b.ymd ? Date.parse(b.startsAt) - Date.parse(a.startsAt) : a.ymd < b.ymd ? 1 : -1));
 }
 
-/** Friday: the day's only service. Sunday: the day's only 10:15 service. Otherwise none. */
-export function defaultService(day: string, services: LinkServiceRow[]): LinkServiceRow | null {
+/** Friday: the day's only service. Sunday (N12): the day's only service, else the one whose Brisbane time of day is
+ *  nearest `now` (10:15 without `now`). Otherwise none. */
+export function defaultService(day: string, services: LinkServiceRow[], now?: Date): LinkServiceRow | null {
   const wd = weekdayOf(day);
-  let candidates = services.filter((s) => s.ymd === day);
-  if (wd === 0) candidates = candidates.filter((s) => brisbaneHHMM(s.startsAt) === '10:15');
-  else if (wd !== 5) return null;
+  const candidates = services.filter((s) => s.ymd === day);
+  if (wd === 0 && candidates.length > 1) {
+    const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+    const at = mins(now ? brisbaneHHMM(now.toISOString()) : '10:15');
+    const gap = (s: LinkServiceRow) => Math.abs(mins(brisbaneHHMM(s.startsAt)) - at);
+    return candidates.reduce((a, b) => (gap(b) < gap(a) ? b : a));
+  }
+  if (wd !== 0 && wd !== 5) return null;
   return candidates.length === 1 ? candidates[0]! : null;
 }
 

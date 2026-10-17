@@ -163,6 +163,12 @@ describe('B02 a lookup that times out while the console is busy with the service
     const z: any = { kind: 'forms', since: now };
     fns._ikLkApply(z, { status: 'waiting' }, now + 6 * 60000);
     expect(z.msg).toBe("The console hasn't picked this up yet. Tap Ask again later.");
+    // N02: console online -> the _ikChip "Queued" wording
+    const on = new Function(`const _ikSt = () => ({ console: { online: true } }); const _ikLkReason = () => '';
+      ${src(['_ikLkApply'])}; return _ikLkApply;`)();
+    const q: any = { kind: 'forms', since: now };
+    on(q, { status: 'waiting' }, now + 6 * 60000);
+    expect(q.msg).toBe('Queued behind other saves. Tap Ask again later.');
   });
 });
 
