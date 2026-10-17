@@ -70,6 +70,19 @@ describe('Import Service', () => {
     expect(students[0]?.svcTotal).toBe(1);
   });
 
+  it('onImported gets service for a service import', async () => {
+    const r = makeRepos();
+    await initRepos(r);
+    const kinds: string[] = [];
+    const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders, null, async (k) => { kinds.push(k); });
+    const rows = [
+      { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9,
+        '2025-02-07': true, '2025-02-14': false },
+    ];
+    await svc.importServiceCsv(ADMIN, rows, 'test.csv');
+    expect(kinds).toEqual(['service']);
+  });
+
   // ── Birthday preservation: a re-import without DOB must not wipe an existing one ──
   it('preserves an existing birthday when the re-import omits the birthday column', async () => {
     const r = makeRepos();
@@ -518,5 +531,54 @@ describe('Import Service', () => {
       const students = await r.students.findAll();
       expect(students.find((s) => s.firstName === 'Jane')).toBeUndefined(); // recognised as a leader, not a youth attendee
     });
+  });
+});
+
+describe('Part 2: group id, roll, onImported kind', () => {
+  const G = '00000000-0000-4000-8000-000000000901';
+  const payload = { groups: [{ name: 'Grade 9 Girls Lifegroup', meetings: ['2026-04-16', '2026-04-23'], members: [
+    { first_name: 'Jane (leader)', last_name: 'Doe', attendance: [true, true] },
+    { first_name: 'Alice', last_name: 'Smith', attendance: [true, false] },
+    { first_name: 'Zero  ', last_name: 'ATTEND', attendance: [false, false] },
+  ] }] };
+  const mk = (r: ReturnType<typeof makeRepos>, onImported?: (k: 'service' | 'lifegroup') => Promise<unknown>, groupIds?: () => Promise<Map<string, string>>) =>
+    makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks,
+      r.lifegroupAttendance, r.leaders, null, onImported, groupIds);
+
+  it('group id matched by trimmed lower-case name', async () => {
+    const r = makeRepos(); await initRepos(r);
+    await mk(r, undefined, async () => new Map([['grade 9 girls lifegroup', G]])).importGroupCsv(DIR,
+      { groups: [{ ...payload.groups[0]!, name: '  Grade 9 GIRLS Lifegroup ' }] }, 'groups.csv');
+    expect((await r.lifegroups.findAll())[0]?.elvantoGroupId).toBe(G);
+  });
+  it('no match gives null', async () => {
+    const r = makeRepos(); await initRepos(r);
+    await mk(r, undefined, async () => new Map()).importGroupCsv(DIR, payload, 'groups.csv');
+    expect((await r.lifegroups.findAll())[0]?.elvantoGroupId).toBeNull();
+  });
+  it('groupIds failure does not fail the import', async () => {
+    const r = makeRepos(); await initRepos(r);
+    const res = await mk(r, undefined, async () => { throw new Error('db blip'); }).importGroupCsv(DIR, payload, 'groups.csv');
+    expect(res.groupsAdded).toBe(1);
+    expect((await r.lifegroups.findAll())[0]?.elvantoGroupId).toBeNull();
+  });
+  it('roll keys are nameKey-normalised: zero-attendance member included, leader excluded', async () => {
+    const r = makeRepos(); await initRepos(r);
+    await mk(r).importGroupCsv(DIR, payload, 'groups.csv');
+    const lg = (await r.lifegroups.findAll())[0]!;
+    expect((await r.lifegroups.findRoll()).filter((x) => x.lifegroupId === lg.id).map((x) => x.nameKey).sort())
+      .toEqual(['alice smith', 'zero attend']);
+  });
+  it('roll is cleared by the next import (truncate cascade)', async () => {
+    const r = makeRepos(); await initRepos(r);
+    await mk(r).importGroupCsv(DIR, payload, 'groups.csv');
+    await mk(r).importGroupCsv(DIR, { groups: [{ name: 'Other', meetings: ['2026-04-16'], members: [{ first_name: 'Bo', last_name: 'Li', attendance: [true] }] }] }, 'g2.csv');
+    expect((await r.lifegroups.findRoll()).map((x) => x.nameKey)).toEqual(['bo li']);
+  });
+  it('onImported gets lifegroup for a groups import', async () => {
+    const r = makeRepos(); await initRepos(r);
+    const kinds: string[] = [];
+    await mk(r, async (k) => { kinds.push(k); }).importGroupCsv(DIR, payload, 'groups.csv');
+    expect(kinds).toEqual(['lifegroup']);
   });
 });

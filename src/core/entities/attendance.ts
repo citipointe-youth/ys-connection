@@ -30,7 +30,10 @@ export interface Lifegroup {
   grade: number | null;
   gender: string | null;
   createdAt: ISODateString;
+  elvantoGroupId?: string | null;
 }
+
+export interface LifegroupRollRow { lifegroupId: string; nameKey: string }
 
 // A weekly lifegroup meeting
 export interface LifegroupWeek {

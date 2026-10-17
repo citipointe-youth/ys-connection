@@ -29,6 +29,8 @@ import { saturdayOf } from './terms';
 // importing this is side-effect-free (no eager connection).
 import type { SqlClient } from '../repositories/supabase/client';
 import { bindImportRepos } from '../repositories/supabase/with-transaction';
+import { nameKey } from './name-key';
+import type { LifegroupRollRow } from '../core/entities/attendance';
 
 // A "week" runs from the day after the service day through the service day — the
 // calendar week that contains that week's service. Map any meeting date to the
@@ -226,7 +228,10 @@ export function makeImportService(
   sql: SqlClient | null = null,
   // Bus Ministry walk-in guest linking (optional — no-op if omitted). Called
   // after a successful import; a failure here never fails the import itself.
-  onImported?: () => Promise<unknown>,
+  onImported?: (kind: 'service' | 'lifegroup') => Promise<unknown>,
+  // Elvanto group id keyed by `name.trim().toLowerCase()` (from link_groups).
+  // A failure gives every group a null id; it never fails the import.
+  groupIds?: () => Promise<Map<string, string>>,
 ): ImportService {
   return {
     async listHistory(actor) {
@@ -526,7 +531,7 @@ export function makeImportService(
       invalidateTrendsCache();
       invalidateLgStatsCache();
       invalidateOverviewCache();
-      if (onImported) await onImported().catch(() => undefined); // bus walk-in linking; never fails an import
+      if (onImported) await onImported('service').catch(() => undefined); // bus walk-in linking; never fails an import
       return { importId, type: 'service', rowCount: rows.length, studentsAdded, studentsUpdated, sessionsAdded: dateKeys.length, report };
     },
 
@@ -545,12 +550,13 @@ export function makeImportService(
       // are touched by this import, so there's no ordering dependency, and
       // reading first keeps the delete/repopulate as one tight transactional
       // block (see writeGroupImport below).
-      const [allStudents, settings, existingLeaders, allSessions, allSvcAtt] = await Promise.all([
+      const [allStudents, settings, existingLeaders, allSessions, allSvcAtt, gIds] = await Promise.all([
         studentRepo.findAll(),
         settingsRepo.getSettings(),
         leaderRepo.findAll(),
         sessionRepo.findAll(),
         attendanceRepo.findAll(),
+        groupIds ? groupIds().catch(() => new Map<string, string>()) : Promise.resolve(new Map<string, string>()),
       ]);
 
       const importId = generateId();
@@ -579,6 +585,7 @@ export function makeImportService(
       };
 
       const newLifegroups: Parameters<typeof lifegroupRepo.save>[0][] = [];
+      const rollRows: LifegroupRollRow[] = []; // full youth roll (incl. zero-attendance members), for reconciliation
       const attendanceRecords: Parameters<typeof lifegroupAttendanceRepo.saveMany>[0] = [];
       // studentId -> running grp totals (a student can be in more than one group)
       const grpByStudent = new Map<string, { obj: Parameters<typeof studentRepo.save>[0]; attended: number; total: number }>();
@@ -600,6 +607,7 @@ export function makeImportService(
           grade: gGrade,
           gender: gGender,
           createdAt: now,
+          elvantoGroupId: gIds.get(group.name.trim().toLowerCase()) ?? null,
         };
         newLifegroups.push(lifegroup);
         groupsAdded++;
@@ -631,6 +639,12 @@ export function makeImportService(
             continue; // leaders are not youth attendees
           }
           youthMembers.push(member);
+        }
+
+        const rollSeen = new Set<string>();
+        for (const m of youthMembers) {
+          const k = nameKey(m.first_name, m.last_name);
+          if (k && !rollSeen.has(k)) { rollSeen.add(k); rollRows.push({ lifegroupId: lifegroup.id, nameKey: k }); }
         }
 
         // Weeks the GROUP ran = weeks where >=1 youth member has a non-null mark.
@@ -770,6 +784,7 @@ export function makeImportService(
         await repos.imports.save({ id: importId, type: 'lifegroup', filename, fileHash: '', rowCount: 0, sessionsAdded: 0, studentsAdded: 0, studentsUpdated: 0, status: 'ok', errorMessage: null, importedAt: now, importedBy: actor.id });
         await repos.leaders.saveMany([...leadersToWrite.values()]);
         await repos.lifegroups.saveMany(newLifegroups);
+        if (rollRows.length) await repos.lifegroups.saveRoll(rollRows);
         await repos.lifegroupWeeks.saveMany(weeksToCreate);
         await repos.students.saveMany(studentsToSave);
         if (dedupedAttendance.length > 0) await repos.lifegroupAttendance.saveMany(dedupedAttendance);
@@ -794,7 +809,7 @@ export function makeImportService(
       invalidateTrendsCache();
       invalidateLgStatsCache();
       invalidateOverviewCache();
-      if (onImported) await onImported().catch(() => undefined); // bus walk-in linking; never fails an import
+      if (onImported) await onImported('lifegroup').catch(() => undefined); // bus walk-in linking; never fails an import
       // Group import has no per-row Zod validation step to fail (the payload
       // is pre-structured by the SPA, not raw CSV rows) and a member appearing
       // in more than one group is a legitimate, common case — not a collision
