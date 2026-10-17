@@ -1825,12 +1825,28 @@ function _extOpen(ev, url) {
   const v = /(iPhone|iPad|iPod).* OS (\d+)_/.exec(ua);
   if (v && +v[2] >= 17) {
     ev.preventDefault();
+    // ux18: a second tap on the same link (within 30 s of "Didn't open?") opens the in-app sheet.
+    if (_extArm && _extArm.url === url && Date.now() < _extArm.until) { _extArm = null; window.open(url, '_blank', 'noopener'); return false; }
+    _extArm = null;
+    // iOS freezes this timer while Safari is in front and fires it on return, when the page is visible again: so
+    // checking visibility at fire time opened the sheet as well. Instead remember whether the page was ever left
+    // (hidden / pagehide / blur, or the timer firing late = frozen), and never open anything on our own.
+    let left = false;
+    const gone = () => { left = true; }, vis = () => { if (document.visibilityState === 'hidden') left = true; };
+    document.addEventListener('visibilitychange', vis); window.addEventListener('pagehide', gone); window.addEventListener('blur', gone);
+    const t0 = Date.now();
     location.href = 'x-safari-' + url;
-    setTimeout(() => { if (document.visibilityState === 'visible') window.open(url, '_blank', 'noopener'); }, 900);
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', vis); window.removeEventListener('pagehide', gone); window.removeEventListener('blur', gone);
+      if (left || document.visibilityState !== 'visible' || Date.now() - t0 > 3000) return;
+      _extArm = { url, until: Date.now() + 30000 };
+      toast("Didn't open? Tap the link again to open it here.", 4000);
+    }, 1500);
     return false;
   }
   return true;
 }
+let _extArm = null;
 async function _ntPushEnv() {
   let ios = false, standalone = false;
   try { ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch {}
