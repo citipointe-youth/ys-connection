@@ -17,7 +17,7 @@ const fixture = (n: string) => JSON.parse(readFileSync(join(__dirname, 'fixtures
 const j = async (r: Response): Promise<any> => r.json();
 
 const SPEC_ROUTES = [
-  'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind', 'POST /sync/leaders',
+  'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind', 'POST /sync/leaders', 'POST /sync/reconcile/latest',
   'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',

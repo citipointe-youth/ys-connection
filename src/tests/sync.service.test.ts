@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { makeSyncService } from '../services/sync.service';
+import { makeSyncService, rematchRoster } from '../services/sync.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemoryLeaderRepository, InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
@@ -387,5 +387,17 @@ describe('UX batch 2026-10-14b (rev 5)', () => {
     expect(await link.flowSteps()).toEqual(steps);
     await svc.push('flows', { ...body, takenAt: '2026-10-16T09:30:00.000Z' });
     expect(await link.flowSteps()).toBeNull();
+  });
+});
+
+describe('rematchRoster', () => {
+  it('rematchRoster matches a new student without a push', async () => {
+    const { svc, link, students } = await setup();
+    await svc.push('roster', fx('push-roster.json'));
+    const before = (await link.roster()).filter((r) => r.match === 'none').length;
+    const r0 = (await link.roster()).find((r) => r.match === 'none' && r.kind === 'student')!;
+    await students.save({ id: 's-new', firstName: r0.firstName, lastName: r0.lastName, gender: r0.gender, grade: r0.grade } as any);
+    await rematchRoster(link, students);
+    expect((await link.roster()).filter((r) => r.match === 'none').length).toBe(before - 1);
   });
 });

@@ -1,9 +1,10 @@
 import type { HttpRequest } from '../http/types';
 import type { AdminService } from '../../services/admin.service';
 import type { ErrorLogService } from '../../services/error-log.service';
+import type { ReconcileService } from '../../services/reconcile.service';
 import { UnauthorizedError } from '../../core/errors/app-error';
 
-export function makeAdminController(deps: { admin: AdminService; errorLog: ErrorLogService }) {
+export function makeAdminController(deps: { admin: AdminService; errorLog: ErrorLogService; reconcile: Pick<ReconcileService, 'whoLatest'> }) {
   return {
     async reset(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
@@ -29,6 +30,10 @@ export function makeAdminController(deps: { admin: AdminService; errorLog: Error
     async errors(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
       return deps.errorLog.list(req.ctx);
+    },
+    async reconcileLatest(req: HttpRequest) {
+      if (!req.ctx) throw new UnauthorizedError();
+      return deps.reconcile.whoLatest(req.ctx);
     },
     async reportError(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
