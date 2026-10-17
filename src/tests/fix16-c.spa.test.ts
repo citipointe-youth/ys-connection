@@ -40,7 +40,8 @@ describe('fix16 lane C', () => {
 
   it('F-46(a) / L4-14: one name for the console machine', () => {
     expect(HTML).not.toContain('the console computer has not picked them up');
-    expect(HTML).toContain("Actions waited a day: the console PC hasn't picked them up.");
+    // The pending-24h text moved to src/services/error-log-text.ts (error log rework 2026-10-17); the SPA keeps no help table.
+    expect(HTML).not.toContain("console PC hasn't picked them up");
   });
 
   it('F-47(b): Home no longer shows a permanent "All students are connected!"', () => {
