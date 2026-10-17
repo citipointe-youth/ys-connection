@@ -7,7 +7,7 @@ import type { ActionType, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, Lin
 } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
 import { applyOutcome } from '../../services/link-rules';
-import { INTAKE_TYPES, stickyConsent } from '../../core/link-contract';
+import { INTAKE_TYPES, REHAND_REV, stickyConsent } from '../../core/link-contract';
 
 const INTAKE = INTAKE_TYPES as readonly string[];
 
@@ -130,7 +130,8 @@ export class InMemoryLinkRepository implements ILinkRepository {
       && (i.row.status === 'pending' || i.row.status === 'claimed') && cmpDesc(i, e) > 0);
     const due = [...this.outbox.values()].filter((e) => !blocked(e)).filter(({ row: r }) => (caps[r.type] ?? 'off') !== 'off' && ( // X18: an unlisted type is off
       (r.status === 'pending' && (r.retryAt === null || Date.parse(r.retryAt) <= now)) ||
-      (r.status === 'claimed' && r.leaseOwner === a.console.consoleId && r.leaseUntil !== null && Date.parse(r.leaseUntil) < now)))
+      (r.status === 'claimed' && r.leaseOwner === a.console.consoleId && r.leaseUntil !== null
+        && (Date.parse(r.leaseUntil) < now || a.console.linkRev >= REHAND_REV)))) // C01 (rev 12): own live leases too
       .sort((x, y) => -cmpDesc(x, y))
       .slice(0, Math.max(0, a.max));
     const out: ClaimedRow[] = [];

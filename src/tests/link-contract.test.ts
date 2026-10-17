@@ -174,7 +174,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(11); // 2026-10-18 P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(12); // 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {

@@ -41,7 +41,7 @@ describe('SupabaseLinkRepository SQL text', () => {
   it('claim lease: due rows on the DB clock, reclaim same console only, oldest first, skip locked', () => {
     const c = flat(method('claim'));
     expect(c).toContain('retry_at is null or retry_at <= now()');
-    expect(c).toMatch(/status = 'claimed' and lease_until < now\(\) and lease_owner = \$\{c\.consoleId\}/);
+    expect(c).toMatch(/status = 'claimed' and lease_owner = \$\{c\.consoleId\} and \(lease_until < now\(\) or \$\{c\.linkRev >= REHAND_REV\}::boolean\)/); // C01 rev 12
     expect(c).toMatch(/order by created_at, id limit \$\{a\.max\} for update skip locked/);
     expect(c).toContain('lease_until = now() + make_interval(secs => ');
   });

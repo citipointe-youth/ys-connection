@@ -43,7 +43,13 @@ export const LINK_CONTRACT_VERSION = 1;
 // LINK_REV 11 (ux run 2026-10-18, P4; operator approved the console change), optional only: a consentLookup payload may carry
 // `since` (only rows NEW since then). The app sends it only when the newest console's link_rev >= 11 (IK_LK_SINCE_REV in the SPA);
 // a console at 10 just gets full passes (and the admin page shows "Console out of date" until it is restarted).
-export const LINK_REV = 11;
+// LINK_REV 12 (backlog C01, 2026-10-18), no shape change: a claim from a console at link_rev >= 12 also re-hands that console's
+// OWN still-leased rows (reclaimed: true), not only those whose lease ended. A claim reply the console lost (its 15 s HTTP
+// timeout while the app committed the lease) no longer strands the rows for the 600 s lease. Safe because the console runs one
+// claim at a time, skips a row whose result it still holds, and checks its sent-log by outbox id before any write (B1 / X6).
+// An older console gets the old rule (own rows only after the lease ends).
+export const LINK_REV = 12;
+export const REHAND_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
