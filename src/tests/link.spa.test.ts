@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
-  '_lkFresh', '_lkTime', '_lkDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
+  '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
@@ -226,10 +226,10 @@ describe('F1.1 _lkBanner', () => {
   it('T-17 / APP-52: a last-seen time on another day carries the day', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T00:00:00.000Z')); // Mon 10:00 Brisbane
     try {
-      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since Fri 16 Oct 4:12 pm.'); // fix16 F-12 wording
+      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since Fri 16 Oct, 4:12pm.'); // fix16 F-12 wording
       const h = makeEnv();
       h.get().LINK.status = st({ online: false });
-      expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct 4:12 pm');
+      expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct, 4:12pm');
     } finally { vi.useRealTimers(); }
   });
   it('check-out locked, off hides; no practice line (S1)', () => {
@@ -749,7 +749,7 @@ describe('F1.3 door', () => {
   });
   it('T7: the door has a big search bar and no grade select; the leaders button comes after the list', () => {
     const f = extractFn(html, '_lkPaintDoor');
-    expect(f).toContain('class="fi lk-big" id="lk-search"');
+    expect(f).toContain('<div class="sbar"><input class="lk-big" id="lk-search"'); // UI standard D: the shared search bar
     expect(f).not.toContain('<select');
     expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('_lkOpenLeaders()'));
     expect(f.indexOf('id="lk-search"')).toBeLessThan(f.indexOf('id="lk-list"'));
@@ -1931,7 +1931,7 @@ describe('F4.2 admin page', () => {
     expect(h.fns._lkLogFile('2026-10-16')).toBe('elvanto-activity-2026-10-16.xlsx');
     const aoa = h.fns._lkLogAoa([logRow()]);
     expect(aoa[0]).toEqual(['Time', 'Login', 'Device', 'Device id', 'I am before', 'I am', 'Event', 'Target', 'Outcome']);
-    expect(aoa[1]).toEqual(['Fri 16 Oct 6:31 pm', 'grade9<b>g</b>', 'iPhone · <i>Safari</i>', 'dev-<1>', 'Cody <s>C</s>', 'Sam <u>S</u>', 'Identity', '', 'logged']);
+    expect([aoa[1][0].replace(/ 2026,/, ','), ...aoa[1].slice(1)]).toEqual(['Fri 16 Oct, 6:31pm', 'grade9<b>g</b>', 'iPhone · <i>Safari</i>', 'dev-<1>', 'Cody <s>C</s>', 'Sam <u>S</u>', 'Identity', '', 'logged']);
     const ex = extractFn(html, '_lkLogExport');
     expect(ex).toContain('await _ensureXlsx()');
     expect(ex).toContain('XLSX.writeFile(wb, _lkLogFile(_lkToday()))');

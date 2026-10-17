@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
-  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
+  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
   '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
@@ -105,7 +105,7 @@ describe('F-42 Unlinked intro + tag', () => {
     const h = fns._ikClRow(f, 0, '', ST());
     expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
     expect(h).not.toContain('console only');
-    expect(h).toMatch(/white-space:normal[^>]*>Linked to/);
+    expect(h).toMatch(/class="lk-st ok">Linked to/); // UI standard A: a status line that wraps, not a tag
   });
 });
 

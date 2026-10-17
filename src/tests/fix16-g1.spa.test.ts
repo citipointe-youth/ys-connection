@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const IK = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkAt', '_lkSeen', '_ik', '_ikFresh', '_ikRev', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct',
+const IK = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkAt', '_lkSeen', '_ik', '_ikFresh', '_ikRev', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct',
   '_ikOpenOf', '_ikAge', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
   '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv',

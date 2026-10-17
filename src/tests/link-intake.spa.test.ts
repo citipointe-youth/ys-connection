@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
-const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
+const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
   '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
@@ -17,10 +17,10 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', '_lkSeen', '_lkAt', '_lkUuid
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
   '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
   '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkSearch', '_ikLkKey', '_ikLkTurn', '_ikLkGo', '_ikLkErr', '_ikLkAgain',
-  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss', '_ikMisLines', '_ikLkStatusHtml', '_ikFixBanner',
+  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss', '_ikMisLines', '_ikMisVal', '_ikLkStatusHtml', '_ikFixBanner',
   '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
   // integration review fixes (run 2026-10-15)
-  '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', '_ikFixChanges', '_ikDncLine',
+  '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', 'fmtDay', '_ikFixChanges', '_ikDncLine',
   // L6 Unlinked consent forms (run 2026-10-15b)
   '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
@@ -662,7 +662,7 @@ describe('form rows (R2 b; consents run 2026-10-17 R1: one chip in words, no ico
     expect(f._ikFormChip(row())).toEqual(['Consent given', 'ik-ok']);
     expect(f._ikFormChip(row({ contactOptOut: true }))).toEqual(['Do not contact', 'ik-bad']);
     expect(f._ikFormChip(row({ total: '09/10/2026' }))).toEqual(['No consent at all', 'ik-bad']);
-    expect(f._ikFormLines(row({ total: '03/10/2026' }))).toEqual(['No consent at all from Sat 3 Oct 2026']);
+    expect(f._ikFormLines(row({ total: '03/10/2026' }))[0]).toMatch(/^No consent at all from Sat 3 Oct( 2026)?$/); // year only when not this year
     expect(f._ikFormChip(row({ status: 'pending' }))).toBeNull(); // the meta line says Pending
     expect(f._ikFormChip(row({ consentDate: '', otherOptOuts: ['Photos'] }))).toEqual(['No consent date', 'ik-prac']); // other opt-outs never count
   });
@@ -701,7 +701,7 @@ describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
     form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };
   it('lines show form vs profile; a locked writer is said plainly', () => {
     const f = makeEnv().fns;
-    expect(f._ikMisLines(mis)).toEqual([['Consent date', 'Fri 9 Oct 2026', 'blank'], ['Opt-outs', 'Contact with my child', 'blank']]);
+    expect(f._ikMisLines(mis).map((l: string[]) => l.map((x) => x.replace(/ 2026$/, '')))).toEqual([['Consent date', 'Fri 9 Oct', 'blank'], ['Opt-outs', 'Contact with my child', 'blank']]);
     expect(strip(f._ikFixBanner(ST6()))).toContain("isn't allowed to change profiles yet");
     expect(f._ikFixText({ status: 'refused', reason: 'locked' }, ST6())).toEqual(['bad', 'Not sent. Waiting for first live approval in the console.']);
     expect(f._ikFixText({ status: 'sent', reason: 'already' }, ST6())[1]).toMatch(/Already matched/);
@@ -770,7 +770,7 @@ describe('integration review fixes (run 2026-10-15)', () => {
     const m = { subId: P2(3), personId: P2(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date'],
       form: { consentDate: '09/10/2026', total: '', optOuts: [] }, profile: { consentDate: '01/02/2025', total: '', optOuts: ['Contact with my child', 'Photos'] } };
     const ch = e.fns._ikFixChanges(m);
-    expect(ch.lines).toEqual(['Consent date: set to Fri 9 Oct 2026 (now Sat 1 Feb 2025)', 'Opt-out removed: Contact with my child', 'Opt-out removed: Photos']);
+    expect(ch.lines.map((x: string) => x.replace(/ 2026\b/, ''))).toEqual(['Consent date: set to Fri 9 Oct (now Sat 1 Feb 2025)', 'Opt-out removed: Contact with my child', 'Opt-out removed: Photos']);
     expect(ch.dnc).toBe('off');
     const x = e.fns._ikLk('mismatches');
     Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 1, rows: [m] } });

@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', '_ikConsentSub', '_ikTidyHtml', '_ikTidyList', '_ikTidyTitle', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkApply', '_ikLkStatusHtml',
-  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikFixBanner', '_ikFixText', '_ikDmy', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
-  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikOtherRow', '_ikNrState', '_ikNrOk', '_ikNrRowHtml', '_ikNrAllHtml', '_ikNrOpen', '_ikNrGo'];
+  '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
+  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikOtherRow', 'fmtDay', '_ikNrState', '_ikNrOk', '_ikNrRowHtml', '_ikNrAllHtml', '_ikNrOpen', '_ikNrGo'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
@@ -83,8 +83,8 @@ describe('Consents Other: rows', () => {
     const x = fns._ikLk('other');
     Object.assign(x, { st: 'ready', res: { rows: ROWS, page: 1, pageSize: 25, total: 3 } });
     const h = fns._ikLkResHtml('other', x, ST()), s = strip(h);
-    expect(s).toContain('Parent texted ~20/09/2026 (console text)');
-    expect(s).toContain('Parent texted ~02/09/2026 (parent note)');
+    expect(s).toMatch(/Parent texted ~Sun 20 Sep( 2026)? \(console text\)/); // UI standard F: fmtDay, not dd/mm/yyyy
+    expect(s).toMatch(/Parent texted ~Wed 2 Sep( 2026)? \(parent note\)/);
     expect(s).toContain('No date found: Parent not texted yet (Parent Consent step 1 is not Complete)');
     expect(h).toContain('Avery &lt;Tran&gt;');
     expect(s).toContain('3 students');
@@ -140,7 +140,7 @@ describe('R9: Mark not received on Consents Other (consents run 2026-10-17)', ()
     const h = html(), s = strip(h);
     expect((h.match(/>Mark not received</g) || []).length).toBe(1);
     expect(h).toContain('onclick="_ikNrOpen(0)"');
-    expect(s).toContain('No reply by 2026-10-09 9am');
+    expect(s).toMatch(/No reply by Fri 9 Oct( 2026)?, 9am/);
     expect(s).toContain('Waiting (consent 2999-01-01)');
     expect(s).toContain('Do not contact');
     expect(s).toContain('Marking consent not received.');

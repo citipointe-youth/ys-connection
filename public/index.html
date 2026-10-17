@@ -50,6 +50,10 @@
   --t-body:15px;--t-sm:13px;--t-label:12px;--t-micro:11px;
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
+  /* UI standard 2026-10-18 (B): the only spacing steps. Card padding s4, card gap s3, line gap s2, section s5, gutter s4. */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;
+  /* The fixed .bot-nav's height (labels + padding, no safe area). .pg, the toasts and FABs clear it. */
+  --nav-h:64px;
 }
 /* Top loading bar (#nprog): a thin accent bar that animates whenever a real network
    request is in flight (driven from API's r() via _npStart/_npDone, ported from the
@@ -142,13 +146,13 @@ input,select,textarea{font-family:inherit;font-size:inherit}
    unaffected either way: its own media query below replaces this padding
    entirely (.bot-nav is display:none there).
 */
-.pg{flex:1;padding:14px 16px calc(76px + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip}
+.pg{flex:1;padding:var(--s4) var(--s4) calc(var(--nav-h) + var(--s3) + var(--safe-b));max-width:680px;margin:0 auto;width:100%;overflow-x:clip} /* UI standard 2026-10-18: 64 + 12 = the old 76px, now tied to --nav-h */
 @media(min-width:768px){.pg{padding:20px 24px;max-width:1000px}}
 @media(max-width:767px){.pg:has(.pfab){padding-bottom:calc(164px + var(--safe-b))}} /* F-47f: the last prayer clears the Add Prayer pill */
 
 /* Cards */
-.card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:16px;margin-bottom:12px}
-.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:var(--s4);margin-bottom:var(--s3)}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)}
 .card-title{font-size:15px;font-weight:700}
 .card-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
 
@@ -160,13 +164,15 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .stat-l{font-size:11px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
 
 /* Buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
+/* UI standard (C): two looks for actions, primary (one per card) and secondary; both at least 44px tall.
+   .btn-ghost is for icon-only buttons; a worded action is primary or secondary. */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;min-height:44px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}.btn-primary:active{transform:translateY(0)}
 .btn-secondary{background:var(--paper-dark);color:var(--ink)}.btn-secondary:hover{background:#d1d5db}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
 .btn-warn{background:var(--warn);color:#fff}
-.btn-sm{padding:7px 12px;font-size:13px;border-radius:6px}
+.btn-sm{padding:7px 12px;min-height:44px;font-size:13px;border-radius:6px}
 .btn-ghost{background:transparent;color:var(--ink-mid);padding:6px 8px}.btn-ghost:hover{background:var(--paper-dark);color:var(--ink)}
 .btn-ghost:disabled{opacity:.35;cursor:not-allowed}.btn-ghost:disabled:hover{background:transparent}
 .btn-full{width:100%}
@@ -183,12 +189,12 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .setup-ok .ic-s{color:var(--success)}.setup-fix .ic-s{color:var(--warn)}
 
 /* List items */
-.li{background:var(--paper-card);border-radius:var(--radius);border:1px solid var(--line);padding:13px;margin-bottom:8px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;transition:box-shadow .15s,transform .12s}
+.li{background:var(--paper-card);border-radius:var(--radius);border:1px solid var(--line);padding:var(--s3) var(--s4);margin-bottom:var(--s2);box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;transition:box-shadow .15s,transform .12s}
 .li:hover{box-shadow:var(--shadow-md)}.li:active{transform:scale(.985)}
 .li.acct-girls{background:#fdf2f8}
 .li.acct-boys{background:#eff6ff}
 .li-body{flex:1;min-width:0}
-.la-row{border:1px solid var(--paper-dark,#ddd);border-radius:10px;margin-bottom:6px;background:#fff}
+.la-row{border:1px solid var(--paper-dark,#ddd);border-radius:var(--radius);margin-bottom:var(--s2);background:#fff}
 .la-row summary{padding:10px 12px;cursor:pointer;list-style:none;min-height:44px;box-sizing:border-box}
 .la-row summary::-webkit-details-marker{display:none}
 .la-top{display:flex;align-items:baseline;gap:8px}
@@ -196,14 +202,14 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .la-role{font-size:12px;color:var(--muted);flex:0 0 auto;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .la-meta{font-size:12px;color:var(--ink-mid);margin-top:2px;line-height:1.4}
 .la-never{color:var(--danger,#c0392b);font-weight:600}
-.el-row{border:1px solid var(--paper-dark,#ddd);border-radius:10px;margin-bottom:6px;background:#fff;padding:10px 12px}
+.el-row{border:1px solid var(--paper-dark,#ddd);border-radius:var(--radius);margin-bottom:var(--s2);background:#fff;padding:var(--s3) var(--s4)}
 .el-row.ign{opacity:.6}
 .el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px;width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;padding:0}
 .ny-err{font-size:13px;font-weight:400;text-transform:none;color:var(--danger);margin-top:4px}
 .bus-allsum{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .el-msg{flex:1;font-weight:600;font-size:14px}
 .el-new{background:#fde2e2;color:#a61b1b}
-.el-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.el-acts{display:flex;gap:var(--s2);flex-wrap:wrap;justify-content:flex-end;margin-top:var(--s3)}
 .el-h{font-weight:700;font-size:13px;margin:14px 0 6px}
 details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .el-when{font-size:12px;color:var(--ink-faint);white-space:nowrap}
@@ -254,12 +260,15 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .fill-g{background:var(--success)}.fill-a{background:var(--warn)}.fill-r{background:var(--danger)}
 
 /* Page headers */
-.ph{margin-bottom:16px}
+.ph{margin-bottom:var(--s4)}
+/* UI standard (D): a bare <h1> in .ph looks like .ph-title; .ph-eyebrow is the small parent name above a screen title. */
+.ph h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.ph-eyebrow{display:block;font-size:var(--t-label);font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin-bottom:var(--s1)}
 .ph-title{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em}
 .ph-sub{font-size:14px;color:var(--ink-mid);margin-top:4px}
 
 /* Section headers */
-.sh{font-size:11px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.8px;margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--paper-dark)}
+.sh{font-size:11px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.8px;margin:var(--s5) 0 var(--s2);padding-bottom:4px;border-bottom:1px solid var(--paper-dark)}
 
 /* Empty state */
 .empty{text-align:center;padding:48px 24px;color:var(--ink-mid)}
@@ -306,12 +315,14 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .fc.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* Search */
-.sbar{position:relative;margin-bottom:12px}
-.sbar input{width:100%;padding:11px 14px 11px 40px;border:1.5px solid #94a3b8;border-radius:var(--radius-sm);font-size:16px;background:var(--paper-card);outline:none;transition:border-color .15s}
+/* UI standard (D): the one search bar. An optional .si icon first, the input, an optional button: all 44px tall. */
+.sbar{position:relative;display:flex;gap:var(--s2);align-items:stretch;margin-bottom:var(--s3)}
+.sbar input{flex:1 1 auto;width:100%;min-width:0;height:44px;padding:0 14px;border:1.5px solid #94a3b8;border-radius:var(--radius-sm);font-size:16px;color:var(--ink);background:var(--paper-card);outline:none;transition:border-color .15s;-webkit-appearance:none}
+.sbar .si+input{padding-left:40px}
+.sbar input.lk-big{height:52px;font-size:18px}
+.sbar>.btn{flex:none}
 .sbar input:focus{border-color:var(--accent)}
 .sbar .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-faint);pointer-events:none}
-.ph-search{flex:0 1 170px;min-width:130px;padding:7px 10px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;background:var(--paper-card);outline:none;transition:border-color .15s}
-.ph-search:focus{border-color:var(--accent)}
 
 /* Alerts */
 .alert{padding:12px 14px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px}
@@ -345,7 +356,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 }
 
 /* Toast */
-#toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:rgba(17,24,39,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:300;width:max-content;max-width:calc(100vw - 32px);text-align:center;line-height:1.35}
+#toast{position:fixed;bottom:calc(var(--nav-h) + var(--s3) + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:rgba(17,24,39,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:300;width:max-content;max-width:calc(100vw - 32px);text-align:center;line-height:1.35}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:768px){#toast{bottom:24px}}
 .sw-upd{position:fixed;top:calc(var(--safe-t) + 8px);left:50%;transform:translateX(-50%);z-index:400;background:var(--accent);color:#fff;border:none;border-radius:22px;padding:10px 18px;min-height:44px;font:inherit;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(10,10,46,.3);cursor:pointer;max-width:calc(100vw - 32px)}
@@ -449,10 +460,9 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
    The box height is pinned to the visible viewport in JS (_sizePicker). */
 .mo.mo-top{align-items:flex-start;padding-top:max(env(safe-area-inset-top,0px),34px)}
 .mo-box.pflex{display:flex;flex-direction:column;border-radius:18px;margin:0 8px}
-.mo-box.pflex .mo-handle,.mo-box.pflex .mo-title,.mo-box.pflex .picker-search,.mo-box.pflex .picker-done{flex:0 0 auto}
+.mo-box.pflex .mo-handle,.mo-box.pflex .mo-title,.mo-box.pflex .sbar,.mo-box.pflex .picker-done{flex:0 0 auto}
 .mo-box.pflex #picker-list{flex:1 1 auto;min-height:0}
 .picker-done{padding-top:10px;margin-top:4px;border-top:1px solid var(--paper-dark)}
-.picker-search{width:100%;padding:13px 14px 13px 42px;border:2px solid var(--accent);border-radius:var(--radius-sm);font-size:16px;outline:none;background:var(--paper-card);margin-bottom:10px}
 .picker-list{overflow-y:auto;max-height:calc(96vh - 200px)}
 .picker-item{display:flex;align-items:center;gap:12px;padding:13px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .1s;border:none;background:none;width:100%;text-align:left;min-height:60px}
 .picker-item:hover,.picker-item:focus{background:var(--accent-light);outline:none}
@@ -538,7 +548,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 @media(max-height:500px) and (max-width:767px){
   .bot-nav{padding:2px 0 calc(2px + var(--safe-b))}
   .bot-nav a{flex-direction:row;justify-content:center;gap:5px;min-height:40px;padding:2px}
-  .pg{padding-bottom:calc(52px + var(--safe-b))}
+  :root{--nav-h:40px} /* .pg clears 40 + 12 = 52px here */
   .bus-tile{padding-block:4px} /*BUS-HOOK*/
 }
 @media(pointer:coarse){
@@ -663,7 +673,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .mo-box.bus-fill > *{flex-shrink:0}
 .mo-box.bus-fill > .bus-checks{flex:1 1 auto;min-height:0;max-height:none}
 /* ── Car setup / Routes / My car (Task 7) ── */
-.veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:6px 10px 8px;margin-bottom:6px}
+.veh-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:var(--s2) var(--s3);margin-bottom:var(--s2)}
 .veh-card.off{opacity:.55;padding-bottom:6px}
 .veh-top{display:flex;align-items:center;gap:8px}
 .veh-name{font-size:14.5px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -778,8 +788,9 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-filters .fs{flex:0 0 132px}
 .lk-filters.wrap{flex-wrap:wrap}.lk-filters.wrap .fi{min-width:0;flex:1 1 140px}
 .lk-sticky{position:sticky;top:var(--hdr-h,0px);z-index:50;background:var(--paper);padding:6px 0;margin-top:-6px}
+.lk-sticky .sbar{margin-bottom:0}
 .lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
-.lk-row{padding:10px 12px;gap:10px;margin-bottom:6px}
+.lk-row{padding:var(--s3) var(--s4);gap:var(--s3);margin-bottom:var(--s2)}
 .lk-row[role=button]{cursor:pointer}
 .lk-chip{flex:none;min-width:42px;text-align:center;font-size:11px;font-weight:700;background:var(--chip);color:var(--accent-dark);border-radius:999px;padding:3px 7px}
 .lk-chip.lead{background:var(--paper-dark);color:var(--ink)}
@@ -811,7 +822,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-opt-t{display:block}
 .lk-d{display:block;font-size:12px;color:var(--ink-mid)}
 .lk-tag{font-size:11px;font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px;flex:none}
-.lk-toast{position:fixed;bottom:calc(76px + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
+.lk-toast{position:fixed;bottom:calc(var(--nav-h) + var(--s3) + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lk-toast .btn{background:#fff;color:#111827;flex:none}
 @media(min-width:768px){.lk-toast{bottom:24px}}
@@ -834,7 +845,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-cand{align-items:center}.lk-cand span{flex:1 1 auto;min-width:0}.lk-cand .btn{flex:none}
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
-.lk-row-act{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
 /* R1 DO NOT CONTACT + R4 flow steps (run 2026-10-15) */
@@ -891,10 +901,36 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-ph{margin-bottom:8px}.ik-ph h1{font-size:18px}
 .ik-stl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-8px 0 10px}
 .ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:32px}
-.ik-srch{display:flex;gap:8px;align-items:center;margin-bottom:8px}.ik-srch .fi{flex:1;min-width:0}
 .ik-chg-dnc{color:#b91c1c;font-weight:700}.ik-ict{font-size:11px;font-weight:700;color:#b91c1c}
 .ik-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0}
-.ik-mis{font-size:13px;margin-top:4px}.ik-mis b{font-weight:600}.ik-mis span{display:block;color:var(--ink-mid)}
+/* UI standard (E): a Mismatches field as two columns, Form | Profile; an empty side reads "blank" in muted italics. */
+.ik-mis{font-size:13px;margin-top:var(--s2)}.ik-mis b{display:block;font-weight:600;margin-bottom:2px}
+.ik-mis2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}.ik-mis2>div{min-width:0;overflow-wrap:anywhere}
+.ik-mis2 i{display:block;font-style:normal;font-size:var(--t-micro);font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em}
+.ik-blank{color:var(--ink-faint);font-style:italic}
+.ik-cnt{margin-bottom:var(--s3)}
+/* Consent sub-pages: the screen name is the title, "New youth & consent" its eyebrow. */
+.ik-ph:has(+#ik-page .ik-tt) h1{font-family:var(--font);font-size:var(--t-label);color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin-bottom:var(--s1)}
+.ik-ph:has(+#ik-page .ik-tt){margin-bottom:0}
+.ik-tt{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2;margin-bottom:var(--s4)}
+/* UI standard (A): one row-card. .rc-top = name + one pill top-right; .lk-d meta lines; .rc-foot = actions, right-aligned;
+   two buttons share the row and stack full width when they don't fit. A row that opens something (Profile) is one link
+   (.rc-go) stretched over the card, with a chevron; the footer sits above it so its buttons still take their own taps. */
+.rc{display:block;position:relative;padding:var(--s4);margin-bottom:var(--s3)}
+.rc-top{display:flex;align-items:flex-start;gap:var(--s2)}
+.rc-top>.lk-nm{flex:1 1 auto;min-width:0}
+.rc-top>.lk-tag,.rc-top>.ic-s{flex:none;margin-top:2px}
+.rc-pills{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s1);flex:0 1 auto;max-width:55%}
+.rc .lk-d{margin-top:2px}
+.rc-foot{position:relative;z-index:1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:var(--s2);margin-top:var(--s3)}
+.rc-foot>.lk-st,.rc-foot>.lk-d{flex:1 1 140px;margin:0}
+.rc-foot>.btn:not(:only-of-type){flex:1 1 140px}
+.rc-go{color:inherit;text-decoration:none}
+.rc-go::after{content:'';position:absolute;inset:0;border-radius:inherit}
+.rc-go:focus-visible{outline:none}.rc:has(.rc-go:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+/* A tinted strip for a page-wide action ("Mark all 13", "Save all 5"). */
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);background:var(--accent-light);border-radius:var(--radius-sm);padding:var(--s3);margin-bottom:var(--s3)}
+.strip>.lk-d{flex:1 1 160px;color:var(--accent-dark)}
 .lk-svc .tbbar{margin-bottom:0;flex:1;min-width:0}
 /* END LINK CSS */
 </style>
@@ -2213,7 +2249,7 @@ function callPhone(raw, firstName, isParent) {
       <button class="btn btn-primary" onclick="closeModal();window.location.href='tel:${d}'">Call</button>
       <button class="btn btn-secondary" onclick="closeModal();window.location.href='${_smsHref(d, defaultMsg)}'">Message</button>
       ${customBtn}
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
   `);
 }
@@ -2339,10 +2375,22 @@ function pBar(pct) {
   const cls = pct >= 70 ? 'fill-g' : pct >= 40 ? 'fill-a' : 'fill-r';
   return `<div class="pb"><div class="pb-f ${cls}" style="width:${pct}%"></div></div>`;
 }
-function fmtDate(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return dt.getDate()+'/'+(dt.getMonth()+1)+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+// UI standard (F), 2026-10-18: the one date format. "Fri 16 Oct"; the year only when it is not this year ("Fri 16 Oct 2025");
+// time = true adds ", 9am" / ", 5:20pm". v = 'YYYY-MM-DD' (a calendar day: never a time) or an ISO instant / Date, shown
+// in Brisbane (UTC+10, no daylight saving). '' when v is empty or not a date.
+function fmtDay(v, time) {
+  const str = typeof v === 'string' ? v.trim() : '', day = /^\d{4}-\d{2}-\d{2}$/.test(str);
+  const t = day ? Date.parse(str + 'T00:00:00Z') : v instanceof Date ? v.getTime() : str ? Date.parse(str) : NaN;
+  if (!isFinite(t)) return '';
+  const d = new Date(day ? t : t + 36e6), y = d.getUTCFullYear();
+  let out = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] + ' ' + d.getUTCDate() + ' '
+    + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]
+    + (y !== new Date(Date.now() + 36e6).getUTCFullYear() ? ' ' + y : '');
+  if (time && !day) {
+    const h = d.getUTCHours(), m = d.getUTCMinutes();
+    out += ', ' + (h % 12 || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (h < 12 ? 'am' : 'pm');
+  }
+  return out;
 }
 function fmtDM(d) {
   if (!d) return '—';
@@ -2554,7 +2602,7 @@ function openMore() {
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
   }).join('');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
-    <button type="button" class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
+    <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
 function _navItemsBase(u = S.user) {
   if (!u) return [];
@@ -4016,9 +4064,7 @@ function openStudentPicker(leaderId, leaderGender) {
 
   modal(`
     <div class="mo-title">Add Students → ${esc(leaderName)}</div>
-    <div style="position:relative;margin-bottom:4px">
-      <input class="picker-search" id="picker-q" placeholder="Search by name to add anyone…" oninput="filterPicker()" autofocus>
-    </div>
+    <div class="sbar"><span class="si">${icS('search')}</span><input id="picker-q" type="search" aria-label="Search by name" placeholder="Search by name to add anyone…" oninput="filterPicker()" autofocus></div>
     <div id="picker-list" class="picker-list"></div>
     <div class="picker-done" style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>
@@ -4676,9 +4722,9 @@ async function renderAtRisk() {
     <div class="ph">
       <div class="ph-title" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
         <span style="display:flex;align-items:center;gap:7px">${icN('heart')} Health ${helpTip(`Worked out automatically from attendance — nothing to set yourself. Rising / Declining: ${L('service')} or ${L('smallGroup')} attendance has changed a lot since last term. Mixed: up in one, down in the other. Stopped: hasn't been to ${L('service')} or ${L('smallGroup')} this term. Stable: no big change.`)}</span>
-        <input id="ar-name-filter" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Find student" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)" class="ph-search" style="margin-left:auto">
       </div>
-    </div>`;
+    </div>
+    <div class="sbar"><span class="si">${icS('search')}</span><input id="ar-name-filter" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Find student" placeholder="Find student…" value="${_arNameFilter.replace(/"/g,'&quot;')}" oninput="setArNameFilter(this.value)"></div>`;
   if (vgOn) body += _vgBar();
   else if (arGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}<button class="fc ${!_arFilter.grade?'on':''}" onclick="setArFilter('grade',null)">All</button></div>`;
   if (arGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}<button class="fc ${!_arFilter.gender?'on':''}" onclick="setArFilter('gender',null)">All</button></div>`;
@@ -5214,7 +5260,7 @@ function _studentResultsHtml(vis) {
       <td>${pct!==null?pct+'%':'—'} <span style="color:var(--ink-faint)">/ ${psvc}</span></td>
       <td>${gp} <span style="color:var(--ink-faint)">/ ${pgp}</span></td>
       <td>${qualChips(s) || '<span style="color:var(--ink-faint)">—</span>'}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="showStudentDetail('${s.id}')">View →</button></td>
+      <td><button class="btn btn-secondary btn-sm" onclick="showStudentDetail('${s.id}')">View →</button></td>
     </tr>`;
   }
   h += '</tbody></table></div>';
@@ -5582,7 +5628,7 @@ async function renderTrends() {
 
   // Term label for the "this term" sub-heading (uses the trends term range).
   const _curTerm = trends && trends.terms && trends.terms.current;
-  const _termNote = _curTerm ? `${fmtDM(_curTerm.startDate)} – ${fmtDM(_curTerm.endDate)}` : 'this term';
+  const _termNote = _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : 'this term';
 
   if (_trTab === 'svc') {
     // Ministry-wide overview — director/admin only. Grade logins go straight to
@@ -5850,7 +5896,7 @@ function _importBodyHtml(history) {
     </div>`;
     for (const h of history) {
       const d = new Date(h.importedAt);
-      const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      const dateStr = fmtDay(d, true);
       body += `<div class="li" style="cursor:default" id="ih-${h.id}">
         <div class="li-body">
           <div class="li-title">${esc(h.filename)}</div>
@@ -6672,9 +6718,9 @@ function _elRowHtml(r, seenAt, open) {
     + `<span class="el-when">${esc(_laRelTime(r.lastSeen))}</span>`;
   const acts = open ? `<div class="el-acts">
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
-      <button class="btn btn-ghost btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
+      <button class="btn btn-secondary btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
     </div>` : '';
-  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-ghost btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
+  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-secondary btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
 }
 function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const all = rows || [];
@@ -6683,8 +6729,8 @@ function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const head = `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>
-        ${all.some(r => r.tier === 'fyi') ? '<button class="btn btn-ghost btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : ''}
-        ${all.length ? '<button class="btn btn-ghost btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all</button>' : ''}
+        ${all.some(r => r.tier === 'fyi') ? '<button class="btn btn-secondary btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : ''}
+        ${all.length ? '<button class="btn btn-secondary btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all</button>' : ''}
       </div>
       <div class="help-text" style="margin-top:8px">No names or details are stored. Rows go after 90 days.</div>
     </div>`;
@@ -6722,7 +6768,7 @@ async function elWho(code) {
     'recon-lifegroup-noid': ['Lifegroups with no Elvanto group id', d.noId.map((g) => li(esc(g)))],
   }[code];
   if (!sec) return;
-  const when = d.ranAt ? `Checked ${esc(new Date(d.ranAt).toLocaleString())}` : 'Not checked yet';
+  const when = d.ranAt ? `Checked ${esc(fmtDay(d.ranAt, true))}` : 'Not checked yet';
   modal(`<h3>${esc(sec[0])}</h3><p class="help">${when}</p>${sec[1].length ? `<ul>${sec[1].join('')}</ul>` : '<p>Nobody now.</p>'}`);
 }
 // end elWho
@@ -6778,7 +6824,7 @@ function _usRowHtml(r) {
     <div class="el-acts">
       ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
         : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
-      <button class="btn btn-ghost btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>
+      <button class="btn btn-secondary btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>
     </div></div>`;
 }
 // C-B2: ids with a resend in flight. A re-render (tab switch, Admin reopened) must not draw a fresh, tappable Retry.
@@ -7549,7 +7595,7 @@ function _youthSetupBody(settings, users) {
           <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
         </div>
       </div></div>`,
-    `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_setupResetBranding()">Reset to defaults</button>`);
+    `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_setupResetBranding()">Reset to defaults</button>`);
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
@@ -7798,7 +7844,7 @@ function _setupPrayersToggle(el) {
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       ${_prayersOn() ? `<button type="button" class="btn btn-secondary" onclick="exportPrayersCSV()">Download CSV</button>` : ''}
       <button type="button" class="btn btn-primary" onclick="_setupPrayersOff()">Turn off</button>
-      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
 // Elvanto features (T10): four switches, each Off / Shadow (admin only) / On. A key that is not stored yet follows
@@ -8389,7 +8435,7 @@ function computeQuad(grade,gender){
   if(grade>=10&&grade<=12)return isFemale?'g1012':'b1012';
   return null;
 }
-function fmtD(iso){if(!iso)return'—';const d=new Date(iso);return isNaN(d)?'—':d.getUTCDate()+'/'+(d.getUTCMonth()+1);}
+function fmtD(iso){return fmtDay(iso)||'—';}
 
 // ---------- server audit API ----------
 async function auditList(){ if(AUDIT_SUMMARIES)return AUDIT_SUMMARIES; AUDIT_SUMMARIES=await API.get('/audits').catch(()=>[]); return AUDIT_SUMMARIES||[]; }
@@ -9847,7 +9893,7 @@ function renderNewYouth() {
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
       <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${esc(NY.error || '')}</p></div>
       ${NY.result ? '' : `<button class="btn btn-secondary btn-full" onclick="nyBack()">Back to the form</button>`}
-      <button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`));
+      <button class="btn btn-secondary btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`));
     window.scrollTo(0, 0);
     return;
   }
@@ -9862,7 +9908,7 @@ function renderNewYouth() {
       ${m.retryParent ? `<button class="btn btn-primary btn-full" id="ny-send" onclick="nySend(null, ['parent'])">Send the parent form again</button>` : ''}
       ${NY.result.student === 'failed' ? `<button class="btn btn-primary btn-full" onclick="nyBack()">Back to the form</button>` : ''}
       ${failed ? '' : `<button class="btn btn-secondary btn-full" onclick="nySibling()">Add a brother or sister (same parent)</button>`}
-      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-ghost btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`}`));
+      ${NY.result.student === 'failed' ? '' : `<button class="btn btn-secondary btn-full" onclick="nyReset();renderNewYouth()">Next new person</button>`}`));
     return;
   }
   const k = NY.keep || {};
@@ -10042,13 +10088,7 @@ function _lkTime(iso) {
   const d = new Date(t + 36e6), h = d.getUTCHours(), m = d.getUTCMinutes();
   return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' am' : ' pm');
 }
-function _lkDay(ymd) {
-  const p = String(ymd || '').split('-').map(Number);
-  if (p.length !== 3 || !p[0]) return '';
-  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] + ' ' + p[2] + ' '
-    + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][p[1] - 1];
-}
+function _lkDay(ymd) { return fmtDay(String(ymd || '').slice(0, 10)); } // a calendar day; UI standard F
 function _lkSvcLabel(s) { return s ? _lkDay(s.ymd) + ' · ' + (s.name || '') + ' ' + _lkTime(s.startsAt) : ''; }
 // The service day (D3, B9): the Brisbane day by this phone, or the previous day before 03:00 (UTC+10, no DST).
 function _lkSvcDay() { return new Date(Date.now() + 36e6 - 108e5).toISOString().slice(0, 10); }
@@ -10662,7 +10702,7 @@ function _lkPaintDoor() {
     <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
     ${_lkNoTonight()}
-    ${s ? `<div class="lk-sticky"><input class="fi lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div>
+    ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
       ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
@@ -10741,7 +10781,7 @@ function _lkRowHtml(p) {
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
   // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
   const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc), past = !!sv && sv.ymd < _lkSvcDay();
-  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
+  if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
   return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
@@ -11124,7 +11164,7 @@ function _lkGroupHtml(g) {
   let btn = '';
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportUndo()">Undo</button>`;
   else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel</button>`;
-  const line = a ? `<div class="lk-row-act"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
+  const line = a ? `<div class="rc-foot"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
   const k = Math.max(0, Math.min(7, LINK.gwk || 0)), w = _lkWeeks(_lkToday())[k];
   const when = k === 0 ? 'This week' : k === 1 ? 'Last week' : k + ' weeks ago';
   // GAP-4: one tap to the newest week that still needs a report (and that can be sent from here).
@@ -11460,7 +11500,7 @@ async function _lkMemPick(gid) {
   const g = _lkGroup();
   LINK.yp = { gid, q: '', grade: '' };
   modal(`<div class="mo-title">Add student</div><p class="lk-sub lk-mb">${esc(g ? lgDisplayName(g.name) : '')}</p>
-    <input class="fi lk-mb" type="search" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_lkYpSet('q', this.value)">
+    <div class="sbar"><input type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_lkYpSet('q', this.value)"></div>
     <select class="fs lk-mb" aria-label="Grade" onchange="_lkYpSet('grade', this.value)"><option value="">All grades</option>${_gradeList().map((x) => `<option value="${x}">Grade ${x}</option>`).join('')}<option value="none">No grade</option></select>
     <div id="lk-yp-list" class="lk-lq-list"></div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Done</button></div>`, () => { LINK.yp = null; });
@@ -11994,7 +12034,7 @@ function _lkLastFriday(ymd) {
   const back = (new Date(t).getUTCDay() + 2) % 7; // Fri = 0 days back, Sat = 1, ... Thu = 6
   return _lkAddDays(ymd, -back);
 }
-function _lkAt(iso) { const t = Date.parse(iso); return isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) + ' ' + _lkTime(iso) : ''; }
+function _lkAt(iso) { return fmtDay(iso, true); }
 function _lkEvents() {
   return { identity: 'Identity', checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in',
   submitReport: 'Lifegroup report', editReport: 'Report edit', completeStep: 'Flow step', cancel: 'Cancel', undo: 'Undo' };
@@ -12089,8 +12129,8 @@ function _lkAdmMatchHtml() {
     const pid = esc(r.personId);
     const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv lk-cand"><span>In YS: ${esc(c.name)} · ${esc(yr(c.grade))} · ${c.dob ? 'born ' + esc(c.dob) : 'no birth date'}</span>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
-    const acts = f === 'manual' ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
-      : `<button type="button" class="btn btn-ghost btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
+    const acts = f === 'manual' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
+      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
     return `<div class="lk-log-row"><div class="lk-log-top"><b>Elvanto: ${esc(r.name)}</b><span class="lk-d">${esc(yr(r.grade))}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
       ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No YS student with this surname.</p>')}<div class="lk-acts">${acts}</div></div>`;
   };
@@ -12941,7 +12981,7 @@ function _ikListPage() {
   const I = _ik(), st = _ikSt(), L = I.list && I.list.date === I.date ? I.list : null, consent = I.tab === 'consent';
   const tabs = `<div class="tbbar">${[['intake', 'New youth'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
   // R1 (consents run 2026-10-17): a Tidy up tool is its own screen (its title, Back returns to the plan); no Show dropdown.
-  if (consent && I.csub !== 'last') return `<div class="lk-svc-t lk-mb">${esc(_ikTidyTitle(I.csub))}</div>${_ikLkPage(I.csub, st)}`;
+  if (consent && I.csub !== 'last') return `<h2 class="ik-tt">${esc(_ikTidyTitle(I.csub))}</h2>${_ikLkPage(I.csub, st)}`;
   const dates = consent ? _ikWeekHtml(I) : I.dates.length
     ? `<div class="tbbar">${I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">${esc(_lkDay(x.date))}${x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : ''}</button>`).join('')}</div>`
     : '<div class="lk-hint">No dates yet. Press Refresh to ask the console.</div>';
@@ -12981,11 +13021,12 @@ function _ikRowsHtml(list, st, open) {
   const grey = list.stale ? ' ik-grey' : '', I = _ik(), consent = I.tab === 'consent';
   const one = (r) => {
     const i = rows.indexOf(r), c = _ikChip(r, st, rows), tag = consent ? _ikConsentTag(r) : null, se = I.saErr && I.saErr[r.key];
-    return `<div class="li lk-row${grey}" role="button" tabindex="0" onclick="_ikOpen(${i})"><div class="lk-grow"><div class="lk-nm">${esc(r.title)}</div>`
+    const pills = (r.fromApp ? '<span class="lk-tag">From app</span>' : '')
+      + (tag ? `<span class="lk-tag ${tag[1]}">${esc(tag[0])}</span>` : !consent && r.outcome ? `<span class="lk-tag">${esc(r.outcome)}</span>` : '') + (c ? `<span class="lk-tag ik-${c.tone}">${esc(c.label)}</span>` : '');
+    return `<div class="li lk-row rc${grey}" role="button" tabindex="0" onclick="_ikOpen(${i})"><div class="rc-top"><div class="lk-nm">${esc(r.title)}</div>`
+      + (pills ? `<span class="rc-pills">${pills}</span>` : '') + icS('chevr') + '</div>'
       + (r.reason ? `<div class="lk-d">${esc(r.reason)}</div>` : '') + (c ? `<div class="lk-st ${c.tone}">${esc(c.line)}</div>` : '')
-      + (se ? `<div class="lk-st bad">${esc(se)}</div>` : '') + '</div>'
-      + (r.fromApp ? '<span class="lk-tag">From app</span>' : '')
-      + (tag ? `<span class="lk-tag ${tag[1]}">${esc(tag[0])}</span>` : !consent && r.outcome ? `<span class="lk-tag">${esc(r.outcome)}</span>` : '') + (c ? `<span class="lk-tag ik-${c.tone}">${esc(c.label)}</span>` : '') + icS('chevr') + '</div>';
+      + (se ? `<div class="lk-st bad">${esc(se)}</div>` : '') + '</div>';
   };
   const of = (s) => rows.filter((r) => r.status === s);
   const sec = (label, xs) => xs.length ? `<div class="lk-sec">${label} (${xs.length})</div>` + xs.map(one).join('') : '';
@@ -12994,7 +13035,7 @@ function _ikRowsHtml(list, st, open) {
   // R1: consent Ready is sorted by outcome (Do not contact, Contact OK, No form) and its line says what is in the group.
   const rd = consent ? _ikByOutcome(of('ready')) : of('ready');
   const what = consent ? _ikOutcomeLine(rd) : "Saves every ready family. You'll confirm once.";
-  const all = ready.length ? `<div class="lk-row-act"><span class="lk-d">${esc(I.saBusy ? 'Checking each one…' : list.stale || !list.takenAt ? 'Refresh first.' : what)}</span>`
+  const all = ready.length ? `<div class="strip"><span class="lk-d">${esc(I.saBusy ? 'Checking each one…' : list.stale || !list.takenAt ? 'Refresh first.' : what)}</span>`
     + `<button type="button" class="btn btn-primary btn-sm"${off ? ' disabled' : ''} onclick="_ikSaveAllOpen()">${esc(consent ? 'Save all ' + ready.length : 'Save ' + ready.length + ' to Elvanto')}</button></div>` : '';
   return sec('Needs you', of('needs-you')) + (rd.length ? `<div class="lk-sec">${consent ? 'Ready to save' : 'Ready'} (${rd.length})</div>` + all + rd.map(one).join('') : all)
     + (done.length ? `<details class="lk-done"${open ? ' open' : ''} ontoggle="_ikDoneToggle(this.open)"><summary>Done (${done.length}) ${icS('chevd')}</summary>${done.map(one).join('')}</details>` : '');
@@ -13657,11 +13698,13 @@ function _ikFormName(n) {
   return kids.every((k) => k.last.toLowerCase() === kids[0].last.toLowerCase())
     ? _ikAnd(kids.map((k) => k.first)) + ' ' + kids[0].last : _ikAnd(kids.map((k) => k.first + ' ' + k.last));
 }
-// A form date (DD/MM/YYYY) in sentence form: "Fri 9 Oct 2026"; anything else as it came.
+// A form date (DD/MM/YYYY) in sentence form via fmtDay: "Fri 9 Oct" (year only when not this year); anything else as it came.
 function _ikDmy(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '').trim());
-  return m ? _lkDay(m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0')) + ' ' + m[3] : String(s || '');
+  return m ? fmtDay(m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0')) : String(s || '');
 }
+// One side of a Mismatches field: "blank" muted italic (UI standard E).
+function _ikMisVal(v) { return v === 'blank' ? '<span class="ik-blank">blank</span>' : esc(v); }
 // What differs on a Mismatches row: [label, form value, profile value].
 function _ikMisLines(m) {
   const v = (x) => (x === '' || x == null ? 'blank' : String(x)), f = (m && m.form) || {}, p = (m && m.profile) || {};
@@ -13716,8 +13759,8 @@ function _ikLkPage(kind, st) {
   if (gate) return `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
   if (kind !== 'forms' && typeof _ikFixRestore === 'function') _ikFixRestore(); // S-1: once per intake state
   const busy = _ikLkBusy(x);
-  const search = `<div class="ik-srch"><input class="fi" id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
-    + `<button type="button" class="btn btn-secondary btn-sm"${busy ? ' disabled' : ''} onclick="_ikLkSearch('${kind}')">Search</button></div>`;
+  const search = `<div class="sbar"><input id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
+    + `<button type="button" class="btn btn-secondary"${busy ? ' disabled' : ''} onclick="_ikLkSearch('${kind}')">Search</button></div>`;
   const load = !x.res && x.st === 'idle' ? `<button type="button" class="btn btn-primary btn-full lk-mt" onclick="_ikLkSearch('${kind}')">${kind === 'other' ? 'Load students' : kind === 'unlinked' ? 'Load unlinked forms' : forms ? 'Load forms' : 'Find mismatches'}</button>`
     + `<div class="lk-hint">${esc(kind === 'other' ? 'Nothing loaded yet. The console reads step 0 from Elvanto when you ask. A first check can take a few minutes.' : forms ? 'Nothing loaded yet. The console reads the forms from Elvanto when you ask, so it can take a minute.' : 'Nothing checked yet. The console compares each newest form with the profile when you ask. A first check can take a few minutes.')}</div>` : '';
   return (forms || kind === 'other' ? '' : _ikFixBanner(st)) + search + load + _ikLkStatusHtml(kind, x, st) + (x.res ? _ikLkResHtml(kind, x, st) : '');
@@ -13730,7 +13773,7 @@ function _ikLkResHtml(kind, x, st) {
       : (q ? 'No mismatches for "' + q + '".' : 'Every profile matches its newest consent form. Nothing to fix.'))}</div>`;
   }
   const noun = forms ? (r.total === 1 ? 'form' : 'forms') : kind === 'other' ? (r.total === 1 ? 'student' : 'students') : (r.total === 1 ? 'person' : 'people');
-  const head = `<div class="lk-d">${esc((r.total != null ? r.total + ' ' + noun : '') + (q ? (r.total != null ? ' matching "' : 'Matching "') + q + '"' : '') + (r.takenAt ? (r.total != null || q ? ' · ' : '') + 'checked ' + _lkSeen(r.takenAt) : ''))}</div>`;
+  const head = `<div class="lk-d ik-cnt">${esc((r.total != null ? r.total + ' ' + noun : '') + (q ? (r.total != null ? ' matching "' : 'Matching "') + q + '"' : '') + (r.takenAt ? (r.total != null || q ? ' · ' : '') + 'checked ' + _lkSeen(r.takenAt) : ''))}</div>`;
   const pager = pg.prev || pg.next ? `<div class="ik-pager"><button type="button" class="btn btn-secondary btn-sm"${pg.prev && !busy ? '' : ' disabled'} onclick="_ikLkTurn('${kind}', -1)">Prev</button>`
     + `<span class="lk-d">${esc('Page ' + pg.page + (pg.pages ? ' of ' + pg.pages : ''))}</span>`
     + `<button type="button" class="btn btn-secondary btn-sm"${pg.next && !busy ? '' : ' disabled'} onclick="_ikLkTurn('${kind}', 1)">Next</button></div>` : '';
@@ -13739,8 +13782,8 @@ function _ikLkResHtml(kind, x, st) {
     const unl = kind === 'unlinked';
     const one = (f) => {
       const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '') + (f.personId ? '' : ' · no profile linked');
-      return `<div class="li lk-row${grey}"><div class="lk-grow"><div class="lk-nm">${esc(_ikFormName(f.name))}</div><div class="lk-d">${esc(meta)}</div>`
-        + _ikFormLines(f).map((t) => `<div class="ik-ict">${esc(t)}</div>`).join('') + '</div>' + _ikFormRowEnd(f) + '</div>';
+      return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(_ikFormName(f.name))}</div>${_ikFormRowEnd(f)}</div><div class="lk-d">${esc(meta)}</div>`
+        + _ikFormLines(f).map((t) => `<div class="ik-ict">${esc(t)}</div>`).join('') + '</div>';
     };
     return head + (unl ? rows.map((f, i) => _ikClRow(f, i, grey, st)) : rows.map(one)).join('') + pager;
   }
@@ -13749,13 +13792,14 @@ function _ikLkResHtml(kind, x, st) {
   const one = (m, i) => {
     const fx = I.fixes[m.personId], ft = _ikFixText(fx, st, m.name), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status), done = !!fx && (fx.status === 'sent' || fx.status === 'unclear');
     const caps = (st && st.console && st.console.capabilities) || {}, noFix = !caps.consentFix || caps.consentFix === 'off' || caps.consentFix === 'locked';
-    return `<div class="li lk-row${grey}"><div class="lk-grow"><div class="lk-nm">${esc(m.name)}</div>`
+    const pill = !done && !m.linked && noFix ? '<span class="lk-tag ik-prac">Do in Elvanto</span>' : '';
+    return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(m.name)}</div>${pill}</div>`
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
-      + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><span>${esc('Form: ' + l[1])}</span><span>${esc('Profile: ' + l[2])}</span></div>`).join('')
+      + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><div class="ik-mis2"><div><i>Form</i>${_ikMisVal(l[1])}</div><div><i>Profile</i>${_ikMisVal(l[2])}</div></div></div>`).join('')
       + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '')
-      + (done ? '' : m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : noFix ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Do in Elvanto</span></div>'
-        : `<div class="lk-row-act"><span></span><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
-      + '</div></div>';
+      + (done || m.linked || noFix ? (!done && m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : '')
+        : `<div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
+      + '</div>';
   };
   return head + rows.map(one).join('') + pager;
 }
@@ -13763,10 +13807,13 @@ function _ikLkResHtml(kind, x, st) {
 // Consents "Other (no date)" (2026-10-16, rev 8): one step-0 student in no pushed consent week. R9 (consents run 2026-10-17): past
 // their consent Friday with no reply (notReceivedOk, the server's verdict: the same as Complete on step 0) the row offers
 // "Mark not received"; before it, "Waiting (consent Fri ...)" and no button; DO NOT CONTACT rows never get one (R4).
+// UI standard (A, C): the whole card opens the Elvanto profile (one stretched link + chevron), not a Profile button.
 function _ikOtherRow(o, grey, i) {
-  const when = o.date ? 'Parent texted ~' + String(o.date).split('-').reverse().join('/') + ' (' + o.source + ')' : 'No date found: ' + (o.why || 'no record');
-  const link = /^https:\/\/\S+$/.test(String(o.link || '')) ? '<a class="btn btn-secondary btn-sm" href="' + esc(o.link) + '" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">Profile</a>' : '';
-  return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(_ikFormName(o.name)) + '</div><div class="lk-d">' + esc(when) + '</div>' + _ikNrRowHtml(o, i, !!grey) + '</div>' + link + '</div>';
+  const when = o.date ? 'Parent texted ~' + (fmtDay(o.date) || o.date) + ' (' + o.source + ')' : 'No date found: ' + (o.why || 'no record');
+  const nm = esc(_ikFormName(o.name)), ok = /^https:\/\/\S+$/.test(String(o.link || ''));
+  const name = ok ? '<a class="lk-nm rc-go" aria-label="' + nm + ', open profile in Elvanto" href="' + esc(o.link) + '" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">' + nm + '</a>' : '<div class="lk-nm">' + nm + '</div>';
+  const pill = o.dnc ? '<span class="lk-tag ik-bad">Do not contact</span>' : '';
+  return '<div class="li lk-row rc' + grey + '"><div class="rc-top">' + name + pill + (ok ? icS('chevr') : '') + '</div><div class="lk-d">' + esc(when) + '</div>' + _ikNrRowHtml(o, i, !!grey) + '</div>';
 }
 // R9: Mark not received = the R4 path: a step-0 completeStep the server marks notReceived, so the console marks "Consent not
 // received" (dated today) on the profile, then completes step 0. One confirm for one row or for every markable row on this page
@@ -13776,16 +13823,16 @@ function _ikNrState(o) { const nr = _ik().nr; return (nr && o && nr[o.rowId]) ||
 function _ikNrOk(o) { const s = _ikNrState(o); return !!(o && o.notReceivedOk && !o.dnc && o.flowId && o.stepId && !o.marking && !(s && s.sent)); }
 function _ikNrRowHtml(o, i, busy) {
   const s = _ikNrState(o);
-  if (o.dnc) return '<div class="lk-row-act"><span></span><span class="lk-tag ik-bad">Do not contact</span></div>';
+  if (o.dnc) return ''; // the Do not contact pill sits top-right (_ikOtherRow)
   if (o.marking || (s && s.sent)) return '<div class="lk-st wait" role="status">' + esc((s && s.msg) || 'Marking consent not received. The console does it next.') + '</div>';
   const err = s && s.msg ? '<div class="lk-st bad" role="status">' + esc(s.msg) + '</div>' : '';
-  if (_ikNrOk(o)) return err + '<div class="lk-row-act"><span class="lk-d">' + esc('No reply by ' + _lkDay(o.consentFriday) + ' 9am') + '</span><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
+  if (_ikNrOk(o)) return err + '<div class="lk-d">' + esc('No reply by ' + fmtDay(o.consentFriday + 'T09:00:00+10:00', true)) + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
   if (o.consentFriday && Date.now() < Date.parse(o.consentFriday + 'T09:00:00+10:00')) return err + '<div class="lk-d">' + esc('Waiting (consent ' + _lkDay(o.consentFriday) + ')') + '</div>';
   return err;
 }
 function _ikNrAllHtml(rows, busy) {
   const n = (rows || []).filter(_ikNrOk).length;
-  return n > 1 ? '<div class="lk-row-act lk-mb"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent Friday.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
+  return n > 1 ? '<div class="strip"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent Friday.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
 }
 // i = a row index on this page, or -1 = every markable row on it.
 function _ikNrOpen(i) {
@@ -13870,13 +13917,13 @@ function _ikClText(a, st) {
 function _ikClRow(f, i, grey, st) {
   const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
-  const act = open ? '' : !_ikClCap(st) ? '<div class="lk-row-act"><span></span><span class="lk-tag ik-prac">Console needs an update</span></div>'
-    : now ? '<div class="lk-row-act"><span class="lk-tag ik-ok" style="white-space:normal">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</span><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
-    : '<div class="lk-row-act"><span></span><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
-  return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(_ikFormName(f.name)) + '</div><div class="lk-d">' + esc(meta) + '</div>'
+  const act = open ? '' : !_ikClCap(st) ? '<div class="lk-d">Console needs an update</div>'
+    : now ? '<div class="lk-st ok">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
+    : '<div class="rc-foot"><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
+  return '<div class="li lk-row rc' + grey + '"><div class="rc-top"><div class="lk-nm">' + esc(_ikFormName(f.name)) + '</div>' + _ikFormRowEnd(f) + '</div><div class="lk-d">' + esc(meta) + '</div>'
     + ((f.names || []).length ? '<div class="lk-d">' + esc('Parent: ' + f.names.map((x) => tidyName(x)).join(', ')) + '</div>' : '')
     + _ikFormLines(f).map((t) => '<div class="ik-ict">' + esc(t) + '</div>').join('')
-    + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + '</div>' + _ikFormRowEnd(f) + '</div>';
+    + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + '</div>';
 }
 // Find person: the same name search as Add student (youth roster, any word order), here for the admin's whole roster.
 async function _ikClOpen(i) {
@@ -13884,7 +13931,7 @@ async function _ikClOpen(i) {
   if (!f) return;
   I.clp = { i, q: '', list: [] };
   modal('<div class="mo-title">Find person</div><p class="lk-sub lk-mb">' + esc('Whose consent form is this: ' + _ikFormName(f.name) + '?') + '</p>'
-    + '<input class="fi lk-mb" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_ikClQ(this.value)">'
+    + '<div class="sbar"><input type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_ikClQ(this.value)"></div>'
     + '<div id="ik-cl-list" class="lk-lq-list"></div><div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>', () => { I.clp = null; });
   _ikClDraw();
   if (!LINK.cyouth) {
@@ -14065,7 +14112,7 @@ function _busNewPeopleCard() {
   if (!BUS.pending) { _busLoadPending(); return ''; }
   const rows = BUS.pending.map((p) => {
     const sugg = p.suggestions[0];
-    const added = new Date(p.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const added = fmtDay(p.createdAt);
     const box = sugg
       ? `<div class="suggest-box"><span class="suggest-text">Is this ${esc(sugg.name)}${sugg.grade ? ` (Y${sugg.grade})` : ''}${sugg.byPhone ? ' — same phone' : ''}?</span>
           <div class="suggest-actions"><button class="btn btn-primary btn-sm" onclick="busLinkGuest('${p.id}','${sugg.studentId}')">Yes</button>
@@ -14145,8 +14192,7 @@ async function renderBus() {
     { id: 'routes', label: 'Assign' }, // read-only unless v.canCoordinate
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
-  const d = new Date(v.run.serviceDate + 'T00:00:00');
-  const date = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const date = fmtDay(v.run.serviceDate);
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
@@ -14566,7 +14612,7 @@ function _busConsentBox(r) {
   return `<div class="card bus-consent">
     <label class="cbx-row"><input type="checkbox" id="bc-given" ${c.given ? 'checked' : ''}> Parent consent given</label>
     <textarea class="fi" id="bc-note" rows="2" maxlength="300" placeholder="When, who, call or text — e.g. Mum (Lisa), 7:10pm, text">${esc(c.note)}</textarea>
-    ${r.consent ? `<div class="card-sub">${esc(r.consent.recordedBy)} · ${esc(new Date(r.consent.recordedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
+    ${r.consent ? `<div class="card-sub">${esc(r.consent.recordedBy)} · ${esc(fmtDay(r.consent.recordedAt, true))}</div>` : ''}
     <button class="btn btn-secondary btn-sm" onclick="busSaveConsent('${r.id}')">Save consent</button></div>`;
 }
 async function busSaveConsent(id) {
@@ -15463,7 +15509,7 @@ function _busAnalysisHtml() {
 // ── Past nights (history page, 2026-10-09) ──
 // GET /bus/history: { canEdit, nights, rides }. Cached in BUS.hist; refetched when the page opens and after an edit.
 function _busHDate(iso, long) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: 'numeric', month: 'short' });
+  return long ? new Date(iso + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }) : fmtDay(iso);
 }
 function _busByRun(rides) {
   const m = {};
@@ -15599,7 +15645,7 @@ function busPastNight(id) {
   const un = live.filter((r) => !r.runVehicleId);
   const nr = rs.filter((r) => r.notRiding);
   const edits = h.canEdit && n.edits && n.edits.length
-    ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
+    ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(fmtDay(e.at, true))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
   modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}</div>
     <div class="card-sub" style="margin-bottom:8px">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
     ${cars.length ? `<div style="margin-bottom:8px">${_busPastMapHtml(id)}</div>` : ''}
