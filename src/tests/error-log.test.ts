@@ -24,7 +24,7 @@ const j = async (r: Response): Promise<any> => r.json();
 const admin = { id: 'a1', role: 'admin', displayName: 'A', grade: null, quad: null } as Actor;
 const grade = { id: 'g1', role: 'grade', displayName: 'G', grade: 9, quad: null } as Actor;
 const entry = (over: Partial<ErrorLogEntry> = {}): ErrorLogEntry => ({ id: 'x', category: 'server', code: 'INTERNAL_ERROR',
-  route: 'GET /students', status: 500, message: 'm', role: 'admin', at: '2026-10-13T00:00:00.000Z', ...over });
+  route: 'GET /students', status: 500, message: 'm', tier: 'later', foldKey: null, role: 'admin', at: '2026-10-13T00:00:00.000Z', ...over });
 
 describe('InMemoryErrorLogRepository', () => {
   it('groups by id: count, first/last seen, last role; flags survive a repeat', async () => {
@@ -55,6 +55,31 @@ describe('InMemoryErrorLogRepository', () => {
     expect(await r.remove('nope')).toBe(false);
     expect(await r.setFlags('nope', { ignored: true })).toBe(false);
     expect(await r.remove('b')).toBe(true);
+  });
+  it('fold: joins the newest row with the same fold key seen in the last 30 min, else starts a new row', async () => {
+    const r = new InMemoryErrorLogRepository();
+    const at = (m: number) => new Date(Date.parse('2026-10-16T10:36:00Z') + m * 60_000).toISOString();
+    await r.record(entry({ id: 'a', foldKey: 'SERVICE_UNAVAILABLE|503', route: 'GET /a', at: at(0) }));
+    await r.record(entry({ id: 'b', foldKey: 'SERVICE_UNAVAILABLE|503', route: 'GET /b', at: at(3), n: 5 }));
+    expect(await r.list()).toHaveLength(1);
+    expect((await r.list())[0]).toMatchObject({ id: 'a', route: 'GET /a', count: 6, lastSeen: at(3) });
+    await r.record(entry({ id: 'c', foldKey: 'SERVICE_UNAVAILABLE|503', at: at(40) })); // 37 min after the last one
+    expect((await r.list()).map((x) => x.id).sort()).toEqual(['a', 'c']);
+  });
+  it('setCount 0 deletes the row; setCount n stores n', async () => {
+    const r = new InMemoryErrorLogRepository();
+    await r.record(entry({ id: 'p', category: 'link', code: 'pending-24h', tier: 'now' }), 2);
+    expect((await r.list())[0]).toMatchObject({ count: 2, tier: 'now', foldKey: null });
+    await r.record(entry({ id: 'p' }), 0);
+    expect(await r.list()).toEqual([]);
+  });
+  it('removeAll by tier deletes only that tier; old rows without a fold key still upsert by id', async () => {
+    const r = new InMemoryErrorLogRepository();
+    await r.record(entry({ id: 'f', tier: 'fyi' }));
+    await r.record(entry({ id: 'l', tier: 'later' }));
+    await r.record(entry({ id: 'l', tier: 'later', at: '2026-10-14T00:00:00.000Z' }));
+    expect(await r.removeAll(undefined, 'fyi')).toBe(1);
+    expect(await r.list()).toMatchObject([{ id: 'l', count: 2 }]);
   });
 });
 
@@ -354,5 +379,18 @@ describe('migration 0019', () => {
     expect(m).toMatch(/create table if not exists error_log/);
     expect(m).toMatch(/alter table error_log enable row level security/);
     expect(m).not.toMatch(/\b(drop|alter column|rename)\b/i);
+  });
+});
+
+describe('migration 0035', () => {
+  it('widens the category check with reconcile and adds tier + fold_key, additive only', () => {
+    const m = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '0035_error_log_tier.sql'), 'utf8');
+    expect(m).toMatch(/drop constraint if exists error_log_category_check/);
+    expect(m).toMatch(/'reconcile'/);
+    expect(m).toMatch(/add column if not exists tier text not null default 'later'/);
+    expect(m).toMatch(/check \(tier in \('now','later','fyi'\)\)/);
+    expect(m).toMatch(/add column if not exists fold_key text/);
+    expect(m).toMatch(/create index if not exists error_log_fold_idx on error_log\(fold_key, last_seen\)/);
+    expect(m).not.toMatch(/(drop table|drop column|alter column|rename)/i);
   });
 });
