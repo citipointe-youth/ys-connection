@@ -10,7 +10,7 @@ alter table error_log add column if not exists fold_key text;
 create index if not exists error_log_fold_idx on error_log(fold_key, last_seen);
 -- Backfill the existing rows (33 live) to the tiers textFor() gives them (src/services/error-log-text.ts).
 update error_log set tier = 'fyi' where code in ('SERVICE_UNAVAILABLE','REQUEST_TIMEOUT','NETWORK','PUSH_FAILED',
-  'NY_REQ_FAILED','CLIENT_ERROR') or code like 'HTTP_4%' or (category = 'client' and code not like 'JS_%')
+  'NY_REQ_FAILED','CLIENT_ERROR') or code like 'HTTP\_4%' or (category = 'client' and code not like 'JS\_%')
   or (category = 'link' and code in ('report-exists','report-not-found','report-changed','member-left','not-in-group',
     'multi-service','unkept-notes','note-too-long','service-not-offered','did-not-meet-conflict','step-moved',
     'assignee-needed','ambiguous-first-timer','leader-member','plan-changed','saved-before','chain-not-done','bad-answer'))
