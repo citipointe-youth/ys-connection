@@ -44,7 +44,7 @@ export function makeAdminController(deps: { admin: AdminService; errorLog: Error
     },
     async deleteErrors(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();
-      return deps.errorLog.removeAll(req.ctx, req.query['category']);
+      return deps.errorLog.removeAll(req.ctx, req.query['category'], req.query['tier']);
     },
   };
 }

@@ -1,12 +1,14 @@
-// Admin Error log (UX batch 2026-10-13 T3). Groups identical errors by fingerprint (category + code + route + status)
-// with a count and first/last seen. Stores code, route, status, role and a short FIXED message only: never a name,
-// phone, request body, error text or value (minors' data). Admin only (admin:manage) apart from the SPA's own report.
+// Admin Error log (UX batch 2026-10-13 T3; Part 1 rework 2026-10-17). One cause = one entry: occurrences with the same
+// fold key within 30 min of the entry's last_seen join it (count, first/last seen). Stores code, route, status, role,
+// tier and a FIXED line 1 only: never a name, phone, request body, error text or value (minors' data). The two lines
+// shown are computed from the code at read time (error-log-text.ts). Admin only (admin:manage) apart from the SPA's report.
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import { NotFoundError } from '../core/errors/app-error';
 import { ERROR_CATEGORIES, type ErrorCategory, type ErrorLogRow, type IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
+import { ERROR_TIERS, TEXT, TIER_RANK, textFor } from './error-log-text';
 import { assertCan } from './access-control';
 import { createLogger } from '../utils/logger';
 import { RateLimiter } from '../utils/rate-limiter';
@@ -41,39 +43,16 @@ export function normaliseRoute(route: string): string {
 /** Server error codes from the Elvanto form sender belong to the elvanto-form filter. */
 export const categoryForCode = (code: string): ErrorCategory => (code.startsWith('ELVANTO_') ? 'elvanto-form' : 'server');
 
-const MESSAGES: Record<string, string> = {
-  INTERNAL_ERROR: 'Unexpected server error',
-  INTERNAL: 'Unexpected server error in a link batch item',
-  SERVICE_UNAVAILABLE: 'Database busy or unreachable',
-  REQUEST_TIMEOUT: 'Request took too long',
-  LINK_OFF: 'The YS link sync token is not set',
-  ELVANTO_FORM_CHANGED: 'The Elvanto form changed, so nothing was sent',
-  ELVANTO_UNREACHABLE: 'Could not reach Elvanto, so nothing was sent',
-  STUDENT_FORM_UNCONFIRMED: 'New person: student form send not confirmed by Elvanto',
-  PARENT_FORM_UNCONFIRMED: 'New person: parent form send not confirmed by Elvanto',
-  STUDENT_FORM_FAILED: 'New person: Elvanto rejected the student form',
-  PARENT_FORM_FAILED: 'New person: Elvanto rejected the parent form',
-  UNSENT_SAVE_FAILED: 'New person: a failed send could not be saved for the admin to resend',
-  unclear: 'The console could not confirm this action landed in Elvanto',
-  'too-old': 'Expired before the console ran it',
-  'lease-lost': 'The console stopped answering mid-send',
-  'note-unreadable': 'The stored note could not be read',
-  'intake-unreadable': 'A stored intake plan could not be decrypted',
-  'pending-24h': 'Waiting more than 24 hours (is the console offline?)',
-  NETWORK: 'Request failed: no connection',
-  PUSH_FAILED: 'A notice alert could not be delivered to a phone (the notice itself was sent)',
-  PUSH_OFF: 'Notice alerts are not set up yet (VAPID keys missing in Vercel)',
-};
-/** Fixed text only. Exported for the tests. */
-export function messageFor(category: ErrorCategory, code: string, status: number | null): string {
-  if (MESSAGES[code]) return MESSAGES[code]!;
-  if (category === 'link') return 'The console refused this action';
-  if (category === 'client') return code.startsWith('JS_') ? 'Page error' : `Request failed${status ? ` (${status})` : ''}`;
-  return `Server error${status ? ` (${status})` : ''}`;
+/** A stored row plus its texts, computed from the code at read time (a wording change applies to old rows). */
+export type ErrorLogView = ErrorLogRow & { line1: string; line2: string; counted: boolean };
+export function toView(r: ErrorLogRow): ErrorLogView {
+  const t = textFor(r.category, r.code, r.route, r.status, r.count);
+  return { ...r, tier: t.tier, line1: t.line1, line2: t.line2, counted: t.counted };
 }
+const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 32);
 
-/** Codes a client report may carry (server error codes + the fixed ones above). Anything else becomes HTTP_<status>. */
-const KNOWN_CODES = new Set([...Object.keys(MESSAGES).filter((k) => /^[A-Z]/.test(k)), 'BAD_REQUEST', 'CONFLICT', 'FORBIDDEN',
+/** Codes a client report may carry (server error codes + the TEXT ones + NETWORK). Anything else becomes HTTP_<status>. */
+const KNOWN_CODES = new Set([...Object.keys(TEXT).filter((k) => /^[A-Z]/.test(k)), 'NETWORK', 'BAD_REQUEST', 'CONFLICT', 'FORBIDDEN',
   'INTAKE_STALE', 'LINK_CONTRACT_MISMATCH', 'LINK_DUPLICATE', 'LINK_EDIT_IN_ELVANTO', 'LINK_ID_REUSED', 'LINK_NOT_YOURS', 'LINK_STALE',
   'LINK_STILL_SENDING', 'LINK_TOO_LATE', 'LINK_TOO_OLD', 'LINK_UNAVAILABLE', 'MODULE_DISABLED', 'MUST_CHANGE_PASSWORD', 'NOT_FOUND',
   'RATE_LIMITED', 'ROUTING_BAD_ADDRESS', 'ROUTING_FAILED', 'SETTINGS_CHANGED', 'SETUP_INCOMPLETE', 'UNAUTHORIZED', 'VALIDATION_ERROR']);
@@ -87,6 +66,7 @@ const ClientReport = z.object({
 const Flags = z.object({ minimised: z.boolean().optional(), ignored: z.boolean().optional() })
   .refine((f) => f.minimised !== undefined || f.ignored !== undefined, 'minimised or ignored');
 const Category = z.enum(ERROR_CATEGORIES);
+const Tier = z.enum(ERROR_TIERS);
 
 export interface ErrorLogDeps {
   repo: IErrorLogRepository;
@@ -100,37 +80,43 @@ export function makeErrorLogService(d: ErrorLogDeps) {
   const limiter = new RateLimiter(CLIENT_REPORT_MAX, CLIENT_REPORT_WINDOW_MS);
   // The router table's "METHOD /path" patterns, normalised (set by buildRoutes). Empty = every client route reads as 'page'.
   let knownRoutes = new Set<string>();
-  // R5: one DB write per fingerprint per 30 s; skipped repeats are added to the next write's n.
+  // R5: one DB write per fold key per 30 s; skipped repeats are added to the next write's n.
   // ponytail: per-instance throttle; a skip with no later error is never written
   const lastWrite = new Map<string, { at: number; skipped: number }>();
 
   /**
    * THE helper other server code calls to log an error. Never throws and never waits more than 2 s.
-   * `setCount` stores that count instead of adding one (the stale-pending sweep).
+   * `setCount` stores that count instead of adding one, on a fixed id with no window (pending-24h, reconcile); 0 deletes it.
    */
   async function record(r: ErrorReport, setCount?: number): Promise<void> {
     try {
       const code = clean(r.code, 60) || 'UNKNOWN';
       const route = clean(r.route, 120);
       const status = typeof r.status === 'number' ? r.status : null;
-      const id = createHash('sha256').update(`${r.category}|${code}|${route}|${status ?? ''}`).digest('hex').slice(0, 32);
-      let n = r.count;
-      if (setCount === undefined) {
-        const t = now().getTime(), w = lastWrite.get(id);
+      const at = now().toISOString();
+      const text = textFor(r.category, code, route, status, setCount ?? r.count ?? 1);
+      let id: string, foldKey: string | null = null, n = r.count;
+      if (setCount !== undefined) {
+        id = hash(`${r.category}|${code}|${route}|${status ?? ''}`); // fixed id, no window (pending-24h, reconcile)
+      } else {
+        // Same cause = one entry: link rows by reason + type; anything else by code + status (route and category dropped).
+        foldKey = r.category === 'link' ? `link|${code}|${route}` : `${code}|${status ?? ''}`;
+        const t = now().getTime(), w = lastWrite.get(foldKey);
         if (w && t - w.at < RECORD_THROTTLE_MS) { w.skipped += r.count ?? 1; return; }
         n = (r.count ?? 1) + (w?.skipped ?? 0);
-        lastWrite.set(id, { at: t, skipped: 0 });
+        lastWrite.set(foldKey, { at: t, skipped: 0 });
+        id = hash(`${foldKey}|${at}`);
       }
-      const write = d.repo.record({ id, category: r.category, code, route, status, message: messageFor(r.category, code, status),
-        role: r.role ? clean(r.role, 20) : null, at: now().toISOString(), n }, setCount);
+      const write = d.repo.record({ id, category: r.category, code, route, status, message: text.line1, tier: text.tier, foldKey,
+        role: r.role ? clean(r.role, 20) : null, at, n }, setCount);
       await Promise.race([write, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), RECORD_TIMEOUT_MS).unref?.())]);
     } catch (e) {
       logger.warn('could not record', { category: r.category, code: r.code, err: e instanceof Error ? e.name : 'unknown' });
     }
   }
 
-  /** Link actions pending past STALE_PENDING_MS, counted per type (count = how many wait now). */
-  async function sweepStale(): Promise<void> {
+  /** Link actions pending past STALE_PENDING_MS, counted per type (count = how many wait now). A type back to zero is cleared. */
+  async function sweepStale(existing: ErrorLogRow[]): Promise<void> {
     if (!d.link) return;
     const cut = now().getTime() - STALE_PENDING_MS;
     const byType = new Map<string, number>();
@@ -138,6 +124,9 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       if (Date.parse(r.createdAt) < cut) byType.set(r.type, (byType.get(r.type) ?? 0) + 1);
     }
     for (const [type, n] of byType) await record({ category: 'link', code: 'pending-24h', route: type }, n);
+    for (const r of existing) {
+      if (r.category === 'link' && r.code === 'pending-24h' && !byType.has(r.route)) await record({ category: 'link', code: 'pending-24h', route: r.route }, 0);
+    }
   }
 
   return {
@@ -163,11 +152,13 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       return { ok: true };
     },
 
-    async list(actor: Actor): Promise<{ rows: ErrorLogRow[] }> {
+    async list(actor: Actor): Promise<{ rows: ErrorLogView[] }> {
       assertCan(actor, 'admin:manage');
       await d.repo.purgeBefore(new Date(now().getTime() - ERROR_LOG_KEEP_DAYS * DAY).toISOString());
-      try { await sweepStale(); } catch (e) { logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' }); }
-      return { rows: await d.repo.list() };
+      try { await sweepStale(await d.repo.list()); } catch (e) { logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' }); }
+      const rows = (await d.repo.list()).map(toView);
+      rows.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || b.lastSeen.localeCompare(a.lastSeen));
+      return { rows };
     },
 
     async setFlags(actor: Actor, id: string, body: unknown): Promise<{ ok: true }> {
@@ -182,11 +173,12 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       return { ok: true };
     },
 
-    /** category omitted = every row. */
-    async removeAll(actor: Actor, category: unknown): Promise<{ deleted: number }> {
+    /** category / tier omitted = every row. `tier=fyi` is the SPA's "Clear FYI". */
+    async removeAll(actor: Actor, category: unknown, tier?: unknown): Promise<{ deleted: number }> {
       assertCan(actor, 'admin:manage');
       const c = category === undefined || category === '' ? undefined : Category.parse(category);
-      return { deleted: await d.repo.removeAll(c) };
+      const t = tier === undefined || tier === '' ? undefined : Tier.parse(tier);
+      return { deleted: await d.repo.removeAll(c, t) };
     },
   };
 }

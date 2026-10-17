@@ -8,7 +8,7 @@ import type { Server } from 'node:http';
 import { InMemoryErrorLogRepository } from '../repositories/in-memory/error-log.repository';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
-import { makeErrorLogService, normaliseRoute, messageFor, CLIENT_REPORT_MAX } from '../services/error-log.service';
+import { makeErrorLogService, normaliseRoute, CLIENT_REPORT_MAX } from '../services/error-log.service';
 import { makeSyncService } from '../services/sync.service';
 import { dedupeKey } from '../services/link-rules';
 import { buildContainer } from '../container';
@@ -100,7 +100,8 @@ describe('error-log.service', () => {
     await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 503 });
     const { rows } = await svc.list(admin);
     expect(rows).toHaveLength(2);
-    expect(rows.find((r) => r.status === 500)).toMatchObject({ count: 2, lastRole: 'grade', message: 'Unexpected server error' });
+    expect(rows.find((r) => r.status === 500)).toMatchObject({ count: 2, lastRole: 'grade', tier: 'later',
+      line1: 'A screen failed with a server error (GET /x)' });
   });
 
   it('record never throws, even when the repo does', async () => {
@@ -165,8 +166,10 @@ describe('error-log.service', () => {
     expect(JSON.stringify(rows)).not.toMatch(/Sam|SAM|0412|secret/i);
     expect(rows.map((r) => [r.code, r.route]).sort()).toEqual([['CLIENT_ERROR', 'GET /students/:id'], ['HTTP_500', 'page']].sort());
   });
-  it('review fix: intake-unreadable has a fixed message, not the console-refusal text', () => {
-    expect(messageFor('link', 'intake-unreadable', null)).toBe('A stored intake plan could not be decrypted');
+  it('review fix: intake-unreadable has its own text, not the console-refusal fallback', async () => {
+    const { svc } = mk();
+    await svc.record({ category: 'link', code: 'intake-unreadable', route: 'GET /link/intake/row' });
+    expect((await svc.list(admin)).rows[0]!.line1).toBe('A saved intake plan could not be decrypted');
   });
   it('R8: a route with a named param matches the router table, not page', async () => {
     const { svc } = mk();
@@ -223,13 +226,81 @@ describe('error-log.service', () => {
     expect(rows[0]).toMatchObject({ category: 'link', code: 'pending-24h', route: 'checkIn', count: 2 });
   });
 
-  it('normaliseRoute / messageFor', () => {
+  it('normaliseRoute', () => {
     expect(normaliseRoute('get /a/1b/c?x=1#y')).toBe('GET /a/:id/c');
     expect(normaliseRoute('GET /a/deadbeef/c')).toBe('GET /a/:id/c');
     expect(normaliseRoute('GET /a/abcdefghijklmnopqrst')).toBe('GET /a/:id');
     expect(normaliseRoute('GET /link/flows/step')).toBe('GET /link/flows/step');
-    expect(messageFor('link', 'report-changed', null)).toBe('The console refused this action');
-    expect(messageFor('server', 'WEIRD', 502)).toBe('Server error (502)');
+  });
+  it('fold: the six-route 503 burst is one entry (×6); its later client copy joins it', async () => {
+    const { svc, clock } = mk();
+    for (const p of ['/a', '/b', '/c', '/d', '/e', '/f']) { await svc.record({ category: 'server', code: 'SERVICE_UNAVAILABLE', route: `GET ${p}`, status: 503 }); later(clock, 31); }
+    await svc.record({ category: 'client', code: 'SERVICE_UNAVAILABLE', route: 'GET /a', status: 503 });
+    const { rows } = await svc.list(admin);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ count: 7, tier: 'fyi', line1: 'The database was busy for a moment', counted: false });
+  });
+  it('sliding window: one error every 20 min for 2 h is one entry; a 31 min gap starts a new one', async () => {
+    const { svc, clock } = mk();
+    for (let i = 0; i < 7; i++) { await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 500 }); later(clock, 20 * 60); }
+    expect((await svc.list(admin)).rows).toHaveLength(1);
+    later(clock, 11 * 60 + 1); // 31 min after the last one
+    await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /x', status: 500 });
+    expect((await svc.list(admin)).rows.map((r) => r.count).sort()).toEqual([1, 7]);
+  });
+  it('link rows fold per reason AND type; a different type is its own entry', async () => {
+    const { svc, clock } = mk();
+    await svc.record({ category: 'link', code: 'person-unknown', route: 'checkIn' }); later(clock, 31);
+    await svc.record({ category: 'link', code: 'person-unknown', route: 'checkIn', count: 2 });
+    await svc.record({ category: 'link', code: 'person-unknown', route: 'addGroupMember' });
+    const rows = (await svc.list(admin)).rows;
+    expect(rows.map((r) => [r.route, r.count]).sort()).toEqual([['addGroupMember', 1], ['checkIn', 3]]);
+  });
+  it('list returns tier/line1/line2 and sorts now, later, fyi', async () => {
+    const { svc } = mk();
+    await svc.record({ category: 'server', code: 'SERVICE_UNAVAILABLE', route: 'GET /x', status: 503 });
+    await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /y', status: 500 });
+    await svc.record({ category: 'link', code: 'locked', route: 'consentSave' });
+    const rows = (await svc.list(admin)).rows;
+    expect(rows.map((r) => r.tier)).toEqual(['now', 'later', 'fyi']);
+    expect(rows[0]).toMatchObject({ line1: "Consent save isn't switched on in the console" });
+    expect(rows.every((r) => r.line2.length > 0)).toBe(true);
+  });
+  it('setCount keeps a fixed id; setCount 0 deletes it', async () => {
+    const { svc } = mk();
+    await svc.record({ category: 'reconcile', code: 'recon-unmatched', route: '' }, 96);
+    await svc.record({ category: 'reconcile', code: 'recon-unmatched', route: '' }, 95);
+    let rows = (await svc.list(admin)).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ count: 95, tier: 'later', counted: true, line1: '95 roster students have no student record in YS' });
+    await svc.record({ category: 'reconcile', code: 'recon-unmatched', route: '' }, 0);
+    rows = (await svc.list(admin)).rows;
+    expect(rows).toEqual([]);
+  });
+  it('pending back to zero: the pending-24h entry clears itself once nothing waits', async () => {
+    const now = new Date('2026-10-13T10:00:00Z');
+    const { link, svc } = mk(now);
+    const id = '9e000000-0000-4000-8000-000000000001';
+    const payload = { serviceTimeId: '57000000-0000-4000-8000-000000000001', serviceId: '5e000000-0000-4000-8000-000000000001', personId: id };
+    await link.insertAction({ id, type: 'checkIn', payload, note: null, dedupeKey: dedupeKey('checkIn', payload), serviceDate: '2026-10-10',
+      studentId: null, personId: id, createdBy: 'u', leaderId: null, leaderName: 'L' });
+    link._backdate('link_outbox', id, 'created_at', new Date(now.getTime() - 30 * 3_600_000).toISOString());
+    expect((await svc.list(admin)).rows).toMatchObject([{ code: 'pending-24h', tier: 'now', line1: '1 check-in action has waited over 24 hours' }]);
+    link._backdate('link_outbox', id, 'created_at', now.toISOString()); // stands in for "the console picked it up"
+    expect((await svc.list(admin)).rows).toEqual([]);
+  });
+  it('removeAll by tier (Clear FYI) deletes FYI rows only; a bad tier is refused', async () => {
+    const { svc } = mk();
+    await svc.record({ category: 'server', code: 'SERVICE_UNAVAILABLE', route: 'GET /x', status: 503 });
+    await svc.record({ category: 'server', code: 'INTERNAL_ERROR', route: 'GET /y', status: 500 });
+    expect(await svc.removeAll(admin, undefined, 'fyi')).toEqual({ deleted: 1 });
+    expect((await svc.list(admin)).rows.map((r) => r.tier)).toEqual(['later']);
+    await expect(svc.removeAll(admin, undefined, 'urgent')).rejects.toBeTruthy();
+  });
+  it('rows written before 0035 (no fold key) still show the new texts', async () => {
+    const { repo, svc } = mk();
+    await repo.record(entry({ id: 'old', code: 'LINK_OFF', status: 503, tier: 'now', at: '2026-10-13T09:00:00.000Z', message: 'The YS link sync token is not set' }));
+    expect((await svc.list(admin)).rows[0]).toMatchObject({ id: 'old', tier: 'now', line1: 'The Elvanto link is off: no sync token in Vercel' });
   });
 });
 
@@ -361,6 +432,15 @@ describe('Error log routes (memory, seeded)', () => {
     expect((await call('PATCH', `/admin/errors/${boom.id}`, tokens['admin'], { ignored: true })).status).toBe(200);
     expect((await call('DELETE', `/admin/errors/${boom.id}`, tokens['admin'])).status).toBe(200);
     expect((await j((await call('DELETE', '/admin/errors?category=client', tokens['admin'])))).deleted).toBe(1);
+  });
+  it('DELETE /admin/errors?tier=fyi clears FYI rows only', async () => {
+    await call('POST', '/admin/errors/client', tokens['grade7'], { kind: 'api', code: '', route: 'GET /students', status: 0 }); // NETWORK, fyi
+    const before = (await j(await call('GET', '/admin/errors', tokens['admin']))).rows;
+    const fyi = before.filter((r: any) => r.tier === 'fyi').length;
+    expect(fyi).toBeGreaterThan(0);
+    expect((await j(await call('DELETE', '/admin/errors?tier=fyi', tokens['admin']))).deleted).toBe(fyi);
+    const after = (await j(await call('GET', '/admin/errors', tokens['admin']))).rows;
+    expect(after.every((r: any) => r.tier !== 'fyi' && typeof r.line1 === 'string' && typeof r.line2 === 'string')).toBe(true);
   });
 
   it('/admin is in vercel.json and sw.js API_RE (no new top-level prefix)', () => {
