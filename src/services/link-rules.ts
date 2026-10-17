@@ -147,12 +147,14 @@ export const isConsentStep = (r: { flowName: string; stepName: string }) =>
 /** LINK_REV 9 (consents run 2026-10-17, R4): the console marks consent not received before a step-0 Complete. */
 export const NOT_RECEIVED_REV = 9;
 /**
- * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its due date (a row due Fri 16 Oct is that week's
- * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). null without a due date.
+ * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its date (a row due Fri 16 Oct is that week's
+ * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). R8 (rev 10): the date is the parent-texted date
+ * (`textedOn`, the Consents Other date) when the console sent one, else the due date. null with neither.
  */
-export function consentFriday(due: string | null | undefined): string | null {
-  if (!due || !/^\d{4}-\d{2}-\d{2}$/.test(due)) return null;
-  return addDays(due, ((5 - weekdayOf(due) + 6) % 7) + 1);
+export function consentFriday(due: string | null | undefined, textedOn?: string | null): string | null {
+  const d = textedOn && /^\d{4}-\d{2}-\d{2}$/.test(textedOn) ? textedOn : due;
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  return addDays(d, ((5 - weekdayOf(d) + 6) % 7) + 1);
 }
 /** That Friday's 9:00 Brisbane (the consent cutoff) has passed. */
 export const consentFridayPassed = (friday: string, now: Date) => now.getTime() >= Date.parse(`${friday}T09:00:00+10:00`);
@@ -163,7 +165,7 @@ export const consentFridayPassed = (friday: string, now: Date) => now.getTime() 
  * not received first (only a console at NOT_RECEIVED_REV can, so `consoleRev` gates it). null: refused (CONSENT_CHECK_FIRST).
  * consentSave (the consent path) never comes here.
  */
-export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null },
+export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
   consentRows: { key: string; status: string }[], now: Date, consoleRev: number): 'done' | 'notReceived' | null {
   if (!row.personId) return null;
   const mine = consentRows.filter((r) => r.key === row.personId);
@@ -171,7 +173,7 @@ export function consentStepAllowed(row: { personId: string | null; consent?: str
   if (mine.length) return null; // an open consent row: the Consents screen saves it
   if (row.consent === 'ok') return 'done';
   if (isDnc(row.consent) || consoleRev < NOT_RECEIVED_REV) return null;
-  const f = consentFriday(row.due);
+  const f = consentFriday(row.due, row.textedOn);
   return f && consentFridayPassed(f, now) ? 'notReceived' : null;
 }
 

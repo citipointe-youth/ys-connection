@@ -13644,7 +13644,7 @@ function _ikLkResHtml(kind, x, st) {
     };
     return head + (unl ? rows.map((f, i) => _ikClRow(f, i, grey, st)) : rows.map(one)).join('') + pager;
   }
-  if (kind === 'other') return head + rows.map((o) => _ikOtherRow(o, grey)).join('') + pager;
+  if (kind === 'other') return head + _ikNrAllHtml(rows, busy) + rows.map((o, i) => _ikOtherRow(o, grey, i)).join('') + pager;
   const I = _ik();
   const one = (m, i) => {
     const fx = I.fixes[m.personId], ft = _ikFixText(fx, st, m.name), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status), done = !!fx && (fx.status === 'sent' || fx.status === 'unclear');
@@ -13660,11 +13660,80 @@ function _ikLkResHtml(kind, x, st) {
   return head + rows.map(one).join('') + pager;
 }
 
-// Consents "Other (no date)" (2026-10-16, rev 8): one step-0 student in no pushed consent week. Display only: no write button.
-function _ikOtherRow(o, grey) {
+// Consents "Other (no date)" (2026-10-16, rev 8): one step-0 student in no pushed consent week. R9 (consents run 2026-10-17): past
+// their consent Friday with no reply (notReceivedOk, the server's verdict: the same as Complete on step 0) the row offers
+// "Mark not received"; before it, "Waiting (consent Fri ...)" and no button; DO NOT CONTACT rows never get one (R4).
+function _ikOtherRow(o, grey, i) {
   const when = o.date ? 'Parent texted ~' + String(o.date).split('-').reverse().join('/') + ' (' + o.source + ')' : 'No date found: ' + (o.why || 'no record');
   const link = /^https:\/\/\S+$/.test(String(o.link || '')) ? '<a class="btn btn-secondary btn-sm" href="' + esc(o.link) + '" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">Profile</a>' : '';
-  return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(_ikFormName(o.name)) + '</div><div class="lk-d">' + esc(when) + '</div></div>' + link + '</div>';
+  return '<div class="li lk-row' + grey + '"><div class="lk-grow"><div class="lk-nm">' + esc(_ikFormName(o.name)) + '</div><div class="lk-d">' + esc(when) + '</div>' + _ikNrRowHtml(o, i, !!grey) + '</div>' + link + '</div>';
+}
+// R9: Mark not received = the R4 path: a step-0 completeStep the server marks notReceived, so the console marks "Consent not
+// received" (dated today) on the profile, then completes step 0. One confirm for one row or for every markable row on this page
+// (the Save all pattern: one /link/batch, 20 a call; the console runs them one at a time; each row shows its own result).
+// I.nr[rowId] = { sent, msg } (this phone's answer). Handlers take indexes, never ids or names.
+function _ikNrState(o) { const nr = _ik().nr; return (nr && o && nr[o.rowId]) || null; }
+function _ikNrOk(o) { const s = _ikNrState(o); return !!(o && o.notReceivedOk && !o.dnc && o.flowId && o.stepId && !o.marking && !(s && s.sent)); }
+function _ikNrRowHtml(o, i, busy) {
+  const s = _ikNrState(o);
+  if (o.dnc) return '<div class="lk-row-act"><span></span><span class="lk-tag ik-bad">Do not contact</span></div>';
+  if (o.marking || (s && s.sent)) return '<div class="lk-st wait" role="status">' + esc((s && s.msg) || 'Marking consent not received. The console does it next.') + '</div>';
+  const err = s && s.msg ? '<div class="lk-st bad" role="status">' + esc(s.msg) + '</div>' : '';
+  if (_ikNrOk(o)) return err + '<div class="lk-row-act"><span class="lk-d">' + esc('No reply by ' + _lkDay(o.consentFriday) + ' 9am') + '</span><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
+  if (o.consentFriday && Date.now() < Date.parse(o.consentFriday + 'T09:00:00+10:00')) return err + '<div class="lk-d">' + esc('Waiting (consent ' + _lkDay(o.consentFriday) + ')') + '</div>';
+  return err;
+}
+function _ikNrAllHtml(rows, busy) {
+  const n = (rows || []).filter(_ikNrOk).length;
+  return n > 1 ? '<div class="lk-row-act lk-mb"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent Friday.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
+}
+// i = a row index on this page, or -1 = every markable row on it.
+function _ikNrOpen(i) {
+  const I = _ik(), x = _ikLk('other'), rows = (x.res && x.res.rows) || [];
+  const pick = (i < 0 ? rows : [rows[i]]).filter(_ikNrOk);
+  if (!pick.length || _ikLkBusy(x)) return;
+  if (!getMyLeaderId()) { _lkIamPick(() => _ikNrOpen(i)); return; } // the Complete is signed by "I am", as on Flow steps
+  I.nrAsk = pick.map((o) => o.rowId);
+  const n = pick.length, names = esc(pick.map((o) => _ikFormName(o.name)).join(', '));
+  modal(`<div class="mo-title">${esc(n === 1 ? 'Mark ' + _ikFormName(pick[0].name) + ' consent not received?' : 'Mark ' + n + ' students consent not received?')}</div>`
+    + (n > 1 ? (n > 5 ? `<details><summary class="lk-d">Show names</summary><div class="lk-d">${names}</div></details>` : `<div class="lk-d">${names}</div>`) : '')
+    + `<div class="ik-line">${esc((n === 1 ? 'This marks' : 'For each, this marks') + ' "Consent not received" (dated today) on their Elvanto profile, then completes New People step 0.')}</div>`
+    + `<p class="lk-sub lk-mt">${esc(n === 1 ? 'The console does it next.' : 'The console does them one at a time.')}</p>`
+    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikNrGo()">${esc('Mark ' + n)}</button></div>`,
+    () => { I.nrAsk = null; });
+}
+async function _ikNrGo() {
+  const I = _ik(), want = I.nrAsk || [], x = _ikLk('other'), lid = getMyLeaderId();
+  I.nrAsk = null;
+  closeModal();
+  const rows = ((x.res && x.res.rows) || []).filter((o) => want.includes(o.rowId) && _ikNrOk(o));
+  if (!rows.length || !lid) return;
+  if (!I.nr) I.nr = {};
+  const all = rows.map((o) => ({ o, id: _lkUuid() }));
+  let ok = 0;
+  for (let k = 0; k < all.length; k += 20) { // S-3: 20 a call, as Save all
+    const part = all.slice(k, k + 20);
+    let res;
+    try {
+      res = await _ikPost(part.map((p) => ({ kind: 'action', id: p.id, type: 'completeStep',
+        payload: { rowId: p.o.rowId, flowId: p.o.flowId, stepId: p.o.stepId, personId: p.o.personId || null, notePrivate: false }, note: null, leaderId: lid })));
+    } catch (e) {
+      if (_ik() !== I) return;
+      // No answer or a 5xx: _ikPost keeps the chunk on the phone and resends it with the same ids (never twice).
+      const kept = !e || !e.status || e.status >= 500;
+      part.forEach((p) => { I.nr[p.o.rowId] = kept ? { sent: true, msg: 'Not sent yet. It goes again by itself.' } : { sent: false, msg: (e && e.message) || 'Not marked. Try again.' }; });
+      continue;
+    }
+    if (_ik() !== I) return;
+    for (const p of part) {
+      const r = _ikOutcome(res, p.id);
+      if (r && (r.outcome === 'saved' || r.outcome === 'replay' || r.outcome === 'duplicate')) { ok++; I.nr[p.o.rowId] = { sent: true, msg: null }; }
+      else I.nr[p.o.rowId] = { sent: false, msg: (r && r.message) || 'Not marked. Try again.' };
+    }
+  }
+  if (_ik() !== I) return;
+  toast(ok ? 'Marking ' + ok + '. The console works through them one at a time.' : 'Nothing was marked. See each row.');
+  _ikDraw();
 }
 // R7: an Other search that finds nobody. Other leaves out anyone in a pushed consent week or with an approved form, so the
 // search did not fail: say where the student is. From step 0's Consents button (I.findMiss) it names the student.

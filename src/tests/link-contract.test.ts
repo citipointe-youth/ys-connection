@@ -84,6 +84,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-consent-lookup-other.json': C.PUSH_SCHEMAS.consentLookup,
   // Rev 9 (consents run 2026-10-17, R4)
   'claim-response-rev9.json': C.ClaimResponse,
+  // Rev 10 (consents run 2026-10-17, R8)
+  'push-flows-rev10.json': C.PUSH_SCHEMAS.flows,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -172,7 +174,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(9); // 2026-10-17 consents run R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(10); // 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an optional int >= 1 both ways', () => {
@@ -407,6 +409,17 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     C.PAYLOAD_SCHEMAS.completeStep.parse(plain); // optional: a rev 8 row still parses
     rejects(C.PAYLOAD_SCHEMAS.completeStep, { ...plain, notReceived: false });
     rejects(C.PAYLOAD_SCHEMAS.completeStep, { ...plain, notReceived: 'yes' });
+  });
+  it('rev 10 (R8): a flows row may carry textedOn (a date or null); optional, so an older row still parses', () => {
+    const p = C.PUSH_SCHEMAS.flows.parse(load('push-flows-rev10.json'));
+    expect(p.rows.map((r) => r.textedOn)).toEqual(['2026-10-12', null]);
+    expect(C.PUSH_SCHEMAS.flows.parse(load('push-flows-rev6.json')).rows.every((r) => r.textedOn === undefined)).toBe(true);
+    const bad = clone(load('push-flows-rev10.json')); bad.rows[0].textedOn = '12/10/2026'; rejects(C.PUSH_SCHEMAS.flows, bad);
+  });
+  it('0037: adds only link_flow_people.texted_on, additive', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0037_link_flow_texted_on.sql'), 'utf8');
+    expect(sql).toMatch(/alter table link_flow_people add column if not exists texted_on date;/);
+    expect(sql).not.toMatch(/(drop |rename|alter column)/i);
   });
   it('0033: widens only the consentLookup kind check (same shape as 0031), additive', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0033_link_consent_other.sql'), 'utf8');

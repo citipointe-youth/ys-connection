@@ -344,7 +344,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
             flow_name: f.flowName, step_id: f.stepId, step_name: f.stepName, step_order: f.stepOrder,
             person_id: f.personId, name: f.name, due: f.due, assigned_to: f.assignedTo, grade: f.grade ?? null,
             gender: f.gender ?? null, mobile: maybeEncrypt(f.mobile ?? null, mobileAad(f.rowId)),
-            mobile_is_parent: f.mobileIsParent ?? false, consent: f.consent ?? null })))}`;
+            mobile_is_parent: f.mobileIsParent ?? false, consent: f.consent ?? null, texted_on: f.textedOn ?? null })))}`;
         }
         // T6: an assignment lasts while its person is still in that flow.
         await tx`
@@ -383,7 +383,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
       rowId: r.row_id, flowId: r.flow_id, flowName: r.flow_name, stepId: r.step_id, stepName: r.step_name,
       stepOrder: r.step_order, personId: r.person_id ?? null, name: r.name, due: ymd(r.due), assignedTo: r.assigned_to,
       grade: r.grade ?? null, gender: r.gender ?? null, mobile: readMobile(r),
-      mobileIsParent: r.mobile_is_parent ?? false, consent: r.consent ?? null }));
+      mobileIsParent: r.mobile_is_parent ?? false, consent: r.consent ?? null, textedOn: ymd(r.texted_on) }));
   }
 
   // Rev 6 (R2 b/c): an encrypted TEXT store, kept in supabase.link-consent.ts.

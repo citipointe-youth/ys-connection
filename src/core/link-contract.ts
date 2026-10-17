@@ -36,7 +36,11 @@ export const LINK_CONTRACT_VERSION = 1;
 // LINK_REV 9 (consents run 2026-10-17, R4), optional only: a completeStep payload may carry `notReceived: true` (the app sets it
 // on a New People step-0 Complete whose consent Friday 9:00 passed with no reply; the console marks consent not received on the
 // student, then completes). The app sets it only when the newest console's link_rev >= 9; an older console never sees it.
-export const LINK_REV = 9;
+// LINK_REV 10 (consents run 2026-10-17, R8; migration 0037), optional only: a flows push row may carry `textedOn` (New People
+// step 0: the Consents Other "Parent texted" date, youth-plan.inferDate; null = none found). The app's consent Friday counts from
+// it, else from `due`. The console sends it only when the claim reply says linkRev >= 10; an older app strips the key, and a
+// row without it (an older console) falls back to `due`.
+export const LINK_REV = 10;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
@@ -222,7 +226,8 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   stepOrder: z.number().int().min(0), personId: Uuid.nullable(), name: Text(120), due: Ymd.nullable(), assignedTo: Text(120),
   // T4: the person's own grade/gender, and their mobile as bare digits (else the parent's, mobileIsParent true).
   grade: Grade.optional(), gender: Gender.nullable().optional(), mobile: z.string().regex(/^\d{6,15}$/).nullable().optional(),
-  mobileIsParent: z.boolean().optional(), consent: Consent.optional() }); // rev 6 (R1)
+  mobileIsParent: z.boolean().optional(), consent: Consent.optional(), // rev 6 (R1)
+  textedOn: Ymd.nullable().optional() }); // rev 10 (R8): New People step 0 only
 // T12 (rev 5): one step of a pushed flow, empty or not.
 export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0) });
 const push = <T extends z.ZodTypeAny>(row: T) =>
@@ -299,7 +304,8 @@ export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend
   linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable() }).strict();
 // Rev 8 (Consents Other): a step-0 student in no pushed consent week. date = the earliest sign a parent was texted (Parent Consent
 // step 1 Complete): a confirmed console send ('console text') or a parent note naming the student ('parent note'); null = none, and
-// why says so. Display only: never an input to a consent save or check.
+// why says so. The row itself is never an input to a consent save or check; R8 (rev 10): the same date reaches the app as the
+// step-0 flow row's `textedOn`, which the consent Friday counts from.
 export const ConsentOtherRow = z.object({ personId: Uuid, rowId: Uuid, name: Cut(120), date: Ymd.nullable(),
   source: z.enum(['console text', 'parent note']).nullable(), why: Cut(120), link: z.string().regex(/^https:\/\/\S+$/).max(300).nullable() }).strict()
   .refine((r) => (r.date === null) === (r.source === null), 'a date needs its source');

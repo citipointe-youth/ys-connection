@@ -146,7 +146,8 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   consentFriday: string | null; notReceivedOk: boolean;
   /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
-/** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). */
+/** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). R9: an `other`
+ *  row also carries flowId, stepId, dnc, consentFriday, notReceivedOk and marking (otherWait). */
 export interface ConsentLookupView { id: string; kind: ConsentLookupKind; status: 'waiting' | 'working' | 'ready' | 'failed';
   reason: string | null; page: number; pageSize: number; total: number | null; takenAt: string | null; rows: unknown[];
   /** S5: while working, how far the console has got (null = not known). */
@@ -227,11 +228,18 @@ export function progressOf(con: ConsoleRow | null, key: string, now: number, aft
 }
 const newest = (cs: ConsoleRow[]) => [...cs].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))[0] ?? null;
 /** R4/R6 (rev 9): the FlowView consent-wait fields of one flow row (see FlowView): the batch's own verdict, so the phone offers
- *  Complete exactly when the batch takes it. `consent` is the row's shown (sticky) flag. */
+ *  Complete exactly when the batch takes it. `consent` is the row's shown (sticky) flag. R8 (rev 10): the Friday counts from
+ *  the row's textedOn when the console sent one, else its due date (one date for the step list and Consents Other). */
 function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string; status: string }[], rev: number, now: Date):
   { consentFriday: string | null; notReceivedOk: boolean } {
-  const fri = isConsentStep(f) ? consentFriday(f.due) : null;
-  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due }, consentRows, now, rev) === 'notReceived' };
+  const fri = isConsentStep(f) ? consentFriday(f.due, f.textedOn) : null;
+  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now, rev) === 'notReceived' };
+}
+/** Resilience H3: a flow row's shown consent flag; an unreadable flow profile (unknown) falls back to the roster's sticky flag. */
+function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
+  if (f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all') return f.consent;
+  const r = f.personId ? byId.get(f.personId) : undefined;
+  return isDnc(r?.consent) ? r!.consent! as 'contact' | 'all' : f.consent ?? 'unknown';
 }
 /** Key-order-independent JSON, for the replay check (contract §4.1 "jsonb ="). */
 function stable(v: unknown): string {
@@ -398,6 +406,21 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const l = await scopedLeader(c, c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : (given ?? null));
     if (required && !l) throw new BadRequestError('Pick who you are first.');
     return l ? { id: l.id, name: l.fullName } : { id: null, name: c.actor.displayName };
+  }
+
+  /** R9 (consents run 2026-10-17): each Consents Other row with its step-0 row's consent wait, as GET /link/flows shows it, so
+   *  "Mark not received" is offered exactly when the batch takes it. A row whose step-0 row has gone (moved on, a newer flows
+   *  push) gets flowId null and no button; `marking` = a Complete for that row is already open. */
+  async function otherWait(c: Ctx, rows: { rowId: string }[]) {
+    const [flows, roster, consoles, open, cRows] = await Promise.all([c.flows(), c.roster(), c.consoles(), c.openFlowRows(), c.consentRows()]);
+    const rev = newest(consoles)?.linkRev ?? 1, now = clock(), byId = new Map(roster.map((r) => [r.personId, r]));
+    return rows.map((o) => {
+      const f = flows.find((x) => x.rowId === o.rowId && isConsentStep(x));
+      if (!f) return { ...o, flowId: null, stepId: null, dnc: false, consentFriday: null, notReceivedOk: false, marking: false };
+      const consent = shownConsent(f, byId);
+      return { ...o, flowId: f.flowId, stepId: f.stepId, dnc: isDnc(consent), ...consentWait(f, consent, cRows, rev, now),
+        marking: open.some((r) => r.type === 'completeStep' && (r.payload as { rowId?: string }).rowId === f.rowId) };
+    });
   }
 
   /**
@@ -1028,10 +1051,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
           const l = f.personId ? assigned.get(`${f.flowId}:${f.personId}`) : undefined; // a deleted leader reads as none
-          // Resilience H3: an unreadable flow profile (unknown) falls back to the roster's sticky flag.
-          const known = f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all';
-          const consent = known ? f.consent! : (f.personId && isDnc(byId.get(f.personId)?.consent) ? byId.get(f.personId)!.consent! : f.consent ?? 'unknown');
-          const dnc = isDnc(consent);
+          const consent = shownConsent(f, byId), dnc = isDnc(consent);
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
@@ -1067,7 +1087,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const got = await d.link.consentLookup(id);
       if (!got) return { ...base, status: 'failed', reason: 'expired' };
       if (got.unreadable) return { ...base, status: 'failed', reason: 'unreadable' }; // never an empty 'all clear' (resilience M3)
-      return { id, kind: got.kind, status: 'ready', reason: null, page: got.page, pageSize: got.pageSize, total: got.total, takenAt: got.takenAt, rows: got.rows };
+      const ready = { id, kind: got.kind, status: 'ready' as const, reason: null, page: got.page, pageSize: got.pageSize, total: got.total, takenAt: got.takenAt, rows: got.rows };
+      return got.kind === 'other' ? { ...ready, rows: await otherWait(context(actor, settings), got.rows as { rowId: string }[]) } : ready;
     },
 
     async groupMembers(actor, groupId, q) {

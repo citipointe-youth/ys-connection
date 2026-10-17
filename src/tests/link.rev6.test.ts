@@ -303,3 +303,112 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     expect((await old.svc.flows(ADMIN)).rows.find((x) => x.rowId === FA)).toMatchObject({ notReceivedOk: false });
   });
 });
+
+describe('rev 10: the consent Friday counts from the parent-texted date (R8); Mark not received on Consents Other (R9)', () => {
+  const NPN = 'Brisbane - Youth - New People 2026';
+  const P_A = u(121), P_B = u(122), P_C = u(123), P_D = u(124), P_E = u(125);
+  const FA = u(541), FB = u(542), FC = u(543), FD = u(544), FE = u(545), GONE = u(549);
+  const step0 = (rowId: string, personId: string, due: string | null, textedOn: string | null, consent = 'unknown') => ({ rowId, flowId: NP,
+    flowName: NPN, stepId: STEP0, stepName: 'Step 0 - wait', stepOrder: 1, personId, name: 'Sample Kid', due, assignedTo: '', grade: 8,
+    gender: 'female', mobile: '0400000001', mobileIsParent: false, consent, textedOn });
+  // NOW = Fri 16 Oct 19:00 Brisbane.
+  async function rev10() {
+    const h = await setup();
+    await h.link.replaceMirror('flows', [
+      step0(FA, P_A, '2026-10-01', '2026-10-16'), // due says Fri 2 Oct (passed); texted Fri 16 Oct -> Fri 23 Oct: the text wins, waiting
+      step0(FB, P_B, '2026-10-16', '2026-10-05'), // due says Fri 23 Oct; texted Mon 5 Oct -> Fri 9 Oct: passed
+      step0(FC, P_C, '2026-10-08', null), // no texted date: the due date, Fri 9 Oct: passed
+      step0(FE, P_E, null, '2026-10-07'), // no due date, texted Wed 7 Oct -> Fri 9 Oct: passed (eligible since R8)
+      step0(FD, P_D, null, '2026-10-07', 'contact'), // DO NOT CONTACT: never
+    ] as never, { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
+    const claim = (max = 20) => h.sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false,
+      pollSeconds: 60, capabilities: ALL, max, leaseSeconds: 300, linkRev: 10 });
+    await claim(0);
+    return { ...h, claim };
+  }
+  const done = (rowId: string, personId: string) =>
+    ({ ...complete(rowId, NP, STEP0, personId), payload: { rowId, flowId: NP, stepId: STEP0, personId, notePrivate: false } });
+  const otherRow = (personId: string, rowId: string) => ({ personId, rowId, name: 'Kid, Sample', date: '2026-10-07', source: 'parent note', why: '', link: null });
+  async function otherLookup(h: Awaited<ReturnType<typeof rev10>>) {
+    const id = nid();
+    expect(h.oc(await h.one(ADMIN, { kind: 'action', id, type: 'consentLookup', payload: { kind: 'other', page: 1, ref: id }, note: null, leaderId: null }))).toBe('saved');
+    await h.claim();
+    const rows = [otherRow(P_A, FA), otherRow(P_B, FB), otherRow(P_C, FC), otherRow(P_E, FE), otherRow(P_D, FD), otherRow(u(129), GONE)];
+    expect(await h.sync.push('consentLookup', { contractVersion: 1, consoleId: CONSOLE, takenAt: NOW.toISOString(), requestId: id, page: 1,
+      pageSize: 25, kind: 'other', total: rows.length, rows })).toMatchObject({ applied: true });
+    await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'planned' }] });
+    const got = await h.svc.consentLookup(ADMIN, { id });
+    expect(got.status).toBe('ready');
+    return { id, by: (rowId: string) => (got.rows as Record<string, unknown>[]).find((r) => r.rowId === rowId)! };
+  }
+
+  it('the rules: the texted date is preferred over the due date, the due date is the fallback, a texted date alone is enough', () => {
+    expect(consentFriday('2026-10-01', '2026-10-16')).toBe('2026-10-23'); // texted wins over an earlier due
+    expect(consentFriday('2026-10-16', '2026-10-05')).toBe('2026-10-09'); // and over a later one
+    expect(consentFriday('2026-10-08', null)).toBe('2026-10-09'); // no texted date: the due date
+    expect(consentFriday('2026-10-08', 'not-a-date')).toBe('2026-10-09');
+    expect(consentFriday(null, '2026-10-07')).toBe('2026-10-09'); // no due date
+    expect(consentFriday(null, null)).toBeNull();
+    const r = (due: string | null, textedOn: string | null) => ({ personId: P_A, consent: 'unknown', due, textedOn });
+    expect(consentStepAllowed(r('2026-10-01', '2026-10-16'), [], NOW, 10)).toBeNull(); // the text says wait
+    expect(consentStepAllowed(r('2026-10-16', '2026-10-05'), [], NOW, 10)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-08', null), [], NOW, 10)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, '2026-10-07'), [], NOW, 10)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, null), [], NOW, 10)).toBeNull();
+  });
+  it('the flows push stores textedOn (rev 10 fixture); a row without it (an older console) reads null', async () => {
+    const h = await rev10();
+    const fx = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'elvanto-link', 'push-flows-rev10.json'), 'utf8'));
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-16T08:50:00.000Z' })).toMatchObject({ applied: true });
+    const t = async (id: string) => (await h.link.flows()).find((f) => f.rowId === id)!.textedOn;
+    expect([await t(fx.rows[0].rowId), await t(fx.rows[1].rowId)]).toEqual(['2026-10-12', null]);
+    const { textedOn: _t, ...old } = fx.rows[0];
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-16T08:55:00.000Z', rows: [old] })).toMatchObject({ applied: true });
+    expect((await h.link.flows())[0]!.textedOn).toBeNull();
+  });
+  it('GET /link/flows and the batch use the same date: waiting by the text, eligible by the text, by the due date, with no due date', async () => {
+    const h = await rev10();
+    const by = async (id: string) => (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === id)!;
+    expect(await by(FA)).toMatchObject({ consentFriday: '2026-10-23', notReceivedOk: false });
+    expect(await by(FB)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: true });
+    expect(await by(FC)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: true });
+    expect(await by(FE)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: true });
+    expect(await by(FD)).toMatchObject({ dnc: true, notReceivedOk: false });
+    expect(h.oc(await h.one(ADMIN, done(FA, P_A)))).toBe('CONSENT_CHECK_FIRST');
+    const e = done(FE, P_E);
+    expect(h.oc(await h.one(ADMIN, e))).toBe('saved');
+    expect((await h.claim()).rows.find((x) => x.id === e.id)!.payload).toMatchObject({ rowId: FE, notReceived: true });
+  });
+  it('R9: Other rows carry the step-0 wait (one date with the step list); DO NOT CONTACT and gone rows get no button', async () => {
+    const h = await rev10();
+    const { by } = await otherLookup(h);
+    expect(by(FA)).toMatchObject({ flowId: NP, stepId: STEP0, consentFriday: '2026-10-23', notReceivedOk: false, dnc: false, marking: false });
+    for (const f of [FB, FC, FE]) expect(by(f)).toMatchObject({ flowId: NP, stepId: STEP0, consentFriday: '2026-10-09', notReceivedOk: true, marking: false });
+    expect(by(FD)).toMatchObject({ dnc: true, notReceivedOk: false });
+    expect(by(GONE)).toMatchObject({ flowId: null, notReceivedOk: false });
+    expect(by(FB)).toMatchObject({ name: 'Kid, Sample', date: '2026-10-07', source: 'parent note' }); // the console's row is kept
+  });
+  it('R9: a sticky roster DO NOT CONTACT shows on the Other row and the batch refuses it', async () => {
+    const h = await rev10();
+    await h.link.replaceMirror('roster', [{ personId: P_C, firstName: 'Sample', lastName: 'Kid', gender: 'female', grade: 8, kind: 'student', consent: 'all' }] as never,
+      { takenAt: '2026-10-16T08:40:00.000Z', consoleId: CONSOLE });
+    const { by } = await otherLookup(h);
+    expect(by(FC)).toMatchObject({ dnc: true, notReceivedOk: false });
+    expect(h.oc(await h.one(ADMIN, done(FC, P_C)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, done(FD, P_D)))).toBe('LINK_DNC');
+  });
+  it('R9: per-row and Mark all: one batch, each row its own answer (only rows past their Friday), then marking; a repeat is a duplicate', async () => {
+    const h = await rev10();
+    const one = done(FB, P_B);
+    expect(h.oc(await h.one(ADMIN, one))).toBe('saved'); // per-row
+    const all = [done(FC, P_C), done(FE, P_E), done(FA, P_A)]; // Mark all (a stale page may still hold FA)
+    const res = (await h.svc.batch(ADMIN, { device: DEV, items: all })).results;
+    expect(res.map(h.oc)).toEqual(['saved', 'saved', 'CONSENT_CHECK_FIRST']); // per-row failures, the rest go on
+    const claimed = (await h.claim()).rows;
+    for (const x of [one, all[0]!, all[1]!]) expect(claimed.find((r) => r.id === x.id)!.payload).toMatchObject({ notReceived: true });
+    const { by } = await otherLookup(h);
+    for (const f of [FB, FC, FE]) expect(by(f)).toMatchObject({ marking: true });
+    expect(by(FA)).toMatchObject({ marking: false });
+    expect(h.oc(await h.one(ADMIN, done(FB, P_B)))).toBe('duplicate'); // a second tap with a new id never queues twice
+  });
+});
