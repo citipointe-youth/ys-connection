@@ -30,31 +30,45 @@ type CheckName = keyof ReconcileChecks;
 const CODE: Record<CheckName, string> = { checkins: 'recon-checkins', unmatched: 'recon-unmatched', lifegroups: 'recon-lifegroups', members: 'recon-members' };
 const DAY_MS = 86_400_000;
 
+/** p, or undefined once ms pass. p must never reject (a late result is ignored). */
+async function within<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try { return await Promise.race([p, new Promise<undefined>((res) => { timer = setTimeout(() => res(undefined), ms); })]); }
+  finally { clearTimeout(timer); }
+}
+
 export function makeReconcileService(d: ReconcileDeps): ReconcileService {
   const now = d.now ?? (() => new Date());
   const budgetMs = d.budgetMs ?? 10_000;
-  const rec = (code: string, n: number, route = '') => d.errorLog.record({ category: 'reconcile', code, route }, n);
+  // The last part of the budget is kept for the recon-failed rows and the run row, so run() as a whole stays within budgetMs.
+  const finishMs = Math.min(1_000, budgetMs / 5);
+  const put = (code: string, n: number, route = '') => d.errorLog.record({ category: 'reconcile', code, route }, n);
 
   async function rematch(): Promise<void> {
     try { await rematchRoster(d.link, d.students); } catch (e) { log.warn(`reconcile rematch failed: ${(e as Error).name}`); }
   }
 
   async function run(): Promise<void> {
-    try {
+    let closed = false;  // set when the budget is spent: late work then writes nothing
+    const rec = (code: string, n: number, route = '') => (closed ? Promise.resolve() : put(code, n, route));
+    let imp: { id: string } | undefined;
+    const checks: Partial<ReconcileChecks> = {};
+    const items: ReconcileItems = { checkins: [], unmatched: [], lifegroups: [], noId: [], members: [] };
+
+    const work = async () => {
       await rematch();
       const at = now(); const today = brisbaneToday(at);
-      const [imp] = await d.imports.findByType('lifegroup');
-      const beforeIso = imp?.importedAt ?? at.toISOString();
+      const [latest] = await d.imports.findByType('lifegroup');
+      imp = latest;
+      const beforeIso = latest?.importedAt ?? at.toISOString();
       const sinceIso = new Date(Date.parse(beforeIso) - 14 * DAY_MS).toISOString();
       const roster = await d.link.roster();
-      const checks: Partial<ReconcileChecks> = {};
-      const items: ReconcileItems = { checkins: [], unmatched: [], lifegroups: [], noId: [], members: [] };
 
       const one = async (name: CheckName, f: () => Promise<CheckState>) => {
-        try { checks[name] = await f(); await rec('recon-failed', 0, name); }
-        catch (e) { checks[name] = { error: true }; log.warn(`reconcile ${name} failed: ${(e as Error).name}`); await rec('recon-failed', 1, name); }
+        try { const r = await f(); if (!closed) checks[name] = r; await rec('recon-failed', 0, name); }
+        catch (e) { log.warn(`reconcile ${name} failed: ${(e as Error).name}`); if (!closed) checks[name] = { error: true }; await rec('recon-failed', 1, name); }
       };
-      const all = Promise.all([
+      await Promise.all([
         one('checkins', async () => {
           const from = addDays(today, -6);
           const sessions = (await d.serviceSessions.findAll()).filter((s) => { const x = s.sessionDate.slice(0, 10); return x >= from && x <= today; });
@@ -83,16 +97,21 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
           items.members = r.items; await rec(CODE.members, r.count); return { count: r.count };
         }),
       ]);
-      // ponytail: a check still running past the budget may write its log row after the run row; accepted (the next run corrects it).
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      await Promise.race([all, new Promise((res) => { timer = setTimeout(res, budgetMs); })]);
-      clearTimeout(timer);
-      const done = (Object.keys(CODE) as CheckName[]).reduce((o, k) => ({ ...o, [k]: checks[k] ?? { error: true } }), {} as ReconcileChecks);
+    };
+
+    const finish = async () => {
+      const names = Object.keys(CODE) as CheckName[];
+      const missing = names.filter((k) => !checks[k]);   // cut off by the budget, or never started (rematch / roster failed)
+      await Promise.all(missing.map((k) => put('recon-failed', 1, k)));
+      const done = names.reduce((o, k) => ({ ...o, [k]: checks[k] ?? { error: true } }), {} as ReconcileChecks);
       const ok = Object.values(done).every((c) => !('error' in c));
-      try {
-        await d.runs.save({ id: randomUUID(), ranAt: now().toISOString(), importId: imp?.id ?? null, ok, checks: done, items });
-      } catch (e) { log.warn(`reconcile run save failed: ${(e as Error).name}`); }
-    } catch (e) { log.warn(`reconcile failed: ${(e as Error).name}`); }
+      await d.runs.save({ id: randomUUID(), ranAt: now().toISOString(), importId: imp?.id ?? null, ok, checks: done, items: { ...items } });
+    };
+
+    // ponytail: work cut off by the budget keeps running in the background (writes are blocked by `closed`); the next run corrects it.
+    await within(work().catch((e) => log.warn(`reconcile failed: ${(e as Error).name}`)), budgetMs - finishMs);
+    closed = true;
+    await within(finish().catch((e) => log.warn(`reconcile run save failed: ${(e as Error).name}`)), finishMs);
   }
 
   return { rematch, run };

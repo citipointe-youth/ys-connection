@@ -15,13 +15,14 @@ import type { OutboxRow } from '../core/link-types';
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = new Date('2026-10-23T11:20:00Z');            // Fri 23 Oct 9:20 pm Brisbane
 
-async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroups' } = {}) {
+async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroups'; hang?: 'sessions' | 'roster'; budgetMs?: number } = {}) {
   const link = new InMemoryLinkRepository();
   await link.replaceMirror('roster', [
     { personId: P(1), firstName: 'Ava', lastName: 'Test', gender: 'female', grade: 9, kind: 'student' },
     { personId: P(2), firstName: 'Leo', lastName: 'Lead', gender: 'male', grade: null, kind: 'leader' },
   ], { takenAt: NOW.toISOString(), consoleId: P(99) });
   link.listActions = async () => (o.actions ?? []) as OutboxRow[];
+  if (o.hang === 'roster') link.roster = () => new Promise(() => {});
   const students = new InMemoryStudentRepository(); await students.init();
   const settings = new InMemorySettingsRepository(); await settings.init();
   const errRepo = new InMemoryErrorLogRepository();
@@ -30,9 +31,9 @@ async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroup
   const lifegroups = { findAll: async () => { if (o.throwIn === 'lifegroups') throw new Error('x'); return [{ id: 'lg1', elvantoGroupId: null }] as any; },
     findRoll: async () => [] };
   const svc = makeReconcileService({ link, students, lifegroups, lifegroupWeeks: { findAll: async () => [] },
-    lifegroupAttendance: { findAll: async () => [] }, serviceSessions: { findAll: async () => [] },
+    lifegroupAttendance: { findAll: async () => [] }, serviceSessions: { findAll: () => (o.hang === 'sessions' ? new Promise(() => {}) : Promise.resolve([])) },
     serviceAttendance: { findBySession: async () => [] }, imports: { findByType: async () => [{ id: 'imp-1', importedAt: '2026-10-23T11:15:00Z' } as any] },
-    settings, errorLog, errorRows: errRepo, runs, now: () => NOW });
+    settings, errorLog, errorRows: errRepo, runs, now: () => NOW, budgetMs: o.budgetMs });
   return { svc, errRepo, runs, students, link };
 }
 const codes = async (r: InMemoryErrorLogRepository) => Object.fromEntries((await r.list()).map((x) => [x.code + (x.route ? `:${x.route}` : ''), x.count]));
@@ -69,5 +70,25 @@ describe('reconcile.run', () => {
     const { svc, runs } = await harness();
     runs.save = async () => { throw new Error('db'); };
     await expect(svc.run()).resolves.toBeUndefined();
+  });
+  it('budget bounds the whole run: a hanging check is cut off, recorded as recon-failed, ok=false', async () => {
+    const { svc, errRepo, runs } = await harness({ hang: 'sessions', budgetMs: 50 });
+    const t = Date.now();
+    await svc.run();
+    expect(Date.now() - t).toBeLessThan(500);
+    expect((await codes(errRepo))['recon-failed:checkins']).toBe(1);
+    const run = (await runs.latest())!;
+    expect(run.ok).toBe(false);
+    expect(run.checks.checkins).toEqual({ error: true });
+    expect(run.checks.unmatched).toEqual({ count: 1 });
+  });
+  it('budget covers the steps before the checks: a hanging roster read still ends the run in time', async () => {
+    const { svc, errRepo, runs } = await harness({ hang: 'roster', budgetMs: 50 });
+    const t = Date.now();
+    await svc.run();
+    expect(Date.now() - t).toBeLessThan(500);
+    const c = await codes(errRepo);
+    for (const k of ['checkins', 'unmatched', 'lifegroups', 'members']) expect(c[`recon-failed:${k}`]).toBe(1);
+    expect((await runs.latest())!.ok).toBe(false);
   });
 });
