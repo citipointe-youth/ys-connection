@@ -12,6 +12,14 @@ describe('past riders', () => {
     expect(v.pastRiders[0]).toMatchObject({ name: 'Jess Tran', suburb: 'Testville' });
     expect(JSON.stringify(v.pastRiders)).not.toContain('Test St');
   });
+  it('N01: past riders sort girls first, then grade ascending, then name (most recent 50 are still the ones kept)', async () => {
+    const f = await busFixture();
+    const rs = [await f.rider('s3'), await f.rider('s2'), await f.rider('s4'), await f.rider('s1')];
+    for (const r of rs) await f.svc.removeRider(f.admin, r.id);
+    const v = await f.svc.getRun(f.admin);
+    expect(v.pastRiders.map((p) => p.name)).toEqual(['Jess Tran', 'Mia Lee', 'Sam Ode', 'Riley Kim']);
+    expect(v.pastRiders.map((p) => p.gender)).toEqual(['female', 'female', 'male', 'male']);
+  });
   it('one tap re-adds them with their saved address', async () => {
     const f = await busFixture();
     const jess = await f.rider('s1');

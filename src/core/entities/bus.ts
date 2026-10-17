@@ -76,7 +76,7 @@ export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool
 // tonight's roster. addressId lets the SPA one-tap add them via the existing addRider path
 // without re-entering the address; only the suburb is ever shown here (spec I2's rule).
 export interface BusPastRiderView {
-  studentId: ID | null; guestId: ID | null; addressId: ID; name: string; grade: number | null; suburb: string;
+  studentId: ID | null; guestId: ID | null; addressId: ID; name: string; grade: number | null; gender: BusGender; suburb: string;
 }
 export interface BusRunView {
   run: { id: ID; serviceDate: string; version: number; readOnly: boolean;

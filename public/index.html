@@ -1861,7 +1861,9 @@ function _extOpen(ev, url) {
     return false;
   }
   const v = /(iPhone|iPad|iPod).* OS (\d+)_/.exec(ua);
-  if (v && +v[2] >= 17) {
+  // N05: iPadOS sends the desktop Mac UA; touch points tell it from a Mac. Its version can't be read, so assume 17+.
+  const ipad = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  if ((v && +v[2] >= 17) || ipad) {
     ev.preventDefault();
     // ux18: a second tap on the same link (within 30 s of "Didn't open?") opens the in-app sheet.
     if (_extArm && _extArm.url === url && Date.now() < _extArm.until) { _extArm = null; window.open(url, '_blank', 'noopener'); return false; }
@@ -13537,6 +13539,9 @@ function _ikLkTurn(kind, d) { const x = _ikLk(kind); if (x.res) _ikLkGo(kind, (N
 const IK_LK_FRESH_MS = 15 * 60e3;
 const IK_LK_KINDS = ['unlinked', 'mismatches', 'forms', 'other']; // the quick ones first; other reads Elvanto longest
 const IK_LK_SINCE_REV = 11;
+// N06: one tab per login warms the lists (the server supersedes a login's older pending lookup of the same kind).
+const IK_LK_LOCK_MS = 3 * 60e3;
+const IK_LK_TAB = Math.random().toString(36).slice(2);
 function _ikLkKeepKey() { return 'ysc.ikLk.' + ((S.user && S.user.id) || ''); }
 function _ikLkKept() {
   try { const v = JSON.parse(localStorage.getItem(_ikLkKeepKey()) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
@@ -13564,6 +13569,8 @@ function _ikLkPreload(st, now) {
   const I = _ik(), c = st && st.console, out = [];
   if (now == null) now = Date.now();
   if (I.tab !== 'consent' || !c || !c.online || c.inWindow || _ikLkGate(st)) return out;
+  const lockKey = 'ysc.ikLkPre.' + ((S.user && S.user.id) || '');
+  try { const l = JSON.parse(localStorage.getItem(lockKey) || 'null'); if (l && l.tab !== IK_LK_TAB && now - l.at < IK_LK_LOCK_MS) return out; } catch (e) {}
   for (const k of IK_LK_KINDS) {
     if ((k === 'unlinked' && !_ikClCap(st)) || (k === 'other' && _ikRev(st) < 8)) continue;
     const x = _ikLk(k);
@@ -13575,6 +13582,7 @@ function _ikLkPreload(st, now) {
     out.push(k);
     _ikLkGo(k, 1, '', null, after);
   }
+  if (out.length) try { localStorage.setItem(lockKey, JSON.stringify({ tab: IK_LK_TAB, at: now })); } catch (e) {}
   return out;
 }
 // Once per page entry (I.lkPre; the 5 s / 60 s reloads never re-ask): kept answers first, then the background asks.
@@ -13663,6 +13671,13 @@ function _ikLkPoll(kind) {
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;
+    if (document.visibilityState === 'hidden') { // N06: a hidden tab asks nothing; one wake-up polls again when it is back
+      if (!x.wake) {
+        x.wake = () => { if (document.visibilityState === 'hidden') return; document.removeEventListener('visibilitychange', x.wake); x.wake = null; if (_ik() === I && x.id === id && !x.poll) _ikLkPoll(kind); };
+        document.addEventListener('visibilitychange', x.wake);
+      }
+      return;
+    }
     try {
       const r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(id), true);
       if (_ik() !== I || x.id !== id) return;
@@ -14271,7 +14286,9 @@ function _busRosterHtml() {
       <option value="">All</option><option value="female"${fG === 'female' ? ' selected' : ''}>Girls</option><option value="male"${fG === 'male' ? ' selected' : ''}>Boys</option></select>
     <select class="fs bus-flt" aria-label="Filter by grade" onchange="BUS.fGrade=this.value;renderBus()">
       <option value="">Yr</option>${grades.map((g) => `<option value="${g}"${String(g) === fY ? ' selected' : ''}>Y${g}</option>`).join('')}</select>`;
-  const rows = shown.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
+  // N01: girls then boys (the app's Girls/Boys order, e.g. Connection by Grade), grade up, then name; unknown last.
+  const gOrd = (r) => (r.gender === 'female' ? 0 : r.gender === 'male' ? 1 : 2), yOrd = (r) => (r.grade == null ? 99 : r.grade);
+  const rows = shown.slice().sort((a, b) => gOrd(a) - gOrd(b) || yOrd(a) - yOrd(b) || a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>

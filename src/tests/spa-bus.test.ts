@@ -569,6 +569,23 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
 // Task 13: Generate (ours or another device's lock) must not hide the whole search UI —
 // only readOnly (a finished run) does. Remove stays hidden while a write would be blocked
 // (simplest call, and matches the prior pre-Task-13 behaviour for that one button).
+describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascending, then name', () => {
+  it('orders female before male (the app Girls/Boys order), grade up, unknown gender/grade last', () => {
+    const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
+     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
+    const riders = [
+      { id: 'a', name: 'Zed', gender: 'male', grade: 7 }, { id: 'b', name: 'Amy', gender: 'female', grade: 11 },
+      { id: 'c', name: 'Bob', gender: 'male', grade: null }, { id: 'd', name: 'Cat', gender: 'female', grade: 8 },
+      { id: 'e', name: 'Al', gender: null, grade: 7 }, { id: 'f', name: 'Ben', gender: 'male', grade: 7 }];
+    const prelude = `${stubs}
+      const BUS = { search: '', generating: false, view: { run: { readOnly: false, lockBy: null, lockUntil: null }, riders: ${JSON.stringify(riders)}, vehicles: [] } };`;
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude, ['_busRosterHtml']);
+    const ids = [..._busRosterHtml().matchAll(/busEditRider\('(\w)'\)/g)].map((m) => m[1]);
+    expect(ids).toEqual(['d', 'b', 'f', 'a', 'c', 'e']);
+  });
+});
+
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }

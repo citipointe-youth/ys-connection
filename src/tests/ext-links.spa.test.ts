@@ -3,8 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const URL0 = 'https://example.org/admin/people/person/?id=x1';
-const mk = (ua: string, standalone: boolean, visible = 'visible') => loadFns(['_isStandalone', '_extOpen'], `
-  const navigator = { userAgent: ${JSON.stringify(ua)}, standalone: false };
+const mk = (ua: string, standalone: boolean, visible = 'visible', touch = 0) => loadFns(['_isStandalone', '_extOpen'], `
+  const navigator = { userAgent: ${JSON.stringify(ua)}, standalone: false, maxTouchPoints: ${touch} };
   const ls = {}; const on = (t, f) => { (ls[t] = ls[t] || []).push(f); }; const off = (t, f) => { ls[t] = (ls[t] || []).filter((g) => g !== f); };
   const window = { matchMedia() { return { matches: ${standalone} }; }, open(...a) { opened.push(a); }, addEventListener: on, removeEventListener: off };
   const location = { href: 'app' }; const opened = []; const timers = []; const toasts = [];
@@ -79,6 +79,25 @@ describe('I4 _extOpen', () => {
   });
   it('iOS 16 standalone keeps the default link', () => {
     const f = mk('Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X)', true), e = ev();
+    expect(f._extOpen(e, URL0)).toBe(true);
+    expect(e.prevented).toBe(false);
+    expect(f.__s().location.href).toBe('app');
+  });
+  // N05: iPadOS (Safari and Home Screen apps) sends the desktop Mac UA; only touch points tell it apart from a Mac.
+  const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15';
+  it('N05 iPad installed app (desktop Mac UA + touch): the iOS path, x-safari then the second-tap hint', () => {
+    const f = mk(IPAD, true, 'visible', 5), e = ev();
+    expect(f._extOpen(e, URL0)).toBe(false);
+    expect(e.prevented).toBe(true);
+    const s = f.__s();
+    expect(s.location.href).toBe('x-safari-' + URL0);
+    s.timers[0][0]();
+    expect(s.toasts).toEqual(["Didn't open? Tap the link again to open it here."]);
+    expect(f._extOpen(ev(), URL0)).toBe(false);
+    expect(s.opened).toEqual([[URL0, '_blank', 'noopener']]);
+  });
+  it('N05 a real Mac (same UA, no touch) keeps the default link', () => {
+    const f = mk(IPAD, true, 'visible', 0), e = ev();
     expect(f._extOpen(e, URL0)).toBe(true);
     expect(e.prevented).toBe(false);
     expect(f.__s().location.href).toBe('app');
