@@ -12205,7 +12205,7 @@ function _ikFresh() {
   return { tab, head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
     ans: {}, keepMem: {}, resend: {}, debT: null, busy: 0, busyKey: {}, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
     sheet: null, pendingDraw: false, helpOpen: false,
-    csub: 'last', lk: {}, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {} };
+    csub: 'last', lk: {}, lkPre: 0, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {} };
 }
 function _ik() { if (!LINK.ik) LINK.ik = _ikFresh(); return LINK.ik; }
 // The module switch for this login (admin + On). The page itself also needs a console at link rev 4 (_intakeOn).
@@ -12918,6 +12918,7 @@ async function _ikSheetGo() {
 // ── Pages ──
 async function renderLinkIntake() {
   const I = _ik();
+  I.lkPre = 0; // ux18: each page entry warms the Tidy up lists once
   setApp(shell(`<div class="ph ik-ph"><h1>New youth &amp; consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await _ikLoad(!!I.dates);
 }
@@ -13178,6 +13179,7 @@ async function _ikLoad(quiet) {
   _ikAfterLoad();
   _ikDraw();
   _ikSchedule();
+  if (!quiet || !I.lkPre) _ikLkWarm(_ikSt()); // ux18: a real entry; the 5 s / 60 s background reloads are quiet
 }
 async function _ikLoadRow(quiet) {
   const I = _ik(), key = I.key, date = I.date, mode = I.tab;
@@ -13455,9 +13457,9 @@ function _ikLk(kind) {
 }
 function _ikLkBusy(x) { return x.st === 'asking' || x.st === 'waiting' || x.st === 'working'; }
 // The outbox item (contract REV 6 §3): the search text rides in the note (encrypted), never in the payload.
-function _ikLkItem(kind, page, q, id) {
+function _ikLkItem(kind, page, q, id, after) {
   const t = String(q || '').trim().slice(0, 60);
-  return { kind: 'action', id, type: 'consentLookup', payload: { kind, page, ref: id }, note: t || null, leaderId: null };
+  return { kind: 'action', id, type: 'consentLookup', payload: { kind, page, ref: id, ...(after ? { since: after } : {}) }, note: t || null, leaderId: null };
 }
 function _ikLkGate(st) {
   const c = st && st.console, cap = c && c.capabilities ? c.capabilities.consentLookup : undefined;
@@ -13480,14 +13482,96 @@ function _ikLkSearch(kind) {
 }
 function _ikLkKey(kind, e) { if (e && e.key === 'Enter') { e.preventDefault(); try { e.target.blur(); } catch (er) {} _ikLkSearch(kind); } }
 function _ikLkTurn(kind, d) { const x = _ikLk(kind); if (x.res) _ikLkGo(kind, (Number(x.res.page) || 1) + d, x.resQ); }
-async function _ikLkGo(kind, page, q, sameId) {
+// ux-run-2026-10-18 (operator P1/P2/P4): entering New youth & consent (Consents tab) warms every Tidy up list in the background
+// (consentLookup is a READ: the console never writes Elvanto for it), so a tap shows it ready with its "checked" time.
+// P4 hybrid: the last full page-1 answer of each list is kept as its server ID only (never a name; the server keeps answers 24 h)
+// and read back at once after a reload; then pass 1 asks only for what is NEW since that answer (a console at link_rev >= 11,
+// payload `since`), pass 2 asks for everything again. An older console gets pass 2 only. Never in the service window (the console
+// parks mismatches/other there), never over a search, a later page, a busy or failed ask, or an answer under 15 min old.
+const IK_LK_FRESH_MS = 15 * 60e3;
+const IK_LK_KINDS = ['unlinked', 'mismatches', 'forms', 'other']; // the quick ones first; other reads Elvanto longest
+const IK_LK_SINCE_REV = 11;
+function _ikLkKeepKey() { return 'ysc.ikLk.' + ((S.user && S.user.id) || ''); }
+function _ikLkKept() {
+  try { const v = JSON.parse(localStorage.getItem(_ikLkKeepKey()) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
+}
+function _ikLkKeep(kind, id, at) {
+  try { const v = _ikLkKept(); if (id) v[kind] = { id, at }; else delete v[kind]; localStorage.setItem(_ikLkKeepKey(), JSON.stringify(v)); } catch (e) {}
+}
+// Kept answers back on screen (ids only): ready, with their own checked time. A gone or failed one is dropped quietly.
+async function _ikLkRestore(st, now) {
+  const I = _ik(), kept = _ikLkKept();
+  if (now == null) now = Date.now();
+  await Promise.all(IK_LK_KINDS.map(async (k) => {
+    const e = kept[k], x = _ikLk(k);
+    if (!e || !e.id || x.res || x.st !== 'idle') return;
+    if (!(now - Date.parse(e.at) < 864e5)) { _ikLkKeep(k, null); return; } // the server keeps answers 24 h
+    let r = null;
+    try { r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(e.id), true); } catch (er) {}
+    if (_ik() !== I || x.res || x.st !== 'idle') return;
+    if (r && r.status === 'ready' && Number(r.page) === 1) Object.assign(x, { id: e.id, st: 'ready', res: r, resQ: '', q: '', page: 1, msg: null });
+    else _ikLkKeep(k, null);
+  }));
+  _ikDraw();
+}
+function _ikLkPreload(st, now) {
+  const I = _ik(), c = st && st.console, out = [];
+  if (now == null) now = Date.now();
+  if (I.tab !== 'consent' || !c || !c.online || c.inWindow || _ikLkGate(st)) return out;
+  for (const k of IK_LK_KINDS) {
+    if ((k === 'unlinked' && !_ikClCap(st)) || (k === 'other' && _ikRev(st) < 8)) continue;
+    const x = _ikLk(k);
+    if (x.q || (x.st !== 'idle' && x.st !== 'ready') || _ikLkBusy(x)) continue;
+    if (x.res && (x.resQ || Number(x.res.page) !== 1)) continue;
+    if (x.res && now - Date.parse(x.res.takenAt) < IK_LK_FRESH_MS) continue;
+    const after = x.res && x.res.takenAt && _ikRev(st) >= IK_LK_SINCE_REV ? x.res.takenAt : null;
+    x.full = !!after;
+    out.push(k);
+    _ikLkGo(k, 1, '', null, after);
+  }
+  return out;
+}
+// Once per page entry (I.lkPre; the 5 s / 60 s reloads never re-ask): kept answers first, then the background asks.
+async function _ikLkWarm(st, now) {
+  const I = _ik();
+  if (now == null) now = Date.now();
+  if (I.tab !== 'consent' || now - (I.lkPre || 0) < 60e3) return [];
+  I.lkPre = now;
+  await _ikLkRestore(st, now);
+  if (_ik() !== I) return [];
+  return _ikLkPreload(_ikSt() || st, now);
+}
+// Pass 1 rows go on top of the kept ones (one row per form, or per person for Other); the kept checked time stays until pass 2.
+function _ikLkMerge(old, d, kind) {
+  const key = (r) => (kind === 'other' ? r && r.personId : r && r.subId), size = Number(old.pageSize) || 25;
+  const fresh = (d && d.rows) || [], seen = new Set(fresh.map(key)), oldKeys = new Set((old.rows || []).map(key));
+  const added = fresh.filter((r) => !oldKeys.has(key(r))).length;
+  return { ...old, rows: fresh.concat((old.rows || []).filter((r) => !seen.has(key(r)))).slice(0, size),
+    total: old.total != null ? Number(old.total) + added : null };
+}
+// After an answer: a pass 1 (ok or refused) goes on to pass 2 quietly; a full page-1 answer with no search is kept (its id).
+function _ikLkDone(kind) {
+  const x = _ikLk(kind), was = x.after;
+  if (was) {
+    x.after = null;
+    if (x.full && (x.st === 'ready' || x.st === 'failed' || x.st === 'timeout')) {
+      x.full = false;
+      if (x.st !== 'ready') { x.st = 'ready'; x.msg = null; } // the kept rows stay on screen
+      _ikLkGo(kind, 1, '');
+    }
+    return;
+  }
+  if (x.st === 'ready' && x.res && Number(x.res.page) === 1 && !x.resQ && x.id) _ikLkKeep(kind, x.id, x.res.takenAt);
+}
+async function _ikLkGo(kind, page, q, sameId, after) {
   const I = _ik(), x = _ikLk(kind);
   if (_ikLkBusy(x) || page < 1) return;
   const id = sameId || _lkUuid();
-  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now(), blips: 0 });
+  Object.assign(x, { q: String(q || '').trim().slice(0, 60), page, id, queued: false, st: 'asking', msg: null, since: Date.now(), blips: 0, after: after || null });
+  if (!after) x.full = false; // P4: only a pass 1 ("new since") is followed by a full pass
   _ikDraw();
   try {
-    const r = _ikOutcome(await _ikPost([_ikLkItem(kind, page, x.q, id)]), id);
+    const r = _ikOutcome(await _ikPost([_ikLkItem(kind, page, x.q, id, x.after)]), id);
     if (_ik() !== I || x.id !== id) return;
     if (r && (r.outcome === 'saved' || r.outcome === 'replay')) { x.queued = true; x.st = 'waiting'; _ikLkPoll(kind); }
     else { x.st = 'failed'; x.msg = (r && r.message) || 'The console was not asked. Try again.'; }
@@ -13505,12 +13589,12 @@ function _ikLkErr(x, e) {
 function _ikLkAgain(kind) {
   const x = _ikLk(kind);
   if (x.queued && x.id) { x.st = 'waiting'; x.msg = null; x.since = Date.now(); _ikDraw(); _ikLkPoll(kind); }
-  else return _ikLkGo(kind, x.page, x.q, x.st === 'offline' ? x.id : null); // the POST may have landed: same id = replay, not a second scan
+  else return _ikLkGo(kind, x.page, x.q, x.st === 'offline' ? x.id : null, x.st === 'offline' ? x.after : null); // the POST may have landed: same id = replay, not a second scan
 }
 // Apply one poll reply; true = keep polling. A first mismatches scan is slow, so it waits longer before giving up.
 function _ikLkApply(x, r, now) {
   const s = r && r.status;
-  if (s === 'ready') { x.st = 'ready'; x.res = r; x.resQ = x.q; x.msg = null; return false; }
+  if (s === 'ready') { x.st = 'ready'; x.res = x.after && x.res ? _ikLkMerge(x.res, r, x.kind) : r; x.resQ = x.q; x.msg = null; return false; }
   if (s === 'failed') { x.st = 'failed'; x.msg = _ikLkReason(r.reason); return false; }
   if (s !== 'waiting' && s !== 'working') { x.st = 'failed'; x.msg = _ikLkReason(null); return false; }
   if (now - x.since > (x.kind === 'mismatches' || x.kind === 'other' ? 15 : 5) * 60000) {
@@ -13537,7 +13621,7 @@ function _ikLkPoll(kind) {
       const r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(id), true);
       if (_ik() !== I || x.id !== id) return;
       x.blips = 0;
-      if (_ikLkApply(x, r, Date.now())) _ikLkPoll(kind);
+      if (_ikLkApply(x, r, Date.now())) _ikLkPoll(kind); else _ikLkDone(kind);
     } catch (e) {
       if (_ik() !== I || x.id !== id) return;
       if ((!e || !e.status) && (x.blips || 0) < 3) { x.blips = (x.blips || 0) + 1; _ikLkPoll(kind); return; }

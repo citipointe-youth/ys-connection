@@ -294,7 +294,7 @@ describe('B18 client: only a real page entry marks the intake viewed', () => {
       const I0 = { tab: 'intake', gen: 0, date: null, key: null };
       function _ik() { return I0; }
       const API = { fresh: (p) => { urls.push(p); return Promise.resolve(p.includes('date=') ? { rows: [] } : { dates: [{ date: '2026-10-09' }] }); } };
-      const _intakeOn = () => true, _ikLoadRow = async () => {}, _ikAfterLoad = () => {}, _ikDraw = () => {}, _ikSchedule = () => {};
+      const _intakeOn = () => true, _ikLoadRow = async () => {}, _ikAfterLoad = () => {}, _ikDraw = () => {}, _ikSchedule = () => {}, _ikLkWarm = () => [], _ikSt = () => null;
       ${extractFn(HTML, '_ikLoad')}
       return { _ikLoad };`)(urls);
     await f._ikLoad(quiet);

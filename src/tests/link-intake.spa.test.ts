@@ -46,6 +46,7 @@ function makeEnv(e: Env = {}) {
     let LINK = _lkFresh();
     const NAV = { stack: [] };
     function navPush() {}
+    const _ikLkWarm = () => { (__calls.warm = __calls.warm || []).push(1); return []; }; // ux18 preload: consents-preload.spa.test.ts
     ${CONSTS}
     const localStorage = __ls;
     const navigator = { userAgent: 'iPhone Safari' };
@@ -567,9 +568,12 @@ describe('consents sub-menus (R2)', () => {
     expect(f._ikByOutcome(rows).map((r: any) => r.title)).toEqual(['Bo', 'Al', 'Zed', 'Amy']);
     expect(f._ikOutcomeLine(rows)).toBe('1 do not contact · 2 contact OK · 1 no form');
   });
-  it('the other sub-menus load nothing until asked, and the Intakes tab still works', async () => {
+  // ux18 P1 (operator 2026-10-18) reverses "nothing loads until asked" for this menu: the page entry warms every list through
+  // _ikLkWarm (tested in consents-preload.spa.test.ts); opening a sub-menu itself still sends nothing.
+  it('the other sub-menus send nothing on open (the page entry warms them), and the Intakes tab still works', async () => {
     const e = consentEnv();
     await e.fns._ikLoad(false);
+    expect((e.calls as any).warm.length).toBe(1);
     const n = e.calls.fresh.length;
     e.fns._ikConsentSub('forms');
     const t = strip(e.fns._ikPageHtml());
