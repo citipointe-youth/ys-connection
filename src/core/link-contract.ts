@@ -40,7 +40,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // step 0: the Consents Other "Parent texted" date, youth-plan.inferDate; null = none found). The app's consent Friday counts from
 // it, else from `due`. The console sends it only when the claim reply says linkRev >= 10; an older app strips the key, and a
 // row without it (an older console) falls back to `due`.
-export const LINK_REV = 10;
+// LINK_REV 11 (ux run 2026-10-18, P4; operator approved the console change), optional only: a consentLookup payload may carry
+// `since` (only rows NEW since then). The app sends it only when the newest console's link_rev >= 11 (IK_LK_SINCE_REV in the SPA);
+// a console at 10 just gets full passes (and the admin page shows "Console out of date" until it is restarted).
+export const LINK_REV = 11;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
@@ -144,7 +147,7 @@ export const PAYLOAD_SCHEMAS = {
   removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
   // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
   consentLookup: z.object({ kind: z.enum(CONSENT_LOOKUP_KINDS), page: z.number().int().min(1).max(1000), ref: Uuid,
-    since: Iso.optional() }).strict(), // ux18 P4 (optional, no rev bump): only rows NEW since this time; the app sends it only to a console at link_rev >= 11 (console-since-spec.md)
+    since: Iso.optional() }).strict(), // ux18 P4 (LINK_REV 11, optional): only rows NEW since this time; the app sends it only to a console at link_rev >= 11 (console-since-spec.md)
   // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
   // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
