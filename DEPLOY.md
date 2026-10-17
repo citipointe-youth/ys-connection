@@ -4,10 +4,10 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-scr
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
 
 <!-- live -->
-- master sha: 59697a0 (cons17b/ys)
-- last ship: 2026-10-17 22:22 EAST
+- master sha: 2220a92 (ux18/rel)
+- last ship: 2026-10-18 06:45 EAST
 - migration: 0037
-- SW version: ysc-v127
+- SW version: ysc-v128
 - promote: pending (Vercel) — update this line by hand once promoted; last promoted: b10fbd4 (ysc-v123, 2026-10-17 09:05)
 - pending branches: chore/ship ux17/bus 
 <!-- /live -->
