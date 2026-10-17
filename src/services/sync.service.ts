@@ -23,6 +23,15 @@ export async function saveGenderFixes(repo: IStudentRepository, fixes: { student
 import { parseGroupName } from './import.service';
 import type { ErrorLogService } from './error-log.service';
 
+/** Roster auto-match + gender fixes (approved YS-only write). Called after a roster push and after every import (Part 2). */
+export async function rematchRoster(link: Pick<ILinkRepository, 'roster' | 'setMatches'>, students: IStudentRepository) {
+  const [roster, all] = await Promise.all([link.roster(), students.findAll()]);
+  const changes = autoMatch(roster, all);
+  if (changes.length) await link.setMatches(changes);
+  await saveGenderFixes(students, genderFixes(roster, all, changes));
+  return changes;
+}
+
 export interface SyncDeps {
   link: ILinkRepository; settings: ISettingsRepository; students: IStudentRepository; users: IUserRepository;
   now?: () => Date;
@@ -35,7 +44,7 @@ export interface SyncDeps {
 }
 
 /** Version first (from the raw body), then Zod. Issues carry path + message only, never a value. */
-function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
+export function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   const v = body !== null && typeof body === 'object' && !Array.isArray(body)
     ? (body as Record<string, unknown>).contractVersion : undefined;
   if (typeof v !== 'number') throw new SyncValidation([{ path: 'contractVersion', message: 'Required number' }]);
@@ -160,10 +169,7 @@ export function makeSyncService(d: SyncDeps) {
       const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };
-      const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
-      const changes = autoMatch(roster, students);
-      if (changes.length) await d.link.setMatches(changes);
-      await saveGenderFixes(d.students, genderFixes(roster, students, changes));
+      const changes = await rematchRoster(d.link, d.students);
       return { applied: true, rows: res.rows, matched: {
         auto: changes.filter((c) => c.match === 'auto').length,
         ambiguous: changes.filter((c) => c.match === 'ambiguous').length,
