@@ -143,7 +143,8 @@ export const PAYLOAD_SCHEMAS = {
   // Rev 6 (R4): admin/director; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
   removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
   // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
-  consentLookup: z.object({ kind: z.enum(CONSENT_LOOKUP_KINDS), page: z.number().int().min(1).max(1000), ref: Uuid }).strict(),
+  consentLookup: z.object({ kind: z.enum(CONSENT_LOOKUP_KINDS), page: z.number().int().min(1).max(1000), ref: Uuid,
+    since: Iso.optional() }).strict(), // ux18 P4 (optional, no rev bump): only rows NEW since this time; the app sends it only to a console at link_rev >= 11 (console-since-spec.md)
   // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
   // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
