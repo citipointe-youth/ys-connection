@@ -69,6 +69,10 @@ export interface BusService {
   pastRunMap(ctx: BusCtx, runId: string): Promise<MapImage>;
 }
 
+/** BUS-2: one mapper for the three saved-address lists. A bus row (vehicleId) reads as "Bus drop off" � never a street. */
+const addrOut = (a: BusAddress) => ({ id: a.id, label: a.label, suburb: a.vehicleId ? 'Bus drop off' : suburbOf(a.address),
+  street: a.vehicleId ? 'Bus drop off' : streetOf(a.address), vehicleId: a.vehicleId ?? null });
+
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
 const AddRider = z.object({
   studentId: z.string().min(1).optional(), guestId: z.string().min(1).optional(),
@@ -741,7 +745,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!r) throw new NotFoundError('Rider not found');
       const addrs = await bus.listAddresses(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
       return addrs.sort((a, b) => Number(b.id === r.addressId) - Number(a.id === r.addressId))
-        .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
+        .map(addrOut);
     },
     // Edit-rider sheet: forget one of the rider's saved addresses (owner, 2026-10-07). Task D
     // (owner, 2026-10-08): the current one can be deleted too — the rider stays on tonight's run
@@ -785,7 +789,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!who.studentId === !who.guestId) throw new BadRequestError('Give a studentId or a guestId');
       const addrs = await bus.listAddresses(who.studentId ? { studentId: who.studentId } : { guestId: who.guestId! });
       return addrs.sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? ''))
-        .map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) }));
+        .map(addrOut);
     },
     // Owner (2026-10-07): "Your car"'s add-someone search must work for any bus:use login,
     // including a junior `leader` who lacks bus:roster — they can only ever place a search hit
@@ -806,7 +810,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         } else pool = pool.filter((s) => canAccessStudent(ctx.actor, s.grade, s.gender, c.structure));
       }
       const addrsOf = async (who: { studentId: string } | { guestId: string }) =>
-        full ? (await bus.listAddresses(who)).map((a) => ({ id: a.id, label: a.label, suburb: suburbOf(a.address), street: streetOf(a.address) })) : [];
+        full ? (await bus.listAddresses(who)).map(addrOut) : [];
       // Task 3 (owner): `street` is always the decrypted address's street part — a display
       // fallback for an address saved before the default-label fix, when `label` is still blank.
       const studentHits = await Promise.all(pool.slice(0, 15).map(async (s): Promise<BusSearchHit> => ({

@@ -502,7 +502,7 @@ describe('/bus/search returns labels + suburb only, never the full street addres
     const hits = await svc.search(ctx('grade'), 'tran');
     // Task 3 (owner): `street` is a new, deliberate fallback field (the decrypted address's
     // street part) — the raw, full stored `address` (incl. suburb/postcode) is still never sent.
-    expect(hits[0]!.addresses[0]).toEqual({ id: hits[0]!.addresses[0]!.id, label: 'Home', suburb: 'Carina', street: '24 Wynnum Rd' });
+    expect(hits[0]!.addresses[0]).toEqual({ id: hits[0]!.addresses[0]!.id, label: 'Home', suburb: 'Carina', street: '24 Wynnum Rd', vehicleId: null });
     expect(Object.keys(hits[0]!.addresses[0]!)).not.toContain('address');
   });
 });
