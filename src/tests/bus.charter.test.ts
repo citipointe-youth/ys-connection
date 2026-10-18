@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { busFixture, recordingRouting } from './helpers/bus-fixtures';
 
+/** lastUsedAt is ms-resolution: step past it so "most recently used" is never a same-ms tie in a test. */
+const tick = () => new Promise((r) => setTimeout(r, 3));
 const DROP = { endsAt: 'address' as const, endsAddress: '9 Hall St, Carina QLD', endsPlaceId: 'fake:hall' };
 async function busCar(f: Awaited<ReturnType<typeof busFixture>>, seats = 10, leaderIds: string[] = ['L1']) {
   const v = await f.svc.saveVehicle(f.admin, { name: 'Charter', seats, kind: 'bus', ...DROP });
@@ -97,6 +99,7 @@ describe('BUS-2 bus drop-off choice', () => {
     const f = await busFixture();
     await f.rider('s1'); // home address first
     const { rvId } = await busCar(f);
+    await tick();
     await f.svc.updateRider(f.admin, (await f.svc.getRun(f.admin)).riders[0]!.id, { busRunVehicleId: rvId });
     const next = { ...f.admin, localNow: NEXT };
     const past = (await f.svc.getRun(next)).pastRiders.find((p) => p.studentId === 's1')!;
@@ -171,5 +174,45 @@ describe('BUS-2 bus drop-off choice', () => {
     expect((await f.svc.riderAddresses(f.admin, r.id))[0]!.vehicleId).toBeTruthy();
     expect((await f.svc.personAddresses(f.admin, { studentId: 's1' }))[0]!.label).toBe('Bus drop off');
     expect((await f.svc.search(f.ctx('leader', 'L1'), 'Jess')).flatMap((h) => h.addresses)).toEqual([]);
+  });
+});
+
+describe('BUS-2 move + history', () => {
+  it('Move onto a full bus is allowed and becomes their choice', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f, 1, ['L1']); // capacity 0
+    const r = await f.rider('s2');
+    await tick();
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: rvId });
+    const got = (await f.svc.getRun(f.admin)).riders[0]!;
+    expect(got).toMatchObject({ runVehicleId: rvId, placeId: 'fake:hall', pinned: true });
+    expect((await f.svc.search(f.admin, 'Sam'))[0]!.addresses[0]!.label).toBe('Bus drop off');
+  });
+  it('Move off the bus goes back to the home address; no home → 400', async () => {
+    const f = await busFixture();
+    await f.rider('s1');
+    const { rvId } = await busCar(f);
+    const carId = await f.car('Van', 8, ['L2']);
+    const rid = (await f.svc.getRun(f.admin)).riders[0]!.id;
+    await f.svc.updateRider(f.admin, rid, { busRunVehicleId: rvId });
+    await f.svc.moveRider(f.admin, rid, { runVehicleId: carId });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: carId, placeId: 'fake:s1' });
+    const r3 = await f.svc.addRider(f.admin, { studentId: 's3', busRunVehicleId: rvId });
+    await expect(f.svc.moveRider(f.admin, r3.id, { runVehicleId: null })).rejects.toThrow(/home address first/);
+  });
+  it('Unassign all and Undo leave bus riders on the bus', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    await f.svc.generate(f.admin, { mode: 'all' });
+    await f.svc.unassignAll(f.admin);
+    expect((await f.svc.getRun(f.admin)).riders[0]!.runVehicleId).toBe(rvId);
+  });
+  it('Past marks the bus', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    const h = await f.svc.history({ ...f.admin, localNow: '2026-10-16T19:00' });
+    expect(h.rides[0]!.car).toBe('Charter (bus)');
   });
 });

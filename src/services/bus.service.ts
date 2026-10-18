@@ -1127,6 +1127,23 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run);
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
+      const rvs = await bus.listRunVehicles(run.id);
+      const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
+      const target = v.runVehicleId ? rvs.find((x) => x.id === v.runVehicleId && x.running) : null;
+      if (!v.unpin && target && isBus(target)) { // BUS-2: onto a bus = their bus choice; never "full"
+        const addr = await resolveAddress(owner, { busRunVehicleId: target.id }, run);
+        const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: target.endsAddress ?? addr.address,
+          snapPlaceId: target.endsPlaceId, runVehicleId: target.id, stopOrder: null, pinned: true });
+        await bus.setUndo(run.id, null, null); await touch(ctx, run);
+        return { ...riderView(saved, await consentOf(saved)), reordered: true };
+      }
+      let cur = r;
+      if (!v.unpin && rvs.some((x) => x.id === r.runVehicleId && isBus(x))) { // BUS-2: off the bus = back to their home address
+        const home = latestHome(await bus.listAddresses(owner));
+        if (!home) throw new BadRequestError('Add a home address first: tap their name on Students');
+        cur = await bus.saveRunRider({ ...r, addressId: (await resolveAddress(owner, { addressId: home.id }, run)).id,
+          snapAddress: home.address, snapPlaceId: home.placeId, runVehicleId: null, stopOrder: null, pinned: false });
+      }
       if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
         const saved = await bus.saveRunRider({ ...r, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
@@ -1135,12 +1152,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       if (v.runVehicleId === null) {
         // Owner 2026-10-06: Unassigned is never pinned — the next Generate / Fit in places them again.
-        const saved = await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+        const saved = await bus.saveRunRider({ ...cur, runVehicleId: null, stopOrder: null, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
         await touch(ctx, run);
         return { ...riderView(saved, await consentOf(saved)), reordered: true };
       }
-      const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === v.runVehicleId && x.running);
+      const rv = target;
       if (!rv) throw new NotFoundError('Car not found');
       const inCar = (await ridingOf(run.id)).filter((x) => x.runVehicleId === rv.id && x.id !== r.id);
       // I7: a leader removed from the roster can still be named in this car's raw leaderIds —
@@ -1150,7 +1167,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const activeLeaderCount = rv.leaderIds.filter((id) => knownLeaders.has(id)).length;
       if (inCar.length >= capacityOf(rv.seats, activeLeaderCount)) throw new BadRequestError(`${rv.name} is full`);
       const maxStop = Math.max(0, ...inCar.map((x) => x.stopOrder ?? 0));
-      const saved = await bus.saveRunRider({ ...r, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
+      const saved = await bus.saveRunRider({ ...cur, runVehicleId: rv.id, stopOrder: maxStop + 1, pinned: true });
       const reordered = await reorderCar(c, run, rv); // R1 appended last; R2 re-orders with a single-car solve (falls back to appended)
       await bus.setUndo(run.id, null, null); // I2: see above
       await touch(ctx, run);
@@ -1313,7 +1330,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           const car = r.runVehicleId ? carById.get(r.runVehicleId) ?? null : null;
           rides.push({ runId: run.id, date: run.serviceDate, riderId: r.id, studentId: r.studentId, guestId: r.guestId,
             kind: r.guestId ? 'guest' : 'student', wasGuest: r.wasGuest, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
-            car: car?.name ?? null, carColour: car?.colourIndex ?? null, runVehicleId: car?.id ?? null, leaders: car ? leaderNamesOf(car, live) : [],
+            car: car ? (isBus(car) ? `${car.name} (bus)` : car.name) : null, carColour: car?.colourIndex ?? null, runVehicleId: car?.id ?? null, leaders: car ? leaderNamesOf(car, live) : [],
             stop: r.stopOrder, address: r.snapAddress, suburb: suburbOf(r.snapAddress), droppedAt: r.droppedAt, droppedBy: r.droppedBy,
             addedBy: r.addedBy, notRiding: r.notRiding, noShow: r.noShow, note: r.note });
         }
