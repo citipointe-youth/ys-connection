@@ -101,7 +101,7 @@ const NewGuest = z.object({
 });
 const BUS_NEEDS_DROP = 'A bus needs its drop-off address';
 const BUS_NOT_RUNNING = "That bus isn't running tonight";
-const NO_BUS_NO_HOME = "That bus isn't running tonight. Pick a home address";
+const NO_BUS_NO_HOME = 'Add a home address first: tap their name on Students'; // simplicity: one message for "no bus, no home"
 /** BUS-2: a person's most recently used home (non-bus) address. */
 const latestHome = (owned: BusAddress[]) => owned.filter((a) => !a.vehicleId).sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))[0];
 /** BUS-2: a charter bus (one drop-off, never solved, no gender rule). Absent kind = car. */
@@ -605,12 +605,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const s = studentById.get(addr.studentId);
         if (!s) continue;
         out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
-          grade: s.grade, gender: genderOf(s.gender), suburb: addr.vehicleId ? 'Bus drop off' : suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: s.grade, gender: genderOf(s.gender), suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt });
       } else if (addr.guestId) {
         const g = guestById.get(addr.guestId);
         if (!g) continue; // purged, or never existed
         out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
-          grade: g.grade, gender: g.gender, suburb: addr.vehicleId ? 'Bus drop off' : suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: g.grade, gender: g.gender, suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt });
       }
     }
     out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
@@ -1194,7 +1194,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       let cur = r;
       if (!v.unpin && rvs.some((x) => x.id === r.runVehicleId && isBus(x))) { // BUS-2: off the bus = back to their home address
         const home = latestHome(await bus.listAddresses(owner));
-        if (!home) throw new BadRequestError('Add a home address first: tap their name on Students');
+        if (!home) throw new BadRequestError(NO_BUS_NO_HOME);
         cur = await bus.saveRunRider({ ...r, addressId: (await resolveAddress(owner, { addressId: home.id }, run)).id,
           snapAddress: home.address, snapPlaceId: home.placeId, runVehicleId: null, stopOrder: null, pinned: false });
       }

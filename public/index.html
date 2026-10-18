@@ -14991,6 +14991,8 @@ async function busSaveCarLeaders(runVehicleId) {
   try { await _busSend('PATCH', '/bus/run/vehicles/' + runVehicleId, { leaderIds }); closeModal(); } catch (e) { toast(e.message); }
 }
 
+// BUS-2: the Bus chip plus "Over by N" (warning only; a bus is never full). Car setup + Assign.
+function _busBusChips(over) { return `<span class="chip c-accent">Bus</span>${over > 0 ? `<span class="chip c-warn">${icS('alert')} Over by ${over}</span>` : ''}`; }
 function _busCarsHtml() {
   const v = BUS.view;
   // Task 4: reuse the Routes lock alert so Car setup shows the same "<name> is generating
@@ -15010,7 +15012,7 @@ function _busCarsHtml() {
     // BUS-2: a bus has no gender rule — Bus chip in place of the gender chip, plus Over by N (warning only).
     const isBus = rv.kind === 'bus', over = isBus ? v.riders.filter((r) => r.runVehicleId === rv.id).length - rv.capacity : 0;
     const elig = rv.eligibility;
-    const eligChip = isBus ? `<span class="chip c-accent">Bus</span>${over > 0 ? `<span class="chip c-warn">${icS('alert')} Over by ${over}</span>` : ''}` : elig.unknown
+    const eligChip = isBus ? _busBusChips(over) : elig.unknown
       ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
       // elig.unknown is exactly !female && !male (bus-logic.ts eligibilityOf), so once
       // we're past the unknown branch above at least one of female/male is true — Mixed
@@ -15198,7 +15200,7 @@ function _busRoutesHtml() {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
     const min = BUS.routeMin[rv.id];
     const isBus = rv.kind === 'bus', over = riders.length - rv.capacity; // BUS-2: no gender rule, no stop order, no Lock
-    const busChips = isBus ? `<span class="chip c-accent">Bus</span>${over > 0 ? `<span class="chip c-warn">${icS('alert')} Over by ${over}</span>` : ''}` : '';
+    const busChips = isBus ? _busBusChips(over) : '';
     const warn = !riders.length || isBus ? '' : rv.eligibility.unknown ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
       : riders.some((r) => r.gender && !rv.eligibility[r.gender]) ? `<span class="chip c-warn">${icS('alert')} Gender mismatch</span>` : '';
     // Owner rule (2026-10): a girl may only be auto-placed with ≥1 female leader on the
