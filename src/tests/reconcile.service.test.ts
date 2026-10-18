@@ -120,6 +120,15 @@ describe('reconcile.latest (console endpoint)', () => {
     const { svc } = await harness();
     await expect(svc.latest({ ...body, contractVersion: 2 })).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH' });
   });
+  it('legacy A12 (recon C3): one oversized row is clipped, not a 500 for the whole answer', async () => {
+    const { svc, errRepo } = await harness();
+    await svc.run();
+    await errRepo.record({ id: 'big1', category: 'link', code: 'X'.repeat(100), route: 'checkIn', status: null, message: 'y'.repeat(400), role: null, at: NOW.toISOString(), tier: 'now', foldKey: null } as any);
+    const r = await svc.latest(body);
+    expect(r.entries.map((e) => e.code)).toContain('recon-unmatched');
+    expect(r.entries.every((e) => e.code.length <= 80 && e.line1.length <= 300)).toBe(true);
+    expect(r.entries.some((e) => e.code.startsWith('XXX'))).toBe(true);
+  });
   it('no run yet gives run null', async () => {
     const { svc } = await harness();
     expect((await svc.latest(body)).run).toBeNull();
