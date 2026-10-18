@@ -14380,10 +14380,13 @@ function _busRosterHtml() {
   const gOrd = (r) => (r.gender === 'female' ? 0 : r.gender === 'male' ? 1 : 2), yOrd = (r) => (r.grade == null ? 99 : r.grade);
   const rows = shown.slice().sort((a, b) => gOrd(a) - gOrd(b) || yOrd(a) - yOrd(b) || a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
+    // R19-U14 #18/S12: the vehicle sits in the meta line (no centred side column); a bus is a neutral Bus chip,
+    // never a car colour (a pink pill read as "girls car").
+    const pill = !car ? '' : car.kind === 'bus' ? `<span class="chip c-neutral">${icS('bus')} ${esc(car.name)}</span> `
+      : `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span> `;
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
-      ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
+        <div class="li-sub">${pill}${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');

@@ -602,6 +602,21 @@ describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascend
   });
 });
 
+describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta line; a bus is a neutral Bus chip', () => {
+  it('car = coloured pill inside li-sub; bus = neutral chip, never a car colour (pink read as a girls car)', () => {
+    const stubs = `function esc(s) { return String(s); } function icS(k) { return '[' + k + ']'; } function icEmpty() { return ''; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#f0f'; }
+     function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
+    const view = { run: { readOnly: false, lockBy: null, lockUntil: null }, vehicles: [{ id: 'v1', name: 'Van', kind: 'car', running: true, capacity: 4, colourIndex: 1 }, { id: 'b1', name: 'Charter', kind: 'bus', running: true, capacity: 3, colourIndex: 2 }],
+      riders: [{ id: 'a', name: 'Amy', gender: 'female', grade: 7, runVehicleId: 'v1', address: 'Carina' }, { id: 'b', name: 'Bo', gender: 'male', grade: 8, runVehicleId: 'b1', address: 'Bus drop off' }] };
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], `${stubs} const BUS = { search: '', generating: false, view: ${JSON.stringify(view)} };`, ['_busRosterHtml']);
+    const h = _busRosterHtml();
+    expect(h).toMatch(/<div class="li-sub"><span class="car-pill" style="--c:#f0f">Van<\/span> Carina/);
+    expect(h).toMatch(/<div class="li-sub"><span class="chip c-neutral">\[bus\] Charter<\/span> Bus drop off/);
+    expect(h.match(/#f0f/g)).toHaveLength(1);
+  });
+});
+
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
