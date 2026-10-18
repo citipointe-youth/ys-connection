@@ -634,7 +634,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
 .bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
 /* Phone-tight layout: narrower gutters/cards, one-line title, tabs share the row instead of scrolling off. */
-@media(max-width:767px){.bus-pg{padding-left:12px;padding-right:12px}.bus-pg .card{padding:12px}.bus-wide{display:none}}
+/* R19-U14 #14: #page-main already gives the 16px phone gutter, so .bus-pg adds none (was 16 + 12 = 28). */
+@media(max-width:767px){.bus-pg{padding-left:0;padding-right:0}.bus-pg .card{padding:12px}.bus-wide{display:none}}
 .bus-wide{margin-left:2px}
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
