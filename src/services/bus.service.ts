@@ -424,6 +424,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const seesPending = can(ctx.actor, 'bus:analysis');
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
     const riderViews = riders.map((r) => riderView(r, consentFor(consents, r)));
+    const busIds = new Set(vehicles.filter(isBus).map((v) => v.id));
+    if (riderViews.some((r) => r.runVehicleId && busIds.has(r.runVehicleId))) {
+      const all = await bus.listAllAddresses();
+      for (const r of riderViews) {
+        if (r.runVehicleId && busIds.has(r.runVehicleId)
+          && !latestHome(all.filter((a) => (r.studentId ? a.studentId === r.studentId : a.guestId === r.guestId)))) r.noHome = true;
+      }
+    }
     // I1: a 'leader' login who isn't a self-identified coordinator gets "My car only" per
     // spec §4 — strip every rider's street address/place/consent note/who-recorded-it (name +
     // suburb only; this is also what their read-only Assign shows). Leaders + fleet stay:

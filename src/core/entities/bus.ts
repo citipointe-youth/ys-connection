@@ -74,6 +74,8 @@ export interface BusRiderView {
   // they only ever see { given }.
   consent: { given: boolean; note?: string; recordedBy?: string; recordedAt?: string } | null;
   droppedAt: string | null; droppedBy: string | null;
+  /** Review E11: on a bus with no home address saved — turning the bus off leaves them with no address. */
+  noHome?: boolean;
 }
 export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool: boolean; prefGrades: number[] }
 // Owner request: "Past riders" on the Tonight tab — people with a saved address who aren't on

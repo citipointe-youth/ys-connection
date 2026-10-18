@@ -205,7 +205,9 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .rc.ign{opacity:.6}
 .el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px;width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;padding:0}
 .ny-err{font-size:13px;font-weight:400;text-transform:none;color:var(--danger);margin-top:4px}
-.bus-allsum{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.bus-allsum{cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px;list-style:none}
+.bus-allsum::-webkit-details-marker{display:none}
+.bus-allcars[open] > .bus-allsum .drop-chev{transform:rotate(90deg)}
 .el-msg{flex:1;font-weight:600;font-size:14px}
 .el-new{background:#fde2e2;color:#a61b1b}
 .el-h{font-weight:700;font-size:13px;margin:14px 0 6px}
@@ -9647,8 +9649,12 @@ function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span 
 // Task D (owner, 2026-10-08): no saved address at all (addressId null) vs a saved address Google
 // can't locate (addressId set, placeId null, the pre-existing "No map pin" case) — both leave the
 // rider out of Generate, but only the first one needs a brand-new address, not a re-pick.
-function _busPinChip(r) {
-  if (!r.addressId) return `<span class="chip c-warn">${icS('alert')} No address</span>`;
+// Review E4: a redacted view (junior leader: no ids, suburb only) gets no chip — every address looks missing there;
+// soft=true (Trip logging, where an address is optional) shows a neutral chip, not a warning.
+// An empty address (a bus-only rider whose bus is off) is "No address", not "No map pin".
+function _busPinChip(r, soft) {
+  if (!r.studentId && !r.guestId) return '';
+  if (!r.addressId || !r.address) return soft ? `<span class="chip c-neutral">No address</span>` : `<span class="chip c-warn">${icS('alert')} No address</span>`;
   if (!r.placeId) return `<span class="chip c-warn">${icS('pin')} No map pin</span>`;
   return '';
 }
@@ -14282,9 +14288,10 @@ async function renderBus() {
 // T7: "All cars (n)" sits collapsed at the bottom of My car. Open state lives in BUS.carsOpen so the 10 s
 // repaint keeps it; the list is fetched on expand and polled (_busPollTick) only while open.
 function _busAllCarsSection() {
-  const n = BUS.carsOpen && BUS.cars ? ` (${esc(String(BUS.cars.cars.length))})` : '';
-  return `<details class="bus-allcars" style="margin-top:14px"${BUS.carsOpen ? ' open' : ''} ontoggle="busCarsToggle(this.open)">
-    <summary class="card-title bus-allsum">All cars${n}</summary>${BUS.carsOpen ? _busAllCarsHtml() : ''}</details>`;
+  // Review E1: styled like "Past riders (N) ›" so it reads as a row you can open. Closed, the count is tonight's running cars.
+  const list = BUS.cars ? BUS.cars.cars : ((BUS.view && BUS.view.vehicles) || []).filter((x) => x.running);
+  return `<details class="card bus-allcars" style="margin-top:12px"${BUS.carsOpen ? ' open' : ''} ontoggle="busCarsToggle(this.open)">
+    <summary class="bus-allsum"><span class="card-title">All cars (${esc(String(list.length))})</span><span class="drop-chev">${icS('chevr')}</span></summary>${BUS.carsOpen ? `<div style="margin-top:8px">${_busAllCarsHtml()}</div>` : ''}</details>`;
 }
 function busCarsToggle(open) {
   if (open === !!BUS.carsOpen) return;
@@ -14401,7 +14408,7 @@ async function busSavePast(i) {
   BUS.addingPast = true;
   try {
     await _busSend('POST', '/bus/riders', { ...(p.studentId ? { studentId: p.studentId } : { guestId: p.guestId }), ...a });
-    closeModal(); toast(`${p.name} added`); renderBus();
+    closeModal(); toast(`${p.name} added${_busOverMsg(a)}`); renderBus();
   } catch (e) { toast(e.message); }
   finally { BUS.addingPast = false; }
 }
@@ -14491,13 +14498,13 @@ function _busAddrLabel(a) {
 // del = { riderId, currentId }: the edit-rider sheet can forget any saved address, including
 // tonight's current one (Task D, owner 2026-10-08) — deleting that one unassigns the rider
 // server-side, and busDeleteAddress reopens this sheet so it stays consistent.
-// BUS-2: a running bus is offered as "Bus drop off: <address>" (never in the own-car picker: noBus).
+// BUS-2: a running bus is offered as "Bus drop off · street · suburb" (never in the own-car picker: noBus).
 // Their bus row (vehicleId set) is never listed as a plain address; when it was their last
 // choice and that bus runs tonight, the bus option is pre-selected.
 function _busAddressPicker(addresses, del, noBus) {
   const buses = noBus ? [] : ((BUS.view && BUS.view.vehicles) || []).filter((x) => x.kind === 'bus' && x.running && x.endsAddress);
   const last = addresses[0], busPick = last && last.vehicleId ? buses.find((x) => x.vehicleId === last.vehicleId) : null;
-  const busRows = buses.map((x) => `<label class="radio-row"><input type="radio" name="bus-addr" value="bus:${esc(x.id)}" ${x === busPick ? 'checked' : ''}><span style="flex:1">Bus drop off: ${esc(x.endsAddress)}</span></label>`).join('');
+  const busRows = buses.map((x) => `<label class="radio-row"><input type="radio" name="bus-addr" value="bus:${esc(x.id)}" ${x === busPick ? 'checked' : ''}><span style="flex:1">${esc(_busAddrLabel({ label: 'Bus drop off', street: x.endsAddress.split(',')[0].trim(), address: x.endsAddress }))}</span></label>`).join(''); // review E8: same "Label · street · suburb" as the rows below
   addresses = addresses.filter((a) => !a.vehicleId);
   const saved = busRows + addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 && !busPick ? 'checked' : ''}>
       <span style="flex:1">${esc(_busAddrLabel(a))}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
@@ -14521,14 +14528,15 @@ function _busReadAddress(optional) {
 function busPick(i) {
   const h = BUS.hits[i];
   modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
-    <button class="btn btn-primary btn-full" onclick="busAdd(${i})">Add</button>`);
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busAdd(${i})">Add</button></div>`);
 }
 async function busAdd(i) {
   if (_busBlockWrite()) return;
   const h = BUS.hits[i], a = _busReadAddress(); if (!a) return;
   try {
     await _busSend('POST', '/bus/riders', { ...(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }), ...a });
-    closeModal(); BUS.search = ''; BUS.hits = []; toast(`${h.name} added`); renderBus();
+    closeModal(); BUS.search = ''; BUS.hits = []; toast(`${h.name} added${_busOverMsg(a)}`); renderBus();
   } catch (e) { toast(e.message); }
 }
 // ── Add several (owner, 2026-10-09): tick regulars (their last-used address) and/or add others
@@ -14653,7 +14661,7 @@ async function busSaveNewPerson() {
   try {
     const g = await API.post('/bus/guests?' + _busQs(), { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone: phone || null });
     await _busSend('POST', '/bus/riders', { guestId: g.id, ...a });
-    _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${g.name} added`); renderBus(); // I10: the server's tidied name
+    _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${g.name} added${_busOverMsg(a)}`); renderBus(); // I10: the server's tidied name
   } catch (e) { toast(e.message); }
 }
 async function busEditRider(id) {
@@ -14661,7 +14669,8 @@ async function busEditRider(id) {
   let addrs;
   try { addrs = await _busGet('/bus/riders/' + id + '/addresses'); } catch (e) { toast(e.message); return; }
   modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(addrs, { riderId: id, currentId: r.addressId })}
-    <button class="btn btn-primary btn-full" onclick="busSaveRider('${id}')">Save</button>`);
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="busSaveRider('${id}')">Save</button></div>`);
 }
 // Two-tap confirm (no native confirm() — matches the rest of the app).
 async function busDeleteAddress(riderId, addressId) {
@@ -14688,7 +14697,14 @@ async function busSaveRider(id) {
   try {
     if (consentChanged) await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note });
     await _busSend('PATCH', '/bus/riders/' + id, a); closeModal();
+    const over = _busOverMsg(a); if (over) toast('Saved' + over);
   } catch (e) { toast(e.message); }
+}
+// Review E10: a bus is never full, so whoever puts a student on an over-full bus is told (BUS.view is already refreshed).
+function _busOverMsg(a) {
+  const id = a && a.busRunVehicleId, rv = id && ((BUS.view && BUS.view.vehicles) || []).find((x) => x.id === id);
+  const n = rv ? BUS.view.riders.filter((r) => r.runVehicleId === id).length - rv.capacity : 0;
+  return n > 0 ? `. ${rv.name} is over by ${n}` : '';
 }
 function _busConsentBox(r) {
   const c = r.consent || { given: false, note: '' };
@@ -14823,8 +14839,11 @@ function busToggleVeh(checkbox, runVehicleId, running) {
     if (n > 0) {
       const rv = BUS.view.vehicles.find((x) => x.id === runVehicleId);
       checkbox.checked = true;
+      // Review E11: name the bus riders who have no home address to fall back to.
+      const noHome = BUS.view.riders.filter((r) => r.runVehicleId === runVehicleId && r.noHome).map((r) => r.name);
       modal(`<div class="mo-title">Turn off ${esc(rv.name)}?</div>
-        <div class="card-sub" style="margin-bottom:14px">Its ${n} rider${n === 1 ? '' : 's'} go back to Unassigned.</div>
+        <div class="card-sub" style="margin-bottom:14px">Its ${n} rider${n === 1 ? '' : 's'} go back to Unassigned${rv.kind === 'bus' ? ' at their home address' : ''}.${noHome.length
+          ? ` ${esc(noHome.join(', '))} ${noHome.length === 1 ? 'has' : 'have'} no home address yet.` : ''}</div>
         <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
         <button class="btn btn-danger" onclick="closeModal();busRunVeh('${runVehicleId}',{running:false})">Turn off</button></div>`);
       return;
@@ -14889,9 +14908,10 @@ function busEditVehicle(vehicleId) {
   const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
   modal(`<div class="mo-title">${vehicleId ? 'Edit vehicle' : 'Add vehicle'}</div>
     <div class="fg"><input class="fi" id="ve-name" placeholder="Name" value="${esc(f.name)}"></div>
-    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="ve-plate" placeholder="Plate" value="${esc(f.plate || '')}">
-      <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}" placeholder="# seats" aria-label="Seats"></div>
-    <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''}> Charter bus: drops everyone at one address (set Ends at → Address)</label>
+    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="ve-seats">Seats</label>
+      <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}"></div>
+      <div style="flex:1;min-width:0"><label class="fl" for="ve-plate">Plate (optional)</label><input class="fi" id="ve-plate" value="${esc(f.plate || '')}"></div></div>
+    <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>
     <label class="fl">Preferred grades</label>
     <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
     ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
@@ -14899,12 +14919,19 @@ function busEditVehicle(vehicleId) {
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
+// Review E9: ticking Charter bus sets Ends at → Address and focuses the address, so the first Save works.
+function _busVeBusTick(on) {
+  const sel = document.getElementById('ve-ends'); if (!on || !sel) return;
+  sel.value = 'address';
+  const wrap = document.getElementById('ve-ends-wrap'); if (wrap) wrap.hidden = false;
+  const inp = document.getElementById('ve-ends-addr'); if (inp) inp.focus();
+}
 async function busSaveVehicle(vehicleId) {
   const val = (id) => document.getElementById(id).value;
   const endsAt = val('ve-ends'), ends = _busAcValue('ve-ends-addr');
   if (endsAt === 'address' && !ends.placeId) { toast('Pick the address from the suggestions list'); return; }
   const busEl = document.getElementById('ve-bus'), kind = busEl && busEl.checked ? 'bus' : 'car'; // BUS-2
-  if (kind === 'bus' && endsAt !== 'address') { toast('A bus needs its drop-off address (Ends at → Address)'); return; }
+  if (kind === 'bus' && endsAt !== 'address') { toast('A bus needs its drop-off address'); return; }
   const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
   const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
@@ -15001,7 +15028,7 @@ function _busCarsHtml() {
       <div class="veh-chiprow"><span class="veh-meta">${rv.seats} seats · ${rv.capacity} for youth</span>${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
-        <div style="font-size:11px;color:var(--ink-mid)">${isBus ? 'Drop-off' : 'Ends at'}: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
+        ${endsText ? `<div style="font-size:11px;color:var(--ink-mid)">${isBus ? 'Drop-off' : 'Ends at'}: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>` : ''}
       </div></div>`;
   }).join('');
 
@@ -15019,10 +15046,17 @@ function _busCarsHtml() {
   }).join('');
 
   // I12: total youth seats (fleet + own cars, seats minus leaders) vs riders tonight, "N short" when over.
+  // Review E3: a bus is never full (its card shows Over by N), so its overflow is not "short"; the noun counts buses apart.
   const run = v.vehicles.filter((rv) => rv.running);
-  const seats = run.reduce((n, rv) => n + rv.capacity, 0), kids = v.riders.length;
-  const totals = `<div class="card bus-totals"><b>${seats}</b> seats for youth in ${run.length} car${run.length === 1 ? '' : 's'} · <b>${kids}</b> student${kids === 1 ? '' : 's'} tonight${kids > seats ? ` <span class="chip c-warn">${icS('alert')} ${kids - seats} short</span>` : ''}</div>`;
-  return `${lockAlert}${totals}<div class="bus-routes">${cards}</div>
+  const seats = run.reduce((n, rv) => n + (rv.kind === 'bus' ? Math.max(rv.capacity, v.riders.filter((r) => r.runVehicleId === rv.id).length) : rv.capacity), 0), kids = v.riders.length;
+  const nBus = run.filter((rv) => rv.kind === 'bus').length, nCar = run.length - nBus;
+  const inWhat = [nBus ? `${nBus} bus${nBus === 1 ? '' : 'es'}` : '', nCar || !nBus ? `${nCar} car${nCar === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ');
+  const totals = `<div class="card bus-totals"><b>${seats}</b> seats for youth in ${inWhat} · <b>${kids}</b> student${kids === 1 ? '' : 's'} tonight${kids > seats ? ` <span class="chip c-warn">${icS('alert')} ${kids - seats} short</span>` : ''}</div>`;
+  // Review E13: a leader driving tonight gets a way from Car setup (their landing tab) to their riders.
+  const me = getMyLeaderId();
+  const mine = me && run.find((rv) => rv.ownerLeaderId === me || rv.leaderIds.includes(me));
+  const driving = mine ? `<div class="card bus-totals"><a onclick="BUS.tab='mycar';busSetTripDate('${esc(v.run.serviceDate)}')" style="color:var(--accent);cursor:pointer;display:inline-flex;align-items:center;min-height:44px">You're driving ${esc(mine.name)} tonight — open ›</a></div>` : '';
+  return `${lockAlert}${driving}${totals}<div class="bus-routes">${cards}</div>
     <button class="btn btn-secondary btn-full" onclick="busEditVehicle(null)">${icS('plus')} Add vehicle</button>
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
@@ -15172,8 +15206,8 @@ function _busRoutesHtml() {
     // girl rider and no female leader. Replaces the old client-side "Only 1 girl" chip.
     const needsFemaleLeaderChip = !isBus && rv.needsFemaleLeader ? `<span class="chip c-warn">${icS('alert')} No female leader</span>` : '';
     const rows = riders.map((r, i) => `<div class="route-row${ro ? '' : ' clickable'}"${ro ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
-      <div class="stop-num">${isBus ? '' : i + 1}</div>
-      <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
+      ${isBus ? '' : `<div class="stop-num">${i + 1}</div>`}
+      <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned && !isBus ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
@@ -15222,8 +15256,9 @@ function busOwnCarSheet(keep) {
       <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
   modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
     <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
-    <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" placeholder="# seats" value="${esc(car.seats || '')}" aria-label="Seats">
-      <input class="fi" id="oc-plate" placeholder="Plate" value="${esc(car.plate || '')}"></div>
+    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-seats">Seats</label>
+      <input class="fi" id="oc-seats" type="number" min="2" max="15" value="${esc(car.seats || '')}"></div>
+      <div style="flex:1;min-width:0"><label class="fl" for="oc-plate">Plate (optional)</label><input class="fi" id="oc-plate" value="${esc(car.plate || '')}"></div></div>
     ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
     <div class="sbar"><span class="si">${icS('search')}</span>
@@ -15448,7 +15483,7 @@ function _busMyCarHtml() {
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
-      <div class="route-sub">${esc([s.grade ? `Y${s.grade}` : '', _busWhere(s)].filter(Boolean).join(' · '))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
+      <div class="route-sub">${esc([s.grade ? `Y${s.grade}` : '', _busWhere(s)].filter(Boolean).join(' · '))} ${_busConsentChip(s)} ${_busPinChip(s, true)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">
         <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
@@ -15718,22 +15753,22 @@ function _busHistHtml() {
         <div class="li-sub">${p.rides}/${bn.length} nights · last ${esc(_busHDate(p.last))}</div></div>${icS('chevr')}</div>`).join('');
   } else {
     list = h.nights.map((n) => {
-      const nl = _busNotLogged(byRun[n.id] || []);
+      const nl = n.trip ? 0 : _busNotLogged(byRun[n.id] || []); // review E2: a trip has no drop-off ticking to "log"
       return `<div class="li" onclick="busPastNight('${esc(n.id)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(n.date))}${n.trip ? ' <span class="chip c-neutral">Trip</span>' : ''}</div>
         <div class="li-sub">${n.riders} rider${n.riders === 1 ? '' : 's'} · ${n.cars} car${n.cars === 1 ? '' : 's'}
         ${nl ? `<span class="chip c-warn">${nl} not logged</span>` : ''}${n.unassigned ? `<span class="chip c-warn">${n.unassigned} unassigned</span>` : ''}</div></div>${icS('chevr')}</div>`;
     }).join('');
   }
   return `${back}${BUS.histErr ? `<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>` : ''}
-    ${statCard([bn.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New'])}
+    ${bn.length ? statCard([bn.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New']) : ''}
     ${recent.length ? `<div class="card"><div class="card-title">Riders per night</div>${colChart(recent, 56, { neutral: true, click: (s) => `busPastNight('${s.id}')` })}</div>` : ''}
     <div class="tbbar"><button class="tbbtn ${sub === 'nights' ? 'on' : ''}" onclick="BUS.histSub='nights';renderBus()">Nights</button>
       <button class="tbbtn ${sub === 'people' ? 'on' : ''}" onclick="BUS.histSub='people';renderBus()">People</button></div>
     ${list}`;
 }
-function _busRideRow(r, canEdit, num) {
+function _busRideRow(r, canEdit, num, trip) {
   const flags = `${r.droppedAt ? ` · dropped ${esc(_busFmtTime(r.droppedAt))}` : ''}`;
-  const warn = !r.notRiding && !r.noShow && r.runVehicleId && !r.droppedAt ? `<span class="chip c-warn">${icS('alert')} not logged</span>` : '';
+  const warn = !trip && !r.notRiding && !r.noShow && r.runVehicleId && !r.droppedAt ? `<span class="chip c-warn">${icS('alert')} not logged</span>` : '';
   return `<div class="route-row${canEdit ? ' clickable' : ''}"${canEdit ? ` onclick="busPastEdit('${esc(r.runId)}','${esc(r.riderId)}')"` : ''}>
     ${num ? `<div class="stop-num">${num}</div>` : ''}
     <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}${r.kind === 'guest' ? ' <span class="chip c-neutral">Guest</span>' : ''}${r.noShow ? ' <span class="chip c-neutral">No-show</span>' : ''}</div>
@@ -15771,18 +15806,18 @@ function busPastNight(id) {
   const cars = [];
   for (const r of live) if (r.runVehicleId && !cars.some((c) => c.id === r.runVehicleId)) cars.push({ id: r.runVehicleId, name: r.car, colour: r.carColour, leaders: r.leaders || [] });
   cars.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  const nl = _busNotLogged(rs);
+  const nl = n.trip ? 0 : _busNotLogged(rs);
   const carHtml = cars.map((c) => {
     const rows = live.filter((r) => r.runVehicleId === c.id).sort((a, b) => (a.stop ?? 99) - (b.stop ?? 99));
     return `<div class="card"><div class="card-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(c.colour)}"></span>${esc(c.name)} · ${rows.length}
       ${c.leaders.map((l) => `<span class="chip c-neutral">${esc(l)}</span>`).join('')}</div>
-      <div style="margin-top:8px">${rows.map((r, i) => _busRideRow(r, h.canEdit, i + 1)).join('')}</div></div>`;
+      <div style="margin-top:8px">${rows.map((r, i) => _busRideRow(r, h.canEdit, i + 1, n.trip)).join('')}</div></div>`;
   }).join('');
   const un = live.filter((r) => !r.runVehicleId);
   const nr = rs.filter((r) => r.notRiding);
   const edits = h.canEdit && n.edits && n.edits.length
     ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(fmtDay(e.at, true))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
-  modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}</div>
+  modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}${n.trip ? ' <span class="chip c-neutral">Trip</span>' : ''}</div>
     <div class="card-sub" style="margin-bottom:8px">${n.riders} rider${n.riders === 1 ? '' : 's'} · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
     ${cars.length ? `<div style="margin-bottom:8px">${_busPastMapHtml(id)}</div>` : ''}
     ${nl ? `<div class="alert al-warn" style="margin-bottom:8px">${icS('alert')} ${nl} drop-off${nl === 1 ? '' : 's'} not logged</div>` : ''}

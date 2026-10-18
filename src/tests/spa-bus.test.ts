@@ -1018,7 +1018,7 @@ describe('_busCarsHtml computes the real leader shortfall (Task 10)', () => {
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
       function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-      function _busPrefGradesChip() { return ''; }
+      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }
     `;
     return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
   };
@@ -1082,7 +1082,7 @@ describe('busSaveNewPerson: phone is optional, validated by digit count when pre
       let _busNpGender = 'female';
       const document = { getElementById: (id) => (${JSON.stringify(fields)})[id] };
       function _busBlockWrite() { return false; }
-      function _busReadAddress() { return { addressId: 'a1' }; }
+      function _busReadAddress() { return { addressId: 'a1' }; } function _busOverMsg() { return ''; }
       function _busQs() { return ''; }
       let __posted = null, __sent = [];
       const API = { post: async (url, body) => { __posted = body; return { id: 'g1', name: 'Jess Tran' }; } };
@@ -1283,13 +1283,19 @@ describe('Analysis active indicator and back link (Task 8)', () => {
 describe('_busPinChip (Task D)', () => {
   const load = () => loadFns(['_busPinChip'], `function icS(k){return k;}`);
   it('shows "No address" when there is no saved address at all', () => {
-    expect(load()._busPinChip({ addressId: null, placeId: null })).toContain('No address');
+    expect(load()._busPinChip({ studentId: 's1', addressId: null, placeId: null })).toContain('No address');
   });
   it('shows "No map pin" for a saved address Google could not locate', () => {
-    expect(load()._busPinChip({ addressId: 'a1', placeId: null })).toContain('No map pin');
+    expect(load()._busPinChip({ studentId: 's1', addressId: 'a1', address: '1 A St', placeId: null })).toContain('No map pin');
   });
   it('is blank when both are present', () => {
-    expect(load()._busPinChip({ addressId: 'a1', placeId: 'P1' })).toBe('');
+    expect(load()._busPinChip({ studentId: 's1', addressId: 'a1', address: '1 A St', placeId: 'P1' })).toBe('');
+  });
+  it('review E4: redacted (junior) rows get none; Trip logging (soft) is neutral; a bus-only rider is "No address"', () => {
+    expect(load()._busPinChip({ studentId: null, guestId: null, addressId: null, address: 'Carina' })).toBe('');
+    expect(load()._busPinChip({ studentId: 's1', addressId: null }, true)).toContain('c-neutral');
+    expect(load()._busPinChip({ studentId: 's1', addressId: null }, true)).not.toContain('c-warn');
+    expect(load()._busPinChip({ studentId: 's1', addressId: 'bus1', address: '', placeId: null })).toContain('No address');
   });
 });
 
@@ -1507,7 +1513,7 @@ describe('_busCarsHtml header totals (I12)', () => {
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
       function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-      function _busPrefGradesChip() { return ''; }
+      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }
     `;
     return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
   };
@@ -1725,11 +1731,11 @@ describe('BUS-2 Car setup', () => {
     riders: [{ id: 'r1', runVehicleId: 'rv1' }, { id: 'r2', runVehicleId: 'rv1' }, { id: 'r3', runVehicleId: 'rv1' }],
     vehicles: [{ id: 'rv1', vehicleId: 'v1', name: 'Charter', kind: 'bus', running: true, seats: 3, capacity: 2, leaderIds: ['L1'], leaderNames: ['Tom'],
       eligibility: { female: false, male: true, unknown: false }, endsAt: 'address', endsAddress: '9 Hall St, Carina QLD', colourIndex: 0, ...over }] });
-  const cars = (v: any) => loadFns(['_busCarsHtml', '_busLockedBy', '_busSuburb'], `
-      const BUS = { generating: false, view: ${JSON.stringify(v)} };
+  const cars = (v: any, me = '') => loadFns(['_busCarsHtml', '_busLockedBy', '_busSuburb'], `
+      const BUS = { generating: false, me: '${me}', view: ${JSON.stringify(v)} };
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
-      function _busPrefGradesChip() { return ''; }`, ['_busCarsHtml'])._busCarsHtml();
+      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }`, ['_busCarsHtml'])._busCarsHtml();
   it('bus card: Bus chip, Over by N, Drop-off label, no gender chip; leaders unchanged', () => {
     const h = cars(view());
     expect(h).toContain('>Bus</span>');
@@ -1747,6 +1753,14 @@ describe('BUS-2 Car setup', () => {
   });
   it('a bus that is off tonight is still badged', () => {
     expect(cars(view({ running: false }))).toContain('>Bus</span>');
+  });
+  it('review E3: bus overflow is not "short", the noun says "1 bus"; E5: no empty Drop-off label; E13: driving link', () => {
+    const h = cars(view());
+    expect(h).toContain('<b>3</b> seats for youth in 1 bus ·');
+    expect(h).not.toContain('short');
+    expect(cars(view({ endsAddress: null }))).not.toContain('Drop-off:');
+    expect(h).not.toContain("You're driving");
+    expect(cars({ ...view(), run: { serviceDate: '2026-10-23' } }, 'L1')).toContain("You're driving Charter tonight — open");
   });
   const sheet = (fleetKind?: string) => {
     const { busEditVehicle, __state } = loadFns(['busEditVehicle', '_busEndsAtField', '_busAcField', '_busUuid'], `
@@ -1825,7 +1839,7 @@ describe('BUS-2 picker', () => {
     const { _busAddressPicker } = loadFns(fns, pre);
     const h = _busAddressPicker([{ id: 'a1', vehicleId: 'v9', label: 'Bus drop off' }, { id: 'a2', vehicleId: null, label: 'Home', suburb: 'Carina' }]);
     expect(h).toMatch(/value="bus:rv9" checked/);
-    expect(h).toContain('Bus drop off: 9 Hall St');
+    expect(h).toContain('Bus drop off · 9 Hall St'); // review E8: one "Label · street · suburb" format
     expect(h).not.toContain('value="a1"'); // the bus row is not listed twice
     expect(h).not.toMatch(/value="a2" checked/);
   });
@@ -1942,5 +1956,27 @@ describe('review B: skipped riders are named back', () => {
     expect(_busSkippedMsg([])).toBe('');
     expect(_busSkippedMsg([{ name: 'Liam', car: 'Van' }, { name: 'Ben', car: 'Van' }, { name: 'Amy', car: 'Charter' }]))
       .toBe('Saved. Liam, Ben: already in Van; Amy: already in Charter — move them in Assign');
+  });
+});
+
+describe('review E10: over-full bus toast', () => {
+  const load = (riders: number) => loadFns(['_busOverMsg'], `const BUS = { view: { vehicles: [{ id: 'rv9', name: 'Charter', capacity: 2 }],
+    riders: Array.from({ length: ${riders} }, () => ({ runVehicleId: 'rv9' })) } };`)._busOverMsg;
+  it('names the bus and the overflow; nothing at or under capacity or off the bus', () => {
+    expect(load(4)({ busRunVehicleId: 'rv9' })).toBe('. Charter is over by 2');
+    expect(load(2)({ busRunVehicleId: 'rv9' })).toBe('');
+    expect(load(4)({ addressId: 'a1' })).toBe('');
+  });
+});
+
+describe('review E11: turning a bus off names riders with no home address', () => {
+  it('lists them in the confirm', () => {
+    const f = loadFns(['busToggleVeh', '_busRidersOnCar'], `let __m = ''; function modal(h) { __m = h; } function esc(s) { return String(s); } function busRunVeh() {}
+      const __get = () => __m;
+      const BUS = { view: { vehicles: [{ id: 'rv9', name: 'Charter', kind: 'bus' }], riders: [
+        { runVehicleId: 'rv9', name: 'Amelia', noHome: true }, { runVehicleId: 'rv9', name: 'Sophia' }, { runVehicleId: 'rv9', name: 'Isabella', noHome: true }] } };`,
+      ['busToggleVeh', '__get']);
+    f.busToggleVeh({ checked: false }, 'rv9', false);
+    expect(f.__get()).toContain('Its 3 riders go back to Unassigned at their home address. Amelia, Isabella have no home address yet.');
   });
 });

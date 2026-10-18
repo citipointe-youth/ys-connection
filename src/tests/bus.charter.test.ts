@@ -157,6 +157,17 @@ describe('BUS-2 bus drop-off choice', () => {
     await f.svc.updateRunVehicle(f.admin, rvId, { running: true });
     expect((await f.svc.getRun(f.admin)).riders.find((r) => r.id === rid)!.runVehicleId).toBe(van);
   });
+  it('review E11: a bus rider with no home address is flagged noHome (for the turn-off confirm)', async () => {
+    const f = await busFixture();
+    await f.rider('s1');
+    const { rvId } = await busCar(f);
+    const rid = (await f.svc.getRun(f.admin)).riders[0]!.id;
+    await f.svc.updateRider(f.admin, rid, { busRunVehicleId: rvId });
+    await f.svc.addRider(f.admin, { studentId: 's3', busRunVehicleId: rvId });
+    const v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.studentId === 's3')!.noHome).toBe(true);
+    expect(v.riders.find((r) => r.id === rid)!.noHome).toBeUndefined();
+  });
   it('review L6: a PATCH cannot clear a bus drop-off', async () => {
     const f = await busFixture();
     const { rvId } = await busCar(f);
