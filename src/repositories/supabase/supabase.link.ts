@@ -191,6 +191,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
       // lease
       const types = (Object.keys(c.capabilities) as ActionType[]).filter((t) => c.capabilities[t] !== 'off');
       if (a.max <= 0 || !types.length) return [];
+      // H1: pending rows first, so re-handed own leases (C01) a console keeps refusing can't fill every slot.
       // A checkOut waits while an older checkIn for the same person and service is pending or claimed (B4 / APP-3).
       const picked = await tx`
         select id, status from link_outbox o
@@ -202,7 +203,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
             where i.type = 'checkIn' and i.person_id = o.person_id
               and i.payload->>'serviceTimeId' = o.payload->>'serviceTimeId'
               and i.status in ('pending','claimed') and (i.created_at, i.id) < (o.created_at, o.id)))
-        order by created_at, id
+        order by (status = 'claimed'), created_at, id
         limit ${a.max}
         for update skip locked`;
       if (!picked.length) return [];

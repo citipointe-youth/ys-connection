@@ -257,6 +257,19 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         // max 0 (a heartbeat) still hands nothing
         expect(await repo.claim({ ...mine, max: 0 })).toEqual([]);
       });
+      it('H1 (review 2026-10-18): a rev 12 console stuck own-leased rows never starve newer pending rows (max 1 and max 3)', async () => {
+        for (const max of [1, 3]) {
+          const mine = claimArgs({ max });
+          mine.console.linkRev = 12;
+          const stuck: unknown[] = [];
+          for (let i = 0; i < max; i++) stuck.push(await repo.insertAction(newRow()));
+          await repo.claim(mine); // leased; the console refuses them and they stay claimed
+          const fresh = await repo.insertAction(newRow());
+          const got = (await repo.claim(mine)).map((g) => g.row.id);
+          expect(got).toContain(fresh.id);
+          expect(got).toHaveLength(max);
+        }
+      });
     });
 
     describe('sweep', () => {

@@ -132,7 +132,8 @@ export class InMemoryLinkRepository implements ILinkRepository {
       (r.status === 'pending' && (r.retryAt === null || Date.parse(r.retryAt) <= now)) ||
       (r.status === 'claimed' && r.leaseOwner === a.console.consoleId && r.leaseUntil !== null
         && (Date.parse(r.leaseUntil) < now || a.console.linkRev >= REHAND_REV)))) // C01 (rev 12): own live leases too
-      .sort((x, y) => -cmpDesc(x, y))
+      // H1: pending first, so re-handed own leases a console keeps refusing can't starve new rows
+      .sort((x, y) => Number(x.row.status === 'claimed') - Number(y.row.status === 'claimed') || -cmpDesc(x, y))
       .slice(0, Math.max(0, a.max));
     const out: ClaimedRow[] = [];
     for (const { row } of due) {
