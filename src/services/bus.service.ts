@@ -212,6 +212,8 @@ const leaderNamesOf = (v: BusRunVehicle, live: Map<string, string>): string[] =>
 const clockAt = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: 'numeric', minute: '2-digit', hour12: true });
 // A soft-removed ("not riding") rider keeps the row but loses any car/stop.
 const OFF_CAR = { runVehicleId: null, stopOrder: null, pinned: false } as const;
+/** BUS-2: a bus rider with nowhere to go: no address, no map pin, Unassigned. */
+const NO_SEAT = { snapAddress: '', snapPlaceId: null, ...OFF_CAR };
 // Task 8: startIso labels local leave time as literal UTC (see leaveIso in bus-plan.ts) — read
 // the clock back the same way (UTC getters), or this would double-shift by the server's TZ.
 const hhmmAt = (startIso: string, addSec: number): string => new Date(Date.parse(startIso) + addSec * 1000).toISOString().slice(11, 16);
@@ -668,7 +670,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!addr || (!addr.vehicleId && !onBus) || r.droppedAt) continue; // ordinary rider (or no address) — untouched
       if (rvs.some((v) => v.id === r.runVehicleId && (v.ownerLeaderId || v.locked))) continue; // L1: Lock = leave alone
       const owned = all.filter((a) => (r.studentId ? a.studentId === r.studentId : a.guestId === r.guestId));
-      const seat = busPatch(r, addr, rvs, owned) ?? { snapAddress: '', snapPlaceId: null, runVehicleId: null, stopOrder: null, pinned: false };
+      const seat = busPatch(r, addr, rvs, owned) ?? NO_SEAT;
       const next = { ...r, ...seat };
       if (JSON.stringify(next) !== JSON.stringify(r)) await bus.saveRunRider(next);
     }
@@ -1197,9 +1199,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // BUS-2: onto a bus = their bus choice (never "full"); off a bus = back to their home address. busPatch seats both.
       if (!v.unpin && (ontoBus || rvs.some((x) => x.id === r.runVehicleId && isBus(x)))) {
         const owned = await bus.listAddresses(owner), home = latestHome(owned);
-        if (!ontoBus && !home) throw new BadRequestError(NO_BUS_NO_HOME);
-        const addr = await resolveAddress(owner, ontoBus ? { busRunVehicleId: target!.id } : { addressId: home!.id }, run);
-        cur = await bus.saveRunRider({ ...r, addressId: addr.id, ...busPatch(r, addr, rvs, owned)! });
+        // R19-L5/K1: off the bus with no home = no address (no pin), never the bus drop-off; the row is kept.
+        const addr = ontoBus || home ? await resolveAddress(owner, ontoBus ? { busRunVehicleId: target!.id } : { addressId: home!.id }, run) : null;
+        cur = await bus.saveRunRider({ ...r, ...(addr ? { addressId: addr.id, ...busPatch(r, addr, rvs, owned)! } : { addressId: null, ...NO_SEAT }) });
         if (ontoBus) {
           await bus.setUndo(run.id, null, null); await touch(ctx, run);
           return { ...riderView(cur, await consentOf(cur)), reordered: true };
