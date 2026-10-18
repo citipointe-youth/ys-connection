@@ -15739,7 +15739,8 @@ async function busLoadHist() {
   try {
     BUS.hist = await _busGet('/bus/history'); BUS.histErr = '';
     // BUS-1: People ("regular", rides/nights) counts bus nights only; logged trips are listed but not counted.
-    const tripIds = new Set(BUS.hist.nights.filter((n) => n.trip).map((n) => n.id));
+    // R19-S3: the one copy of the trip run ids; busExportHist reuses it.
+    const tripIds = BUS.histTrip = new Set(BUS.hist.nights.filter((n) => n.trip).map((n) => n.id));
     BUS.histPeople = _busPeople(BUS.hist.rides.filter((r) => !tripIds.has(r.runId)), BUS.hist.nights.length - tripIds.size, _busLocalNow().slice(0, 10));
   }
   catch (e) { BUS.histErr = e.message || 'Could not load past nights'; }
@@ -15910,7 +15911,7 @@ async function busExportHist() {
       }
       return ws;
     };
-    const tripIds = new Set(h.nights.filter((n) => n.trip).map((n) => n.id)); // BUS-1
+    const tripIds = BUS.histTrip || new Set(); // BUS-1 (set by busLoadHist, R19-S3)
     const nights = [['Type', 'Date', 'Riders', 'Cars', 'Dropped', 'Not logged', 'Unassigned', 'Not riding', 'No-show', 'Leaders']]
       .concat(h.nights.map((n) => [n.trip ? 'Trip' : 'Bus night', n.date, n.riders, n.cars, n.dropped, _busNotLogged(byRun[n.id] || []), n.unassigned, n.notRiding, n.noShow, (n.leaders || []).join(', ')]));
     const rides = [['Type', 'Date', 'Name', 'Grade', 'Student/Guest', 'Car', 'Leaders', 'Stop', 'Address', 'Dropped at', 'Dropped by', 'No-show', 'Not riding', 'Note']]

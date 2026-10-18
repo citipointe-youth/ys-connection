@@ -1727,9 +1727,10 @@ describe('BUS-1 Past + export mark trips', () => {
         rides: [{ runId: 'w', name: 'A' }, { runId: 'f', name: 'B' }] }; }
       function _busPeople(r, n) { __args = [r.map((x) => x.runId), n]; return []; } function _busLocalNow() { return '2026-10-18T10:00'; }
       function __a() { return __args; }`;
-    const f = loadFns(['busLoadHist'], pre, ['busLoadHist', '__a']);
+    const f = loadFns(['busLoadHist'], pre + ' function __b() { return BUS; }', ['busLoadHist', '__a', '__b']);
     await f.busLoadHist();
     expect(f.__a()).toEqual([['f'], 2]);
+    expect([...f.__b().histTrip]).toEqual(['w']); // R19-S3: the one trip-id set, reused by the export
   });
 });
 
@@ -1998,7 +1999,7 @@ describe('busExportHist Type column', () => {
       const XLSX = { utils: { aoa_to_sheet: (aoa) => ({ aoa, '!ref': 'A1:A1' }), decode_range: () => ({ s: { c: 0 }, e: { c: -1 } }),
         encode_cell: () => 'A1', book_new: () => ({}), book_append_sheet: (wb, ws, name) => { sheets[name] = ws.aoa; } }, writeFile: () => {} };
       const _ensureXlsx = async () => {}; const toast = () => {}; const _busLocalNow = () => '2026-10-18T10:00';
-      const BUS = { histPeople: [], hist: {
+      const BUS = { histPeople: [], histTrip: new Set(['r1']), hist: {
         nights: [{ id: 'r1', date: '2026-10-14', trip: true, leaders: [] }, { id: 'r2', date: '2026-10-16', trip: false, leaders: [] }],
         rides: [{ runId: 'r1', date: '2026-10-14', name: 'Jess Tran', leaders: [] }, { runId: 'r2', date: '2026-10-16', name: 'Sam Lee', leaders: [] }] } };`;
     const { busExportHist, sheets } = loadFns(['busExportHist', '_busByRun', '_busNotLogged', '_busFmtTime'], prelude, ['busExportHist', 'sheets']);
