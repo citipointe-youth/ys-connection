@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadFns, loadIndexHtml } from './helpers/extract-fn';
+import { extractFn, loadFns, loadIndexHtml } from './helpers/extract-fn';
 import { BUS_CAR_COLOURS } from '../services/bus-logic';
 
 describe('SPA bus helpers', () => {
@@ -1512,5 +1512,18 @@ describe('_busCarsHtml header totals (I12)', () => {
   });
   it('shows "N short" when riders exceed seats', () => {
     expect(mk(12)).toContain('1 short</span>');
+  });
+});
+
+// BUS-1 Trip logging (operator 2026-10-18, RULINGS Session 2).
+describe('BUS-1 Trip logging', () => {
+  it('Trip logging is the last tab; landing is Students (or Car setup via _busPickTab)', () => {
+    const rb = extractFn(loadIndexHtml(), 'renderBus');
+    expect(rb.indexOf("label: 'Trip logging'")).toBeGreaterThan(rb.indexOf("label: 'Assign'"));
+    expect(rb).not.toContain("label: 'My car'");
+    const { _busPickTab } = loadFns(['_busPickTab']);
+    expect(_busPickTab(['cars', 'routes', 'mycar'], 'roster', false, false)).toBe('cars'); // junior leader
+    expect(_busPickTab(['roster', 'cars', 'routes', 'mycar'], 'roster', false, false)).toBe('roster');
+    expect(extractFn(loadIndexHtml(), '_navLanding')).toContain("BUS.tab = 'roster'");
   });
 });

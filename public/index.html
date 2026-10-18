@@ -1503,7 +1503,7 @@ function _navLanding(page) {
     _ikLeave();
     Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, date: null, list: null, saErr: {}, csub: 'last', doneOpen: false });
   }
-  if (page === 'bus') { BUS.tab = 'mycar'; BUS.carsOpen = false; }
+  if (page === 'bus') { BUS.tab = 'roster'; BUS.carsOpen = false; } // BUS-1: Students (Car setup for a junior leader via _busPickTab)
 }
 // ── NAV HISTORY (S3, 2026-10-15) ── every screen change and sub-screen open pushes a lightweight snapshot + a
 // history entry; the header arrow, Android back and iPhone swipe-back all pop the same stack.
@@ -9593,7 +9593,7 @@ window.CA=CA;
 // (and still in flight when it happens) captures the gen at the start and checks it again before
 // writing BUS.view/BUS.pending or repainting, so a stale response from a previous session can't
 // land after the session that started it has ended (review fix round 2, finding 1).
-const BUS = { view: null, myCar: null, cars: null, carsOpen: false, carsErr: false, carsLoading: null, pending: null, version: -1, tab: 'mycar', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
+const BUS = { view: null, myCar: null, cars: null, carsOpen: false, carsErr: false, carsLoading: null, pending: null, version: -1, tab: 'roster', search: '', hits: [], pollTimer: null, loading: null, loadingAs: null, pendingLoading: null, failed: false, gen: 0, pendingRepaint: false,
   ac: {}, acHits: {}, generating: false, routeMin: {}, undoTimer: null, searching: false, searchErr: null,
   hist: null, histErr: '', histSub: 'nights', histPeople: [],
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
@@ -14237,10 +14237,10 @@ async function renderBus() {
   // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays director/admin.
   const seesAnalysis = seesPast || v.canCoordinate || u.role !== 'leader';
   const tabs = [
-    { id: 'mycar', label: 'My car' },
     canRoster && { id: 'roster', label: 'Students' },
     { id: 'cars', label: 'Car setup' }, // every Bus login (2026-10-15)
     { id: 'routes', label: 'Assign' }, // read-only unless v.canCoordinate
+    { id: 'mycar', label: 'Trip logging' }, // BUS-1 (2026-10-18): was "My car", now last
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const date = fmtDay(v.run.serviceDate);
@@ -14977,7 +14977,7 @@ function _busCarsHtml() {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).map((r) => r.name).join(', ');
     return `<div class="li"><div class="li-body"><div class="li-title">${icS('bus')} ${esc(rv.name)}</div>
       <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div>
-      <div class="card-sub" style="margin-top:2px">To change it, use My car as that leader.</div></div>
+      <div class="card-sub" style="margin-top:2px">To change it, use Trip logging as that leader.</div></div>
       ${v.canCoordinate ? `<button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button>` : ''}</div>`;
   }).join('');
 
@@ -15038,7 +15038,7 @@ async function busMove(riderId, runVehicleId) {
   try {
     const res = await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId });
     _busClearRouteMin(oldId, runVehicleId); closeModal();
-    if (res && res.reordered === false) toast("Moved — couldn't re-optimise the route (Google unreachable). Use Optimise route on My car.");
+    if (res && res.reordered === false) toast("Moved — couldn't re-optimise the route (Google unreachable). Use Optimise route on Trip logging.");
   } catch (e) { toast(e.message); }
 }
 async function busUnpin(riderId) {
