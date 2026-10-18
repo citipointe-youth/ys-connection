@@ -1830,6 +1830,19 @@ describe('BUS-2 Car setup', () => {
     expect(sheet('car')).not.toMatch(/id="ve-bus" checked/);
     expect(sheet()).not.toMatch(/id="ve-bus" checked/); // Add vehicle defaults to a car
   });
+  it('R19-U10: Preferred grades is hidden for a bus and follows the Charter bus tick', () => {
+    expect(sheet('bus')).toMatch(/id="ve-grades-sec" hidden/);
+    expect(sheet('car')).not.toMatch(/id="ve-grades-sec" hidden/);
+    const els: Record<string, any> = { 've-ends': { value: 'church' }, 've-ends-wrap': { hidden: true }, 've-ends-addr': { focus() {} }, 've-grades-sec': { hidden: false } };
+    const { _busVeBusTick } = loadFns(['_busVeBusTick'], 'const document = { getElementById: (id) => globalThis.__els[id] };');
+    (globalThis as any).__els = els;
+    _busVeBusTick(true);
+    expect(els['ve-grades-sec'].hidden).toBe(true);
+    expect(els['ve-ends'].value).toBe('address');
+    _busVeBusTick(false);
+    expect(els['ve-grades-sec'].hidden).toBe(false);
+    delete (globalThis as any).__els;
+  });
   it('busSaveVehicle sends kind, and refuses a bus without a drop-off address', async () => {
     const run = async (bus: boolean, ends: string) => {
       const { busSaveVehicle, __calls } = loadFns(['busSaveVehicle'], `

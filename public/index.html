@@ -14928,15 +14928,17 @@ function busEditVehicle(vehicleId) {
       <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}"></div>
       <div style="flex:1;min-width:0"><label class="fl" for="ve-plate">Plate (optional)</label><input class="fi" id="ve-plate" value="${esc(f.plate || '')}"></div></div>
     <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>
-    <label class="fl">Preferred grades</label>
-    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
+    <div id="ve-grades-sec" ${f.kind === 'bus' ? 'hidden' : ''}><label class="fl">Preferred grades</label>
+    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div></div>
     ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 // Review E9: ticking Charter bus sets Ends at → Address and focuses the address, so the first Save works.
+// R19-U10: a bus is never solved, so Preferred grades hides while Bus is ticked (the ticks are kept).
 function _busVeBusTick(on) {
+  const gs = document.getElementById('ve-grades-sec'); if (gs) gs.hidden = !!on;
   const sel = document.getElementById('ve-ends'); if (!on || !sel) return;
   sel.value = 'address';
   const wrap = document.getElementById('ve-ends-wrap'); if (wrap) wrap.hidden = false;
