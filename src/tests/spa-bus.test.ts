@@ -1726,6 +1726,21 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     expect(f.__d().newRiders[0].addressId).toBeUndefined();
     expect(f.__d().newRiders[0]).toMatchObject({ newAddress: { address: '9 C St' }, addrLabel: '9 C St' });
   });
+  // A saved trip on the Trip logging tab (R19-U11 / U14 harness).
+  const tripView = (rv: string, stops = "[{ id: 's1', name: 'Jess Tran', address: '', grade: 9 }]", extra = '') => loadFns(['_busMyCarHtml', '_busTripDate', '_busLocalNow', '_busSuburb'], `
+    const BUS = { tripDate: '2026-10-14', view: { leaders: [{ id: 'L1', name: 'Amy' }] },
+      myCar: { churchAddress: '', vehicle: ${rv}, stops: ${stops} } };
+    const S = { user: { role: 'grade' } };
+    function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s == null ? '' : s); } function icS() { return ''; }
+    function _busToday() { return '2026-10-14'; } function dncChip() { return ''; } function _busWhere() { return ''; }
+    function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } ${extra}`)._busMyCarHtml();
+  it('R19-U11: the trip card carries a meta line (seats, where it ends)', () => {
+    const own = "{ id: 'rv', name: \"Amy's car\", seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'last_drop', endsAddress: null }";
+    expect(tripView(own)).toContain('5 seats · Ends at last drop');
+    expect(tripView(own.replace("'last_drop'", "'church'"))).toContain('5 seats · Ends at church');
+    expect(tripView(own.replace("'last_drop', endsAddress: null", "'address', endsAddress: '3 Oak St, Carina QLD 4152'"))).toContain('5 seats · Ends at Carina');
+    expect(tripView(own.replace("leaderIds: ['L1'], leaderNames: ['Amy']", "leaderIds: ['L1', 'L2'], leaderNames: ['Amy', 'Bo']"))).toContain('5 seats · Ends at last drop · with Bo');
+  });
   it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
     const prelude = `
       const BUS = { tripDate: null, view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: { vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] } } };

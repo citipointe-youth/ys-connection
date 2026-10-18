@@ -15499,6 +15499,8 @@ function _busMyCarHtml() {
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
+    // R19-U11: the card always has a meta line, so it is never a bare title.
+    const ends = rv.endsAt === 'church' ? 'church' : rv.endsAt === 'last_drop' ? 'last drop' : _busSuburb(rv.endsAddress || '') || 'an address';
     const links = mc.churchAddress ? _busMapsLinks(mc.stops.filter((s) => !s.droppedAt), mc.churchAddress, rv, mc.churchPlaceId, true) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove this trip</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
@@ -15518,7 +15520,7 @@ function _busMyCarHtml() {
     return `${top}
     <div class="card">
       <div class="card-title">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
-      ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
+      <div class="card-sub" style="margin:var(--s1) 0 var(--s2)">${esc([`${rv.seats} seats`, `Ends at ${ends}`, others.length ? `with ${others.join(', ')}` : ''].filter(Boolean).join(' · '))}</div>
       ${rv.needsFemaleLeader ? `<div class="chip c-warn" style="margin-bottom:8px">${icS('alert')} No female leader</div>` : ''}
       ${mc.churchAddress ? links.map((l) => `<a class="btn btn-primary btn-full" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('') :
         // Only admin has the Bus settings button; everyone else is told who to ask.
