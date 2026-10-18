@@ -10646,6 +10646,9 @@ function _lkRefreshView() {
     if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
+    const nr = document.getElementById('lk-norooms'), lb = document.getElementById('lk-leadbtn'); // rel20 S2: rooms can arrive/vanish on the tick
+    if (nr && S.page === 'link-checkin') nr.innerHTML = _lkNoRoomsHtml(_lkSvc());
+    if (lb && S.page === 'link-checkin') lb.innerHTML = _lkLeadBtn(_lkSvc());
     const gl = document.getElementById('lk-glist');
     if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
     const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
@@ -10789,11 +10792,14 @@ function _lkPaintDoor() {
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
     <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
-    ${_lkNoTonight()}${_lkNoRoomsHtml(s)}
+    ${_lkNoTonight()}<div id="lk-norooms">${_lkNoRoomsHtml(s)}</div>
     ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
-      ${!_lkCapOff('checkIn') && !s.noRooms ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
+      <div id="lk-leadbtn">${_lkLeadBtn(s)}</div>` : ''}`));
+}
+function _lkLeadBtn(s) {
+  return s && !_lkCapOff('checkIn') && !s.noRooms ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : '';
 }
 // APP-74: one repaint after an 80 ms pause in typing, not one per key.
 function _lkSetSearch(v) {

@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkNoRoomsHtml', '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkNoRoomsHtml', '_lkLeadBtn', '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -57,7 +57,7 @@ function makeEnv(e: Partial<Env> = {}) {
     ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
     const navigator = { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1' };
-    const document = { getElementById: () => null, visibilityState: 'visible' };
+    const document = { getElementById: (id) => (__calls.els || {})[id] || null, visibilityState: 'visible' };
     const API = { post: (p, b, ms) => __post(p, b, ms), fresh: (p) => __ls.__fresh ? __ls.__fresh(p) : Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
     const setApp = (h) => __calls.apps.push(h);
     const go = (p) => __calls.gos.push(p);
@@ -290,6 +290,24 @@ describe('incident 18 Oct: a service with no check-in rooms', () => {
     h.get().LINK.lq = { l1: true };
     h.fns._lkLeadersSubmit();
     expect(h.fns._lkQGet()).toEqual([]);
+  });
+  it('S2 rel20: the periodic refresh redraws the banner and the leaders button without reopening Check-in', () => {
+    const h = makeEnv();
+    door(h, [ava]);
+    h.get().S.page = 'link-checkin';
+    const els: any = { 'lk-norooms': { innerHTML: '' }, 'lk-leadbtn': { innerHTML: '' } };
+    (h.calls as any).els = els;
+    h.fns._lkRefreshView();
+    expect(els['lk-norooms'].innerHTML).toBe('');
+    expect(els['lk-leadbtn'].innerHTML).toContain('Check in leaders');
+    h.get().LINK.services[0].noRooms = true;
+    h.fns._lkRefreshView();
+    expect(strip(els['lk-norooms'].innerHTML)).toContain('no check-in rooms');
+    expect(els['lk-leadbtn'].innerHTML).toBe('');
+    h.get().LINK.services[0].noRooms = false;
+    h.fns._lkRefreshView();
+    expect(els['lk-norooms'].innerHTML).toBe('');
+    expect(els['lk-leadbtn'].innerHTML).toContain('Check in leaders');
   });
   it('a refused no-room check-in on that service says so in plain words', () => {
     const h = makeEnv();
@@ -777,7 +795,7 @@ describe('F1.3 door', () => {
     const f = extractFn(html, '_lkPaintDoor');
     expect(f).toContain('<div class="sbar"><input class="lk-big" id="lk-search"'); // UI standard D: the shared search bar
     expect(f).not.toContain('<select');
-    expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('_lkOpenLeaders()'));
+    expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('id="lk-leadbtn"'));
     expect(f.indexOf('id="lk-search"')).toBeLessThan(f.indexOf('id="lk-list"'));
   });
   it('T7: nothing is listed until a name is typed; "In N" and "Still to come" are gone', () => {
