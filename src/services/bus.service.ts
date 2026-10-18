@@ -531,16 +531,19 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const s = studentById.get(addr.studentId);
         if (!s) continue;
         out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
-          grade: s.grade, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: s.grade, gender: genderOf(s.gender), suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
       } else if (addr.guestId) {
         const g = guestById.get(addr.guestId);
         if (!g) continue; // purged, or never existed
         out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
-          grade: g.grade, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: g.grade, gender: g.gender, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
       }
     }
     out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
-    return out.slice(0, PAST_RIDERS_CAP).map(({ lastUsedAt, ...rest }) => rest);
+    // N01: the most recent 50 are kept, then shown girls first, grade up, then name (same order as tonight's list).
+    const gOrd = (g: BusGender) => (g === 'female' ? 0 : g === 'male' ? 1 : 2);
+    return out.slice(0, PAST_RIDERS_CAP).map(({ lastUsedAt, ...rest }) => rest)
+      .sort((a, b) => gOrd(a.gender) - gOrd(b.gender) || (a.grade ?? 99) - (b.grade ?? 99) || a.name.localeCompare(b.name));
   }
 
   async function linkOne(guestId: string, studentId: string): Promise<void> {

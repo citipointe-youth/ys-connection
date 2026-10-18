@@ -7,7 +7,7 @@ const FNS = ['_ikLk', '_ikLkBusy', '_ikLkGate', '_ikRev', '_ikClCap', '_ikLkItem
   '_ikLkPreload', '_ikLkWarm', '_ikLkRestore', '_ikLkKeepKey', '_ikLkKept', '_ikLkKeep', '_ikLkMerge', '_ikLkDone'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
-const CONSTS = ['IK_LK_FRESH_MS', 'IK_LK_KINDS', 'IK_LK_SINCE_REV'].map((n) => HTML.match(new RegExp(`^const ${n} = [^;]*;`, "m"))![0]).join('\n');
+const CONSTS = ['IK_LK_FRESH_MS', 'IK_LK_KINDS', 'IK_LK_SINCE_REV', 'IK_LK_LOCK_MS', 'IK_LK_TAB'].map((n) => HTML.match(new RegExp(`^const ${n} = [^;]*;`, "m"))![0]).join('\n');
 const NOW = Date.parse('2026-10-18T05:30:00Z');
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -191,5 +191,61 @@ describe('P4 contract: consentLookup payload may carry since (optional, for a co
     expect(() => C.PAYLOAD_SCHEMAS.consentLookup.parse({ kind: 'forms', page: 1, ref })).not.toThrow();
     expect(() => C.PAYLOAD_SCHEMAS.consentLookup.parse({ kind: 'forms', page: 1, ref, since: '2026-10-18T05:30:00.000Z' })).not.toThrow();
     expect(() => C.PAYLOAD_SCHEMAS.consentLookup.parse({ kind: 'forms', page: 1, ref, since: 'yesterday' })).toThrow();
+  });
+});
+
+// N06: two tabs of the same login must not both ask (the server supersedes a login's older pending lookup of the same kind),
+// and a hidden tab must not keep polling.
+describe('N06 one tab warms per login', () => {
+  it('a second tab within 3 min asks nothing; after 3 min it asks again', () => {
+    const store: Record<string, string> = {};
+    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW)).toHaveLength(4);
+    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW + 60e3)).toEqual([]);
+    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW + 3 * 60e3 + 1)).toHaveLength(4);
+  });
+  it('the same tab is not blocked by its own lock', () => {
+    const store: Record<string, string> = {};
+    const a = env({}, { store });
+    a.fns._ikLkPreload(ST(), NOW);
+    a.I.lk = {};
+    expect(a.fns._ikLkPreload(ST(), NOW + 60e3)).toHaveLength(4);
+  });
+  it('blocked storage still preloads', () => {
+    expect(env({}, { noStorage: true }).fns._ikLkPreload(ST(), NOW)).toHaveLength(4);
+  });
+});
+
+describe('N06 no lookup polls from a hidden tab', () => {
+  const poller = () => {
+    const t = { cbs: [] as Array<() => any>, gets: [] as string[], ls: [] as Array<() => void>, vis: 'visible' };
+    const I: any = { lk: { forms: { kind: 'forms', id: ID(9), st: 'waiting', since: NOW, q: '', page: 1 } } };
+    const fns = new Function('__I', '__t', `
+      const S = { page: 'link-intake' };
+      const document = { get visibilityState() { return __t.vis; }, addEventListener: (n, f) => __t.ls.push(f),
+        removeEventListener: (n, f) => { __t.ls = __t.ls.filter((g) => g !== f); } };
+      const setTimeout = (cb) => { __t.cbs.push(cb); return __t.cbs.length; };
+      const clearTimeout = () => {};
+      const _ik = () => __I; const _ikDraw = () => {};
+      const API = { fresh: async (p) => { __t.gets.push(p); return { status: 'waiting' }; } };
+      ${['_ikLk', '_ikLkApply', '_ikLkReason', '_ikLkErr', '_ikLkDone', '_ikLkKeep', '_ikLkPoll'].map((n) => extractFn(HTML, n)).join('\n')}
+      return { _ikLkPoll };`)(I, t);
+    return { fns, t, I };
+  };
+  it('a timer firing while hidden does not ask, arms one wake-up, and polls again once visible', async () => {
+    const { fns, t, I } = poller();
+    fns._ikLkPoll('forms');
+    t.vis = 'hidden';
+    await t.cbs.shift()!();
+    expect(t.gets).toEqual([]);
+    expect(t.cbs).toHaveLength(0);
+    expect(t.ls).toHaveLength(1);
+    fns._ikLkPoll('forms'); await t.cbs.shift()!(); // a second hidden fire (e.g. _ikSchedule) adds no second listener
+    expect(t.ls).toHaveLength(1);
+    t.vis = 'visible';
+    t.ls[0]!();
+    expect(t.ls).toHaveLength(0);
+    expect(I.lk.forms.poll).toBeTruthy();
+    await t.cbs.shift()!();
+    expect(t.gets).toHaveLength(1);
   });
 });
