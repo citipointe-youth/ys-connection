@@ -15022,7 +15022,8 @@ function _busCarsHtml() {
     const leaderShortfall = Math.max(2 - rv.leaderIds.length, 1); // Task 10: real shortfall to the 2-leader minimum
     const leaderChips = rv.leaderNames.map((n) => `<span class="chip c-neutral">${esc(n)}</span>`).join('');
     const endsText = rv.endsAt === 'church' ? 'Church' : rv.endsAt === 'last_drop' ? 'Last drop' : _busSuburb(rv.endsAddress || '');
-    const tonightOnly = f && (rv.endsAt !== f.endsAt || rv.endsAddress !== f.endsAddress);
+    // f.endsAddress is null when the fleet address is hidden from this login (junior) — not a tonight-only change.
+    const tonightOnly = f && (rv.endsAt !== f.endsAt || (f.endsAddress != null && rv.endsAddress !== f.endsAddress));
     return `<div class="veh-card">
       <div class="veh-top"><label class="swtch on"><input type="checkbox" checked onchange="busToggleVeh(this,'${rv.id}',this.checked)"></label>
         <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
