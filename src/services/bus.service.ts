@@ -17,7 +17,7 @@ import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderVie
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
   BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide, VehicleKind } from '../core/entities/bus';
 
-// tripDate (BUS-1): optional ?date= for the own-car / my-car endpoints (Trip logging); see tripRun.
+// tripDate (BUS-1): optional ?date= for the own-car / my-car endpoints (Trip logging); see tripRunIfAny.
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string; tripDate?: string | null }
 
 /** Read-only All cars view (October rework C). Allow-listed fields only: no ids, streets, phones or consent. */
@@ -212,6 +212,7 @@ const leaderNamesOf = (v: BusRunVehicle, live: Map<string, string>): string[] =>
 const clockAt = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: 'numeric', minute: '2-digit', hour12: true });
 // A soft-removed ("not riding") rider keeps the row but loses any car/stop.
 const OFF_CAR = { runVehicleId: null, stopOrder: null, pinned: false } as const;
+const SEAT_KEYS = ['snapAddress', 'snapPlaceId', 'runVehicleId', 'stopOrder', 'pinned'] as const;
 /** BUS-2: a bus rider with nowhere to go: no address, no map pin, Unassigned. */
 const NO_SEAT = { snapAddress: '', snapPlaceId: null, ...OFF_CAR };
 // Task 8: startIso labels local leave time as literal UTC (see leaveIso in bus-plan.ts) — read
@@ -357,7 +358,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   /** BUS-1 Trip logging: the run for ctx.tripDate. Absent/current → tonight (ensureRun). Other dates → that
    *  date's run, created bare (no fleet) when `create`. Window today-14..today+7; a later bus night is refused. */
-  async function tripRun(ctx: BusCtx, c: MinistryConfig, create = true): Promise<BusRun | null> {
+  async function tripRunIfAny(ctx: BusCtx, c: MinistryConfig, create = false): Promise<BusRun | null> {
     const d = ctx.tripDate, dow = c.structure.serviceDayOfWeek;
     const cur = currentRunDate(ctx.localNow, dow);
     if (!d || d === cur) return ensureRun(ctx, c);
@@ -371,6 +372,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return (await bus.insertRunIfAbsent({ id: generateId(), serviceDate: d, version: 0, availablePoolLeaderIds: [],
       lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: nowIso() })).run;
   }
+  /** tripRunIfAny that always has a run (creates a bare one), for the trip writes. */
+  const tripRunForWrite = async (ctx: BusCtx, c: MinistryConfig): Promise<BusRun> => (await tripRunIfAny(ctx, c, true))!;
   async function touch(ctx: BusCtx, run: BusRun): Promise<void> {
     await bus.bumpRun(run.id, await whoLabel(ctx), nowIso());
   }
@@ -485,6 +488,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rv = (await bus.listRunVehicles(run.id)).find((v) => v.id === input.busRunVehicleId && isBus(v) && v.running);
       if (!rv?.vehicleId || !rv.endsAddress) throw new BadRequestError(BUS_NOT_RUNNING);
       const prior = (await bus.listAddresses(owner.studentId ? { studentId: owner.studentId } : { guestId: owner.guestId! })).find((a) => a.vehicleId === rv.vehicleId);
+      // address: a placeholder copy (column is NOT NULL); a running bus seats from rv.endsAddress, never from this.
       return bus.saveAddress({ id: prior?.id ?? generateId(), studentId: owner.studentId ?? null, guestId: owner.guestId ?? null,
         label: 'Bus drop off', address: rv.endsAddress, placeId: rv.endsPlaceId, vehicleId: rv.vehicleId,
         lastUsedAt: nowIso(), createdAt: prior?.createdAt ?? nowIso() });
@@ -552,7 +556,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** BUS-2: where this address seats a rider tonight. A bus row + that bus running → on the bus at its drop-off;
    *  a bus row + no bus → their latest home address (addressId stays the bus row = still remembered);
    *  a home row → that address, and off any bus. null = bus row, no bus, no home address. */
-  function busPatch(r: Pick<BusRunRider, 'runVehicleId'>, addr: BusAddress, rvs: BusRunVehicle[], owned: BusAddress[]): (Pick<BusRunRider, 'snapAddress' | 'snapPlaceId'> & Partial<Pick<BusRunRider, 'runVehicleId' | 'stopOrder' | 'pinned'>>) | null {
+  type Seat = Pick<BusRunRider, 'snapAddress' | 'snapPlaceId'> & Partial<Pick<BusRunRider, 'runVehicleId' | 'stopOrder' | 'pinned'>>;
+  function busPatch(r: Pick<BusRunRider, 'runVehicleId'>, addr: BusAddress, rvs: BusRunVehicle[], owned: BusAddress[]): Seat | null {
     const off = rvs.some((v) => v.id === r.runVehicleId && isBus(v)) ? { runVehicleId: null, stopOrder: null, pinned: false } : {};
     if (!addr.vehicleId) return { snapAddress: addr.address, snapPlaceId: addr.placeId, ...off };
     const rv = rvs.find((v) => v.vehicleId === addr.vehicleId && isBus(v) && v.running);
@@ -654,6 +659,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     filled: Map<string, string[]>;       // pool auto-fill: run vehicle id → new leaderIds (not yet saved)
     riders: BusRunRider[];               // every rider on the run when prepared
     untouched: BusRunRider[];            // fleet riders with no place ID — never sent to Google
+    rvs: BusRunVehicle[];                // every run vehicle when prepared
   }
   /** Cars no bulk action touches: own cars (the leader's choice), locked cars (I11) and buses (BUS-2). */
   function fixedCarIdsOf(rvs: BusRunVehicle[]): Set<string> {
@@ -672,7 +678,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const owned = all.filter((a) => (r.studentId ? a.studentId === r.studentId : a.guestId === r.guestId));
       const seat = busPatch(r, addr, rvs, owned) ?? NO_SEAT;
       const next = { ...r, ...seat };
-      if (JSON.stringify(next) !== JSON.stringify(r)) await bus.saveRunRider(next);
+      if (SEAT_KEYS.some((k) => next[k] !== r[k])) await bus.saveRunRider(next);
     }
   }
   /** Builds the fleet solve for Generate / Fit in (and R3's "Try +N cars"). Reads only. */
@@ -720,7 +726,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const { problem, stopRiderIds } = buildFleetProblem(mode, fleetCars,
       solvable.map((r) => ({ id: r.id, placeId: r.snapPlaceId!, gender: r.snapGender, grade: r.snapGrade, runVehicleId: r.runVehicleId, pinned: r.pinned || !!r.droppedAt })), // already dropped off: never changes car
       b.churchPlaceId, leaveIso(run.serviceDate, b.leaveTime), b);
-    return { problem, stopRiderIds, cars, filled, riders, untouched };
+    return { problem, stopRiderIds, cars, filled, riders, untouched, rvs };
   }
 
   /** Single-car solve for one car's stop order (Move, own car). No church pin / Google down → keep the current order. */
@@ -826,7 +832,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async getVersion(ctx) {
       const c = await gate(ctx, 'bus:use');
       // R19-L3: ?date= polls the trip being viewed; no date = tonight. Polling never creates a trip's run.
-      const run = await tripRun(ctx, c, false);
+      const run = await tripRunIfAny(ctx, c);
       return { runId: run?.id ?? null, version: run?.version ?? 0 };
     },
     // The edit-rider sheet's saved addresses, by rider — the current one first. (Was a name
@@ -1054,7 +1060,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // BUS-1: never force an end address — "address" with nothing picked is just the last drop.
       if (v.car.endsAt === 'address' && !v.car.endsPlaceId) v.car = { ...v.car, endsAt: 'last_drop', endsAddress: null };
       assertRealPlaceId(v.car.endsPlaceId, v.car.endsAt === 'address'); // Task 2: required only when ending at an address
-      const run = (await tripRun(ctx, c))!;
+      const run = await tripRunForWrite(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       // Owner (2026-10-07): newRiders are created here, inside the SAME bus:use-gated call and
       // under the SAME lock check above — a junior leader with no bus:roster places someone new
@@ -1127,7 +1133,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const other = !!ownerLeaderId && ownerLeaderId !== selfLeaderId(ctx);
       if (other) c = await gate(ctx, 'bus:coordinate');
       const me = other ? ownerLeaderId : selfLeaderId(ctx);
-      const run = (await tripRun(ctx, c))!;
+      const run = await tripRunForWrite(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
       if (!rv) return;
@@ -1153,7 +1159,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
       const v = parseIn(MyCarStopsIn, input);
-      const run = (await tripRun(ctx, c))!;
+      const run = await tripRunForWrite(ctx, c);
       if (lockActive(run)) throw lockConflict(run);
       const views = await vehicleViews(run.id);
       const vehicle = views.find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
@@ -1176,7 +1182,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
-      const run = (await tripRun(ctx, c))!;
+      const run = await tripRunForWrite(ctx, c);
       if (lockActive(run)) throw lockConflict(run);
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
       if (!rv) throw new NotFoundError('Car not found');
@@ -1267,7 +1273,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
       const v = parseIn(DroppedIn, input);
-      const run = await tripRun(ctx, c, false);
+      const run = await tripRunIfAny(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!run || !r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       // 2026-10-15 (operator): any Bus login can mark a drop-off on any car.
@@ -1279,7 +1285,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
-      const run = await tripRun(ctx, c, false); // browsing a date never creates its run
+      const run = await tripRunIfAny(ctx, c); // browsing a date never creates its run
       if (!run) return { vehicle: null, stops: [], churchAddress: c.busMinistry.churchAddress, churchPlaceId: c.busMinistry.churchPlaceId,
         ownCarDraft: me ? { car: (await bus.getLeaderPrefs(me))?.ownCar ?? null, riderIds: [] } : null, onCarLeaders: [] };
       const views = await vehicleViews(run.id);
@@ -1462,8 +1468,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       try {
         await syncBusRiders(run); // BUS-2: "on auto-assign they get put in that bus"
         const prep = await prepareFleet(c, run, mode);
-        const busRunning = (await bus.listRunVehicles(run.id)).some((v) => v.running && isBus(v));
-        if (!prep.problem.vehicles.length && !busRunning) throw new BadRequestError((await bus.listRunVehicles(run.id)).some((v) => v.running && v.locked)
+        const busRunning = prep.rvs.some((v) => v.running && isBus(v));
+        if (!prep.problem.vehicles.length && !busRunning) throw new BadRequestError(prep.rvs.some((v) => v.running && v.locked)
           ? 'Every car is locked. Untick Lock on a car to Generate' : 'Turn on at least one car in Car setup');
         let result: SolveResult;
         try { result = prep.problem.stops.length && prep.problem.vehicles.length ? await routing.solve(prep.problem, signal) : { routes: [], skipped: [] }; }
