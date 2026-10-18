@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { can, canWithConfig, canAccessStudent, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, normName, tidyName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
+import { currentRunDate, localDay, addDays, isServiceDay, eligibilityOf, capacityOf, nameMatches, normName, tidyName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
 import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
@@ -17,7 +17,8 @@ import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderVie
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
   BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide } from '../core/entities/bus';
 
-export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string }
+// tripDate (BUS-1): optional ?date= for the own-car / my-car endpoints (Trip logging); see tripRun.
+export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string; tripDate?: string | null }
 
 /** Read-only All cars view (October rework C). Allow-listed fields only: no ids, streets, phones or consent. */
 export interface BusCarsView {
@@ -109,7 +110,7 @@ const OwnCarNewRider = z.object({
   studentId: z.string().min(1).optional(), guestId: z.string().min(1).optional(), newPerson: NewGuest.optional(),
   addressId: z.string().min(1).optional(), newAddress: NewAddress.optional(),
 }).refine((v) => [v.studentId, v.guestId, v.newPerson].filter((x) => x !== undefined).length === 1, 'Choose a student or a new person')
-  .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
+  .refine((v) => !(v.addressId && v.newAddress), 'Choose one address'); // BUS-1: none = no address (trip logging)
 const OwnCarIn = z.object({ car: z.object({ name: z.string().trim().min(1).max(40), seats: z.number().int().min(2).max(15),
   plate: z.string().max(12).nullable().default(null), ...EndsFields }), riderIds: z.array(z.string()),
   newRiders: z.array(OwnCarNewRider).default([]) });
@@ -336,6 +337,23 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   // Writes always target the current night (ensureRun never returns a past run);
   // a rider/car id from a finished night therefore fails its runId check → 404.
   const writableRun = ensureRun;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  /** BUS-1 Trip logging: the run for ctx.tripDate. Absent/current → tonight (ensureRun). Other dates → that
+   *  date's run, created bare (no fleet) when `create`. Window today-14..today+7; a later bus night is refused. */
+  async function tripRun(ctx: BusCtx, c: MinistryConfig, create = true): Promise<BusRun | null> {
+    const d = ctx.tripDate, dow = c.structure.serviceDayOfWeek;
+    const cur = currentRunDate(ctx.localNow, dow);
+    if (!d || d === cur) return ensureRun(ctx, c);
+    if (!DATE_RE.test(d) || Number.isNaN(Date.parse(d + 'T00:00:00Z'))) throw new BadRequestError('Bad date');
+    const today = localDay(ctx.localNow);
+    if (d < addDays(today, -14) || d > addDays(today, 7)) throw new BadRequestError('Pick a date in the last 14 days or the next 7');
+    // A bare run made early for a later bus night would stop ensureRun copying the fleet into it.
+    if (d > cur && isServiceDay(d, dow)) throw new BadRequestError("That's a later bus night — log it on the night");
+    const existing = await bus.getRunByDate(d);
+    if (existing || !create) return existing;
+    return (await bus.insertRunIfAbsent({ id: generateId(), serviceDate: d, version: 0, availablePoolLeaderIds: [],
+      lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: nowIso() })).run;
+  }
   async function touch(ctx: BusCtx, run: BusRun): Promise<void> {
     await bus.bumpRun(run.id, await whoLabel(ctx), nowIso());
   }
@@ -470,18 +488,20 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       name = `${g.firstName} ${g.lastName}`; grade = g.grade; gender = g.gender;
       await bus.saveGuest({ ...g, lastRiddenAt: nowIso() });
     }
-    const addr = await resolveAddress(v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! }, v);
+    // BUS-1: no address given (a trip rider) = none; an existing/revived row keeps its own address.
+    const addr = v.addressId || v.newAddress ? await resolveAddress(v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! }, v) : null;
     const existing = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
     // Re-adding someone who was taken off tonight revives their "not riding" row (unique per run+person).
     const revive = async (r: BusRunRider) => (r.notRiding
       ? { ...OFF_CAR, notRiding: false, noShow: false, droppedAt: null, droppedBy: null, addedBy: await whoLabel(ctx), addedAt: nowIso() } : {});
-    const patch = { studentId: v.studentId ?? null, guestId: v.guestId ?? null, addressId: addr.id,
-      snapName: name, snapGrade: grade, snapGender: gender, snapAddress: addr.address, snapPlaceId: addr.placeId };
+    const patch = { studentId: v.studentId ?? null, guestId: v.guestId ?? null,
+      snapName: name, snapGrade: grade, snapGender: gender,
+      ...(addr ? { addressId: addr.id, snapAddress: addr.address, snapPlaceId: addr.placeId } : {}) };
     if (existing) return bus.saveRunRider({ ...existing, ...patch, ...(await revive(existing)) });
     try {
       return await bus.saveRunRider({ id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null,
         pinned: false, addedBy: await whoLabel(ctx), addedAt: nowIso(), droppedAt: null, droppedBy: null,
-        notRiding: false, noShow: false, note: null, wasGuest: false, ...patch });
+        notRiding: false, noShow: false, note: null, wasGuest: false, addressId: null, snapAddress: '', snapPlaceId: null, ...patch });
     } catch (err) {
       // Two leaders adding the same student/guest at once — see addRider's original comment
       // (same race, same fix): re-read and merge onto the winner's row.
@@ -952,8 +972,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const leader = await leaders.findById(me);
       if (!leader) throw new NotFoundError('Leader not found');
       const v = parseIn(OwnCarIn, input);
+      // BUS-1: never force an end address — "address" with nothing picked is just the last drop.
+      if (v.car.endsAt === 'address' && !v.car.endsPlaceId) v.car = { ...v.car, endsAt: 'last_drop', endsAddress: null };
       assertRealPlaceId(v.car.endsPlaceId, v.car.endsAt === 'address'); // Task 2: required only when ending at an address
-      const run = await writableRun(ctx, c);
+      const run = (await tripRun(ctx, c))!;
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       // Owner (2026-10-07): newRiders are created here, inside the SAME bus:use-gated call and
       // under the SAME lock check above — a junior leader with no bus:roster places someone new
@@ -1009,7 +1031,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const other = !!ownerLeaderId && ownerLeaderId !== selfLeaderId(ctx);
       if (other) c = await gate(ctx, 'bus:coordinate');
       const me = other ? ownerLeaderId : selfLeaderId(ctx);
-      const run = await writableRun(ctx, c);
+      const run = (await tripRun(ctx, c))!;
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
       if (!rv) return;
@@ -1030,7 +1052,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
       const v = parseIn(MyCarStopsIn, input);
-      const run = await writableRun(ctx, c);
+      const run = (await tripRun(ctx, c))!;
       if (lockActive(run)) throw lockConflict(run);
       const views = await vehicleViews(run.id);
       const vehicle = views.find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
@@ -1053,7 +1075,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
       if (!me) throw new BadRequestError('Choose who you are first');
-      const run = await writableRun(ctx, c);
+      const run = (await tripRun(ctx, c))!;
       if (lockActive(run)) throw lockConflict(run);
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.running && (x.ownerLeaderId === me || x.leaderIds.includes(me)));
       if (!rv) throw new NotFoundError('Car not found');
@@ -1128,9 +1150,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
       const v = parseIn(DroppedIn, input);
-      const run = await writableRun(ctx, c);
+      const run = await tripRun(ctx, c, false);
       const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
+      if (!run || !r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       // 2026-10-15 (operator): any Bus login can mark a drop-off on any car.
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
@@ -1140,7 +1162,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');
       const me = selfLeaderId(ctx);
-      const run = await ensureRun(ctx, c);
+      const run = await tripRun(ctx, c, false); // browsing a date never creates its run
+      if (!run) return { vehicle: null, stops: [], churchAddress: c.busMinistry.churchAddress, churchPlaceId: c.busMinistry.churchPlaceId,
+        ownCarDraft: me ? { car: (await bus.getLeaderPrefs(me))?.ownCar ?? null, riderIds: [] } : null, onCarLeaders: [] };
       const views = await vehicleViews(run.id);
       const vehicle = me ? views.find((v) => v.running && (v.ownerLeaderId === me || v.leaderIds.includes(me))) ?? null : null;
       const stops: MyCarView['stops'] = [];

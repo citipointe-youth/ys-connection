@@ -683,11 +683,11 @@ describe('Task 2: new-address paths reject a missing placeId', () => {
       .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
     await expect(svc.saveVehicle(ctx('admin'), { name: 'Van', seats: 8, endsAt: 'church' })).resolves.toBeTruthy();
   });
-  it('an own car set to end at an address with no placeId is rejected', async () => {
+  it('an own car set to end at an address with no placeId ends at the last drop (BUS-1: address optional)', async () => {
     const { svc, ctx } = await setup();
-    await expect(svc.saveOwnCar(ctx('grade', 'L1'),
-      { car: { name: 'My car', seats: 4, plate: null, endsAt: 'address', endsAddress: 'X', endsPlaceId: null }, riderIds: [] }))
-      .rejects.toMatchObject({ statusCode: 400, message: 'Pick the address from the suggestions list' });
+    const own = await svc.saveOwnCar(ctx('grade', 'L1'),
+      { car: { name: 'My car', seats: 4, plate: null, endsAt: 'address', endsAddress: 'X', endsPlaceId: null }, riderIds: [] });
+    expect([own.endsAt, own.endsAddress]).toEqual(['last_drop', null]);
   });
   it('PERSISTENCE=memory / fake-provider suggestions still carry a real placeId, so a normal add keeps working', async () => {
     const { svc, ctx } = await setup();
@@ -1032,5 +1032,80 @@ describe('trip logging (BUS-1)', () => {
     const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T18:00'));
     expect(next.run.serviceDate).toBe('2026-10-16');
     expect(next.vehicles.find((v) => v.vehicleId)!.leaderIds).toEqual(['L1']);
+  });
+  const WED = '2026-10-14T19:00';
+  const jr = (d: string | null): BusCtx => ({ actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: WED, tripDate: d });
+  const car = { name: "Tom's car", seats: 5, endsAt: 'last_drop' as const };
+  it('a Wed trip is its own bare run: own car only, address-less rider', async () => {
+    const { svc, bus, ctx } = await setup();
+    const own = await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    const wed = (await bus.getRunByDate('2026-10-14'))!;
+    const rvs = await bus.listRunVehicles(wed.id);
+    expect(rvs.map((v) => v.id)).toEqual([own.id]); // no fleet copied
+    const [r] = await bus.listRunRiders(wed.id);
+    expect([r!.addressId, r!.snapAddress, r!.snapPlaceId, r!.runVehicleId]).toEqual([null, '', null, own.id]);
+    expect((await svc.getRun(ctx('admin', null, WED))).vehicles.some((v) => v.ownerLeaderId === 'L1')).toBe(false); // Friday untouched
+  });
+  it('endsAt address without a pick is saved as last_drop', async () => {
+    const { svc } = await setup();
+    const own = await svc.saveOwnCar(jr('2026-10-14'), { car: { ...car, endsAt: 'address' }, riderIds: [] });
+    expect(own.endsAt).toBe('last_drop');
+  });
+  it('window: 15 back / 8 ahead / a later bus night are refused', async () => {
+    const { svc } = await setup();
+    const msgs: string[] = [];
+    for (const d of ['2026-09-29', '2026-10-22', '2026-10-23', '14-10-2026']) { // today Wed 14: -15, +8, +9; bad format
+      const e = await svc.saveOwnCar(jr(d), { car, riderIds: [] }).catch((x) => x);
+      expect(e).toMatchObject({ statusCode: 400 });
+      msgs.push(e.message);
+    }
+    expect(msgs).toEqual(['Pick a date in the last 14 days or the next 7', 'Pick a date in the last 14 days or the next 7',
+      'Pick a date in the last 14 days or the next 7', 'Bad date']);
+    // Only reachable on the bus night itself: Fri 09 + 7 = next Friday, inside the window but a later bus night.
+    const fri = { ...jr('2026-10-16'), localNow: FRI_7PM };
+    await expect(svc.saveOwnCar(fri, { car, riderIds: [] })).rejects.toThrow("That's a later bus night — log it on the night");
+  });
+  it('the current run date (or no date) is tonight, as before', async () => {
+    const { svc, bus } = await setup();
+    const own = await svc.saveOwnCar(jr('2026-10-16'), { car, riderIds: [] });
+    expect(own.runId).toBe((await bus.getRunByDate('2026-10-16'))!.id);
+    expect((await svc.myCar(jr(null))).vehicle!.id).toBe(own.id);
+  });
+  it('back-dating to last Friday adds the own car to that night', async () => {
+    const t = await withFleet(); // Fri 09 run exists
+    const own = await t.svc.saveOwnCar(jr('2026-10-09'), { car, riderIds: [] });
+    expect(own.runId).toBe((await t.bus.getRunByDate('2026-10-09'))!.id);
+  });
+  it('myCar for a date with no run is empty and creates nothing', async () => {
+    const { svc, bus } = await setup();
+    const n = (await bus.listRuns()).length;
+    const v = await svc.myCar(jr('2026-10-13'));
+    expect(v).toMatchObject({ vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] }, onCarLeaders: [] });
+    expect((await bus.listRuns()).length).toBe(n);
+  });
+  it('dropped-off on a trip rider needs the trip date', async () => {
+    const { svc, bus } = await setup();
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    const [r] = await bus.listRunRiders((await bus.getRunByDate('2026-10-14'))!.id);
+    await expect(svc.setDropped(jr(null), r!.id, { dropped: true })).rejects.toMatchObject({ statusCode: 404 });
+    expect((await svc.setDropped(jr('2026-10-14'), r!.id, { dropped: true })).droppedAt).toBeTruthy();
+  });
+  it('re-adding a not-riding rider with no address keeps their saved address', async () => {
+    const { svc, bus } = await setup();
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a' } }] });
+    const run = (await bus.getRunByDate('2026-10-14'))!;
+    const [r] = await bus.listRunRiders(run.id);
+    await svc.saveMyCarStops(jr('2026-10-14'), { riderIds: [], removeIds: [r!.id] });
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    expect((await bus.getRunRider(r!.id))!.snapAddress).toBe('1 A St, Carina');
+  });
+  it('both addressId and newAddress is refused', async () => {
+    const { svc } = await setup();
+    await expect(svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1', addressId: 'a1',
+      newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a' } }] })).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('Students-tab addRider still requires an address', async () => {
+    const { svc, ctx } = await setup();
+    await expect(svc.addRider(ctx('grade'), { studentId: 's1' })).rejects.toMatchObject({ statusCode: 400 });
   });
 });

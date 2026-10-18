@@ -16,7 +16,9 @@ function ctxOf(req: HttpRequest): BusCtx {
   const skew = Math.abs(Date.parse(now.slice(0, 16) + 'Z') - Date.now());
   if (!(skew < 36 * 3600_000)) throw new BadRequestError('Your phone clock looks wrong — check the date and time');
   const as = (req.query['as'] ?? body['as'] ?? null) as string | null;
-  return { actor: req.ctx, asLeaderId: as || null, localNow: now.slice(0, 16) };
+  // BUS-1: ?date= (Trip logging) — query only; format + window are checked in the service (tripRun).
+  const tripDate = req.query['date'] ? String(req.query['date']) : null;
+  return { actor: req.ctx, asLeaderId: as || null, localNow: now.slice(0, 16), tripDate };
 }
 
 export function makeBusController(deps: { bus: BusService }) {
