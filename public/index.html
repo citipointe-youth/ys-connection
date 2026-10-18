@@ -15329,14 +15329,14 @@ function _busDropAtIso(hhmm) {
   d.setHours(h, m, 0, 0);
   return d.toISOString();
 }
-// Task B (owner, 2026-10-08): changing "who you are" on My car now does a full page reload
-// (previously BUS.myCar=null;busRefresh() — the owner wants a clean reload instead) — the
-// yap_bus_reload flag is read once in boot() so the app lands back on Bus → My car afterwards.
+// BUS-1 (operator 2026-10-18): "I am" is remembered without a page reload. busRefresh() re-fetches
+// /bus/run + /bus/my-car under the new as= (it drops an in-flight load made under the old one).
 // Its two UI entry points run _lkSwitchGuard first (unsent link actions warn before "I am" changes).
 function _busIdentityChanged(id) {
   setMyLeaderId(id || null);
-  try { localStorage.setItem('yap_bus_reload', '1'); } catch {}
-  location.reload();
+  BUS.myCar = null; BUS.ocDraft = null;
+  busRefresh();
+  renderBus();
 }
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
@@ -15841,13 +15841,7 @@ async function boot() {
   try { S.settings = await API.get('/settings'); } catch { S.settings = {}; settingsFailed = true; }
   if (!S.user && (settingsFailed || (S.settings && S.settings.needsAdmin))) S.page = 'setup';
   if (S.settings && S.settings.ministryConfig) applyTheme(S.settings.ministryConfig);
-  // Task B (owner, 2026-10-08): a Bus identity change reloads the page (_busIdentityChanged) —
-  // land back on Bus → My car instead of Home. BUS.tab already defaults to 'mycar' on a fresh
-  // load, so only S.page needs restoring here.
   if (S.user) {
-    let wantBus = false;
-    try { wantBus = localStorage.getItem('yap_bus_reload') === '1'; } catch {}
-    if (wantBus) { try { localStorage.removeItem('yap_bus_reload'); } catch {} S.page = 'bus'; }
     // Tapped notice alert, cold start (sw.js openWindow('/?nav=notices')). render() sends Home if the module is off.
     try { if (new URLSearchParams(location.search).get('nav') === 'notices') { S.page = 'notices'; history.replaceState(null, '', location.pathname); } } catch {}
   }

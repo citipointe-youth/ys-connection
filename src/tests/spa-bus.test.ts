@@ -650,7 +650,7 @@ describe('_busBlockWrite toasts and blocks only while Generate/lock is active (T
 // fetched before any identity was chosen ("No car assigned."). Task B (owner, 2026-10-08):
 // changing identity now does a full page reload (_busIdentityChanged) instead of a bare
 // busRefresh()/renderBus(), so the app reopens on Bus → My car with the fresh identity.
-describe('_busMyCarHtml identity picker goes through a full reload (Task B)', () => {
+describe('_busMyCarHtml identity picker goes through _busIdentityChanged', () => {
   it('choosing a name calls _busIdentityChanged with the picked value', () => {
     const prelude = `
       const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
@@ -677,40 +677,31 @@ describe('_busMyCarHtml identity picker goes through a full reload (Task B)', ()
   });
 });
 
-// Task B (owner, 2026-10-08): _busIdentityChanged persists the new leader id, flags a one-shot
-// "land back on Bus" marker for boot(), and reloads — never calls busRefresh/renderBus itself
-// (the reload re-runs the whole app).
-describe('_busIdentityChanged (Task B)', () => {
-  it('persists the id, sets the reload flag, and reloads', () => {
+// BUS-1 (operator 2026-10-18): "I am" is remembered WITHOUT a page reload.
+describe('_busIdentityChanged (BUS-1: no reload)', () => {
+  it('persists the id, clears my car + draft, refreshes and repaints; never reloads', () => {
     const prelude = `
-      const __store = {};
-      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
-      let __reloaded = false;
+      const BUS = { myCar: { x: 1 }, ocDraft: { y: 1 } };
+      let __setId, __refreshed = 0, __rendered = 0, __reloaded = false;
       const location = { reload: () => { __reloaded = true; } };
-      let __setId = null;
       function setMyLeaderId(id) { __setId = id; }
-      function __state() { return { store: __store, reloaded: __reloaded, setId: __setId }; }
+      function busRefresh() { __refreshed++; return Promise.resolve(); }
+      function renderBus() { __rendered++; }
+      function __state() { return { setId: __setId, refreshed: __refreshed, rendered: __rendered, reloaded: __reloaded, bus: BUS }; }
     `;
     const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
     _busIdentityChanged('L2');
-    const st = __state();
-    expect(st.setId).toBe('L2');
-    expect(st.store['yap_bus_reload']).toBe('1');
-    expect(st.reloaded).toBe(true);
+    const s = __state();
+    expect([s.setId, s.refreshed, s.rendered, s.reloaded, s.bus.myCar, s.bus.ocDraft]).toEqual(['L2', 1, 1, false, null, null]);
   });
-  it('a null id clears the leader (passed through to setMyLeaderId as null)', () => {
-    const prelude = `
-      const __store = {};
-      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
-      const location = { reload: () => {} };
-      let __setId = 'unset';
-      function setMyLeaderId(id) { __setId = id; }
-      function __state() { return { setId: __setId }; }
-    `;
+  it('a null id clears the leader', () => {
+    const prelude = `const BUS = {}; let __setId = 'unset'; function setMyLeaderId(id) { __setId = id; }
+      function busRefresh() {} function renderBus() {} function __state() { return { setId: __setId }; }`;
     const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
     _busIdentityChanged(null);
     expect(__state().setId).toBeNull();
   });
+  it('index.html no longer uses the yap_bus_reload flag', () => { expect(loadIndexHtml()).not.toContain('yap_bus_reload'); });
 });
 
 // Leader preferred grades (Task 2): Edit Pool sheet gets a per-leader grade checkbox block
