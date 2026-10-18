@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkNoRoomsHtml', '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -272,6 +272,32 @@ function door(h: ReturnType<typeof makeEnv>, people: any[] = [], leaders: any[] 
   L.services = [{ ...SVC, ymd: h.fns._lkSvcDay() }]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders }; // fix16 F-28: today, so Check out shows
   L.okDay = { [SVC.serviceTimeId]: true }; // B9: the "Not today" confirm is tested on its own
 }
+
+describe('incident 18 Oct: a service with no check-in rooms', () => {
+  const ava = { personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false };
+  it('banner only when the server says noRooms (not while unknown or with rooms)', () => {
+    const h = makeEnv();
+    expect(h.fns._lkNoRoomsHtml(null)).toBe('');
+    expect(h.fns._lkNoRoomsHtml({ ...SVC })).toBe('');
+    expect(strip(h.fns._lkNoRoomsHtml({ ...SVC, noRooms: true }))).toContain('This service has no check-in rooms in Elvanto — check-ins will fail. Ask an admin to add rooms to this service in Elvanto.');
+  });
+  it('no Check in button and a tap queues nothing; leaders submit queues nothing', () => {
+    const h = makeEnv();
+    door(h, [ava], [{ leaderId: 'l1', name: 'Lee', personId: P(9), checkedIn: false, action: null, mine: false }]);
+    h.get().LINK.services[0].noRooms = true;
+    expect(h.fns._lkRowHtml(ava)).not.toContain('Check in');
+    h.fns._lkCheck(P(1), 'checkIn');
+    h.get().LINK.lq = { l1: true };
+    h.fns._lkLeadersSubmit();
+    expect(h.fns._lkQGet()).toEqual([]);
+  });
+  it('a refused no-room check-in on that service says so in plain words', () => {
+    const h = makeEnv();
+    door(h, [{ ...ava, action: { id: P(5), type: 'checkIn', status: 'refused', reason: 'no-room' } }]);
+    h.get().LINK.services[0].noRooms = true;
+    expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain('No check-in rooms on this service in Elvanto');
+  });
+});
 
 describe('F1.2 queue', () => {
   it('a tap is queued with a crypto.randomUUID id and survives a reload (fresh functions, same storage)', () => {

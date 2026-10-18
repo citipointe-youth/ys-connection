@@ -110,7 +110,9 @@ export interface LinkStatus {
   consoleLinkRev: number | null; appLinkRev: number;
 }
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
-export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
+export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean;
+  /** Incident 18 Oct: the console pushed this service with no check-in rooms (every check-in would be refused no-room). */
+  noRooms?: true }
 export interface CheckinPerson { personId: string; name: string; grade: number | null; leader: boolean; checkedIn: boolean;
   action: ActionView | null; mine: boolean; /** T3: shown from the pushed check-in name only: check out works, check in does not. */ noRoster?: true }
 export interface CheckinLeader { leaderId: string; name: string; personId: string | null; checkedIn: boolean;
@@ -871,7 +873,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const list = pickList(services, c.today);
       const out: CheckinView = { today: c.today,
         services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd,
-          isDefault: defaultService(s.ymd, services, s.ymd === serviceDay(c.t) ? c.t : undefined)?.serviceTimeId === s.serviceTimeId })),
+          isDefault: defaultService(s.ymd, services, s.ymd === serviceDay(c.t) ? c.t : undefined)?.serviceTimeId === s.serviceTimeId,
+          ...(s.rooms.length ? {} : { noRooms: true as const }) })),
         defaultServiceTimeId: defaultService(serviceDay(c.t), services, c.t)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
       if (!svc) return out;
       const svcAt = takenAt(mirrors, 'services');

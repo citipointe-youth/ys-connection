@@ -38,6 +38,11 @@ describe('error-log-text', () => {
     expect(textFor('link', 'unknown', 'checkIn', null).line1).toBe('The console refused check-in for an unknown reason');
   });
 
+  it('incident 18 Oct: no-room reads as a human, counted line (41 refusals fold into one entry)', () => {
+    expect(textFor('link', 'no-room', 'checkIn', null, 1)).toMatchObject({ line1: '1 check-in refused: no check-in room in Elvanto', counted: true });
+    expect(textFor('link', 'no-room', 'checkIn', null, 41).line1).toBe('41 check-ins refused: no check-in room in Elvanto');
+    expect(textFor('link', 'no-room', 'checkIn', null, 41).line2).toMatch(/no check-in rooms/);
+  });
   it('counted entries pick singular / plural and set counted; others do not', () => {
     expect(textFor('link', 'pending-24h', 'checkIn', null, 1)).toMatchObject({ line1: '1 check-in action has waited over 24 hours', counted: true });
     expect(textFor('link', 'pending-24h', 'checkIn', null, 3).line1).toBe('3 check-in actions have waited over 24 hours');
