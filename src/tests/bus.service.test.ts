@@ -1022,3 +1022,15 @@ describe('permission split (2026-10-15)', () => {
     expect(await sarahs()).toBeUndefined();
   });
 });
+
+describe('trip logging (BUS-1)', () => {
+  it('ensureRun copies leaders from the last FLEET night, skipping a bare trip run', async () => {
+    const t = await withFleet(); // Fri 2026-10-09 run, fleet car t.rvId
+    await t.svc.updateRunVehicle(t.ctx('admin'), t.rvId, { leaderIds: ['L1'] });
+    await t.bus.insertRunIfAbsent({ id: 'trip-wed', serviceDate: '2026-10-14', version: 0, availablePoolLeaderIds: [],
+      lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: '2026-10-14T09:00:00.000Z' });
+    const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T18:00'));
+    expect(next.run.serviceDate).toBe('2026-10-16');
+    expect(next.vehicles.find((v) => v.vehicleId)!.leaderIds).toEqual(['L1']);
+  });
+});

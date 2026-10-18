@@ -297,7 +297,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const date = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
     const existing = await bus.getRunByDate(date);
     if (existing) return existing;
-    const prev = (await bus.listRuns()).find((r) => r.serviceDate < date) ?? null;
+    // BUS-1: a trip-only (bare) run has no fleet cars, so carry over from the last night that did.
+    // ponytail: one listRunVehicles per earlier run until a fleet car is found (1-2 reads in practice;
+    // a church with no fleet scans every run once a week) — batch it if that ever shows up.
+    let prev: BusRun | null = null, prevVehicles: BusRunVehicle[] = [];
+    for (const r of (await bus.listRuns()).filter((r) => r.serviceDate < date)) { // newest first
+      const vs = await bus.listRunVehicles(r.id);
+      if (vs.some((v) => v.vehicleId)) { prev = r; prevVehicles = vs; break; }
+    }
     // I7: a prev run's leaderIds/availablePoolLeaderIds can name a leader who's since been
     // deactivated (e.g. a New Year reset) — only carry forward leaders still active, or the
     // new run opens with stale "Leader" chips, wrong capacity and unknown gender.
@@ -309,7 +316,6 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: nowIso(),
     });
     if (!created) return run;
-    const prevVehicles = prev ? await bus.listRunVehicles(prev.id) : [];
     const fleet = (await bus.listVehicles()).filter((v) => !v.archived);
     for (const [i, v] of fleet.entries()) {
       const before = prevVehicles.find((p) => p.vehicleId === v.id);
