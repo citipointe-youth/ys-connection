@@ -428,7 +428,7 @@ describe('history', () => {
     const t = await withFleet();
     expect(await t.svc.listRuns(t.ctx('director', null, '2026-10-12T10:00'))).toHaveLength(1);
     await expect(t.svc.listRuns(t.ctx('quad'))).rejects.toMatchObject({ statusCode: 403 });
-    const past = await t.svc.getPastRun(t.ctx('admin', null, '2026-10-12T10:00'), (await t.svc.getVersion(t.ctx('admin'))).runId);
+    const past = await t.svc.getPastRun(t.ctx('admin', null, '2026-10-12T10:00'), (await t.svc.getVersion(t.ctx('admin'))).runId!);
     expect(past.run.readOnly).toBe(true);
     expect(past.riders).toHaveLength(3);
   });
@@ -1045,6 +1045,18 @@ describe('trip logging (BUS-1)', () => {
     const [r] = await bus.listRunRiders(wed.id);
     expect([r!.addressId, r!.snapAddress, r!.snapPlaceId, r!.runVehicleId]).toEqual([null, '', null, own.id]);
     expect((await svc.getRun(ctx('admin', null, WED))).vehicles.some((v) => v.ownerLeaderId === 'L1')).toBe(false); // Friday untouched
+  });
+  it('R19-L3: version follows ?date= (the trip being viewed), never creating its run', async () => {
+    const { svc, bus } = await setup();
+    expect(await svc.getVersion(jr('2026-10-14'))).toEqual({ runId: null, version: 0 });
+    expect(await bus.getRunByDate('2026-10-14')).toBeNull();
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [] });
+    const wed = (await bus.getRunByDate('2026-10-14'))!;
+    const v1 = await svc.getVersion(jr('2026-10-14'));
+    expect(v1.runId).toBe(wed.id);
+    await svc.saveOwnCar(jr('2026-10-14'), { car: { ...car, seats: 6 }, riderIds: [] });
+    expect((await svc.getVersion(jr('2026-10-14'))).version).toBeGreaterThan(v1.version);
+    expect((await svc.getVersion(jr(null))).runId).not.toBe(wed.id); // no date = tonight
   });
   it('endsAt address without a pick is saved as last_drop', async () => {
     const { svc } = await setup();
