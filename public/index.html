@@ -671,6 +671,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .cbx-row input{width:20px;height:20px;flex-shrink:0}
 .cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bus-gender{display:flex;gap:8px}
+.bus-fsec{margin-bottom:var(--s4)}.bus-fsec .bus-ac{margin-top:var(--s2)}
 .bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
 /* Single-list bus sheets (Leaders on car, Leader pool): the list takes the sheet's height
    instead of the 110px cap that multi-list sheets (Edit vehicle, Your car) need. */
@@ -14901,13 +14902,14 @@ function _busPrefGradesChip(l) {
   return (l.prefGrades && l.prefGrades.length) ? `<span class="chip c-neutral">${l.prefGrades.map((g) => 'Y' + g).join(',')}</span>` : '';
 }
 function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, checked) {
-  return `<label class="fl">Ends at</label>
+  // R19-U9: one section on the spacing tokens: 8px select -> address, 16px to the next section.
+  return `<div class="bus-fsec"><label class="fl">Ends at</label>
     <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-wrap').hidden=this.value!=='address'">
       <option value="church" ${endsAt === 'church' ? 'selected' : ''}>Church</option>
       <option value="last_drop" ${endsAt === 'last_drop' ? 'selected' : ''}>Last drop</option>
       <option value="address" ${endsAt === 'address' ? 'selected' : ''}>Address</option></select>
     <div id="${prefix}-ends-wrap" ${endsAt === 'address' ? '' : 'hidden'}>${_busAcField(prefix + '-ends-addr', endsAddress || '', endsPlaceId || null, 'Street address, suburb')}</div>
-    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}`;
+    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}</div>`;
 }
 function busEditVehicle(vehicleId) {
   const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '', kind: 'car' };
