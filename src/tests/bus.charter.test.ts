@@ -238,6 +238,41 @@ describe('BUS-2 move + history', () => {
     const r3 = await f.svc.addRider(f.admin, { studentId: 's3', busRunVehicleId: rvId });
     await expect(f.svc.moveRider(f.admin, r3.id, { runVehicleId: null })).rejects.toThrow(/home address first/);
   });
+  it('R19-S1 pin: Move onto the bus = bus row, drop-off snap, pinned, no stop, Undo cleared', async () => {
+    const f = await busFixture();
+    const carId = await f.car('Van', 8, ['L2']);
+    const r = await f.rider('s2');
+    const { rvId } = await busCar(f);
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: carId });
+    await f.svc.generate(f.admin, { mode: 'all' }); // leaves an undo snapshot
+    expect((await f.svc.getRun(f.admin)).run.undoUntil).not.toBeNull();
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: rvId });
+    const v = await f.svc.getRun(f.admin);
+    const got = v.riders.find((x) => x.id === r.id)!;
+    expect(got).toMatchObject({ runVehicleId: rvId, address: DROP.endsAddress, placeId: 'fake:hall', pinned: true, stopOrder: null });
+    expect((await f.svc.riderAddresses(f.admin, r.id)).find((a) => a.id === got.addressId)!.vehicleId).toBeTruthy();
+    expect(v.run.undoUntil).toBeNull();
+  });
+  it('R19-S1 pin: Move off the bus with a home → home row; Unassigned unpinned, a car pinned with a stop', async () => {
+    const f = await busFixture();
+    const r = await f.rider('s1');
+    const homeId = r.addressId;
+    const { rvId } = await busCar(f);
+    const carId = await f.car('Van', 8, ['L2']);
+    await f.svc.updateRider(f.admin, r.id, { busRunVehicleId: rvId });
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: null });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: null, addressId: homeId, placeId: 'fake:s1', pinned: false, stopOrder: null });
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: rvId });
+    await f.svc.moveRider(f.admin, r.id, { runVehicleId: carId });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: carId, addressId: homeId, placeId: 'fake:s1', pinned: true, stopOrder: 1 });
+  });
+  it('R19-S1 pin: Unpin a bus rider keeps them on the bus', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    const r = await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    await f.svc.moveRider(f.admin, r.id, { unpin: true });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: rvId, pinned: false, placeId: 'fake:hall' });
+  });
   it('Unassign all and Undo leave bus riders on the bus', async () => {
     const f = await busFixture();
     const { rvId } = await busCar(f);

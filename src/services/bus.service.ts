@@ -1192,19 +1192,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rvs = await bus.listRunVehicles(run.id);
       const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
       const target = v.runVehicleId ? rvs.find((x) => x.id === v.runVehicleId && x.running) : null;
-      if (!v.unpin && target && isBus(target)) { // BUS-2: onto a bus = their bus choice; never "full"
-        const addr = await resolveAddress(owner, { busRunVehicleId: target.id }, run);
-        const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: target.endsAddress ?? addr.address,
-          snapPlaceId: target.endsPlaceId, runVehicleId: target.id, stopOrder: null, pinned: true });
-        await bus.setUndo(run.id, null, null); await touch(ctx, run);
-        return { ...riderView(saved, await consentOf(saved)), reordered: true };
-      }
+      const ontoBus = !!target && isBus(target);
       let cur = r;
-      if (!v.unpin && rvs.some((x) => x.id === r.runVehicleId && isBus(x))) { // BUS-2: off the bus = back to their home address
-        const home = latestHome(await bus.listAddresses(owner));
-        if (!home) throw new BadRequestError(NO_BUS_NO_HOME);
-        cur = await bus.saveRunRider({ ...r, addressId: (await resolveAddress(owner, { addressId: home.id }, run)).id,
-          snapAddress: home.address, snapPlaceId: home.placeId, runVehicleId: null, stopOrder: null, pinned: false });
+      // BUS-2: onto a bus = their bus choice (never "full"); off a bus = back to their home address. busPatch seats both.
+      if (!v.unpin && (ontoBus || rvs.some((x) => x.id === r.runVehicleId && isBus(x)))) {
+        const owned = await bus.listAddresses(owner), home = latestHome(owned);
+        if (!ontoBus && !home) throw new BadRequestError(NO_BUS_NO_HOME);
+        const addr = await resolveAddress(owner, ontoBus ? { busRunVehicleId: target!.id } : { addressId: home!.id }, run);
+        cur = await bus.saveRunRider({ ...r, addressId: addr.id, ...busPatch(r, addr, rvs, owned)! });
+        if (ontoBus) {
+          await bus.setUndo(run.id, null, null); await touch(ctx, run);
+          return { ...riderView(cur, await consentOf(cur)), reordered: true };
+        }
       }
       if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
         const saved = await bus.saveRunRider({ ...r, pinned: false });
