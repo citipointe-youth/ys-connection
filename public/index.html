@@ -562,6 +562,13 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
   .filter-row .fc{padding-inline:5px}
   .vg-bar .fc{min-height:40px;min-width:31px}
   .filter-row .fc,button[onclick="go('trends')"]{min-height:44px;min-width:31px}
+  .htip::after{content:"";position:absolute;inset:-13px} /* rel20 U13: 18px "?" gets a 44px hit area, no visual change */
+}
+/* rel20 U13 + U14 #21: touch iPad top nav = one row of 44px links that scrolls sideways (no 2nd row holding one link). */
+@media(pointer:coarse) and (min-width:768px){
+  .desk-nav{flex-wrap:nowrap;overflow-x:auto;max-height:none;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
+  .desk-nav::-webkit-scrollbar{display:none}
+  .desk-nav a{min-height:44px;flex:0 0 auto}
 }
 @media(max-width:767px){
   .tbbar{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
@@ -945,6 +952,10 @@ button.rc-go{padding:0;text-align:left}
 .rc-top>.lk-nm{flex:1 1 auto;min-width:0}
 .rc-top>.lk-tag,.rc-top>.chip,.rc-top>.ic-s{flex:none;margin-top:2px}
 .ar-rc{padding:var(--s3);margin:0}
+.ar-body{padding:0 12px 12px}
+.ar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--s2)}
+/* rel20 U14 #20: on a phone the section card is the only card; students are ruled rows in it (one 16px gutter). */
+@media(max-width:599px){.ar-body{padding:0 0 var(--s1)}.ar-grid{gap:0}.ar-body .ar-rc{border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;padding-inline:var(--s4)}}
 .ar-rc .rc-foot>.lk-d{font-size:13px;color:var(--ink)}
 .rc-pills{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s1);flex:0 1 auto;max-width:55%}
 .rc .lk-d{margin-top:2px}
@@ -1683,6 +1694,12 @@ function _updateNavActive() {
   const cur = S.page;
   document.querySelectorAll('[data-nav-page]').forEach(el => {
     el.classList.toggle('on', el.dataset.navPage === cur || (cur === 'link-admin' && el.dataset.navPage === 'admin') || (el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)));
+    // rel20: the touch-iPad top nav scrolls sideways; keep the current page's link in view.
+    const nav = el.parentElement;
+    if (el.classList.contains('on') && nav && nav.classList.contains('desk-nav') && nav.scrollWidth > nav.clientWidth) {
+      const r = el.getBoundingClientRect(), n = nav.getBoundingClientRect();
+      if (r.left < n.left || r.right > n.right - 24) nav.scrollLeft += r.right - (n.right - 24); // only when cut off
+    }
   });
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
@@ -5128,8 +5145,8 @@ function _arSectionsHtml(scoped, u) {
         <strong style="color:${col};display:inline-flex;align-items:center;gap:4px">${icS(ic)} ${label}</strong>
         <span class="badge" style="margin-left:auto">${items.length}</span>
       </div>
-      <div id="ar-body-${key}" style="display:${open?'':'none'};padding:0 12px 12px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--s2)">${cards}</div>
+      <div id="ar-body-${key}" class="ar-body" style="display:${open?'':'none'}">
+        <div class="ar-grid">${cards}</div>
       </div>
     </div>`;
   }
