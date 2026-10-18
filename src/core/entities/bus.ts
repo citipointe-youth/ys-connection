@@ -151,6 +151,7 @@ export interface BusExtraCarsView {
 export interface BusHistoryNight {
   id: ID; date: string; riders: number; placed: number; unassigned: number; dropped: number; notRiding: number; noShow: number;
   cars: number; seats: number; leaders: string[]; guests: number; firstTime: number;
+  trip: boolean; // BUS-1: weekday != service day (a Trip logging entry, not a bus night) — display only
   edits?: { at: string; by: string; detail: string }[];
 }
 export interface BusHistoryRide {

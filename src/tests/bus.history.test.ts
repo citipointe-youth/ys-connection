@@ -190,3 +190,16 @@ describe('editPastRider', () => {
     expect((await f.svc.history(f.at('admin', WK2))).nights[0]).toMatchObject({ riders: 0, notRiding: 1 });
   });
 });
+
+describe('trip logging (BUS-1)', () => {
+  it('history nights carry a trip flag (weekday is not the service day)', async () => {
+    const f = await fixture();
+    await f.add(WK1, 's1'); // Fri 09 bus night
+    await f.svc.saveOwnCar({ ...f.at('admin', '2026-10-14T19:00', 'L1'), tripDate: '2026-10-14' },
+      { car: { name: "Tom's car", seats: 5, endsAt: 'last_drop' }, riderIds: [], newRiders: [{ studentId: 's2' }] });
+    const h = await f.svc.history(f.at('admin', '2026-10-17T19:00'));
+    const flags = h.nights.map((n) => [n.date, n.trip]);
+    expect(flags).toContainEqual(['2026-10-14', true]);
+    expect(flags).toContainEqual(['2026-10-09', false]);
+  });
+});

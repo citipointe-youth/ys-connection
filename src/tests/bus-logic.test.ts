@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
-import { currentRunDate, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, tidyName } from '../services/bus-logic';
+import { currentRunDate, localDay, isServiceDay, addDays, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, tidyName } from '../services/bus-logic';
 
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
@@ -113,4 +113,16 @@ describe('tidyName (I10)', () => {
     ['john', 'John'], ['SMITH', 'Smith'], ["o'brien", "O'Brien"], ['O’NEIL', 'O’Neil'], ['mary-jane', 'Mary-Jane'],
     ['mcdonald', 'McDonald'], ['MCKENZIE', 'McKenzie'], ['zoë', 'Zoë'], ['DeShawn', 'DeShawn'], ['  ann   lee ', 'Ann Lee'],
   ])('%s -> %s', (input, out) => expect(tidyName(input)).toBe(out));
+});
+
+describe('trip dates (BUS-1)', () => {
+  it('localDay: before 06:00 is the previous day', () => {
+    expect(localDay('2026-10-10T00:40')).toBe('2026-10-09');
+    expect(localDay('2026-10-14T19:00')).toBe('2026-10-14');
+  });
+  it('isServiceDay: Friday=5', () => {
+    expect(isServiceDay('2026-10-09', 5)).toBe(true);
+    expect(isServiceDay('2026-10-14', 5)).toBe(false);
+  });
+  it('addDays crosses months', () => { expect(addDays('2026-10-30', 3)).toBe('2026-11-02'); });
 });
