@@ -15710,7 +15710,7 @@ function _busHistHtml() {
     list = h.nights.map((n) => {
       const nl = _busNotLogged(byRun[n.id] || []);
       return `<div class="li" onclick="busPastNight('${esc(n.id)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(n.date))}${n.trip ? ' <span class="chip c-neutral">Trip</span>' : ''}</div>
-        <div class="li-sub">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'}
+        <div class="li-sub">${n.riders} rider${n.riders === 1 ? '' : 's'} · ${n.cars} car${n.cars === 1 ? '' : 's'}
         ${nl ? `<span class="chip c-warn">${nl} not logged</span>` : ''}${n.unassigned ? `<span class="chip c-warn">${n.unassigned} unassigned</span>` : ''}</div></div>${icS('chevr')}</div>`;
     }).join('');
   }
@@ -15773,7 +15773,7 @@ function busPastNight(id) {
   const edits = h.canEdit && n.edits && n.edits.length
     ? `<div class="card"><div class="card-title">Edit log</div>${n.edits.map((e) => `<div class="card-sub" style="margin-top:6px">${esc(fmtDay(e.at, true))} · ${esc(e.by)}<br>${esc(e.detail)}</div>`).join('')}</div>` : '';
   modal(`<div class="mo-title">${esc(_busHDate(n.date, true))}</div>
-    <div class="card-sub" style="margin-bottom:8px">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
+    <div class="card-sub" style="margin-bottom:8px">${n.riders} rider${n.riders === 1 ? '' : 's'} · ${n.cars} car${n.cars === 1 ? '' : 's'} · ${n.seats} seats${n.guests ? ` · ${n.guests} guest${n.guests === 1 ? '' : 's'}` : ''}${n.firstTime ? ` · ${n.firstTime} first-time` : ''}${n.noShow ? ` · ${n.noShow} no-show` : ''}</div>
     ${cars.length ? `<div style="margin-bottom:8px">${_busPastMapHtml(id)}</div>` : ''}
     ${nl ? `<div class="alert al-warn" style="margin-bottom:8px">${icS('alert')} ${nl} drop-off${nl === 1 ? '' : 's'} not logged</div>` : ''}
     ${carHtml || '<div class="card-sub">No cars ran.</div>'}
