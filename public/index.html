@@ -757,9 +757,13 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .an-extra-car[open] summary{margin-bottom:6px}
 .mc-acts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;font-size:13px}
 .mc-acts .cbx-row{border:none;padding:4px 0;font-size:13px}
-.stop-arrows{display:flex;flex-direction:column;gap:2px;flex-shrink:0;margin-left:auto}
-.stop-arrows button{width:30px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--paper-dark);border-radius:6px;background:var(--paper-card);color:var(--ink-mid);cursor:pointer}
+.stop-arrows{display:flex;flex-direction:column;gap:4px;flex-shrink:0;margin-left:auto}
+.stop-arrows button{position:relative;width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--paper-dark);border-radius:6px;background:var(--paper-card);color:var(--ink-mid);cursor:pointer}
 .stop-arrows button:disabled{opacity:.3;cursor:default}
+/* R19-U13: 44px hit areas with no visual growth: the arrows' outer edges, and a centred 44px band on small links/chips. */
+.stop-arrows button::after{content:'';position:absolute;inset:-4px 0 0}.stop-arrows button+button::after{inset:0 0 -4px}
+.bus-hit{position:relative;display:inline-block}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+@media(pointer:coarse){.bus-pg .tbbar .tbbtn{min-height:44px}.bus-pg .bus-flt{min-height:44px}}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
 /* New Person / add+edit car: same sticky floor, but Cancel sits beside Save instead of
@@ -15048,7 +15052,7 @@ function _busCarsHtml() {
         <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
       <div class="veh-chiprow"><span class="veh-meta">${rv.seats} seats · ${rv.capacity} for youth</span>${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-        <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
+        <div class="bus-hit" onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
         ${endsText ? `<div style="font-size:11px;color:var(--ink-mid)">${isBus ? 'Drop-off' : 'Ends at'}: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>` : ''}
       </div></div>`;
   }).join('');
@@ -15082,7 +15086,7 @@ function _busCarsHtml() {
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
       <div class="card-sub" style="margin-top:6px">Willing to do drop-homes — fills cars that still need a leader when routes are generated.
-        <a onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
+        <a class="bus-hit" onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
     ${ownCars.length ? `<div class="card-title bus-sec">Own cars tonight</div>${ownCarRows}` : ''}`;
 }
 // Task 11: coordinators can remove someone else's own car from Car setup.
@@ -15662,7 +15666,7 @@ async function busTryCars(count) {
 }
 function _busAnalysisHtml() {
   // Task 8: a quick way back to Routes without using the tab bar.
-  const back = `<div style="margin-bottom:10px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a></div>`;
+  const back = `<div style="margin-bottom:10px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a></div>`;
   if (BUS.analysisErr) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
   const a = BUS.analysis;
   if (!a) return `${back}<div class="card-sub">Working out routes…</div>`;
@@ -15758,7 +15762,7 @@ async function busOpenPast() {
   if (S.page === 'bus' && BUS.tab === 'past') renderBus();
 }
 function _busHistHtml() {
-  const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
+  const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
     ${BUS.hist && BUS.hist.nights.length ? `<button class="btn btn-secondary btn-sm" onclick="busExportHist()">Export</button>` : ''}</div>`;
   if (BUS.histErr && !BUS.hist) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>`;
   const h = BUS.hist;
