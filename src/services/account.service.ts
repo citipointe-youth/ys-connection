@@ -241,6 +241,8 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
         throw new UnauthorizedError('Current password is incorrect');
       }
       if (newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
+      // Audit C1: re-entering the current (e.g. seeded) password must not clear the flag.
+      if (newPassword === currentPassword) throw new BadRequestError('Choose a new password that is different from the current one');
       const passwordHash = await hashPassword(newPassword);
       // Proving the current password and choosing a new one yourself is what clears
       // mustChangePassword — an admin-set/seeded password never does.

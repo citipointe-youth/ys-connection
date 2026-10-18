@@ -12763,14 +12763,18 @@ function _ikQFlush() {
 }
 // RV-I-m5: a resent consent fix / link updates its line (so "goes again by itself" clears; the poll takes over); a
 // resent sheet save that is refused is toasted, naming the family. bad = the whole POST was refused with that message.
+// Legacy A11 (F1): with the page closed (boot / online / visibilitychange flush) or a kept answer refused as a whole,
+// nothing else would say so: one generic toast (the family title is unknown there).
 function _ikQApply(items, res, bad) {
   const I = LINK.ik;
-  if (!I) return;
-  let fx = false;
+  let fx = false, lost = null;
   items.forEach((it) => {
     let r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
     if (!r) return;
     if (r.code === 'LINK_ID_REUSED') r = { outcome: 'replay' }; // RV-I-m7: the earlier send landed (its note is purged once final)
+    const refused = !!r.message && !['saved', 'replay', 'duplicate'].includes(r.outcome);
+    if (!I) { if (refused && !lost) lost = r.message; return; }
+    if (bad && it.type === 'intakeAnswer' && !lost) lost = bad;
     if (bad && it.type === 'intakeAnswer') { const fam = ((it.payload && it.payload.family) || [])[0]; if (I.resend && I.resend[fam] !== 'again') delete I.resend[fam]; } // RV-I-m6
     const fk = Object.keys(I.fixes || {}).find((x) => I.fixes[x] && I.fixes[x].id === it.id);
     if (fk) {
@@ -12784,6 +12788,7 @@ function _ikQApply(items, res, bad) {
       toast(t && I.key !== row ? t + ': ' + r.message : r.message);
     }
   });
+  if (lost) toast('A kept intake save was refused: ' + lost, 6000);
   if (fx) { _ikDraw(); _ikFixPoll(); }
 }
 // R7 (ruling 7): at logout, one try to send what is kept (capped, so a dead network never blocks logout), then the key
@@ -13290,7 +13295,8 @@ function _ikAfterLoad() {
   const det = I.det, key = det && det.row && det.row.key;
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
   // RV-I-m6: only a CLAIMED answer blocks it; a pending one is superseded by the server (S-4), so a parked change never sticks.
-  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && a.status === 'claimed') && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
+  // Legacy A10 (F2): an UNCLEAR (lease-lost) row also holds the open-row slot, so it blocks too (else a POST + toast every 5 s).
+  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && (a.status === 'claimed' || a.status === 'unclear')) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
   if (I.find && I.tab === 'consent') { const f = I.find; I.find = null; _ikFind(f); } // I6: once, so a refresh never jumps
 }
 // I6: look for the student in the pushed consent weeks (this one, then at most 2 more GETs); open their sheet, else "Other".

@@ -46,6 +46,14 @@ describe('Account Service — self-service password change', () => {
     ).rejects.toBeInstanceOf(BadRequestError);
   });
 
+  it('rejects a new password equal to the current one and keeps mustChangePassword (audit C1)', async () => {
+    const { svc, users, grade } = await buildService();
+    await expect(
+      svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'correcthorse1', 'correcthorse1'),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect((await users.findById(grade.id))?.mustChangePassword).toBe(true);
+  });
+
   it('changes the password when the current one is correct, without requiring admin:manage', async () => {
     const { svc, users, grade } = await buildService();
     await svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'correcthorse1', 'newpassword1');

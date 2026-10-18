@@ -336,3 +336,46 @@ describe('RV-I-m9 dead token at logout: the link tap queue is still cleared by t
     expect(f.LINK.mem['ysc.lkq.u1']).toBeUndefined();
   });
 });
+
+describe('legacy A10 (nav-fix F2): an unclear answer row blocks a parked change like a claimed one', () => {
+  it('unclear (lease-lost) holds the open-row slot: no re-POST every load', async () => {
+    const { f, calls } = ikEnv();
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'Y'; I.det = ROW('Y');
+    I.det.actions = [{ id: P(5), type: 'intakeAnswer', status: 'unclear' }];
+    I.resend.Y = 'again';
+    f._ikAfterLoad(); await tick();
+    expect(calls.posts.length).toBe(0);
+    expect(I.resend.Y).toBe('again');
+  });
+});
+
+describe('legacy A11 (nav-fix F1): a kept save refused while the intake page is closed is never silent', () => {
+  const refused = (b: any) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', message: 'The plan changed.' }] });
+  it('boot flush (LINK.ik null): a per-item refusal is toasted', async () => {
+    const { f, calls, store } = ikEnv({ post: refused });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [SAVE(P(1))] }]));
+    expect(f.LINK.ik).toBe(null);
+    await f._ikQFlush();
+    expect(store.has('ysc.ikq.u1')).toBe(false);
+    expect(calls.toasts).toEqual(['A kept intake save was refused: The plan changed.']);
+  });
+  it('boot flush (LINK.ik null): a whole-POST 4xx is toasted once', async () => {
+    const { f, calls, store } = ikEnv({ post: () => httpErr(400) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [SAVE(P(1)), ANS(P(2))] }]));
+    await f._ikQFlush();
+    expect(calls.toasts).toEqual(['A kept intake save was refused: HTTP 400']);
+  });
+  it('page open: a kept answer dropped by a whole-POST 4xx is toasted', async () => {
+    const { f, calls, store } = ikEnv({ post: () => httpErr(400) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [ANS(P(1))] }]));
+    f._ik();
+    await f._ikQFlush();
+    expect(calls.toasts).toEqual(['A kept intake save was refused: HTTP 400']);
+  });
+  it('saved / replay / duplicate stay quiet with the page closed', async () => {
+    const { f, calls, store } = ikEnv({ post: (b) => Promise.resolve(okb(b, 'duplicate')) });
+    store.set('ysc.ikq.u1', JSON.stringify([{ at: at(1), items: [SAVE(P(1))] }]));
+    await f._ikQFlush();
+    expect(calls.toasts).toEqual([]);
+  });
+});
