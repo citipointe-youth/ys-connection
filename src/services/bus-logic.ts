@@ -3,17 +3,25 @@ import type { BusEligibility, BusGender } from '../core/entities/bus';
 export const PURGE_DAYS = 28;
 const LATE_NIGHT_CUTOFF_HOUR = 6; // before 06:00 the previous evening's run is still "tonight"
 
-function addDays(iso: string, n: number): string {
+export function addDays(iso: string, n: number): string {
   const d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
+/** The phone's local day; before 06:00 still counts as the previous evening. */
+export function localDay(localNow: string): string {
+  const day = localNow.slice(0, 10);
+  return Number(localNow.slice(11, 13) || '12') < LATE_NIGHT_CUTOFF_HOUR ? addDays(day, -1) : day;
+}
+
+export function isServiceDay(date: string, serviceDayOfWeek: number): boolean {
+  return new Date(date + 'T00:00:00Z').getUTCDay() === serviceDayOfWeek;
+}
+
 /** localNow = the phone's local 'YYYY-MM-DDTHH:mm'. Returns the run date (service day) it belongs to. */
 export function currentRunDate(localNow: string, serviceDayOfWeek: number): string {
-  let day = localNow.slice(0, 10);
-  const hour = Number(localNow.slice(11, 13) || '12');
-  if (hour < LATE_NIGHT_CUTOFF_HOUR) day = addDays(day, -1);
+  const day = localDay(localNow);
   const dow = new Date(day + 'T00:00:00Z').getUTCDay();
   return addDays(day, (serviceDayOfWeek - dow + 7) % 7);
 }
