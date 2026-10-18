@@ -30,7 +30,7 @@ export interface BusCarsView {
 export interface BusService {
   getRun(ctx: BusCtx): Promise<BusRunView>;
   carsView(ctx: BusCtx): Promise<BusCarsView>;
-  getVersion(ctx: BusCtx): Promise<{ runId: string; version: number }>;
+  getVersion(ctx: BusCtx): Promise<{ runId: string | null; version: number }>;
   search(ctx: BusCtx, q: string): Promise<BusSearchHit[]>;
   riderAddresses(ctx: BusCtx, riderId: string): Promise<BusSearchHit['addresses']>;
   personAddresses(ctx: BusCtx, who: { studentId?: string; guestId?: string }): Promise<BusSearchHit['addresses']>;
@@ -823,8 +823,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async getVersion(ctx) {
       const c = await gate(ctx, 'bus:use');
-      const run = await ensureRun(ctx, c);
-      return { runId: run.id, version: run.version };
+      // R19-L3: ?date= polls the trip being viewed; no date = tonight. Polling never creates a trip's run.
+      const run = await tripRun(ctx, c, false);
+      return { runId: run?.id ?? null, version: run?.version ?? 0 };
     },
     // The edit-rider sheet's saved addresses, by rider — the current one first. (Was a name
     // search, which missed riders past the 5-guest cap or with a common name.)
