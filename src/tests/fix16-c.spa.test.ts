@@ -48,9 +48,10 @@ describe('fix16 lane C', () => {
     expect(fn('_renderHomeInner')).not.toContain('All students are connected');
   });
 
-  it('F-48(e): Bus "I am:" never wraps', () => {
+  it('F-48(e): Bus "I am" never wraps', () => {
     const src = fn('_busMyCarHtml');
-    expect(src.match(/<span style="white-space:nowrap">I am:<\/span>/g)?.length).toBe(2);
+    expect(src.match(/<span class="fl">I am<\/span>/g)?.length).toBe(2);
+    expect(loadIndexHtml()).toMatch(/\.mycar-id > \.fl\{[^}]*white-space:nowrap/); // R19-U14 #16 label style
   });
 
   describe('GAP-1: Check-in tile on Home on a service day', () => {

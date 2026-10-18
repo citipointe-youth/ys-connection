@@ -1767,13 +1767,37 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     const S = { user: { role: 'grade' } };
     function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s == null ? '' : s); } function icS() { return ''; }
     function _busToday() { return '2026-10-14'; } function dncChip() { return ''; } function _busWhere() { return ''; }
-    function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } ${extra}`)._busMyCarHtml();
+    function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } function _lkSwitchGuard() {} ${extra}`)._busMyCarHtml();
   it('R19-U11: the trip card carries a meta line (seats, where it ends)', () => {
     const own = "{ id: 'rv', name: \"Amy's car\", seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'last_drop', endsAddress: null }";
     expect(tripView(own)).toContain('5 seats · Ends at last drop');
     expect(tripView(own.replace("'last_drop'", "'church'"))).toContain('5 seats · Ends at church');
     expect(tripView(own.replace("'last_drop', endsAddress: null", "'address', endsAddress: '3 Oak St, Carina QLD 4152'"))).toContain('5 seats · Ends at Carina');
     expect(tripView(own.replace("leaderIds: ['L1'], leaderNames: ['Amy']", "leaderIds: ['L1', 'L2'], leaderNames: ['Amy', 'Bo']"))).toContain('5 seats · Ends at last drop · with Bo');
+  });
+  it('R19-U14 flow S9: "Edit trip" on an own car ("Edit stops" on a fleet car); "Stop order" only over 2+ riders', () => {
+    const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
+    const one = tripView(own);
+    expect(one).toContain('Edit trip');
+    expect(one).not.toContain('Edit my car');
+    expect(one).not.toContain('Stop order');
+    const two = tripView(own.replace("ownerLeaderId: 'L1'", 'ownerLeaderId: null'), "[{ id: 's1', name: 'A', address: '' }, { id: 's2', name: 'B', address: '' }]");
+    expect(two).toContain('Stop order');
+    expect(two).toContain('Edit stops');
+  });
+  it('R19-U14 flow F7: a remembered "I am" that is no longer a leader shows the name picker, not a blank name', () => {
+    const html = loadFns(['_busMyCarHtml', 'progBar', '_busTripDate', '_busLocalNow'], `
+      const BUS = { tripDate: null, view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: { vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] } } };
+      function getMyLeaderId() { return 'GONE'; } function esc(s) { return String(s); } function fmtDay(d) { return d; }
+      function icS() { return ''; } function icLg() { return ''; } function _busToday() { return '2026-10-14'; }`)._busMyCarHtml();
+    expect(html).toContain('Choose your name');
+    expect(html).not.toContain('Log a trip');
+  });
+  it('R19-U14 #16: "I am" and "Day" use the sheet label style', () => {
+    const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
+    const h = tripView(own);
+    expect(h).toContain('<span class="fl">I am</span>');
+    expect(h).toContain('<label class="fl" for="bus-trip-date">Day</label>');
   });
   it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
     const prelude = `

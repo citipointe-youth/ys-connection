@@ -645,7 +645,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .bus-pg .drop-head > :first-child{min-width:0}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
-.bus-last{font-size:11.5px;color:var(--ink-mid);margin:-6px 0 12px}
+.bus-last{font-size:12px;color:color-mix(in srgb,var(--ink-mid) 70%,var(--ink));margin:-6px 0 12px} /* R19-U14 #22: AA contrast */
 .bus-sec{margin:4px 2px 8px}
 .bus-sec-row{display:flex;align-items:center;gap:6px}.bus-sec-row .card-title{flex:1;min-width:0}
 .bus-flt{width:auto;flex:none;padding:3px 22px 3px 8px;font-size:16px;background-position:right 7px center;border-radius:8px}
@@ -706,6 +706,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .li.bus-move:disabled{opacity:.4;cursor:default}
 .mycar-id{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;color:var(--ink-mid)}
 .mycar-id b{color:var(--ink);font-weight:700}
+.mycar-id > .fl{margin:0;white-space:nowrap;min-width:40px} /* R19-U14 #16: the sheets' label style */
 /* Admin — new people from Bus Ministry */
 .newperson-row{padding:10px 0;border-bottom:1px solid var(--paper-dark)}
 .newperson-row:last-child{border-bottom:none}
@@ -14299,7 +14300,8 @@ async function renderBus() {
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const date = fmtDay(_busHeadDate(v));
-  const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+  const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
+  const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
@@ -15484,7 +15486,7 @@ function _busIdentityChanged(id) {
 }
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
-  const mine = getMyLeaderId();
+  let mine = getMyLeaderId();
   // Bug fix: BUS.myCar was fetched (as part of busRefresh()) BEFORE an identity was chosen,
   // so just re-rendering off the stale BUS.myCar showed "No car assigned." — clear it and go
   // through busRefresh(), which re-fetches /bus/my-car with the new ?as= and repaints.
@@ -15494,21 +15496,23 @@ function _busMyCarHtml() {
   // A leader not on a car yet must still be able to pick themselves (to add their own car
   // tonight) — on-car leaders first, then everyone else this login can see.
   const onCar = v.onCarLeaders || [];
+  // R19-U14 F7: a remembered "I am" that is no longer a leader (archived, reset) counts as not chosen.
+  if (mine && !onCar.some((l) => l.id === mine) && !v.leaders.some((l) => l.id === mine)) mine = null;
   const others = v.leaders.filter((l) => !onCar.some((o) => o.id === l.id)).slice().sort((a, b) => a.name.localeCompare(b.name));
   const pickerLeaders = [...onCar, ...others];
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
+    ? `<div class="mycar-id"><span class="fl">I am</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id"><span class="fl">I am</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
   if (!mine) return picker;
   // BUS-1: the Day a trip is logged for (default today; the server allows 14 back / 7 ahead).
   const lim = (n) => { const d = new Date(_busToday() + 'T12:00:00'); d.setDate(d.getDate() + n); return _busLocalNow(d).slice(0, 10); };
-  const top = `${picker}<div class="mycar-id"><label for="bus-trip-date" style="white-space:nowrap">Day:</label>
+  const top = `${picker}<div class="mycar-id"><label class="fl" for="bus-trip-date">Day</label>
     <input class="fi" type="date" id="bus-trip-date" style="flex:1;min-width:0" value="${_busTripDate()}" min="${lim(-14)}" max="${lim(7)}" onchange="busSetTripDate(this.value)"></div>`;
   if (!mc) return `${top}${progBar('Loading')}`;
   if (mc.vehicle) {
@@ -15541,8 +15545,8 @@ function _busMyCarHtml() {
         // Only admin has the Bus settings button; everyone else is told who to ask.
         `<div class="alert al-warn">${S.user && S.user.role === 'admin' ? 'Set the church address in Bus settings' : 'Ask an admin to set the church address'}</div>`}
     </div>
-    <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
-      <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
+    <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">${mc.stops.length > 1 ? 'Stop order' : 'Riders'}
+      <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} ${rv.ownerLeaderId ? 'Edit trip' : 'Edit stops'}</button></div>
     ${rv.kind !== 'bus' && mc.stops.filter((s) => !s.droppedAt).length > 1 ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="busOptimiseMyCar(this)">${icS('route')} Optimise route</button>` : ''}
     ${rows}
     ${removeOwn}`;
@@ -15585,7 +15589,7 @@ function _busRenderEditMyCar() {
   }).join('');
   const carDetailsBtn = rv.ownerLeaderId === mine
     ? `<button type="button" class="btn btn-secondary btn-full" onclick="_busEmcCarDetails()">Car details</button>` : '';
-  modal(`<div class="mo-title">Edit my car</div>
+  modal(`<div class="mo-title">${rv.ownerLeaderId ? 'Edit trip' : 'Edit stops'}</div>
     ${rows || '<div class="card-sub">No stops left — everyone was removed.</div>'}
     ${carDetailsBtn}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
