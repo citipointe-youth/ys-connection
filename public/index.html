@@ -702,7 +702,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .route-sub{font-size:11.5px;color:var(--ink-mid)}
 .stop-detail{background:var(--paper);border-radius:8px;padding:7px 10px;margin-top:5px;font-size:11.5px;color:var(--ink-mid);line-height:1.5}
 .bus-routes{display:grid;gap:12px}
-@media(min-width:768px){.bus-routes{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}}
+/* R19-U14 #19: auto-fit (no empty third column with 2 cards); cards keep their own height. */
+@media(min-width:768px){.bus-routes{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}}
 .li.bus-move{width:100%;text-align:left}
 .li.bus-move:disabled{opacity:.4;cursor:default}
 .mycar-id{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;color:var(--ink-mid)}
