@@ -617,6 +617,22 @@ describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta lin
   });
 });
 
+describe('R19-U14 flow S11/S13 wording', () => {
+  it('Home tile count is singular for 1 ("1 rider · 1 car")', () => {
+    const tile = (riders: number, cars: number) => loadFns(['_busHomeTile'], `
+      const BUS = { view: { riders: Array(${riders}).fill({}), vehicles: Array(${cars}).fill({ running: true }) } };
+      function _busOn() { return true; } function esc(s) { return String(s); } function icN() { return ''; } function L() { return 'Bus'; }
+      function icS() { return ''; } function busRefresh() {}`)._busHomeTile();
+    expect(tile(1, 1)).toContain('1 rider · 1 car<');
+    expect(tile(4, 2)).toContain('4 riders · 2 cars<');
+  });
+  it('the Fit in button says "waiting" riders, not "new" ones (they may be riders no car can take)', () => {
+    const src = extractFn(loadIndexHtml(), '_busRoutesHead');
+    expect(src).toContain('waiting rider');
+    expect(src).not.toContain('new rider');
+  });
+});
+
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }

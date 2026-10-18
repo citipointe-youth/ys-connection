@@ -14203,7 +14203,8 @@ async function _ikFixRestore() {
 function _busHomeTile() {
   if (!_busOn()) return '';
   const v = BUS.view;
-  const count = v ? `${v.riders.length} riders · ${v.vehicles.filter((x) => x.running).length} cars` : '';
+  const nCars = v ? v.vehicles.filter((x) => x.running).length : 0; // R19-U14 S11: "1 car", not "1 cars"
+  const count = v ? `${v.riders.length} rider${v.riders.length === 1 ? '' : 's'} · ${nCars} car${nCars === 1 ? '' : 's'}` : '';
   // warm in background; busRefresh() now re-renders Home itself once it resolves (see its own
   // comment). !BUS.failed stops this from retrying on every Home re-render after a failed
   // attempt (module off / 404 / network) — busRefresh() clears the flag on its next success,
@@ -15176,7 +15177,7 @@ function _busRoutesHead() {
   const fleet = new Set(v.vehicles.filter((x) => x.running && x.vehicleId).map((x) => x.id));
   const anyPlaced = v.riders.some((r) => r.runVehicleId && fleet.has(r.runVehicleId));
   const fitN = _busFitCount(v);
-  const label = BUS.generating ? 'Working out routes…' : !anyPlaced ? 'Generate routes' : `Fit in ${fitN} new rider${fitN === 1 ? '' : 's'}`;
+  const label = BUS.generating ? 'Working out routes…' : !anyPlaced ? 'Generate routes' : `Fit in ${fitN} waiting rider${fitN === 1 ? '' : 's'}`;
   const primary = (!anyPlaced || fitN || BUS.generating)
     ? `<button class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="busGenerate('${anyPlaced ? 'fit' : 'all'}')">${icS('route')} ${label}</button>`
     : '<span style="flex:1"></span>';
