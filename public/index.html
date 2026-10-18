@@ -14738,8 +14738,10 @@ function _busMapsLinks(stops, church, car, churchPlaceId, fromHere) {
   // the link (owner, 2026-10-09). Only back-to-back repeats; the route visits them together.
   const key = (s) => s.placeId || s.address.trim().toLowerCase();
   stops = stops.filter((s, i) => i === 0 || key(s) !== key(stops[i - 1]));
-  const end = car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
-  const endPid = car.endsAt === 'address' && car.endsAddress ? (car.endsPlaceId || '') : car.endsAt === 'church' ? (churchPlaceId || '') : '';
+  const isBus = car.kind === 'bus'; // BUS-2: every rider shares the drop-off — one stop, church → drop-off
+  if (isBus) stops = stops.slice(0, 1);
+  const end = isBus ? null : car.endsAt === 'address' && car.endsAddress ? car.endsAddress : car.endsAt === 'church' ? church : null;
+  const endPid = isBus ? '' : car.endsAt === 'address' && car.endsAddress ? (car.endsPlaceId || '') : car.endsAt === 'church' ? (churchPlaceId || '') : '';
   if (!stops.length) return [];
   const chunks = [];
   for (let i = 0; i < stops.length; i += 9) chunks.push(stops.slice(i, i + 9));
@@ -15028,11 +15030,12 @@ function busMoveSheet(riderId) {
   const v = BUS.view, r = v.riders.find((x) => x.id === riderId);
   const rows = v.vehicles.filter((x) => x.running).map((x) => {
     const n = v.riders.filter((y) => y.runVehicleId === x.id && y.id !== riderId).length, left = x.capacity - n;
-    const genderOk = !r.gender || x.eligibility[r.gender];
-    const why = left <= 0 ? 'full' : !genderOk ? (r.gender === 'female' ? 'Boys only' : 'Girls only') : `${left} left`;
+    const isBus = x.kind === 'bus'; // BUS-2: a bus is never full (over capacity = warning) and has no gender rule
+    const genderOk = isBus || !r.gender || x.eligibility[r.gender];
+    const why = isBus ? (left <= 0 ? 'Over capacity' : `${left} left`) : left <= 0 ? 'full' : !genderOk ? (r.gender === 'female' ? 'Boys only' : 'Girls only') : `${left} left`;
     // Girl into a car with no female leader: first tap arms (warning only, placement still allowed).
-    const warn = r.gender === 'female' && !x.eligibility.female && left > 0;
-    return `<button class="li bus-move" ${left <= 0 ? 'disabled' : ''} onclick="${warn ? `busMoveArm(this,'${riderId}','${x.id}')` : `busMove('${riderId}','${x.id}')`}">
+    const warn = !isBus && r.gender === 'female' && !x.eligibility.female && left > 0;
+    return `<button class="li bus-move" ${left <= 0 && !isBus ? 'disabled' : ''} onclick="${warn ? `busMoveArm(this,'${riderId}','${x.id}')` : `busMove('${riderId}','${x.id}')`}">
       <span class="car-dot" style="background:${_busCarColour(x.colourIndex)}"></span><span class="li-body">${esc(x.name)}</span>
       <span class="chip ${!genderOk && left > 0 ? 'c-warn' : 'c-neutral'}">${why}</span></button>`;
   }).join('');
@@ -15140,26 +15143,28 @@ function _busRoutesHtml() {
   const carCards = v.vehicles.filter((rv) => rv.running).map((rv) => {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).sort((a, b) => (a.stopOrder ?? 0) - (b.stopOrder ?? 0));
     const min = BUS.routeMin[rv.id];
-    const warn = !riders.length ? '' : rv.eligibility.unknown ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
+    const isBus = rv.kind === 'bus', over = riders.length - rv.capacity; // BUS-2: no gender rule, no stop order, no Lock
+    const busChips = isBus ? `<span class="chip c-accent">Bus</span>${over > 0 ? `<span class="chip c-warn">${icS('alert')} Over by ${over}</span>` : ''}` : '';
+    const warn = !riders.length || isBus ? '' : rv.eligibility.unknown ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
       : riders.some((r) => r.gender && !rv.eligibility[r.gender]) ? `<span class="chip c-warn">${icS('alert')} Gender mismatch</span>` : '';
     // Owner rule (2026-10): a girl may only be auto-placed with ≥1 female leader on the
     // car. Server-computed per car (rv.needsFemaleLeader) — true when the car holds a
     // girl rider and no female leader. Replaces the old client-side "Only 1 girl" chip.
-    const needsFemaleLeaderChip = rv.needsFemaleLeader ? `<span class="chip c-warn">${icS('alert')} No female leader</span>` : '';
+    const needsFemaleLeaderChip = !isBus && rv.needsFemaleLeader ? `<span class="chip c-warn">${icS('alert')} No female leader</span>` : '';
     const rows = riders.map((r, i) => `<div class="route-row${ro ? '' : ' clickable'}"${ro ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
-      <div class="stop-num">${i + 1}</div>
+      <div class="stop-num">${isBus ? '' : i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
       <div class="route-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
     // I11: Lock (fleet cars only; own cars are already left alone). Coordinators tick it; read-only viewers see a chip.
-    const lockCtl = !rv.vehicleId ? '' : ro ? (rv.locked ? `<span class="chip c-neutral">${icS('lock')} Locked</span>` : '')
+    const lockCtl = !rv.vehicleId || isBus ? '' : ro ? (rv.locked ? `<span class="chip c-neutral">${icS('lock')} Locked</span>` : '')
       : `<label class="bus-lock-chk" onclick="event.stopPropagation()"><input type="checkbox"${rv.locked ? ' checked' : ''} aria-label="Lock ${esc(rv.name)}" title="Generate and Unassign all leave this car alone" onchange="busLockCar(this)" data-rv="${esc(rv.id)}"> Lock</label>`;
     return `<div class="card drop open">
       <div class="drop-head" onclick="this.parentElement.classList.toggle('open')">
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="car-dot" style="background:${_busCarColour(rv.colourIndex)}"></span>
-        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min drive` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${warn}${needsFemaleLeaderChip}</span>
+        <span class="card-title">${esc(rv.name)} · ${riders.length}/${rv.capacity}${min != null ? ` · ${min} min drive` : ''}</span>${rv.leaderNames.map((n) => `<span class="chip c-neutral">${icS('users')} ${esc(n)}</span>`).join('')}${busChips}${warn}${needsFemaleLeaderChip}</span>
         <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${lockCtl}${routeBtn}<span class="drop-chev">${icS('chevr')}</span></span>
       </div>
       <div class="drop-body" style="margin-top:8px">${rows || '<div class="card-sub">No riders assigned.</div>'}</div>
@@ -15408,7 +15413,7 @@ function _busMyCarHtml() {
     </div>
     <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
       <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
-    ${mc.stops.filter((s) => !s.droppedAt).length > 1 ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="busOptimiseMyCar(this)">${icS('route')} Optimise route</button>` : ''}
+    ${rv.kind !== 'bus' && mc.stops.filter((s) => !s.droppedAt).length > 1 ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="busOptimiseMyCar(this)">${icS('route')} Optimise route</button>` : ''}
     ${rows}
     ${removeOwn}`;
   }

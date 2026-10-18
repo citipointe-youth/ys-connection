@@ -1631,3 +1631,67 @@ describe('BUS-2 picker', () => {
     expect(html.match(/esc\(_busWhere\((r|s)\)\)/g)).toHaveLength(3);
   });
 });
+
+// BUS-2: bus on Assign, the Move sheet, Maps links and My car.
+describe('BUS-2 assign + move + maps', () => {
+  it('_busMapsLinks: a bus is one stop (church → drop-off)', () => {
+    const { _busMapsLinks } = loadFns(['_busMapsLinks']);
+    const stops = [1, 2, 3].map(() => ({ address: '9 Hall St, Carina', placeId: 'P_hall' }));
+    const links = _busMapsLinks(stops, '1 Church St', { kind: 'bus', endsAt: 'address', endsAddress: '9 Hall St, Carina', endsPlaceId: 'P_hall' }, 'P_ch');
+    expect(links).toHaveLength(1);
+    expect(links[0].url).toContain('destination=9%20Hall'); expect(links[0].url).not.toContain('waypoints=');
+    expect(links[0].url).toContain('origin=1%20Church');
+  });
+  const mkStubs = `
+    function esc(s) { return String(s); }
+    function icS(k) { return k; }
+    function _busSuburb(a) { return a; }
+    function _busConsentChip() { return ''; }
+    function _busPinChip() { return ''; }
+    function _busCarColour() { return '#000'; }
+    function _busPinnedIcon() { return ''; }
+    function _busRoutesHead() { return ''; }
+    function _busUndoBar() { return ''; }`;
+  const bus = (over: any = {}) => ({ id: 'rv1', name: 'Charter', vehicleId: 'v1', kind: 'bus', running: true, colourIndex: 0, capacity: 1, leaderNames: [],
+    eligibility: { female: false, male: true, unknown: false }, locked: false, needsFemaleLeader: true, ...over });
+  const routes = (vehicles: any[]) => {
+    const v = { run: { readOnly: false }, canCoordinate: true, vehicles,
+      riders: [{ id: 'r1', runVehicleId: 'rv1', gender: 'female', placeId: 'P' }, { id: 'r2', runVehicleId: 'rv1', gender: 'female', placeId: 'P' }] };
+    return loadFns(['_busRoutesHtml', '_busGradeChip', '_busWhere'], `${mkStubs}\nconst BUS = { view: ${JSON.stringify(v)}, routeMin: {} };`)._busRoutesHtml();
+  };
+  it('Assign bus card: Bus chip, Over by N, Bus drop off, no Lock, no gender warning, no stop numbers', () => {
+    const h = routes([bus()]);
+    expect(h).toContain('>Bus</span>'); expect(h).toContain('Over by 1'); expect(h).toContain('Bus drop off');
+    expect(h).not.toContain('No female leader'); expect(h).not.toContain('Gender mismatch');
+    expect(h).not.toContain('bus-lock-chk'); expect(h).not.toContain('<div class="stop-num">1<');
+  });
+  it('a car with the same riders keeps its warnings, numbers and Lock', () => {
+    const h = routes([bus({ kind: 'car' })]);
+    expect(h).toContain('No female leader'); expect(h).toContain('Gender mismatch'); expect(h).toContain('bus-lock-chk');
+    expect(h).toContain('<div class="stop-num">1<'); expect(h).not.toContain('Over by');
+  });
+  const move = (vehicles: any[]) => {
+    const { busMoveSheet, __state } = loadFns(['busMoveSheet'], `
+      const BUS = { view: { riders: [{ id: 'r1', name: 'Amy', gender: 'female' }, { id: 'r2', runVehicleId: 'rv1' }], vehicles: ${JSON.stringify(vehicles)} } };
+      function esc(s) { return String(s); }
+      function _busCarColour(i) { return '#000'; }
+      let __captured = '';
+      function modal(h) { __captured = h; }
+      function __state() { return __captured; }`, ['busMoveSheet', '__state']);
+    busMoveSheet('r1');
+    return __state() as string;
+  };
+  it('Move sheet: a full bus is still tappable, says Over capacity, and never arms the female-leader warning', () => {
+    const h = move([bus({ capacity: 1 })]);
+    expect(h).toContain('Over capacity');
+    expect(h).not.toContain('disabled');
+    expect(h).toContain("busMove('r1','rv1')");
+  });
+  it('Move sheet: a full car stays disabled', () => {
+    expect(move([bus({ kind: 'car', capacity: 1 })])).toContain('disabled');
+  });
+  it('My car hides Optimise route on a bus', () => {
+    const html = loadIndexHtml();
+    expect(html).toContain("rv.kind !== 'bus' && mc.stops.filter((s) => !s.droppedAt).length > 1");
+  });
+});
