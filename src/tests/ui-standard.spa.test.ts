@@ -48,5 +48,8 @@ describe('shared markup', () => {
     expect(html).not.toContain('class="el-row');
     expect(html).toContain('<div class="li rc ar-rc">');
     expect(html).toMatch(/\.pill,\.chip,\.lk-tag,\.lk-nl,\.lk-od,\.lk-chip,\.badge\{/);
+    // Fix 2: Accounts rows are one line (name left, pill + icons right), no icon-only footer band
+    expect(html).toContain('<div class="li rc rc-row${acctGenderClass}">');
+    expect(html).toMatch(/\.rc\.rc-row\{display:flex;flex-wrap:wrap;align-items:center/);
   });
 });
