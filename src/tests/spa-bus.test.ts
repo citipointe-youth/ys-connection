@@ -612,7 +612,8 @@ describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta lin
     const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], `${stubs} const BUS = { search: '', generating: false, view: ${JSON.stringify(view)} };`, ['_busRosterHtml']);
     const h = _busRosterHtml();
     expect(h).toMatch(/<div class="li-sub"><span class="car-pill" style="--c:#f0f">Van<\/span> Carina/);
-    expect(h).toMatch(/<div class="li-sub"><span class="chip c-neutral">\[bus\] Charter<\/span> Bus drop off/);
+    expect(h).toMatch(/<div class="li-sub"><span class="chip c-neutral">\[bus\] Charter<\/span>  /); // the chip says it: no "Bus drop off" text
+    expect(h).not.toContain('Bus drop off');
     expect(h.match(/#f0f/g)).toHaveLength(1);
   });
 });

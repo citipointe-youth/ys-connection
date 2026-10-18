@@ -14388,7 +14388,7 @@ function _busRosterHtml() {
       : `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span> `;
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${pill}${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');
