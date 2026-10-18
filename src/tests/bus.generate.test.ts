@@ -422,10 +422,11 @@ describe('undo', () => {
   it('I2: saving an own car after a generate clears the snapshot', async () => {
     const f = await busFixture();
     await f.car('Van', 8, ['L1', 'L2']);
-    const jess = await f.rider('s1');
+    await f.rider('s1');
     await f.svc.generate(f.admin, { mode: 'all' });
+    // Review B: Jess is in the Van now and would be skipped (and a skip-only new trip is not saved), so save no riders.
     await f.svc.saveOwnCar(f.ctx('grade', 'L3'),
-      { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'last_drop', endsAddress: null, endsPlaceId: null }, riderIds: [jess.id] });
+      { car: { name: "Amy's car", seats: 4, plate: null, endsAt: 'last_drop', endsAddress: null, endsPlaceId: null }, riderIds: [] });
     expect((await f.svc.getRun(f.admin)).run.undoUntil).toBeNull();
     await expect(f.svc.undo(f.admin)).rejects.toMatchObject({ statusCode: 400 });
   });

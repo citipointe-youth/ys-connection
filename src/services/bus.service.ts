@@ -1094,6 +1094,13 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         return !car;
       });
       if (riderIds.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
+      // Review leftover: every picked rider is elsewhere and there is no trip yet — don't save an empty car.
+      // (An existing trip still saves, so a leader can change their car details.)
+      if (!prior && !riderIds.length && skipped.length) {
+        const by = new Map<string, string[]>();
+        for (const x of skipped) by.set(x.car, [...(by.get(x.car) ?? []), x.name]);
+        throw new BadRequestError('Not saved. ' + [...by].map(([car, names]) => `${names.join(', ')}: already in ${car}`).join('; ') + ' — move them in Assign');
+      }
       const rv = await saveRV({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
         name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
         endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,

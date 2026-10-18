@@ -240,4 +240,28 @@ describe('trip logging (BUS-1)', () => {
     // re-saving keeps the car's own riders (they are not "in another car")
     expect((await f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [b.id] })).skipped).toEqual([]);
   });
+  it('review leftover: a new trip whose riders are ALL elsewhere saves no empty car, just names them', async () => {
+    const f = await fixture();
+    const van = await f.car('Van', 5, ['L1']);
+    const a = await f.rider('s1');
+    await f.svc.moveRider(f.admin, a.id, { runVehicleId: van });
+    const me = f.ctx('admin', 'L2');
+    const before = (await f.bus.listRunVehicles((await f.bus.getRunRider(a.id))!.runId)).length;
+    await expect(f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [a.id] }))
+      .rejects.toThrow('Not saved. Jess Tran: already in Van — move them in Assign');
+    expect((await f.bus.listRunVehicles((await f.bus.getRunRider(a.id))!.runId)).length).toBe(before);
+    expect((await f.bus.getRunRider(a.id))!.runVehicleId).toBe(van);
+  });
+  it('review leftover: an existing trip still saves car details when every picked rider is elsewhere', async () => {
+    const f = await fixture();
+    const van = await f.car('Van', 5, ['L1']);
+    const a = await f.rider('s1');
+    const me = f.ctx('admin', 'L2');
+    const first = await f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [] });
+    await f.svc.moveRider(f.admin, a.id, { runVehicleId: van });
+    const own = await f.svc.saveOwnCar(me, { car: { name: "Sarah's van", seats: 7, endsAt: 'last_drop' }, riderIds: [a.id] });
+    expect(own.id).toBe(first.id);
+    expect(own).toMatchObject({ name: "Sarah's van", seats: 7 });
+    expect(own.skipped).toEqual([{ name: 'Jess Tran', car: 'Van' }]);
+  });
 });

@@ -1989,3 +1989,21 @@ describe('review E11: turning a bus off names riders with no home address', () =
     expect(f.__get()).toContain('Its 3 riders go back to Unassigned at their home address. Amelia, Isabella have no home address yet.');
   });
 });
+
+// Review leftover: behaviour pin for the Past export "Type" column (the old test only matched source text).
+describe('busExportHist Type column', () => {
+  it('labels a trip night and its rides "Trip", a bus night "Bus night"', async () => {
+    const prelude = `
+      const sheets = {};
+      const XLSX = { utils: { aoa_to_sheet: (aoa) => ({ aoa, '!ref': 'A1:A1' }), decode_range: () => ({ s: { c: 0 }, e: { c: -1 } }),
+        encode_cell: () => 'A1', book_new: () => ({}), book_append_sheet: (wb, ws, name) => { sheets[name] = ws.aoa; } }, writeFile: () => {} };
+      const _ensureXlsx = async () => {}; const toast = () => {}; const _busLocalNow = () => '2026-10-18T10:00';
+      const BUS = { histPeople: [], hist: {
+        nights: [{ id: 'r1', date: '2026-10-14', trip: true, leaders: [] }, { id: 'r2', date: '2026-10-16', trip: false, leaders: [] }],
+        rides: [{ runId: 'r1', date: '2026-10-14', name: 'Jess Tran', leaders: [] }, { runId: 'r2', date: '2026-10-16', name: 'Sam Lee', leaders: [] }] } };`;
+    const { busExportHist, sheets } = loadFns(['busExportHist', '_busByRun', '_busNotLogged', '_busFmtTime'], prelude, ['busExportHist', 'sheets']);
+    await busExportHist();
+    expect(sheets.Nights.slice(1).map((r: unknown[]) => [r[0], r[1]])).toEqual([['Trip', '2026-10-14'], ['Bus night', '2026-10-16']]);
+    expect(sheets.Rides.slice(1).map((r: unknown[]) => [r[0], r[2]])).toEqual([['Trip', 'Jess Tran'], ['Bus night', 'Sam Lee']]);
+  });
+});
