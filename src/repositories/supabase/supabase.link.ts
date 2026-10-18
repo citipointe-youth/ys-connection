@@ -209,7 +209,9 @@ export class SupabaseLinkRepository implements ILinkRepository {
       if (!picked.length) return [];
       const leased = await tx`
         update link_outbox set status = 'claimed', lease_owner = ${c.consoleId},
-          lease_until = now() + make_interval(secs => ${a.leaseSeconds}), attempts = attempts + 1, updated_at = now()
+          lease_until = now() + make_interval(secs => ${a.leaseSeconds}), updated_at = now(),
+          -- R19-L4: re-handing its own LIVE lease (a lost claim reply, C01) is the same attempt
+          attempts = case when status = 'claimed' and lease_until >= now() then attempts else attempts + 1 end
         where id in ${tx(picked.map((p) => p.id as string))}
         returning *`;
       const byId = new Map(leased.map((r) => [r.id as string, r]));

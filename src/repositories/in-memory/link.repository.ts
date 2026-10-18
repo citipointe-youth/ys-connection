@@ -138,8 +138,9 @@ export class InMemoryLinkRepository implements ILinkRepository {
     const out: ClaimedRow[] = [];
     for (const { row } of due) {
       const reclaimed = row.status === 'claimed';
+      const live = reclaimed && Date.parse(row.leaseUntil!) >= now; // R19-L4: own live lease re-handed = same attempt
       Object.assign(row, { status: 'claimed', leaseOwner: a.console.consoleId,
-        leaseUntil: new Date(now + a.leaseSeconds * 1000).toISOString(), attempts: row.attempts + 1, updatedAt: nowIso });
+        leaseUntil: new Date(now + a.leaseSeconds * 1000).toISOString(), attempts: row.attempts + (live ? 0 : 1), updatedAt: nowIso });
       let note: string | null = null;
       try {
         note = row.note === null ? null : this.decrypt(row.note, row.id);
