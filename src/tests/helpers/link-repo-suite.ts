@@ -240,6 +240,23 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         // a live lease is not re-leased, even by its owner
         expect((await repo.claim(mine)).map((g) => g.row.id)).not.toContain(a.id);
       });
+      it('C01 (LINK_REV 12): a rev 12 console gets its own LIVE-leased rows back (a claim reply it lost); rev 11 and others do not', async () => {
+        const a = await repo.insertAction(newRow({ note: 'lost reply' }));
+        const old = claimArgs({ max: 3 });
+        old.console.linkRev = 11;
+        await repo.claim(old); // the reply never reached the console
+        expect((await repo.claim(old)).map((g) => g.row.id)).not.toContain(a.id); // rev 11: waits for the lease
+        const other = claimArgs();
+        other.console.linkRev = 12;
+        expect((await repo.claim(other)).map((g) => g.row.id)).not.toContain(a.id); // never another console's live lease
+        const mine = claimArgs({ max: 3 }, old.console.consoleId as ReturnType<typeof randomUUID>); // the same console, restarted on rev 12
+        mine.console.linkRev = 12;
+        const again = (await repo.claim(mine)).find((g) => g.row.id === a.id)!;
+        expect(again).toMatchObject({ reclaimed: true, noteUnreadable: false });
+        expect(again.row).toMatchObject({ status: 'claimed', attempts: 2, note: 'lost reply', leaseOwner: mine.console.consoleId });
+        // max 0 (a heartbeat) still hands nothing
+        expect(await repo.claim({ ...mine, max: 0 })).toEqual([]);
+      });
     });
 
     describe('sweep', () => {
