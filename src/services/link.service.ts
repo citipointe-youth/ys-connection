@@ -871,8 +871,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const list = pickList(services, c.today);
       const out: CheckinView = { today: c.today,
         services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd,
-          isDefault: defaultService(s.ymd, services)?.serviceTimeId === s.serviceTimeId })),
-        defaultServiceTimeId: defaultService(serviceDay(c.t), services)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
+          isDefault: defaultService(s.ymd, services, s.ymd === serviceDay(c.t) ? c.t : undefined)?.serviceTimeId === s.serviceTimeId })),
+        defaultServiceTimeId: defaultService(serviceDay(c.t), services, c.t)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
       if (!svc) return out;
       const svcAt = takenAt(mirrors, 'services');
       const byPerson = new Map<string, OutboxRow[]>();

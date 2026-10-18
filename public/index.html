@@ -10154,8 +10154,10 @@ function _lkStatusText(row, lastSeen) {
     case 'queued': return 'Waiting to send.';
     case 'mirror': return 'In Elvanto.';
     case 'pending': return row.reason === 'awaiting-approval' ? 'Waiting for the new-person form to be approved.'
-      // D6: open over 15 min (the server sweeps it too-old later): say so, with the time it was sent.
-      : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS ? "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').'
+      // D6: open over 15 min (the server sweeps it too-old later): console online = busy with older saves (N02, the
+      // _ikChip wording); otherwise say since when.
+      : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS
+        ? (typeof LINK !== 'undefined' && LINK.status && LINK.status.console && LINK.status.console.online ? 'Queued behind other saves.' : "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').')
       : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
@@ -10551,6 +10553,7 @@ function _lkTick() {
   // Every 60 s: the console status and the page list, which carries my rows' statuses too (APP-44: no 15 s poll).
   _lkStatusLoad();
   if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc, true).then((ok) => { if (ok) _lkRefreshView(); });
+  if (S.page === 'link-checkin' && !LINK.svc) _lkSvcReload(); // N10
   if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups(true).then((ok) => { if (ok) _lkRefreshView(); });
   if (S.page === 'link-groups' && !LINK.rf && LINK.gid && LINK.gmOpen[LINK.gid]) _lkMembersLoad(LINK.gid, true);
   if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows(true).then((ok) => { if (ok) _lkRefreshView(); });
@@ -10620,6 +10623,22 @@ function _lkTakeServices(r) {
   if (Array.isArray(r.services)) { LINK.services = r.services; LINK.pickDay = _lkSvcDay(); }
   if (r.today) LINK.today = r.today;
   if (r.defaultServiceTimeId !== undefined) LINK.defaultSvc = r.defaultServiceTimeId || null;
+}
+// N10: no service picked yet (tonight's not pushed): reload the services; a new default closes the pick sheet and opens
+// it, else an open pick sheet repaints with the new list.
+async function _lkSvcReload() {
+  const L = LINK;
+  let r;
+  try { r = await API.fresh('/link/checkin', true); } catch (e) { return; }
+  if (LINK !== L || LINK.svc || S.page !== 'link-checkin') return;
+  _lkTakeServices(r);
+  const b = document.getElementById('lk-pick');
+  if (LINK.defaultSvc && (LINK.services || []).some((s) => s.serviceTimeId === LINK.defaultSvc)) {
+    if (b) closeModal();
+    await renderLinkCheckin();
+    return;
+  }
+  if (b && !LINK.pickAsk) b.innerHTML = _lkPickHtml();
 }
 async function _lkLoadPeople(svc, quiet) {
   const gen = ++LINK.loadGen;
@@ -10853,7 +10872,7 @@ function _lkUndo(pid) {
 }
 // "Pick a service" sheet (mockup frame 2). then = 'leaders' opens the leader sheet after.
 function _lkPickService(then) {
-  LINK.pickThen = then || null;
+  LINK.pickThen = then || null; LINK.pickAsk = false;
   LINK.pickSel = LINK.svc || LINK.defaultSvc || null;
   modal(`<div id="lk-pick">${_lkPickHtml()}</div><div class="bus-sheet-actions" id="lk-pick-foot">${_lkPickFoot()}</div>`);
 }
@@ -10870,13 +10889,29 @@ function _lkPickFoot() {
     <button type="button" class="btn btn-primary"${LINK.pickSel ? '' : ' disabled'} onclick="_lkPickUse()">Use this service</button>`;
 }
 function _lkPickSel(id) {
-  LINK.pickSel = id;
+  LINK.pickSel = id; LINK.pickAsk = false;
   const b = document.getElementById('lk-pick'), f = document.getElementById('lk-pick-foot');
   if (b) b.innerHTML = _lkPickHtml();
   if (f) f.innerHTML = _lkPickFoot();
 }
-async function _lkPickUse() {
+// N11 (operator ruling: confirm, not block): a past service picked on a Friday/Sunday that has no service today.
+function _lkPastAsk(s) {
+  const day = _lkSvcDay(), wd = new Date(day + 'T00:00:00Z').getUTCDay();
+  if (!s || s.ymd === day || (wd !== 0 && wd !== 5) || (LINK.services || []).some((x) => x.ymd === day)) return '';
+  return (new Date(s.ymd + 'T00:00:00Z').getUTCDay() === wd ? "This is last week's service." : 'This is the ' + _lkDay(s.ymd) + " service, not today's.")
+    + ' Check in to it anyway?';
+}
+async function _lkPickUse(sure) {
   if (!LINK.pickSel) return;
+  const ask = !sure && _lkPastAsk((LINK.services || []).find((s) => s.serviceTimeId === LINK.pickSel));
+  if (ask) {
+    const b = document.getElementById('lk-pick'), f = document.getElementById('lk-pick-foot');
+    LINK.pickAsk = true;
+    if (b) b.innerHTML = `<div class="mo-title">Not today's service</div><p class="lk-sub">${esc(ask)}</p>`;
+    if (f) f.innerHTML = `<button type="button" class="btn btn-secondary" onclick="_lkPickSel('${esc(LINK.pickSel)}')">Back</button>
+      <button type="button" class="btn btn-primary" onclick="_lkPickUse(true)">Check in anyway</button>`;
+    return;
+  }
   const then = LINK.pickThen;
   LINK.svc = LINK.pickSel; LINK.pickThen = null;
   closeModal();
@@ -13655,6 +13690,7 @@ function _ikLkApply(x, r, now) {
     x.st = 'timeout';
     x.msg = s === 'working' ? 'Still reading the forms. Tap Ask again in a minute.'
       : (r.reason || x.reason) === 'console-busy' ? 'The console is busy with the service. Lists open again after the service. Tap Ask again then.' // B02
+      : ((_ikSt() || {}).console || {}).online ? 'Queued behind other saves. Tap Ask again later.' // N02
       : "The console hasn't picked this up yet. Tap Ask again later.";
     return false;
   }

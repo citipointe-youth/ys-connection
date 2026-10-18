@@ -21,7 +21,7 @@ function env(o: { fresh?: () => any } = {}) {
     const API = { fresh: () => __fresh() };
     const setTimeout = (cb, ms) => { __t.delays.push(ms); __t.cbs.push(cb); return __t.cbs.length; };
     const clearTimeout = () => {};
-    const _ik = () => __I;
+    const _ik = () => __I; const _ikSt = () => null; // N02: console status unknown here
     const navPush = () => {}; const _ikDraw = () => {}; const _ikLoad = () => { __t.loads++; };
     const _ikPickDate = (i) => { __t.picked.push(i); __I.date = __I.dates[i].date; };
     const progBar = (s) => '<div>' + s + '</div>'; const icS = (k) => ''; const _ikSeenLine = () => '';

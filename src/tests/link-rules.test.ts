@@ -81,8 +81,13 @@ describe('defaultService', () => {
   it('Sunday with a 10:15 and a 17:00 -> the 10:15', () => {
     expect(defaultService(sun, [svc(2, sun, '2026-10-18T07:00:00Z'), svc(1, sun, '2026-10-18T00:15:00Z')])?.serviceTimeId).toBe(U(1));
   });
-  it('Sunday with no 10:15 -> none', () => {
-    expect(defaultService(sun, [svc(2, sun, '2026-10-18T07:00:00Z')])).toBeNull();
+  it('N12: Sunday with one service not at 10:15 -> it', () => {
+    expect(defaultService(sun, [svc(2, sun, '2026-10-18T00:30:00Z')])?.serviceTimeId).toBe(U(2));
+  });
+  it('N12: Sunday with two services -> the one nearest now (Brisbane time of day)', () => {
+    const two = [svc(1, sun, '2026-10-18T00:30:00Z'), svc(2, sun, '2026-10-18T07:00:00Z')]; // 10:30 and 17:00
+    expect(defaultService(sun, two, new Date('2026-10-18T00:00:00Z'))?.serviceTimeId).toBe(U(1)); // 10:00 now
+    expect(defaultService(sun, two, new Date('2026-10-18T06:00:00Z'))?.serviceTimeId).toBe(U(2)); // 16:00 now
   });
   it('a weekday -> none', () => {
     expect(defaultService('2026-10-14', [svc(1, '2026-10-14', '2026-10-14T08:30:00Z')])).toBeNull();

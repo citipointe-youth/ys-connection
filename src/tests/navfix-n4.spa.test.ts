@@ -224,6 +224,16 @@ describe('D6 door: a pending row over 15 min says the console has not picked it 
     expect(st({ status: 'pending', reason: null, createdAt: new Date(Date.now() - 5 * 60000).toISOString() })).toBe('Waiting for the console.');
     expect(st({ status: 'pending', reason: 'awaiting-approval', createdAt: old })).toBe('Waiting for the new-person form to be approved.');
   });
+  it('N02: console online -> the _ikChip "Queued" line, not "hasn\'t picked this up"', () => {
+    const on = new Function(`
+      ${LK_CONSTS}
+      const LINK = { status: { console: { online: true } } };
+      const _lkOutsideWindow = () => false, _lkPracticeLine = () => '', _lkSeen = (iso) => 'SEEN(' + iso + ')';
+      ${extractFn(html, '_lkStatusText')}
+      return _lkStatusText;`)();
+    const old = new Date(Date.now() - 16 * 60000).toISOString();
+    expect(on({ status: 'pending', reason: null, createdAt: old })).toBe('Queued behind other saves.');
+  });
 });
 
 describe('_lkBoot flushes the intake queue when n2 is present', () => {
