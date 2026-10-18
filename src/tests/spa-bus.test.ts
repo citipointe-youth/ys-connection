@@ -1699,6 +1699,17 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     expect(t.__h()).toContain('Friday Rider');
     expect(t.__h()).toContain('still waiting');
   });
+  it('R19-U14 #17: a picked rider shows the address on a grey line under the name, with no dead checkbox', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    f.__d().newRiders.push({ studentId: 's1', name: 'Liam Anderson', addrLabel: 'No address' });
+    f.busOwnCarSheet(true);
+    const h = f.__h();
+    expect(h).toMatch(/<span class="route-name">Liam Anderson<\/span><span class="route-sub">No address<\/span>/);
+    expect(h).not.toContain('disabled>');
+    const t = sheet('2026-10-16'); t.busOwnCarSheet();
+    expect(t.__h()).toMatch(/<span class="route-name">Friday Rider<\/span><span class="route-sub">Carina<\/span>/);
+  });
   it('on another day, the riders already in this trip stay listed (ticked) so a car-details save keeps them', () => {
     const f = sheet('2026-10-14', "{ vehicle: { id: 'rv' }, stops: [{ id: 'w1', name: 'Wed Rider', address: '' }] }");
     f.busOwnCarSheet(false);

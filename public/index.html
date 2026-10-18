@@ -672,6 +672,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .cbx-row input{width:20px;height:20px;flex-shrink:0}
 .cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bus-gender{display:flex;gap:8px}
+.oc-who{flex:1;min-width:0}.oc-who > span{display:block}#oc-new-riders{max-height:none}
 .bus-fsec{margin-bottom:var(--s4)}.bus-fsec .bus-ac{margin-top:var(--s2)}
 .bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
 /* Single-list bus sheets (Leaders on car, Leader pool): the list takes the sheet's height
@@ -15288,10 +15289,12 @@ function busOwnCarSheet(keep) {
   const tonight = v.run.serviceDate === _busTripDate();
   const pool = tonight ? v.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id))
     : ((mc && mc.vehicle && mc.stops) || []).filter((r) => d.riderIds.includes(r.id));
-  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address) || 'No address')}</label>`).join('');
-  const newRows = d.newRiders.map((n, i) => `<label class="cbx-row"><input type="checkbox" checked disabled> ${esc(n.name)} · ${esc(n.addrLabel || '')}
+  // R19-U14 #17: name, then the address on a grey line (no mid-row wrap); picked riders have no dead checkbox.
+  const who = (name, sub) => `<span class="oc-who"><span class="route-name">${esc(name)}</span><span class="route-sub">${esc(sub)}</span></span>`;
+  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${who(r.name, _busSuburb(r.address) || 'No address')}</label>`).join('');
+  const newRows = d.newRiders.map((n, i) => `<div class="cbx-row">${who(n.name, n.addrLabel || '')}
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.preventDefault();busOcAddr(${i})">${icS('pin')} Address</button>
-      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
+      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></div>`).join('');
   modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
     <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-name">Car</label>
       <input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
