@@ -1790,6 +1790,31 @@ describe('BUS-2 Car setup', () => {
     expect(refused.calls).toEqual([]);
     expect(refused.toasts[0]).toMatch(/drop-off address/);
   });
+  // rel19 C1: the server reads a missing kind as 'car', so EVERY vehicle write must carry it or a bus is demoted.
+  it('every PATCH of an existing bus carries kind (edit, tonight-only edit, archive)', async () => {
+    const fleet = [{ id: 'v1', name: 'Charter', kind: 'bus', seats: 20, plate: null, prefGrades: [], endsAt: 'address', endsAddress: '9 Hall St', endsPlaceId: 'P' }];
+    const run = async (tonight: boolean, fn = 'busSaveVehicle') => {
+      const f = loadFns(['busSaveVehicle', 'busArchiveVehicle'], `
+        const els = { 've-name': { value: 'Charter' }, 've-plate': { value: '' }, 've-seats': { value: '20' }, 've-ends': { value: 'address' }, 've-bus': { checked: true }, 've-tonight': { checked: ${tonight} } };
+        const document = { getElementById: (id) => els[id] || null, querySelectorAll: () => [] };
+        const BUS = { view: { fleet: ${JSON.stringify(fleet)}, vehicles: [{ id: 'rv1', vehicleId: 'v1' }] } };
+        let __c = [];
+        function _busAcValue() { return { address: '1 New St', placeId: 'Q' }; }
+        function _busQs() { return ''; }
+        const API = { patch: async (u, b) => { __c.push([u, b]); return { id: 'v1' }; } };
+        async function _busSend(m, u, b) { __c.push([u, b]); }
+        async function busRefresh() {}
+        function closeModal() {}
+        function toast() {}
+        function __calls() { return __c; }`, ['busSaveVehicle', 'busArchiveVehicle', '__calls']);
+      await f[fn]('v1');
+      return f.__calls().filter(([u]: [string]) => u.startsWith('/bus/vehicles/'));
+    };
+    for (const calls of [await run(false), await run(true), await run(false, 'busArchiveVehicle')]) {
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1].kind).toBe('bus');
+    }
+  });
 });
 
 // BUS-2: "Bus drop off: <address>" in the address picker (only while a bus runs) + rider labels.
@@ -1900,4 +1925,13 @@ describe('BUS-2 assign + move + maps', () => {
     const html = loadIndexHtml();
     expect(html).toContain("rv.kind !== 'bus' && mc.stops.filter((s) => !s.droppedAt).length > 1");
   });
+});
+
+// rel19 C1: the Bus header names the day you're looking at — the trip's day on Trip logging.
+describe('rel19 header date', () => {
+  const head = (tab: string, tripDate: string | null) => loadFns(['_busHeadDate', '_busTripDate', '_busToday', '_busLocalNow'],
+    `const BUS = { tab: '${tab}', tripDate: ${tripDate ? `'${tripDate}'` : 'null'} };`)._busHeadDate({ run: { serviceDate: '2026-10-23' } });
+  it('Trip logging on a Wed trip shows the Wed', () => { expect(head('mycar', '2026-10-14')).toBe('2026-10-14'); });
+  it('other tabs show the bus night', () => { expect(head('routes', '2026-10-14')).toBe('2026-10-23'); });
+  it('renderBus uses it', () => { expect(extractFn(loadIndexHtml(), 'renderBus')).toContain('fmtDay(_busHeadDate(v))'); });
 });

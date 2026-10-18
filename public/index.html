@@ -9632,6 +9632,8 @@ function _busQs(extra) {
 function _busToday() { const n = _busLocalNow(); const d = new Date(n.slice(0, 10) + 'T12:00:00'); if (Number(n.slice(11, 13)) < 6) d.setDate(d.getDate() - 1); return _busLocalNow(d).slice(0, 10); }
 function _busTripDate() { return BUS.tripDate || _busToday(); }
 function _busTripQs() { return 'date=' + _busTripDate(); }
+// rel19: the header names the day being viewed: the trip's day on Trip logging, else the bus night.
+function _busHeadDate(v) { return BUS.tab === 'mycar' ? _busTripDate() : v.run.serviceDate; }
 function busSetTripDate(v) { BUS.tripDate = v || null; BUS.myCar = null; BUS.ocDraft = null; busRefresh(); renderBus(); }
 // BUS-2: a rider on a bus shows "Bus drop off" instead of a suburb.
 function _busWhere(r) { const v = BUS.view && (BUS.view.vehicles || []).find((x) => x.id === r.runVehicleId); return v && v.kind === 'bus' ? 'Bus drop off' : _busSuburb(r.address || ''); }
@@ -14260,7 +14262,7 @@ async function renderBus() {
     { id: 'mycar', label: 'Trip logging' }, // BUS-1 (2026-10-18): was "My car", now last
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
-  const date = fmtDay(v.run.serviceDate);
+  const date = fmtDay(_busHeadDate(v));
   const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,

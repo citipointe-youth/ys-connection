@@ -1109,6 +1109,22 @@ describe('trip logging (BUS-1)', () => {
     expect(rs[0]!.snapAddress).toBe('1 A St, Carina');
     expect(rs[0]!.runVehicleId).toBeTruthy();
   });
+  it('rel19: removing a midweek trip removes its riders too (no 0-car night left in Past)', async () => {
+    const { svc, bus } = await setup();
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    const run = (await bus.getRunByDate('2026-10-14'))!;
+    await svc.removeOwnCar(jr('2026-10-14'));
+    expect(await bus.listRunRiders(run.id)).toEqual([]);
+    expect(await bus.listRunVehicles(run.id)).toEqual([]);
+  });
+  it('rel19: removing an own car on the bus night still leaves its riders Unassigned', async () => {
+    const { svc, bus } = await setup();
+    await svc.saveOwnCar(jr('2026-10-16'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    await svc.removeOwnCar(jr('2026-10-16'));
+    const rs = await bus.listRunRiders((await bus.getRunByDate('2026-10-16'))!.id);
+    expect(rs).toHaveLength(1);
+    expect(rs[0]!.runVehicleId).toBeNull();
+  });
   it('both addressId and newAddress is refused', async () => {
     const { svc } = await setup();
     await expect(svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1', addressId: 'a1',

@@ -1102,8 +1102,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.ownerLeaderId === me);
       if (!rv) return;
+      // rel19: on a non-bus night (a dated trip) there's no Assign to pick them up, so the trip's riders go with it.
+      const trip = !isServiceDay(run.serviceDate, c.structure.serviceDayOfWeek);
       for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === rv.id))
-        await bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false });
+        await (trip ? bus.deleteRunRider(r.id) : bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false }));
       await bus.deleteRunVehicle(rv.id);
       await touch(ctx, run);
     },
