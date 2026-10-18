@@ -1559,12 +1559,36 @@ describe('BUS-1 Trip logging', () => {
     busSetTripDate('');
     expect(__s().b.tripDate).toBeNull();
   });
-  it('every trip write and the my-car read carry _busTripQs()', () => {
-    const html = loadIndexHtml();
-    for (const fn of ['busSaveOwnCar', 'busRemoveOwnCarConfirmed', 'busToggleDropped', 'busSaveDroppedTime', 'busOptimiseMyCar', 'busSaveMyCarStops', 'busMoveStop'])
-      expect(extractFn(html, fn)).toContain('_busTripQs()');
-    expect(extractFn(html, 'busRefresh')).toContain("_busGet('/bus/my-car', _busTripQs())");
-    expect(extractFn(html, 'busRemoveOwnCarFor')).not.toContain('_busTripQs()'); // Car setup: tonight
+  // R19-S6: behavioural: drive each trip call through the real _busSend/_busGet/_busQs and read the sent URLs.
+  it('every trip write and the my-car read send ?date= for the chosen day; Car setup removal does not', async () => {
+    const fns = ['busSaveOwnCar', 'busRemoveOwnCarConfirmed', 'busToggleDropped', 'busSaveDroppedTime', 'busOptimiseMyCar',
+      'busSaveMyCarStops', 'busMoveStop', 'busRemoveOwnCarFor', 'busRefresh', '_busSend', '_busGet', '_busQs', '_busDropAtIso', ...TRIP];
+    const f = loadFns(fns, `const __urls = [];
+      const rec = (m) => async (u) => { __urls.push(m + ' ' + u); return u.startsWith('/bus/run?') ? { run: { id: 'r', version: 1 } } : { skipped: [] }; };
+      const API = { post: rec('POST'), patch: rec('PATCH'), del: rec('DELETE'), fresh: rec('GET') };
+      const BUS = { tripDate: '2026-10-12', gen: 0, ocDraft: { newRiders: [] }, _emcOrder: ['s1'], _emcRemoved: [],
+        myCar: { stops: [{ id: 's1' }, { id: 's2' }] }, view: { vehicles: [{ id: 'rv9', ownerLeaderId: 'L9' }] } };
+      const S = { user: null, page: 'x' };
+      const __vals = { 'oc-ends': 'last_drop', 'oc-seats': '5', 'oc-name': 'Car', 'bd-time': '21:30' };
+      const document = { getElementById: (id) => ({ value: __vals[id] || '' }), querySelectorAll: () => [] };
+      function getMyLeaderId() { return 'L1'; } function _busAcValue() { return { address: '', placeId: null }; }
+      function _busSkippedMsg() { return ''; } function closeModal() {} function toast() {} function __u() { return __urls; }`,
+      [...fns, '__u']);
+    const date = (u: string) => new URLSearchParams(u.split('?')[1]).get('date');
+    const sent = async (call: () => unknown) => { f.__u().length = 0; await call(); return f.__u().filter((u: string) => !u.startsWith('GET')); };
+    for (const call of [() => f.busSaveOwnCar(), () => f.busRemoveOwnCarConfirmed(), () => f.busToggleDropped('s1', true),
+      () => f.busSaveDroppedTime('s1'), () => f.busOptimiseMyCar(null), () => f.busSaveMyCarStops(), () => f.busMoveStop(0, 1)]) {
+      const w = await sent(call);
+      expect(w).toHaveLength(1);
+      expect(date(w[0])).toBe('2026-10-12');
+    }
+    f.__u().length = 0; await f.busRefresh();
+    const myCar = f.__u().find((u: string) => u.startsWith('GET /bus/my-car?'));
+    expect(date(myCar)).toBe('2026-10-12');
+    expect(date(f.__u().find((u: string) => u.startsWith('GET /bus/run?')))).toBeNull(); // the run view is tonight's
+    const rm = await sent(() => f.busRemoveOwnCarFor('rv9'));
+    expect(rm[0]).toContain('owner=L9');
+    expect(date(rm[0])).toBeNull(); // Car setup: tonight
   });
   it('the Trip logging tab shows a Day picker limited to 14 back / 7 ahead', () => {
     const prelude = `
