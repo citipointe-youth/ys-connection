@@ -14310,7 +14310,7 @@ async function renderBus() {
     canRoster && { id: 'roster', label: 'Students' },
     { id: 'cars', label: 'Car setup' }, // every Bus login (2026-10-15)
     { id: 'routes', label: 'Assign' }, // read-only unless v.canCoordinate
-    { id: 'mycar', label: 'Trip logging' }, // BUS-1 (2026-10-18): was "My car", now last
+    { id: 'mycar', label: 'My car' }, // BUS-1 (2026-10-18): now last; 2026-10-19 operator: label back to "My car" (was "Trip logging")
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const date = fmtDay(_busHeadDate(v));
@@ -15096,7 +15096,7 @@ function _busCarsHtml() {
     const riders = v.riders.filter((r) => r.runVehicleId === rv.id).map((r) => r.name).join(', ');
     return `<div class="li"><div class="li-body"><div class="li-title">${icS('bus')} ${esc(rv.name)}</div>
       <div class="li-sub">${rv.seats} seats${riders ? ' · ' + esc(riders) : ''}</div>
-      <div class="card-sub" style="margin-top:2px">To change it, use Trip logging as that leader.</div></div>
+      <div class="card-sub" style="margin-top:2px">To change it, use My car as that leader.</div></div>
       ${v.canCoordinate ? `<button class="btn-icon bus-danger" aria-label="Remove ${esc(rv.name)}" onclick="busConfirmRemoveOwnCarFor('${rv.id}')">${icS('trash')}</button>` : ''}</div>`;
   }).join('');
 
@@ -15165,7 +15165,7 @@ async function busMove(riderId, runVehicleId) {
   try {
     const res = await _busSend('POST', '/bus/riders/' + riderId + '/move', { runVehicleId });
     _busClearRouteMin(oldId, runVehicleId); closeModal();
-    if (res && res.reordered === false) toast("Moved — couldn't re-optimise the route (Google unreachable). Use Optimise route on Trip logging.");
+    if (res && res.reordered === false) toast("Moved — couldn't re-optimise the route (Google unreachable). Use Optimise route on My car.");
   } catch (e) { toast(e.message); }
 }
 async function busUnpin(riderId) {

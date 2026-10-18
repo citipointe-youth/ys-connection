@@ -1568,10 +1568,10 @@ describe('_busCarsHtml header totals (I12)', () => {
 
 // BUS-1 Trip logging (operator 2026-10-18, RULINGS Session 2).
 describe('BUS-1 Trip logging', () => {
-  it('Trip logging is the last tab; landing is Students (or Car setup via _busPickTab)', () => {
+  it('My car (Trip logging) is the last tab; landing is Students (or Car setup via _busPickTab)', () => {
     const rb = extractFn(loadIndexHtml(), 'renderBus');
-    expect(rb.indexOf("label: 'Trip logging'")).toBeGreaterThan(rb.indexOf("label: 'Assign'"));
-    expect(rb).not.toContain("label: 'My car'");
+    expect(rb.indexOf("label: 'My car'")).toBeGreaterThan(rb.indexOf("label: 'Assign'"));
+    expect(rb).not.toContain("label: 'Trip logging'");
     const { _busPickTab } = loadFns(['_busPickTab']);
     expect(_busPickTab(['cars', 'routes', 'mycar'], 'roster', false, false)).toBe('cars'); // junior leader
     expect(_busPickTab(['roster', 'cars', 'routes', 'mycar'], 'roster', false, false)).toBe('roster');
