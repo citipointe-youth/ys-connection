@@ -163,7 +163,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
   it('every refusal reason', () => {
     const lines: Record<string, string> = {
       'locked': "This isn't connected yet. Do it in Elvanto.",
-      'no-room': "Couldn't find a check-in room for this service yet — the console will retry once rooms are read.",
+      'no-room': "No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.",
       'person-unknown': "This person isn't in Elvanto any more.",
       'report-exists': "There's already a report for that date. Edit it.",
       'report-not-found': 'This report changed in Elvanto. Reload and try again.',
@@ -202,7 +202,7 @@ describe('A3 / X9 lines by action type', () => {
   });
   it('check-out no-room and flow-step already', () => {
     expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
-    expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("Couldn't find a check-in room for this service yet — the console will retry once rooms are read.");
+    expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.");
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
   });
@@ -2095,6 +2095,6 @@ describe('incident 18 Oct: no-room refusal text', () => {
   it('does not blame Elvanto setup', () => {
     const h = makeEnv();
     door(h, [{ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: { id: P(5), type: 'checkIn', status: 'refused', reason: 'no-room' }, mine: false }]);
-    expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain("Couldn't find a check-in room for this service yet");
+    expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain("No check-in room found for this person.");
   });
 });
