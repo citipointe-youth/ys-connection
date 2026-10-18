@@ -202,6 +202,16 @@ describe('trip logging (BUS-1)', () => {
     expect(flags).toContainEqual(['2026-10-14', true]);
     expect(flags).toContainEqual(['2026-10-09', false]);
   });
+  it('review (known minor 2): removing a midweek trip also drops its "not riding" rows, so Past has no empty date', async () => {
+    const f = await fixture();
+    const wed = { ...f.at('admin', '2026-10-14T19:00', 'L1'), tripDate: '2026-10-14' };
+    await f.svc.saveOwnCar(wed, { car: { name: "Tom's car", seats: 5, endsAt: 'last_drop' }, riderIds: [], newRiders: [{ studentId: 's1' }, { studentId: 's2' }] });
+    const stops = (await f.svc.myCar(wed)).stops, s1 = stops.find((x) => x.name === 'Jess Tran')!;
+    await f.svc.saveMyCarStops(wed, { riderIds: stops.filter((x) => x.id !== s1.id).map((x) => x.id), removeIds: [s1.id] });
+    expect((await f.svc.history(f.at('admin', '2026-10-17T19:00'))).nights.find((n) => n.date === '2026-10-14')).toMatchObject({ notRiding: 1 });
+    await f.svc.removeOwnCar(wed);
+    expect((await f.svc.history(f.at('admin', '2026-10-17T19:00'))).nights.map((n) => n.date)).not.toContain('2026-10-14');
+  });
   it('review B: a trip on a past bus night never takes a rider out of the car they rode in (named back, not moved)', async () => {
     const f = await fixture();
     const van = await f.car('Van', 5, ['L1']);

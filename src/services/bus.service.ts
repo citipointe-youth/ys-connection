@@ -650,7 +650,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return new Set(rvs.filter((v) => v.ownerLeaderId || v.locked || isBus(v)).map((v) => v.id));
   }
   /** BUS-2: re-apply every rider's bus choice after a bus is turned on/off, re-addressed or re-kinded, and before Generate.
-   *  Own-car riders (the leader's choice) and riders already dropped off are left alone. */
+   *  Own-car and locked-car riders and riders already dropped off are left alone. */
   async function syncBusRiders(run: BusRun): Promise<void> {
     const [rvs, riders, all] = await Promise.all([bus.listRunVehicles(run.id), ridingOf(run.id), bus.listAllAddresses()]);
     const byId = new Map(all.map((a) => [a.id, a]));
@@ -658,7 +658,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const addr = r.addressId ? byId.get(r.addressId) : undefined;
       const onBus = rvs.some((v) => v.id === r.runVehicleId && isBus(v));
       if (!addr || (!addr.vehicleId && !onBus) || r.droppedAt) continue; // ordinary rider (or no address) — untouched
-      if (rvs.some((v) => v.id === r.runVehicleId && v.ownerLeaderId)) continue;
+      if (rvs.some((v) => v.id === r.runVehicleId && (v.ownerLeaderId || v.locked))) continue; // L1: Lock = leave alone
       const owned = all.filter((a) => (r.studentId ? a.studentId === r.studentId : a.guestId === r.guestId));
       const seat = busPatch(r, addr, rvs, owned) ?? { snapAddress: '', snapPlaceId: null, runVehicleId: null, stopOrder: null, pinned: false };
       const next = { ...r, ...seat };
@@ -1004,7 +1004,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // I1: a solve in flight is using this car's current seats/running state
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === id);
       if (!rv) throw new NotFoundError('Car not found');
-      if (isBus(rv) && v.endsAt && v.endsAt !== 'address') throw new BadRequestError(BUS_NEEDS_DROP);
+      if (isBus(rv) && ((v.endsAt && v.endsAt !== 'address') || v.endsPlaceId === null)) throw new BadRequestError(BUS_NEEDS_DROP); // L6
       await saveRV({ ...rv, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) } as BusRunVehicle);
       if (v.running === false) {
         for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === id))
@@ -1118,6 +1118,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === rv.id))
         await (trip ? bus.deleteRunRider(r.id) : bus.saveRunRider({ ...r, runVehicleId: null, stopOrder: null, pinned: false }));
       await bus.deleteRunVehicle(rv.id);
+      // Review: the last trip gone → its "not riding" rows go too, so Past shows no empty date.
+      if (trip && !(await bus.listRunVehicles(run.id)).length)
+        for (const r of (await bus.listRunRiders(run.id)).filter((x) => x.notRiding)) await bus.deleteRunRider(r.id);
       await touch(ctx, run);
     },
     // Task A (owner, 2026-10-08): "Edit my car" on the My car tab — the acting leader (fleet

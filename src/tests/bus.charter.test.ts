@@ -144,6 +144,24 @@ describe('BUS-2 bus drop-off choice', () => {
     const past = (await f.svc.getRun(next)).pastRiders.find((p) => p.studentId === 's3')!;
     await expect(f.svc.addRider(next, { studentId: 's3', addressId: past.addressId })).rejects.toThrow(/home address/);
   });
+  it('review L1: turning a bus on leaves a rider in a locked car alone', async () => {
+    const f = await busFixture();
+    await f.rider('s1');
+    const { rvId } = await busCar(f);
+    const rid = (await f.svc.getRun(f.admin)).riders[0]!.id;
+    await f.svc.updateRider(f.admin, rid, { busRunVehicleId: rvId });
+    await f.svc.updateRunVehicle(f.admin, rvId, { running: false });
+    const van = await f.car('Van', 8, ['L2']);
+    await f.svc.moveRider(f.admin, rid, { runVehicleId: van });
+    await f.svc.updateRunVehicle(f.admin, van, { locked: true });
+    await f.svc.updateRunVehicle(f.admin, rvId, { running: true });
+    expect((await f.svc.getRun(f.admin)).riders.find((r) => r.id === rid)!.runVehicleId).toBe(van);
+  });
+  it('review L6: a PATCH cannot clear a bus drop-off', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await expect(f.svc.updateRunVehicle(f.admin, rvId, { endsPlaceId: null })).rejects.toThrow(/drop-off address/);
+  });
   it('sync on running toggle: off → home + Unassigned (no pin if no home); on → back on the bus', async () => {
     const f = await busFixture();
     await f.rider('s1');

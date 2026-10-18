@@ -26,7 +26,7 @@ export function autoFillPool(cars: { id: string; seats: number; leaderIds: strin
     // Known follow-up (2026-10-06): a 2nd leader must not drop capacity below the riders
     // already fixed to this car (pinned, or any already-placed rider under Fit in) — that
     // silently bumped one of them to Unassigned.
-    while (ids.length < 2 && left.length && c.seats - (ids.length + 1) >= (c.fixedRiders ?? 0)) {
+    while (ids.length < 2 && left.length && (c.bus || c.seats - (ids.length + 1) >= (c.fixedRiders ?? 0))) { // L2: a bus is never full
       const gapF = need.female - seatsFor('female'), gapM = need.male - seatsFor('male');
       const hasF = ids.some((id) => genderOf(id) === 'female');
       const want: BusGender = gapF > gapM ? 'female' : gapM > gapF ? 'male' : !hasF ? 'female' : 'male';

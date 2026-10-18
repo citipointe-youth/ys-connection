@@ -7,6 +7,11 @@ const boysOnly = { female: false, male: true, unknown: false };
 const unknown = { female: false, male: false, unknown: true };
 
 describe('autoFillPool', () => {
+  it('review L2: a full (or over-full) bus still gets a pool leader — a bus is never full', () => {
+    const out = autoFillPool([{ id: 'b', seats: 3, leaderIds: [], fixedRiders: 4, bus: true, endsAt: 'address' }],
+      [{ id: 'P', gender: 'male' }], () => 'male', { female: 0, male: 4 });
+    expect(out.get('b')).toEqual(['P']);
+  });
   const g: Record<string, 'male' | 'female'> = { M1: 'male', F1: 'female', F3: 'female', M2: 'male' };
   it('keeps leaders already on the car and picks pool leaders so girl/boy seats match the roster', () => {
     const out = autoFillPool(
