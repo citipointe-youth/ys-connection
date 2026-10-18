@@ -109,8 +109,8 @@ const isBus = (v: { kind?: VehicleKind }) => v.kind === 'bus';
 const EndsFields = { endsAt: z.enum(['church', 'last_drop', 'address']), endsAddress: z.string().max(200).nullable().default(null), endsPlaceId: z.string().max(300).nullable().default(null) };
 const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim().min(1).max(40), plate: z.string().max(12).nullable().default(null),
   seats: z.number().int().min(1).max(60), prefGrades: z.array(z.number().int()).default([]), ...EndsFields,
-  sort: z.number().int().default(0), archived: z.boolean().default(false), kind: z.enum(['car', 'bus']).default('car') })
-  .refine((v) => v.kind !== 'bus' || (v.endsAt === 'address' && !!v.endsPlaceId), BUS_NEEDS_DROP);
+  // M2: optional, so an old cached SPA (no kind) can't demote a bus; saveVehicle resolves it from the prior row.
+  sort: z.number().int().default(0), archived: z.boolean().default(false), kind: z.enum(['car', 'bus']).optional() });
 const UpdateRunVehicle = z.object({ running: z.boolean().optional(), leaderIds: z.array(z.string()).optional(), locked: z.boolean().optional(),
   endsAt: EndsFields.endsAt.optional(), endsAddress: z.string().max(200).nullable().optional(), endsPlaceId: z.string().max(300).nullable().optional() });
 const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
@@ -962,9 +962,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this save actually picks "ends at an address"
       const prior = v.id ? await bus.getVehicle(v.id) : null;
       if (v.id && !prior) throw new NotFoundError('Vehicle not found');
+      const kind = v.kind ?? prior?.kind ?? 'car';
+      if (kind === 'bus' && !(v.endsAt === 'address' && v.endsPlaceId)) throw new BadRequestError(BUS_NEEDS_DROP);
       const saved = await bus.saveVehicle({ id: v.id ?? generateId(), name: v.name, plate: v.plate, seats: v.seats,
         prefGrades: v.prefGrades, endsAt: v.endsAt, endsAddress: v.endsAddress, endsPlaceId: v.endsPlaceId,
-        sort: v.sort, archived: v.archived, createdAt: prior?.createdAt ?? nowIso(), updatedAt: nowIso(), kind: v.kind });
+        sort: v.sort, archived: v.archived, createdAt: prior?.createdAt ?? nowIso(), updatedAt: nowIso(), kind });
       // Keep tonight's run in step with the fleet (not past runs).
       const run = await ensureRun(ctx, c);
       if (!isPast(run, ctx, c)) {

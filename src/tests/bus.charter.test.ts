@@ -24,6 +24,15 @@ describe('BUS-2 vehicle kind', () => {
     const carId = await f.car('Van', 8, ['L1']);
     expect((await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === carId)!.kind).toBe('car');
   });
+  it('review M2: a save with no kind (old cached SPA) keeps a bus a bus; an explicit car still demotes', async () => {
+    const f = await busFixture();
+    const { vehicleId, rvId } = await busCar(f);
+    const saved = await f.svc.saveVehicle(f.admin, { id: vehicleId, name: 'Charter 2', seats: 12, ...DROP });
+    expect(saved.kind).toBe('bus');
+    expect((await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === rvId)!.kind).toBe('bus');
+    await expect(f.svc.saveVehicle(f.admin, { id: vehicleId, name: 'Charter 2', seats: 12, endsAt: 'church' })).rejects.toThrow(/drop-off address/);
+    expect((await f.svc.saveVehicle(f.admin, { id: vehicleId, name: 'Van', seats: 8, endsAt: 'church', kind: 'car' })).kind).toBe('car');
+  });
   it('tonight copy carries kind; next week too', async () => {
     const f = await busFixture();
     const { vehicleId } = await busCar(f);
