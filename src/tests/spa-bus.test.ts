@@ -1297,6 +1297,12 @@ describe('_busPinChip (Task D)', () => {
     expect(load()._busPinChip({ studentId: 's1', addressId: null }, true)).not.toContain('c-warn');
     expect(load()._busPinChip({ studentId: 's1', addressId: 'bus1', address: '', placeId: null })).toContain('No address');
   });
+  it('R19-L5/K1: a placed rider with no address (e.g. moved off a bus with no home) is neutral; Unassigned stays a warning', () => {
+    const placed = load()._busPinChip({ studentId: 's1', addressId: null, address: '', runVehicleId: 'rv1' });
+    expect(placed).toContain('c-neutral');
+    expect(placed).toContain('No address');
+    expect(load()._busPinChip({ studentId: 's1', addressId: null, address: '', runVehicleId: null })).toContain('c-warn');
+  });
 });
 
 // Task A (owner, 2026-10-08): "Edit my car" — reorder (↑/↓) and two-tap remove, saved via

@@ -9671,9 +9671,11 @@ function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span 
 // Review E4: a redacted view (junior leader: no ids, suburb only) gets no chip — every address looks missing there;
 // soft=true (Trip logging, where an address is optional) shows a neutral chip, not a warning.
 // An empty address (a bus-only rider whose bus is off) is "No address", not "No map pin".
+// R19-L5/K1: a rider already in a car with no address (the server now lets a no-home rider off a bus) is
+// placed, so nothing is wrong: neutral. Only an unassigned one, which Generate can't place, is a warning.
 function _busPinChip(r, soft) {
   if (!r.studentId && !r.guestId) return '';
-  if (!r.addressId || !r.address) return soft ? `<span class="chip c-neutral">No address</span>` : `<span class="chip c-warn">${icS('alert')} No address</span>`;
+  if (!r.addressId || !r.address) return soft || r.runVehicleId ? `<span class="chip c-neutral">No address</span>` : `<span class="chip c-warn">${icS('alert')} No address</span>`;
   if (!r.placeId) return `<span class="chip c-warn">${icS('pin')} No map pin</span>`;
   return '';
 }
