@@ -497,7 +497,7 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
   const mkStubs = `
     function esc(s) { return String(s); }
     function icS(k) { return k; }
-    function _busSuburb(a) { return a; }
+    function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
     function _busConsentChip() { return ''; }
     function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
@@ -572,7 +572,7 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
 describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascending, then name', () => {
   it('orders female before male (the app Girls/Boys order), grade up, unknown gender/grade last', () => {
     const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
     const riders = [
       { id: 'a', name: 'Zed', gender: 'male', grade: 7 }, { id: 'b', name: 'Amy', gender: 'female', grade: 11 },
@@ -588,7 +588,7 @@ describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascend
 
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; }`;
   const run = (readOnly: boolean, generating: boolean, lockBy: string | null, lockUntil: string | null) => {
     const prelude = `${stubs}
@@ -1010,7 +1010,7 @@ describe('_busCarsHtml computes the real leader shortfall (Task 10)', () => {
         leaders: [], riders: [], availablePoolLeaderIds: [] } };
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
-      function _busSuburb(a) { return a; }
+      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
       function _busPrefGradesChip() { return ''; }
     `;
     return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
@@ -1143,7 +1143,7 @@ describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
       function _busMapsLinks() { return []; }
-      function _busSuburb(a) { return a; }
+      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
       function _busConsentChip() { return ''; }
       function _busPinnedIcon() { return ''; }
       function _busFmtTime() { return ''; }
@@ -1297,7 +1297,7 @@ describe('Task A: Edit my car sheet', () => {
       function getMyLeaderId() { return 'L1'; }
       function esc(s) { return String(s); }
       function icS(k) { return k; }
-      function _busSuburb(a) { return a; }
+      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
       let __modal = null;
       function modal(h) { __modal = h; }
       function closeModal() { __modal = null; }
@@ -1444,7 +1444,7 @@ describe('_busRoutesHtml Lock control (I11)', () => {
   const mkStubs = `
     function esc(s) { return String(s); }
     function icS(k) { return k; }
-    function _busSuburb(a) { return a; }
+    function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
     function _busConsentChip() { return ''; }
     function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
@@ -1499,7 +1499,7 @@ describe('_busCarsHtml header totals (I12)', () => {
       const BUS = { generating: false, view: ${JSON.stringify(v)} };
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
-      function _busSuburb(a) { return a; }
+      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
       function _busPrefGradesChip() { return ''; }
     `;
     return loadFns(['_busCarsHtml', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
@@ -1586,5 +1586,48 @@ describe('BUS-2 Car setup', () => {
     const refused = await run(true, 'church');
     expect(refused.calls).toEqual([]);
     expect(refused.toasts[0]).toMatch(/drop-off address/);
+  });
+});
+
+// BUS-2: "Bus drop off: <address>" in the address picker (only while a bus runs) + rider labels.
+describe('BUS-2 picker', () => {
+  const pre = `const BUS = { ac: {}, view: { vehicles: [{ id: 'rv9', vehicleId: 'v9', kind: 'bus', running: true, endsAddress: '9 Hall St, Carina QLD' }] } }; const window = {};`;
+  const fns = ['_busAddressPicker', '_busAddrLabel', '_busSuburb', 'esc', '_busAcField', '_busUuid'];
+  it('offers the running bus; pre-selects it when it was their last choice', () => {
+    const { _busAddressPicker } = loadFns(fns, pre);
+    const h = _busAddressPicker([{ id: 'a1', vehicleId: 'v9', label: 'Bus drop off' }, { id: 'a2', vehicleId: null, label: 'Home', suburb: 'Carina' }]);
+    expect(h).toMatch(/value="bus:rv9" checked/);
+    expect(h).toContain('Bus drop off: 9 Hall St');
+    expect(h).not.toContain('value="a1"'); // the bus row is not listed twice
+    expect(h).not.toMatch(/value="a2" checked/);
+  });
+  it('offers the bus unticked when their last choice was a home address', () => {
+    const { _busAddressPicker } = loadFns(fns, pre);
+    const h = _busAddressPicker([{ id: 'a2', vehicleId: null, label: 'Home' }]);
+    expect(h).toContain('value="bus:rv9"'); expect(h).not.toMatch(/value="bus:rv9" checked/); expect(h).toMatch(/value="a2" checked/);
+  });
+  it('bus not running tonight → no bus option; falls back to the first home address', () => {
+    const { _busAddressPicker } = loadFns(fns, pre.replace('running: true', 'running: false'));
+    const h = _busAddressPicker([{ id: 'a1', vehicleId: 'v9' }, { id: 'a2', vehicleId: null, label: 'Home' }]);
+    expect(h).not.toContain('bus:rv9'); expect(h).toMatch(/value="a2" checked/);
+  });
+  it('own-car picker never offers the bus', () => {
+    const { _busAddressPicker } = loadFns(fns, pre);
+    expect(_busAddressPicker([], null, true)).not.toContain('bus:');
+  });
+  it('_busReadAddress returns busRunVehicleId for the bus option', () => {
+    const { _busReadAddress } = loadFns(['_busReadAddress'], `const document = { querySelector: () => ({ value: 'bus:rv9' }) };`);
+    expect(_busReadAddress()).toEqual({ busRunVehicleId: 'rv9' });
+  });
+  it('_busWhere labels bus riders', () => {
+    const { _busWhere } = loadFns(['_busWhere', '_busSuburb'], pre);
+    expect(_busWhere({ runVehicleId: 'rv9', address: '9 Hall St, Carina QLD' })).toBe('Bus drop off');
+    expect(_busWhere({ runVehicleId: null, address: '24 Wynnum Rd, Carina QLD 4152, Australia' })).toBe('Carina');
+  });
+  it('own-car pickers pass noBus; rider rows use _busWhere', () => {
+    const html = loadIndexHtml();
+    expect(html).toContain('${_busAddressPicker(h.addresses, null, true)}');
+    expect(html).toContain('${_busAddressPicker([], null, true)}');
+    expect(html.match(/esc\(_busWhere\((r|s)\)\)/g)).toHaveLength(3);
   });
 });

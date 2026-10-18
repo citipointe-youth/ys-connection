@@ -9624,6 +9624,8 @@ function _busQs(extra) {
   const as = getMyLeaderId();
   return `now=${encodeURIComponent(_busLocalNow())}${as ? '&as=' + encodeURIComponent(as) : ''}${extra ? '&' + extra : ''}`;
 }
+// BUS-2: a rider on a bus shows "Bus drop off" instead of a suburb.
+function _busWhere(r) { const v = BUS.view && (BUS.view.vehicles || []).find((x) => x.id === r.runVehicleId); return v && v.kind === 'bus' ? 'Bus drop off' : _busSuburb(r.address || ''); }
 function _busSuburb(address) {
   const parts = String(address || '').split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) return String(address || '').trim();
@@ -14323,7 +14325,7 @@ function _busRosterHtml() {
     const car = placed(r);
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+        <div class="li-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
@@ -14471,15 +14473,23 @@ function _busAddrLabel(a) {
 // del = { riderId, currentId }: the edit-rider sheet can forget any saved address, including
 // tonight's current one (Task D, owner 2026-10-08) — deleting that one unassigns the rider
 // server-side, and busDeleteAddress reopens this sheet so it stays consistent.
-function _busAddressPicker(addresses, del) {
-  const saved = addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
+// BUS-2: a running bus is offered as "Bus drop off: <address>" (never in the own-car picker: noBus).
+// Their bus row (vehicleId set) is never listed as a plain address; when it was their last
+// choice and that bus runs tonight, the bus option is pre-selected.
+function _busAddressPicker(addresses, del, noBus) {
+  const buses = noBus ? [] : ((BUS.view && BUS.view.vehicles) || []).filter((x) => x.kind === 'bus' && x.running && x.endsAddress);
+  const last = addresses[0], busPick = last && last.vehicleId ? buses.find((x) => x.vehicleId === last.vehicleId) : null;
+  const busRows = buses.map((x) => `<label class="radio-row"><input type="radio" name="bus-addr" value="bus:${esc(x.id)}" ${x === busPick ? 'checked' : ''}><span style="flex:1">Bus drop off: ${esc(x.endsAddress)}</span></label>`).join('');
+  addresses = addresses.filter((a) => !a.vehicleId);
+  const saved = busRows + addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 && !busPick ? 'checked' : ''}>
       <span style="flex:1">${_busAddrLabel(a)}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
-  return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
+  return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length || busPick ? '' : 'checked'}><span>New address</span></label>
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
 }
 function _busReadAddress() {
   const pick = (document.querySelector('input[name="bus-addr"]:checked') || {}).value;
+  if (pick && pick.startsWith('bus:')) return { busRunVehicleId: pick.slice(4) }; // BUS-2
   if (pick && pick !== 'new') return { addressId: pick };
   const a = _busAcValue('bus-addr-text');
   if (a.address.length < 3) { toast('Enter an address'); return null; }
@@ -15139,7 +15149,7 @@ function _busRoutesHtml() {
     const rows = riders.map((r, i) => `<div class="route-row${ro ? '' : ' clickable'}"${ro ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+      <div class="route-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
@@ -15229,7 +15239,7 @@ function busOcPick(i) {
   const h = (BUS.ocHits || [])[i]; if (!h) return;
   _busOcSyncDraft();
   BUS._ocPick = { kind: h.kind, id: h.id, name: h.name, addresses: h.addresses };
-  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
+  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses, null, true)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
     <button class="btn btn-primary" onclick="busOcConfirmPick()">Add</button></div>`);
 }
@@ -15255,7 +15265,7 @@ function busOcNewPerson() {
       <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'female')">${icS('genderF')} <span class="bus-gender-lbl" data-label="Girl">Girl</span></button>
       <button type="button" class="btn btn-secondary" onclick="busPickGender(this,'male')">${icS('genderM')} <span class="bus-gender-lbl" data-label="Boy">Boy</span></button></div>
     <div class="fg"><input class="fi" id="np-phone" type="tel" placeholder="Mobile (optional)"></div>
-    ${_busAddressPicker([])}
+    ${_busAddressPicker([], null, true)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
       <button class="btn btn-primary" onclick="busOcSaveNewPerson()">Add</button></div>`);
 }
@@ -15376,7 +15386,7 @@ function _busMyCarHtml() {
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
-      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
+      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busWhere(s))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">
         <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
