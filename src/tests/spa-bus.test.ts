@@ -1607,6 +1607,34 @@ describe('BUS-1 Trip logging', () => {
   });
 });
 
+// R19-L3 (lane A server: GET /bus/run/version follows ?date=, never creates a run).
+describe('R19-L3 poll follows the trip date', () => {
+  const poll = (tab: string, tripDate: string | null, versions: Record<string, number>) => loadFns(['_busPollTick', '_busTripQs', '_busTripDate'], `
+    const S = { page: 'bus' }; const document = { hidden: false, getElementById: () => null };
+    const BUS = { tab: '${tab}', tripDate: ${tripDate ? `'${tripDate}'` : 'null'}, version: 7, view: { run: { serviceDate: '2026-10-16' } } };
+    const __urls = []; let __r = 0; const __vv = ${JSON.stringify(versions)};
+    async function _busGet(p, extra) { __urls.push(p + (extra ? '?' + extra : '')); return { version: __vv[extra || 'tonight'] }; }
+    function _busEditing() { return false; } function busRefresh() { __r++; } function _busToday() { return '2026-10-14'; }
+    function __s() { return { urls: __urls, r: __r }; } function __v() { return __vv; }`, ['_busPollTick', '__s', '__v']);
+  it('tonight (or another tab) polls the run version with no date, as before', async () => {
+    const f = poll('roster', '2026-10-12', { tonight: 8 });
+    await f._busPollTick();
+    expect(f.__s()).toEqual({ urls: ['/bus/run/version'], r: 1 });
+    const t = poll('mycar', '2026-10-16', { tonight: 7 });
+    await t._busPollTick();
+    expect(t.__s()).toEqual({ urls: ['/bus/run/version'], r: 0 });
+  });
+  it('a trip on another day polls that date and refreshes only when its own version moves', async () => {
+    const f = poll('mycar', null, { 'date=2026-10-14': 3 }); // today (Wed) is not the bus night
+    await f._busPollTick(); await f._busPollTick();
+    expect(f.__s().urls).toEqual(['/bus/run/version?date=2026-10-14', '/bus/run/version?date=2026-10-14']);
+    expect(f.__s().r).toBe(0); // first tick learns the version; tonight's BUS.version (7) is never compared
+    f.__v()['date=2026-10-14'] = 4; // someone else edits the trip
+    await f._busPollTick(); await f._busPollTick();
+    expect(f.__s().r).toBe(1);
+  });
+});
+
 describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
   const pickPrelude = (addresses: string) => `const BUS = { ocHits: [{ kind: 'student', id: 's1', name: 'Jess Tran', addresses: ${addresses} }],
     ocDraft: { car: null, riderIds: [], newRiders: [] }, ocSearch: 'je' };

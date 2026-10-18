@@ -9763,7 +9763,15 @@ async function _busPollTick() {
   if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
   if (_busEditing()) return;
   if (BUS.carsOpen && BUS.tab === 'mycar') await busCarsRefresh();
-  try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
+  // R19-L3: a trip on another day polls that day's run (?date=) against its own version, learnt on the
+  // first tick; tonight's BUS.version is never compared there (that would refresh every tick).
+  const trip = BUS.tab === 'mycar' && !!BUS.view && BUS.view.run.serviceDate !== _busTripDate();
+  try {
+    const v = await _busGet('/bus/run/version', trip ? _busTripQs() : undefined);
+    if (!trip) { if (v.version !== BUS.version) busRefresh(); }
+    else if (BUS.tripQs !== _busTripQs()) { BUS.tripVersion = v.version; BUS.tripQs = _busTripQs(); }
+    else if (v.version !== BUS.tripVersion) { BUS.tripVersion = v.version; busRefresh(); }
+  } catch {}
 }
 function _busStartPoll() {
   _busStopPoll();
