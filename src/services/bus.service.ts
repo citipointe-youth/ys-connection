@@ -1267,7 +1267,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const carById = new Map(cars.map((v) => [v.id, v]));
         const riding = rows.filter((r) => !r.notRiding);
         const placed = riding.filter((r) => r.runVehicleId && carById.get(r.runVehicleId)?.running).length;
-        nights.push({ id: run.id, date: run.serviceDate, riders: riding.length, placed, unassigned: riding.length - placed,
+        nights.push({ id: run.id, date: run.serviceDate, trip: !isServiceDay(run.serviceDate, c.structure.serviceDayOfWeek), riders: riding.length, placed, unassigned: riding.length - placed,
           dropped: riding.filter((r) => r.droppedAt).length, notRiding: rows.length - riding.length, noShow: riding.filter((r) => r.noShow).length,
           cars: running.length, seats: running.reduce((n, v) => n + v.seats, 0),
           leaders: [...new Set(running.flatMap((v) => leaderNamesOf(v, live)))], guests: riding.filter((r) => r.guestId).length,
