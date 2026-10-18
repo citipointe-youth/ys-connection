@@ -29,7 +29,7 @@ describe('BUS-2 vehicle kind', () => {
     const next = { ...f.admin, localNow: '2026-10-16T19:00' };
     expect((await f.svc.getRun(next)).vehicles.find((x) => x.vehicleId === vehicleId)!.kind).toBe('bus');
   });
-  it.skip('no female-leader flag on a bus', async () => {
+  it('no female-leader flag on a bus', async () => {
     const f = await busFixture();
     const { rvId } = await busCar(f, 10, ['L1']); // male leader only
     await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId }); // s1 = girl
@@ -57,7 +57,7 @@ describe('BUS-2 vehicle kind', () => {
     await f.svc.generate(f.admin, { mode: 'all' });
     expect((await f.svc.getRun(f.admin)).vehicles.find((x) => x.id === rvId)!.leaderIds).toContain('L3');
   });
-  it.skip('car→bus conversion: riders with home addresses leave it', async () => {
+  it('car→bus conversion: riders with home addresses leave it', async () => {
     const f = await busFixture();
     const carId = await f.car('Van', 8, ['L1'], { endsAt: 'church' });
     const r = await f.rider('s2');
@@ -67,5 +67,109 @@ describe('BUS-2 vehicle kind', () => {
     const v = await f.svc.getRun(f.admin);
     expect(v.vehicles.find((x) => x.id === carId)).toMatchObject({ kind: 'bus', endsAt: 'address', endsPlaceId: 'fake:hall' });
     expect(v.riders.find((x) => x.id === r.id)!.runVehicleId).toBeNull();
+  });
+});
+
+describe('BUS-2 bus drop-off choice', () => {
+  const NEXT = '2026-10-16T19:00';
+  it('choosing the bus seats them on it at the drop-off, even over capacity', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f, 2, ['L1']); // capacity 1
+    for (const s of ['s1', 's2']) await f.svc.addRider(f.admin, { studentId: s, busRunVehicleId: rvId });
+    const v = await f.svc.getRun(f.admin);
+    const on = v.riders.filter((r) => r.runVehicleId === rvId);
+    expect(on).toHaveLength(2); // over capacity, nobody moved
+    expect(on.every((r) => r.pinned && r.placeId === 'fake:hall' && r.address === DROP.endsAddress)).toBe(true);
+  });
+  it('a bus that is not running is refused', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await f.svc.updateRunVehicle(f.admin, rvId, { running: false });
+    await expect(f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId })).rejects.toThrow(/isn't running tonight/);
+  });
+  it('exactly one of addressId / newAddress / busRunVehicleId', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await expect(f.svc.addRider(f.admin, { studentId: 's1' })).rejects.toThrow(/Choose an address/);
+    await expect(f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId, addressId: 'x' })).rejects.toThrow(/Choose an address/);
+  });
+  it('remembered next week: Past riders addressId puts them back on the bus', async () => {
+    const f = await busFixture();
+    await f.rider('s1'); // home address first
+    const { rvId } = await busCar(f);
+    await f.svc.updateRider(f.admin, (await f.svc.getRun(f.admin)).riders[0]!.id, { busRunVehicleId: rvId });
+    const next = { ...f.admin, localNow: NEXT };
+    const past = (await f.svc.getRun(next)).pastRiders.find((p) => p.studentId === 's1')!;
+    expect(past.suburb).toBe('Bus drop off');
+    await f.svc.addRider(next, { studentId: 's1', addressId: past.addressId });
+    const v = await f.svc.getRun(next);
+    const busRv = v.vehicles.find((x) => x.kind === 'bus')!;
+    expect(v.riders[0]!.runVehicleId).toBe(busRv.id);
+  });
+  it('bus off next week → their home address, choice still remembered', async () => {
+    const f = await busFixture();
+    await f.rider('s1');
+    const { rvId } = await busCar(f);
+    const rid = (await f.svc.getRun(f.admin)).riders[0]!.id;
+    await f.svc.updateRider(f.admin, rid, { busRunVehicleId: rvId });
+    const next = { ...f.admin, localNow: NEXT };
+    const nextBus = (await f.svc.getRun(next)).vehicles.find((x) => x.kind === 'bus')!;
+    await f.svc.updateRunVehicle(next, nextBus.id, { running: false });
+    const past = (await f.svc.getRun(next)).pastRiders.find((p) => p.studentId === 's1')!;
+    await f.svc.addRider(next, { studentId: 's1', addressId: past.addressId });
+    const r = (await f.svc.getRun(next)).riders[0]!;
+    expect(r.runVehicleId).toBeNull();
+    expect(r.placeId).toBe('fake:s1'); // home
+    expect(r.addressId).toBe(past.addressId); // still the bus choice
+  });
+  it('bus row, bus off, no home address → refused', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await f.svc.addRider(f.admin, { studentId: 's3', busRunVehicleId: rvId });
+    const next = { ...f.admin, localNow: NEXT };
+    const nextBus = (await f.svc.getRun(next)).vehicles.find((x) => x.kind === 'bus')!;
+    await f.svc.updateRunVehicle(next, nextBus.id, { running: false });
+    const past = (await f.svc.getRun(next)).pastRiders.find((p) => p.studentId === 's3')!;
+    await expect(f.svc.addRider(next, { studentId: 's3', addressId: past.addressId })).rejects.toThrow(/home address/);
+  });
+  it('sync on running toggle: off → home + Unassigned (no pin if no home); on → back on the bus', async () => {
+    const f = await busFixture();
+    await f.rider('s1');
+    const { rvId } = await busCar(f);
+    const rid = (await f.svc.getRun(f.admin)).riders[0]!.id;
+    await f.svc.updateRider(f.admin, rid, { busRunVehicleId: rvId });
+    await f.svc.addRider(f.admin, { studentId: 's3', busRunVehicleId: rvId }); // no home address
+    await f.svc.updateRunVehicle(f.admin, rvId, { running: false });
+    let v = await f.svc.getRun(f.admin);
+    expect(v.riders.find((r) => r.id === rid)).toMatchObject({ runVehicleId: null, placeId: 'fake:s1' });
+    expect(v.riders.find((r) => r.studentId === 's3')).toMatchObject({ runVehicleId: null, placeId: null });
+    await f.svc.updateRunVehicle(f.admin, rvId, { running: true });
+    v = await f.svc.getRun(f.admin);
+    expect(v.riders.filter((r) => r.runVehicleId === rvId)).toHaveLength(2);
+  });
+  it('ends change re-snaps every bus rider', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    await f.svc.updateRunVehicle(f.admin, rvId, { endsAt: 'address', endsAddress: '1 Park Rd, Wynnum', endsPlaceId: 'fake:park' });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ placeId: 'fake:park', address: '1 Park Rd, Wynnum' });
+  });
+  it('picking a home address takes them off the bus', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    const r = await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    await f.svc.updateRider(f.admin, r.id, { newAddress: { label: '', address: '1 Home St, Carina', placeId: 'fake:home' } });
+    expect((await f.svc.getRun(f.admin)).riders[0]).toMatchObject({ runVehicleId: null, placeId: 'fake:home' });
+  });
+  it('address lists flag the bus row; junior search still has none', async () => {
+    const f = await busFixture();
+    const { rvId } = await busCar(f);
+    const r = await f.svc.addRider(f.admin, { studentId: 's1', busRunVehicleId: rvId });
+    const hit = (await f.svc.search(f.admin, 'Jess'))[0]!;
+    expect(hit.addresses[0]).toMatchObject({ label: 'Bus drop off', suburb: 'Bus drop off', street: 'Bus drop off' });
+    expect(hit.addresses[0]!.vehicleId).toBeTruthy();
+    expect((await f.svc.riderAddresses(f.admin, r.id))[0]!.vehicleId).toBeTruthy();
+    expect((await f.svc.personAddresses(f.admin, { studentId: 's1' }))[0]!.label).toBe('Bus drop off');
+    expect((await f.svc.search(f.ctx('leader', 'L1'), 'Jess')).flatMap((h) => h.addresses)).toEqual([]);
   });
 });

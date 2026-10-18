@@ -21,7 +21,7 @@ export function autoFillPool(cars: { id: string; seats: number; leaderIds: strin
   for (const c of cars) {
     // Task 9 (owner): a car ending at a drop-off address sends its driver home — don't maroon a
     // pool leader with no ride back. Leaders already on the car by hand stay.
-    if (c.endsAt === 'address' && !c.bus) continue; // BUS-2: a charter bus comes back � its leader isn't marooned
+    if (c.endsAt === 'address' && !c.bus) continue; // BUS-2: a charter bus comes back — its leader isn't marooned
     const ids = lead.get(c.id)!;
     // Known follow-up (2026-10-06): a 2nd leader must not drop capacity below the riders
     // already fixed to this car (pinned, or any already-placed rider under Fit in) — that

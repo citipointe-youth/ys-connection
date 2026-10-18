@@ -69,18 +69,20 @@ export interface BusService {
   pastRunMap(ctx: BusCtx, runId: string): Promise<MapImage>;
 }
 
-/** BUS-2: one mapper for the three saved-address lists. A bus row (vehicleId) reads as "Bus drop off" � never a street. */
+/** BUS-2: one mapper for the three saved-address lists. A bus row (vehicleId) reads as "Bus drop off" — never a street. */
 const addrOut = (a: BusAddress) => ({ id: a.id, label: a.label, suburb: a.vehicleId ? 'Bus drop off' : suburbOf(a.address),
   street: a.vehicleId ? 'Bus drop off' : streetOf(a.address), vehicleId: a.vehicleId ?? null });
 
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
+// BUS-2: where = exactly one of a saved address, a new address, or a running bus ("Bus drop off").
+const Where = { addressId: z.string().min(1).optional(), newAddress: NewAddress.optional(), busRunVehicleId: z.string().min(1).optional() };
+const oneWhere = (v: { addressId?: string; newAddress?: unknown; busRunVehicleId?: string }) =>
+  [v.addressId, v.newAddress, v.busRunVehicleId].filter((x) => x !== undefined).length === 1;
 const AddRider = z.object({
-  studentId: z.string().min(1).optional(), guestId: z.string().min(1).optional(),
-  addressId: z.string().min(1).optional(), newAddress: NewAddress.optional(),
+  studentId: z.string().min(1).optional(), guestId: z.string().min(1).optional(), ...Where,
 }).refine((v) => !!v.studentId !== !!v.guestId, 'Choose a student or a new person')
-  .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
-const UpdateRider = z.object({ addressId: z.string().min(1).optional(), newAddress: NewAddress.optional() })
-  .refine((v) => !!v.addressId !== !!v.newAddress, 'Choose an address');
+  .refine(oneWhere, 'Choose an address');
+const UpdateRider = z.object(Where).refine(oneWhere, 'Choose an address');
 const NAME_RE = /^[^<>"]+$/; // C2: no raw <, > or " — prevents stored XSS via phoneLink()'s onclick attribute
 const PHONE_CHARS_RE = /^[0-9 +()-]*$/;
 // Task 5 (owner): phone is now optional on a New Person — an omitted/blank value stores as
@@ -96,6 +98,10 @@ const NewGuest = z.object({
     .refine((v) => v === null || (PHONE_CHARS_RE.test(v) && v.replace(/[\s+()-]/g, '').length >= 8), 'Check the phone number'),
 });
 const BUS_NEEDS_DROP = 'A bus needs its drop-off address';
+const BUS_NOT_RUNNING = "That bus isn't running tonight";
+const NO_BUS_NO_HOME = "That bus isn't running tonight. Pick a home address";
+/** BUS-2: a person's most recently used home (non-bus) address. */
+const latestHome = (owned: BusAddress[]) => owned.filter((a) => !a.vehicleId).sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt))[0];
 /** BUS-2: a charter bus (one drop-off, never solved, no gender rule). Absent kind = car. */
 const isBus = (v: { kind?: VehicleKind }) => v.kind === 'bus';
 const EndsFields = { endsAt: z.enum(['church', 'last_drop', 'address']), endsAddress: z.string().max(200).nullable().default(null), endsPlaceId: z.string().max(300).nullable().default(null) };
@@ -438,7 +444,16 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   }
 
   async function resolveAddress(owner: { studentId?: string; guestId?: string },
-    input: { addressId?: string; newAddress?: { label: string; address: string; placeId: string | null } }): Promise<BusAddress> {
+    input: { addressId?: string; newAddress?: { label: string; address: string; placeId: string | null }; busRunVehicleId?: string },
+    run: BusRun): Promise<BusAddress> {
+    if (input.busRunVehicleId) { // BUS-2: their "Bus drop off" row for this fleet bus (one per person per bus), bumped to last used
+      const rv = (await bus.listRunVehicles(run.id)).find((v) => v.id === input.busRunVehicleId && isBus(v) && v.running);
+      if (!rv?.vehicleId || !rv.endsAddress) throw new BadRequestError(BUS_NOT_RUNNING);
+      const prior = (await bus.listAddresses(owner.studentId ? { studentId: owner.studentId } : { guestId: owner.guestId! })).find((a) => a.vehicleId === rv.vehicleId);
+      return bus.saveAddress({ id: prior?.id ?? generateId(), studentId: owner.studentId ?? null, guestId: owner.guestId ?? null,
+        label: 'Bus drop off', address: rv.endsAddress, placeId: rv.endsPlaceId, vehicleId: rv.vehicleId,
+        lastUsedAt: nowIso(), createdAt: prior?.createdAt ?? nowIso() });
+    }
     if (input.addressId) {
       const a = await bus.getAddress(input.addressId);
       const mine = a && (owner.studentId ? a.studentId === owner.studentId : a.guestId === owner.guestId);
@@ -460,7 +475,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   // own-car's newRiders so a junior leader's own-car search adds someone the same way bus:roster
   // does. Caller already gated/locked/parsed; this is pure write logic, no touch() (caller's job).
   async function placeRider(ctx: BusCtx, run: BusRun,
-    v: { studentId?: string; guestId?: string; addressId?: string; newAddress?: { label: string; address: string; placeId: string | null } }): Promise<BusRunRider> {
+    v: { studentId?: string; guestId?: string; addressId?: string; newAddress?: { label: string; address: string; placeId: string | null }; busRunVehicleId?: string }): Promise<BusRunRider> {
     let name: string, grade: number | null, gender: BusGender;
     if (v.studentId) {
       const s = await students.findById(v.studentId);
@@ -472,13 +487,16 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       name = `${g.firstName} ${g.lastName}`; grade = g.grade; gender = g.gender;
       await bus.saveGuest({ ...g, lastRiddenAt: nowIso() });
     }
-    const addr = await resolveAddress(v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! }, v);
+    const owner = v.studentId ? { studentId: v.studentId } : { guestId: v.guestId! };
+    const addr = await resolveAddress(owner, v, run);
     const existing = (await bus.listRunRiders(run.id)).find((r) => (v.studentId ? r.studentId === v.studentId : r.guestId === v.guestId));
+    const seat = busPatch(existing ?? { runVehicleId: null }, addr, await bus.listRunVehicles(run.id), await bus.listAddresses(owner)); // BUS-2
+    if (!seat) throw new BadRequestError(NO_BUS_NO_HOME);
     // Re-adding someone who was taken off tonight revives their "not riding" row (unique per run+person).
     const revive = async (r: BusRunRider) => (r.notRiding
       ? { ...OFF_CAR, notRiding: false, noShow: false, droppedAt: null, droppedBy: null, addedBy: await whoLabel(ctx), addedAt: nowIso() } : {});
     const patch = { studentId: v.studentId ?? null, guestId: v.guestId ?? null, addressId: addr.id,
-      snapName: name, snapGrade: grade, snapGender: gender, snapAddress: addr.address, snapPlaceId: addr.placeId };
+      snapName: name, snapGrade: grade, snapGender: gender, ...seat };
     if (existing) return bus.saveRunRider({ ...existing, ...patch, ...(await revive(existing)) });
     try {
       return await bus.saveRunRider({ id: generateId(), runId: run.id, runVehicleId: null, stopOrder: null,
@@ -492,6 +510,19 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (!again) throw err;
       return bus.saveRunRider({ ...again, ...patch, ...(await revive(again)) });
     }
+  }
+
+  /** BUS-2: where this address seats a rider tonight. A bus row + that bus running → on the bus at its drop-off;
+   *  a bus row + no bus → their latest home address (addressId stays the bus row = still remembered);
+   *  a home row → that address, and off any bus. null = bus row, no bus, no home address. */
+  function busPatch(r: Pick<BusRunRider, 'runVehicleId'>, addr: BusAddress, rvs: BusRunVehicle[], owned: BusAddress[]): (Pick<BusRunRider, 'snapAddress' | 'snapPlaceId'> & Partial<Pick<BusRunRider, 'runVehicleId' | 'stopOrder' | 'pinned'>>) | null {
+    const off = rvs.some((v) => v.id === r.runVehicleId && isBus(v)) ? { runVehicleId: null, stopOrder: null, pinned: false } : {};
+    if (!addr.vehicleId) return { snapAddress: addr.address, snapPlaceId: addr.placeId, ...off };
+    const rv = rvs.find((v) => v.vehicleId === addr.vehicleId && isBus(v) && v.running);
+    if (rv) return { snapAddress: rv.endsAddress ?? addr.address, snapPlaceId: rv.endsPlaceId,
+      ...(r.runVehicleId === rv.id ? {} : { runVehicleId: rv.id, stopOrder: null, pinned: true }) };
+    const home = latestHome(owned);
+    return home ? { snapAddress: home.address, snapPlaceId: home.placeId, ...off } : null;
   }
 
   async function pendingGuestList(): Promise<PendingGuestView[]> {
@@ -539,12 +570,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const s = studentById.get(addr.studentId);
         if (!s) continue;
         out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
-          grade: s.grade, gender: genderOf(s.gender), suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: s.grade, gender: genderOf(s.gender), suburb: addr.vehicleId ? 'Bus drop off' : suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
       } else if (addr.guestId) {
         const g = guestById.get(addr.guestId);
         if (!g) continue; // purged, or never existed
         out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
-          grade: g.grade, gender: g.gender, suburb: suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
+          grade: g.grade, gender: g.gender, suburb: addr.vehicleId ? 'Bus drop off' : suburbOf(addr.address), lastUsedAt: addr.lastUsedAt });
       }
     }
     out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
@@ -591,8 +622,22 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   function fixedCarIdsOf(rvs: BusRunVehicle[]): Set<string> {
     return new Set(rvs.filter((v) => v.ownerLeaderId || v.locked || isBus(v)).map((v) => v.id));
   }
-  /** BUS-2: re-apply every rider's bus choice (filled in by A3). */
-  async function syncBusRiders(_run: BusRun): Promise<void> {}
+  /** BUS-2: re-apply every rider's bus choice after a bus is turned on/off, re-addressed or re-kinded, and before Generate.
+   *  Own-car riders (the leader's choice) and riders already dropped off are left alone. */
+  async function syncBusRiders(run: BusRun): Promise<void> {
+    const [rvs, riders, all] = await Promise.all([bus.listRunVehicles(run.id), ridingOf(run.id), bus.listAllAddresses()]);
+    const byId = new Map(all.map((a) => [a.id, a]));
+    for (const r of riders) {
+      const addr = r.addressId ? byId.get(r.addressId) : undefined;
+      const onBus = rvs.some((v) => v.id === r.runVehicleId && isBus(v));
+      if (!addr || (!addr.vehicleId && !onBus) || r.droppedAt) continue; // ordinary rider (or no address) — untouched
+      if (rvs.some((v) => v.id === r.runVehicleId && v.ownerLeaderId)) continue;
+      const owned = all.filter((a) => (r.studentId ? a.studentId === r.studentId : a.guestId === r.guestId));
+      const seat = busPatch(r, addr, rvs, owned) ?? { snapAddress: '', snapPlaceId: null, runVehicleId: null, stopOrder: null, pinned: false };
+      const next = { ...r, ...seat };
+      if (JSON.stringify(next) !== JSON.stringify(r)) await bus.saveRunRider(next);
+    }
+  }
   /** Builds the fleet solve for Generate / Fit in (and R3's "Try +N cars"). Reads only. */
   async function prepareFleet(c: MinistryConfig, run: BusRun, mode: 'all' | 'fit'): Promise<FleetPrep> {
     const b = c.busMinistry;
@@ -844,8 +889,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is using this rider's current address/pin
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
-      const addr = await resolveAddress(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! }, v);
-      const saved = await bus.saveRunRider({ ...r, addressId: addr.id, snapAddress: addr.address, snapPlaceId: addr.placeId });
+      const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
+      const addr = await resolveAddress(owner, v, run);
+      const seat = busPatch(r, addr, await bus.listRunVehicles(run.id), await bus.listAddresses(owner)); // BUS-2
+      if (!seat) throw new BadRequestError(NO_BUS_NO_HOME);
+      const saved = await bus.saveRunRider({ ...r, addressId: addr.id, ...seat });
       const rv = saved.runVehicleId ? (await bus.listRunVehicles(run.id)).find((x) => x.id === saved.runVehicleId && x.running) : undefined;
       if (rv) await reorderCar(c, run, rv); // a new address can change the best stop order
       await touch(ctx, run);
