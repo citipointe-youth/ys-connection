@@ -15642,7 +15642,12 @@ function _busHHMM(iso) {
   return p(d.getHours()) + ':' + p(d.getMinutes());
 }
 async function busLoadHist() {
-  try { BUS.hist = await _busGet('/bus/history'); BUS.histErr = ''; BUS.histPeople = _busPeople(BUS.hist.rides, BUS.hist.nights.length, _busLocalNow().slice(0, 10)); }
+  try {
+    BUS.hist = await _busGet('/bus/history'); BUS.histErr = '';
+    // BUS-1: People ("regular", rides/nights) counts bus nights only; logged trips are listed but not counted.
+    const tripIds = new Set(BUS.hist.nights.filter((n) => n.trip).map((n) => n.id));
+    BUS.histPeople = _busPeople(BUS.hist.rides.filter((r) => !tripIds.has(r.runId)), BUS.hist.nights.length - tripIds.size, _busLocalNow().slice(0, 10));
+  }
   catch (e) { BUS.histErr = e.message || 'Could not load past nights'; }
 }
 async function busOpenPast() {
@@ -15660,24 +15665,25 @@ function _busHistHtml() {
   if (!h.nights.length) return `${back}<div class="empty">${icEmpty('bus')}<div>No past nights yet.</div></div>`;
   const people = BUS.histPeople || [];
   const byRun = _busByRun(h.rides);
-  const avg = Math.round(h.nights.reduce((n, x) => n + x.riders, 0) / h.nights.length);
-  const recent = h.nights.slice(0, 12).reverse().map((n) => ({ id: n.id, date: n.date, pct: n.riders, att: n.riders }));
+  const bn = h.nights.filter((n) => !n.trip); // BUS-1: stats + chart are bus nights; trips only list
+  const avg = bn.length ? Math.round(bn.reduce((n, x) => n + x.riders, 0) / bn.length) : 0;
+  const recent = bn.slice(0, 12).reverse().map((n) => ({ id: n.id, date: n.date, pct: n.riders, att: n.riders }));
   const sub = BUS.histSub === 'people' ? 'people' : 'nights';
   let list;
   if (sub === 'people') {
     list = people.map((p, i) => `<div class="li" onclick="busPastPerson(${i})"><div class="li-body"><div class="li-title">${esc(p.name)}
         ${p.regular ? '<span class="chip c-neutral">Regular</span>' : ''}${p.isNew ? '<span class="chip c-accent">New</span>' : ''}${p.guest ? '<span class="chip c-neutral">Guest</span>' : ''}</div>
-        <div class="li-sub">${p.rides}/${h.nights.length} nights · last ${esc(_busHDate(p.last))}</div></div>${icS('chevr')}</div>`).join('');
+        <div class="li-sub">${p.rides}/${bn.length} nights · last ${esc(_busHDate(p.last))}</div></div>${icS('chevr')}</div>`).join('');
   } else {
     list = h.nights.map((n) => {
       const nl = _busNotLogged(byRun[n.id] || []);
-      return `<div class="li" onclick="busPastNight('${esc(n.id)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(n.date))}</div>
+      return `<div class="li" onclick="busPastNight('${esc(n.id)}')"><div class="li-body"><div class="li-title">${esc(_busHDate(n.date))}${n.trip ? ' <span class="chip c-neutral">Trip</span>' : ''}</div>
         <div class="li-sub">${n.riders} riders · ${n.cars} car${n.cars === 1 ? '' : 's'}
         ${nl ? `<span class="chip c-warn">${nl} not logged</span>` : ''}${n.unassigned ? `<span class="chip c-warn">${n.unassigned} unassigned</span>` : ''}</div></div>${icS('chevr')}</div>`;
     }).join('');
   }
   return `${back}${BUS.histErr ? `<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>` : ''}
-    ${statCard([h.nights.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New'])}
+    ${statCard([bn.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New'])}
     <div class="card"><div class="card-title">Riders per night</div>${colChart(recent, 56, { neutral: true, click: (s) => `busPastNight('${s.id}')` })}</div>
     <div class="tbbar"><button class="tbbtn ${sub === 'nights' ? 'on' : ''}" onclick="BUS.histSub='nights';renderBus()">Nights</button>
       <button class="tbbtn ${sub === 'people' ? 'on' : ''}" onclick="BUS.histSub='people';renderBus()">People</button></div>
@@ -15810,16 +15816,17 @@ async function busExportHist() {
       }
       return ws;
     };
-    const nights = [['Date', 'Riders', 'Cars', 'Dropped', 'Not logged', 'Unassigned', 'Not riding', 'No-show', 'Leaders']]
-      .concat(h.nights.map((n) => [n.date, n.riders, n.cars, n.dropped, _busNotLogged(byRun[n.id] || []), n.unassigned, n.notRiding, n.noShow, (n.leaders || []).join(', ')]));
-    const rides = [['Date', 'Name', 'Grade', 'Student/Guest', 'Car', 'Leaders', 'Stop', 'Address', 'Dropped at', 'Dropped by', 'No-show', 'Not riding', 'Note']]
-      .concat(h.rides.map((r) => [r.date, r.name, r.grade ?? '', r.kind === 'guest' ? 'Guest' : 'Student', r.car || '', (r.leaders || []).join(', '), r.stop ?? '', r.address || '',
+    const tripIds = new Set(h.nights.filter((n) => n.trip).map((n) => n.id)); // BUS-1
+    const nights = [['Type', 'Date', 'Riders', 'Cars', 'Dropped', 'Not logged', 'Unassigned', 'Not riding', 'No-show', 'Leaders']]
+      .concat(h.nights.map((n) => [n.trip ? 'Trip' : 'Bus night', n.date, n.riders, n.cars, n.dropped, _busNotLogged(byRun[n.id] || []), n.unassigned, n.notRiding, n.noShow, (n.leaders || []).join(', ')]));
+    const rides = [['Type', 'Date', 'Name', 'Grade', 'Student/Guest', 'Car', 'Leaders', 'Stop', 'Address', 'Dropped at', 'Dropped by', 'No-show', 'Not riding', 'Note']]
+      .concat(h.rides.map((r) => [tripIds.has(r.runId) ? 'Trip' : 'Bus night', r.date, r.name, r.grade ?? '', r.kind === 'guest' ? 'Guest' : 'Student', r.car || '', (r.leaders || []).join(', '), r.stop ?? '', r.address || '',
         r.droppedAt ? _busFmtTime(r.droppedAt) : '', r.droppedBy || '', yn(r.noShow), yn(r.notRiding), r.note || '']));
     const people = [['Name', 'Rides', 'First ride', 'Last ride', 'Regular']]
       .concat((BUS.histPeople || []).map((p) => [p.name, p.rides, p.first, p.last, yn(p.regular)]));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet(nights, [12, 8, 6, 9, 10, 11, 10, 9, 30]), 'Nights');
-    XLSX.utils.book_append_sheet(wb, sheet(rides, [12, 22, 7, 13, 12, 24, 6, 40, 11, 16, 9, 10, 30]), 'Rides');
+    XLSX.utils.book_append_sheet(wb, sheet(nights, [10, 12, 8, 6, 9, 10, 11, 10, 9, 30]), 'Nights');
+    XLSX.utils.book_append_sheet(wb, sheet(rides, [10, 12, 22, 7, 13, 12, 24, 6, 40, 11, 16, 9, 10, 30]), 'Rides');
     XLSX.utils.book_append_sheet(wb, sheet(people, [22, 7, 12, 12, 9]), 'People');
     XLSX.writeFile(wb, `bus-history-${_busLocalNow().slice(0, 10)}.xlsx`);
     toast(`Exported ${h.rides.length} rides`);

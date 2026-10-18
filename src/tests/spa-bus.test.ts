@@ -1669,3 +1669,38 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     expect(html).not.toContain('Driving your own car?');
   });
 });
+
+describe('BUS-1 Past + export mark trips', () => {
+  const prelude = `
+    const BUS = { histErr: '', histSub: 'nights', histPeople: [], hist: { rides: [], nights: [
+      { id: 'w', date: '2026-10-14', trip: true, riders: 1, cars: 1 }, { id: 'f', date: '2026-10-09', trip: false, riders: 4, cars: 2 }] } };
+    function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; } function progBar() { return ''; }
+    function _busByRun() { return {}; } function _busNotLogged() { return 0; } function _busHDate(d) { return d; }
+    let __chart = null; function colChart(r) { __chart = r; return ''; }
+    function statCard(v) { return 'STAT:' + v.join('|'); } function __c() { return __chart; }`;
+  it('the Nights list chips a trip; Nights / Avg riders / chart count bus nights only', () => {
+    const f = loadFns(['_busHistHtml'], prelude, ['_busHistHtml', '__c']);
+    const html = f._busHistHtml();
+    expect(html.match(/>Trip</g)).toHaveLength(1);
+    expect(html).toContain('STAT:1|4|');
+    expect(f.__c().map((x: any) => x.id)).toEqual(['f']);
+  });
+  it('People + export use bus nights only and label each row Trip / Bus night', () => {
+    const html = loadIndexHtml();
+    expect(extractFn(html, 'busLoadHist')).toContain('tripIds');
+    const ex = extractFn(html, 'busExportHist');
+    expect(ex).toContain("'Type'");
+    expect(ex).toContain("n.trip ? 'Trip' : 'Bus night'");
+    expect(ex).toContain("tripIds.has(r.runId) ? 'Trip' : 'Bus night'");
+  });
+  it('busLoadHist feeds _busPeople bus-night rides and the bus-night count', async () => {
+    const pre = `const BUS = {}; let __args = null;
+      async function _busGet() { return { nights: [{ id: 'w', trip: true }, { id: 'f', trip: false }, { id: 'g', trip: false }],
+        rides: [{ runId: 'w', name: 'A' }, { runId: 'f', name: 'B' }] }; }
+      function _busPeople(r, n) { __args = [r.map((x) => x.runId), n]; return []; } function _busLocalNow() { return '2026-10-18T10:00'; }
+      function __a() { return __args; }`;
+    const f = loadFns(['busLoadHist'], pre, ['busLoadHist', '__a']);
+    await f.busLoadHist();
+    expect(f.__a()).toEqual([['f'], 2]);
+  });
+});
