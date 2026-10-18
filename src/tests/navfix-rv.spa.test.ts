@@ -336,3 +336,15 @@ describe('RV-I-m9 dead token at logout: the link tap queue is still cleared by t
     expect(f.LINK.mem['ysc.lkq.u1']).toBeUndefined();
   });
 });
+
+describe('legacy A10 (nav-fix F2): an unclear answer row blocks a parked change like a claimed one', () => {
+  it('unclear (lease-lost) holds the open-row slot: no re-POST every load', async () => {
+    const { f, calls } = ikEnv();
+    const I = f._ik(); I.date = '2026-10-09'; I.key = 'Y'; I.det = ROW('Y');
+    I.det.actions = [{ id: P(5), type: 'intakeAnswer', status: 'unclear' }];
+    I.resend.Y = 'again';
+    f._ikAfterLoad(); await tick();
+    expect(calls.posts.length).toBe(0);
+    expect(I.resend.Y).toBe('again');
+  });
+});

@@ -13282,7 +13282,8 @@ function _ikAfterLoad() {
   const det = I.det, key = det && det.row && det.row.key;
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
   // RV-I-m6: only a CLAIMED answer blocks it; a pending one is superseded by the server (S-4), so a parked change never sticks.
-  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && a.status === 'claimed') && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
+  // Legacy A10 (F2): an UNCLEAR (lease-lost) row also holds the open-row slot, so it blocks too (else a POST + toast every 5 s).
+  if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && (a.status === 'claimed' || a.status === 'unclear')) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
   if (I.find && I.tab === 'consent') { const f = I.find; I.find = null; _ikFind(f); } // I6: once, so a refresh never jumps
 }
 // I6: look for the student in the pushed consent weeks (this one, then at most 2 more GETs); open their sheet, else "Other".
