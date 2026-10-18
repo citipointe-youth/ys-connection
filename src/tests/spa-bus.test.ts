@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { loadFns, loadIndexHtml } from './helpers/extract-fn';
+import { extractFn, loadFns, loadIndexHtml } from './helpers/extract-fn';
 import { BUS_CAR_COLOURS } from '../services/bus-logic';
+
+// BUS-1: the my-car / own-car calls carry ?date= from these helpers.
+const TRIP = ['_busTripQs', '_busTripDate', '_busToday', '_busLocalNow'];
 
 describe('SPA bus helpers', () => {
   it('_busLocalNow formats phone local time', () => {
@@ -12,7 +15,7 @@ describe('SPA bus helpers', () => {
     expect(_busSuburb('24 Wynnum Rd, Carina QLD 4152, Australia')).toBe('Carina');
   });
   it('_busDropAtIso rolls a pre-6am time onto the next calendar day', () => {
-    const { _busDropAtIso } = loadFns(['_busDropAtIso'], "const BUS = { view: { run: { serviceDate: '2026-10-09' } } };");
+    const { _busDropAtIso } = loadFns(['_busDropAtIso', '_busTripDate', '_busToday', '_busLocalNow'], "const BUS = { tripDate: '2026-10-09', view: { run: { serviceDate: '2026-10-16' } } };");
     expect(new Date(_busDropAtIso('00:30')).getDate()).toBe(10);
     expect(new Date(_busDropAtIso('21:15')).getDate()).toBe(9);
   });
@@ -69,7 +72,7 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
       function _busEditing() { return false; }
       function __state() { return { fetchCalls: __fetchCalls, calls, BUS }; }
     `;
-    return loadFns(['busRefresh'], prelude, ['busRefresh', '__state']);
+    return loadFns(['busRefresh', ...TRIP], prelude, ['busRefresh', '__state']);
   };
 
   it('3 concurrent calls share one fetch pair and repaint once', async () => {
@@ -124,7 +127,7 @@ describe('busRefresh ignores stale results after logout (review fix round 2, fin
       function __logout() { BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.loading = null; BUS.failed = false; S.user = null; S.page = 'home'; }
       function __state() { return { calls, BUS, S }; }
     `;
-    return loadFns(['busRefresh'], prelude, ['busRefresh', '__resolveAll', '__logout', '__state']);
+    return loadFns(['busRefresh', ...TRIP], prelude, ['busRefresh', '__resolveAll', '__logout', '__state']);
   };
 
   it('a fetch still in flight at logout is dropped: no repaint, no stale BUS.view write', async () => {
@@ -184,7 +187,7 @@ describe('busRefresh starts a fresh load when the identity changes mid-flight (T
       function __resolveAll() { const rs = __resolvers; __resolvers = []; rs.forEach((r) => r()); }
       function __state() { return { calls, BUS, resolverCount: __resolverCount }; }
     `;
-    return loadFns(['busRefresh'], prelude, ['busRefresh', '__setAs', '__resolveAll', '__state']);
+    return loadFns(['busRefresh', ...TRIP], prelude, ['busRefresh', '__setAs', '__resolveAll', '__state']);
   };
 
   it('a new "I am" chosen mid-load starts a fresh fetch instead of reattaching to the old one', async () => {
@@ -252,7 +255,7 @@ describe('renderBus shows a retry card instead of hot-looping busRefresh on a fa
       function renderHome() {}
       function __state() { return { fetchCalls: __fetchCalls, appHtml, BUS }; }
     `;
-    const { renderBus, __state } = loadFns(['renderBus', 'busRefresh'], prelude, ['renderBus', '__state']);
+    const { renderBus, __state } = loadFns(['renderBus', 'busRefresh', ...TRIP], prelude, ['renderBus', '__state']);
     await renderBus();
     const st = __state();
     expect(st.fetchCalls).toBe(2); // one /bus/run + one /bus/my-car pair — not repeated
@@ -283,7 +286,7 @@ describe('busRefresh skips the repaint while a field inside the page is focused 
       function __setActive(tag, type) { __active = tag ? { tagName: tag, type: type || '' } : null; }
       function __state() { return { calls, BUS }; }
     `;
-    return loadFns(['busRefresh', '_busEditing'], prelude, ['busRefresh', '__setActive', '__state']);
+    return loadFns(['busRefresh', '_busEditing', ...TRIP], prelude, ['busRefresh', '__setActive', '__state']);
   };
 
   it('repaints normally when nothing is focused', async () => {
@@ -650,14 +653,14 @@ describe('_busBlockWrite toasts and blocks only while Generate/lock is active (T
 // fetched before any identity was chosen ("No car assigned."). Task B (owner, 2026-10-08):
 // changing identity now does a full page reload (_busIdentityChanged) instead of a bare
 // busRefresh()/renderBus(), so the app reopens on Bus → My car with the fresh identity.
-describe('_busMyCarHtml identity picker goes through a full reload (Task B)', () => {
+describe('_busMyCarHtml identity picker goes through _busIdentityChanged', () => {
   it('choosing a name calls _busIdentityChanged with the picked value', () => {
     const prelude = `
       const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
       function getMyLeaderId() { return null; }
       function esc(s) { return String(s); }
     `;
-    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar'], prelude);
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar', ...TRIP], prelude);
     const html = _busMyCarHtml();
     expect(html).toContain('_busIdentityChanged(this.value)');
     expect(html).not.toContain('renderBus()');
@@ -669,7 +672,7 @@ describe('_busMyCarHtml identity picker goes through a full reload (Task B)', ()
       function getMyLeaderId() { return 'L1'; }
       function esc(s) { return String(s); }
     `;
-    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar'], prelude);
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar', ...TRIP], prelude);
     const html = _busMyCarHtml();
     expect(html).toContain('_busIdentityChanged(null)');
     expect(html).not.toContain('renderBus()');
@@ -677,40 +680,31 @@ describe('_busMyCarHtml identity picker goes through a full reload (Task B)', ()
   });
 });
 
-// Task B (owner, 2026-10-08): _busIdentityChanged persists the new leader id, flags a one-shot
-// "land back on Bus" marker for boot(), and reloads — never calls busRefresh/renderBus itself
-// (the reload re-runs the whole app).
-describe('_busIdentityChanged (Task B)', () => {
-  it('persists the id, sets the reload flag, and reloads', () => {
+// BUS-1 (operator 2026-10-18): "I am" is remembered WITHOUT a page reload.
+describe('_busIdentityChanged (BUS-1: no reload)', () => {
+  it('persists the id, clears my car + draft, refreshes and repaints; never reloads', () => {
     const prelude = `
-      const __store = {};
-      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
-      let __reloaded = false;
+      const BUS = { myCar: { x: 1 }, ocDraft: { y: 1 } };
+      let __setId, __refreshed = 0, __rendered = 0, __reloaded = false;
       const location = { reload: () => { __reloaded = true; } };
-      let __setId = null;
       function setMyLeaderId(id) { __setId = id; }
-      function __state() { return { store: __store, reloaded: __reloaded, setId: __setId }; }
+      function busRefresh() { __refreshed++; return Promise.resolve(); }
+      function renderBus() { __rendered++; }
+      function __state() { return { setId: __setId, refreshed: __refreshed, rendered: __rendered, reloaded: __reloaded, bus: BUS }; }
     `;
     const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
     _busIdentityChanged('L2');
-    const st = __state();
-    expect(st.setId).toBe('L2');
-    expect(st.store['yap_bus_reload']).toBe('1');
-    expect(st.reloaded).toBe(true);
+    const s = __state();
+    expect([s.setId, s.refreshed, s.rendered, s.reloaded, s.bus.myCar, s.bus.ocDraft]).toEqual(['L2', 1, 1, false, null, null]);
   });
-  it('a null id clears the leader (passed through to setMyLeaderId as null)', () => {
-    const prelude = `
-      const __store = {};
-      const localStorage = { setItem: (k, v) => { __store[k] = v; }, removeItem: (k) => { delete __store[k]; } };
-      const location = { reload: () => {} };
-      let __setId = 'unset';
-      function setMyLeaderId(id) { __setId = id; }
-      function __state() { return { setId: __setId }; }
-    `;
+  it('a null id clears the leader', () => {
+    const prelude = `const BUS = {}; let __setId = 'unset'; function setMyLeaderId(id) { __setId = id; }
+      function busRefresh() {} function renderBus() {} function __state() { return { setId: __setId }; }`;
     const { _busIdentityChanged, __state } = loadFns(['_busIdentityChanged'], prelude, ['_busIdentityChanged', '__state']);
     _busIdentityChanged(null);
     expect(__state().setId).toBeNull();
   });
+  it('index.html no longer uses the yap_bus_reload flag', () => { expect(loadIndexHtml()).not.toContain('yap_bus_reload'); });
 });
 
 // Leader preferred grades (Task 2): Edit Pool sheet gets a per-leader grade checkbox block
@@ -1148,7 +1142,7 @@ describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 
       function _busPinnedIcon() { return ''; }
       function _busFmtTime() { return ''; }
     `;
-    return loadFns(['_busMyCarHtml', 'progBar'], prelude)._busMyCarHtml();
+    return loadFns(['_busMyCarHtml', 'progBar', ...TRIP], prelude)._busMyCarHtml();
   };
   it('tells a plain leader to ask an admin', () => {
     expect(mk('leader', false)).toContain('Ask an admin to set the church address');
@@ -1307,7 +1301,7 @@ describe('Task A: Edit my car sheet', () => {
       function busOwnCarSheet() {}
       function __state() { return { modalHtml: __modal, sent: __sent, order: BUS._emcOrder, removed: BUS._emcRemoved }; }
     `;
-    return loadFns(['busEditMyCarSheet', '_busRenderEditMyCar', '_busEmcRemove', 'busSaveMyCarStops', '_busEmcCarDetails'],
+    return loadFns(['busEditMyCarSheet', '_busRenderEditMyCar', '_busEmcRemove', 'busSaveMyCarStops', '_busEmcCarDetails', ...TRIP],
       prelude, ['busEditMyCarSheet', '_busEmcRemove', 'busSaveMyCarStops', '__state']);
   };
   it('opens with both stops in server order', () => {
@@ -1512,5 +1506,201 @@ describe('_busCarsHtml header totals (I12)', () => {
   });
   it('shows "N short" when riders exceed seats', () => {
     expect(mk(12)).toContain('1 short</span>');
+  });
+});
+
+// BUS-1 Trip logging (operator 2026-10-18, RULINGS Session 2).
+describe('BUS-1 Trip logging', () => {
+  it('Trip logging is the last tab; landing is Students (or Car setup via _busPickTab)', () => {
+    const rb = extractFn(loadIndexHtml(), 'renderBus');
+    expect(rb.indexOf("label: 'Trip logging'")).toBeGreaterThan(rb.indexOf("label: 'Assign'"));
+    expect(rb).not.toContain("label: 'My car'");
+    const { _busPickTab } = loadFns(['_busPickTab']);
+    expect(_busPickTab(['cars', 'routes', 'mycar'], 'roster', false, false)).toBe('cars'); // junior leader
+    expect(_busPickTab(['roster', 'cars', 'routes', 'mycar'], 'roster', false, false)).toBe('roster');
+    expect(extractFn(loadIndexHtml(), '_navLanding')).toContain("BUS.tab = 'roster'");
+  });
+  it('_busToday uses the 06:00 cutoff', () => {
+    const at = (args: string) => `const __RD = globalThis.Date; class Date extends __RD { constructor(...a) { super(...(a.length ? a : [${args}])); } }`;
+    expect(loadFns(['_busToday', '_busLocalNow'], at('2026, 9, 10, 0, 40'))._busToday()).toBe('2026-10-09'); // Sat 00:40 -> Friday
+    expect(loadFns(['_busToday', '_busLocalNow'], at('2026, 9, 14, 19, 0'))._busToday()).toBe('2026-10-14');
+    expect(loadFns(['_busToday', '_busLocalNow'], at('2026, 10, 1, 3, 0'))._busToday()).toBe('2026-10-31'); // month edge
+  });
+  it('_busTripDate defaults to today; _busTripQs carries it', () => {
+    const { _busTripDate, _busTripQs } = loadFns(['_busTripDate', '_busTripQs'], "const BUS = { tripDate: null }; function _busToday() { return '2026-10-14'; }");
+    expect(_busTripDate()).toBe('2026-10-14');
+    expect(_busTripQs()).toBe('date=2026-10-14');
+  });
+  it('busSetTripDate stores the day, clears my car + draft, refreshes and repaints', () => {
+    const prelude = `const BUS = { tripDate: null, myCar: { x: 1 }, ocDraft: { y: 1 } }; let __r = 0, __p = 0;
+      function busRefresh() { __r++; } function renderBus() { __p++; } function __s() { return { b: BUS, r: __r, p: __p }; }`;
+    const { busSetTripDate, __s } = loadFns(['busSetTripDate'], prelude, ['busSetTripDate', '__s']);
+    busSetTripDate('2026-10-12');
+    expect(__s()).toMatchObject({ b: { tripDate: '2026-10-12', myCar: null, ocDraft: null }, r: 1, p: 1 });
+    busSetTripDate('');
+    expect(__s().b.tripDate).toBeNull();
+  });
+  it('every trip write and the my-car read carry _busTripQs()', () => {
+    const html = loadIndexHtml();
+    for (const fn of ['busSaveOwnCar', 'busRemoveOwnCarConfirmed', 'busToggleDropped', 'busSaveDroppedTime', 'busOptimiseMyCar', 'busSaveMyCarStops', 'busMoveStop'])
+      expect(extractFn(html, fn)).toContain('_busTripQs()');
+    expect(extractFn(html, 'busRefresh')).toContain("_busGet('/bus/my-car', _busTripQs())");
+    expect(extractFn(html, 'busRemoveOwnCarFor')).not.toContain('_busTripQs()'); // Car setup: tonight
+  });
+  it('the Trip logging tab shows a Day picker limited to 14 back / 7 ahead', () => {
+    const prelude = `
+      const BUS = { tripDate: '2026-10-12', view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: null };
+      function getMyLeaderId() { return 'L1'; }
+      function esc(s) { return String(s); }
+      function _busToday() { return '2026-10-14'; }
+    `;
+    const { _busMyCarHtml } = loadFns(['_busMyCarHtml', 'progBar', '_busTripDate', '_busLocalNow'], prelude);
+    const html = _busMyCarHtml();
+    expect(html).toContain('type="date"');
+    expect(html).toContain('value="2026-10-12"');
+    expect(html).toContain('min="2026-09-30"');
+    expect(html).toContain('max="2026-10-21"');
+    expect(html).toContain('onchange="busSetTripDate(this.value)"');
+  });
+});
+
+describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
+  const pickPrelude = (addresses: string) => `const BUS = { ocHits: [{ kind: 'student', id: 's1', name: 'Jess Tran', addresses: ${addresses} }],
+    ocDraft: { car: null, riderIds: [], newRiders: [] }, ocSearch: 'je' };
+    let __sheet = 0; function busOwnCarSheet() { __sheet++; } function _busOcSyncDraft() {} function modal() { throw new Error('no modal'); }
+    function _busAddrLabel(a) { return a.label; } function __s() { return { d: BUS.ocDraft, sheet: __sheet, q: BUS.ocSearch }; }`;
+  it('busOcPick adds the hit straight to the draft with its latest saved address, no picker modal', () => {
+    const { busOcPick, __s } = loadFns(['busOcPick'], pickPrelude("[{ id: 'a1', label: 'Home', address: '1 A St, Carina' }]"), ['busOcPick', '__s']);
+    busOcPick(0);
+    expect(__s().d.newRiders[0]).toMatchObject({ studentId: 's1', addressId: 'a1', addrLabel: 'Home' });
+    expect(__s().sheet).toBe(1);
+    expect(__s().q).toBe('');
+  });
+  it('a hit with no saved address is added with no address', () => {
+    const { busOcPick, __s } = loadFns(['busOcPick'], pickPrelude('[]'), ['busOcPick', '__s']);
+    busOcPick(0);
+    const r = __s().d.newRiders[0];
+    expect(r).toMatchObject({ studentId: 's1', addrLabel: 'No address' });
+    expect(r.addressId).toBeUndefined();
+    expect(r.newAddress).toBeUndefined();
+  });
+  const readPrelude = (pick: string, text: string, placeId: string | null) => `
+    let __t = null; function toast(m) { __t = m; }
+    const document = { querySelector: () => (${JSON.stringify(pick)} ? { value: ${JSON.stringify(pick)} } : null),
+      getElementById: () => ({ value: 'Mum' }) };
+    function _busAcValue() { return { address: ${JSON.stringify(text)}, placeId: ${JSON.stringify(placeId)} }; }
+    function __t_() { return __t; }`;
+  it('_busReadAddress(true): empty New address = no address; typed-but-unpicked still refused', () => {
+    let f = loadFns(['_busReadAddress'], readPrelude('new', '', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toEqual({});
+    expect(f._busReadAddress()).toBeNull(); // required path unchanged
+    f = loadFns(['_busReadAddress'], readPrelude('new', '1 A St', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toBeNull();
+    expect(f.__t_()).toBe('Pick the address from the suggestions list');
+    f = loadFns(['_busReadAddress'], readPrelude('a1', '', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toEqual({ addressId: 'a1' });
+  });
+  const sheetPrelude = (tripDate: string, myCar: string) => `
+    const BUS = { tripDate: '${tripDate}', ocDraft: null, myCar: ${myCar},
+      view: { run: { serviceDate: '2026-10-16' }, leaders: [{ id: 'L1', name: 'Tom Strange' }],
+        riders: [{ id: 'fr1', name: 'Friday Rider', address: '2 B St, Carina', runVehicleId: null }] } };
+    let __html = ''; function modal(h) { __html = h; }
+    function esc(s) { return String(s == null ? '' : s); } function fmtDay(d) { return 'DAY ' + d; } function icS() { return ''; }
+    function getMyLeaderId() { return 'L1'; } function _busOcHitsHtml() { return ''; } function _busAcField() { return ''; }
+    function _busToday() { return '2026-10-14'; }
+    function __h() { return __html; } function __d() { return BUS.ocDraft; }`;
+  const sheet = (tripDate: string, myCar = 'null') =>
+    loadFns(['busOwnCarSheet', '_busEndsAtField', '_busSuburb', '_busTripDate'], sheetPrelude(tripDate, myCar), ['busOwnCarSheet', '__h', '__d']);
+  it('busOwnCarSheet hides "students waiting" when the trip date is not tonight', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    expect(f.__h()).toContain('Log a trip · DAY 2026-10-14');
+    expect(f.__h()).not.toContain('Friday Rider');
+    expect(f.__h()).not.toContain('still waiting');
+    const t = sheet('2026-10-16');
+    t.busOwnCarSheet();
+    expect(t.__h()).toContain('Friday Rider');
+    expect(t.__h()).toContain('still waiting');
+  });
+  it('on another day, the riders already in this trip stay listed (ticked) so a car-details save keeps them', () => {
+    const f = sheet('2026-10-14', "{ vehicle: { id: 'rv' }, stops: [{ id: 'w1', name: 'Wed Rider', address: '' }] }");
+    f.busOwnCarSheet(false);
+    expect(f.__h()).toMatch(/id="oc-riders"[\s\S]*value="w1" checked/);
+    expect(f.__h()).not.toContain('Friday Rider');
+  });
+  it('a new trip defaults to Ends at last drop, 5 seats and a "<first name>s car" name; a remembered car is used', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    expect(f.__h()).toContain('<option value="last_drop" selected');
+    expect(f.__h()).toContain('value="5"');
+    expect(f.__h()).toContain(`value="Tom's car"`);
+    const r = sheet('2026-10-14', "{ vehicle: null, stops: [], ownCarDraft: { car: { name: 'Red Mazda', seats: 4, plate: null, endsAt: 'church', endsAddress: null }, riderIds: [] } }");
+    r.busOwnCarSheet();
+    expect(r.__h()).toContain('value="Red Mazda"');
+    expect(r.__h()).toContain('<option value="church" selected');
+  });
+  it('new-rider rows get an Address button; busSaveOwnCar no longer forces an end address and strips UI fields', () => {
+    const html = loadIndexHtml();
+    expect(extractFn(html, 'busOwnCarSheet')).toContain('busOcAddr(${i})');
+    const save = extractFn(html, 'busSaveOwnCar');
+    expect(save).not.toContain('Pick the address');
+    expect(save).toContain('({ name, addrLabel, addresses, ...n }) => n');
+    expect(extractFn(html, 'busOcSaveNewPerson')).toContain('_busReadAddress(true)');
+  });
+  it('busOcConfirmPick(j) replaces row j address', () => {
+    const prelude = `const BUS = { ocDraft: { newRiders: [{ studentId: 's1', name: 'J', addresses: [{ id: 'a1', label: 'Home' }, { id: 'a2', label: 'Dad' }], addressId: 'a1', addrLabel: 'Home' }] } };
+      let __r = null; function _busReadAddress() { return __r; } function _busAddrLabel(a) { return a.label; } function busOwnCarSheet() {}
+      function __set(v) { __r = v; } function __d() { return BUS.ocDraft; }`;
+    const f = loadFns(['busOcConfirmPick'], prelude, ['busOcConfirmPick', '__set', '__d']);
+    f.__set({ addressId: 'a2' }); f.busOcConfirmPick(0);
+    expect(f.__d().newRiders[0]).toMatchObject({ addressId: 'a2', addrLabel: 'Dad' });
+    f.__set({ newAddress: { label: '', address: '9 C St', placeId: 'p' } }); f.busOcConfirmPick(0);
+    expect(f.__d().newRiders[0].addressId).toBeUndefined();
+    expect(f.__d().newRiders[0]).toMatchObject({ newAddress: { address: '9 C St' }, addrLabel: '9 C St' });
+  });
+  it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
+    const prelude = `
+      const BUS = { tripDate: null, view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: { vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] } } };
+      function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s); } function fmtDay(d) { return 'DAY ' + d; }
+      function icS() { return ''; } function icLg() { return ''; } function _busToday() { return '2026-10-14'; }`;
+    const html = loadFns(['_busMyCarHtml', 'progBar', '_busTripDate', '_busLocalNow'], prelude)._busMyCarHtml();
+    expect(html).toContain('No trip logged for DAY 2026-10-14');
+    expect(html).toContain('Log a trip');
+    expect(html).not.toContain('Driving your own car?');
+  });
+});
+
+describe('BUS-1 Past + export mark trips', () => {
+  const prelude = `
+    const BUS = { histErr: '', histSub: 'nights', histPeople: [], hist: { rides: [], nights: [
+      { id: 'w', date: '2026-10-14', trip: true, riders: 1, cars: 1 }, { id: 'f', date: '2026-10-09', trip: false, riders: 4, cars: 2 }] } };
+    function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; } function progBar() { return ''; }
+    function _busByRun() { return {}; } function _busNotLogged() { return 0; } function _busHDate(d) { return d; }
+    let __chart = null; function colChart(r) { __chart = r; return ''; }
+    function statCard(v) { return 'STAT:' + v.join('|'); } function __c() { return __chart; }`;
+  it('the Nights list chips a trip; Nights / Avg riders / chart count bus nights only', () => {
+    const f = loadFns(['_busHistHtml'], prelude, ['_busHistHtml', '__c']);
+    const html = f._busHistHtml();
+    expect(html.match(/>Trip</g)).toHaveLength(1);
+    expect(html).toContain('STAT:1|4|');
+    expect(f.__c().map((x: any) => x.id)).toEqual(['f']);
+  });
+  it('People + export use bus nights only and label each row Trip / Bus night', () => {
+    const html = loadIndexHtml();
+    expect(extractFn(html, 'busLoadHist')).toContain('tripIds');
+    const ex = extractFn(html, 'busExportHist');
+    expect(ex).toContain("'Type'");
+    expect(ex).toContain("n.trip ? 'Trip' : 'Bus night'");
+    expect(ex).toContain("tripIds.has(r.runId) ? 'Trip' : 'Bus night'");
+  });
+  it('busLoadHist feeds _busPeople bus-night rides and the bus-night count', async () => {
+    const pre = `const BUS = {}; let __args = null;
+      async function _busGet() { return { nights: [{ id: 'w', trip: true }, { id: 'f', trip: false }, { id: 'g', trip: false }],
+        rides: [{ runId: 'w', name: 'A' }, { runId: 'f', name: 'B' }] }; }
+      function _busPeople(r, n) { __args = [r.map((x) => x.runId), n]; return []; } function _busLocalNow() { return '2026-10-18T10:00'; }
+      function __a() { return __args; }`;
+    const f = loadFns(['busLoadHist'], pre, ['busLoadHist', '__a']);
+    await f.busLoadHist();
+    expect(f.__a()).toEqual([['f'], 2]);
   });
 });

@@ -70,7 +70,7 @@ describe('menu tap opens the landing screen', () => {
     const w = world('home');
     Object.assign(w.env.BUS, { tab: 'analysis', carsOpen: true });
     w.go('bus');
-    expect(w.env.BUS).toMatchObject({ tab: 'mycar', carsOpen: false });
+    expect(w.env.BUS).toMatchObject({ tab: 'roster', carsOpen: false });
   });
   it('Back after a menu tap still returns to the screen before it', () => {
     const w = world('home');

@@ -133,7 +133,7 @@ function bus() {
   const env: any = { closes: 0, mo: { id: 'bulk' }, toasts: [] as string[] };
   const f = new Function('env', `
     var BUS = { bulk: [{ on: true, studentId: 's1', name: 'A', addr: {} }, { on: true, studentId: 's2', name: 'B', addr: {} }], bulkBusy: false, _emcOrder: [], _emcRemoved: [] };
-    var _busBlockWrite = () => false, _busBulkCount = () => {}, _busQs = () => '', busRefresh = async () => {};
+    var _busBlockWrite = () => false, _busBulkCount = () => {}, _busQs = () => '', _busTripQs = () => '', busRefresh = async () => {};
     var API = { post: () => (env.post ? env.post() : Promise.resolve({})) };
     var _busSend = () => (env.post ? env.post() : Promise.resolve({}));
     var closeModal = () => { env.closes++; }, toast = (m) => env.toasts.push(m);
