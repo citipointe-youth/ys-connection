@@ -130,3 +130,11 @@ describe('detours', () => {
     expect(detours([600, 300], [700, 0])).toEqual([200, 300]);
   });
 });
+
+describe('BUS-2 autoFillPool', () => {
+  it('a bus ending at an address still takes a pool leader', () => {
+    const out = autoFillPool([{ id: 'B', seats: 20, leaderIds: [], endsAt: 'address', bus: true }],
+      [{ id: 'P1', gender: 'female' }], () => 'female', { female: 0, male: 0 });
+    expect(out.get('B')).toEqual(['P1']);
+  });
+});

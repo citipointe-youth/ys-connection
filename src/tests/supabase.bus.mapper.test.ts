@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeAll } from 'vitest';
-import { busCrypt, toPrefs, encSnapAddress, decSnapAddress, toRunVehicle } from '../repositories/supabase/supabase.bus';
+import { busCrypt, toPrefs, encSnapAddress, decSnapAddress, toRunVehicle, toVehicle, toAddress } from '../repositories/supabase/supabase.bus';
 
 beforeAll(() => {
   process.env['FIELD_ENCRYPTION_KEY'] = Buffer.alloc(32, 2).toString('base64');
@@ -55,5 +57,27 @@ describe('run vehicle locked (I11, migration 0034)', () => {
   });
   it('a row from before 0034 (no column) reads as unlocked', () => {
     expect(toRunVehicle(row()).locked).toBe(false);
+  });
+});
+
+describe('BUS-2 charter bus (migration 0038)', () => {
+  const vehicleRow = { id: 'v1', name: 'Charter', plate: null, seats: 20, pref_grades: [], ends_at: 'address', ends_address: null,
+    ends_place_id: null, sort: 0, archived: false, created_at: '2026-10-18T00:00:00Z', updated_at: '2026-10-18T00:00:00Z' };
+  const runVehicleRow = { id: 'rv1', run_id: 'r1', vehicle_id: 'v1', owner_leader_id: null, name: 'Charter', seats: 20, plate: null,
+    running: true, leader_ids: [], ends_at: 'address', ends_address: null, ends_place_id: null, colour_index: 0, leader_snap: [] };
+  const addressRow = { id: 'a1', student_id: 's1', guest_id: null, label: 'Bus drop off', address: '9 Hall St', place_id: null,
+    last_used_at: '2026-10-18T00:00:00Z', created_at: '2026-10-18T00:00:00Z' };
+  it('kind and vehicle_id round-trip; old rows read as car / no bus', () => {
+    expect(toVehicle({ ...vehicleRow, kind: 'bus' }).kind).toBe('bus');
+    expect(toVehicle({ ...vehicleRow, kind: undefined }).kind).toBe('car');
+    expect(toRunVehicle({ ...runVehicleRow, kind: 'bus' }).kind).toBe('bus');
+    expect(toRunVehicle(runVehicleRow).kind).toBe('car');
+    expect(toAddress({ ...addressRow, vehicle_id: 'v1' }).vehicleId).toBe('v1');
+    expect(toAddress({ ...addressRow }).vehicleId).toBeNull();
+  });
+  it('0038 is additive only', () => {
+    const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '0038_bus_charter.sql'), 'utf8');
+    expect(sql).not.toMatch(/drop |rename |alter column|concurrently/i);
+    expect((sql.match(/add column if not exists/gi) ?? []).length).toBe(3);
   });
 });

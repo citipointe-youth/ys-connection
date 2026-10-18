@@ -24,12 +24,12 @@ export function decSnapAddress(v: unknown, id: string): string {
   return d === EMPTY_SNAP_ADDRESS ? '' : d;
 }
 
-function toVehicle(r: Record<string, any>): BusVehicle {
+export function toVehicle(r: Record<string, any>): BusVehicle {
   return { id: r.id, name: r.name, plate: r.plate ?? null, seats: r.seats, prefGrades: r.pref_grades ?? [],
     endsAt: r.ends_at as EndsAt,
     endsAddress: busCrypt.dec(r.ends_address, `bus_vehicles:ends_address:${r.id}`),
     endsPlaceId: busCrypt.dec(r.ends_place_id, `bus_vehicles:ends_place_id:${r.id}`),
-    sort: r.sort, archived: r.archived, createdAt: toIso(r.created_at), updatedAt: toIso(r.updated_at) };
+    sort: r.sort, archived: r.archived, createdAt: toIso(r.created_at), updatedAt: toIso(r.updated_at), kind: r.kind ?? 'car' };
 }
 function ownCarOut(o: BusOwnCar | null, leaderId: string): unknown {
   if (!o) return null;
@@ -50,11 +50,11 @@ function toGuest(r: Record<string, any>): BusGuest {
     phone: busCrypt.dec(r.phone, `bus_guests:phone:${r.id}`), linkedStudentId: r.linked_student_id ?? null,
     dismissed: r.dismissed, createdAt: toIso(r.created_at), lastRiddenAt: iso(r.last_ridden_at) };
 }
-function toAddress(r: Record<string, any>): BusAddress {
+export function toAddress(r: Record<string, any>): BusAddress {
   return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, label: r.label,
     address: busCrypt.dec(r.address, `bus_addresses:address:${r.id}`)!,
     placeId: busCrypt.dec(r.place_id, `bus_addresses:place_id:${r.id}`),
-    lastUsedAt: toIso(r.last_used_at), createdAt: toIso(r.created_at) };
+    lastUsedAt: toIso(r.last_used_at), createdAt: toIso(r.created_at), vehicleId: r.vehicle_id ?? null };
 }
 function toRun(r: Record<string, any>): BusRun {
   return { id: r.id, serviceDate: typeof r.service_date === 'string' ? r.service_date.slice(0, 10) : toIso(r.service_date).slice(0, 10),
@@ -69,7 +69,7 @@ export function toRunVehicle(r: Record<string, any>): BusRunVehicle {
     endsAt: r.ends_at as EndsAt,
     endsAddress: busCrypt.dec(r.ends_address, `bus_run_vehicles:ends_address:${r.id}`),
     endsPlaceId: busCrypt.dec(r.ends_place_id, `bus_run_vehicles:ends_place_id:${r.id}`),
-    colourIndex: r.colour_index, leaderSnap: r.leader_snap ?? [], locked: r.locked ?? false };
+    colourIndex: r.colour_index, leaderSnap: r.leader_snap ?? [], locked: r.locked ?? false, kind: r.kind ?? 'car' };
 }
 function toRider(r: Record<string, any>): BusRunRider {
   return { id: r.id, runId: r.run_id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null,
@@ -101,13 +101,13 @@ export class SupabaseBusRepository implements IBusRepository {
   async getVehicle(id: string) { const r = await this.sql`select * from bus_vehicles where id = ${id}`; return r[0] ? toVehicle(r[0]) : null; }
   async saveVehicle(v: BusVehicle) {
     const r = await this.sql`
-      insert into bus_vehicles (id, name, plate, seats, pref_grades, ends_at, ends_address, ends_place_id, sort, archived, created_at, updated_at)
+      insert into bus_vehicles (id, name, plate, seats, pref_grades, ends_at, ends_address, ends_place_id, sort, archived, created_at, updated_at, kind)
       values (${v.id}, ${v.name}, ${v.plate}, ${v.seats}, ${this.j(v.prefGrades)}, ${v.endsAt},
         ${busCrypt.enc(v.endsAddress, `bus_vehicles:ends_address:${v.id}`)}, ${busCrypt.enc(v.endsPlaceId, `bus_vehicles:ends_place_id:${v.id}`)},
-        ${v.sort}, ${v.archived}, ${v.createdAt}, ${v.updatedAt})
+        ${v.sort}, ${v.archived}, ${v.createdAt}, ${v.updatedAt}, ${v.kind ?? 'car'})
       on conflict (id) do update set name = excluded.name, plate = excluded.plate, seats = excluded.seats,
         pref_grades = excluded.pref_grades, ends_at = excluded.ends_at, ends_address = excluded.ends_address,
-        ends_place_id = excluded.ends_place_id, sort = excluded.sort, archived = excluded.archived, updated_at = excluded.updated_at
+        ends_place_id = excluded.ends_place_id, sort = excluded.sort, archived = excluded.archived, updated_at = excluded.updated_at, kind = excluded.kind
       returning *`;
     return toVehicle(r[0]!);
   }
@@ -149,11 +149,11 @@ export class SupabaseBusRepository implements IBusRepository {
   async getAddress(id: string) { const r = await this.sql`select * from bus_addresses where id = ${id}`; return r[0] ? toAddress(r[0]) : null; }
   async saveAddress(a: BusAddress) {
     const r = await this.sql`
-      insert into bus_addresses (id, student_id, guest_id, label, address, place_id, last_used_at, created_at)
+      insert into bus_addresses (id, student_id, guest_id, label, address, place_id, last_used_at, created_at, vehicle_id)
       values (${a.id}, ${a.studentId}, ${a.guestId}, ${a.label}, ${busCrypt.enc(a.address, `bus_addresses:address:${a.id}`)},
-        ${busCrypt.enc(a.placeId, `bus_addresses:place_id:${a.id}`)}, ${a.lastUsedAt}, ${a.createdAt})
+        ${busCrypt.enc(a.placeId, `bus_addresses:place_id:${a.id}`)}, ${a.lastUsedAt}, ${a.createdAt}, ${a.vehicleId ?? null})
       on conflict (id) do update set student_id = excluded.student_id, guest_id = excluded.guest_id, label = excluded.label,
-        address = excluded.address, place_id = excluded.place_id, last_used_at = excluded.last_used_at
+        address = excluded.address, place_id = excluded.place_id, last_used_at = excluded.last_used_at, vehicle_id = excluded.vehicle_id
       returning *`;
     return toAddress(r[0]!);
   }
@@ -185,13 +185,13 @@ export class SupabaseBusRepository implements IBusRepository {
   async listRunVehicles(runId: string) { return (await this.sql`select * from bus_run_vehicles where run_id = ${runId} order by colour_index`).map(toRunVehicle); }
   async saveRunVehicle(v: BusRunVehicle) {
     const r = await this.sql`
-      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index, leader_snap, locked)
+      insert into bus_run_vehicles (id, run_id, vehicle_id, owner_leader_id, name, seats, plate, running, leader_ids, ends_at, ends_address, ends_place_id, colour_index, leader_snap, locked, kind)
       values (${v.id}, ${v.runId}, ${v.vehicleId}, ${v.ownerLeaderId}, ${v.name}, ${v.seats}, ${v.plate}, ${v.running}, ${this.j(v.leaderIds)},
         ${v.endsAt}, ${busCrypt.enc(v.endsAddress, `bus_run_vehicles:ends_address:${v.id}`)},
-        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex}, ${this.j(v.leaderSnap)}, ${v.locked ?? false})
+        ${busCrypt.enc(v.endsPlaceId, `bus_run_vehicles:ends_place_id:${v.id}`)}, ${v.colourIndex}, ${this.j(v.leaderSnap)}, ${v.locked ?? false}, ${v.kind ?? 'car'})
       on conflict (id) do update set name = excluded.name, seats = excluded.seats, plate = excluded.plate, running = excluded.running,
         leader_ids = excluded.leader_ids, ends_at = excluded.ends_at, ends_address = excluded.ends_address,
-        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index, leader_snap = excluded.leader_snap, locked = excluded.locked
+        ends_place_id = excluded.ends_place_id, colour_index = excluded.colour_index, leader_snap = excluded.leader_snap, locked = excluded.locked, kind = excluded.kind
       returning *`;
     return toRunVehicle(r[0]!);
   }

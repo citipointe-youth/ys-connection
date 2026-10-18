@@ -2,11 +2,13 @@ import type { ID, ISODateString } from '../types/common';
 
 export type BusGender = 'male' | 'female' | null;
 export type EndsAt = 'church' | 'last_drop' | 'address';
+export type VehicleKind = 'car' | 'bus'; // BUS-2: 'bus' = charter to its ends address; absent = 'car'
 
 export interface BusVehicle {
   id: ID; name: string; plate: string | null; seats: number; prefGrades: number[];
   endsAt: EndsAt; endsAddress: string | null; endsPlaceId: string | null;
   sort: number; archived: boolean; createdAt: ISODateString; updatedAt: ISODateString;
+  kind?: VehicleKind;
 }
 export interface BusOwnCar {
   name: string; seats: number; plate: string | null;
@@ -24,6 +26,7 @@ export interface BusGuest {
 export interface BusAddress {
   id: ID; studentId: ID | null; guestId: ID | null; label: string; address: string; placeId: string | null;
   lastUsedAt: ISODateString; createdAt: ISODateString;
+  vehicleId?: ID | null; // BUS-2: set = this person's "Bus drop off" choice for that fleet bus
 }
 export interface BusUndoEntry { riderId: ID; runVehicleId: ID | null; stopOrder: number | null; pinned: boolean }
 export interface BusRun {
@@ -40,6 +43,7 @@ export interface BusRunVehicle {
   locked: boolean;
   // Who was on the car, copied whenever leaderIds is saved — survives a leader being deleted (Full Reset).
   leaderSnap: { id: ID; name: string; gender: BusGender }[];
+  kind?: VehicleKind; // BUS-2: copied from the fleet vehicle per night
 }
 export interface BusRunRider {
   id: ID; runId: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
@@ -101,7 +105,7 @@ export interface BusSearchHit {
   // Labels + suburb only (spec I2) — never the full saved street address. `street` (Task 3) is
   // the decrypted address's street part, always populated so the SPA can fall back to it when
   // `label` is blank on an address saved before the default-label fix.
-  addresses: { id: ID; label: string; suburb: string; street: string }[];
+  addresses: { id: ID; label: string; suburb: string; street: string; vehicleId: ID | null }[];
 }
 export interface MyCarView {
   vehicle: BusRunVehicleView | null;
