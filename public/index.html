@@ -202,14 +202,12 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .la-role{font-size:12px;color:var(--muted);flex:0 0 auto;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .la-meta{font-size:12px;color:var(--ink-mid);margin-top:2px;line-height:1.4}
 .la-never{color:var(--danger,#c0392b);font-weight:600}
-.el-row{border:1px solid var(--paper-dark,#ddd);border-radius:var(--radius);margin-bottom:var(--s2);background:#fff;padding:var(--s3) var(--s4)}
-.el-row.ign{opacity:.6}
+.rc.ign{opacity:.6}
 .el-top{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:24px;width:100%;background:none;border:0;text-align:left;font:inherit;color:inherit;padding:0}
 .ny-err{font-size:13px;font-weight:400;text-transform:none;color:var(--danger);margin-top:4px}
 .bus-allsum{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .el-msg{flex:1;font-weight:600;font-size:14px}
 .el-new{background:#fde2e2;color:#a61b1b}
-.el-acts{display:flex;gap:var(--s2);flex-wrap:wrap;justify-content:flex-end;margin-top:var(--s3)}
 .el-h{font-weight:700;font-size:13px;margin:14px 0 6px}
 details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .el-when{font-size:12px;color:var(--ink-faint);white-space:nowrap}
@@ -233,12 +231,15 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .pfab{position:fixed;right:16px;bottom:114px;z-index:90;background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:11px 16px;border-radius:24px;box-shadow:0 8px 20px rgba(26,26,242,.4);display:flex;align-items:center;gap:6px;border:none;cursor:pointer}
 
 /* Chips */
-.chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap}
-.c-accent{background:var(--accent-light);color:var(--accent-dark)}
-.c-neutral{background:var(--paper-dark);color:var(--ink-mid)}
-.c-success{background:var(--success-light);color:#065f46}
-.c-warn{background:var(--warn-light);color:#92400e}
-.c-danger{background:var(--danger-light);color:#991b1b}
+/* Pills (N07b): one base shape (20px tall), five tones. The older names (.chip + .c-*, .lk-tag, .lk-nl, .lk-od, .lk-chip,
+   .badge) map onto it; they keep only their own colour/width below. New markup: <span class="pill ok|warn|bad|info|neutral">. */
+.pill,.chip,.lk-tag,.lk-nl,.lk-od,.lk-chip,.badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;line-height:16px;white-space:nowrap}
+.pill.info,.c-accent{background:var(--accent-light);color:var(--accent-dark)}
+.pill.neutral,.c-neutral,.lk-nl,.badge{background:var(--paper-dark);color:var(--ink-mid)}
+.pill.ok,.c-success{background:var(--success-light);color:#065f46}
+.pill.warn,.c-warn{background:var(--warn-light);color:#92400e}
+.pill.bad,.c-danger,.lk-od{background:var(--danger-light);color:#991b1b}
+.lk-nl,.lk-od{flex:none}
 .quad-g79{background:#fce7f3;color:#9d174d}
 .quad-b79{background:#dbeafe;color:#1e40af}
 .quad-g1012{background:#f3e8ff;color:#6d28d9}
@@ -552,7 +553,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
   .bus-tile{padding-block:4px} /*BUS-HOOK*/
 }
 @media(pointer:coarse){
-  .btn-sm,.tbbtn,.btn-icon{min-height:40px}
+  .tbbtn,.btn-icon{min-height:40px} /* .btn-sm keeps its 44px (N08) */
   .btn-sm,.btn-icon{min-width:40px}
   .filter-row{gap:4px}
   .filter-row .fc{padding-inline:5px}
@@ -792,7 +793,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-sec{font-size:12px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin:14px 2px 6px}
 .lk-row{padding:var(--s3) var(--s4);gap:var(--s3);margin-bottom:var(--s2)}
 .lk-row[role=button]{cursor:pointer}
-.lk-chip{flex:none;min-width:42px;text-align:center;font-size:11px;font-weight:700;background:var(--chip);color:var(--accent-dark);border-radius:999px;padding:3px 7px}
+.lk-chip{flex:none;min-width:42px;background:var(--chip);color:var(--accent-dark)}
 .lk-chip.lead{background:var(--paper-dark);color:var(--ink)}
 .lk-grow{flex:1;min-width:0}
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
@@ -821,7 +822,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-opt.on{border-color:var(--accent);background:var(--accent-light)}
 .lk-opt-t{display:block}
 .lk-d{display:block;font-size:12px;color:var(--ink-mid)}
-.lk-tag{font-size:11px;font-weight:700;color:var(--accent);background:#fff;border:1px solid #c7c7f5;border-radius:999px;padding:2px 7px;flex:none}
+.lk-tag{color:var(--accent);background:#fff;border:1px solid #c7c7f5;padding:1px 7px;flex:none}
 .lk-toast{position:fixed;bottom:calc(var(--nav-h) + var(--s3) + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lk-toast .btn{background:#fff;color:#111827;flex:none}
@@ -838,7 +839,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-box{border:2px solid #64748b}
 .lk-box.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .lk-done-ic{width:22px;height:22px;flex:none;border-radius:50%;background:var(--success-light);color:#047857;display:inline-flex;align-items:center;justify-content:center}
-.lk-nl{font-size:11px;font-weight:700;background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;flex:none}
 .lk-kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}
 .lk-kv span{color:var(--ink-mid);flex:none}.lk-kv b{font-weight:600;text-align:right;min-width:0}
 .lk-here{font-size:14px;padding:5px 0;border-bottom:1px solid var(--line)}.lk-here summary{cursor:pointer;color:var(--ink-mid);min-height:32px;display:list-item}
@@ -863,7 +863,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
 .lk-dt{flex:1;min-width:0;font-size:14px;font-weight:700}
-.lk-od{flex:none;font-size:11px;font-weight:700;color:#b91c1c;background:var(--danger-light);border-radius:999px;padding:2px 8px}
 .lk-a{color:inherit;text-decoration:none}
 .lk-big{font-size:18px;padding:14px;min-height:52px}
 .lk-wknav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 8px}
@@ -919,12 +918,15 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .rc{display:block;position:relative;padding:var(--s4);margin-bottom:var(--s3)}
 .rc-top{display:flex;align-items:flex-start;gap:var(--s2)}
 .rc-top>.lk-nm{flex:1 1 auto;min-width:0}
-.rc-top>.lk-tag,.rc-top>.ic-s{flex:none;margin-top:2px}
+.rc-top>.lk-tag,.rc-top>.chip,.rc-top>.ic-s{flex:none;margin-top:2px}
+.ar-rc{padding:var(--s3);margin:0}
+.ar-rc .rc-foot>.lk-d{font-size:13px;color:var(--ink)}
 .rc-pills{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s1);flex:0 1 auto;max-width:55%}
 .rc .lk-d{margin-top:2px}
 .rc-foot{position:relative;z-index:1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:var(--s2);margin-top:var(--s3)}
 .rc-foot>.lk-st,.rc-foot>.lk-d{flex:1 1 140px;margin:0}
 .rc-foot>.btn:not(:only-of-type){flex:1 1 140px}
+.rc-foot.rc-icons>.btn{flex:none} /* icon-only actions keep their own width */
 /* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
 .rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
@@ -5077,22 +5079,17 @@ function _arSectionsHtml(scoped, u) {
     let cards = '';
     for (const s of items) {
       const _arPhone = s.mobile || s.parentPhone;
+      const _arPills = (u.role !== 'grade' ? quadChip(s.quad) : '') + dncChip(s);
       cards += `
-        <div class="li" style="position:relative;align-items:flex-start;padding:11px 40px 11px 11px;margin-bottom:4px">
-          <div class="li-body">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(s.firstName)} ${esc(s.lastName)}</span>
-              ${u.role !== 'grade' ? quadChip(s.quad) : ''}${dncChip(s)}
-            </div>
-            <div class="li-sub" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span>Gr ${s.grade||'—'} · ${s.gender}</span>
-              ${_arQualChips(s)}
-            </div>
-            ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal, true)}
-            ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal, true):''}
-            ${_arPhone ? `<div style="margin-top:4px;font-size:13px">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}
+        <div class="li rc ar-rc">
+          <div class="rc-top"><div class="lk-nm">${esc(s.firstName)} ${esc(s.lastName)}</div>${_arPills ? `<span class="rc-pills">${_arPills}</span>` : ''}</div>
+          <div class="li-sub" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>Gr ${s.grade||'—'} · ${s.gender}</span>
+            ${_arQualChips(s)}
           </div>
-          <button class="btn btn-ghost btn-sm" style="position:absolute;bottom:8px;right:8px;padding:4px" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.firstName)} ${esc(s.lastName)}">${icS('id')}</button>
+          ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal, true)}
+          ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal, true):''}
+          <div class="rc-foot">${_arPhone ? `<div class="lk-d">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}<button class="btn btn-secondary btn-sm" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.firstName)} ${esc(s.lastName)}">${icS('id')} Profile</button></div>
         </div>`;
     }
     body += `<div class="card" style="margin-bottom:12px;border-left:4px solid ${col}">
@@ -5102,7 +5099,7 @@ function _arSectionsHtml(scoped, u) {
         <span class="badge" style="margin-left:auto">${items.length}</span>
       </div>
       <div id="ar-body-${key}" style="display:${open?'':'none'};padding:0 12px 12px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px">${cards}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--s2)">${cards}</div>
       </div>
     </div>`;
   }
@@ -6514,15 +6511,10 @@ async function renderAdminView(settings, users, history) {
         // fallback), so this reflects the account's real scope, not a guess.
         const acctGender = _loginGender(u);
         const acctGenderClass = acctGender === 'female' ? ' acct-girls' : acctGender === 'male' ? ' acct-boys' : '';
-        body += `<div class="li${acctGenderClass}" style="cursor:default;margin-bottom:6px">
-          <div class="li-body">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(u.displayName)}</span>
-              ${statusChip(u.status)}
-            </div>
-            <div class="li-sub">${esc(u.email)}</div>
-          </div>
-          <div class="li-right">
+        body += `<div class="li rc${acctGenderClass}">
+          <div class="rc-top"><div class="lk-nm">${esc(u.displayName)}</div>${statusChip(u.status)}</div>
+          <div class="lk-d">${esc(u.email)}</div>
+          <div class="rc-foot rc-icons">
             ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" style="margin-right:16px" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
@@ -6720,11 +6712,11 @@ function _elRowHtml(r, seenAt, open) {
   const meta = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
     + (n > 1 && !r.counted ? `<span class="chip" style="background:var(--paper-dark,#eee)">×${n}</span>` : '')
     + `<span class="el-when">${esc(_laRelTime(r.lastSeen))}</span>`;
-  const acts = open ? `<div class="el-acts">
+  const acts = open ? `<div class="rc-foot">
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
       <button class="btn btn-secondary btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
     </div>` : '';
-  return `<div class="el-row${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-secondary btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
+  return `<div class="li rc${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-secondary btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
 }
 function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const all = rows || [];
@@ -6820,12 +6812,12 @@ let _usRows = null;
 function _usRowHtml(r) {
   const id = esc(r.id);
   const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : 'parent form').join(' + ');
-  return `<div class="el-row">
-    <div class="el-msg"><strong>${esc(r.name || 'Unreadable saved form')}</strong>${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div>
+  return `<div class="li rc">
+    <div class="rc-top"><div class="lk-nm">${esc(r.name || 'Unreadable saved form')}${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div></div>
     <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · host ' + esc(r.host) : ''}</div>
     <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
     ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
-    <div class="el-acts">
+    <div class="rc-foot">
       ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
         : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
       <button class="btn btn-secondary btn-sm" id="us-del-${id}" onclick="usDelete('${id}')">Delete</button>

@@ -42,4 +42,11 @@ describe('shared markup', () => {
   it('.pg clears the nav from --nav-h, not a literal', () => {
     expect(html).toMatch(/\.pg\{[^}]*calc\(var\(--nav-h\) \+ var\(--s3\) \+ var\(--safe-b\)\)/);
   });
+  it('bl18 Y3: touch .btn-sm stays 44px; health/admin rows are .rc; one pill base', () => {
+    expect(html).not.toMatch(/\.btn-sm[^{}]*\{min-height:40px\}/);
+    expect(html).not.toContain('position:absolute;bottom:8px;right:8px');
+    expect(html).not.toContain('class="el-row');
+    expect(html).toContain('<div class="li rc ar-rc">');
+    expect(html).toMatch(/\.pill,\.chip,\.lk-tag,\.lk-nl,\.lk-od,\.lk-chip,\.badge\{/);
+  });
 });
