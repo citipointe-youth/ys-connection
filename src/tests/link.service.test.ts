@@ -277,12 +277,6 @@ describe('D1 status', () => {
 });
 
 describe('D1 checkin read', () => {
-  it('incident 18 Oct: a service whose pushed rooms are [] says noRooms; one with rooms does not', async () => {
-    const h = await setup();
-    const r = await h.svc.checkin(GRADE);
-    expect(r.services.find((s) => s.serviceTimeId === ST)!.noRooms).toBeUndefined();
-    expect(r.services.find((s) => s.serviceTimeId === ST_SUN)!.noRooms).toBe(true);
-  });
   it('no service: today, the pick list newest first, the Friday default', async () => {
     const h = await setup();
     const r = await h.svc.checkin(GRADE);

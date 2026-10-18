@@ -55,9 +55,9 @@ export const TEXT: Record<string, Entry> = {
   'recon-failed': ['later', 'The {route} check failed to run', 'Find "reconcile" in Vercel logs at that time and fix the error.'],
   // 6.3 Link refusal reasons (code = reason, route = action type)
   locked: ['later', "{type} isn't switched on in the console", "Turn that type on in the console's YS link card, or in Admin > Youth Setup."],
-  // Incident 18 Oct: 41 refusals were one cause (the service time had no check-in rooms); counted, so they fold into one line.
-  'no-room': ['later', ['1 {type} refused: no check-in room in Elvanto', '{n} {type}s refused: no check-in room in Elvanto'],
-    "Many at once: the service has no check-in rooms; add them in Elvanto check-in, then re-tap. One: their Demographics match no room."],
+  // Incident 18 Oct: 41 refusals were one cause (rooms not read yet, normal before a service's first check-in); counted, so they fold into one line.
+  'no-room': ['later', ['1 {type} refused: no room found', '{n} {type}s refused: no room found'],
+    "Many at once: rooms not read yet; re-tap later. One: their Demographics match no room."],
   'person-unknown': ['later', '{type} was for someone no longer in Elvanto', 'Nothing to fix if they were archived; the next roster push drops them.'],
   'group-unknown': ['later', '{type} was for a group no longer in Elvanto', 'Nothing to fix if the group was closed; the next groups push drops it.'],
   'form-unknown': ['later', 'A consent fix pointed at the wrong form', "Check that person's newest approved consent form in Elvanto."],

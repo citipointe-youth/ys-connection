@@ -39,9 +39,9 @@ describe('error-log-text', () => {
   });
 
   it('incident 18 Oct: no-room reads as a human, counted line (41 refusals fold into one entry)', () => {
-    expect(textFor('link', 'no-room', 'checkIn', null, 1)).toMatchObject({ line1: '1 check-in refused: no check-in room in Elvanto', counted: true });
-    expect(textFor('link', 'no-room', 'checkIn', null, 41).line1).toBe('41 check-ins refused: no check-in room in Elvanto');
-    expect(textFor('link', 'no-room', 'checkIn', null, 41).line2).toMatch(/no check-in rooms/);
+    expect(textFor('link', 'no-room', 'checkIn', null, 1)).toMatchObject({ line1: '1 check-in refused: no room found', counted: true });
+    expect(textFor('link', 'no-room', 'checkIn', null, 41).line1).toBe('41 check-ins refused: no room found');
+    expect(textFor('link', 'no-room', 'checkIn', null, 41).line2).toMatch(/not read/);
   });
   it('counted entries pick singular / plural and set counted; others do not', () => {
     expect(textFor('link', 'pending-24h', 'checkIn', null, 1)).toMatchObject({ line1: '1 check-in action has waited over 24 hours', counted: true });

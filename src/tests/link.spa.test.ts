@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkSvcName', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
-  '_lkNoRoomsHtml', '_lkLeadBtn', '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -57,7 +57,7 @@ function makeEnv(e: Partial<Env> = {}) {
     ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
     const navigator = { userAgent: 'Mozilla/5.0 (iPhone) Safari/604.1' };
-    const document = { getElementById: (id) => (__calls.els || {})[id] || null, visibilityState: 'visible' };
+    const document = { getElementById: () => null, visibilityState: 'visible' };
     const API = { post: (p, b, ms) => __post(p, b, ms), fresh: (p) => __ls.__fresh ? __ls.__fresh(p) : Promise.reject(new Error('no')), get: () => Promise.reject(new Error('no')) };
     const setApp = (h) => __calls.apps.push(h);
     const go = (p) => __calls.gos.push(p);
@@ -163,7 +163,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
   it('every refusal reason', () => {
     const lines: Record<string, string> = {
       'locked': "This isn't connected yet. Do it in Elvanto.",
-      'no-room': 'No room for this person. Check in on the kiosk.',
+      'no-room': "Couldn't find a check-in room for this service yet — the console will retry once rooms are read.",
       'person-unknown': "This person isn't in Elvanto any more.",
       'report-exists': "There's already a report for that date. Edit it.",
       'report-not-found': 'This report changed in Elvanto. Reload and try again.',
@@ -202,7 +202,7 @@ describe('A3 / X9 lines by action type', () => {
   });
   it('check-out no-room and flow-step already', () => {
     expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
-    expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe('No room for this person. Check in on the kiosk.');
+    expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("Couldn't find a check-in room for this service yet — the console will retry once rooms are read.");
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
   });
@@ -272,50 +272,6 @@ function door(h: ReturnType<typeof makeEnv>, people: any[] = [], leaders: any[] 
   L.services = [{ ...SVC, ymd: h.fns._lkSvcDay() }]; L.svc = SVC.serviceTimeId; L.people[SVC.serviceTimeId] = { people, leaders }; // fix16 F-28: today, so Check out shows
   L.okDay = { [SVC.serviceTimeId]: true }; // B9: the "Not today" confirm is tested on its own
 }
-
-describe('incident 18 Oct: a service with no check-in rooms', () => {
-  const ava = { personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false };
-  it('banner only when the server says noRooms (not while unknown or with rooms)', () => {
-    const h = makeEnv();
-    expect(h.fns._lkNoRoomsHtml(null)).toBe('');
-    expect(h.fns._lkNoRoomsHtml({ ...SVC })).toBe('');
-    expect(strip(h.fns._lkNoRoomsHtml({ ...SVC, noRooms: true }))).toContain('This service has no check-in rooms in Elvanto — check-ins will fail. Ask an admin to add rooms to this service in Elvanto.');
-  });
-  it('no Check in button and a tap queues nothing; leaders submit queues nothing', () => {
-    const h = makeEnv();
-    door(h, [ava], [{ leaderId: 'l1', name: 'Lee', personId: P(9), checkedIn: false, action: null, mine: false }]);
-    h.get().LINK.services[0].noRooms = true;
-    expect(h.fns._lkRowHtml(ava)).not.toContain('Check in');
-    h.fns._lkCheck(P(1), 'checkIn');
-    h.get().LINK.lq = { l1: true };
-    h.fns._lkLeadersSubmit();
-    expect(h.fns._lkQGet()).toEqual([]);
-  });
-  it('S2 rel20: the periodic refresh redraws the banner and the leaders button without reopening Check-in', () => {
-    const h = makeEnv();
-    door(h, [ava]);
-    h.get().S.page = 'link-checkin';
-    const els: any = { 'lk-norooms': { innerHTML: '' }, 'lk-leadbtn': { innerHTML: '' } };
-    (h.calls as any).els = els;
-    h.fns._lkRefreshView();
-    expect(els['lk-norooms'].innerHTML).toBe('');
-    expect(els['lk-leadbtn'].innerHTML).toContain('Check in leaders');
-    h.get().LINK.services[0].noRooms = true;
-    h.fns._lkRefreshView();
-    expect(strip(els['lk-norooms'].innerHTML)).toContain('no check-in rooms');
-    expect(els['lk-leadbtn'].innerHTML).toBe('');
-    h.get().LINK.services[0].noRooms = false;
-    h.fns._lkRefreshView();
-    expect(els['lk-norooms'].innerHTML).toBe('');
-    expect(els['lk-leadbtn'].innerHTML).toContain('Check in leaders');
-  });
-  it('a refused no-room check-in on that service says so in plain words', () => {
-    const h = makeEnv();
-    door(h, [{ ...ava, action: { id: P(5), type: 'checkIn', status: 'refused', reason: 'no-room' } }]);
-    h.get().LINK.services[0].noRooms = true;
-    expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain('No check-in rooms on this service in Elvanto');
-  });
-});
 
 describe('F1.2 queue', () => {
   it('a tap is queued with a crypto.randomUUID id and survives a reload (fresh functions, same storage)', () => {
@@ -795,7 +751,7 @@ describe('F1.3 door', () => {
     const f = extractFn(html, '_lkPaintDoor');
     expect(f).toContain('<div class="sbar"><input class="lk-big" id="lk-search"'); // UI standard D: the shared search bar
     expect(f).not.toContain('<select');
-    expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('id="lk-leadbtn"'));
+    expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('_lkOpenLeaders()'));
     expect(f.indexOf('id="lk-search"')).toBeLessThan(f.indexOf('id="lk-list"'));
   });
   it('T7: nothing is listed until a name is typed; "In N" and "Still to come" are gone', () => {
@@ -2132,5 +2088,13 @@ describe('T-46 UI minors', () => {
     expect(h.get().LINK.ldrs).toBeNull();
     h.get().LINK.ldrs = [{ id: 'L1', fullName: 'A' }];
     expect(await h.fns._lkLoadLeaders()).toEqual([{ id: 'L1', fullName: 'A' }]);
+  });
+});
+
+describe('incident 18 Oct: no-room refusal text', () => {
+  it('does not blame Elvanto setup', () => {
+    const h = makeEnv();
+    door(h, [{ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: { id: P(5), type: 'checkIn', status: 'refused', reason: 'no-room' }, mine: false }]);
+    expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain("Couldn't find a check-in room for this service yet");
   });
 });

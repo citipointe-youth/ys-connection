@@ -10189,7 +10189,7 @@ function _lkStatusText(row, lastSeen) {
   if (!row) return '';
   const R = {
     'locked': "This isn't connected yet. Do it in Elvanto.",
-    'no-room': 'No room for this person. Check in on the kiosk.',
+    'no-room': "Couldn't find a check-in room for this service yet — the console will retry once rooms are read.",
     'person-unknown': "This person isn't in Elvanto any more.",
     'report-exists': "There's already a report for that date. Edit it.",
     'report-not-found': 'This report changed in Elvanto. Reload and try again.',
@@ -10228,8 +10228,7 @@ function _lkStatusText(row, lastSeen) {
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'shadowed': return _lkPracticeLine(row.type);
-    case 'refused': if (row.reason === 'no-room' && row.noRooms) return 'No check-in rooms on this service in Elvanto. Ask an admin to add them.';
-      if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
+    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
       if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
@@ -10646,9 +10645,6 @@ function _lkRefreshView() {
     if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
-    const nr = document.getElementById('lk-norooms'), lb = document.getElementById('lk-leadbtn'); // rel20 S2: rooms can arrive/vanish on the tick
-    if (nr && S.page === 'link-checkin') nr.innerHTML = _lkNoRoomsHtml(_lkSvc());
-    if (lb && S.page === 'link-checkin') lb.innerHTML = _lkLeadBtn(_lkSvc());
     const gl = document.getElementById('lk-glist');
     if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
     const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
@@ -10792,14 +10788,11 @@ function _lkPaintDoor() {
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
     <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
-    ${_lkNoTonight()}<div id="lk-norooms">${_lkNoRoomsHtml(s)}</div>
+    ${_lkNoTonight()}
     ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
-      <div id="lk-leadbtn">${_lkLeadBtn(s)}</div>` : ''}`));
-}
-function _lkLeadBtn(s) {
-  return s && !_lkCapOff('checkIn') && !s.noRooms ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : '';
+      ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
 }
 // APP-74: one repaint after an 80 ms pause in typing, not one per key.
 function _lkSetSearch(v) {
@@ -10864,8 +10857,6 @@ function _lkRowHtml(p) {
   let line = null;
   if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
   else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
-  const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc), past = !!sv && sv.ymd < _lkSvcDay();
-  if (line && sv && sv.noRooms) line = { ...line, noRooms: true };
   const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${_lkStatusHtml(line, _lkLastSeen())}</div>` : '';
   // B6 / T-30: Undo only while the tap is still on this phone or the check-in is still pending (a cancel); every
   // checked-in row (not just queued) also offers Check out, which anyone on the door may do.
@@ -10874,8 +10865,9 @@ function _lkRowHtml(p) {
   let btn = '';
   if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!(LINK.doorHeld==='${pid}'&&Date.now()-(LINK.doorAt||0)<600))_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
-  const canIn = !p.noRoster && !_lkCapOff('checkIn') && !(sv && sv.noRooms);
+  const canIn = !p.noRoster && !_lkCapOff('checkIn');
   // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
+  const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc), past = !!sv && sv.ymd < _lkSvcDay();
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
@@ -10887,7 +10879,7 @@ function _lkCheck(pid, type) {
     const svc = LINK.svc, s = _lkSvc();
     // F-02: a double tap must not undo, or tick the row that slid up. _lkLists keeps the tapped row in place for
     // 600 ms (so the next row does not move under the finger), and a second tap on it (or its Undo) is ignored.
-    if (!svc || !s || (type === 'checkIn' && s.noRooms) || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
+    if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
     LINK.doorAt = Date.now(); LINK.doorHeld = pid;
     const at = LINK.doorAt; // r1: only this tap's own hold is cleared, never a later tap's
     setTimeout(() => { if (LINK.doorAt === at) LINK.doorHeld = null; _lkRefreshView(); }, 620);
@@ -10942,11 +10934,6 @@ function _lkUndo(pid) {
     else _lkPush({ kind: 'cancel', id: a.id, leaderId: lid, _s: svc, _p: pid }, true);
   } catch (e) {}
 }
-// Incident 18 Oct: the console pushed this service with no check-in rooms, so every check-in would be refused. Only on the
-// server's noRooms (a service not loaded yet shows nothing).
-function _lkNoRoomsHtml(s) {
-  return s && s.noRooms ? `<div class="lk-alert warn">${icS('alert')}<div>${esc('This service has no check-in rooms in Elvanto — check-ins will fail. Ask an admin to add rooms to this service in Elvanto.')}</div></div>` : '';
-}
 // "Pick a service" sheet (mockup frame 2). then = 'leaders' opens the leader sheet after.
 function _lkPickService(then) {
   LINK.pickThen = then || null; LINK.pickAsk = false;
@@ -10958,7 +10945,7 @@ function _lkPickHtml() {
   return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>${_lkNoTonight()}
     ${xs.length ? xs.map((s) => `<button type="button" class="lk-opt${s.serviceTimeId === LINK.pickSel ? ' on' : ''}" onclick="_lkPickSel('${esc(s.serviceTimeId)}')">
       <span><span class="lk-opt-t">${esc(_lkDay(s.ymd) + ' · ' + (s.name || ''))}</span><span class="lk-d">${esc(_lkTime(s.startsAt))}</span></span>
-      ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}${_lkNotToday(s)}${s.noRooms ? '<span class="lk-tag amber">No rooms</span>' : ''}</button>`).join('')
+      ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}${_lkNotToday(s)}</button>`).join('')
     : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'}`;
 }
 function _lkPickFoot() {
@@ -11056,7 +11043,7 @@ function _lkTickAll() {
 // One ordinary checkIn per ticked leader, through the phone queue (instant; deduped on the server).
 function _lkLeadersSubmit() {
   const s = _lkSvc();
-  if (!s || s.noRooms) return;
+  if (!s) return;
   const t = LINK.lq || {}, lid = getMyLeaderId() || null, q = _lkQGet();
   let n = 0;
   _lkLeadersView().forEach((l) => {
