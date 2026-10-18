@@ -1676,6 +1676,21 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     await f.busSaveOwnCar();
     expect(f.__b().newRiders).toEqual([{ studentId: 's1', addressId: 'a1' }]);
   });
+  it('R19-S4: the trip sheet has no Plate field; a remembered plate still saves', async () => {
+    const f = sheet('2026-10-14', "{ vehicle: null, stops: [], ownCarDraft: { car: { name: 'Red Mazda', seats: 4, plate: 'ABC123', endsAt: 'church', endsAddress: null }, riderIds: [] } }");
+    f.busOwnCarSheet();
+    expect(f.__h()).not.toContain('oc-plate');
+    expect(f.__h()).not.toContain('Plate');
+    const s = loadFns(['busSaveOwnCar'], `let __body = null;
+      const BUS = { ocDraft: { car: { plate: 'ABC123' }, newRiders: [] } };
+      const __vals = { 'oc-ends': 'last_drop', 'oc-seats': '4', 'oc-name': 'Red Mazda' };
+      const document = { getElementById: (id) => (id in __vals ? { value: __vals[id] } : null), querySelectorAll: () => [] };
+      async function _busSend(m, p, b) { __body = b; return { skipped: [] }; } function _busTripQs() { return ''; }
+      function _busAcValue() { return { address: '', placeId: null }; } function _busSkippedMsg() { return ''; }
+      function closeModal() {} function toast() {} function __b() { return __body; }`, ['busSaveOwnCar', '__b']);
+    await s.busSaveOwnCar();
+    expect(s.__b().car).toMatchObject({ name: 'Red Mazda', seats: 4, plate: 'ABC123' });
+  });
   it('busOcConfirmPick(j) replaces row j address', () => {
     const prelude = `const BUS = { ocDraft: { newRiders: [{ studentId: 's1', name: 'J', addresses: [{ id: 'a1', label: 'Home' }, { id: 'a2', label: 'Dad' }], addressId: 'a1', addrLabel: 'Home' }] } };
       let __r = null; function _busReadAddress() { return __r; } function _busAddrLabel(a) { return a.label; } function busOwnCarSheet() {}

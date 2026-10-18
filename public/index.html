@@ -15272,10 +15272,10 @@ function busOwnCarSheet(keep) {
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.preventDefault();busOcAddr(${i})">${icS('pin')} Address</button>
       <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
   modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
-    <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
-    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-seats">Seats</label>
-      <input class="fi" id="oc-seats" type="number" min="2" max="15" value="${esc(car.seats || '')}"></div>
-      <div style="flex:1;min-width:0"><label class="fl" for="oc-plate">Plate (optional)</label><input class="fi" id="oc-plate" value="${esc(car.plate || '')}"></div></div>
+    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-name">Car</label>
+      <input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
+      <div style="flex:0 0 88px"><label class="fl" for="oc-seats">Seats</label>
+      <input class="fi" id="oc-seats" type="number" min="2" max="15" value="${esc(car.seats || '')}"></div></div>
     ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
     <div class="sbar"><span class="si">${icS('search')}</span>
@@ -15296,7 +15296,7 @@ function _busOcSyncDraft() {
   const d = BUS.ocDraft || (BUS.ocDraft = { car: null, riderIds: [], newRiders: [] });
   const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
   const endsAt = val('oc-ends') || 'last_drop';
-  d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: val('oc-plate'), endsAt,
+  d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: (d.car && d.car.plate) || null, endsAt, // R19-S4: no Plate field
     endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null };
   d.riderIds = [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value);
@@ -15393,7 +15393,7 @@ async function busSaveOwnCar() {
   const seatsRaw = val('oc-seats').trim();
   if (!seatsRaw) { toast('Enter the number of seats'); return; }
   const d = BUS.ocDraft || { newRiders: [] };
-  const body = { car: { name: val('oc-name').trim(), seats: Number(seatsRaw), plate: val('oc-plate').trim() || null,
+  const body = { car: { name: val('oc-name').trim(), seats: Number(seatsRaw), plate: (d.car && d.car.plate) || null, // R19-S4
     endsAt, endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
