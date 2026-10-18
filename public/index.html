@@ -2946,7 +2946,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; _busStopPoll();
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   _vgReset(); // unsaved grade taps never fire after logout or carry into the next login
@@ -9599,7 +9599,8 @@ const BUS = { view: null, myCar: null, cars: null, carsOpen: false, carsErr: fal
   analysis: null, analysisErr: '', mapUrl: null, extra: null, extraSeats: 8, trying: false,
   // Own-car "add someone" search (Your car sheet) — kept separate from search/hits above (the
   // Students tab) so opening one never clobbers the other's in-progress query.
-  ocSearch: '', ocHits: [], ocSearching: false, ocSearchErr: null, ocDraft: null };
+  ocSearch: '', ocHits: [], ocSearching: false, ocSearchErr: null, ocDraft: null,
+  tripDate: null }; // BUS-1: Trip logging day (null = today)
 // I5: a focused input/textarea/select inside the page must not be ripped out from under a
 // typing leader by a background repaint — losing focus closes the phone's on-screen keyboard
 // every poll tick (<=10s), e.g. while searching #bus-q. BUS.pendingRepaint defers the repaint
@@ -9624,6 +9625,13 @@ function _busQs(extra) {
   const as = getMyLeaderId();
   return `now=${encodeURIComponent(_busLocalNow())}${as ? '&as=' + encodeURIComponent(as) : ''}${extra ? '&' + extra : ''}`;
 }
+// BUS-1 Trip logging: the day a trip is logged for. Local day, before 06:00 still counts as the
+// previous evening (same cutoff as the server's currentRunDate). Sent as ?date= on every my-car /
+// own-car / stops / optimise / dropped call; the server keeps it to 14 days back / 7 ahead.
+function _busToday() { const n = _busLocalNow(); const d = new Date(n.slice(0, 10) + 'T12:00:00'); if (Number(n.slice(11, 13)) < 6) d.setDate(d.getDate() - 1); return _busLocalNow(d).slice(0, 10); }
+function _busTripDate() { return BUS.tripDate || _busToday(); }
+function _busTripQs() { return 'date=' + _busTripDate(); }
+function busSetTripDate(v) { BUS.tripDate = v || null; BUS.myCar = null; BUS.ocDraft = null; busRefresh(); renderBus(); }
 function _busSuburb(address) {
   const parts = String(address || '').split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) return String(address || '').trim();
@@ -9686,7 +9694,7 @@ async function busRefresh() {
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
       // The read-only All cars list has its own fetch (busCarsRefresh), only while that tab is open.
-      const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car')]);
+      const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car', _busTripQs())]);
       if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
@@ -15285,21 +15293,21 @@ async function busSaveOwnCar() {
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
     newRiders: (d.newRiders || []).map(({ name, addrLabel, ...n }) => n) };
-  try { await _busSend('POST', '/bus/run/own-car', body); BUS.ocDraft = null; closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
+  try { await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
 }
 function busRemoveOwnCar() {
   modal(`<div class="mo-title">Remove your car tonight?</div>
     <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button class="btn btn-danger" onclick="busRemoveOwnCarConfirmed()">Remove</button></div>`);
 }
-async function busRemoveOwnCarConfirmed() { try { await _busSend('DELETE', '/bus/run/own-car'); closeModal(); } catch (e) { toast(e.message); } }
+async function busRemoveOwnCarConfirmed() { try { await _busSend('DELETE', '/bus/run/own-car', null, _busTripQs()); closeModal(); } catch (e) { toast(e.message); } }
 
 function _busToggleStop(i) {
   const el = document.getElementById('stop-detail-' + i);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 async function busToggleDropped(id, dropped) {
-  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped }); }
+  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped }, _busTripQs()); }
   catch (e) {
     toast('Dropped off not saved — ' + e.message, 6000);
     try { await busRefresh(); } catch {} // repaint from server state so the checkbox reverts
@@ -15317,14 +15325,14 @@ function busEditDroppedTime(id) {
 async function busSaveDroppedTime(id) {
   const hhmm = document.getElementById('bd-time').value;
   if (!hhmm) { toast('Choose a time'); return; }
-  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped: true, at: _busDropAtIso(hhmm) }); closeModal(); } catch (e) { toast(e.message); }
+  try { await _busSend('POST', '/bus/riders/' + id + '/dropped', { dropped: true, at: _busDropAtIso(hhmm) }, _busTripQs()); closeModal(); } catch (e) { toast(e.message); }
 }
 // Combines the chosen clock time with tonight's run date. After midnight the
 // drop is really on the NEXT calendar day (a run spans a Friday night into
 // Saturday morning), so a time before 6am rolls onto the day after serviceDate.
 function _busDropAtIso(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date(BUS.view.run.serviceDate + 'T00:00:00');
+  const d = new Date(_busTripDate() + 'T00:00:00'); // BUS-1: the trip's day
   if (h < 6) d.setDate(d.getDate() + 1);
   d.setHours(h, m, 0, 0);
   return d.toISOString();
@@ -15362,7 +15370,11 @@ function _busMyCarHtml() {
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
   if (!mine) return picker;
-  if (!mc) return `${picker}${progBar('Loading')}`;
+  // BUS-1: the Day a trip is logged for (default today; the server allows 14 back / 7 ahead).
+  const lim = (n) => { const d = new Date(_busToday() + 'T12:00:00'); d.setDate(d.getDate() + n); return _busLocalNow(d).slice(0, 10); };
+  const top = `${picker}<div class="mycar-id"><label for="bus-trip-date" style="white-space:nowrap">Day:</label>
+    <input class="fi" type="date" id="bus-trip-date" style="flex:1;min-width:0" value="${_busTripDate()}" min="${lim(-14)}" max="${lim(7)}" onchange="busSetTripDate(this.value)"></div>`;
+  if (!mc) return `${top}${progBar('Loading')}`;
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
@@ -15382,7 +15394,7 @@ function _busMyCarHtml() {
         <button type="button" aria-label="Move ${esc(s.name)} up" ${i === 0 ? 'disabled' : ''} onclick="busMoveStop(${i},-1)">${icS('arru')}</button>
         <button type="button" aria-label="Move ${esc(s.name)} down" ${i === mc.stops.length - 1 ? 'disabled' : ''} onclick="busMoveStop(${i},1)">${icS('arrd')}</button></div>
     </div>`).join('');
-    return `${picker}
+    return `${top}
     <div class="card">
       <div class="card-title">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
       ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
@@ -15398,7 +15410,7 @@ function _busMyCarHtml() {
     ${removeOwn}`;
   }
   if (mc.ownCarDraft) {
-    return `${picker}
+    return `${top}
     <div class="card" style="text-align:center;padding:22px 16px">
       <div style="color:var(--ink-faint);margin-bottom:8px;display:flex;justify-content:center">${icLg('bus')}</div>
       <div class="card-title" style="margin-bottom:4px">You're not on a car tonight</div>
@@ -15406,7 +15418,7 @@ function _busMyCarHtml() {
     </div>
     <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Driving your own car?</button>`;
   }
-  return `${picker}<div class="card-sub">No car assigned.</div>`;
+  return `${top}<div class="card-sub">No car assigned.</div>`;
 }
 
 // Task A (owner, 2026-10-08): "Edit my car" — reorder (↑/↓) or remove (two-tap) stops on the car
@@ -15446,13 +15458,13 @@ async function busMoveStop(i, dir) {
   const o = BUS.myCar.stops.map((s) => s.id), j = i + dir;
   if (j < 0 || j >= o.length) return;
   [o[i], o[j]] = [o[j], o[i]];
-  try { await _busSend('POST', '/bus/run/my-car/stops', { riderIds: o, removeIds: [] }); } catch (e) { toast(e.message); }
+  try { await _busSend('POST', '/bus/run/my-car/stops', { riderIds: o, removeIds: [] }, _busTripQs()); } catch (e) { toast(e.message); }
 }
 async function busOptimiseMyCar(btn) {
   const label = btn && btn.innerHTML;
   if (btn) { btn.disabled = true; btn.textContent = 'Optimising…'; }
   try {
-    const res = await _busSend('POST', '/bus/run/my-car/optimise');
+    const res = await _busSend('POST', '/bus/run/my-car/optimise', null, _busTripQs());
     toast(res && res.optimised === false ? "Couldn't reach Google — order unchanged" : 'Route optimised');
   } catch (e) { toast(e.message); }
   if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = label; }
@@ -15468,7 +15480,7 @@ function _busEmcRemove(btn, id) {
 async function busSaveMyCarStops() {
   const h = typeof _here === 'function' ? _here() : null; // C-B8 (typeof: spa-bus.test's harness has no _here)
   try {
-    await _busSend('POST', '/bus/run/my-car/stops', { riderIds: BUS._emcOrder, removeIds: BUS._emcRemoved });
+    await _busSend('POST', '/bus/run/my-car/stops', { riderIds: BUS._emcOrder, removeIds: BUS._emcRemoved }, _busTripQs());
     if (!h || _stillSheet(h)) closeModal(); toast('Saved');
   } catch (e) { toast(e.message); }
 }
