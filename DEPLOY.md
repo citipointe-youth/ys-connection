@@ -14,4 +14,10 @@ Pushing `master` builds on Vercel and the build applies migrations (`vercel-buil
 
 **rel19/ys (BUS-1 Trip logging + BUS-2 Charter bus, SW `ysc-v130`) carries migration `0038_bus_charter.sql`** (additive: `kind` on `bus_vehicles` + `bus_run_vehicles`, `vehicle_id` on `bus_addresses`). Apply it the repo's way at ship: the Vercel build's `scripts/migrate.ts` applies it; read `Database up to date — … (1 new)` in the build log and `/health` `schema.current` = `0038` before the owner promotes (never via the Supabase MCP).
 
+**Rollback of rel19/ys (to a pre-0038 build, e.g. `ec467c5` / `ysc-v128`) is safe but degrades.** Promote the previous deployment as usual; 0038 stays (additive, nothing to undo) and nothing crashes (`setup.service` checks `schema >=`, inserts get `kind` from its default, old upserts never touch `kind`/`vehicle_id`). But while the old build serves:
+- bus drop-off rows (`bus_addresses.vehicle_id` set) show as ordinary saved addresses ("Bus drop off");
+- a fleet bus is copied into a new night as a car (it routes to its drop-off as a normal car);
+- old `ensureRun` takes the newest earlier run as `prev`, so a bare midweek trip run can wipe the carry-over (running cars, leaders, pool) for the next bus night. Re-check Car setup before that night, or roll forward again before it.
+Roll forward = promote the rel19 build again. The new build reads `kind`/`vehicle_id` again, but a night created by the old build has its bus copied as a car: open Car setup and save the bus (Charter bus ticked) to re-kind tonight's copy.
+
 Link contract changes (`src/core/link-*`, link/sync services+controllers, `src/tests/fixtures/elvanto-link/`): ship YS before the 11.1 console; console e2e = `spike/e2e-ys-link.js` in 11.1.
