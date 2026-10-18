@@ -1935,3 +1935,12 @@ describe('rel19 header date', () => {
   it('other tabs show the bus night', () => { expect(head('routes', '2026-10-14')).toBe('2026-10-23'); });
   it('renderBus uses it', () => { expect(extractFn(loadIndexHtml(), 'renderBus')).toContain('fmtDay(_busHeadDate(v))'); });
 });
+
+describe('review B: skipped riders are named back', () => {
+  it('_busSkippedMsg groups by car; empty → ""', () => {
+    const { _busSkippedMsg } = loadFns(['_busSkippedMsg']);
+    expect(_busSkippedMsg([])).toBe('');
+    expect(_busSkippedMsg([{ name: 'Liam', car: 'Van' }, { name: 'Ben', car: 'Van' }, { name: 'Amy', car: 'Charter' }]))
+      .toBe('Saved. Liam, Ben: already in Van; Amy: already in Charter — move them in Assign');
+  });
+});

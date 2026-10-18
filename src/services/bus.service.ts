@@ -46,7 +46,8 @@ export interface BusService {
   updateRunVehicle(ctx: BusCtx, runVehicleId: string, input: unknown): Promise<BusRunVehicleView>;
   setPool(ctx: BusCtx, input: unknown): Promise<void>;
   setLeaderPrefs(ctx: BusCtx, leaderId: string, input: unknown): Promise<void>;
-  saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView>;
+  /** `skipped`: riders already in another car/bus on that night — named back, never moved (review B). */
+  saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView & { skipped: { name: string; car: string }[] }>;
   removeOwnCar(ctx: BusCtx, ownerLeaderId?: string | null): Promise<void>;
   moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView & { reordered: boolean }>;
   setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
@@ -1047,6 +1048,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       // straight into their own car via placeRider (addRider's shared internals). Anyone already
       // on tonight's run is left alone and just folded into riderIds below, never re-written.
       let riders = await ridingOf(run.id);
+      const rvs = await bus.listRunVehicles(run.id);
+      const prior = rvs.find((x) => x.ownerLeaderId === me);
+      // Review B: never silently move a rider — anyone already in another car/bus that night stays there and is named back.
+      const elsewhere = (r: BusRunRider) => rvs.find((x) => x.id === r.runVehicleId && x.id !== prior?.id);
+      const skipped: { name: string; car: string }[] = [];
       // Fail fast BEFORE creating any guest/rider, so a rejected save leaves nothing behind.
       for (const id of v.riderIds) if (!riders.some((r) => r.id === id)) throw new NotFoundError('Rider not found');
       if (v.riderIds.length + v.newRiders.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
@@ -1060,6 +1066,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           guestId = g.id;
         }
         const already = riders.find((r) => (studentId ? r.studentId === studentId : r.guestId === guestId));
+        if (already && elsewhere(already)) { newRiderIds.push(already.id); continue; } // skipped below, address untouched
         // BUS-1 B6: an address-less rider already on this run (e.g. a removed trip re-logged) takes the address
         // the leader just gave; a rider who already has one keeps it.
         if (already && (already.addressId || !(nr.addressId || nr.newAddress))) { newRiderIds.push(already.id); continue; }
@@ -1067,14 +1074,16 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         riders = [...riders, rider];
         newRiderIds.push(rider.id);
       }
-      const riderIds = [...v.riderIds, ...newRiderIds];
       // I6: validate BEFORE writing the car — the old order saved the car first and only
       // then checked capacity/rider ids, leaving a created-or-resized car behind on a 400/404.
       const byId = new Map(riders.map((r) => [r.id, r]));
-      for (const id of riderIds) if (!byId.has(id)) throw new NotFoundError('Rider not found');
+      for (const id of [...v.riderIds, ...newRiderIds]) if (!byId.has(id)) throw new NotFoundError('Rider not found');
+      const riderIds = [...new Set([...v.riderIds, ...newRiderIds])].filter((id) => {
+        const r = byId.get(id)!, car = elsewhere(r);
+        if (car) skipped.push({ name: r.snapName, car: car.name });
+        return !car;
+      });
       if (riderIds.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
-      const rvs = await bus.listRunVehicles(run.id);
-      const prior = rvs.find((x) => x.ownerLeaderId === me);
       const rv = await saveRV({ id: prior?.id ?? generateId(), runId: run.id, vehicleId: null, ownerLeaderId: me,
         name: v.car.name, seats: v.car.seats, plate: v.car.plate, running: true, leaderIds: [me],
         endsAt: v.car.endsAt, endsAddress: v.car.endsAddress, endsPlaceId: v.car.endsPlaceId,
@@ -1090,7 +1099,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         lastOwnRiderKeys: riders.filter((r) => riderIds.includes(r.id)).map(riderKey) });
       await bus.setUndo(run.id, null, null); // I2: these riders just moved into an own car — a later Undo must not pull them back out
       await touch(ctx, run);
-      return (await vehicleViews(run.id)).find((x) => x.id === rv.id)!;
+      return { ...(await vehicleViews(run.id)).find((x) => x.id === rv.id)!, skipped };
     },
     async removeOwnCar(ctx, ownerLeaderId) {
       let c = await gate(ctx, 'bus:use');
@@ -1270,7 +1279,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         const p = await bus.getLeaderPrefs(me);
         const tonight = await ridingOf(run.id);
         ownCarDraft = { car: p?.ownCar ?? null,
-          riderIds: tonight.filter((r) => p?.lastOwnRiderKeys.includes(riderKey(r))).map((r) => r.id) };
+          riderIds: tonight.filter((r) => !r.runVehicleId && p?.lastOwnRiderKeys.includes(riderKey(r))).map((r) => r.id) }; // review B
       }
       return { vehicle, stops, churchAddress: c.busMinistry.churchAddress, churchPlaceId: c.busMinistry.churchPlaceId, ownCarDraft,
         onCarLeaders: await onCarLeaderList(run.id) };

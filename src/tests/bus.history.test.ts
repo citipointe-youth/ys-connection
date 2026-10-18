@@ -202,4 +202,32 @@ describe('trip logging (BUS-1)', () => {
     expect(flags).toContainEqual(['2026-10-14', true]);
     expect(flags).toContainEqual(['2026-10-09', false]);
   });
+  it('review B: a trip on a past bus night never takes a rider out of the car they rode in (named back, not moved)', async () => {
+    const f = await fixture();
+    const van = await f.car('Van', 5, ['L1']);
+    const a = await f.rider('s1');
+    await f.svc.moveRider(f.admin, a.id, { runVehicleId: van });
+    const own = await f.svc.saveOwnCar({ ...f.at('admin', '2026-10-14T19:00', 'L2'), tripDate: '2026-10-09' },
+      { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [], newRiders: [{ studentId: 's1' }, { studentId: 's2' }] });
+    expect(own.skipped).toEqual([{ name: 'Jess Tran', car: 'Van' }]);
+    expect((await f.bus.getRunRider(a.id))!.runVehicleId).toBe(van);
+    const riders = await f.bus.listRunRiders((await f.bus.getRunRider(a.id))!.runId);
+    expect(riders.find((r) => r.studentId === 's2')!.runVehicleId).toBe(own.id);
+  });
+  it('review B: the draft never pre-ticks a rider already in another car, and saving them anyway skips them', async () => {
+    const f = await fixture();
+    const van = await f.car('Van', 5, ['L1']);
+    const a = await f.rider('s1'), b = await f.rider('s2');
+    const me = f.ctx('admin', 'L2');
+    await f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [a.id, b.id] });
+    await f.svc.removeOwnCar(me);
+    await f.svc.moveRider(f.admin, a.id, { runVehicleId: van });
+    expect((await f.svc.myCar(me)).ownCarDraft!.riderIds).toEqual([b.id]);
+    const own = await f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [a.id, b.id] });
+    expect(own.skipped).toEqual([{ name: 'Jess Tran', car: 'Van' }]);
+    expect((await f.bus.getRunRider(a.id))!.runVehicleId).toBe(van);
+    expect((await f.bus.getRunRider(b.id))!.runVehicleId).toBe(own.id);
+    // re-saving keeps the car's own riders (they are not "in another car")
+    expect((await f.svc.saveOwnCar(me, { car: { name: "Sarah's car", seats: 5, endsAt: 'last_drop' }, riderIds: [b.id] })).skipped).toEqual([]);
+  });
 });

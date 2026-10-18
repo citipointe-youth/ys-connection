@@ -15232,7 +15232,7 @@ function busOwnCarSheet(keep) {
     ${newRows ? `<div class="bus-checks" id="oc-new-riders" style="margin-top:8px">${newRows}</div>` : ''}
     ${tonight ? `<label class="fl" style="margin-top:12px">Or pick from students still waiting for a car</label>
     <div class="bus-checks" id="oc-riders">${poolRows || '<div class="card-sub">No one waiting for a car.</div>'}</div>
-    <div class="card-sub">These riders come off the bus routes.</div>`
+    <div class="card-sub">Ticked riders ride with you tonight instead of being placed by Generate.</div>`
     : poolRows ? `<label class="fl" style="margin-top:12px">In this trip</label><div class="bus-checks" id="oc-riders">${poolRows}</div>` : ''}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="BUS.ocDraft = null; closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveOwnCar()">Save</button></div>`);
@@ -15348,7 +15348,17 @@ async function busSaveOwnCar() {
     newRiders: (d.newRiders || []).map(({ name, addrLabel, addresses, ...n }) => n) };
   // Not blocked (no forced address), just told: the server saves an unpicked end address as Last drop.
   const unpicked = endsAt === 'address' && !body.car.endsPlaceId;
-  try { await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal(); toast(unpicked ? 'Saved. No address picked — ends at last drop' : 'Saved', unpicked ? 5000 : undefined); } catch (e) { toast(e.message); }
+  try {
+    const res = await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal();
+    toast(_busSkippedMsg(res && res.skipped) || (unpicked ? 'Saved. No address picked — ends at last drop' : 'Saved'), (res && res.skipped && res.skipped.length) || unpicked ? 7000 : undefined);
+  } catch (e) { toast(e.message); }
+}
+// Review B: the server never moves a rider who is already in another car/bus that night; it names them back.
+function _busSkippedMsg(skipped) {
+  if (!skipped || !skipped.length) return '';
+  const by = {};
+  for (const x of skipped) (by[x.car] = by[x.car] || []).push(x.name);
+  return 'Saved. ' + Object.entries(by).map(([car, names]) => `${names.join(', ')}: already in ${car}`).join('; ') + ' — move them in Assign';
 }
 function busRemoveOwnCar() {
   modal(`<div class="mo-title">Remove this trip?</div>
