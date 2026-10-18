@@ -995,7 +995,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           guestId = g.id;
         }
         const already = riders.find((r) => (studentId ? r.studentId === studentId : r.guestId === guestId));
-        if (already) { newRiderIds.push(already.id); continue; }
+        // BUS-1 B6: an address-less rider already on this run (e.g. a removed trip re-logged) takes the address
+        // the leader just gave; a rider who already has one keeps it.
+        if (already && (already.addressId || !(nr.addressId || nr.newAddress))) { newRiderIds.push(already.id); continue; }
         const rider = await placeRider(ctx, run, { studentId, guestId, addressId: nr.addressId, newAddress: nr.newAddress });
         riders = [...riders, rider];
         newRiderIds.push(rider.id);

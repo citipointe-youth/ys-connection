@@ -1099,6 +1099,16 @@ describe('trip logging (BUS-1)', () => {
     await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
     expect((await bus.getRunRider(r!.id))!.snapAddress).toBe('1 A St, Carina');
   });
+  it('B6: re-logging an address-less rider still on the trip run takes the new address', async () => {
+    const { svc, bus } = await setup();
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1' }] });
+    await svc.removeOwnCar(jr('2026-10-14'));
+    await svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1', newAddress: { label: 'Home', address: '1 A St, Carina', placeId: 'fake:1-a' } }] });
+    const rs = await bus.listRunRiders((await bus.getRunByDate('2026-10-14'))!.id);
+    expect(rs).toHaveLength(1);
+    expect(rs[0]!.snapAddress).toBe('1 A St, Carina');
+    expect(rs[0]!.runVehicleId).toBeTruthy();
+  });
   it('both addressId and newAddress is refused', async () => {
     const { svc } = await setup();
     await expect(svc.saveOwnCar(jr('2026-10-14'), { car, riderIds: [], newRiders: [{ studentId: 's1', addressId: 'a1',

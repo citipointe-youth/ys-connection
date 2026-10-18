@@ -381,6 +381,19 @@ describe('SPA escaping (final re-review)', () => {
     const { _busAddressPicker } = loadFns(['_busAddressPicker', '_busAddrLabel', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
     expect(_busAddressPicker([{ id: 'a1', label: '', street: '3 Lindsay Court', suburb: 'Cornubia' }])).toContain('3 Lindsay Court · Cornubia');
   });
+  it('BUS-1 B6: a saved label is escaped once (picker and trip sheet), not twice', () => {
+    const prelude = 'const BUS = { ac: {} }; const window = {};';
+    const f = loadFns(['_busAddressPicker', '_busAddrLabel', '_busSuburb', 'esc', '_busAcField', '_busUuid'], prelude);
+    expect(f._busAddrLabel({ label: "Mum's", suburb: 'Carina' })).toBe("Mum's · Carina");
+    const html = f._busAddressPicker([{ id: 'a1', label: "<b>Mum's</b>", suburb: 'Carina' }]);
+    expect(html).toContain('&lt;b&gt;Mum&#39;s&lt;/b&gt; · Carina');
+    expect(html).not.toContain('&amp;');
+  });
+  it('BUS-1 B6: a typed but unpicked end address is saved (not blocked) and the leader is told', () => {
+    const save = extractFn(loadIndexHtml(), 'busSaveOwnCar');
+    expect(save).toContain("No address picked — ends at last drop");
+    expect(save).not.toMatch(/Pick the address from the suggestions list/);
+  });
 });
 
 describe('R2 SPA helpers', () => {

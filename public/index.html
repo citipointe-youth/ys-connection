@@ -636,7 +636,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
 .bus-pg .tbbar{margin-bottom:10px}
-@media(max-width:767px){.bus-pg .tbbar{gap:4px}.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 8px}}
+/* BUS-1: the 4 bus tabs fit from ~330px, so no right-edge fade (it cut into "Trip logging") */
+@media(max-width:767px){.bus-pg .tbbar{gap:4px;-webkit-mask-image:none;mask-image:none}.bus-pg .tbbar .tbbtn{flex:1 0 auto;padding:7px 8px}}
 .bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .bus-pg .drop-head > :first-child{min-width:0}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
@@ -14477,17 +14478,18 @@ function _busAcValue(id) {
 // part, then the suburb, before the generic "Saved" (server will default label to the
 // street part going forward; this just covers rows saved before that).
 // A custom label ("Mum's") never hides the number/street (owner, 2026-10-07).
+// Returns plain text: callers esc() it (BUS-1 B6: it used to be pre-escaped, so the trip sheet double-escaped).
 function _busAddrLabel(a) {
   const sub = a.suburb || _busSuburb(a.address);
   const parts = [...new Set([a.label, a.street, sub].filter(Boolean))];
-  return parts.length ? parts.map(esc).join(' · ') : 'Saved';
+  return parts.length ? parts.join(' · ') : 'Saved';
 }
 // del = { riderId, currentId }: the edit-rider sheet can forget any saved address, including
 // tonight's current one (Task D, owner 2026-10-08) — deleting that one unassigns the rider
 // server-side, and busDeleteAddress reopens this sheet so it stays consistent.
 function _busAddressPicker(addresses, del) {
   const saved = addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 ? 'checked' : ''}>
-      <span style="flex:1">${_busAddrLabel(a)}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
+      <span style="flex:1">${esc(_busAddrLabel(a))}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
   return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length ? '' : 'checked'}><span>New address</span></label>
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
@@ -15322,7 +15324,9 @@ async function busSaveOwnCar() {
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
     newRiders: (d.newRiders || []).map(({ name, addrLabel, addresses, ...n }) => n) };
-  try { await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
+  // Not blocked (no forced address), just told: the server saves an unpicked end address as Last drop.
+  const unpicked = endsAt === 'address' && !body.car.endsPlaceId;
+  try { await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal(); toast(unpicked ? 'Saved. No address picked — ends at last drop' : 'Saved', unpicked ? 5000 : undefined); } catch (e) { toast(e.message); }
 }
 function busRemoveOwnCar() {
   modal(`<div class="mo-title">Remove this trip?</div>
@@ -15412,7 +15416,7 @@ function _busMyCarHtml() {
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
-      <div class="route-sub">${s.grade ? `Y${s.grade} · ` : ''}${esc(_busSuburb(s.address))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
+      <div class="route-sub">${esc([s.grade ? `Y${s.grade}` : '', _busSuburb(s.address)].filter(Boolean).join(' · '))} ${_busConsentChip(s)} ${_busPinChip(s)}</div>
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">
         <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>
@@ -15690,7 +15694,7 @@ function _busHistHtml() {
   }
   return `${back}${BUS.histErr ? `<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>` : ''}
     ${statCard([bn.length, avg, people.length, people.filter((p) => p.isNew).length], ['Nights', 'Avg riders', 'People', 'New'])}
-    <div class="card"><div class="card-title">Riders per night</div>${colChart(recent, 56, { neutral: true, click: (s) => `busPastNight('${s.id}')` })}</div>
+    ${recent.length ? `<div class="card"><div class="card-title">Riders per night</div>${colChart(recent, 56, { neutral: true, click: (s) => `busPastNight('${s.id}')` })}</div>` : ''}
     <div class="tbbar"><button class="tbbtn ${sub === 'nights' ? 'on' : ''}" onclick="BUS.histSub='nights';renderBus()">Nights</button>
       <button class="tbbtn ${sub === 'people' ? 'on' : ''}" onclick="BUS.histSub='people';renderBus()">People</button></div>
     ${list}`;
