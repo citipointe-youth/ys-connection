@@ -634,7 +634,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
 .bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
 /* Phone-tight layout: narrower gutters/cards, one-line title, tabs share the row instead of scrolling off. */
-@media(max-width:767px){.bus-pg{padding-left:12px;padding-right:12px}.bus-pg .card{padding:12px}.bus-wide{display:none}}
+/* R19-U14 #14: #page-main already gives the 16px phone gutter, so .bus-pg adds none (was 16 + 12 = 28). */
+@media(max-width:767px){.bus-pg{padding-left:0;padding-right:0}.bus-pg .card{padding:12px}.bus-wide{display:none}}
 .bus-wide{margin-left:2px}
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
@@ -644,7 +645,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-pg .drop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer}
 .bus-pg .drop-head > :first-child{min-width:0}
 .bus-pg .drop-chev{color:var(--ink-faint);flex-shrink:0}
-.bus-last{font-size:11.5px;color:var(--ink-mid);margin:-6px 0 12px}
+.bus-last{font-size:12px;color:color-mix(in srgb,var(--ink-mid) 70%,var(--ink));margin:-6px 0 12px} /* R19-U14 #22: AA contrast */
 .bus-sec{margin:4px 2px 8px}
 .bus-sec-row{display:flex;align-items:center;gap:6px}.bus-sec-row .card-title{flex:1;min-width:0}
 .bus-flt{width:auto;flex:none;padding:3px 22px 3px 8px;font-size:16px;background-position:right 7px center;border-radius:8px}
@@ -671,6 +672,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .cbx-row input{width:20px;height:20px;flex-shrink:0}
 .cbx-row .cbx-main{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bus-gender{display:flex;gap:8px}
+.oc-who{flex:1;min-width:0}.oc-who > span{display:block}#oc-new-riders{max-height:none}
+.bus-fsec{margin-bottom:var(--s4)}.bus-fsec .bus-ac{margin-top:var(--s2)}
 .bus-checks{max-height:110px;overflow-y:auto;border:1px solid var(--paper-dark);border-radius:8px;padding:2px 10px;margin-bottom:14px}
 /* Single-list bus sheets (Leaders on car, Leader pool): the list takes the sheet's height
    instead of the 110px cap that multi-list sheets (Edit vehicle, Your car) need. */
@@ -699,11 +702,13 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .route-sub{font-size:11.5px;color:var(--ink-mid)}
 .stop-detail{background:var(--paper);border-radius:8px;padding:7px 10px;margin-top:5px;font-size:11.5px;color:var(--ink-mid);line-height:1.5}
 .bus-routes{display:grid;gap:12px}
-@media(min-width:768px){.bus-routes{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}}
+/* R19-U14 #19: auto-fit (no empty third column with 2 cards); cards keep their own height. */
+@media(min-width:768px){.bus-routes{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}}
 .li.bus-move{width:100%;text-align:left}
 .li.bus-move:disabled{opacity:.4;cursor:default}
 .mycar-id{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;color:var(--ink-mid)}
 .mycar-id b{color:var(--ink);font-weight:700}
+.mycar-id > .fl{margin:0;white-space:nowrap;min-width:40px} /* R19-U14 #16: the sheets' label style */
 /* Admin — new people from Bus Ministry */
 .newperson-row{padding:10px 0;border-bottom:1px solid var(--paper-dark)}
 .newperson-row:last-child{border-bottom:none}
@@ -756,9 +761,13 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .an-extra-car[open] summary{margin-bottom:6px}
 .mc-acts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;font-size:13px}
 .mc-acts .cbx-row{border:none;padding:4px 0;font-size:13px}
-.stop-arrows{display:flex;flex-direction:column;gap:2px;flex-shrink:0;margin-left:auto}
-.stop-arrows button{width:30px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--paper-dark);border-radius:6px;background:var(--paper-card);color:var(--ink-mid);cursor:pointer}
+.stop-arrows{display:flex;flex-direction:column;gap:4px;flex-shrink:0;margin-left:auto}
+.stop-arrows button{position:relative;width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--paper-dark);border-radius:6px;background:var(--paper-card);color:var(--ink-mid);cursor:pointer}
 .stop-arrows button:disabled{opacity:.3;cursor:default}
+/* R19-U13: 44px hit areas with no visual growth: the arrows' outer edges, and a centred 44px band on small links/chips. */
+.stop-arrows button::after{content:'';position:absolute;inset:-4px 0 0}.stop-arrows button+button::after{inset:0 0 -4px}
+.bus-hit{position:relative;display:inline-block}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+@media(pointer:coarse){.bus-pg .tbbar .tbbtn{min-height:44px}.bus-pg .bus-flt{min-height:44px}}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
 /* New Person / add+edit car: same sticky floor, but Cancel sits beside Save instead of
@@ -9666,9 +9675,11 @@ function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span 
 // Review E4: a redacted view (junior leader: no ids, suburb only) gets no chip — every address looks missing there;
 // soft=true (Trip logging, where an address is optional) shows a neutral chip, not a warning.
 // An empty address (a bus-only rider whose bus is off) is "No address", not "No map pin".
+// R19-L5/K1: a rider already in a car with no address (the server now lets a no-home rider off a bus) is
+// placed, so nothing is wrong: neutral. Only an unassigned one, which Generate can't place, is a warning.
 function _busPinChip(r, soft) {
   if (!r.studentId && !r.guestId) return '';
-  if (!r.addressId || !r.address) return soft ? `<span class="chip c-neutral">No address</span>` : `<span class="chip c-warn">${icS('alert')} No address</span>`;
+  if (!r.addressId || !r.address) return soft || r.runVehicleId ? `<span class="chip c-neutral">No address</span>` : `<span class="chip c-warn">${icS('alert')} No address</span>`;
   if (!r.placeId) return `<span class="chip c-warn">${icS('pin')} No map pin</span>`;
   return '';
 }
@@ -9758,7 +9769,15 @@ async function _busPollTick() {
   if (BUS.pendingRepaint && !_busEditing()) { BUS.pendingRepaint = false; renderBus(); return; }
   if (_busEditing()) return;
   if (BUS.carsOpen && BUS.tab === 'mycar') await busCarsRefresh();
-  try { const v = await _busGet('/bus/run/version'); if (v.version !== BUS.version) busRefresh(); } catch {}
+  // R19-L3: a trip on another day polls that day's run (?date=) against its own version, learnt on the
+  // first tick; tonight's BUS.version is never compared there (that would refresh every tick).
+  const trip = BUS.tab === 'mycar' && !!BUS.view && BUS.view.run.serviceDate !== _busTripDate();
+  try {
+    const v = await _busGet('/bus/run/version', trip ? _busTripQs() : undefined);
+    if (!trip) { if (v.version !== BUS.version) busRefresh(); }
+    else if (BUS.tripQs !== _busTripQs()) { BUS.tripVersion = v.version; BUS.tripQs = _busTripQs(); }
+    else if (v.version !== BUS.tripVersion) { BUS.tripVersion = v.version; busRefresh(); }
+  } catch {}
 }
 function _busStartPoll() {
   _busStopPoll();
@@ -14185,7 +14204,8 @@ async function _ikFixRestore() {
 function _busHomeTile() {
   if (!_busOn()) return '';
   const v = BUS.view;
-  const count = v ? `${v.riders.length} riders · ${v.vehicles.filter((x) => x.running).length} cars` : '';
+  const nCars = v ? v.vehicles.filter((x) => x.running).length : 0; // R19-U14 S11: "1 car", not "1 cars"
+  const count = v ? `${v.riders.length} rider${v.riders.length === 1 ? '' : 's'} · ${nCars} car${nCars === 1 ? '' : 's'}` : '';
   // warm in background; busRefresh() now re-renders Home itself once it resolves (see its own
   // comment). !BUS.failed stops this from retrying on every Home re-render after a failed
   // attempt (module off / 404 / network) — busRefresh() clears the flag on its next success,
@@ -14283,7 +14303,8 @@ async function renderBus() {
   ].filter(Boolean);
   BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const date = fmtDay(_busHeadDate(v));
-  const last = v.run.lastChangeBy ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+  const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
+  const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
@@ -14361,10 +14382,13 @@ function _busRosterHtml() {
   const gOrd = (r) => (r.gender === 'female' ? 0 : r.gender === 'male' ? 1 : 2), yOrd = (r) => (r.grade == null ? 99 : r.grade);
   const rows = shown.slice().sort((a, b) => gOrd(a) - gOrd(b) || yOrd(a) - yOrd(b) || a.name.localeCompare(b.name)).map((r) => {
     const car = placed(r);
+    // R19-U14 #18/S12: the vehicle sits in the meta line (no centred side column); a bus is a neutral Bus chip,
+    // never a car colour (a pink pill read as "girls car").
+    const pill = !car ? '' : car.kind === 'bus' ? `<span class="chip c-neutral">${icS('bus')} ${esc(car.name)}</span> `
+      : `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span> `;
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
-      ${car ? `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span>` : ''}
+        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');
@@ -14901,13 +14925,14 @@ function _busPrefGradesChip(l) {
   return (l.prefGrades && l.prefGrades.length) ? `<span class="chip c-neutral">${l.prefGrades.map((g) => 'Y' + g).join(',')}</span>` : '';
 }
 function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, checked) {
-  return `<label class="fl">Ends at</label>
+  // R19-U9: one section on the spacing tokens: 8px select -> address, 16px to the next section.
+  return `<div class="bus-fsec"><label class="fl">Ends at</label>
     <select class="fs" id="${prefix}-ends" onchange="document.getElementById('${prefix}-ends-wrap').hidden=this.value!=='address'">
       <option value="church" ${endsAt === 'church' ? 'selected' : ''}>Church</option>
       <option value="last_drop" ${endsAt === 'last_drop' ? 'selected' : ''}>Last drop</option>
       <option value="address" ${endsAt === 'address' ? 'selected' : ''}>Address</option></select>
     <div id="${prefix}-ends-wrap" ${endsAt === 'address' ? '' : 'hidden'}>${_busAcField(prefix + '-ends-addr', endsAddress || '', endsPlaceId || null, 'Street address, suburb')}</div>
-    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}`;
+    ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}</div>`;
 }
 function busEditVehicle(vehicleId) {
   const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '', kind: 'car' };
@@ -14926,15 +14951,17 @@ function busEditVehicle(vehicleId) {
       <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}"></div>
       <div style="flex:1;min-width:0"><label class="fl" for="ve-plate">Plate (optional)</label><input class="fi" id="ve-plate" value="${esc(f.plate || '')}"></div></div>
     <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>
-    <label class="fl">Preferred grades</label>
-    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
+    <div id="ve-grades-sec" ${f.kind === 'bus' ? 'hidden' : ''}><label class="fl">Preferred grades</label>
+    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div></div>
     ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 // Review E9: ticking Charter bus sets Ends at → Address and focuses the address, so the first Save works.
+// R19-U10: a bus is never solved, so Preferred grades hides while Bus is ticked (the ticks are kept).
 function _busVeBusTick(on) {
+  const gs = document.getElementById('ve-grades-sec'); if (gs) gs.hidden = !!on;
   const sel = document.getElementById('ve-ends'); if (!on || !sel) return;
   sel.value = 'address';
   const wrap = document.getElementById('ve-ends-wrap'); if (wrap) wrap.hidden = false;
@@ -15044,7 +15071,7 @@ function _busCarsHtml() {
         <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div>
       <div class="veh-chiprow"><span class="veh-meta">${rv.seats} seats · ${rv.capacity} for youth</span>${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-        <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
+        <div class="bus-hit" onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
         ${endsText ? `<div style="font-size:11px;color:var(--ink-mid)">${isBus ? 'Drop-off' : 'Ends at'}: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>` : ''}
       </div></div>`;
   }).join('');
@@ -15078,7 +15105,7 @@ function _busCarsHtml() {
     <div class="card-title bus-sec">Leader pool — available tonight</div>
     <div class="card bus-pool">${poolRows || '<div class="card-sub">No leaders marked willing to do drop-homes.</div>'}
       <div class="card-sub" style="margin-top:6px">Willing to do drop-homes — fills cars that still need a leader when routes are generated.
-        <a onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
+        <a class="bus-hit" onclick="busEditPoolSheet()" style="color:var(--accent);cursor:pointer">Edit pool</a></div></div>
     ${ownCars.length ? `<div class="card-title bus-sec">Own cars tonight</div>${ownCarRows}` : ''}`;
 }
 // Task 11: coordinators can remove someone else's own car from Car setup.
@@ -15151,7 +15178,7 @@ function _busRoutesHead() {
   const fleet = new Set(v.vehicles.filter((x) => x.running && x.vehicleId).map((x) => x.id));
   const anyPlaced = v.riders.some((r) => r.runVehicleId && fleet.has(r.runVehicleId));
   const fitN = _busFitCount(v);
-  const label = BUS.generating ? 'Working out routes…' : !anyPlaced ? 'Generate routes' : `Fit in ${fitN} new rider${fitN === 1 ? '' : 's'}`;
+  const label = BUS.generating ? 'Working out routes…' : !anyPlaced ? 'Generate routes' : `Fit in ${fitN} waiting rider${fitN === 1 ? '' : 's'}`;
   const primary = (!anyPlaced || fitN || BUS.generating)
     ? `<button class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="busGenerate('${anyPlaced ? 'fit' : 'all'}')">${icS('route')} ${label}</button>`
     : '<span style="flex:1"></span>';
@@ -15267,15 +15294,17 @@ function busOwnCarSheet(keep) {
   const tonight = v.run.serviceDate === _busTripDate();
   const pool = tonight ? v.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id))
     : ((mc && mc.vehicle && mc.stops) || []).filter((r) => d.riderIds.includes(r.id));
-  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address) || 'No address')}</label>`).join('');
-  const newRows = d.newRiders.map((n, i) => `<label class="cbx-row"><input type="checkbox" checked disabled> ${esc(n.name)} · ${esc(n.addrLabel || '')}
+  // R19-U14 #17: name, then the address on a grey line (no mid-row wrap); picked riders have no dead checkbox.
+  const who = (name, sub) => `<span class="oc-who"><span class="route-name">${name}</span><span class="route-sub">${sub}</span></span>`; // pre-escaped
+  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${who(esc(r.name), esc(_busSuburb(r.address) || 'No address'))}</label>`).join('');
+  const newRows = d.newRiders.map((n, i) => `<div class="cbx-row">${who(esc(n.name), esc(n.addrLabel || ''))}
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.preventDefault();busOcAddr(${i})">${icS('pin')} Address</button>
-      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
+      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></div>`).join('');
   modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
-    <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
-    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-seats">Seats</label>
-      <input class="fi" id="oc-seats" type="number" min="2" max="15" value="${esc(car.seats || '')}"></div>
-      <div style="flex:1;min-width:0"><label class="fl" for="oc-plate">Plate (optional)</label><input class="fi" id="oc-plate" value="${esc(car.plate || '')}"></div></div>
+    <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="oc-name">Car</label>
+      <input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
+      <div style="flex:0 0 88px"><label class="fl" for="oc-seats">Seats</label>
+      <input class="fi" id="oc-seats" type="number" min="2" max="15" value="${esc(car.seats || '')}"></div></div>
     ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
     <div class="sbar"><span class="si">${icS('search')}</span>
@@ -15296,7 +15325,7 @@ function _busOcSyncDraft() {
   const d = BUS.ocDraft || (BUS.ocDraft = { car: null, riderIds: [], newRiders: [] });
   const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
   const endsAt = val('oc-ends') || 'last_drop';
-  d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: val('oc-plate'), endsAt,
+  d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: (d.car && d.car.plate) || null, endsAt, // R19-S4: no Plate field
     endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null };
   d.riderIds = [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value);
@@ -15393,7 +15422,7 @@ async function busSaveOwnCar() {
   const seatsRaw = val('oc-seats').trim();
   if (!seatsRaw) { toast('Enter the number of seats'); return; }
   const d = BUS.ocDraft || { newRiders: [] };
-  const body = { car: { name: val('oc-name').trim(), seats: Number(seatsRaw), plate: val('oc-plate').trim() || null,
+  const body = { car: { name: val('oc-name').trim(), seats: Number(seatsRaw), plate: (d.car && d.car.plate) || null, // R19-S4
     endsAt, endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
@@ -15465,7 +15494,7 @@ function _busIdentityChanged(id) {
 }
 function _busMyCarHtml() {
   const v = BUS.view, mc = BUS.myCar;
-  const mine = getMyLeaderId();
+  let mine = getMyLeaderId();
   // Bug fix: BUS.myCar was fetched (as part of busRefresh()) BEFORE an identity was chosen,
   // so just re-rendering off the stale BUS.myCar showed "No car assigned." — clear it and go
   // through busRefresh(), which re-fetches /bus/my-car with the new ?as= and repaints.
@@ -15475,26 +15504,30 @@ function _busMyCarHtml() {
   // A leader not on a car yet must still be able to pick themselves (to add their own car
   // tonight) — on-car leaders first, then everyone else this login can see.
   const onCar = v.onCarLeaders || [];
+  // R19-U14 F7: a remembered "I am" that is no longer a leader (archived, reset) counts as not chosen.
+  if (mine && !onCar.some((l) => l.id === mine) && !v.leaders.some((l) => l.id === mine)) mine = null;
   const others = v.leaders.filter((l) => !onCar.some((o) => o.id === l.id)).slice().sort((a, b) => a.name.localeCompare(b.name));
   const pickerLeaders = [...onCar, ...others];
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
+    ? `<div class="mycar-id"><span class="fl">I am</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id"><span style="white-space:nowrap">I am:</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id"><span class="fl">I am</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;
   if (!mine) return picker;
   // BUS-1: the Day a trip is logged for (default today; the server allows 14 back / 7 ahead).
   const lim = (n) => { const d = new Date(_busToday() + 'T12:00:00'); d.setDate(d.getDate() + n); return _busLocalNow(d).slice(0, 10); };
-  const top = `${picker}<div class="mycar-id"><label for="bus-trip-date" style="white-space:nowrap">Day:</label>
+  const top = `${picker}<div class="mycar-id"><label class="fl" for="bus-trip-date">Day</label>
     <input class="fi" type="date" id="bus-trip-date" style="flex:1;min-width:0" value="${_busTripDate()}" min="${lim(-14)}" max="${lim(7)}" onchange="busSetTripDate(this.value)"></div>`;
   if (!mc) return `${top}${progBar('Loading')}`;
   if (mc.vehicle) {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
+    // R19-U11: the card always has a meta line, so it is never a bare title.
+    const ends = rv.endsAt === 'church' ? 'church' : rv.endsAt === 'last_drop' ? 'last drop' : _busSuburb(rv.endsAddress || '') || 'an address';
     const links = mc.churchAddress ? _busMapsLinks(mc.stops.filter((s) => !s.droppedAt), mc.churchAddress, rv, mc.churchPlaceId, true) : [];
     const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove this trip</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
@@ -15514,14 +15547,14 @@ function _busMyCarHtml() {
     return `${top}
     <div class="card">
       <div class="card-title">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
-      ${others.length ? `<div class="card-sub" style="margin-bottom:10px">with ${esc(others.join(', '))}</div>` : ''}
+      <div class="card-sub" style="margin:var(--s1) 0 var(--s2)">${esc([`${rv.seats} seats`, `Ends at ${ends}`, others.length ? `with ${others.join(', ')}` : ''].filter(Boolean).join(' · '))}</div>
       ${rv.needsFemaleLeader ? `<div class="chip c-warn" style="margin-bottom:8px">${icS('alert')} No female leader</div>` : ''}
       ${mc.churchAddress ? links.map((l) => `<a class="btn btn-primary btn-full" href="${l.url}" target="_blank" rel="noopener">${icS('map')} ${esc(l.label)}</a>`).join('') :
         // Only admin has the Bus settings button; everyone else is told who to ask.
         `<div class="alert al-warn">${S.user && S.user.role === 'admin' ? 'Set the church address in Bus settings' : 'Ask an admin to set the church address'}</div>`}
     </div>
-    <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Stop order
-      <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} Edit my car</button></div>
+    <div class="card-title bus-sec" style="display:flex;align-items:center;justify-content:space-between;gap:8px">${mc.stops.length > 1 ? 'Stop order' : 'Riders'}
+      <button class="btn btn-secondary btn-sm" onclick="busEditMyCarSheet()">${icS('edit')} ${rv.ownerLeaderId ? 'Edit trip' : 'Edit stops'}</button></div>
     ${rv.kind !== 'bus' && mc.stops.filter((s) => !s.droppedAt).length > 1 ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="busOptimiseMyCar(this)">${icS('route')} Optimise route</button>` : ''}
     ${rows}
     ${removeOwn}`;
@@ -15564,7 +15597,7 @@ function _busRenderEditMyCar() {
   }).join('');
   const carDetailsBtn = rv.ownerLeaderId === mine
     ? `<button type="button" class="btn btn-secondary btn-full" onclick="_busEmcCarDetails()">Car details</button>` : '';
-  modal(`<div class="mo-title">Edit my car</div>
+  modal(`<div class="mo-title">${rv.ownerLeaderId ? 'Edit trip' : 'Edit stops'}</div>
     ${rows || '<div class="card-sub">No stops left — everyone was removed.</div>'}
     ${carDetailsBtn}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -15656,7 +15689,7 @@ async function busTryCars(count) {
 }
 function _busAnalysisHtml() {
   // Task 8: a quick way back to Routes without using the tab bar.
-  const back = `<div style="margin-bottom:10px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a></div>`;
+  const back = `<div style="margin-bottom:10px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a></div>`;
   if (BUS.analysisErr) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.analysisErr)}</div>`;
   const a = BUS.analysis;
   if (!a) return `${back}<div class="card-sub">Working out routes…</div>`;
@@ -15739,7 +15772,8 @@ async function busLoadHist() {
   try {
     BUS.hist = await _busGet('/bus/history'); BUS.histErr = '';
     // BUS-1: People ("regular", rides/nights) counts bus nights only; logged trips are listed but not counted.
-    const tripIds = new Set(BUS.hist.nights.filter((n) => n.trip).map((n) => n.id));
+    // R19-S3: the one copy of the trip run ids; busExportHist reuses it.
+    const tripIds = BUS.histTrip = new Set(BUS.hist.nights.filter((n) => n.trip).map((n) => n.id));
     BUS.histPeople = _busPeople(BUS.hist.rides.filter((r) => !tripIds.has(r.runId)), BUS.hist.nights.length - tripIds.size, _busLocalNow().slice(0, 10));
   }
   catch (e) { BUS.histErr = e.message || 'Could not load past nights'; }
@@ -15751,7 +15785,7 @@ async function busOpenPast() {
   if (S.page === 'bus' && BUS.tab === 'past') renderBus();
 }
 function _busHistHtml() {
-  const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
+  const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
     ${BUS.hist && BUS.hist.nights.length ? `<button class="btn btn-secondary btn-sm" onclick="busExportHist()">Export</button>` : ''}</div>`;
   if (BUS.histErr && !BUS.hist) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.histErr)}</div>`;
   const h = BUS.hist;
@@ -15910,7 +15944,7 @@ async function busExportHist() {
       }
       return ws;
     };
-    const tripIds = new Set(h.nights.filter((n) => n.trip).map((n) => n.id)); // BUS-1
+    const tripIds = BUS.histTrip || new Set(); // BUS-1 (set by busLoadHist, R19-S3)
     const nights = [['Type', 'Date', 'Riders', 'Cars', 'Dropped', 'Not logged', 'Unassigned', 'Not riding', 'No-show', 'Leaders']]
       .concat(h.nights.map((n) => [n.trip ? 'Trip' : 'Bus night', n.date, n.riders, n.cars, n.dropped, _busNotLogged(byRun[n.id] || []), n.unassigned, n.notRiding, n.noShow, (n.leaders || []).join(', ')]));
     const rides = [['Type', 'Date', 'Name', 'Grade', 'Student/Guest', 'Car', 'Leaders', 'Stop', 'Address', 'Dropped at', 'Dropped by', 'No-show', 'Not riding', 'Note']]

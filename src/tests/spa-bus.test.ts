@@ -602,6 +602,38 @@ describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascend
   });
 });
 
+describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta line; a bus is a neutral Bus chip', () => {
+  it('car = coloured pill inside li-sub; bus = neutral chip, never a car colour (pink read as a girls car)', () => {
+    const stubs = `function esc(s) { return String(s); } function icS(k) { return '[' + k + ']'; } function icEmpty() { return ''; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#f0f'; }
+     function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
+    const view = { run: { readOnly: false, lockBy: null, lockUntil: null }, vehicles: [{ id: 'v1', name: 'Van', kind: 'car', running: true, capacity: 4, colourIndex: 1 }, { id: 'b1', name: 'Charter', kind: 'bus', running: true, capacity: 3, colourIndex: 2 }],
+      riders: [{ id: 'a', name: 'Amy', gender: 'female', grade: 7, runVehicleId: 'v1', address: 'Carina' }, { id: 'b', name: 'Bo', gender: 'male', grade: 8, runVehicleId: 'b1', address: 'Bus drop off' }] };
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], `${stubs} const BUS = { search: '', generating: false, view: ${JSON.stringify(view)} };`, ['_busRosterHtml']);
+    const h = _busRosterHtml();
+    expect(h).toMatch(/<div class="li-sub"><span class="car-pill" style="--c:#f0f">Van<\/span> Carina/);
+    expect(h).toMatch(/<div class="li-sub"><span class="chip c-neutral">\[bus\] Charter<\/span>  /); // the chip says it: no "Bus drop off" text
+    expect(h).not.toContain('Bus drop off');
+    expect(h.match(/#f0f/g)).toHaveLength(1);
+  });
+});
+
+describe('R19-U14 flow S11/S13 wording', () => {
+  it('Home tile count is singular for 1 ("1 rider · 1 car")', () => {
+    const tile = (riders: number, cars: number) => loadFns(['_busHomeTile'], `
+      const BUS = { view: { riders: Array(${riders}).fill({}), vehicles: Array(${cars}).fill({ running: true }) } };
+      function _busOn() { return true; } function esc(s) { return String(s); } function icN() { return ''; } function L() { return 'Bus'; }
+      function icS() { return ''; } function busRefresh() {}`)._busHomeTile();
+    expect(tile(1, 1)).toContain('1 rider · 1 car<');
+    expect(tile(4, 2)).toContain('4 riders · 2 cars<');
+  });
+  it('the Fit in button says "waiting" riders, not "new" ones (they may be riders no car can take)', () => {
+    const src = extractFn(loadIndexHtml(), '_busRoutesHead');
+    expect(src).toContain('waiting rider');
+    expect(src).not.toContain('new rider');
+  });
+});
+
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
@@ -1297,6 +1329,12 @@ describe('_busPinChip (Task D)', () => {
     expect(load()._busPinChip({ studentId: 's1', addressId: null }, true)).not.toContain('c-warn');
     expect(load()._busPinChip({ studentId: 's1', addressId: 'bus1', address: '', placeId: null })).toContain('No address');
   });
+  it('R19-L5/K1: a placed rider with no address (e.g. moved off a bus with no home) is neutral; Unassigned stays a warning', () => {
+    const placed = load()._busPinChip({ studentId: 's1', addressId: null, address: '', runVehicleId: 'rv1' });
+    expect(placed).toContain('c-neutral');
+    expect(placed).toContain('No address');
+    expect(load()._busPinChip({ studentId: 's1', addressId: null, address: '', runVehicleId: null })).toContain('c-warn');
+  });
 });
 
 // Task A (owner, 2026-10-08): "Edit my car" — reorder (↑/↓) and two-tap remove, saved via
@@ -1559,12 +1597,36 @@ describe('BUS-1 Trip logging', () => {
     busSetTripDate('');
     expect(__s().b.tripDate).toBeNull();
   });
-  it('every trip write and the my-car read carry _busTripQs()', () => {
-    const html = loadIndexHtml();
-    for (const fn of ['busSaveOwnCar', 'busRemoveOwnCarConfirmed', 'busToggleDropped', 'busSaveDroppedTime', 'busOptimiseMyCar', 'busSaveMyCarStops', 'busMoveStop'])
-      expect(extractFn(html, fn)).toContain('_busTripQs()');
-    expect(extractFn(html, 'busRefresh')).toContain("_busGet('/bus/my-car', _busTripQs())");
-    expect(extractFn(html, 'busRemoveOwnCarFor')).not.toContain('_busTripQs()'); // Car setup: tonight
+  // R19-S6: behavioural: drive each trip call through the real _busSend/_busGet/_busQs and read the sent URLs.
+  it('every trip write and the my-car read send ?date= for the chosen day; Car setup removal does not', async () => {
+    const fns = ['busSaveOwnCar', 'busRemoveOwnCarConfirmed', 'busToggleDropped', 'busSaveDroppedTime', 'busOptimiseMyCar',
+      'busSaveMyCarStops', 'busMoveStop', 'busRemoveOwnCarFor', 'busRefresh', '_busSend', '_busGet', '_busQs', '_busDropAtIso', ...TRIP];
+    const f = loadFns(fns, `const __urls = [];
+      const rec = (m) => async (u) => { __urls.push(m + ' ' + u); return u.startsWith('/bus/run?') ? { run: { id: 'r', version: 1 } } : { skipped: [] }; };
+      const API = { post: rec('POST'), patch: rec('PATCH'), del: rec('DELETE'), fresh: rec('GET') };
+      const BUS = { tripDate: '2026-10-12', gen: 0, ocDraft: { newRiders: [] }, _emcOrder: ['s1'], _emcRemoved: [],
+        myCar: { stops: [{ id: 's1' }, { id: 's2' }] }, view: { vehicles: [{ id: 'rv9', ownerLeaderId: 'L9' }] } };
+      const S = { user: null, page: 'x' };
+      const __vals = { 'oc-ends': 'last_drop', 'oc-seats': '5', 'oc-name': 'Car', 'bd-time': '21:30' };
+      const document = { getElementById: (id) => ({ value: __vals[id] || '' }), querySelectorAll: () => [] };
+      function getMyLeaderId() { return 'L1'; } function _busAcValue() { return { address: '', placeId: null }; }
+      function _busSkippedMsg() { return ''; } function closeModal() {} function toast() {} function __u() { return __urls; }`,
+      [...fns, '__u']);
+    const date = (u: string) => new URLSearchParams(u.split('?')[1]).get('date');
+    const sent = async (call: () => unknown) => { f.__u().length = 0; await call(); return f.__u().filter((u: string) => !u.startsWith('GET')); };
+    for (const call of [() => f.busSaveOwnCar(), () => f.busRemoveOwnCarConfirmed(), () => f.busToggleDropped('s1', true),
+      () => f.busSaveDroppedTime('s1'), () => f.busOptimiseMyCar(null), () => f.busSaveMyCarStops(), () => f.busMoveStop(0, 1)]) {
+      const w = await sent(call);
+      expect(w).toHaveLength(1);
+      expect(date(w[0])).toBe('2026-10-12');
+    }
+    f.__u().length = 0; await f.busRefresh();
+    const myCar = f.__u().find((u: string) => u.startsWith('GET /bus/my-car?'));
+    expect(date(myCar)).toBe('2026-10-12');
+    expect(date(f.__u().find((u: string) => u.startsWith('GET /bus/run?')))).toBeNull(); // the run view is tonight's
+    const rm = await sent(() => f.busRemoveOwnCarFor('rv9'));
+    expect(rm[0]).toContain('owner=L9');
+    expect(date(rm[0])).toBeNull(); // Car setup: tonight
   });
   it('the Trip logging tab shows a Day picker limited to 14 back / 7 ahead', () => {
     const prelude = `
@@ -1580,6 +1642,34 @@ describe('BUS-1 Trip logging', () => {
     expect(html).toContain('min="2026-09-30"');
     expect(html).toContain('max="2026-10-21"');
     expect(html).toContain('onchange="busSetTripDate(this.value)"');
+  });
+});
+
+// R19-L3 (lane A server: GET /bus/run/version follows ?date=, never creates a run).
+describe('R19-L3 poll follows the trip date', () => {
+  const poll = (tab: string, tripDate: string | null, versions: Record<string, number>) => loadFns(['_busPollTick', '_busTripQs', '_busTripDate'], `
+    const S = { page: 'bus' }; const document = { hidden: false, getElementById: () => null };
+    const BUS = { tab: '${tab}', tripDate: ${tripDate ? `'${tripDate}'` : 'null'}, version: 7, view: { run: { serviceDate: '2026-10-16' } } };
+    const __urls = []; let __r = 0; const __vv = ${JSON.stringify(versions)};
+    async function _busGet(p, extra) { __urls.push(p + (extra ? '?' + extra : '')); return { version: __vv[extra || 'tonight'] }; }
+    function _busEditing() { return false; } function busRefresh() { __r++; } function _busToday() { return '2026-10-14'; }
+    function __s() { return { urls: __urls, r: __r }; } function __v() { return __vv; }`, ['_busPollTick', '__s', '__v']);
+  it('tonight (or another tab) polls the run version with no date, as before', async () => {
+    const f = poll('roster', '2026-10-12', { tonight: 8 });
+    await f._busPollTick();
+    expect(f.__s()).toEqual({ urls: ['/bus/run/version'], r: 1 });
+    const t = poll('mycar', '2026-10-16', { tonight: 7 });
+    await t._busPollTick();
+    expect(t.__s()).toEqual({ urls: ['/bus/run/version'], r: 0 });
+  });
+  it('a trip on another day polls that date and refreshes only when its own version moves', async () => {
+    const f = poll('mycar', null, { 'date=2026-10-14': 3 }); // today (Wed) is not the bus night
+    await f._busPollTick(); await f._busPollTick();
+    expect(f.__s().urls).toEqual(['/bus/run/version?date=2026-10-14', '/bus/run/version?date=2026-10-14']);
+    expect(f.__s().r).toBe(0); // first tick learns the version; tonight's BUS.version (7) is never compared
+    f.__v()['date=2026-10-14'] = 4; // someone else edits the trip
+    await f._busPollTick(); await f._busPollTick();
+    expect(f.__s().r).toBe(1);
   });
 });
 
@@ -1641,6 +1731,17 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     expect(t.__h()).toContain('Friday Rider');
     expect(t.__h()).toContain('still waiting');
   });
+  it('R19-U14 #17: a picked rider shows the address on a grey line under the name, with no dead checkbox', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    f.__d().newRiders.push({ studentId: 's1', name: 'Liam Anderson', addrLabel: 'No address' });
+    f.busOwnCarSheet(true);
+    const h = f.__h();
+    expect(h).toMatch(/<span class="route-name">Liam Anderson<\/span><span class="route-sub">No address<\/span>/);
+    expect(h).not.toContain('disabled>');
+    const t = sheet('2026-10-16'); t.busOwnCarSheet();
+    expect(t.__h()).toMatch(/<span class="route-name">Friday Rider<\/span><span class="route-sub">Carina<\/span>/);
+  });
   it('on another day, the riders already in this trip stay listed (ticked) so a car-details save keeps them', () => {
     const f = sheet('2026-10-14', "{ vehicle: { id: 'rv' }, stops: [{ id: 'w1', name: 'Wed Rider', address: '' }] }");
     f.busOwnCarSheet(false);
@@ -1676,6 +1777,21 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     await f.busSaveOwnCar();
     expect(f.__b().newRiders).toEqual([{ studentId: 's1', addressId: 'a1' }]);
   });
+  it('R19-S4: the trip sheet has no Plate field; a remembered plate still saves', async () => {
+    const f = sheet('2026-10-14', "{ vehicle: null, stops: [], ownCarDraft: { car: { name: 'Red Mazda', seats: 4, plate: 'ABC123', endsAt: 'church', endsAddress: null }, riderIds: [] } }");
+    f.busOwnCarSheet();
+    expect(f.__h()).not.toContain('oc-plate');
+    expect(f.__h()).not.toContain('Plate');
+    const s = loadFns(['busSaveOwnCar'], `let __body = null;
+      const BUS = { ocDraft: { car: { plate: 'ABC123' }, newRiders: [] } };
+      const __vals = { 'oc-ends': 'last_drop', 'oc-seats': '4', 'oc-name': 'Red Mazda' };
+      const document = { getElementById: (id) => (id in __vals ? { value: __vals[id] } : null), querySelectorAll: () => [] };
+      async function _busSend(m, p, b) { __body = b; return { skipped: [] }; } function _busTripQs() { return ''; }
+      function _busAcValue() { return { address: '', placeId: null }; } function _busSkippedMsg() { return ''; }
+      function closeModal() {} function toast() {} function __b() { return __body; }`, ['busSaveOwnCar', '__b']);
+    await s.busSaveOwnCar();
+    expect(s.__b().car).toMatchObject({ name: 'Red Mazda', seats: 4, plate: 'ABC123' });
+  });
   it('busOcConfirmPick(j) replaces row j address', () => {
     const prelude = `const BUS = { ocDraft: { newRiders: [{ studentId: 's1', name: 'J', addresses: [{ id: 'a1', label: 'Home' }, { id: 'a2', label: 'Dad' }], addressId: 'a1', addrLabel: 'Home' }] } };
       let __r = null; function _busReadAddress() { return __r; } function _busAddrLabel(a) { return a.label; } function busOwnCarSheet() {}
@@ -1686,6 +1802,45 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     f.__set({ newAddress: { label: '', address: '9 C St', placeId: 'p' } }); f.busOcConfirmPick(0);
     expect(f.__d().newRiders[0].addressId).toBeUndefined();
     expect(f.__d().newRiders[0]).toMatchObject({ newAddress: { address: '9 C St' }, addrLabel: '9 C St' });
+  });
+  // A saved trip on the Trip logging tab (R19-U11 / U14 harness).
+  const tripView = (rv: string, stops = "[{ id: 's1', name: 'Jess Tran', address: '', grade: 9 }]", extra = '') => loadFns(['_busMyCarHtml', '_busTripDate', '_busLocalNow', '_busSuburb'], `
+    const BUS = { tripDate: '2026-10-14', view: { leaders: [{ id: 'L1', name: 'Amy' }] },
+      myCar: { churchAddress: '', vehicle: ${rv}, stops: ${stops} } };
+    const S = { user: { role: 'grade' } };
+    function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s == null ? '' : s); } function icS() { return ''; }
+    function _busToday() { return '2026-10-14'; } function dncChip() { return ''; } function _busWhere() { return ''; }
+    function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } function _lkSwitchGuard() {} ${extra}`)._busMyCarHtml();
+  it('R19-U11: the trip card carries a meta line (seats, where it ends)', () => {
+    const own = "{ id: 'rv', name: \"Amy's car\", seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'last_drop', endsAddress: null }";
+    expect(tripView(own)).toContain('5 seats · Ends at last drop');
+    expect(tripView(own.replace("'last_drop'", "'church'"))).toContain('5 seats · Ends at church');
+    expect(tripView(own.replace("'last_drop', endsAddress: null", "'address', endsAddress: '3 Oak St, Carina QLD 4152'"))).toContain('5 seats · Ends at Carina');
+    expect(tripView(own.replace("leaderIds: ['L1'], leaderNames: ['Amy']", "leaderIds: ['L1', 'L2'], leaderNames: ['Amy', 'Bo']"))).toContain('5 seats · Ends at last drop · with Bo');
+  });
+  it('R19-U14 flow S9: "Edit trip" on an own car ("Edit stops" on a fleet car); "Stop order" only over 2+ riders', () => {
+    const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
+    const one = tripView(own);
+    expect(one).toContain('Edit trip');
+    expect(one).not.toContain('Edit my car');
+    expect(one).not.toContain('Stop order');
+    const two = tripView(own.replace("ownerLeaderId: 'L1'", 'ownerLeaderId: null'), "[{ id: 's1', name: 'A', address: '' }, { id: 's2', name: 'B', address: '' }]");
+    expect(two).toContain('Stop order');
+    expect(two).toContain('Edit stops');
+  });
+  it('R19-U14 flow F7: a remembered "I am" that is no longer a leader shows the name picker, not a blank name', () => {
+    const html = loadFns(['_busMyCarHtml', 'progBar', '_busTripDate', '_busLocalNow'], `
+      const BUS = { tripDate: null, view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: { vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] } } };
+      function getMyLeaderId() { return 'GONE'; } function esc(s) { return String(s); } function fmtDay(d) { return d; }
+      function icS() { return ''; } function icLg() { return ''; } function _busToday() { return '2026-10-14'; }`)._busMyCarHtml();
+    expect(html).toContain('Choose your name');
+    expect(html).not.toContain('Log a trip');
+  });
+  it('R19-U14 #16: "I am" and "Day" use the sheet label style', () => {
+    const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
+    const h = tripView(own);
+    expect(h).toContain('<span class="fl">I am</span>');
+    expect(h).toContain('<label class="fl" for="bus-trip-date">Day</label>');
   });
   it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
     const prelude = `
@@ -1727,9 +1882,10 @@ describe('BUS-1 Past + export mark trips', () => {
         rides: [{ runId: 'w', name: 'A' }, { runId: 'f', name: 'B' }] }; }
       function _busPeople(r, n) { __args = [r.map((x) => x.runId), n]; return []; } function _busLocalNow() { return '2026-10-18T10:00'; }
       function __a() { return __args; }`;
-    const f = loadFns(['busLoadHist'], pre, ['busLoadHist', '__a']);
+    const f = loadFns(['busLoadHist'], pre + ' function __b() { return BUS; }', ['busLoadHist', '__a', '__b']);
     await f.busLoadHist();
     expect(f.__a()).toEqual([['f'], 2]);
+    expect([...f.__b().histTrip]).toEqual(['w']); // R19-S3: the one trip-id set, reused by the export
   });
 });
 
@@ -1789,6 +1945,19 @@ describe('BUS-2 Car setup', () => {
     expect(sheet('car')).toContain('id="ve-bus"');
     expect(sheet('car')).not.toMatch(/id="ve-bus" checked/);
     expect(sheet()).not.toMatch(/id="ve-bus" checked/); // Add vehicle defaults to a car
+  });
+  it('R19-U10: Preferred grades is hidden for a bus and follows the Charter bus tick', () => {
+    expect(sheet('bus')).toMatch(/id="ve-grades-sec" hidden/);
+    expect(sheet('car')).not.toMatch(/id="ve-grades-sec" hidden/);
+    const els: Record<string, any> = { 've-ends': { value: 'church' }, 've-ends-wrap': { hidden: true }, 've-ends-addr': { focus() {} }, 've-grades-sec': { hidden: false } };
+    const { _busVeBusTick } = loadFns(['_busVeBusTick'], 'const document = { getElementById: (id) => globalThis.__els[id] };');
+    (globalThis as any).__els = els;
+    _busVeBusTick(true);
+    expect(els['ve-grades-sec'].hidden).toBe(true);
+    expect(els['ve-ends'].value).toBe('address');
+    _busVeBusTick(false);
+    expect(els['ve-grades-sec'].hidden).toBe(false);
+    delete (globalThis as any).__els;
   });
   it('busSaveVehicle sends kind, and refuses a bus without a drop-off address', async () => {
     const run = async (bus: boolean, ends: string) => {
@@ -1998,7 +2167,7 @@ describe('busExportHist Type column', () => {
       const XLSX = { utils: { aoa_to_sheet: (aoa) => ({ aoa, '!ref': 'A1:A1' }), decode_range: () => ({ s: { c: 0 }, e: { c: -1 } }),
         encode_cell: () => 'A1', book_new: () => ({}), book_append_sheet: (wb, ws, name) => { sheets[name] = ws.aoa; } }, writeFile: () => {} };
       const _ensureXlsx = async () => {}; const toast = () => {}; const _busLocalNow = () => '2026-10-18T10:00';
-      const BUS = { histPeople: [], hist: {
+      const BUS = { histPeople: [], histTrip: new Set(['r1']), hist: {
         nights: [{ id: 'r1', date: '2026-10-14', trip: true, leaders: [] }, { id: 'r2', date: '2026-10-16', trip: false, leaders: [] }],
         rides: [{ runId: 'r1', date: '2026-10-14', name: 'Jess Tran', leaders: [] }, { runId: 'r2', date: '2026-10-16', name: 'Sam Lee', leaders: [] }] } };`;
     const { busExportHist, sheets } = loadFns(['busExportHist', '_busByRun', '_busNotLogged', '_busFmtTime'], prelude, ['busExportHist', 'sheets']);
