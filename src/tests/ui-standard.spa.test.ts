@@ -52,4 +52,14 @@ describe('shared markup', () => {
     expect(html).toContain('<div class="li rc rc-row${acctGenderClass}">');
     expect(html).toMatch(/\.rc\.rc-row\{display:flex;flex-wrap:wrap;align-items:center/);
   });
+  it('fix19 deadspace: a lone card action shares the last meta row; Health cards open on tap; Admin tabs wrap', () => {
+    expect(html).toMatch(/\.rc\{display:flex;flex-wrap:wrap;[^}]*padding:var\(--s3\) var\(--s4\)/);
+    expect(html).toContain('.rc>.rc-foot:has(>:only-child){flex:0 1 auto;margin-left:auto}');
+    expect(html).toContain('.rc:has(>.rc-foot>:only-child):not(:has(.ik-mis))>.rc-foot{grid-column:2;');
+    // Health: the name is the whole-card button (same handler + aria); no Profile-only footer band
+    expect(html).toContain(`<button type="button" class="lk-nm rc-go" onclick="showStudentDetail('\${s.id}')" title="View profile" aria-label="View profile for`);
+    expect(html).not.toContain(`\${icS('id')} Profile</button></div>`);
+    expect(html).toContain('.rc-icons>.chip{order:9}');
+    expect(html).toContain('.admin-tabs{flex-wrap:wrap}');
+  });
 });

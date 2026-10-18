@@ -399,6 +399,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .tbbtn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;color:var(--ink-mid);background:var(--paper-card);border:1.5px solid var(--paper-dark);cursor:pointer}
 .tbbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .admin-tabsel{display:none;width:100%;margin-bottom:16px}
+.admin-tabs{flex-wrap:wrap} /* every Admin tab visible, none cut mid-word */
 @media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
 
 /* Audit timeline */
@@ -918,7 +919,19 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 /* UI standard (A): one row-card. .rc-top = name + one pill top-right; .lk-d meta lines; .rc-foot = actions, right-aligned;
    two buttons share the row and stack full width when they don't fit. A row that opens something (Profile) is one link
    (.rc-go) stretched over the card, with a chevron; the footer sits above it so its buttons still take their own taps. */
-.rc{display:block;position:relative;padding:var(--s4);margin-bottom:var(--s3)}
+/* fix19 deadspace: the card is a wrapping flex column; the last line before .rc-foot shares its row with the actions when
+   both fit (baselines aligned), so a lone button no longer gets its own band. Too narrow and the footer wraps as before. */
+.rc{display:flex;flex-wrap:wrap;align-items:last baseline;gap:0 var(--s3);position:relative;padding:var(--s3) var(--s4);margin-bottom:var(--s3)}
+.rc>*{flex:1 1 100%;min-width:0}
+.rc>.rc-foot{margin-top:var(--s2)}
+.rc>:has(+.rc-foot>:only-child){flex:1 1 auto}
+.rc>.rc-foot:has(>:only-child){flex:0 1 auto;margin-left:auto}
+/* A lone action beside plain meta lines (no Form|Profile grid) sits in a right column spanning them, bottom-aligned. */
+.rc:has(>.rc-foot>:only-child):not(:has(.ik-mis)){display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:start}
+.rc:has(>.rc-foot>:only-child):not(:has(.ik-mis))>*{grid-column:1/-1}
+.rc:has(>.rc-foot>:only-child):not(:has(.ik-mis))>:not(.rc-top,.rc-foot){grid-column:1}
+.rc:has(>.rc-foot>:only-child):not(:has(.ik-mis))>.rc-foot{grid-column:2;grid-row:2/span 6;align-self:end;margin:var(--s1) 0 0}
+button.rc-go{padding:0;text-align:left}
 .rc-top{display:flex;align-items:flex-start;gap:var(--s2)}
 .rc-top>.lk-nm{flex:1 1 auto;min-width:0}
 .rc-top>.lk-tag,.rc-top>.chip,.rc-top>.ic-s{flex:none;margin-top:2px}
@@ -930,10 +943,11 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .rc-foot>.lk-st,.rc-foot>.lk-d{flex:1 1 140px;margin:0}
 .rc-foot>.btn:not(:only-of-type){flex:1 1 140px}
 .rc-foot.rc-icons>.btn{flex:none} /* icon-only actions keep their own width */
+.rc-icons>.chip{order:9} /* status pill last: same spot on every Accounts row, with or without Preview */
 /* .rc-row: one-line row card (Admin Accounts): name+meta left, pill+icons right; icons wrap under the name only when too narrow */
 .rc.rc-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);padding:var(--s3) var(--s4)}
 .rc-row>.rc-main{flex:1 1 140px;min-width:0}
-.rc-row>.rc-foot{margin-top:0;margin-left:auto}
+.rc-row>.rc-foot{flex:0 1 auto;margin-top:0;margin-left:auto}
 /* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
 .rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
@@ -5089,14 +5103,14 @@ function _arSectionsHtml(scoped, u) {
       const _arPills = (u.role !== 'grade' ? quadChip(s.quad) : '') + dncChip(s);
       cards += `
         <div class="li rc ar-rc">
-          <div class="rc-top"><div class="lk-nm">${esc(s.firstName)} ${esc(s.lastName)}</div>${_arPills ? `<span class="rc-pills">${_arPills}</span>` : ''}</div>
+          <div class="rc-top"><button type="button" class="lk-nm rc-go" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.firstName)} ${esc(s.lastName)}">${esc(s.firstName)} ${esc(s.lastName)}</button>${_arPills ? `<span class="rc-pills">${_arPills}</span>` : ''}${icS('chevr')}</div>
           <div class="li-sub" style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span>Gr ${s.grade||'—'} · ${s.gender}</span>
             ${_arQualChips(s)}
           </div>
           ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal, true)}
           ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal, true):''}
-          <div class="rc-foot">${_arPhone ? `<div class="lk-d">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName, !s.mobile && !!s.parentPhone)}</div>` : ''}<button class="btn btn-secondary btn-sm" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.firstName)} ${esc(s.lastName)}">${icS('id')} Profile</button></div>
+          ${_arPhone ? `<div class="rc-foot"><div class="lk-d">${!s.mobile && s.parentPhone ? '<span style="font-weight:600">Parent: </span>' : ''}${phoneLink(_arPhone, s.firstName, !s.mobile && !!s.parentPhone)}</div></div>` : ''}
         </div>`;
     }
     body += `<div class="card" style="margin-bottom:12px;border-left:4px solid ${col}">
