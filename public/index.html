@@ -12755,14 +12755,18 @@ function _ikQFlush() {
 }
 // RV-I-m5: a resent consent fix / link updates its line (so "goes again by itself" clears; the poll takes over); a
 // resent sheet save that is refused is toasted, naming the family. bad = the whole POST was refused with that message.
+// Legacy A11 (F1): with the page closed (boot / online / visibilitychange flush) or a kept answer refused as a whole,
+// nothing else would say so: one generic toast (the family title is unknown there).
 function _ikQApply(items, res, bad) {
   const I = LINK.ik;
-  if (!I) return;
-  let fx = false;
+  let fx = false, lost = null;
   items.forEach((it) => {
     let r = bad ? { outcome: 'refused', message: bad } : _ikOutcome(res, it.id);
     if (!r) return;
     if (r.code === 'LINK_ID_REUSED') r = { outcome: 'replay' }; // RV-I-m7: the earlier send landed (its note is purged once final)
+    const refused = !!r.message && !['saved', 'replay', 'duplicate'].includes(r.outcome);
+    if (!I) { if (refused && !lost) lost = r.message; return; }
+    if (bad && it.type === 'intakeAnswer' && !lost) lost = bad;
     if (bad && it.type === 'intakeAnswer') { const fam = ((it.payload && it.payload.family) || [])[0]; if (I.resend && I.resend[fam] !== 'again') delete I.resend[fam]; } // RV-I-m6
     const fk = Object.keys(I.fixes || {}).find((x) => I.fixes[x] && I.fixes[x].id === it.id);
     if (fk) {
@@ -12776,6 +12780,7 @@ function _ikQApply(items, res, bad) {
       toast(t && I.key !== row ? t + ': ' + r.message : r.message);
     }
   });
+  if (lost) toast('A kept intake save was refused: ' + lost, 6000);
   if (fx) { _ikDraw(); _ikFixPoll(); }
 }
 // R7 (ruling 7): at logout, one try to send what is kept (capped, so a dead network never blocks logout), then the key
