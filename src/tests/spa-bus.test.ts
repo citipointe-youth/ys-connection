@@ -1563,3 +1563,109 @@ describe('BUS-1 Trip logging', () => {
     expect(html).toContain('onchange="busSetTripDate(this.value)"');
   });
 });
+
+describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
+  const pickPrelude = (addresses: string) => `const BUS = { ocHits: [{ kind: 'student', id: 's1', name: 'Jess Tran', addresses: ${addresses} }],
+    ocDraft: { car: null, riderIds: [], newRiders: [] }, ocSearch: 'je' };
+    let __sheet = 0; function busOwnCarSheet() { __sheet++; } function _busOcSyncDraft() {} function modal() { throw new Error('no modal'); }
+    function _busAddrLabel(a) { return a.label; } function __s() { return { d: BUS.ocDraft, sheet: __sheet, q: BUS.ocSearch }; }`;
+  it('busOcPick adds the hit straight to the draft with its latest saved address, no picker modal', () => {
+    const { busOcPick, __s } = loadFns(['busOcPick'], pickPrelude("[{ id: 'a1', label: 'Home', address: '1 A St, Carina' }]"), ['busOcPick', '__s']);
+    busOcPick(0);
+    expect(__s().d.newRiders[0]).toMatchObject({ studentId: 's1', addressId: 'a1', addrLabel: 'Home' });
+    expect(__s().sheet).toBe(1);
+    expect(__s().q).toBe('');
+  });
+  it('a hit with no saved address is added with no address', () => {
+    const { busOcPick, __s } = loadFns(['busOcPick'], pickPrelude('[]'), ['busOcPick', '__s']);
+    busOcPick(0);
+    const r = __s().d.newRiders[0];
+    expect(r).toMatchObject({ studentId: 's1', addrLabel: 'No address' });
+    expect(r.addressId).toBeUndefined();
+    expect(r.newAddress).toBeUndefined();
+  });
+  const readPrelude = (pick: string, text: string, placeId: string | null) => `
+    let __t = null; function toast(m) { __t = m; }
+    const document = { querySelector: () => (${JSON.stringify(pick)} ? { value: ${JSON.stringify(pick)} } : null),
+      getElementById: () => ({ value: 'Mum' }) };
+    function _busAcValue() { return { address: ${JSON.stringify(text)}, placeId: ${JSON.stringify(placeId)} }; }
+    function __t_() { return __t; }`;
+  it('_busReadAddress(true): empty New address = no address; typed-but-unpicked still refused', () => {
+    let f = loadFns(['_busReadAddress'], readPrelude('new', '', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toEqual({});
+    expect(f._busReadAddress()).toBeNull(); // required path unchanged
+    f = loadFns(['_busReadAddress'], readPrelude('new', '1 A St', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toBeNull();
+    expect(f.__t_()).toBe('Pick the address from the suggestions list');
+    f = loadFns(['_busReadAddress'], readPrelude('a1', '', null), ['_busReadAddress', '__t_']);
+    expect(f._busReadAddress(true)).toEqual({ addressId: 'a1' });
+  });
+  const sheetPrelude = (tripDate: string, myCar: string) => `
+    const BUS = { tripDate: '${tripDate}', ocDraft: null, myCar: ${myCar},
+      view: { run: { serviceDate: '2026-10-16' }, leaders: [{ id: 'L1', name: 'Tom Strange' }],
+        riders: [{ id: 'fr1', name: 'Friday Rider', address: '2 B St, Carina', runVehicleId: null }] } };
+    let __html = ''; function modal(h) { __html = h; }
+    function esc(s) { return String(s == null ? '' : s); } function fmtDay(d) { return 'DAY ' + d; } function icS() { return ''; }
+    function getMyLeaderId() { return 'L1'; } function _busOcHitsHtml() { return ''; } function _busAcField() { return ''; }
+    function _busToday() { return '2026-10-14'; }
+    function __h() { return __html; } function __d() { return BUS.ocDraft; }`;
+  const sheet = (tripDate: string, myCar = 'null') =>
+    loadFns(['busOwnCarSheet', '_busEndsAtField', '_busSuburb', '_busTripDate'], sheetPrelude(tripDate, myCar), ['busOwnCarSheet', '__h', '__d']);
+  it('busOwnCarSheet hides "students waiting" when the trip date is not tonight', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    expect(f.__h()).toContain('Log a trip · DAY 2026-10-14');
+    expect(f.__h()).not.toContain('Friday Rider');
+    expect(f.__h()).not.toContain('still waiting');
+    const t = sheet('2026-10-16');
+    t.busOwnCarSheet();
+    expect(t.__h()).toContain('Friday Rider');
+    expect(t.__h()).toContain('still waiting');
+  });
+  it('on another day, the riders already in this trip stay listed (ticked) so a car-details save keeps them', () => {
+    const f = sheet('2026-10-14', "{ vehicle: { id: 'rv' }, stops: [{ id: 'w1', name: 'Wed Rider', address: '' }] }");
+    f.busOwnCarSheet(false);
+    expect(f.__h()).toMatch(/id="oc-riders"[\s\S]*value="w1" checked/);
+    expect(f.__h()).not.toContain('Friday Rider');
+  });
+  it('a new trip defaults to Ends at last drop, 5 seats and a "<first name>s car" name; a remembered car is used', () => {
+    const f = sheet('2026-10-14');
+    f.busOwnCarSheet();
+    expect(f.__h()).toContain('<option value="last_drop" selected');
+    expect(f.__h()).toContain('value="5"');
+    expect(f.__h()).toContain(`value="Tom's car"`);
+    const r = sheet('2026-10-14', "{ vehicle: null, stops: [], ownCarDraft: { car: { name: 'Red Mazda', seats: 4, plate: null, endsAt: 'church', endsAddress: null }, riderIds: [] } }");
+    r.busOwnCarSheet();
+    expect(r.__h()).toContain('value="Red Mazda"');
+    expect(r.__h()).toContain('<option value="church" selected');
+  });
+  it('new-rider rows get an Address button; busSaveOwnCar no longer forces an end address and strips UI fields', () => {
+    const html = loadIndexHtml();
+    expect(extractFn(html, 'busOwnCarSheet')).toContain('busOcAddr(${i})');
+    const save = extractFn(html, 'busSaveOwnCar');
+    expect(save).not.toContain('Pick the address');
+    expect(save).toContain('({ name, addrLabel, addresses, ...n }) => n');
+    expect(extractFn(html, 'busOcSaveNewPerson')).toContain('_busReadAddress(true)');
+  });
+  it('busOcConfirmPick(j) replaces row j address', () => {
+    const prelude = `const BUS = { ocDraft: { newRiders: [{ studentId: 's1', name: 'J', addresses: [{ id: 'a1', label: 'Home' }, { id: 'a2', label: 'Dad' }], addressId: 'a1', addrLabel: 'Home' }] } };
+      let __r = null; function _busReadAddress() { return __r; } function _busAddrLabel(a) { return a.label; } function busOwnCarSheet() {}
+      function __set(v) { __r = v; } function __d() { return BUS.ocDraft; }`;
+    const f = loadFns(['busOcConfirmPick'], prelude, ['busOcConfirmPick', '__set', '__d']);
+    f.__set({ addressId: 'a2' }); f.busOcConfirmPick(0);
+    expect(f.__d().newRiders[0]).toMatchObject({ addressId: 'a2', addrLabel: 'Dad' });
+    f.__set({ newAddress: { label: '', address: '9 C St', placeId: 'p' } }); f.busOcConfirmPick(0);
+    expect(f.__d().newRiders[0].addressId).toBeUndefined();
+    expect(f.__d().newRiders[0]).toMatchObject({ newAddress: { address: '9 C St' }, addrLabel: '9 C St' });
+  });
+  it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
+    const prelude = `
+      const BUS = { tripDate: null, view: { leaders: [{ id: 'L1', name: 'Amy' }] }, myCar: { vehicle: null, stops: [], ownCarDraft: { car: null, riderIds: [] } } };
+      function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s); } function fmtDay(d) { return 'DAY ' + d; }
+      function icS() { return ''; } function icLg() { return ''; } function _busToday() { return '2026-10-14'; }`;
+    const html = loadFns(['_busMyCarHtml', 'progBar', '_busTripDate', '_busLocalNow'], prelude)._busMyCarHtml();
+    expect(html).toContain('No trip logged for DAY 2026-10-14');
+    expect(html).toContain('Log a trip');
+    expect(html).not.toContain('Driving your own car?');
+  });
+});

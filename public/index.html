@@ -14486,10 +14486,12 @@ function _busAddressPicker(addresses, del) {
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
 }
-function _busReadAddress() {
+// optional (BUS-1 trip riders): an empty New address means "no address" ({}); typed text still needs a pick.
+function _busReadAddress(optional) {
   const pick = (document.querySelector('input[name="bus-addr"]:checked') || {}).value;
   if (pick && pick !== 'new') return { addressId: pick };
   const a = _busAcValue('bus-addr-text');
+  if (optional && !a.address.trim()) return {};
   if (a.address.length < 3) { toast('Enter an address'); return null; }
   // Streets without a house number are fine (the server routes to the street's midpoint)
   // — but SOME suggestion must have been picked, or we can't geocode it at all.
@@ -15169,25 +15171,39 @@ function _busRoutesHtml() {
 // BUS.myCar, which would drop queued riders while the address picker is open). keep=true when
 // returning from the address picker / New Person sheet; otherwise start from the server's draft.
 function busOwnCarSheet(keep) {
-  if (!keep || !BUS.ocDraft) { const s = BUS.ocDraft || { car: null, riderIds: [] }; BUS.ocDraft = { car: s.car, riderIds: [...s.riderIds], newRiders: [] }; BUS.ocSearch = ''; BUS.ocHits = []; }
+  const v = BUS.view, mc = BUS.myCar;
+  if (!keep || !BUS.ocDraft) {
+    // BUS-1: a fresh sheet starts from the server's remembered car (ownCarDraft); a saved trip seeds its own riders.
+    const s = BUS.ocDraft || (mc && mc.ownCarDraft) || { car: null, riderIds: mc && mc.vehicle ? mc.stops.map((x) => x.id) : [] };
+    BUS.ocDraft = { car: s.car, riderIds: [...(s.riderIds || [])], newRiders: [] }; BUS.ocSearch = ''; BUS.ocHits = [];
+  }
   const d = BUS.ocDraft;
-  const car = d.car || { name: '', seats: '', plate: '', endsAt: 'address', endsAddress: '' };
-  const unplaced = BUS.view.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id));
+  // BUS-1: a new trip ends at the last drop (no forced address) and is named after the leader.
+  const me = [...(v.onCarLeaders || []), ...(v.leaders || [])].find((l) => l.id === getMyLeaderId());
+  const car = d.car || { name: me ? `${me.name.split(' ')[0]}'s car` : '', seats: 5, plate: '', endsAt: 'last_drop', endsAddress: '' };
+  // BUS-1: only tonight's run has students "waiting for a car" (their ids 404 on another day's run). On another
+  // day the list holds this trip's own riders, ticked, because a save un-assigns any rider left out of riderIds.
+  const tonight = v.run.serviceDate === _busTripDate();
+  const pool = tonight ? v.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id))
+    : ((mc && mc.vehicle && mc.stops) || []).filter((r) => d.riderIds.includes(r.id));
+  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address) || 'No address')}</label>`).join('');
   const newRows = d.newRiders.map((n, i) => `<label class="cbx-row"><input type="checkbox" checked disabled> ${esc(n.name)} · ${esc(n.addrLabel || '')}
-      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" style="margin-left:auto" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
-  modal(`<div class="mo-title">Your car</div>
+      <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.preventDefault();busOcAddr(${i})">${icS('pin')} Address</button>
+      <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></label>`).join('');
+  modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
     <div class="fg"><input class="fi" id="oc-name" placeholder="e.g. Josh's car" value="${esc(car.name)}"></div>
     <div class="fg" style="display:flex;gap:8px"><input class="fi" id="oc-seats" type="number" min="2" max="15" placeholder="# seats" value="${esc(car.seats || '')}" aria-label="Seats">
       <input class="fi" id="oc-plate" placeholder="Plate" value="${esc(car.plate || '')}"></div>
     ${_busEndsAtField('oc', car.endsAt, car.endsAddress, undefined, car.endsPlaceId)}
     <label class="fl">Who you're taking</label>
     <div class="sbar"><span class="si">${icS('search')}</span>
-      <input id="oc-q" placeholder="Search any student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+      <input id="oc-q" placeholder="Add a student" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         value="${esc(BUS.ocSearch || '')}" oninput="busOcSearch(this.value)"></div><div id="oc-hits">${_busOcHitsHtml()}</div>
     ${newRows ? `<div class="bus-checks" id="oc-new-riders" style="margin-top:8px">${newRows}</div>` : ''}
-    <label class="fl" style="margin-top:12px">Or pick from students still waiting for a car</label>
-    <div class="bus-checks" id="oc-riders">${unplaced.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${esc(r.name)} · ${esc(_busSuburb(r.address))}</label>`).join('') || '<div class="card-sub">No one waiting for a car.</div>'}</div>
-    <div class="card-sub">These riders come off the bus routes.</div>
+    ${tonight ? `<label class="fl" style="margin-top:12px">Or pick from students still waiting for a car</label>
+    <div class="bus-checks" id="oc-riders">${poolRows || '<div class="card-sub">No one waiting for a car.</div>'}</div>
+    <div class="card-sub">These riders come off the bus routes.</div>`
+    : poolRows ? `<label class="fl" style="margin-top:12px">In this trip</label><div class="bus-checks" id="oc-riders">${poolRows}</div>` : ''}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="BUS.ocDraft = null; closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveOwnCar()">Save</button></div>`);
 }
@@ -15197,7 +15213,7 @@ function busOwnCarSheet(keep) {
 function _busOcSyncDraft() {
   const d = BUS.ocDraft || (BUS.ocDraft = { car: null, riderIds: [], newRiders: [] });
   const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-  const endsAt = val('oc-ends') || 'address';
+  const endsAt = val('oc-ends') || 'last_drop';
   d.car = { name: val('oc-name'), seats: val('oc-seats'), plate: val('oc-plate'), endsAt,
     endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null };
@@ -15228,21 +15244,29 @@ function _busOcHitsHtml() {
   return `<div class="card bus-hits">${status}${rows}
     <div class="li" onclick="busOcNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.ocSearch.trim())}"</div></div></div></div>`;
 }
+// BUS-1 (4 taps): a tapped hit goes straight into the trip with their most recent saved address (or
+// none). The per-row Address button (busOcAddr) opens the picker to change it.
 function busOcPick(i) {
   const h = (BUS.ocHits || [])[i]; if (!h) return;
   _busOcSyncDraft();
-  BUS._ocPick = { kind: h.kind, id: h.id, name: h.name, addresses: h.addresses };
-  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
-    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
-    <button class="btn btn-primary" onclick="busOcConfirmPick()">Add</button></div>`);
-}
-function busOcConfirmPick() {
-  const a = _busReadAddress(); if (!a) return;
-  const p = BUS._ocPick;
-  const addrLabel = a.addressId ? _busAddrLabel((p.addresses || []).find((x) => x.id === a.addressId) || {}) : (a.newAddress.label || a.newAddress.address);
-  const d = BUS.ocDraft;
-  d.newRiders.push({ ...(p.kind === 'student' ? { studentId: p.id } : { guestId: p.id }), name: p.name, addrLabel, ...a });
+  const a = (h.addresses || [])[0];
+  BUS.ocDraft.newRiders.push({ ...(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }), name: h.name,
+    addresses: h.addresses || [], ...(a ? { addressId: a.id } : {}), addrLabel: a ? _busAddrLabel(a) : 'No address' });
   BUS.ocSearch = ''; BUS.ocHits = [];
+  busOwnCarSheet(true);
+}
+function busOcAddr(j) {
+  const n = ((BUS.ocDraft && BUS.ocDraft.newRiders) || [])[j]; if (!n) return;
+  _busOcSyncDraft();
+  modal(`<div class="mo-title">${esc(n.name)}</div>${_busAddressPicker(n.addresses || [])}
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="busOwnCarSheet(true)">Cancel</button>
+    <button class="btn btn-primary" onclick="busOcConfirmPick(${j})">Use this address</button></div>`);
+}
+function busOcConfirmPick(j) {
+  const a = _busReadAddress(); if (!a) return;
+  const n = BUS.ocDraft.newRiders[j]; if (!n) return;
+  delete n.addressId; delete n.newAddress;
+  Object.assign(n, a, { addrLabel: a.addressId ? _busAddrLabel((n.addresses || []).find((x) => x.id === a.addressId) || {}) : (a.newAddress.label || a.newAddress.address) });
   busOwnCarSheet(true);
 }
 function busOcNewPerson() {
@@ -15267,8 +15291,8 @@ function busOcSaveNewPerson() {
   const gradeV = document.getElementById('np-grade').value, phone = document.getElementById('np-phone').value.trim();
   if (!firstName || !lastName || !_busNpGender) { toast('Name and gender are needed'); return; }
   if (phone && phone.replace(/\D/g, '').length < 8) { toast('Check the phone number'); return; }
-  const a = _busReadAddress(); if (!a) return;
-  const addrLabel = a.newAddress ? (a.newAddress.label || a.newAddress.address) : '';
+  const a = _busReadAddress(true); if (!a) return;
+  const addrLabel = a.newAddress ? (a.newAddress.label || a.newAddress.address) : 'No address';
   const d = BUS.ocDraft;
   d.newRiders.push({ newPerson: { firstName, lastName, grade: gradeV ? Number(gradeV) : null, gender: _busNpGender, phone: phone || null },
     name: `${firstName} ${lastName}`, addrLabel, ...a });
@@ -15283,8 +15307,7 @@ function busOcRemoveNew(i) {
 }
 async function busSaveOwnCar() {
   const val = (id) => document.getElementById(id).value;
-  const endsAt = val('oc-ends');
-  if (endsAt === 'address' && !_busAcValue('oc-ends-addr').placeId) { toast('Pick the address from the suggestions list'); return; }
+  const endsAt = val('oc-ends'); // BUS-1: an unpicked end address is saved as Last drop by the server
   const seatsRaw = val('oc-seats').trim();
   if (!seatsRaw) { toast('Enter the number of seats'); return; }
   const d = BUS.ocDraft || { newRiders: [] };
@@ -15292,11 +15315,11 @@ async function busSaveOwnCar() {
     endsAt, endsAddress: endsAt === 'address' ? _busAcValue('oc-ends-addr').address : null,
     endsPlaceId: endsAt === 'address' ? _busAcValue('oc-ends-addr').placeId : null },
     riderIds: [...document.querySelectorAll('#oc-riders input:checked')].map((i) => i.value),
-    newRiders: (d.newRiders || []).map(({ name, addrLabel, ...n }) => n) };
+    newRiders: (d.newRiders || []).map(({ name, addrLabel, addresses, ...n }) => n) };
   try { await _busSend('POST', '/bus/run/own-car', body, _busTripQs()); BUS.ocDraft = null; closeModal(); toast('Saved'); } catch (e) { toast(e.message); }
 }
 function busRemoveOwnCar() {
-  modal(`<div class="mo-title">Remove your car tonight?</div>
+  modal(`<div class="mo-title">Remove this trip?</div>
     <div class="mo-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button class="btn btn-danger" onclick="busRemoveOwnCarConfirmed()">Remove</button></div>`);
 }
@@ -15379,7 +15402,7 @@ function _busMyCarHtml() {
     const rv = mc.vehicle;
     const others = rv.leaderIds.map((id, i) => id === mine ? null : rv.leaderNames[i]).filter(Boolean);
     const links = mc.churchAddress ? _busMapsLinks(mc.stops.filter((s) => !s.droppedAt), mc.churchAddress, rv, mc.churchPlaceId, true) : [];
-    const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove my car</button>` : '';
+    const removeOwn = rv.ownerLeaderId === mine ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busRemoveOwnCar()">Remove this trip</button>` : '';
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
@@ -15413,10 +15436,10 @@ function _busMyCarHtml() {
     return `${top}
     <div class="card" style="text-align:center;padding:22px 16px">
       <div style="color:var(--ink-faint);margin-bottom:8px;display:flex;justify-content:center">${icLg('bus')}</div>
-      <div class="card-title" style="margin-bottom:4px">You're not on a car tonight</div>
-      <div class="card-sub">Giving someone a ride home in your own car? You can still get directions and keep a record of who you drove.</div>
+      <div class="card-title" style="margin-bottom:4px">No trip logged for ${esc(fmtDay(_busTripDate()))}</div>
+      <div class="card-sub">Driving someone home or picking them up? Log it here.</div>
     </div>
-    <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Driving your own car?</button>`;
+    <button class="btn btn-primary btn-full" onclick="busOwnCarSheet()">${icS('plus')} Log a trip</button>`;
   }
   return `${top}<div class="card-sub">No car assigned.</div>`;
 }
