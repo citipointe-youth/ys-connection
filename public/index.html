@@ -13760,13 +13760,7 @@ function _ikLkPoll(kind) {
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;
-    if (document.visibilityState === 'hidden') { // N06: a hidden tab asks nothing; one wake-up polls again when it is back
-      if (!x.wake) {
-        x.wake = () => { if (document.visibilityState === 'hidden') return; document.removeEventListener('visibilitychange', x.wake); x.wake = null; if (_ik() === I && x.id === id && !x.poll) _ikLkPoll(kind); };
-        document.addEventListener('visibilitychange', x.wake);
-      }
-      return;
-    }
+    if (document.visibilityState === 'hidden') { _ikLkPoll(kind); return; } // N06: a hidden tab asks nothing; R19-S5: re-arm, no listener
     try {
       const r = await API.fresh('/link/consents/lookup?id=' + encodeURIComponent(id), true);
       if (_ik() !== I || x.id !== id) return;

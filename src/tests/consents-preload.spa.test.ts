@@ -231,20 +231,18 @@ describe('N06 no lookup polls from a hidden tab', () => {
       return { _ikLkPoll };`)(I, t);
     return { fns, t, I };
   };
-  it('a timer firing while hidden does not ask, arms one wake-up, and polls again once visible', async () => {
+  it('a timer firing while hidden does not ask, re-arms the timer (R19-S5: no listener), and asks once visible', async () => {
     const { fns, t, I } = poller();
     fns._ikLkPoll('forms');
     t.vis = 'hidden';
-    await t.cbs.shift()!();
-    expect(t.gets).toEqual([]);
-    expect(t.cbs).toHaveLength(0);
-    expect(t.ls).toHaveLength(1);
-    fns._ikLkPoll('forms'); await t.cbs.shift()!(); // a second hidden fire (e.g. _ikSchedule) adds no second listener
-    expect(t.ls).toHaveLength(1);
-    t.vis = 'visible';
-    t.ls[0]!();
-    expect(t.ls).toHaveLength(0);
+    for (let i = 0; i < 3; i++) {
+      await t.cbs.shift()!();
+      expect(t.gets).toEqual([]);
+      expect(t.cbs).toHaveLength(1); // one timer re-armed
+      expect(t.ls).toHaveLength(0); // never a visibilitychange listener
+    }
     expect(I.lk.forms.poll).toBeTruthy();
+    t.vis = 'visible';
     await t.cbs.shift()!();
     expect(t.gets).toHaveLength(1);
   });

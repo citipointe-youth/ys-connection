@@ -253,7 +253,13 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         mine.console.linkRev = 12;
         const again = (await repo.claim(mine)).find((g) => g.row.id === a.id)!;
         expect(again).toMatchObject({ reclaimed: true, noteUnreadable: false });
-        expect(again.row).toMatchObject({ status: 'claimed', attempts: 2, note: 'lost reply', leaseOwner: mine.console.consoleId });
+        // R19-L4: re-handing the console its own LIVE lease is the same attempt (it only lost the reply), so attempts
+        // stays 1. It was 2 here before, and every re-hand added 1, so the console (gives up at attempts > 6) could refuse early.
+        expect(again.row).toMatchObject({ status: 'claimed', attempts: 1, note: 'lost reply', leaseOwner: mine.console.consoleId });
+        expect((await repo.claim(mine)).find((g) => g.row.id === a.id)!.row.attempts).toBe(1); // again: still 1
+        // an ENDED lease re-handed is a new attempt (as in the test above)
+        await h.backdate('link_outbox', a.id, 'lease_until', ago(60_000));
+        expect((await repo.claim(mine)).find((g) => g.row.id === a.id)!.row.attempts).toBe(2);
         // max 0 (a heartbeat) still hands nothing
         expect(await repo.claim({ ...mine, max: 0 })).toEqual([]);
       });
