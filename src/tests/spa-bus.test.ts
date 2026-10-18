@@ -1514,3 +1514,77 @@ describe('_busCarsHtml header totals (I12)', () => {
     expect(mk(12)).toContain('1 short</span>');
   });
 });
+
+// BUS-2 (charter bus, 2026-10-18): Car setup — bus kind on the vehicle sheet and the card.
+describe('BUS-2 Car setup', () => {
+  const view = (over: any = {}) => ({ run: { readOnly: false, lockBy: null, lockUntil: null }, leaders: [], availablePoolLeaderIds: [],
+    fleet: [{ id: 'v1', name: 'Charter', kind: 'bus', seats: 3, endsAt: 'address', endsAddress: '9 Hall St, Carina QLD', prefGrades: [] }],
+    riders: [{ id: 'r1', runVehicleId: 'rv1' }, { id: 'r2', runVehicleId: 'rv1' }, { id: 'r3', runVehicleId: 'rv1' }],
+    vehicles: [{ id: 'rv1', vehicleId: 'v1', name: 'Charter', kind: 'bus', running: true, seats: 3, capacity: 2, leaderIds: ['L1'], leaderNames: ['Tom'],
+      eligibility: { female: false, male: true, unknown: false }, endsAt: 'address', endsAddress: '9 Hall St, Carina QLD', colourIndex: 0, ...over }] });
+  const cars = (v: any) => loadFns(['_busCarsHtml', '_busLockedBy', '_busSuburb'], `
+      const BUS = { generating: false, view: ${JSON.stringify(v)} };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _busPrefGradesChip() { return ''; }`, ['_busCarsHtml'])._busCarsHtml();
+  it('bus card: Bus chip, Over by N, Drop-off label, no gender chip; leaders unchanged', () => {
+    const h = cars(view());
+    expect(h).toContain('>Bus</span>');
+    expect(h).toContain('Over by 1');
+    expect(h).toContain('Drop-off: <b');
+    expect(h).toContain('Carina');
+    expect(h).not.toContain('Boys');
+    expect(h).toContain('Needs 1 more leader');
+    expect(h).toContain('>Tom<');
+  });
+  it('no Over chip at or under capacity; a car keeps its gender chip and Ends at label', () => {
+    expect(cars(view({ capacity: 3 }))).not.toContain('Over by');
+    const car = cars(view({ kind: 'car' }));
+    expect(car).toContain('Boys'); expect(car).toContain('Ends at:'); expect(car).not.toContain('>Bus</span>');
+  });
+  it('a bus that is off tonight is still badged', () => {
+    expect(cars(view({ running: false }))).toContain('>Bus</span>');
+  });
+  const sheet = (fleetKind?: string) => {
+    const { busEditVehicle, __state } = loadFns(['busEditVehicle', '_busEndsAtField', '_busAcField', '_busUuid'], `
+      const BUS = { ac: {}, view: { fleet: [{ id: 'v1', name: 'Charter', plate: '', seats: 20, prefGrades: [], endsAt: 'address', endsAddress: '9 Hall St', endsPlaceId: 'P', ${fleetKind ? `kind: '${fleetKind}'` : ''} }], vehicles: [], leaders: [] } };
+      function esc(s) { return String(s); }
+      function icS(k) { return ''; }
+      function _gradeWord() { return 'Year'; }
+      const window = {};
+      let __modal = null;
+      function modal(h) { __modal = h; }
+      function __state() { return __modal; }`, ['busEditVehicle', '__state']);
+    busEditVehicle(fleetKind === undefined ? null : 'v1');
+    return __state() as string;
+  };
+  it('vehicle sheet has the Charter bus checkbox, ticked only for a bus', () => {
+    expect(sheet('bus')).toMatch(/id="ve-bus" checked/);
+    expect(sheet('car')).toContain('id="ve-bus"');
+    expect(sheet('car')).not.toMatch(/id="ve-bus" checked/);
+    expect(sheet()).not.toMatch(/id="ve-bus" checked/); // Add vehicle defaults to a car
+  });
+  it('busSaveVehicle sends kind, and refuses a bus without a drop-off address', async () => {
+    const run = async (bus: boolean, ends: string) => {
+      const { busSaveVehicle, __calls } = loadFns(['busSaveVehicle'], `
+        const els = { 've-name': { value: 'Charter' }, 've-plate': { value: '' }, 've-seats': { value: '20' }, 've-ends': { value: '${ends}' }, 've-bus': { checked: ${bus} } };
+        const document = { getElementById: (id) => els[id] || null, querySelectorAll: () => [] };
+        const BUS = { view: { fleet: [], vehicles: [] } };
+        let __c = [], __t = [];
+        function _busAcValue() { return { address: '9 Hall St', placeId: 'P' }; }
+        function _busQs() { return ''; }
+        const API = { post: async (u, b) => { __c.push(b); return { id: 'v1' }; } };
+        async function busRefresh() {}
+        function closeModal() {}
+        function toast(m) { __t.push(m); }
+        function __calls() { return { calls: __c, toasts: __t }; }`, ['busSaveVehicle', '__calls']);
+      await busSaveVehicle(null);
+      return __calls();
+    };
+    expect((await run(true, 'address')).calls[0]).toMatchObject({ kind: 'bus', endsAt: 'address', endsPlaceId: 'P' });
+    expect((await run(false, 'church')).calls[0]).toMatchObject({ kind: 'car' });
+    const refused = await run(true, 'church');
+    expect(refused.calls).toEqual([]);
+    expect(refused.toasts[0]).toMatch(/drop-off address/);
+  });
+});

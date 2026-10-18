@@ -14845,7 +14845,7 @@ function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, 
     ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}`;
 }
 function busEditVehicle(vehicleId) {
-  const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '' };
+  const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '', kind: 'car' };
   const rv = vehicleId ? v.vehicles.find((x) => x.vehicleId === vehicleId) : null;
   // Task 7: a run vehicle's endsAt/endsAddress can differ from the fleet default as tonight's
   // own override (busSaveVehicle's tonightOnly PATCH below) — pre-fill from THAT, not the fleet
@@ -14859,6 +14859,7 @@ function busEditVehicle(vehicleId) {
     <div class="fg"><input class="fi" id="ve-name" placeholder="Name" value="${esc(f.name)}"></div>
     <div class="fg" style="display:flex;gap:8px"><input class="fi" id="ve-plate" placeholder="Plate" value="${esc(f.plate || '')}">
       <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}" placeholder="# seats" aria-label="Seats"></div>
+    <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''}> Charter bus: drops everyone at one address (set Ends at → Address)</label>
     <label class="fl">Preferred grades</label>
     <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div>
     ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
@@ -14870,12 +14871,14 @@ async function busSaveVehicle(vehicleId) {
   const val = (id) => document.getElementById(id).value;
   const endsAt = val('ve-ends'), ends = _busAcValue('ve-ends-addr');
   if (endsAt === 'address' && !ends.placeId) { toast('Pick the address from the suggestions list'); return; }
+  const busEl = document.getElementById('ve-bus'), kind = busEl && busEl.checked ? 'bus' : 'car'; // BUS-2
+  if (kind === 'bus' && endsAt !== 'address') { toast('A bus needs its drop-off address (Ends at → Address)'); return; }
   const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
   const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
   try {
     const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
-    const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades };
+    const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades, kind };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
       tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId });
     await busRefresh();
@@ -14942,11 +14945,13 @@ function _busCarsHtml() {
       return `<div class="veh-card off">
         <div class="veh-top"><label class="swtch"><input type="checkbox" onchange="busRunVeh('${rv.id}',{running:this.checked})"></label>
           <div class="veh-name">${esc(rv.name)}${rv.plate ? ' · ' + esc(rv.plate) : ''}</div>
-          <span class="veh-off">Off tonight</span>
+          ${rv.kind === 'bus' ? '<span class="chip c-accent">Bus</span>' : ''}<span class="veh-off">Off tonight</span>
           <button class="btn-icon" aria-label="Edit ${esc(rv.name)}" onclick="busEditVehicle('${rv.vehicleId}')">${icS('edit')}</button></div></div>`;
     }
+    // BUS-2: a bus has no gender rule — Bus chip in place of the gender chip, plus Over by N (warning only).
+    const isBus = rv.kind === 'bus', over = isBus ? v.riders.filter((r) => r.runVehicleId === rv.id).length - rv.capacity : 0;
     const elig = rv.eligibility;
-    const eligChip = elig.unknown
+    const eligChip = isBus ? `<span class="chip c-accent">Bus</span>${over > 0 ? `<span class="chip c-warn">${icS('alert')} Over by ${over}</span>` : ''}` : elig.unknown
       ? `<span class="chip c-warn">${icS('alert')} Leader gender unknown</span>`
       // elig.unknown is exactly !female && !male (bus-logic.ts eligibilityOf), so once
       // we're past the unknown branch above at least one of female/male is true — Mixed
@@ -14964,7 +14969,7 @@ function _busCarsHtml() {
       <div class="veh-chiprow"><span class="veh-meta">${rv.seats} seats · ${rv.capacity} for youth</span>${eligChip}${needsLeader ? `<span class="chip c-warn">${icS('alert')} Needs ${leaderShortfall} more leader${leaderShortfall === 1 ? '' : 's'}</span>` : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div onclick="busEditCarLeaders('${rv.id}')" style="cursor:pointer">${leaderChips || `<span class="chip c-neutral">${icS('plus')} Add leaders</span>`}</div>
-        <div style="font-size:11px;color:var(--ink-mid)">Ends at: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--ink-mid)">${isBus ? 'Drop-off' : 'Ends at'}: <b style="color:var(--ink)">${esc(endsText)}</b>${tonightOnly ? ' <span class="chip c-accent">tonight only</span>' : ''}</div>
       </div></div>`;
   }).join('');
 
