@@ -15295,9 +15295,9 @@ function busOwnCarSheet(keep) {
   const pool = tonight ? v.riders.filter((r) => !r.runVehicleId || d.riderIds.includes(r.id))
     : ((mc && mc.vehicle && mc.stops) || []).filter((r) => d.riderIds.includes(r.id));
   // R19-U14 #17: name, then the address on a grey line (no mid-row wrap); picked riders have no dead checkbox.
-  const who = (name, sub) => `<span class="oc-who"><span class="route-name">${esc(name)}</span><span class="route-sub">${esc(sub)}</span></span>`;
-  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${who(r.name, _busSuburb(r.address) || 'No address')}</label>`).join('');
-  const newRows = d.newRiders.map((n, i) => `<div class="cbx-row">${who(n.name, n.addrLabel || '')}
+  const who = (name, sub) => `<span class="oc-who"><span class="route-name">${name}</span><span class="route-sub">${sub}</span></span>`; // pre-escaped
+  const poolRows = pool.map((r) => `<label class="cbx-row"><input type="checkbox" value="${r.id}" ${d.riderIds.includes(r.id) ? 'checked' : ''}> ${who(esc(r.name), esc(_busSuburb(r.address) || 'No address'))}</label>`).join('');
+  const newRows = d.newRiders.map((n, i) => `<div class="cbx-row">${who(esc(n.name), esc(n.addrLabel || ''))}
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.preventDefault();busOcAddr(${i})">${icS('pin')} Address</button>
       <button type="button" class="btn-icon bus-danger" aria-label="Remove ${esc(n.name)}" onclick="event.preventDefault();busOcRemoveNew(${i})">${icS('trash')}</button></div>`).join('');
   modal(`<div class="mo-title">Log a trip · ${esc(fmtDay(_busTripDate()))}</div>
