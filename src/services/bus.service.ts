@@ -267,6 +267,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   function isRedactedLeader(ctx: BusCtx, c: MinistryConfig): boolean {
     return ctx.actor.role === 'leader' && !allowed(ctx, c, 'bus:coordinate');
   }
+  /** The junior leader's own connected students (search, own-car save, draft). */
+  async function myStudentIds(ctx: BusCtx): Promise<Set<string>> {
+    return new Set(ctx.actor.leaderId && connections ? (await connections.findByLeader(ctx.actor.leaderId)).map((x) => x.studentId) : []);
+  }
   function selfLeaderId(ctx: BusCtx): string | null {
     // A junior-leader login is locked to its own record; everyone else self-identifies (spoofable by design — spec §4).
     return ctx.actor.role === 'leader' ? ctx.actor.leaderId ?? null : ctx.asLeaderId;
@@ -903,7 +907,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       let pool = (await students.findAll()).filter((s) => nameMatches(q, s.firstName, s.lastName));
       if (!full) {
         if (ctx.actor.role === 'leader') {
-          const mine = new Set(ctx.actor.leaderId && connections ? (await connections.findByLeader(ctx.actor.leaderId)).map((x) => x.studentId) : []);
+          const mine = await myStudentIds(ctx);
           pool = pool.filter((s) => mine.has(s.id));
         } else pool = pool.filter((s) => canAccessStudent(ctx.actor, s.grade, s.gender, c.structure));
       }
@@ -1015,6 +1019,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(UpdateRunVehicle, input);
       // I11: Car setup stays bus:use, but only a coordinator can tick or untick Lock.
       if (v.locked !== undefined && !allowed(ctx, c, 'bus:coordinate')) throw new ForbiddenError('Only a coordinator can lock a car');
+      // SY-03: joining a car would open its riders' addresses + phones in My car to a "My car only" login.
+      if (v.leaderIds && isRedactedLeader(ctx, c)) throw new ForbiddenError("Ask a coordinator to change a car's leaders");
       if (v.running === false) v.locked = false; // a car turned off is not locked; it starts fresh if turned back on
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this patch sets "ends at an address"
       const run = await writableRun(ctx, c);
@@ -1074,6 +1080,15 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const skipped: { name: string; car: string }[] = [];
       // Fail fast BEFORE creating any guest/rider, so a rejected save leaves nothing behind.
       for (const id of v.riderIds) if (!riders.some((r) => r.id === id)) throw new NotFoundError('Rider not found');
+      if (isRedactedLeader(ctx, c)) {
+        // SY-04: My car shows full addresses + phones, so a "My car only" login takes only riders already in its
+        // car or its own connected students (as search() offers); walk-in guests stay open (search lists them).
+        const mine = await myStudentIds(ctx);
+        const ok = (r?: BusRunRider) => !!r && ((!!prior && r.runVehicleId === prior.id) || (!!r.studentId && mine.has(r.studentId)));
+        const refuse = () => new ForbiddenError('You can only add your own students to your car');
+        for (const id of v.riderIds) if (!ok(riders.find((r) => r.id === id))) throw refuse();
+        for (const nr of v.newRiders) if (nr.studentId && !mine.has(nr.studentId) && !ok(riders.find((r) => r.studentId === nr.studentId))) throw refuse();
+      }
       if (v.riderIds.length + v.newRiders.length > capacityOf(v.car.seats, 1)) throw new BadRequestError(`${v.car.name} only has ${capacityOf(v.car.seats, 1)} seats`);
       const newRiderIds: string[] = [];
       for (const nr of v.newRiders) {
@@ -1306,8 +1321,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (me && !vehicle) {
         const p = await bus.getLeaderPrefs(me);
         const tonight = await ridingOf(run.id);
+        const mine = isRedactedLeader(ctx, c) ? await myStudentIds(ctx) : null; // SY-04: pre-tick only what saveOwnCar takes
         ownCarDraft = { car: p?.ownCar ?? null,
-          riderIds: tonight.filter((r) => !r.runVehicleId && p?.lastOwnRiderKeys.includes(riderKey(r))).map((r) => r.id) }; // review B
+          riderIds: tonight.filter((r) => !r.runVehicleId && p?.lastOwnRiderKeys.includes(riderKey(r))
+            && (!mine || (!!r.studentId && mine.has(r.studentId)))).map((r) => r.id) }; // review B
       }
       return { vehicle, stops, churchAddress: c.busMinistry.churchAddress, churchPlaceId: c.busMinistry.churchPlaceId, ownCarDraft,
         onCarLeaders: await onCarLeaderList(run.id) };
