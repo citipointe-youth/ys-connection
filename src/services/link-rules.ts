@@ -147,7 +147,8 @@ export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editRep
 
 // ---------------- Rev 6: the New People consent step (review C1) ----------------
 
-const PEOPLE_FLOW_RE = /^Brisbane - Youth - New People (\d{4})$/i;
+// Prefix match like the old rule and the console: a suffix on the Elvanto name must not switch the step-0 gate off.
+const PEOPLE_FLOW_RE = /^Brisbane - Youth - New People (\d{4})\b/i;
 /** E3: this year's New People flow among the pushed flow names: the highest year <= today's Brisbane year, else the highest
  *  (January before the new flow exists keeps last year's). Same rule as 11.1 youth-gather.js FLOW.people. null = none. */
 export function peopleFlowName(names: Iterable<string>, today: string): string | null {
