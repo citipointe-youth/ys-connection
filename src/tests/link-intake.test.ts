@@ -38,7 +38,7 @@ const DIRECTOR = actor(DIR_ID, 'director');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const BASE_CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
   firstTimerCheckIn: 'live' };
-const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'shadow', consentSave: 'shadow', intakeText: 'locked' };
+const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' };
 const SUB_S = '5b000000-0000-4000-8000-000000000001', SUB_P = '5b000000-0000-4000-8000-000000000002';
 const P_STU = '9e000000-0000-4000-8000-000000000011';
 const row1 = () => fx('push-intake.json').rows[0];

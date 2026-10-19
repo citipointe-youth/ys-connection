@@ -189,10 +189,6 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
     const r = applyOutcome(row(), { id: U(1), outcome: 'unclear', sentLogKey: 'k2', detail: 'Maybe.' }, CONSOLE, NOW);
     expect(r).toEqual({ next: expect.objectContaining({ status: 'unclear', sentLogKey: 'k2', detail: 'Maybe.' }) });
   });
-  it('shadowed stores sentLogKey', () => {
-    const r = applyOutcome(row(), { id: U(1), outcome: 'shadowed', sentLogKey: 'k3' }, CONSOLE, NOW);
-    expect(r).toEqual({ next: expect.objectContaining({ status: 'shadowed', sentLogKey: 'k3', resultAt: nowIso }) });
-  });
   it('retry -> pending, retryAt = now + retrySeconds, lease cleared', () => {
     const r = applyOutcome(row(), { id: U(1), outcome: 'retry', retrySeconds: 300, reason: 'awaiting-approval' }, CONSOLE, NOW);
     expect(r).toEqual({ next: expect.objectContaining({ status: 'pending', reason: 'awaiting-approval',
@@ -218,7 +214,6 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
   it('same outcome on a final row -> already-final', () => {
     expect(applyOutcome(row({ status: 'sent' }), { id: U(1), outcome: 'sent', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'refused', reason: 'no-room' }), { id: U(1), outcome: 'refused', reason: 'no-room' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
-    expect(applyOutcome(row({ status: 'shadowed' }), { id: U(1), outcome: 'shadowed', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'sent' }), { id: U(1), outcome: 'resolved', landed: true }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'unclear' }), { id: U(1), outcome: 'unclear', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
   });
@@ -387,10 +382,6 @@ describe('effectiveCheckState (spec 5.2)', () => {
   });
   it.each(['pending', 'claimed', 'unclear'] as const)('newest %s row decides', (status) => {
     const r = row({ type: 'checkIn', status });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
-  });
-  it('shadowed decides (APP-38: the view has no practice flag; the action status says it)', () => {
-    const r = row({ type: 'checkIn', status: 'shadowed', resultAt: T0 });
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
   });
   it('sent decides only while resultAt > mirrorTakenAt', () => {

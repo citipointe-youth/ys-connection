@@ -27,7 +27,7 @@ export type Action =
   | 'bus:analysis'            // Past nights, new-people linking (route analysis is bus:coordinate)
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
-  | 'link:admin'              // Elvanto link, admin only: matching, shadow check, log, detail, cancel anyone's
+  | 'link:admin'              // Elvanto link, admin only: matching, log, detail, cancel anyone's, settle unclear rows
   | 'intake:admin'            // T4 (X19): youth intake + consents through the link, admin only (not director)
   | 'link:flowRemove';        // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + director)
 
@@ -185,6 +185,10 @@ export function canEditGroupMembers(actor: Actor, leadsGroup: boolean): boolean 
 
 // R1 (LINK_REV 6): only admin and director still get a DO NOT CONTACT student's mobile / parent phone.
 export function canSeeDncPhones(actor: Actor): boolean {
+  return isAdminRole(actor);
+}
+// The ministry-wide logins (admin, director): the Elvanto link's flows, groups and youth pickers see everyone.
+export function isAdminRole(actor: Actor): boolean {
   return actor.role === 'admin' || actor.role === 'director';
 }
 

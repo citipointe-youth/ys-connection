@@ -70,10 +70,11 @@ export const stickyConsent = <C extends string>(old: C | null | undefined, next:
   (next == null || next === 'unknown') && isDnc(old) ? (old as C) : (next ?? null);
 /** X19: the four intake types (24 h expiry, admin only, module intakeAdmin). */
 export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
-export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;
-export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
+// PY-P3: 'shadowed' (the retired practice mode) is gone from the contract; the DB CHECK (0017) still allows it for old rows.
+export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'cancelled'] as const;
+export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
 // locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
-export const CAPABILITIES = ['live', 'shadow', 'locked', 'off'] as const;
+export const CAPABILITIES = ['live', 'locked', 'off'] as const;
 export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
@@ -193,7 +194,7 @@ export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Is
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence
 // X19: per chain step (intake types). Both optional, so an older app strips them (z.object default).
 export const ResultStep = z.object({ key: StepKey, action: Word, role: Role,
-  outcome: z.enum(['confirmed', 'already', 'not-sent', 'unconfirmed', 'locked', 'shadowed']), at: Iso.nullable() });
+  outcome: z.enum(['confirmed', 'already', 'not-sent', 'unconfirmed', 'locked']), at: Iso.nullable() });
 export const ResultStop = z.object({ code: z.enum(['finished', 'sms', 'needs-you', 'not-confirmed', 'stuck', 'locked', 'stalled', 'gone', 'busy']),
   text: Cut(200) });
 const chain = { steps: z.array(ResultStep).max(20).optional(), stop: ResultStop.optional() };
@@ -206,7 +207,6 @@ export const ResultItem = z.discriminatedUnion('outcome', [
   z.object({ id: Uuid, outcome: z.literal('refused'), reason: z.enum(REASONS), detail: Detail, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('unclear'), sentLogKey: LogKey, detail: Detail, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('retry'), retrySeconds: z.number().int().min(60).max(3600), reason: z.enum(RETRY_REASONS) }),
-  z.object({ id: Uuid, outcome: z.literal('shadowed'), sentLogKey: LogKey, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('resolved'), landed: z.boolean() }),
   z.object({ id: Uuid, outcome: z.literal('planned') }), // X19: an intakeAnswer applied and that date re-pushed; nothing sent
 ]);

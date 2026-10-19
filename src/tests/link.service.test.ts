@@ -41,7 +41,7 @@ const GRADE2 = actor(GRADE2_ID, 'grade', { grade: 9, gender: 'male' });
 const LEADER = actor(LEAD_ID, 'leader', { leaderId: L_CODY });
 const DEV = { id: 'dev-1', label: 'iPhone · Safari' };
 
-const CAPS: Capabilities = { checkIn: 'live', checkOut: 'locked', submitReport: 'shadow', editReport: 'shadow',
+const CAPS: Capabilities = { checkIn: 'live', checkOut: 'locked', submitReport: 'live', editReport: 'live',
   completeStep: 'live', firstTimerCheckIn: 'live' };
 
 let idn = 9000;
@@ -195,7 +195,6 @@ describe('D1 the switch (every public method)', () => {
   const adm: [string, (s: LinkService, a: Actor) => Promise<unknown>][] = [
     ['rosterForMatching', (s, a) => s.rosterForMatching(a, {})],
     ['setMatch', (s, a) => s.setMatch(a, P_BEN, { studentId: null })],
-    ['shadowCheck', (s, a) => s.shadowCheck(a, TODAY)],
     ['log', (s, a) => s.log(a, {})],
   ];
   const everyone = [ADMIN, DIRECTOR, QUAD, GRADE, LEADER];
@@ -340,16 +339,6 @@ describe('D1 checkin read', () => {
     expect(by[L_CODY]!.personId).toBe(P_CODY);        // one match (spaces folded)
     expect(by[L_DANA]).toMatchObject({ personId: null, checkedIn: false, action: null }); // no match
     expect(by[L_EVE]).toMatchObject({ personId: null, checkedIn: false, action: null });  // two roster rows
-  });
-
-  it('a linked leader checked in by a shadowed row shows the shadowed action (practice)', async () => {
-    const h = await setup();
-    const it1 = checkIn(P_CODY);
-    await enq(h.svc, ADMIN, it1, DEV);
-    setRow(h.link, it1.id, { status: 'shadowed', result_at: NOW.toISOString() });
-    const r = await h.svc.checkin(GRADE, ST);
-    expect(r.leaders!.find((l) => l.leaderId === L_CODY)).toMatchObject({ checkedIn: true,
-      action: { id: it1.id, status: 'shadowed' }, mine: false });
   });
 
   it('genders must agree when both are set', async () => {
@@ -551,13 +540,13 @@ describe('D2 enqueue', () => {
     expect(log[0]).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
   });
 
-  it('checkOut after a pending check-in → cancelled (B4); after a shadowed check-in → saved; with no check-in → 400', async () => {
+  it('checkOut after a pending check-in → cancelled (B4); after a sent check-in → saved; with no check-in → 400', async () => {
     const h = await setup();
     await enq(h.svc, GRADE, checkIn(P_AMY), DEV);
     expect((await enq(h.svc, GRADE, checkOut(P_AMY), DEV)).outcome).toBe('cancelled');
     const c = checkIn(P_TOM);
     await enq(h.svc, GRADE, c, DEV);
-    setRow(h.link, c.id, { status: 'shadowed', result_at: NOW.toISOString() });
+    setRow(h.link, c.id, { status: 'sent', result_at: NOW.toISOString() });
     expect((await enq(h.svc, GRADE, checkOut(P_TOM), DEV)).outcome).toBe('saved');
     expect((await enq(h.svc, GRADE, checkOut(P_EVE1), DEV)).code).toBe('BAD_REQUEST');
     expect((await enq(h.svc, GRADE, checkOut(P_BEN), DEV)).outcome).toBe('saved'); // in by the mirror
@@ -595,23 +584,6 @@ describe('D2 enqueue', () => {
 });
 
 // =====================================================================================================================
-describe('B5 / T-11 a shadowed row is not "in" for the duplicate check (APP-46; X13)', () => {
-  it('shadowed at 6:45 pm, the type goes live, a re-tap is saved; the door still shows the practice tick', async () => {
-    const h = await setup();
-    const a = checkIn(P_AMY);
-    h.clock.now = new Date('2026-10-16T08:45:00.000Z');
-    await enq(h.svc, GRADE, a, DEV);
-    setRow(h.link, a.id, { status: 'shadowed', result_at: '2026-10-16T08:46:00.000Z' });
-    const view1 = await h.svc.checkin(GRADE, ST);
-    expect(view1.people!.find((p) => p.personId === P_AMY)).toMatchObject({ checkedIn: true, action: { id: a.id, status: 'shadowed' } });
-    h.clock.now = NOW;
-    const b = checkIn(P_AMY);
-    expect(await enq(h.svc, GRADE, b, DEV)).toMatchObject({ outcome: 'saved', action: { id: b.id, status: 'pending' } });
-    // and a second live tap is the duplicate
-    expect(await enq(h.svc, QUAD, checkIn(P_AMY), DEV)).toMatchObject({ outcome: 'duplicate', existingId: b.id });
-  });
-});
-
 describe('B6 / T-30 undo and ownership (APP-5, APP-50)', () => {
   it('two "I am" leaders on one login: the second can check out (and Undo) the first leader sent check-in', async () => {
     const h = await setup();
@@ -1201,7 +1173,7 @@ describe('B18 / T-8 an empty flows push', () => {
   });
 });
 
-describe('D6 admin: matching, shadow check, log', () => {
+describe('D6 admin: matching, log', () => {
   let h: H;
   beforeEach(async () => { h = await setup(); });
 
@@ -1256,40 +1228,6 @@ describe('D6 admin: matching, shadow check, log', () => {
     expect(await code(h.svc.setMatch(ADMIN, u(990), { studentId: null }))).toBe('NOT_FOUND');
     const roster = await h.link.roster();
     expect(roster.find((r) => r.personId === P_BEN)).toMatchObject({ match: 'ignored', studentId: null });
-  });
-
-  it('shadowCheck: no service_sessions row → "Not in the import"', async () => {
-    expect(await h.svc.shadowCheck(ADMIN, TODAY)).toEqual({ date: TODAY, imported: false, rows: [], unlinkedAttenders: 0 });
-  });
-
-  it('shadowCheck: verdicts for sent/shadowed check-ins, plus imported attenders with no link row', async () => {
-    await h.sessions.save({ id: 'sess1', importId: null, sessionDate: TODAY, sessionName: 'Youth', isRegular: true,
-      isValid: true, totalAttendance: 3, sortOrder: 0, createdAt: T0 });
-    await h.attendance.saveMany([{ studentId: S_AMY, sessionId: 'sess1', attended: true },
-      { studentId: S_BEN, sessionId: 'sess1', attended: true }, { studentId: 'other', sessionId: 'sess1', attended: false }]);
-    await h.link.setMatches([{ personId: P_BEN, studentId: S_BEN, match: 'manual' }]);
-    const mk = async (person: string, status: string) => {
-      const it = checkIn(person); await enq(h.svc, ADMIN, it, DEV); setRow(h.link, it.id, { status }); return it.id;
-    };
-    const amy = await mk(P_AMY, 'sent');        // attended → matched
-    const tom = await mk(P_TOM, 'sent');        // not attended → sent-not-imported
-    const eve = await mk(P_EVE1, 'shadowed');   // no student → no-student
-    const cody = await mk(P_CODY, 'pending');   // pending: not checked
-    const r = await h.svc.shadowCheck(ADMIN, TODAY);
-    expect(r.imported).toBe(true);
-    const v = Object.fromEntries(r.rows.map((x) => [x.id, x.verdict]));
-    expect(v).toEqual({ [amy]: 'matched', [tom]: 'sent-not-imported', [eve]: 'no-student' });
-    expect(r.rows.every((x) => !('message' in x))).toBe(true); // APP-41: the SPA words the verdict
-    expect(r.unlinkedAttenders).toBe(1); // Ben attended, no link row
-    expect(cody).toBeTruthy();
-    // practice verdicts
-    const ben = checkIn(P_BEN); await enq(h.svc, ADMIN, ben, DEV); setRow(h.link, ben.id, { status: 'shadowed' });
-    setRow(h.link, tom, { status: 'shadowed' });
-    const r2 = await h.svc.shadowCheck(ADMIN, TODAY);
-    const v2 = Object.fromEntries(r2.rows.map((x) => [x.id, x.verdict]));
-    expect(v2[ben.id]).toBe('practice-matched');
-    expect(v2[tom]).toBe('practice-missing');
-    expect(r2.unlinkedAttenders).toBe(0);
   });
 
   it('log: newest first, filters from/to/login/event, max 2,000', async () => {

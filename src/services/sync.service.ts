@@ -65,11 +65,11 @@ export function makeSyncService(d: SyncDeps) {
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
       const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
-        && (m.intakeAdmin ?? 'off') === 'off' ? 0 : req.max;
+        && m.intakeAdmin !== 'on' ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
-      if ((m.intakeAdmin ?? 'off') === 'off') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
+      if (m.intakeAdmin !== 'on') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,

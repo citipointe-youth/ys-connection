@@ -179,6 +179,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
         where status in ('sent','refused','shadowed','cancelled') and note is not null
           and created_at < now() - interval '30 days'`;
       await tx`delete from link_log where at < now() - interval '400 days'`;
+      // 'shadowed' (retired practice mode, PY-P3) stays in these two purges: old rows still carry it until they go.
       // X19: an intake row's note (fixes, keeps) goes as soon as it is final; the row itself after 14 days.
       await tx`
         update link_outbox set note = null

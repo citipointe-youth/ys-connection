@@ -255,7 +255,7 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   const MIG = join(ROOT, 'supabase', 'migrations', '0021_link_intake.sql');
   it('a claim without the intake capability keys still parses; with them each must be a capability', () => {
     expect(C.ClaimRequest.parse(CR()).capabilities.intakeSave).toBeUndefined();
-    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'shadow', consentSave: 'shadow', intakeText: 'locked' } };
+    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' } };
     expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'locked' });
     caps.capabilities.intakeSave = 'maybe'; rejects(C.ClaimRequest, caps);
   });

@@ -13,7 +13,7 @@ const INTAKE = INTAKE_TYPES as readonly string[];
 
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 // APP-84: not link-rules FINAL (that one includes unclear); these rows may lose their note after 30 days.
-const PURGEABLE: Status[] = ['sent', 'refused', 'shadowed', 'cancelled'];
+const PURGEABLE: Status[] = ['sent', 'refused', 'cancelled'];
 const DAY = 86_400_000;
 const clone = <T>(v: T): T => structuredClone(v);
 

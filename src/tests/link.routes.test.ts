@@ -21,7 +21,7 @@ const SPEC_ROUTES = [
   'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
-  'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
+  'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/log',
   'POST /link/admin/unclear/:id', // CY-A1
   'GET /link/intake', 'GET /link/intake/row', 'POST /link/intake/refresh', // T4 (X19)
   'GET /link/consents/lookup', // rev 6 (R2 b/c)
@@ -153,7 +153,7 @@ describe('link + sync live (memory)', () => {
 
   it('every other /link GET route answers 200 as admin', async () => {
     for (const p of ['/link/status', `/link/checkin?serviceTime=${svcTime}`, '/link/lifegroups', '/link/flows',
-      '/link/admin/roster', `/link/admin/shadow-check?date=${brisbaneToday(new Date())}`]) {
+      '/link/admin/roster']) {
       const r = await asAdmin('GET', p);
       expect([p, r.status]).toEqual([p, 200]);
     }

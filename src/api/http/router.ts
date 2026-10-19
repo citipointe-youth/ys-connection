@@ -244,7 +244,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/link/admin/roster',       auth: true, handler: (r) => linkCtl.roster(r) },
     { method: 'POST',   path: '/link/admin/roster/:personId', auth: true, handler: (r) => linkCtl.setMatch(r) },
     { method: 'POST',   path: '/link/admin/unclear/:id', auth: true, handler: (r) => linkCtl.resolveUnclear(r) }, // CY-A1
-    { method: 'GET',    path: '/link/admin/shadow-check', auth: true, handler: (r) => linkCtl.shadowCheck(r) },
     { method: 'GET',    path: '/link/admin/log',          auth: true, handler: (r) => linkCtl.log(r) },
     // T4 (X19): admin Intakes + Consents, under the existing /link prefix (vercel.json + sw.js already route /link)
     { method: 'GET',    path: '/link/intake',             auth: true, handler: (r) => linkCtl.intakeList(r) },

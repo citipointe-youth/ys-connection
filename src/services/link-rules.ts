@@ -205,7 +205,7 @@ export function noteRoom(leaderName: string): number {
 
 // ---------------- Outbox state machine (contract §3.3 / §5.3) ----------------
 
-const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled', 'unclear'];
+const FINAL: Status[] = ['sent', 'refused', 'cancelled', 'unclear'];
 
 function targetStatus(item: ResultItem): Status {
   switch (item.outcome) {
@@ -249,7 +249,6 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
       case 'planned': return { next: { ...base, status: 'sent', reason: 'planned', detail: null, resultAt: at } };
       case 'refused': return { next: { ...base, status: 'refused', reason: item.reason, detail: item.detail ?? null, resultAt: at } };
       case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at } };
-      case 'shadowed': return { next: { ...base, status: 'shadowed', sentLogKey: item.sentLogKey, resultAt: at } };
       case 'retry': return { next: { ...base, status: 'pending', reason: item.reason,
         retryAt: new Date(now.getTime() + item.retrySeconds * 1000).toISOString(), leaseOwner: null, leaseUntil: null } };
     }
@@ -358,7 +357,7 @@ export function effectiveCheckState(a: { mirrorIn: boolean; mirrorTakenAt: strin
   const newest = a.rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused') ?? null;
   if (newest) {
     const s = newest.status;
-    const decides = s === 'pending' || s === 'claimed' || s === 'unclear' || s === 'shadowed'
+    const decides = s === 'pending' || s === 'claimed' || s === 'unclear'
       || (s === 'sent' && (a.mirrorTakenAt == null
         || (newest.resultAt != null && Date.parse(newest.resultAt) + SENT_GRACE_MS > Date.parse(a.mirrorTakenAt))));
     if (decides) return { in: newest.type === 'checkIn' };

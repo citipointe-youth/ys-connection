@@ -29,7 +29,6 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     roster: (r: HttpRequest) => L.rosterForMatching(actor(r), r.query),
     setMatch: (r: HttpRequest) => L.setMatch(actor(r), r.params['personId']!, r.body),
     resolveUnclear: (r: HttpRequest) => L.resolveUnclear(actor(r), r.params['id']!, r.body), // CY-A1
-    shadowCheck: (r: HttpRequest) => L.shadowCheck(actor(r), r.query['date']),
     log: (r: HttpRequest) => L.log(actor(r), r.query),
   };
 }

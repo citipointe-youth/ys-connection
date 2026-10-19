@@ -16,6 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
+import { MATCHES } from '../core/link-types';
 import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
@@ -31,14 +32,13 @@ import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
 import {
-  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, leaderInScope, modeAllows, type StructureScope,
+  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, peopleFlowName, consentStepAllowed, consentFriday,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
-import { compareCheckIns } from './reconcile-rules';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -63,7 +63,6 @@ const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
 const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
 const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo', 'resolve'] as const;
-const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ActionFields = { id: Uuid, type: z.enum(ACTION_TYPES), payload: z.record(z.unknown()),
@@ -164,11 +163,6 @@ export interface MemberChange { id: string; type: ActionType; personId: string |
 export interface GroupMembersView { groupId: string; canEdit: boolean; members: MemberView[]; changes: MemberChange[] }
 /** T6: the Add student picker: active youth roster rows (not 'other') this login may see. Name + grade only. */
 export interface YouthRow { personId: string; name: string; grade: number | null }
-export type ShadowVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
-/** The SPA words each verdict (APP-41: no server message). */
-export interface ShadowRow { id: string; personId: string | null; name: string | null; status: Status; studentId: string | null;
-  verdict: ShadowVerdict }
-export interface ShadowCheck { date: string; imported: boolean; rows: ShadowRow[]; unlinkedAttenders: number }
 
 export interface LinkService {
   status(actor: Actor): Promise<LinkStatus>;
@@ -186,7 +180,6 @@ export interface LinkService {
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
   /** CY-A1: the admin says whether an unclear row landed in Elvanto (the console's own `resolved` transition). */
   resolveUnclear(actor: Actor, id: string, body: unknown): Promise<{ ok: true; status: 'sent' | 'refused' }>;
-  shadowCheck(actor: Actor, date: unknown): Promise<ShadowCheck>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
   /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
   consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
@@ -218,7 +211,6 @@ function fixKeyOf(r: OutboxRow): string | null {
   if (r.type === 'consentLink' && typeof p.subId === 'string') return `cn:${p.subId}`;
   return null;
 }
-const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';
 /** S5: how far a long console job has got (POST /sync/push/progress); stale after 2 min, or once `after` (the push it
  *  leads to) has landed. null = nothing known (the SPA slides its bar). */
 export interface ProgressView { done: number | null; total: number | null; stage: string }
@@ -729,13 +721,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       const mirror = { mirrorIn: svc!.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: takenAt(await c.mirror(), 'services') };
       const st = effectiveCheckState({ ...mirror, rows });
-      // A shadowed row is practice: it shows on the door, but it is not "in" for the duplicate check, so a re-tap
-      // once the type is live is sent for real (B5 / APP-46).
-      const real = rows.filter((r) => r.status !== 'shadowed');
-      const realIn = effectiveCheckState({ ...mirror, rows: real }).in;
-      const live = real.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
+      const live = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
       // Same type AND the person is still in that state: a kiosk check-out after a sent check-in allows a new one.
-      if (live && live.type === it.type && realIn === (it.type === 'checkIn')) return dup(live);
+      if (live && live.type === it.type && st.in === (it.type === 'checkIn')) return dup(live);
       if (it.type === 'checkOut' && !st.in) throw new BadRequestError('Not checked in to this service.');
     }
 
@@ -1223,24 +1211,6 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       await d.link.addLog([await logRow(c, { id: null, label: null }, { event: 'resolve', targetKind: 'action', targetId: id,
         targetName: null, outboxId: id, outcome: b.data.landed ? 'sent' : 'refused:not-landed' })]);
       return { ok: true, status };
-    },
-
-    async shadowCheck(actor, date) {
-      await gate(actor, 'admin');
-      const day = Ymd.parse(date);
-      const sessions = (await d.serviceSessions.findAll()).filter((s) => s.sessionDate.slice(0, 10) === day);
-      if (sessions.length === 0) return { date: day, imported: false, rows: [], unlinkedAttenders: 0 };
-      const [att, roster, rows] = await Promise.all([
-        Promise.all(sessions.map((s) => d.serviceAttendance.findBySession(s.id))).then((x) => x.flat()),
-        d.link.roster(),
-        d.link.listActions({ types: ['checkIn'], statuses: ['sent', 'shadowed'], serviceDateFrom: day, serviceDateTo: day })]);
-      const attended = new Set(att.filter((a) => a.attended).map((a) => a.studentId));
-      const linked = new Set<string>();
-      const out: ShadowRow[] = compareCheckIns(attended, roster, rows).map(({ row: r, person: p, studentId, verdict }) => {
-        if (studentId) linked.add(studentId);
-        return { id: r.id, personId: r.personId, name: p ? fullName(p) : null, status: r.status, studentId, verdict };
-      });
-      return { date: day, imported: true, rows: out, unlinkedAttenders: [...attended].filter((s) => !linked.has(s)).length };
     },
 
     async log(actor, q) {

@@ -1,7 +1,7 @@
 // Shared Elvanto link types (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §3). Copied exactly;
 // every lane imports these rather than inventing its own.
 import type { z } from 'zod';
-import type { ACTION_TYPES, STATUSES, PUSH_KINDS, MIRROR_KINDS, REASONS, ResultItem as ResultItemSchema,
+import type { ACTION_TYPES, STATUSES, PUSH_KINDS, MIRROR_KINDS, REASONS, CAPABILITIES, CONSENT_FLAGS, ResultItem as ResultItemSchema,
   ResultResponse as ResultResponseSchema, ResultStep as ResultStepSchema, ResultStop as ResultStopSchema } from './link-contract';
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -12,11 +12,12 @@ export type MirrorKind = (typeof MIRROR_KINDS)[number];
 export type ResultStep = z.infer<typeof ResultStepSchema>;
 export type ResultStop = z.infer<typeof ResultStopSchema>;
 export type Reason = (typeof REASONS)[number];
-export type Capability = 'live' | 'shadow' | 'locked' | 'off';
+export type Capability = (typeof CAPABILITIES)[number];
 /** X18: a type the console does not list (an older console) counts as off: never leased, new rows refused. */
 export type Capabilities = Partial<Record<ActionType, Capability>>;
-export type Consent = 'ok' | 'contact' | 'all' | 'unknown';
-export type Match = 'auto' | 'manual' | 'none' | 'ambiguous' | 'ignored';
+export type Consent = (typeof CONSENT_FLAGS)[number];
+export const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
+export type Match = (typeof MATCHES)[number];
 export type IgnoredWhy = 'unknown-id' | 'not-leased' | 'already-final' | 'bad-transition';
 export type ResultItem = z.infer<typeof ResultItemSchema>;
 export type ResultReply = z.infer<typeof ResultResponseSchema>;

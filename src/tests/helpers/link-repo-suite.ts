@@ -517,7 +517,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(await get('4')).toMatchObject({ status: 'refused', reason: 'report-changed', detail: 'This report changed in Elvanto.' });
         expect(await get('8')).toMatchObject({ status: 'unclear', detail: 'Elvanto may not have saved this.',
           sentLogKey: 'checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000003' });
-        expect(await get('5')).toMatchObject({ status: 'shadowed', sentLogKey: 'complete:ys:f7000000-0000-4000-8000-000000000001' });
+        expect(await get('5')).toMatchObject({ status: 'sent', sentLogKey: 'complete:ys:f7000000-0000-4000-8000-000000000001' });
         expect(await get('a')).toMatchObject({ status: 'sent', sentLogKey: 'k:a' });
         for (const n of ['1', '3', '6', '7', '4', '8', '5']) expect((await get(n)).resultAt).not.toBeNull();
         const retry = await get('9');
