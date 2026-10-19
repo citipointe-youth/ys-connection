@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmShadowHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFfGet',
@@ -1901,13 +1901,15 @@ describe('F4.2 admin page', () => {
   const logRow = (over: any = {}) => ({ id: P(300), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'grade9<b>g</b>', deviceId: 'dev-<1>',
     deviceLabel: 'iPhone · <i>Safari</i>', event: 'identity', leaderId: P(301), leaderName: 'Sam <u>S</u>', prevLeaderId: P(302),
     prevLeaderName: 'Cody <s>C</s>', targetKind: null, targetId: null, targetName: null, outboxId: null, outcome: 'logged', ...over });
-  it('four cards render: Status, Matching, Kiosk vs app check, Activity', () => {
+  it('three cards render: Status, Matching, Activity (the kiosk check is gone, Y-C1)', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.today = '2026-10-16';
     const out = h.fns._lkAdminHtml();
-    for (const id of ['lk-adm-status', 'lk-adm-match', 'lk-adm-shadow', 'lk-adm-log']) expect(out).toContain(`id="${id}"`);
+    for (const id of ['lk-adm-status', 'lk-adm-match', 'lk-adm-log']) expect(out).toContain(`id="${id}"`);
+    expect(out).not.toContain('lk-adm-shadow');
     const text = strip(out);
-    for (const t of ['Status', 'Matching', 'Kiosk vs app check', 'Activity']) expect(text).toContain(t);
+    for (const t of ['Status', 'Matching', 'Activity']) expect(text).toContain(t);
+    expect(text).not.toContain('Kiosk vs app check');
   });
   it('A4 / X17: the Status card says how to stop all data flow', () => {
     const h = makeEnv({ role: 'admin' });
@@ -1947,16 +1949,12 @@ describe('F4.2 admin page', () => {
     expect(ex).toContain('XLSX.writeFile(wb, _lkLogFile(_lkToday()))');
     expect(ex.match(/book_append_sheet/g)).toHaveLength(1);
   });
-  it('the Shadow check date defaults to the last Friday', () => {
+  it('_lkLastFriday is the Friday on or before a day', () => {
     const f = makeEnv().fns._lkLastFriday;
     expect(f('2026-10-16')).toBe('2026-10-16'); // a Friday
     expect(f('2026-10-17')).toBe('2026-10-16');
     expect(f('2026-10-22')).toBe('2026-10-16');
     expect(f('2026-10-15')).toBe('2026-10-09');
-    const h = makeEnv({ role: 'admin' });
-    h.get().LINK.today = '2026-10-19';
-    expect(h.fns._lkAdminHtml()).toContain('value="2026-10-16"');
-    expect(h.fns._lkAdmShadowHtml()).toContain('type="date"');
   });
   it('the page is not reachable for quad, grade or leader', async () => {
     for (const role of ['quad', 'grade', 'leader']) {

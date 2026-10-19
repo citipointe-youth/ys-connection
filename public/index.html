@@ -11986,7 +11986,7 @@ function _nyLinkLoad() {
 }
 // ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin only (T9). ──
 function _lkAdmFresh() {
-  return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none', sDate: null, shadow: null, sErr: null,
+  return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none',
     from: null, to: null, login: '', event: '', log: null, lErr: null };
 }
 // The latest Friday on or before the given day (Brisbane date).
@@ -12112,19 +12112,6 @@ function _lkAdmMatchHtml() {
   }
   return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${body}`;
 }
-function _lkAdmShadowHtml() {
-  const V = { 'matched': 'In Elvanto and in YS attendance', 'sent-not-imported': 'In Elvanto; in YS attendance after the next import.',
-    'practice-matched': 'Practice: in YS attendance', 'practice-missing': 'Practice: not in YS attendance', 'no-student': 'Not matched to a student' };
-  const A = LINK.adm, r = A.shadow;
-  let body = '';
-  if (A.sErr) body = `<p class="lk-sub">${esc(A.sErr)}</p>`;
-  else if (r && !r.imported) body = '<p class="lk-sub">Not in the import</p>';
-  else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
-    + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(V[x.verdict] || x.verdict)}</b></div>`).join('');
-  return `<div class="lk-sec">Kiosk vs app check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
-    <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
-    <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;
-}
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
   if (A.lErr) return `<p class="lk-sub">${esc(A.lErr)}</p>`;
@@ -12147,7 +12134,7 @@ function _lkAdmLogHtml() {
 function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
-    <div class="card" id="lk-adm-shadow">${_lkAdmShadowHtml()}</div><div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+    <div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
 }
 // CY-A1: the admin looked in Elvanto and says whether an unclear row landed. Landed = Saved; Not landed = refused,
 // so the same action can be sent again. Either way the row stops blocking (POST /link/admin/unclear/:id).
@@ -12193,14 +12180,6 @@ async function _lkAdmSet(personId, body) {
 }
 function _lkAdmMatch(personId, studentId) { return _lkAdmSet(personId, { studentId: studentId || null }); }
 function _lkAdmIgnore(personId) { return _lkAdmSet(personId, { studentId: null, ignore: true }); }
-async function _lkAdmShadow() {
-  const A = LINK.adm, d = A.sDate || _lkLastFriday(_lkToday());
-  A.sErr = null; A.shadow = null;
-  _lkAdmDraw('lk-adm-shadow-r', '<p class="lk-hint">Checking...</p>');
-  try { A.shadow = await API.fresh('/link/admin/shadow-check?date=' + encodeURIComponent(d)); }
-  catch (e) { A.sErr = e.message || 'Could not check.'; }
-  _lkAdmDraw('lk-adm-shadow', _lkAdmShadowHtml());
-}
 async function _lkAdmLoadLog() {
   const A = LINK.adm, today = _lkToday();
   const q = ['from=' + encodeURIComponent(A.from || _lkAddDays(today, -6)), 'to=' + encodeURIComponent(A.to || today)];
