@@ -154,7 +154,7 @@ const PEOPLE_FLOW_RE = /^Brisbane - Youth - New People (\d{4})\b/i;
 export function peopleFlowName(names: Iterable<string>, today: string): string | null {
   const year = Number(today.slice(0, 4));
   const found = [...new Set(names)].map((n) => [Number(PEOPLE_FLOW_RE.exec(n.trim())?.[1]), n] as const)
-    .filter(([y]) => y > 0).sort((a, b) => b[0] - a[0]);
+    .filter(([y]) => y > 0).sort((a, b) => b[0] - a[0] || a[1].length - b[1].length); // same year: the exact (shortest) name first
   return (found.find(([y]) => y <= year) ?? found[0])?.[1] ?? null;
 }
 /** The 7-day consent wait: step "0" / "Step 0 ..." of `peopleFlow` (peopleFlowName; youth-gather.js STEP.people0). */
