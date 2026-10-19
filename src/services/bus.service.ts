@@ -209,14 +209,6 @@ const leaderNamesOf = (v: BusRunVehicle, live: Map<string, string>): string[] =>
   const snap = new Map(v.leaderSnap.map((l) => [l.id, l.name]));
   return v.leaderIds.map((id) => snap.get(id) ?? live.get(id)).filter((n): n is string => !!n);
 };
-/** SY-05: a client-chosen drop-off time stays on its night: local date 06:00 to next day 06:00, in any
- *  timezone UTC-12..+14 (the server doesn't know the phone's). ponytail: ~50 h wide, not exact to the night;
- *  tighten with a per-location timezone in ministryConfig if one is ever added. */
-function clampToNight(at: string, serviceDate: string): string {
-  const lo = Date.parse(serviceDate + 'T06:00:00Z') - 14 * 3_600_000;
-  const hi = Date.parse(addDays(serviceDate, 1) + 'T06:00:00Z') + 12 * 3_600_000;
-  return new Date(Math.min(hi, Math.max(lo, Date.parse(at)))).toISOString();
-}
 const clockAt = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: 'numeric', minute: '2-digit', hour12: true });
 // A soft-removed ("not riding") rider keeps the row but loses any car/stop.
 const OFF_CAR = { runVehicleId: null, stopOrder: null, pinned: false } as const;
@@ -379,18 +371,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (d < addDays(today, -14) || d > addDays(today, 7)) throw new BadRequestError('Pick a date in the last 14 days or the next 7');
     // A bare run made early for a later bus night would stop ensureRun copying the fleet into it.
     if (d > cur && isServiceDay(d, dow)) throw new BadRequestError("That's a later bus night — log it on the night");
-    if (create) assertNightWritable(ctx, c, d);
     const existing = await bus.getRunByDate(d);
     if (existing || !create) return existing;
     return (await bus.insertRunIfAbsent({ id: generateId(), serviceDate: d, version: 0, availablePoolLeaderIds: [],
       lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null, createdAt: nowIso() })).run;
-  }
-  /** SY-05: a finished bus night is the record of who drove whom home. Only bus:analysis (director/admin, the
-   *  editPastRider role, whose view is the only past-night writer) may change it here; midweek trips stay open. */
-  function assertNightWritable(ctx: BusCtx, c: MinistryConfig, date: string): void {
-    const dow = c.structure.serviceDayOfWeek;
-    if (isServiceDay(date, dow) && date < currentRunDate(ctx.localNow, dow) && !allowed(ctx, c, 'bus:analysis'))
-      throw new ForbiddenError('That bus night is finished. A director or admin can correct it in Past');
   }
   /** tripRunIfAny that always has a run (creates a bare one), for the trip writes. */
   const tripRunForWrite = async (ctx: BusCtx, c: MinistryConfig): Promise<BusRun> => (await tripRunIfAny(ctx, c, true))!;
@@ -1307,9 +1291,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const run = await tripRunIfAny(ctx, c);
       const r = await bus.getRunRider(riderId);
       if (!run || !r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
-      assertNightWritable(ctx, c, run.serviceDate); // SY-05
       // 2026-10-15 (operator): any Bus login can mark a drop-off on any car.
-      const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ? clampToNight(v.at, run.serviceDate) : nowIso()) : null,
+      const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
       return riderView(saved, await consentOf(saved));

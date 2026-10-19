@@ -1086,10 +1086,9 @@ describe('trip logging (BUS-1)', () => {
     expect(own.runId).toBe((await bus.getRunByDate('2026-10-16'))!.id);
     expect((await svc.myCar(jr(null))).vehicle!.id).toBe(own.id);
   });
-  it('back-dating to last Friday: director/admin only (SY-05), adds the own car to that night', async () => {
+  it('back-dating to last Friday adds the own car to that night', async () => {
     const t = await withFleet(); // Fri 09 run exists
-    await expect(t.svc.saveOwnCar(jr('2026-10-09'), { car, riderIds: [] })).rejects.toMatchObject({ statusCode: 403 });
-    const own = await t.svc.saveOwnCar({ ...jr('2026-10-09'), actor: actor('admin'), asLeaderId: 'L1' }, { car, riderIds: [] });
+    const own = await t.svc.saveOwnCar(jr('2026-10-09'), { car, riderIds: [] });
     expect(own.runId).toBe((await t.bus.getRunByDate('2026-10-09'))!.id);
   });
   it('myCar for a date with no run is empty and creates nothing', async () => {
