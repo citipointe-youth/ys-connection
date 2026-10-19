@@ -3075,12 +3075,6 @@ function _hScopeSvcAvg(trends, u) {
   if (u.role === 'quad') return _hQuadAvg(trends, u.quad);
   return trends.ministry ? Math.round(trends.ministry.averageAttendance) : 0;
 }
-function _hScopeSvcSess(trends, u) {
-  if (!trends) return 0;
-  if (u.role === 'quad') { const q = (trends.byQuad || []).find(x => x.quad === u.quad); return q && q.sessions ? q.sessions.length : 0; }
-  if (u.role === 'grade') { const first = userGrades(u)[0]; const g = (trends.byGrade || []).find(x => x.grade === first); return g && g.sessions ? g.sessions.length : 0; }
-  return trends.ministry && trends.ministry.sessions ? trends.ministry.sessions.length : 0;
-}
 // Merge per-grade session series (trends.byGrade) across a set of grades into a
 // single series (sum attendance per session date). For a single-grade login this
 // returns exactly that grade's series unchanged. Used by a multi-grade grade
@@ -3289,14 +3283,12 @@ async function _renderHomeInner(stale, fromCache) {
   // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
   _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
   const _connSet = new Set((conns || []).map(a => a.studentId));
-  const _lgQuad = q => (lgStats && lgStats.byQuad || []).find(x => x.quad === q);
   const _lgGrade = g => (lgStats && lgStats.byGrade || []).find(x => x.grade === g);
   const _lgScope = _hg != null ? _lgGrade(_hg) : (lgStats && lgStats.overall);
 
   // ── Hero card: welcome + attendance summary (current + previous term) ──
   const svcUniq = sc.filter(s => s.svcAttended > 0).length;
   const svcAvg = _hScopeSvcAvg(trends, u);
-  const svcSessN = _hScopeSvcSess(trends, u);
   const grpEnr = sc.filter(s => s.grpTotal > 0);
   const grpUniq = sc.filter(s => s.grpAttended > 0).length;
   const grpWeeks = grpEnr.length ? Math.max(0, ...grpEnr.map(s => s.grpTotal)) : 0;
@@ -3686,48 +3678,6 @@ function _toggleHomePrev() {
 // ============================================================
 // LEADERS
 // ============================================================
-async function showLeaderDetail(id) {
-  let leader, summary;
-  try {
-    [leader, summary] = await Promise.all([
-      API.get(`/leaders/${id}`),
-      API.get(`/connections/leader/${id}/summary`),
-    ]);
-  } catch { toast('Failed to load leader'); return; }
-  const u = S.user;
-  const canEdit = ['grade','director','admin'].includes(u.role);
-  const students = (summary.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-
-  let studRows = '';
-  for (const s of students) {
-    const pct = s.svcTotal > 0 ? Math.round(s.svcAttended / s.svcTotal * 100) : null;
-    studRows += `<div style="padding:10px 0;border-bottom:1px solid var(--paper-dark);display:flex;align-items:center;gap:10px">
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(s.fullName)}</div>
-        <div style="font-size:12px;color:var(--ink-mid)">Gr ${s.grade||'—'} · ${s.gender}</div>
-      </div>
-      ${pct!==null?`<div style="text-align:right">
-        <div style="font-size:12px;font-weight:700">${pct}%</div>
-        <div class="pb" style="width:50px">${pBar(pct)}</div>
-      </div>`:''}
-    </div>`;
-  }
-
-  modal(`
-    <div class="mo-title">${esc(leader.fullName)}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-      <span class="chip c-accent">${leader.gender||'any gender'}</span>
-      <span class="chip c-neutral">Gr ${leader.grades?.join(', ')||'All'}</span>
-      <span class="chip ${leader.active?'c-success':'c-neutral'}">${leader.active?'Active':'Inactive'}</span>
-    </div>
-    <div class="sh">Assigned Students (${students.length})</div>
-    ${students.length ? studRows : '<p style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students assigned yet</p>'}
-    <div style="display:flex;gap:8px;margin-top:16px">
-      ${canEdit?`<button class="btn btn-primary btn-sm" onclick="closeModal();openStudentPicker('${id}','${leader.gender||''}')">${icS('link')} Add Students</button>`:''}
-      ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="closeModal();showEditLeader('${id}')">${icS('edit')} Edit</button>`:''}
-      <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
-    </div>`);
-}
 
 function showAddLeader() {
   const u = S.user;
@@ -5487,25 +5437,10 @@ function colChart(sessions, maxH, opts) {
     return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
-function hbarTr(label, pct, disp) {
-  const shown = disp !== undefined ? disp : pct + '%';
-  return `<div class="tbar-row"><div class="tbar-lbl">${label}</div><div class="tbar-track"><div class="tbar-fill ${pct<40?'crit':pct<70?'low':''}" style="width:${pct}%"></div></div><div class="tbar-val">${shown}</div></div>`;
-}
 function trendBadge(dir) {
   if (dir === 'up') return `<span class="tr-up" style="display:inline-flex;align-items:center;gap:2px">${icS('arru')} Improving</span>`;
   if (dir === 'down') return `<span class="tr-dn" style="display:inline-flex;align-items:center;gap:2px">${icS('arrd')} Declining</span>`;
   return `<span class="tr-st" style="display:inline-flex;align-items:center;gap:2px">${icS('arrr')} Stable</span>`;
-}
-function trendDir(sessions) {
-  const v = sessions.filter(s => s.tot > 0);
-  if (v.length < 4) return 'stable';
-  const h1 = v.slice(0, Math.floor(v.length/2)).reduce((s,x)=>s+x.pct,0)/Math.floor(v.length/2);
-  const h2 = v.slice(Math.floor(v.length/2)).reduce((s,x)=>s+x.pct,0)/(v.length-Math.floor(v.length/2));
-  if (h2-h1 > 4) return 'up'; if (h1-h2 > 4) return 'down'; return 'stable';
-}
-function avgAtt(sessions) {
-  const v = sessions.filter(s => s.tot > 0);
-  return v.length ? Math.round(v.reduce((s,x)=>s+x.att,0)/v.length) : 0;
 }
 function statCard(nums, labels, prevs) {
   const cols = nums.length;
@@ -5519,12 +5454,6 @@ function statCard(nums, labels, prevs) {
 function grpBar(uniq, enrolled) {
   const p = enrolled ? Math.round(uniq / enrolled * 100) : 0;
   return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-mid);margin-bottom:3px"><span>${uniq} of ${enrolled} enrolled attended at least once</span><span>${p}%</span></div><div class="pb"><div class="pb-f ${p>=75?'fill-g':p>=50?'fill-a':'fill-r'}" style="width:${p}%"></div></div></div>`;
-}
-// Compact trend arrow for at-risk prev-term comparison
-function trendArrow(dir) {
-  if (dir === 'up') return `<span style="color:var(--success);display:inline-flex">${icS('arru')}</span>`;
-  if (dir === 'down') return `<span style="color:var(--danger);display:inline-flex">${icS('arrd')}</span>`;
-  return '';
 }
 
 // Service attendance aggregate for a student subset. `prev=true` reads the
@@ -5657,11 +5586,6 @@ async function renderTrends() {
 
   const byGrade = gradeStats(students);
   const byQuad = quadStats(students);
-  const totalUniq = students.filter(s=>s.svcAttended>0).length;
-  const totalTot = students.reduce((s,x)=>s+x.svcTotal,0);
-  const totalAtt = students.reduce((s,x)=>s+x.svcAttended,0);
-  const totalAvgPct = totalTot > 0 ? Math.round(totalAtt/totalTot*100) : 0;
-  const totalAvgSess = students.length ? Math.round(totalAtt/students.length) : 0;
 
   const QUAD_COLORS = { g79:'#ec4899', b79:'#3b82f6', g1012:'#8b5cf6', b1012:'#10b981' };
 
@@ -8478,7 +8402,6 @@ let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
 let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
-const CA_NAMES=['Ava Okafor','Noah Castellanos','Isla Vandermeer','Eli Borowski','Maya Lindqvist','Levi Acheampong','Zara Kowalczyk','Finn Drummond','Lena Marchetti','Kai Stratford','Ruby Vasquez','Theo Lindgren','Nina Oyelaran','Jude Hartmann','Esme Calloway','Remy Delacroix','Sofia Andrade','Hugo Bertrand','Lola Fitzwilliam','Omar Castaneda','Iris Galloway','Felix Moreau','Tara Whitlock','Ezra Soderberg','Mila Beaumont','Arlo Kingsley'];
 
 // ---------- utils ----------
 function h32(x){let h=0;for(const c of String(x))h=(h*31+c.charCodeAt(0))>>>0;return h;}
@@ -8571,7 +8494,6 @@ function _auditLgStats(sel,prev){
   return {byQuad:Object.keys(quads).map(q=>({quad:q,grades:Object.values(quads[q].grades)}))};
 }
 function sessSeries(){const t=D&&D.trends&&D.trends.ministry;return((t&&t.sessions)||[]).filter(x=>!x.isOutlier).map(x=>({date:x.sessionDate,v:x.totalAttended||0}));}
-function sessDates(){const ss=sessSeries();if(ss.length)return ss.map(x=>x.date);const a=[];for(let i=9;i>=0;i--)a.push(new Date(Date.now()-i*7*864e5).toISOString().slice(0,10));return a;}
 function regR(){const s=D.settings||{};return(s.regRateNumerator||3)/(s.regRateDenominator||4);}
 
 // ---------- store ----------
@@ -8595,7 +8517,6 @@ function restore(){
 function reset(){try{localStorage.removeItem(KEY);}catch{}st=null;mdl=null;D=null;warnOff=false;AUDIT=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};}
 // Server audits have no localStorage-staleness/seed concept — the freshness cue
 // is the year + uploaded date shown in the switcher and Data tab.
-function seedOn(){return false;}
 function stale(){return false;}
 
 // (Demo seed removed — audit uploads start empty; see emptyUploads.)
@@ -9161,11 +9082,6 @@ function exportQuad(q){
   document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);
   closeModal();toast((rows.length-1)+' follow-ups exported');
 }
-function slotS(t,sub){return '<div class="ca-uslot"><div class="ca-uic ok">'+icS('check')+'</div><div class="ca-usl"><div class="ca-ust">'+t+'</div><div class="ca-uss">'+sub+'</div></div><span class="chip c-success">Synced</span></div>';}
-function slotU(kind,t,up){
-  const sd=up.src==='seed';
-  return '<div class="ca-uslot"><div class="ca-uic '+(sd?'wn':'ok')+'">'+icS('upload')+'</div><div class="ca-usl"><div class="ca-ust">'+t+'</div><div class="ca-uss">'+(sd?'Demo seed':esc(up.fn))+' · '+up.rows.length+' rows · '+fmtD(up.at)+'</div></div><button class="btn btn-secondary btn-sm" onclick="CA.pick(\''+kind+'\')">Replace</button><input type="file" id="ca-f-'+kind+'" accept=".csv,.xlsx" style="display:none" onchange="CA.upload(\''+kind+'\',this)"></div>';
-}
 function rData(){
   let b='';
   // ── Year selector (existing server-stored audits) ──
@@ -9328,11 +9244,10 @@ function _buildDeckBody(){
   const gSorted=m.groups.slice().sort((a,b)=>b.va-a.va);
   const strongLg=gSorted[0]||null,weakLg=gSorted[gSorted.length-1]||null;
   const gDecl=m.groups.filter(g=>g.trend==='declining').length;
-  const seedy=seedOn(),isStale=stale();
+  const isStale=stale();
   const upDate=fmtD(st.uploads.connect.at);
   const rrPct=Math.round(((D.settings&&D.settings.regRateNumerator)||3)/((D.settings&&D.settings.regRateDenominator)||4)*100);
-  const currency=seedy?'Student Team / Connect / Decision data is the demo seed (seeded '+upDate+') — replace it in the Data tab before presenting these figures.'
-    :isStale?'Student Team / Connect / Decision data was last updated '+upDate+' — refresh it in the Data tab for full currency.'
+  const currency=isStale?'Student Team / Connect / Decision data was last updated'+upDate+' — refresh it in the Data tab for full currency.'
     :'This audit — attendance, Student Team, Connect and Decision — was last saved on '+upDate+'.';
   const funnelViz=()=>{const max=Math.max(1,atLeast(1));return '<div class="funnel">'+m.rungs.map((r,i)=>{const w=Math.max(7,Math.round(r.v/max*100)),leaky=i===leak;return '<div class="frow"><span class="flabel">'+esc(r.lb)+'</span><span class="ftrack"><span class="fbar'+(leaky?' leaky':'')+'" style="width:'+w+'%"></span></span><b class="fval'+(leaky?' leaky':'')+'">'+r.v+'</b></div>';}).join('')+'</div>';};
   const sparkViz=()=>{
@@ -9637,7 +9552,7 @@ async function render(p){
   restore();mdl=null;
   dispatch(p);
 }
-return{render,reset,stale,seedOn,dismissWarn,setYear,setTerm,saveAudit,
+return{render,reset,stale,dismissWarn,setYear,setTerm,saveAudit,
   model:async()=>{await load();restore();return model();},
   fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,showLgRoster,exportMenu,exportQuad,buildDeck,
   pq,pstage,pquad,pmore};
