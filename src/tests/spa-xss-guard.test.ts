@@ -104,3 +104,42 @@ describe('XSS guard: text properties in HTML templates go through esc()', () => 
     expect(hits, `unescaped reads (wrap in esc() or add to ALLOW with a reason):\n${report}`).toEqual([]);
   });
 });
+
+// SY-01 (review 2026-10-19): esc() turns ' into &#39;, and the browser decodes it back before an
+// on*= handler runs, so `onclick="f('${esc(name)}')"` lets a name close the JS string. Inside an
+// on*= attribute only ids may be interpolated into a quoted JS string; look free text up in the handler.
+// Not ids by name, but server-made non-text values (reviewed):
+const ID_LIKE_ALLOW = new Set([
+  'r.code',            // error-log code, a server constant (elWho)
+  'w.start', 'd.date', 'v.run.serviceDate', // YYYY-MM-DD dates
+  'LINK.pickSel',      // a serviceTimeId
+]);
+const isIdExpr = (e: string) => /(^|\.)(id|[a-z]\w*Id)$/.test(e) || ID_LIKE_ALLOW.has(e);
+
+export function scanHandlerArgs(src: string): { line: number; expr: string }[] {
+  const hits: { line: number; expr: string }[] = [];
+  src.split('\n').forEach((text, idx) => {
+    const re = /'\$\{esc\(/g; let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      if (!/\son[a-z]+="[^"]*$/.test(text.slice(0, m.index))) continue; // not inside an on*= attribute
+      let depth = 1, k = m.index + m[0].length; const start = k;
+      while (k < text.length && depth) { if (text[k] === '(') depth++; else if (text[k] === ')') depth--; k++; }
+      const expr = text.slice(start, k - 1).trim();
+      if (!isIdExpr(expr)) hits.push({ line: idx + 1, expr });
+    }
+  });
+  return hits;
+}
+
+describe('XSS guard: on*= handlers pass ids only (SY-01)', () => {
+  it('flags esc()d free text in a handler and accepts an id (self-test)', () => {
+    expect(scanHandlerArgs(`<b onclick="del('\${esc(l.id)}','\${esc(l.fullName).replace(/'/g,"\\'")}')">`)).toHaveLength(1);
+    expect(scanHandlerArgs(`<b onclick="del('\${esc(l.id)}')">\${esc(l.fullName)}</b>`)).toHaveLength(0);
+  });
+
+  it('index.html passes no esc()d free text into an on*= handler', () => {
+    const hits = scanHandlerArgs(loadIndexHtml());
+    const report = hits.map((h) => `  line ${h.line}: esc(${h.expr})`).join('\n');
+    expect(hits, `pass the id and look the text up inside the handler:\n${report}`).toEqual([]);
+  });
+});

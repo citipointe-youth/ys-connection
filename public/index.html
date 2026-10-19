@@ -3764,8 +3764,11 @@ async function submitAddLeader() {
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
+// SY-01: the leader open in Edit leader. confirmDelLeader reads the name from here, never through onclick.
+let _editLeader = null;
 async function showEditLeader(id) {
   let l; try { l = await API.get(`/leaders/${id}`); } catch { toast('Not found'); return; }
+  _editLeader = l;
   const u = S.user;
   // Grade/quad logins can broaden which OTHER grades a leader covers, so they
   // can see and connect students from those grades too — not just their own
@@ -3795,7 +3798,7 @@ async function showEditLeader(id) {
       <button class="btn btn-primary" style="flex:1" onclick="submitEditLeader('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
-    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}','${esc(l.fullName).replace(/'/g,"\\'")}')">${icS('trash')} Remove leader</button>`);
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}')">${icS('trash')} Remove leader</button>`);
 }
 
 async function submitEditLeader(id) {
@@ -3824,7 +3827,8 @@ async function submitEditLeader(id) {
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
-function confirmDelLeader(id, name) {
+function confirmDelLeader(id) {
+  const name = (_editLeader && _editLeader.id === id ? _editLeader.fullName : ((_aS.leaders || []).find(x => x.id === id) || {}).fullName) || 'This leader';
   // How many students are currently connected to this leader (blast radius)?
   const affected = Object.values(_aS.allocs || {}).filter(ids => (ids || []).includes(id));
   const n = affected.length;
@@ -6257,7 +6261,7 @@ async function previewServiceImport(filename, rows) {
       <div>Grades seen: ${[...grades].sort((a,b)=>a-b).join(', ') || '—'}</div>
     </div>${warn}
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   window._pendingServiceRows = rows;
@@ -6272,7 +6276,7 @@ function previewGroupImport(filename, parsed) {
       <div><strong>${totalMembers}</strong> member row${totalMembers!==1?'s':''}</div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   window._pendingGroups = parsed;
