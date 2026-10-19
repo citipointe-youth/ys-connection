@@ -422,17 +422,6 @@ describe('drop-off record', () => {
   });
 });
 
-describe('history', () => {
-  it('lists past runs for director only and keeps snapshots', async () => {
-    const t = await withFleet();
-    expect(await t.svc.listRuns(t.ctx('director', null, '2026-10-12T10:00'))).toHaveLength(1);
-    await expect(t.svc.listRuns(t.ctx('quad'))).rejects.toMatchObject({ statusCode: 403 });
-    const past = await t.svc.getPastRun(t.ctx('admin', null, '2026-10-12T10:00'), (await t.svc.getVersion(t.ctx('admin'))).runId!);
-    expect(past.run.readOnly).toBe(true);
-    expect(past.riders).toHaveLength(3);
-  });
-});
-
 describe('Zod refine messages reach the user (M1)', () => {
   it('addRider surfaces the refine message, not generic "Validation failed"', async () => {
     const { svc, ctx } = await setup();
@@ -523,14 +512,13 @@ describe('own car write-ordering (I6)', () => {
   });
 });
 
-// M5: listRuns ("Past nights") must only ever return nights strictly before tonight's run.
-describe('listRuns excludes tonight and any future run (M5)', () => {
+// M5: history ("Past nights") must only ever return nights strictly before tonight's run.
+describe('history excludes tonight and any future run (M5)', () => {
   it("excludes tonight's own run, not just a future one", async () => {
     const t = await withFleet(); // creates the run for FRI_7PM (2026-10-09)
-    const tonight = await t.svc.listRuns(t.ctx('director'));
-    expect(tonight).toHaveLength(0);
-    const nextWeek = await t.svc.listRuns(t.ctx('director', null, '2026-10-16T19:00'));
-    expect(nextWeek).toHaveLength(1); // last Friday's run is now in the past
+    expect((await t.svc.history(t.ctx('director'))).nights).toHaveLength(0);
+    const nextWeek = await t.svc.history(t.ctx('director', null, '2026-10-16T19:00'));
+    expect(nextWeek.nights).toHaveLength(1); // last Friday's run is now in the past
   });
 });
 

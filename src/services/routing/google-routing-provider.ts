@@ -139,11 +139,11 @@ export class GoogleRoutingProvider implements RoutingProvider {
     });
   }
 
-  async autocomplete(input: string, sessionToken: string, regionCode: string, signal: AbortSignal): Promise<PlaceSuggestion[]> {
+  async autocomplete(input: string, sessionToken: string, signal: AbortSignal): Promise<PlaceSuggestion[]> {
     const res = await this.call('https://places.googleapis.com/v1/places:autocomplete', { method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': this.cfg.apiKey,
         'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text' },
-      body: JSON.stringify(autocompleteBody(input, sessionToken, regionCode)) }, signal, 'address search');
+      body: JSON.stringify(autocompleteBody(input, sessionToken)) }, signal, 'address search');
     return parseAutocomplete(await res.json());
   }
 

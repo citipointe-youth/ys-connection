@@ -99,7 +99,8 @@ describe('GoogleRoutingProvider', () => {
   });
   it('autocomplete sends the key as a header, never in the body', async () => {
     const { fn, calls } = stubFetch({ 'https://places.googleapis.com/v1/places:autocomplete': () => json({ suggestions: [] }) });
-    await new GoogleRoutingProvider(cfg, fn).autocomplete('24 Wynnum', 'sess-123456', 'au', sig());
+    await new GoogleRoutingProvider(cfg, fn).autocomplete('24 Wynnum', 'sess-123456', sig());
+    expect(JSON.parse(String(calls[0]!.init.body)).includedRegionCodes).toEqual(['au']);
     expect((calls[0]!.init.headers as Record<string, string>)['X-Goog-Api-Key']).toBe(KEY);
     expect(String(calls[0]!.init.body)).not.toContain(KEY);
   });
@@ -115,7 +116,7 @@ describe('GoogleRoutingProvider', () => {
   it('times out with a RoutingError when the deadline passes', async () => {
     const { fn } = stubFetch({ 'https://places.googleapis.com/': (init) => new Promise<Response>((_, reject) =>
       init.signal!.addEventListener('abort', () => reject(new Error('aborted')))) });
-    await expect(new GoogleRoutingProvider(cfg, fn).autocomplete('24 Wynnum', 's-12345678', '', AbortSignal.timeout(20)))
+    await expect(new GoogleRoutingProvider(cfg, fn).autocomplete('24 Wynnum', 's-12345678', AbortSignal.timeout(20)))
       .rejects.toThrow(/timed out/);
   });
   // Task 4 (owner): Route Optimization rejects a street-level placeId with "No LatLng location
@@ -200,8 +201,8 @@ describe('routingFromEnv', () => {
   it('I4: the prod fallback (missing env, not memory mode) suggests nothing; memory/test mode still does', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const sig2 = new AbortController().signal;
-    expect(await routingFromEnv({ PERSISTENCE: 'supabase' }).autocomplete('24 Wynnum Rd', 's', '', sig2)).toEqual([]);
-    expect(await routingFromEnv({ PERSISTENCE: 'memory' }).autocomplete('24 Wynnum Rd', 's', '', sig2)).not.toEqual([]);
+    expect(await routingFromEnv({ PERSISTENCE: 'supabase' }).autocomplete('24 Wynnum Rd', 's', sig2)).toEqual([]);
+    expect(await routingFromEnv({ PERSISTENCE: 'memory' }).autocomplete('24 Wynnum Rd', 's', sig2)).not.toEqual([]);
     warn.mockRestore();
   });
 });

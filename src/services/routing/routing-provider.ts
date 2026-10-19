@@ -36,7 +36,7 @@ export interface MapImage { contentType: string; bytes: Uint8Array }
 export interface RoutingProvider {
   readonly name: 'google' | 'fake';
   solve(p: SolveProblem, signal: AbortSignal): Promise<SolveResult>;
-  autocomplete(input: string, sessionToken: string, regionCode: string, signal: AbortSignal): Promise<PlaceSuggestion[]>;
+  autocomplete(input: string, sessionToken: string, signal: AbortSignal): Promise<PlaceSuggestion[]>;
   /** Drive seconds for each from→to pair, same order as `pairs`. */
   matrix(pairs: { from: RoutePoint; to: RoutePoint }[], signal: AbortSignal): Promise<number[]>;
   staticMap(paths: MapPath[], markers: MapMarker[], signal: AbortSignal): Promise<MapImage>;

@@ -134,7 +134,6 @@ describe('route analysis', () => {
     const s0 = await f.settings.getSettings();
     await f.settings.updateSettings({ ministryConfig: { ...s0.ministryConfig, busMinistry: { ...s0.ministryConfig.busMinistry, coordinatorLeaderIds: ['L1'] } } });
     await expect(f.svc.analysis(f.ctx('grade', 'L1'))).resolves.toBeTruthy();
-    await expect(f.svc.listRuns(f.ctx('grade', 'L1'))).rejects.toMatchObject({ statusCode: 403 }); // Past nights stay director/admin
     const off = await busFixture();
     const s = await off.settings.getSettings();
     await off.settings.updateSettings({ ministryConfig: { ...s.ministryConfig, modules: { ...s.ministryConfig.modules, busMinistry: false } } });

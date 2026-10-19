@@ -76,9 +76,9 @@ export function parseOptimizeTours(json: unknown, p: SolveProblem): SolveResult 
 // level ('route', e.g. "St Andrews Dr") and exact ones — so suburbs/businesses/regions never show
 // up as a pick, but a street itself still can. Max 5 types allowed; 4 used.
 const ADDRESS_TYPES = ['street_address', 'premise', 'subpremise', 'route'];
-export function autocompleteBody(input: string, sessionToken: string, regionCode: string) {
-  return { input, sessionToken, includedPrimaryTypes: ADDRESS_TYPES,
-    ...(regionCode ? { includedRegionCodes: [regionCode.toLowerCase()] } : {}) };
+// ponytail: Australia only; make it a location setting if a site outside AU ever runs Bus.
+export function autocompleteBody(input: string, sessionToken: string) {
+  return { input, sessionToken, includedPrimaryTypes: ADDRESS_TYPES, includedRegionCodes: ['au'] };
 }
 export function parseAutocomplete(json: unknown): PlaceSuggestion[] {
   const j = (json ?? {}) as any;

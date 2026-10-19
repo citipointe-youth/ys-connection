@@ -93,10 +93,8 @@ describe('parseOptimizeTours tolerates omitted zero fields (proto3 JSON)', () =>
 describe('autocomplete', () => {
   // Task 1 (owner): restrict to real, selectable addresses — street-level ('route') and exact —
   // so suburbs/businesses never show up as a pick, but a street itself still can.
-  it('sends the text, session token, includedPrimaryTypes and (when set) region', () => {
-    expect(autocompleteBody('24 Wynnum', 'sess-1', '')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1',
-      includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route'] });
-    expect(autocompleteBody('24 Wynnum', 'sess-1', 'AU')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1',
+  it('sends the text, session token, includedPrimaryTypes and the AU region', () => {
+    expect(autocompleteBody('24 Wynnum', 'sess-1')).toEqual({ input: '24 Wynnum', sessionToken: 'sess-1',
       includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route'], includedRegionCodes: ['au'] });
   });
   it('keeps place predictions only', () => {

@@ -121,7 +121,7 @@ describe('generate', () => {
     await f.svc.generate(f.admin, { mode: 'all' });
     await f.svc.autocomplete(f.admin, '24 Wynnum Rd', 'sess-12345678');
     const sent = JSON.stringify([...rec.calls.solve.map((p) => optimizeToursBody(p)),
-      ...rec.calls.autocomplete.map((c) => autocompleteBody(c.input, c.session, c.region))]);
+      ...rec.calls.autocomplete.map((c) => autocompleteBody(c.input, c.session))]);
     // Deviation from the brief: a plain substring check on 'Tran' false-positives against
     // optimizeToursBody's own "populateTransitionPolylines" key (Task 1 code, unrelated to the
     // rider's surname) — bound the match so it can't land inside an unrelated identifier.
@@ -574,14 +574,14 @@ describe('generate: lock release is per-call, not per-name (Task 2)', () => {
 });
 
 describe('autocomplete', () => {
-  it('short input returns [] without calling Google; region code and session are passed through', async () => {
+  it('short input returns [] without calling Google; the session is passed through', async () => {
     const rec = recordingRouting();
     const f = await busFixture({ routing: rec.provider });
     expect(await f.svc.autocomplete(f.admin, 'ab', 'sess-12345678')).toEqual([]);
     expect(rec.calls.autocomplete).toHaveLength(0);
     const hits = await f.svc.autocomplete(f.admin, '24 Wynnum', 'sess-12345678');
     expect(hits[0]).toEqual({ placeId: 'fake:24-wynnum:1', text: '24 Wynnum 1, Testville' });
-    expect(rec.calls.autocomplete[0]).toEqual({ input: '24 Wynnum', session: 'sess-12345678', region: 'au' });
+    expect(rec.calls.autocomplete[0]).toEqual({ input: '24 Wynnum', session: 'sess-12345678' });
   });
 });
 

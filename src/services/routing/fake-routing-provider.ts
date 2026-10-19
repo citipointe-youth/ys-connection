@@ -66,7 +66,7 @@ export class FakeRoutingProvider implements RoutingProvider {
     return { routes, skipped };
   }
 
-  async autocomplete(input: string, _sessionToken?: string, _regionCode?: string, _signal?: AbortSignal): Promise<PlaceSuggestion[]> {
+  async autocomplete(input: string, _sessionToken?: string, _signal?: AbortSignal): Promise<PlaceSuggestion[]> {
     if (this.cfg.suggest === false) return [];
     const q = input.trim();
     if (q.length < 3) return [];

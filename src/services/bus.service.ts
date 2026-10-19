@@ -57,8 +57,6 @@ export interface BusService {
   linkGuest(ctx: BusCtx, guestId: string, input: unknown): Promise<void>;
   dismissGuest(ctx: BusCtx, guestId: string): Promise<void>;
   linkGuestsAfterImport(): Promise<{ linked: number }>;
-  listRuns(ctx: BusCtx): Promise<{ id: string; serviceDate: string; riders: number; cars: number }[]>;
-  getPastRun(ctx: BusCtx, runId: string): Promise<BusRunView>;
   history(ctx: BusCtx, from?: string): Promise<BusHistoryView>;
   editPastRider(ctx: BusCtx, runId: string, riderId: string, input: unknown): Promise<{ ok: true }>;
   autocomplete(ctx: BusCtx, q: string, session: string): Promise<PlaceSuggestion[]>;
@@ -147,11 +145,8 @@ const EditPastIn = z.object({
 });
 const GenerateIn = z.object({ mode: z.enum(['all', 'fit']) });
 const ExtraCarsIn = z.object({ count: z.number().int().min(1).max(2), seats: z.number().int().min(3).max(15) });
-// Task 1: generate() can make up to two Google solves (the main solve + a lone-girl re-solve) plus
-// per-rider writes between/after them. GENERATE_SOLVE_BUDGET_MS is ONE shared deadline for every
-// solve a single generate() call makes (previously each got its own fresh 15s routingDeadline(),
-// so the two solves together could outlast LOCK_MS). LOCK_MS sits comfortably above that budget
-// plus the writes — the Vercel function's own maxDuration (vercel.json) is 60s.
+// generate() makes one Google solve plus per-rider writes. GENERATE_SOLVE_BUDGET_MS is that solve's
+// deadline; LOCK_MS sits comfortably above it plus the writes (the Vercel function's maxDuration is 60s).
 const GENERATE_SOLVE_BUDGET_MS = 30_000;
 const LOCK_MS = 55_000;
 const UNDO_MS = 120_000;
@@ -1358,23 +1353,6 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       return { linked };
     },
-    async listRuns(ctx) {
-      const c = await gate(ctx, 'bus:analysis');
-      // M5: "Past nights" means strictly before tonight — without this, listRuns also
-      // returned tonight's (and, if one somehow existed, a future) run.
-      const today = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
-      const runs = (await bus.listRuns()).filter((r) => r.serviceDate < today);
-      const ids = runs.map((r) => r.id);
-      const [riders, cars] = await Promise.all([bus.listRunRidersOf(ids), bus.listRunVehiclesOf(ids)]);
-      return runs.map((r) => ({ id: r.id, serviceDate: r.serviceDate,
-        riders: riders.filter((x) => x.runId === r.id && !x.notRiding).length, cars: cars.filter((v) => v.runId === r.id && v.running).length }));
-    },
-    async getPastRun(ctx, runId) {
-      const c = await gate(ctx, 'bus:analysis');
-      const run = await bus.getRun(runId);
-      if (!run) throw new NotFoundError('Night not found');
-      return buildView(ctx, c, run);
-    },
     // Past-nights history: nights before tonight (>= from) with their riders/cars, plus one row per
     // ride for the table + export. Built from batch reads; firstTime looks at ALL history, not the window.
     async history(ctx, from) {
@@ -1466,7 +1444,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const input = q.trim();
       if (input.length < 3 || input.length > 120) return [];
       const token = SESSION_RE.test(session) ? session : generateId();
-      try { return await routing.autocomplete(input, token, 'au', routingDeadline()); }
+      try { return await routing.autocomplete(input, token, routingDeadline()); }
       catch (err) { throw routingFailed(err, SEARCH_FAILED); }
     },
     async generate(ctx, input) {

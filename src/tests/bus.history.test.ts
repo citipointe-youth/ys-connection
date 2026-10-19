@@ -33,7 +33,6 @@ describe('not riding (soft remove)', () => {
     const h = await f.svc.history(f.at('admin', WK2));
     expect(h.nights[0]).toMatchObject({ riders: 1, notRiding: 1 });
     expect(h.rides.find((r) => r.studentId === 's1')).toMatchObject({ notRiding: true, car: null });
-    expect((await f.svc.listRuns(f.at('admin', WK2)))[0]!.riders).toBe(1);
   });
 
   it('removing from My car keeps the row as not riding', async () => {
@@ -88,8 +87,6 @@ describe('leaderSnap + wasGuest', () => {
     const h = await f.svc.history(f.at('admin', WK2));
     expect(h.nights[0]!.leaders.sort()).toEqual(['Sarah', 'Tom']);
     expect(h.rides[0]!.leaders).toBeDefined();
-    const past = await f.svc.getPastRun(f.at('admin', WK2), h.nights[0]!.id);
-    expect(past.vehicles[0]!.leaderNames.sort()).toEqual(['Sarah', 'Tom']);
   });
 
   it('a guest linked to a student shows as that student on their past rides', async () => {

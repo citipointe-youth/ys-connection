@@ -34,8 +34,8 @@ describe('FakeRoutingProvider', () => {
     expect(r.routes[0]!.polyline).toBeTruthy();
   });
   it('autocomplete returns canned suggestions built from the query', async () => {
-    expect(await f.autocomplete('ab', 's', '', sig)).toEqual([]);
-    expect(await f.autocomplete(' 24 Wynnum ', 's', '', sig)).toEqual([
+    expect(await f.autocomplete('ab', 's', sig)).toEqual([]);
+    expect(await f.autocomplete(' 24 Wynnum ', 's', sig)).toEqual([
       { placeId: 'fake:24-wynnum:1', text: '24 Wynnum 1, Testville' },
       { placeId: 'fake:24-wynnum:2', text: '24 Wynnum 2, Testville' },
       { placeId: 'fake:24-wynnum:3', text: '24 Wynnum 3, Testville' },
@@ -53,7 +53,7 @@ describe('FakeRoutingProvider', () => {
   // "Testville" suggestions — they'd get saved as a real rider/church address.
   it('I4: suggest:false turns off autocomplete; default (dev/test) still suggests', async () => {
     const noSuggest = new FakeRoutingProvider({ suggest: false });
-    expect(await noSuggest.autocomplete('24 Wynnum Rd', 's', '', sig)).toEqual([]);
-    expect(await f.autocomplete('24 Wynnum Rd', 's', '', sig)).not.toEqual([]);
+    expect(await noSuggest.autocomplete('24 Wynnum Rd', 's', sig)).toEqual([]);
+    expect(await f.autocomplete('24 Wynnum Rd', 's', sig)).not.toEqual([]);
   });
 });
