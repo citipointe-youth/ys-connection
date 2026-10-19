@@ -12238,7 +12238,8 @@ function _lkAdmStatusHtml() {
     <p class="lk-sub">Each link screen has its own switch in Youth Setup, Modules. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? progBar('Loading')
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
-    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}
+    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}
+      <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div></div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
 // Matching: Unmatched / Several possible / Set by hand. Elvanto person in bold; YS candidates with grade and birth date.
@@ -12306,6 +12307,27 @@ function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
     <div class="card" id="lk-adm-shadow">${_lkAdmShadowHtml()}</div><div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+}
+// CY-A1: the admin looked in Elvanto and says whether an unclear row landed. Landed = Saved; Not landed = refused,
+// so the same action can be sent again. Either way the row stops blocking (POST /link/admin/unclear/:id).
+function _lkAdmUnclearOpen(id, landed) {
+  const a = (LINK.adm.acts || []).find((x) => x.id === id);
+  if (!a) return;
+  LINK.adm.uAsk = { id, landed };
+  const what = _lkVerb(a.type) + ' · ' + (a.name || 'Unknown person');
+  modal(`<div class="mo-title">${landed ? 'Landed in Elvanto?' : 'Not landed in Elvanto?'}</div><div class="lk-d">${esc(what)}</div>`
+    + `<div class="ik-line">${landed ? 'Marks it Saved. Nothing is sent.' : 'Marks it Not landed. Send it again from the app if it is still needed.'}</div>`
+    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_lkAdmUnclearGo()">${landed ? 'Landed' : 'Not landed'}</button></div>`,
+    () => { LINK.adm.uAsk = null; });
+}
+async function _lkAdmUnclearGo() {
+  const u = LINK.adm.uAsk;
+  if (!u) return;
+  LINK.adm.uAsk = null;
+  closeModal();
+  try { await API.post('/link/admin/unclear/' + encodeURIComponent(u.id), { landed: u.landed }); toast(u.landed ? 'Marked Saved' : 'Marked Not landed'); }
+  catch (e) { toast(e.message || 'Could not save.'); }
+  await _lkAdmLoadActs();
 }
 function _lkAdmDraw(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 async function _lkAdmLoadActs() {
