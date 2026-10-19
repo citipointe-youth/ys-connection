@@ -61,8 +61,6 @@ export function makeBusController(deps: { bus: BusService }) {
     saveOwnCar: (r: HttpRequest) => b.saveOwnCar(ctxOf(r), r.body),
     removeOwnCar: async (r: HttpRequest) => { await b.removeOwnCar(ctxOf(r), r.query['owner'] ? String(r.query['owner']) : null); return { ok: true }; },
     myCar: (r: HttpRequest) => b.myCar(ctxOf(r)),
-    runs: (r: HttpRequest) => b.listRuns(ctxOf(r)),
-    pastRun: (r: HttpRequest) => b.getPastRun(ctxOf(r), p(r, 'id')),
     history: (r: HttpRequest) => b.history(ctxOf(r), r.query['from'] ? String(r.query['from']) : undefined),
     editPastRider: (r: HttpRequest) => b.editPastRider(ctxOf(r), p(r, 'id'), p(r, 'riderId'), r.body),
     autocomplete: (r: HttpRequest) => b.autocomplete(ctxOf(r), String(r.query['q'] ?? ''), String(r.query['session'] ?? '')),

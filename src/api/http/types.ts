@@ -9,15 +9,17 @@ export interface HttpRequest {
   origin?: string;
 }
 
+/** What an `auth: true` handler receives: the adapter has already returned 401 when there is no session. */
+export type AuthedRequest = HttpRequest & { ctx: Actor };
+
 /** A non-JSON route result (e.g. an image). The adapter sends the bytes as-is; errors stay JSON. */
 export class RawResponse {
   constructor(readonly contentType: string, readonly body: Uint8Array) {}
 }
 
-export interface Route {
+interface RouteBase {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   path: string;
-  auth: boolean;
   // If true, this route stays reachable for an actor with mustChangePassword set —
   // everything else 403s (MUST_CHANGE_PASSWORD) until the password is changed.
   // Only /auth/me, /auth/logout, and /accounts/me/password should ever need this.
@@ -25,5 +27,8 @@ export interface Route {
   // The console's /sync routes: no session. The adapter checks `Authorization: Bearer <LINK_SYNC_TOKEN>` instead
   // (exact, timing-safe) and calls the handler with ctx === null. Use with auth: false.
   sync?: true;
-  handler: (req: HttpRequest) => Promise<unknown>;
 }
+
+export type Route =
+  | (RouteBase & { auth: true; handler: (req: AuthedRequest) => Promise<unknown> })
+  | (RouteBase & { auth: false; handler: (req: HttpRequest) => Promise<unknown> });

@@ -35,8 +35,6 @@ export interface AtRiskEntry {
 
 export interface AtRiskService {
   list(actor: Actor, filter?: { grade?: number; gender?: string }): Promise<AtRiskEntry[]>;
-  // Re-compute and persist at-risk status for all students based on current settings
-  recompute(actor: Actor): Promise<{ updated: number }>;
 }
 
 // Severity order for sorting (most severe first)
@@ -179,25 +177,6 @@ export function makeAtRiskService(
         const bi = SEVERITY_ORDER.indexOf(b.status as AtRiskStatus);
         return (ai - bi) || a.fullName.localeCompare(b.fullName);
       });
-    },
-
-    async recompute(actor) {
-      assertCan(actor, 'import:run');
-      const students = await studentRepo.findAll();
-      const now = new Date().toISOString();
-      const changed = [];
-      for (const s of students) {
-        const newStatus = computeStatus(
-          s.svcAttended, s.svcTotal, s.grpAttended, s.grpTotal,
-          s.prevSvcAttended, s.prevSvcTotal, s.prevGrpAttended, s.prevGrpTotal,
-        );
-        if (newStatus !== s.atRiskStatus) {
-          changed.push({ ...s, atRiskStatus: newStatus, updatedAt: now });
-        }
-      }
-      // Single bulk write (chunked in the repo) instead of one save per student.
-      if (changed.length > 0) await studentRepo.saveMany(changed);
-      return { updated: changed.length };
     },
   };
 }

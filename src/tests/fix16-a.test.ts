@@ -100,13 +100,6 @@ describe('F-10 CSV export', () => {
   });
 });
 
-describe('F-27 search', () => {
-  it('junior guys search excludes Yr10+', async () => {
-    const r = await w.studentSvc.search(B79, 'Guy');
-    expect(r.map((s) => s.id)).toEqual([w.s8m.id]);
-  });
-});
-
 describe('F-50(a) personVisible', () => {
   const row = (gender: string | null) => ({ grade: 8, gender } as any);
   it('unknown gender is hidden from a gender-scoped login, visible to an unscoped one', () => {

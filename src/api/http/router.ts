@@ -91,7 +91,6 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Students -----
     { method: 'GET',    path: '/students',                    auth: true, handler: (r) => student.list(r) },
     { method: 'POST',   path: '/students',                    auth: true, handler: (r) => student.create(r) },
-    { method: 'GET',    path: '/students/search',             auth: true, handler: (r) => student.search(r) },
     { method: 'GET',    path: '/students/:id',                auth: true, handler: (r) => student.get(r) },
     { method: 'PATCH',  path: '/students/:id',                auth: true, handler: (r) => student.update(r) },
     { method: 'DELETE', path: '/students/:id',                auth: true, handler: (r) => student.remove(r) },
@@ -111,7 +110,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/prayers',              auth: true, handler: (r) => prayer.create(r) },
     { method: 'GET',    path: '/prayers/export',       auth: true, handler: (r) => prayer.exportCsv(r) },
     { method: 'POST',   path: '/prayers/import',       auth: true, handler: (r) => prayer.importCsv(r) },
-    { method: 'GET',    path: '/prayers/student/:studentId',  auth: true, handler: (r) => prayer.listByStudent(r) },
     { method: 'PATCH',  path: '/prayers/:id',          auth: true, handler: (r) => prayer.update(r) },
     { method: 'PATCH',  path: '/prayers/:id/status',   auth: true, handler: (r) => prayer.setStatus(r) },
     { method: 'DELETE', path: '/prayers/:id',          auth: true, handler: (r) => prayer.remove(r) },
@@ -137,7 +135,6 @@ export function buildRoutes(services: Services): Route[] {
 
     // ----- At-Risk -----
     { method: 'GET',  path: '/at-risk',           auth: true, handler: (r) => atRisk.list(r) },
-    { method: 'POST', path: '/at-risk/recompute', auth: true, handler: (r) => atRisk.recompute(r) },
 
     // ----- Trends -----
     { method: 'GET', path: '/trends', auth: true, handler: (r) => trends.get(r) },
@@ -153,7 +150,6 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Admin -----
     { method: 'POST', path: '/admin/reset',         auth: true, handler: (r) => admin.reset(r) },
     { method: 'POST', path: '/admin/clear-service-group', auth: true, handler: (r) => admin.clearServiceGroupData(r) },
-    { method: 'GET',  path: '/admin/audit',         auth: true, handler: (r) => admin.auditLog(r) },
     // T3 Error log: admin only, except POST /admin/errors/client (any login's SPA reports its own crashes; rate-limited).
     { method: 'GET',    path: '/admin/errors',        auth: true, handler: (r) => admin.errors(r) },
     { method: 'DELETE', path: '/admin/errors',        auth: true, handler: (r) => admin.deleteErrors(r) },
@@ -218,8 +214,6 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/bus/vehicles',             auth: true, handler: (r) => busCtl.saveVehicle(r) },
     { method: 'PATCH',  path: '/bus/vehicles/:id',         auth: true, handler: (r) => busCtl.updateVehicle(r) },
     { method: 'PATCH',  path: '/bus/leader-prefs/:leaderId', auth: true, handler: (r) => busCtl.setLeaderPrefs(r) },
-    { method: 'GET',    path: '/bus/runs',                 auth: true, handler: (r) => busCtl.runs(r) },
-    { method: 'GET',    path: '/bus/runs/:id',             auth: true, handler: (r) => busCtl.pastRun(r) },
     { method: 'PATCH',  path: '/bus/runs/:id/riders/:riderId', auth: true, handler: (r) => busCtl.editPastRider(r) },
     { method: 'GET',    path: '/bus/history',              auth: true, handler: (r) => busCtl.history(r) },
     { method: 'GET',    path: '/bus/places/autocomplete', auth: true, handler: (r) => busCtl.autocomplete(r) },

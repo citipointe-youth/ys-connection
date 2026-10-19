@@ -28,7 +28,6 @@ const StatusSchema = z.object({
 
 export interface PrayerService {
   list(actor: Actor): Promise<PrayerWithStudent[]>;
-  listByStudent(actor: Actor, studentId: string): Promise<PrayerRequest[]>;
   create(actor: Actor, input: unknown): Promise<PrayerRequest>;
   update(actor: Actor, id: string, input: unknown): Promise<PrayerRequest>;
   setStatus(actor: Actor, id: string, input: unknown): Promise<PrayerRequest>;
@@ -135,14 +134,6 @@ export function makePrayerService(
       }
       out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       return out;
-    },
-
-    async listByStudent(actor, studentId) {
-      const structure = await cfg();
-      assertCan(actor, 'prayer:read');
-      await studentInScope(actor, studentId, structure);
-      const rows = await repo.findByStudent(studentId);
-      return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
 
     async create(actor, input) {

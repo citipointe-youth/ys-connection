@@ -6,7 +6,7 @@ import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
 import { computeQuad } from '../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-config';
-import { NotFoundError, BadRequestError } from '../core/errors/app-error';
+import { NotFoundError } from '../core/errors/app-error';
 import { makeDnc, type Dnc } from './dnc';
 
 /** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/director. */
@@ -30,7 +30,6 @@ export interface StudentService {
   create(actor: Actor, input: unknown): Promise<Student>;
   update(actor: Actor, id: string, input: unknown): Promise<Student>;
   remove(actor: Actor, id: string): Promise<void>;
-  search(actor: Actor, query: string): Promise<StudentView[]>;
 }
 
 function stripSensitive(s: Student): Student {
@@ -185,27 +184,6 @@ export function makeStudentService(
       // delete throws NotFound for one). General (null-student) prayers are
       // untouched — deleteByStudent's WHERE clause never matches them.
       if (prayerRepo) await prayerRepo.deleteByStudent(id);
-    },
-
-    async search(actor, query) {
-      assertCan(actor, 'student:read');
-      if (!query.trim()) throw new BadRequestError('Search query required');
-      const [results0, structure, myIds] = await Promise.all([repo.search(query), structureScope(), leaderStudentIds(actor)]);
-      let results = results0;
-
-      // Junior leader: only their own connected students.
-      if (myIds) results = results.filter((s) => myIds.has(s.id));
-      // F-27 (FX3): grade + quad see only students they may access. The SPA never calls this route
-      // (Connect Setup's cross-grade picker uses /students?crossGrade=1), so the connect exception is unaffected.
-      else if (actor.role === 'quad' || actor.role === 'grade') {
-        results = results.filter((s) => canAccessStudent(actor, s.grade, s.gender, structure));
-      }
-
-      if (!can(actor, 'student:read:sensitive')) {
-        results = results.map(stripSensitive);
-      }
-      const mark = await dnc.forActor(actor);
-      return results.map((s) => mark(s, s.id));
     },
   };
 }

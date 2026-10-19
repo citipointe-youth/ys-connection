@@ -1,5 +1,4 @@
 import { InMemoryBaseRepository } from './in-memory.base.repository';
-import type { IPersistenceAdapter } from '../persistence/persistence';
 
 import type { User } from '../../core/entities/user';
 import type { Student } from '../../core/entities/student';
@@ -47,8 +46,6 @@ export class InMemoryUserRepository
   extends InMemoryBaseRepository<User>
   implements IUserRepository
 {
-  constructor(persistence?: IPersistenceAdapter<User>) { super(persistence); }
-
   async findByEmail(email: string): Promise<User | null> {
     const lower = email.toLowerCase();
     for (const user of this.store.values()) {
@@ -83,35 +80,8 @@ export class InMemoryStudentRepository
   extends InMemoryBaseRepository<Student>
   implements IStudentRepository
 {
-  constructor(persistence?: IPersistenceAdapter<Student>) { super(persistence); }
-
-  async findByGrade(grade: number): Promise<Student[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.grade === grade)
-      .map((s) => this.clone(s));
-  }
-
-  async findByGender(gender: string): Promise<Student[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.gender.toLowerCase() === gender.toLowerCase())
-      .map((s) => this.clone(s));
-  }
-
-  async search(query: string): Promise<Student[]> {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return Array.from(this.store.values())
-      .filter((s) => {
-        const full = `${s.firstName} ${s.lastName}`.toLowerCase();
-        return terms.every((t) => full.includes(t));
-      })
-      .sort((a, b) => a.lastName.localeCompare(b.lastName))
-      .slice(0, 50)
-      .map((s) => this.clone(s));
-  }
-
   async saveMany(students: Student[]): Promise<void> {
     for (const s of students) this.store.set(s.id, this.clone(s));
-    await this.writeToPersistence();
   }
 }
 
@@ -122,14 +92,6 @@ export class InMemoryLeaderRepository
   extends InMemoryBaseRepository<Leader>
   implements ILeaderRepository
 {
-  constructor(persistence?: IPersistenceAdapter<Leader>) { super(persistence); }
-
-  async findByGrade(grade: number): Promise<Leader[]> {
-    return Array.from(this.store.values())
-      .filter((l) => l.active && (l.grades.length === 0 || l.grades.includes(grade as any)))
-      .map((l) => this.clone(l));
-  }
-
   async findActive(): Promise<Leader[]> {
     return Array.from(this.store.values())
       .filter((l) => l.active)
@@ -151,14 +113,12 @@ export class InMemoryLeaderRepository
 
   async saveMany(leaders: Leader[]): Promise<void> {
     for (const l of leaders) this.store.set(l.id, this.clone(this.withStoredViewGrades(l)));
-    await this.writeToPersistence();
   }
 
   async setViewGrades(id: string, grades: Grade[] | null): Promise<void> {
     const l = this.store.get(id);
     if (!l) return;
     this.store.set(id, this.clone({ ...l, viewGrades: grades ? [...grades] : null }));
-    await this.writeToPersistence();
   }
 }
 
@@ -169,13 +129,11 @@ export class InMemoryPrayerRepository
   extends InMemoryBaseRepository<PrayerRequest>
   implements IPrayerRepository
 {
-  constructor(persistence?: IPersistenceAdapter<PrayerRequest>) { super(persistence); }
-
   async findByStudent(studentId: string): Promise<PrayerRequest[]> {
     return Array.from(this.store.values())
       .filter((p) => p.studentId === studentId)
       // L1 (2026-07-19): match SupabasePrayerRepository's `order by created_at
-      // desc` so behavior is identical across persistence modes — in-memory
+      // desc` so behavior is identical across memory and Supabase — in-memory
       // used to return unsorted.
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((p) => this.clone(p));
@@ -186,7 +144,6 @@ export class InMemoryPrayerRepository
       .filter((p) => p.studentId === studentId)
       .map((p) => p.id);
     for (const id of idsToDelete) this.store.delete(id);
-    await this.writeToPersistence();
   }
 }
 
@@ -194,15 +151,12 @@ export class InMemoryPrayerRepository
 // Notices
 // ---------------------------------------------------------------------------
 export class InMemoryNoticeRepository extends InMemoryBaseRepository<Notice> implements INoticeRepository {
-  constructor(persistence?: IPersistenceAdapter<Notice>) { super(persistence); }
   async findSince(iso: string): Promise<Notice[]> {
     return Array.from(this.store.values()).filter((n) => n.createdAt >= iso)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((n) => this.clone(n));
   }
 }
-export class InMemoryNoticePushRepository extends InMemoryBaseRepository<NoticePushSub> implements INoticePushRepository {
-  constructor(persistence?: IPersistenceAdapter<NoticePushSub>) { super(persistence); }
-}
+export class InMemoryNoticePushRepository extends InMemoryBaseRepository<NoticePushSub> implements INoticePushRepository {}
 
 // ---------------------------------------------------------------------------
 // Connections
@@ -211,8 +165,6 @@ export class InMemoryConnectionRepository
   extends InMemoryBaseRepository<Connection>
   implements IConnectionRepository
 {
-  constructor(persistence?: IPersistenceAdapter<Connection>) { super(persistence); }
-
   async findByStudent(studentId: string): Promise<Connection[]> {
     return Array.from(this.store.values())
       .filter((a) => a.studentId === studentId)
@@ -236,7 +188,6 @@ export class InMemoryConnectionRepository
     for (const [id, a] of this.store.entries()) {
       if (a.studentId === studentId && a.leaderId === leaderId) {
         this.store.delete(id);
-        await this.writeToPersistence();
         return true;
       }
     }
@@ -251,14 +202,6 @@ export class InMemoryServiceSessionRepository
   extends InMemoryBaseRepository<ServiceSession>
   implements IServiceSessionRepository
 {
-  constructor(persistence?: IPersistenceAdapter<ServiceSession>) { super(persistence); }
-
-  async findByImport(importId: string): Promise<ServiceSession[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.importId === importId)
-      .map((s) => this.clone(s));
-  }
-
   async findValid(): Promise<ServiceSession[]> {
     return Array.from(this.store.values())
       .filter((s) => s.isValid && s.isRegular)
@@ -268,7 +211,6 @@ export class InMemoryServiceSessionRepository
 
   async saveMany(sessions: ServiceSession[]): Promise<void> {
     for (const s of sessions) this.store.set(s.id, this.clone(s));
-    await this.writeToPersistence();
   }
 }
 
@@ -279,36 +221,17 @@ export class InMemoryServiceAttendanceRepository
   implements IServiceAttendanceRepository
 {
   private store: ServiceAttendance[] = [];
-  private persistence;
-
-  constructor(persistence?: IPersistenceAdapter<ServiceAttendance>) {
-    this.persistence = persistence ?? { read: async () => [], write: async () => {} };
-  }
 
   async init(): Promise<void> {
-    this.store = await this.persistence.read();
+    this.store = [];
   }
 
   async findAll(): Promise<ServiceAttendance[]> {
     return [...this.store];
   }
 
-  async findByStudent(studentId: string): Promise<ServiceAttendance[]> {
-    return this.store.filter((r) => r.studentId === studentId);
-  }
-
   async findBySession(sessionId: string): Promise<ServiceAttendance[]> {
     return this.store.filter((r) => r.sessionId === sessionId);
-  }
-
-  async save(record: ServiceAttendance): Promise<ServiceAttendance> {
-    const idx = this.store.findIndex(
-      (r) => r.studentId === record.studentId && r.sessionId === record.sessionId,
-    );
-    if (idx >= 0) this.store[idx] = record;
-    else this.store.push(record);
-    await this.persistence.write(this.store);
-    return { ...record };
   }
 
   async saveMany(records: ServiceAttendance[]): Promise<void> {
@@ -319,17 +242,10 @@ export class InMemoryServiceAttendanceRepository
       if (idx >= 0) this.store[idx] = r;
       else this.store.push(r);
     }
-    await this.persistence.write(this.store);
-  }
-
-  async deleteByImport(importId: string): Promise<void> {
-    this.store = this.store.filter((r) => !r.sessionId.startsWith(importId));
-    await this.persistence.write(this.store);
   }
 
   async deleteAll(): Promise<void> {
     this.store = [];
-    await this.persistence.write(this.store);
   }
 }
 
@@ -340,11 +256,8 @@ export class InMemoryLifegroupRepository
   extends InMemoryBaseRepository<Lifegroup>
   implements ILifegroupRepository
 {
-  constructor(persistence?: IPersistenceAdapter<Lifegroup>) { super(persistence); }
-
   async saveMany(lifegroups: Lifegroup[]): Promise<void> {
     for (const g of lifegroups) this.store.set(g.id, this.clone(g));
-    await this.writeToPersistence();
   }
 
   private roll = new Map<string, LifegroupRollRow>();
@@ -360,17 +273,8 @@ export class InMemoryLifegroupWeekRepository
   extends InMemoryBaseRepository<LifegroupWeek>
   implements ILifegroupWeekRepository
 {
-  constructor(persistence?: IPersistenceAdapter<LifegroupWeek>) { super(persistence); }
-
-  async findByImport(importId: string): Promise<LifegroupWeek[]> {
-    return Array.from(this.store.values())
-      .filter((w) => w.importId === importId)
-      .map((w) => this.clone(w));
-  }
-
   async saveMany(weeks: LifegroupWeek[]): Promise<void> {
     for (const w of weeks) this.store.set(w.id, this.clone(w));
-    await this.writeToPersistence();
   }
 }
 
@@ -381,26 +285,13 @@ export class InMemoryLifegroupAttendanceRepository
   implements ILifegroupAttendanceRepository
 {
   private store: LifegroupAttendance[] = [];
-  private persistence;
-
-  constructor(persistence?: IPersistenceAdapter<LifegroupAttendance>) {
-    this.persistence = persistence ?? { read: async () => [], write: async () => {} };
-  }
 
   async init(): Promise<void> {
-    this.store = await this.persistence.read();
+    this.store = [];
   }
 
   async findAll(): Promise<LifegroupAttendance[]> {
     return [...this.store];
-  }
-
-  async findByStudent(studentId: string): Promise<LifegroupAttendance[]> {
-    return this.store.filter((r) => r.studentId === studentId);
-  }
-
-  async findByWeek(weekId: string): Promise<LifegroupAttendance[]> {
-    return this.store.filter((r) => r.weekId === weekId);
   }
 
   async saveMany(records: LifegroupAttendance[]): Promise<void> {
@@ -411,17 +302,10 @@ export class InMemoryLifegroupAttendanceRepository
       if (idx >= 0) this.store[idx] = r;
       else this.store.push(r);
     }
-    await this.persistence.write(this.store);
-  }
-
-  async deleteByImport(_importId: string): Promise<void> {
-    this.store = [];
-    await this.persistence.write(this.store);
   }
 
   async deleteAll(): Promise<void> {
     this.store = [];
-    await this.persistence.write(this.store);
   }
 }
 
@@ -432,8 +316,6 @@ export class InMemoryImportRepository
   extends InMemoryBaseRepository<ImportRecord>
   implements IImportRepository
 {
-  constructor(persistence?: IPersistenceAdapter<ImportRecord>) { super(persistence); }
-
   async findByType(type: 'service' | 'lifegroup'): Promise<ImportRecord[]> {
     return Array.from(this.store.values())
       .filter((r) => r.type === type)
@@ -451,7 +333,6 @@ export class InMemorySettingsRepository
 {
   private static readonly SETTINGS_ID = 'global';
 
-  constructor(persistence?: IPersistenceAdapter<AppSettings>) { super(persistence); }
 
   async getSettings(): Promise<AppSettings> {
     let s = await this.findById(InMemorySettingsRepository.SETTINGS_ID);
@@ -487,14 +368,6 @@ export class InMemoryAuditRepository
   extends InMemoryBaseRepository<AdminAuditEntry>
   implements IAuditRepository
 {
-  constructor(persistence?: IPersistenceAdapter<AdminAuditEntry>) { super(persistence); }
-
-  async findRecent(limit: number): Promise<AdminAuditEntry[]> {
-    return Array.from(this.store.values())
-      .sort((a, b) => b.performedAt.localeCompare(a.performedAt))
-      .slice(0, limit)
-      .map((e) => this.clone(e));
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -504,8 +377,6 @@ export class InMemoryConnectionAuditRepository
   extends InMemoryBaseRepository<ConnectionAudit>
   implements IConnectionAuditRepository
 {
-  constructor(persistence?: IPersistenceAdapter<ConnectionAudit>) { super(persistence); }
-
   async findByYear(year: number): Promise<ConnectionAudit | null> {
     for (const a of this.store.values()) if (a.year === year) return this.clone(a);
     return null;

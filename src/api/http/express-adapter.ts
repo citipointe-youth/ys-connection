@@ -164,9 +164,11 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
         };
 
         const untimed = UNTIMED_ROUTES.has(routeLabel);
+        // `auth: true` routes only run with a session (401 above), so their handlers may type ctx as non-null (AuthedRequest).
+        const handle = route.handler as (req: HttpRequest) => Promise<unknown>;
         const result = untimed
-          ? await route.handler(httpReq)
-          : await withTimeout(route.handler(httpReq), ROUTE_TIMEOUT_MS);
+          ? await handle(httpReq)
+          : await withTimeout(handle(httpReq), ROUTE_TIMEOUT_MS);
         if (result instanceof RawResponse) res.type(result.contentType).send(Buffer.from(result.body));
         else res.json(result);
       } catch (err) {

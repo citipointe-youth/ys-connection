@@ -82,11 +82,6 @@ describe('leader student scope (own connections only)', () => {
     await expect(h.studentSvc.get(leaderActor, h.theirs.id)).rejects.toThrow();
     await expect(h.studentSvc.get(leaderActor, h.unconnected.id)).rejects.toThrow();
   });
-  it('student.search is scoped to their students', async () => {
-    const h = await harness();
-    const res = await h.studentSvc.search(leaderActor, 'F'); // matches all first names
-    expect(res.every((s) => [h.mine1.id, h.mine2.id].includes(s.id))).toBe(true);
-  });
   it('atrisk.list returns only their at-risk students', async () => {
     const h = await harness();
     const entries = await h.atriskSvc.list(leaderActor);

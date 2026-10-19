@@ -1,4 +1,4 @@
-// In-memory admin Error log (T3, Part 1 fold). Memory mode is dev/test only, no json persistence.
+// In-memory admin Error log (T3, Part 1 fold). Memory mode is dev/test only.
 import { FOLD_WINDOW_MS, type ErrorCategory, type ErrorLogEntry, type ErrorLogRow, type IErrorLogRepository } from '../interfaces/error-log.repository';
 import type { ErrorTier } from '../../services/error-log-text';
 

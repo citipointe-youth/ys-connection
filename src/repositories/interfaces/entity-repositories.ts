@@ -40,15 +40,11 @@ export interface IUserRepository extends IRepository<User> {
 }
 
 export interface IStudentRepository extends IRepository<Student> {
-  findByGrade(grade: number): Promise<Student[]>;
-  findByGender(gender: string): Promise<Student[]>;
-  search(query: string): Promise<Student[]>;
   saveMany(students: Student[]): Promise<void>;
   deleteAll(): Promise<void>;
 }
 
 export interface ILeaderRepository extends IRepository<Leader> {
-  findByGrade(grade: number): Promise<Leader[]>;
   findActive(): Promise<Leader[]>;
   saveMany(leaders: Leader[]): Promise<void>;
   deleteAll(): Promise<void>;
@@ -64,7 +60,6 @@ export interface IPrayerRepository extends IRepository<PrayerRequest> {
   // an orphan) and undeletably (edit/delete throws NotFound for one). No-op
   // if the student has no prayers.
   deleteByStudent(studentId: string): Promise<void>;
-  deleteAll(): Promise<void>;
 }
 
 export interface INoticeRepository extends IRepository<Notice> {
@@ -84,7 +79,6 @@ export interface IConnectionRepository extends IRepository<Connection> {
 }
 
 export interface IServiceSessionRepository extends IRepository<ServiceSession> {
-  findByImport(importId: string): Promise<ServiceSession[]>;
   findValid(): Promise<ServiceSession[]>;
   saveMany(sessions: ServiceSession[]): Promise<void>;
   deleteAll(): Promise<void>;
@@ -92,11 +86,8 @@ export interface IServiceSessionRepository extends IRepository<ServiceSession> {
 
 export interface IServiceAttendanceRepository {
   init(): Promise<void>;
-  findByStudent(studentId: string): Promise<ServiceAttendance[]>;
   findBySession(sessionId: string): Promise<ServiceAttendance[]>;
-  save(record: ServiceAttendance): Promise<ServiceAttendance>;
   saveMany(records: ServiceAttendance[]): Promise<void>;
-  deleteByImport(importId: string): Promise<void>;
   deleteAll(): Promise<void>;
   findAll(): Promise<ServiceAttendance[]>;
 }
@@ -109,17 +100,13 @@ export interface ILifegroupRepository extends IRepository<Lifegroup> {
 }
 
 export interface ILifegroupWeekRepository extends IRepository<LifegroupWeek> {
-  findByImport(importId: string): Promise<LifegroupWeek[]>;
   saveMany(weeks: LifegroupWeek[]): Promise<void>;
   deleteAll(): Promise<void>;
 }
 
 export interface ILifegroupAttendanceRepository {
   init(): Promise<void>;
-  findByStudent(studentId: string): Promise<LifegroupAttendance[]>;
-  findByWeek(weekId: string): Promise<LifegroupAttendance[]>;
   saveMany(records: LifegroupAttendance[]): Promise<void>;
-  deleteByImport(importId: string): Promise<void>;
   deleteAll(): Promise<void>;
   findAll(): Promise<LifegroupAttendance[]>;
 }
@@ -135,7 +122,6 @@ export interface ISettingsRepository extends IRepository<AppSettings> {
 }
 
 export interface IAuditRepository extends IRepository<AdminAuditEntry> {
-  findRecent(limit: number): Promise<AdminAuditEntry[]>;
 }
 
 export interface IConnectionAuditRepository extends IRepository<ConnectionAudit> {

@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { makeBatchController } from '../api/controllers/batch.controller';
-import { UnauthorizedError, BadRequestError } from '../core/errors/app-error';
+import { BadRequestError } from '../core/errors/app-error';
 import type { Actor } from '../core/entities/user';
-import type { HttpRequest } from '../api/http/types';
+import type { AuthedRequest } from '../api/http/types';
 
 function actor(role = 'admin'): Actor {
   return { id: 'a-test', role: role as any, displayName: 'T', grade: null as any, quad: null as any };
 }
 
-function req(sections: string | undefined, ctx: Actor | null = actor()): HttpRequest {
+function req(sections: string | undefined, ctx: Actor = actor()): AuthedRequest {
   return { ctx, params: {}, query: { sections }, body: undefined };
 }
 
@@ -92,10 +92,5 @@ describe('batch controller', () => {
   it('rejects a missing sections param with BadRequestError', async () => {
     const { ctrl } = makeStubbed();
     await expect(ctrl.get(req(undefined))).rejects.toBeInstanceOf(BadRequestError);
-  });
-
-  it('rejects an unauthenticated request', async () => {
-    const { ctrl } = makeStubbed();
-    await expect(ctrl.get(req('overview', null))).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });

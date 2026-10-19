@@ -75,38 +75,6 @@ export class SupabaseStudentRepository implements IStudentRepository {
     return rows[0] ? toStudent(rows[0]) : null;
   }
 
-  async findByGrade(grade: number): Promise<Student[]> {
-    const rows = await this.sql`select * from students where grade = ${grade} order by last_name`;
-    return rows.map(toStudent);
-  }
-
-  async findByGender(gender: string): Promise<Student[]> {
-    const rows = await this.sql`select * from students where lower(gender) = lower(${gender}) order by last_name`;
-    return rows.map(toStudent);
-  }
-
-  async search(query: string): Promise<Student[]> {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (terms.length === 0) return [];
-    // Apply the first term as a Postgres ILIKE filter so we never load the full table.
-    // Any additional terms (rare: 3+ words) are applied in JS on the already-small result.
-    const primary = `%${terms[0]}%`;
-    const rows = await this.sql`
-      select * from students
-      where lower(first_name || ' ' || last_name) like ${primary}
-      order by last_name
-      limit 200
-    `;
-    const mapped = rows.map(toStudent);
-    if (terms.length === 1) return mapped.slice(0, 50);
-    return mapped
-      .filter((s) => {
-        const full = `${s.firstName} ${s.lastName}`.toLowerCase();
-        return terms.slice(1).every((t) => full.includes(t));
-      })
-      .slice(0, 50);
-  }
-
   async save(student: Student): Promise<Student> {
     const enc = encryptPhoneFields(student);
     const rows = await this.sql`

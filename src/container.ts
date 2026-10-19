@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { env } from './config/env';
 import { dedupeReads } from './utils/inflight-dedupe';
 
@@ -23,7 +22,6 @@ import {
   InMemoryLinkRepository,
   InMemoryErrorLogRepository, InMemoryUnsentRepository,
 } from './repositories/in-memory';
-import { JsonFilePersistence } from './repositories/persistence';
 import {
   SupabaseUserRepository,
   SupabaseStudentRepository,
@@ -164,67 +162,62 @@ export interface Container {
   services: Services;
 }
 
-function makeJson<T>(filename: string): JsonFilePersistence<T> {
-  return new JsonFilePersistence<T>(join(env.DATA_DIR, filename));
-}
-
 export async function buildContainer(): Promise<Container> {
   const useSupabase = env.PERSISTENCE === 'supabase';
-  const useJson = env.PERSISTENCE === 'json';
   const sql = useSupabase ? getSqlClient() : null!;
 
   // ----- Repositories -----
   const users: IUserRepository = useSupabase
     ? new SupabaseUserRepository(sql)
-    : new InMemoryUserRepository(useJson ? makeJson('users.json') : undefined);
+    : new InMemoryUserRepository();
   const students: IStudentRepository = useSupabase
     ? new SupabaseStudentRepository(sql)
-    : new InMemoryStudentRepository(useJson ? makeJson('students.json') : undefined);
+    : new InMemoryStudentRepository();
   const leaders: ILeaderRepository = useSupabase
     ? new SupabaseLeaderRepository(sql)
-    : new InMemoryLeaderRepository(useJson ? makeJson('leaders.json') : undefined);
+    : new InMemoryLeaderRepository();
   const prayers: IPrayerRepository = useSupabase
     ? new SupabasePrayerRepository(sql)
-    : new InMemoryPrayerRepository(useJson ? makeJson('prayers.json') : undefined);
+    : new InMemoryPrayerRepository();
   const notices: INoticeRepository = useSupabase
     ? new SupabaseNoticeRepository(sql)
-    : new InMemoryNoticeRepository(useJson ? makeJson('notices.json') : undefined);
+    : new InMemoryNoticeRepository();
   const noticePush: INoticePushRepository = useSupabase
     ? new SupabaseNoticePushRepository(sql)
-    : new InMemoryNoticePushRepository(useJson ? makeJson('notice-push.json') : undefined);
+    : new InMemoryNoticePushRepository();
   const connections: IConnectionRepository = useSupabase
     ? new SupabaseConnectionRepository(sql)
-    : new InMemoryConnectionRepository(useJson ? makeJson('connections.json') : undefined);
+    : new InMemoryConnectionRepository();
   const serviceSessions: IServiceSessionRepository = useSupabase
     ? new SupabaseServiceSessionRepository(sql)
-    : new InMemoryServiceSessionRepository(useJson ? makeJson('service-sessions.json') : undefined);
+    : new InMemoryServiceSessionRepository();
   const serviceAttendance: IServiceAttendanceRepository = useSupabase
     ? new SupabaseServiceAttendanceRepository(sql)
-    : new InMemoryServiceAttendanceRepository(useJson ? makeJson('service-attendance.json') : undefined);
+    : new InMemoryServiceAttendanceRepository();
   const lifegroups: ILifegroupRepository = useSupabase
     ? new SupabaseLifegroupRepository(sql)
-    : new InMemoryLifegroupRepository(useJson ? makeJson('lifegroups.json') : undefined);
+    : new InMemoryLifegroupRepository();
   const lifegroupWeeks: ILifegroupWeekRepository = useSupabase
     ? new SupabaseLifegroupWeekRepository(sql)
-    : new InMemoryLifegroupWeekRepository(useJson ? makeJson('lifegroup-weeks.json') : undefined);
+    : new InMemoryLifegroupWeekRepository();
   const lifegroupAttendance: ILifegroupAttendanceRepository = useSupabase
     ? new SupabaseLifegroupAttendanceRepository(sql)
-    : new InMemoryLifegroupAttendanceRepository(useJson ? makeJson('lifegroup-attendance.json') : undefined);
+    : new InMemoryLifegroupAttendanceRepository();
   const imports: IImportRepository = useSupabase
     ? new SupabaseImportRepository(sql)
-    : new InMemoryImportRepository(useJson ? makeJson('imports.json') : undefined);
+    : new InMemoryImportRepository();
   const settings: ISettingsRepository = useSupabase
     ? new SupabaseSettingsRepository(sql)
-    : new InMemorySettingsRepository(useJson ? makeJson('settings.json') : undefined);
+    : new InMemorySettingsRepository();
   const audit: IAuditRepository = useSupabase
     ? new SupabaseAuditRepository(sql)
-    : new InMemoryAuditRepository(useJson ? makeJson('audit.json') : undefined);
+    : new InMemoryAuditRepository();
   const connectionAudits: IConnectionAuditRepository = useSupabase
     ? new SupabaseConnectionAuditRepository(sql)
-    : new InMemoryConnectionAuditRepository(useJson ? makeJson('connection-audits.json') : undefined);
-  // No json persistence — memory mode is dev-only.
+    : new InMemoryConnectionAuditRepository();
+  // Memory mode is dev/test only.
   const bus: IBusRepository = useSupabase ? new SupabaseBusRepository(sql) : new InMemoryBusRepository();
-  // Elvanto link (memory mode is dev/test only, no json persistence).
+  // Elvanto link.
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
   const reconcileRuns: IReconcileRunRepository = useSupabase ? new SupabaseReconcileRunRepository(sql) : new InMemoryReconcileRunRepository();

@@ -1,4 +1,4 @@
-// In-memory New person unsent queue (T10). Memory mode is dev/test only, no json persistence.
+// In-memory New person unsent queue (T10). Memory mode is dev/test only.
 import type { IUnsentRepository, UnsentRow } from '../interfaces/unsent.repository';
 
 export class InMemoryUnsentRepository implements IUnsentRepository {

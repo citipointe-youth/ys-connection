@@ -1,34 +1,28 @@
-import type { HttpRequest } from '../http/types';
+import type { AuthedRequest } from '../http/types';
 import type { AccountService } from '../../services/account.service';
 import { PREVIEW_TOKEN_TTL_MS, type AuthService } from '../../services/auth.service';
-import { UnauthorizedError } from '../../core/errors/app-error';
 
 export function makeAccountController(deps: { account: AccountService; auth: AuthService }) {
   return {
-    async list(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async list(req: AuthedRequest) {
       return deps.account.list(req.ctx);
     },
 
-    async create(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async create(req: AuthedRequest) {
       return deps.account.create(req.ctx, req.body);
     },
 
-    async update(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async update(req: AuthedRequest) {
       return deps.account.update(req.ctx, req.params['id']!, req.body);
     },
 
-    async setPassword(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async setPassword(req: AuthedRequest) {
       const { id, password } = req.body as { id: string; password: string };
       await deps.account.setPassword(req.ctx, id, password);
       return { ok: true };
     },
 
-    async changeOwnPassword(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async changeOwnPassword(req: AuthedRequest) {
       const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
       await deps.account.changeOwnPassword(req.ctx, currentPassword, newPassword);
       // The caller's existing session token may still have mustChangePassword:
@@ -40,13 +34,11 @@ export function makeAccountController(deps: { account: AccountService; auth: Aut
       return { ok: true, token };
     },
 
-    async toggleStatus(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async toggleStatus(req: AuthedRequest) {
       return deps.account.toggleStatus(req.ctx, req.params['id']!);
     },
 
-    async preview(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async preview(req: AuthedRequest) {
       const user = await deps.account.previewAccount(req.ctx, req.params['id']!);
       // Short TTL (1h, not the normal 12h) — a preview session mints a real,
       // fully-privileged token for the target account that sits in the admin's
@@ -56,20 +48,17 @@ export function makeAccountController(deps: { account: AccountService; auth: Aut
       return { token, user: { ...user, mustChangePassword: false } };
     },
 
-    async remove(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async remove(req: AuthedRequest) {
       await deps.account.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },
 
-    async planCohortLayout(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async planCohortLayout(req: AuthedRequest) {
       const { targetCohort } = req.body as { targetCohort: 'grades-quads' | 'none' };
       return deps.account.planCohortLayout(req.ctx, targetCohort);
     },
 
-    async applyCohortLayout(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async applyCohortLayout(req: AuthedRequest) {
       const { targetCohort } = req.body as { targetCohort: 'grades-quads' | 'none' };
       return deps.account.applyCohortLayout(req.ctx, targetCohort);
     },
