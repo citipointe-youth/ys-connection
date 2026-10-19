@@ -49,7 +49,7 @@ export interface OverviewStats {
   byGrade: GradeStat[];
 }
 
-const AT_RISK = new Set(['atrisk', 'stopped', 'declining', 'watch']);
+const AT_RISK = new Set(['stopped', 'declining']);
 
 export interface OverviewService {
   getStats(actor: Actor): Promise<OverviewStats>;

@@ -40,7 +40,7 @@ export interface AtRiskService {
 }
 
 // Severity order for sorting (most severe first)
-const SEVERITY_ORDER: AtRiskStatus[] = ['stopped', 'atrisk', 'declining', 'watch'];
+const SEVERITY_ORDER: AtRiskStatus[] = ['stopped', 'declining'];
 
 // Per-stream qualifier vs the previous term — mirrors the SPA's `_streamQual`.
 // A stream is "down" if its rate dropped >=20 percentage points OR it stopped
@@ -127,7 +127,7 @@ function toEntry(s: Student, computedStatus?: AtRiskStatus): Omit<AtRiskEntry, '
   };
 }
 
-const AT_RISK_DISPLAY = new Set<AtRiskStatus>(['atrisk', 'stopped', 'declining', 'watch']);
+const AT_RISK_DISPLAY = new Set<AtRiskStatus>(['stopped', 'declining']);
 
 export function makeAtRiskService(
   studentRepo: IStudentRepository,

@@ -3,6 +3,7 @@ import { generateId } from './utils/id';
 import type { Repositories } from './container';
 import type { User } from './core/entities/user';
 import type { Student } from './core/entities/student';
+import type { AtRiskStatus } from './core/types/enums';
 import type { Leader } from './core/entities/leader';
 
 export async function seedDemoData(repos: Repositories): Promise<void> {
@@ -93,7 +94,7 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
   const studentData = [
     // Grade 7 girls
     { fn: 'Olivia', ln: 'Harris', g: 'female', gr: 7, svcA: 8, svcT: 10, grpA: 5, grpT: 6, ar: 'regular' },
-    { fn: 'Ava', ln: 'Martinez', g: 'female', gr: 7, svcA: 3, svcT: 10, grpA: 2, grpT: 6, ar: 'atrisk' },
+    { fn: 'Ava', ln: 'Martinez', g: 'female', gr: 7, svcA: 3, svcT: 10, grpA: 2, grpT: 6, ar: 'stopped' },
     { fn: 'Mia', ln: 'Taylor', g: 'female', gr: 7, svcA: 9, svcT: 10, grpA: 6, grpT: 6, ar: 'regular' },
     // Grade 7 boys
     { fn: 'Liam', ln: 'Anderson', g: 'male', gr: 7, svcA: 7, svcT: 10, grpA: 4, grpT: 6, ar: 'regular' },
@@ -103,16 +104,16 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
     { fn: 'Sophia', ln: 'Lee', g: 'female', gr: 8, svcA: 4, svcT: 10, grpA: 2, grpT: 6, ar: 'declining' },
     // Grade 8 boys
     { fn: 'William', ln: 'Garcia', g: 'male', gr: 8, svcA: 8, svcT: 10, grpA: 5, grpT: 6, ar: 'regular' },
-    { fn: 'James', ln: 'Thomas', g: 'male', gr: 8, svcA: 2, svcT: 10, grpA: 1, grpT: 6, ar: 'atrisk' },
+    { fn: 'James', ln: 'Thomas', g: 'male', gr: 8, svcA: 2, svcT: 10, grpA: 1, grpT: 6, ar: 'stopped' },
     // Grade 9 girls
     { fn: 'Charlotte', ln: 'Moore', g: 'female', gr: 9, svcA: 9, svcT: 10, grpA: 6, grpT: 6, ar: 'regular' },
-    { fn: 'Amelia', ln: 'Johnson', g: 'female', gr: 9, svcA: 5, svcT: 10, grpA: 3, grpT: 6, ar: 'watch' },
+    { fn: 'Amelia', ln: 'Johnson', g: 'female', gr: 9, svcA: 5, svcT: 10, grpA: 3, grpT: 6, ar: 'declining' },
     // Grade 9 boys
     { fn: 'Benjamin', ln: 'Davis', g: 'male', gr: 9, svcA: 7, svcT: 10, grpA: 5, grpT: 6, ar: 'regular' },
     { fn: 'Mason', ln: 'Wilson', g: 'male', gr: 9, svcA: 0, svcT: 10, grpA: 0, grpT: 6, ar: 'stopped' },
     // Grade 10 girls
     { fn: 'Harper', ln: 'Evans', g: 'female', gr: 10, svcA: 8, svcT: 10, grpA: 5, grpT: 6, ar: 'regular' },
-    { fn: 'Evelyn', ln: 'Brown', g: 'female', gr: 10, svcA: 3, svcT: 10, grpA: 1, grpT: 6, ar: 'atrisk' },
+    { fn: 'Evelyn', ln: 'Brown', g: 'female', gr: 10, svcA: 3, svcT: 10, grpA: 1, grpT: 6, ar: 'stopped' },
     // Grade 10 boys
     { fn: 'Ethan', ln: 'Turner', g: 'male', gr: 10, svcA: 6, svcT: 10, grpA: 4, grpT: 6, ar: 'regular' },
     { fn: 'Alexander', ln: 'Hill', g: 'male', gr: 10, svcA: 9, svcT: 10, grpA: 6, grpT: 6, ar: 'regular' },
@@ -126,7 +127,7 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
     { fn: 'Elizabeth', ln: 'Sanchez', g: 'female', gr: 12, svcA: 9, svcT: 10, grpA: 6, grpT: 6, ar: 'regular' },
     { fn: 'Camila', ln: 'Clark', g: 'female', gr: 12, svcA: 6, svcT: 10, grpA: 4, grpT: 6, ar: 'regular' },
     // Grade 12 boys
-    { fn: 'Henry', ln: 'Rodriguez', g: 'male', gr: 12, svcA: 5, svcT: 10, grpA: 3, grpT: 6, ar: 'watch' },
+    { fn: 'Henry', ln: 'Rodriguez', g: 'male', gr: 12, svcA: 5, svcT: 10, grpA: 3, grpT: 6, ar: 'declining' },
     { fn: 'Owen', ln: 'Lewis', g: 'male', gr: 12, svcA: 10, svcT: 10, grpA: 6, grpT: 6, ar: 'regular' },
   ];
 
@@ -144,7 +145,7 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
       grpMetWeeks: d.grpT,
       prevSvcAttended: 0, prevSvcTotal: 0,
       prevGrpAttended: 0, prevGrpTotal: 0,
-      atRiskStatus: d.ar as 'regular' | 'declining' | 'atrisk' | 'stopped' | 'watch' | 'new' | null,
+      atRiskStatus: d.ar as AtRiskStatus | null,
       dataSource: 'seed', createdAt: now, updatedAt: now,
     };
     await repos.students.save(student);
