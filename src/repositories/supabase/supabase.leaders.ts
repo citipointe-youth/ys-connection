@@ -40,16 +40,6 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
     return rows[0] ? toLeader(rows[0]) : null;
   }
 
-  async findByGrade(grade: number): Promise<Leader[]> {
-    const rows = await this.sql`
-      select * from leaders
-      where active = true
-        and (grades = '{}' or ${grade} = any(grades))
-      order by full_name
-    `;
-    return rows.map(toLeader);
-  }
-
   async findActive(): Promise<Leader[]> {
     const rows = await this.sql`select * from leaders where active = true order by full_name`;
     return rows.map(toLeader);

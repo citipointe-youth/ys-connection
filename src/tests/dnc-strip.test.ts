@@ -70,11 +70,10 @@ async function world() {
 
 describe('R1 DNC strip: student.service', () => {
   for (const role of [...STRIPPED, ...KEEP]) {
-    it(`list / search / get for ${role}`, async () => {
+    it(`list / get for ${role}`, async () => {
       const w = await world();
       const svc = makeStudentService(w.students, w.settings, w.conns, undefined, w.dnc);
       expectStrip(role, await svc.list(actor(role)));
-      expectStrip(role, await svc.search(actor(role), 'Test'));
       expectStrip(role, await Promise.all(IDS.map((id) => svc.get(actor(role), id))));
     });
   }

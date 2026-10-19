@@ -81,7 +81,4 @@ export class SupabasePrayerRepository implements IPrayerRepository {
     await this.sql`delete from prayer_requests where student_id = ${studentId}`;
   }
 
-  async deleteAll(): Promise<void> {
-    await this.sql`truncate table prayer_requests cascade`;
-  }
 }

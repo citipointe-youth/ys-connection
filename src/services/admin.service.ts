@@ -20,14 +20,6 @@ import type { Actor } from '../core/entities/user';
 import type { AdminAuditEntry } from '../core/entities/settings';
 import { generateId } from '../utils/id';
 
-export interface AdminAuditRow {
-  id: string;
-  action: string;
-  performedBy: string;
-  performedAt: string;
-  detail: string;
-}
-
 export interface WipeOpts {
   force?: boolean;
   confirmWipe?: string;
@@ -48,7 +40,6 @@ function assertForceConfirmed(opts?: WipeOpts): void {
 export interface AdminService {
   reset(actor: Actor, opts?: WipeOpts): Promise<void>;
   clearServiceGroupData(actor: Actor, opts?: WipeOpts): Promise<void>;
-  getAuditLog(actor: Actor, limit?: number): Promise<AdminAuditRow[]>;
 }
 
 async function writeAudit(
@@ -143,11 +134,6 @@ export function makeAdminService(
       invalidateOverviewCache();
       invalidateTrendsCache();
       invalidateLgStatsCache();
-    },
-
-    async getAuditLog(actor, limit = 20) {
-      assertCan(actor, 'admin:manage');
-      return audit.findRecent(limit);
     },
   };
 }

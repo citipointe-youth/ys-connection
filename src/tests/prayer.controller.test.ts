@@ -15,7 +15,7 @@ function noCtxReq(overrides: Partial<HttpRequest> = {}): HttpRequest {
 function makeUncalledService(): PrayerService {
   const fail = (): never => { throw new Error('PrayerService method should not be called when req.ctx is missing'); };
   return {
-    list: fail, listByStudent: fail, create: fail, update: fail,
+    list: fail, create: fail, update: fail,
     setStatus: fail, remove: fail, exportCsv: fail, importCsv: fail,
   } as unknown as PrayerService;
 }
@@ -29,10 +29,6 @@ describe('prayer controller — auth guard (no req.ctx)', () => {
 
   it('create throws UnauthorizedError with no ctx', async () => {
     await expect(ctrl.create(noCtxReq({ body: { text: 'x' } }))).rejects.toBeInstanceOf(UnauthorizedError);
-  });
-
-  it('listByStudent throws UnauthorizedError with no ctx', async () => {
-    await expect(ctrl.listByStudent(noCtxReq({ params: { studentId: 's1' } }))).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
   it('update throws UnauthorizedError with no ctx', async () => {

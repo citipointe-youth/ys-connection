@@ -53,21 +53,6 @@ describe('Student Service', () => {
       .rejects.toThrow(ForbiddenError);
   });
 
-  // TC35 — search returns partial name match
-  it('TC35: search finds by partial last name', async () => {
-    const { svc } = await makeService();
-    const results = await svc.search(ADMIN, 'smi');
-    expect(results.some(s => s.lastName === 'Smith')).toBe(true);
-  });
-
-  // TC36 — search by full name works
-  it('TC36: search finds by first+last name', async () => {
-    const { svc } = await makeService();
-    const results = await svc.search(ADMIN, 'alice smith');
-    expect(results).toHaveLength(1);
-    expect(results[0]?.firstName).toBe('Alice');
-  });
-
   // TC37 — delete removes student
   it('TC37: admin can delete student', async () => {
     const { svc, s1 } = await makeService();

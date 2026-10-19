@@ -109,7 +109,7 @@ describe('PrayerService scoping + CRUD', () => {
     expect(upd.text).toBe('updated');
     await expect(s.update(G9F, p.id, { text: '' })).rejects.toThrow();
     await s.remove(G9F, p.id);
-    await expect(s.listByStudent(G9F, 'ava')).resolves.toEqual([]);
+    await expect(s.list(G9F)).resolves.toEqual([]);
   });
 
   it('a general prayer is creatable by any role, but a grade login only sees its own', async () => {
@@ -274,24 +274,13 @@ describe('PrayerService scoping + CRUD', () => {
     const p = await s.create(LEADER, { studentId: 'ava', text: 'ava prayer' });
     // Still connected: the leader can read and act on it.
     await expect(s.update(LEADER, p.id, { text: 'still mine' })).resolves.toMatchObject({ text: 'still mine' });
-    await expect(s.listByStudent(LEADER, 'ava')).resolves.toHaveLength(1);
+    await expect(s.list(LEADER)).resolves.toHaveLength(1);
 
     await connRepo.deleteByStudentAndLeader('ava', 'leader-1');
 
     await expect(s.update(LEADER, p.id, { text: 'z' })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(s.setStatus(LEADER, p.id, { status: 'answered' })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(s.listByStudent(LEADER, 'ava')).rejects.toBeInstanceOf(ForbiddenError);
-  });
-
-  it('listByStudent returns a student\'s prayers for an in-scope actor, and throws ForbiddenError for an out-of-scope actor', async () => {
-    const { s } = await svc([student('ava', 9, 'female')]);
-    await s.create(ADMIN, { studentId: 'ava', text: 'p1' });
-    await s.create(ADMIN, { studentId: 'ava', text: 'p2' });
-
-    const inScope = await s.listByStudent(G9F, 'ava');
-    expect(inScope).toHaveLength(2);
-
-    await expect(s.listByStudent(G8M, 'ava')).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.list(LEADER)).resolves.toEqual([]);
   });
 });
 
@@ -310,7 +299,6 @@ describe('PrayerService — modules.prayers toggle', () => {
 
   it.each([
     ['list', (s: any) => s.list(ADMIN)],
-    ['listByStudent', (s: any) => s.listByStudent(ADMIN, 'x')],
     ['create', (s: any) => s.create(ADMIN, { text: 'hi' })],
     ['update', (s: any) => s.update(ADMIN, 'x', { text: 'hi' })],
     ['setStatus', (s: any) => s.setStatus(ADMIN, 'x', { status: 'open' })],

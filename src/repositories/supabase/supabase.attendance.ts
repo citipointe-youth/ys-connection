@@ -130,12 +130,6 @@ export class SupabaseServiceSessionRepository implements IServiceSessionReposito
     return rows[0] ? toServiceSession(rows[0]) : null;
   }
 
-  async findByImport(importId: string): Promise<ServiceSession[]> {
-    const rows =
-      await this.sql`select * from service_sessions where import_id = ${importId} order by sort_order`;
-    return rows.map(toServiceSession);
-  }
-
   async findValid(): Promise<ServiceSession[]> {
     const rows =
       await this.sql`select * from service_sessions where is_valid = true and is_regular = true order by sort_order`;
@@ -224,27 +218,10 @@ export class SupabaseServiceAttendanceRepository implements IServiceAttendanceRe
     return rows.map(toServiceAttendance);
   }
 
-  async findByStudent(studentId: string): Promise<ServiceAttendance[]> {
-    const rows =
-      await this.sql`select * from service_attendance where student_id = ${studentId}`;
-    return rows.map(toServiceAttendance);
-  }
-
   async findBySession(sessionId: string): Promise<ServiceAttendance[]> {
     const rows =
       await this.sql`select * from service_attendance where session_id = ${sessionId}`;
     return rows.map(toServiceAttendance);
-  }
-
-  async save(record: ServiceAttendance): Promise<ServiceAttendance> {
-    const rows = await this.sql`
-      insert into service_attendance (student_id, session_id, attended)
-      values (${record.studentId}, ${record.sessionId}, ${record.attended})
-      on conflict (student_id, session_id) do update set
-        attended = excluded.attended
-      returning *
-    `;
-    return toServiceAttendance(rows[0]!);
   }
 
   async saveMany(records: ServiceAttendance[]): Promise<void> {
@@ -262,15 +239,6 @@ export class SupabaseServiceAttendanceRepository implements IServiceAttendanceRe
           attended = excluded.attended
       `;
     }
-  }
-
-  async deleteByImport(importId: string): Promise<void> {
-    await this.sql`
-      delete from service_attendance
-      where session_id in (
-        select id from service_sessions where import_id = ${importId}
-      )
-    `;
   }
 
   async deleteAll(): Promise<void> {
@@ -390,12 +358,6 @@ export class SupabaseLifegroupWeekRepository implements ILifegroupWeekRepository
     return rows[0] ? toLifegroupWeek(rows[0]) : null;
   }
 
-  async findByImport(importId: string): Promise<LifegroupWeek[]> {
-    const rows =
-      await this.sql`select * from lifegroup_weeks where import_id = ${importId} order by week_num`;
-    return rows.map(toLifegroupWeek);
-  }
-
   async save(week: LifegroupWeek): Promise<LifegroupWeek> {
     const rows = await this.sql`
       insert into lifegroup_weeks (id, import_id, week_num, week_key, week_start, week_end)
@@ -468,18 +430,6 @@ export class SupabaseLifegroupAttendanceRepository implements ILifegroupAttendan
     return rows.map(toLifegroupAttendance);
   }
 
-  async findByStudent(studentId: string): Promise<LifegroupAttendance[]> {
-    const rows =
-      await this.sql`select * from lifegroup_attendance where student_id = ${studentId}`;
-    return rows.map(toLifegroupAttendance);
-  }
-
-  async findByWeek(weekId: string): Promise<LifegroupAttendance[]> {
-    const rows =
-      await this.sql`select * from lifegroup_attendance where week_id = ${weekId}`;
-    return rows.map(toLifegroupAttendance);
-  }
-
   async saveMany(records: LifegroupAttendance[]): Promise<void> {
     if (records.length === 0) return;
     for (const batch of chunk(records)) {
@@ -499,15 +449,6 @@ export class SupabaseLifegroupAttendanceRepository implements ILifegroupAttendan
           attended     = excluded.attended
       `;
     }
-  }
-
-  async deleteByImport(importId: string): Promise<void> {
-    await this.sql`
-      delete from lifegroup_attendance
-      where week_id in (
-        select id from lifegroup_weeks where import_id = ${importId}
-      )
-    `;
   }
 
   async deleteAll(): Promise<void> {

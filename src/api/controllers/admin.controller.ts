@@ -20,12 +20,6 @@ export function makeAdminController(deps: { admin: AdminService; errorLog: Error
       return { ok: true };
     },
 
-    async auditLog(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
-      const limit = req.query['limit'] ? parseInt(req.query['limit']!, 10) : 20;
-      return deps.admin.getAuditLog(req.ctx, limit);
-    },
-
     // ----- T3 Error log -----
     async errors(req: HttpRequest) {
       if (!req.ctx) throw new UnauthorizedError();

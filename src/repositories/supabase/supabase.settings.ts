@@ -188,12 +188,6 @@ export class SupabaseAuditRepository implements IAuditRepository {
     return rows.map(toAdminAuditEntry);
   }
 
-  async findRecent(limit: number): Promise<AdminAuditEntry[]> {
-    const rows =
-      await this.sql`select * from admin_audit order by performed_at desc limit ${limit}`;
-    return rows.map(toAdminAuditEntry);
-  }
-
   async save(entry: AdminAuditEntry): Promise<AdminAuditEntry> {
     const rows = await this.sql`
       insert into admin_audit (id, action, performed_by, performed_at, detail)

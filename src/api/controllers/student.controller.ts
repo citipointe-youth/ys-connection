@@ -34,11 +34,5 @@ export function makeStudentController(deps: { student: StudentService }) {
       await deps.student.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },
-
-    async search(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
-      const q = req.query['q'] ?? '';
-      return deps.student.search(req.ctx, q);
-    },
   };
 }

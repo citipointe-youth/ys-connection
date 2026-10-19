@@ -81,15 +81,6 @@ describe('At-Risk Service — dynamic computation', () => {
     expect(found).toBeUndefined();
   });
 
-  it('TC43: recompute updates student atRiskStatus in repo', async () => {
-    const { atRiskSvc, studentRepo, s4 } = await makeServices();
-    const result = await atRiskSvc.recompute(actor('director'));
-    expect(result.updated).toBeGreaterThanOrEqual(0);
-    // s4 has steady high attendance — should be regular
-    const s = await studentRepo.findById(s4.id);
-    expect(s?.atRiskStatus).toBe('regular');
-  });
-
   it('TC44: grade login only sees own grade at-risk', async () => {
     const { atRiskSvc } = await makeServices();
     const list = await atRiskSvc.list(actor('grade', { grade: 9 }));

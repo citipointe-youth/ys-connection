@@ -14,10 +14,5 @@ export function makeAtRiskController(deps: {
       const gender = req.query['gender'];
       return deps.atRisk.list(req.ctx, { grade, gender });
     },
-
-    async recompute(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
-      return deps.atRisk.recompute(req.ctx);
-    },
   };
 }

@@ -85,30 +85,6 @@ export class InMemoryStudentRepository
 {
   constructor(persistence?: IPersistenceAdapter<Student>) { super(persistence); }
 
-  async findByGrade(grade: number): Promise<Student[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.grade === grade)
-      .map((s) => this.clone(s));
-  }
-
-  async findByGender(gender: string): Promise<Student[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.gender.toLowerCase() === gender.toLowerCase())
-      .map((s) => this.clone(s));
-  }
-
-  async search(query: string): Promise<Student[]> {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return Array.from(this.store.values())
-      .filter((s) => {
-        const full = `${s.firstName} ${s.lastName}`.toLowerCase();
-        return terms.every((t) => full.includes(t));
-      })
-      .sort((a, b) => a.lastName.localeCompare(b.lastName))
-      .slice(0, 50)
-      .map((s) => this.clone(s));
-  }
-
   async saveMany(students: Student[]): Promise<void> {
     for (const s of students) this.store.set(s.id, this.clone(s));
     await this.writeToPersistence();
@@ -123,12 +99,6 @@ export class InMemoryLeaderRepository
   implements ILeaderRepository
 {
   constructor(persistence?: IPersistenceAdapter<Leader>) { super(persistence); }
-
-  async findByGrade(grade: number): Promise<Leader[]> {
-    return Array.from(this.store.values())
-      .filter((l) => l.active && (l.grades.length === 0 || l.grades.includes(grade as any)))
-      .map((l) => this.clone(l));
-  }
 
   async findActive(): Promise<Leader[]> {
     return Array.from(this.store.values())
@@ -253,12 +223,6 @@ export class InMemoryServiceSessionRepository
 {
   constructor(persistence?: IPersistenceAdapter<ServiceSession>) { super(persistence); }
 
-  async findByImport(importId: string): Promise<ServiceSession[]> {
-    return Array.from(this.store.values())
-      .filter((s) => s.importId === importId)
-      .map((s) => this.clone(s));
-  }
-
   async findValid(): Promise<ServiceSession[]> {
     return Array.from(this.store.values())
       .filter((s) => s.isValid && s.isRegular)
@@ -293,22 +257,8 @@ export class InMemoryServiceAttendanceRepository
     return [...this.store];
   }
 
-  async findByStudent(studentId: string): Promise<ServiceAttendance[]> {
-    return this.store.filter((r) => r.studentId === studentId);
-  }
-
   async findBySession(sessionId: string): Promise<ServiceAttendance[]> {
     return this.store.filter((r) => r.sessionId === sessionId);
-  }
-
-  async save(record: ServiceAttendance): Promise<ServiceAttendance> {
-    const idx = this.store.findIndex(
-      (r) => r.studentId === record.studentId && r.sessionId === record.sessionId,
-    );
-    if (idx >= 0) this.store[idx] = record;
-    else this.store.push(record);
-    await this.persistence.write(this.store);
-    return { ...record };
   }
 
   async saveMany(records: ServiceAttendance[]): Promise<void> {
@@ -319,11 +269,6 @@ export class InMemoryServiceAttendanceRepository
       if (idx >= 0) this.store[idx] = r;
       else this.store.push(r);
     }
-    await this.persistence.write(this.store);
-  }
-
-  async deleteByImport(importId: string): Promise<void> {
-    this.store = this.store.filter((r) => !r.sessionId.startsWith(importId));
     await this.persistence.write(this.store);
   }
 
@@ -362,12 +307,6 @@ export class InMemoryLifegroupWeekRepository
 {
   constructor(persistence?: IPersistenceAdapter<LifegroupWeek>) { super(persistence); }
 
-  async findByImport(importId: string): Promise<LifegroupWeek[]> {
-    return Array.from(this.store.values())
-      .filter((w) => w.importId === importId)
-      .map((w) => this.clone(w));
-  }
-
   async saveMany(weeks: LifegroupWeek[]): Promise<void> {
     for (const w of weeks) this.store.set(w.id, this.clone(w));
     await this.writeToPersistence();
@@ -395,14 +334,6 @@ export class InMemoryLifegroupAttendanceRepository
     return [...this.store];
   }
 
-  async findByStudent(studentId: string): Promise<LifegroupAttendance[]> {
-    return this.store.filter((r) => r.studentId === studentId);
-  }
-
-  async findByWeek(weekId: string): Promise<LifegroupAttendance[]> {
-    return this.store.filter((r) => r.weekId === weekId);
-  }
-
   async saveMany(records: LifegroupAttendance[]): Promise<void> {
     for (const r of records) {
       const idx = this.store.findIndex(
@@ -411,11 +342,6 @@ export class InMemoryLifegroupAttendanceRepository
       if (idx >= 0) this.store[idx] = r;
       else this.store.push(r);
     }
-    await this.persistence.write(this.store);
-  }
-
-  async deleteByImport(_importId: string): Promise<void> {
-    this.store = [];
     await this.persistence.write(this.store);
   }
 
@@ -489,12 +415,6 @@ export class InMemoryAuditRepository
 {
   constructor(persistence?: IPersistenceAdapter<AdminAuditEntry>) { super(persistence); }
 
-  async findRecent(limit: number): Promise<AdminAuditEntry[]> {
-    return Array.from(this.store.values())
-      .sort((a, b) => b.performedAt.localeCompare(a.performedAt))
-      .slice(0, limit)
-      .map((e) => this.clone(e));
-  }
 }
 
 // ---------------------------------------------------------------------------
