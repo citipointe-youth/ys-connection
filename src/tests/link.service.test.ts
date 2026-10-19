@@ -47,7 +47,7 @@ const CAPS: Capabilities = { checkIn: 'live', checkOut: 'locked', submitReport: 
 let idn = 9000;
 const nid = () => u(++idn);
 
-type Mode = 'off' | 'shadow' | 'on';
+type Mode = 'off' | 'admin' | 'on';
 interface H {
   svc: LinkService; link: InMemoryLinkRepository; clock: { now: Date };
   sessions: InMemoryServiceSessionRepository; attendance: InMemoryServiceAttendanceRepository;
@@ -214,8 +214,8 @@ describe('D1 the switch (every public method)', () => {
     }
   });
 
-  it('shadow: admin only; everyone else 404 (403 on the admin routes)', async () => {
-    const h = await setup('shadow');
+  it('admin: admin only; everyone else 404 (403 on the admin routes)', async () => {
+    const h = await setup('admin');
     for (const [name, f] of [...use, ...adm]) {
       expect(`${name}:${await code(f(h.svc, ADMIN))}`).toBe(`${name}:ok`);
       const want = adm.some(([n]) => n === name) ? 'FORBIDDEN' : 'MODULE_DISABLED';

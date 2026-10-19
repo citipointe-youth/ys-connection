@@ -153,10 +153,10 @@ export function canWithConfig(actor: Actor, action: Action, cfg: Pick<MinistryCo
   return can(actor, action);
 }
 
-// The off / shadow / on module mode (newYouthForms): 'on' = everyone, 'shadow' = the
+// The off / admin / on module mode (newYouthForms): 'on' = everyone, 'admin' = the
 // admin login only, 'off' = nobody. Used by New person and the link screens (T10).
 export function modeAllows(actor: Actor, mode: NewYouthMode): boolean {
-  return mode === 'on' || (mode === 'shadow' && actor.role === 'admin');
+  return mode === 'on' || (mode === 'admin' && actor.role === 'admin');
 }
 
 // T4 (X19): the Intake screens (module intakeAdmin, a plain off/on switch) are the admin login's only.

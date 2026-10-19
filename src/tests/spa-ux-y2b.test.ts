@@ -144,18 +144,18 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
     return { f };
   };
   it('missing keys read as the stored New person value', () => {
-    const { f } = load({ newYouthForms: 'shadow' });
-    for (const k of ['checkin', 'lifegroupReport', 'flows']) expect(f._setupModuleMode({ newYouthForms: 'shadow' }, k)).toBe('shadow');
+    const { f } = load({ newYouthForms: 'admin' });
+    for (const k of ['checkin', 'lifegroupReport', 'flows']) expect(f._setupModuleMode({ newYouthForms: 'admin' }, k)).toBe('admin');
     expect(f._setupModuleMode({ newYouthForms: 'on', flows: 'off' }, 'flows')).toBe('off');
     expect(f._setupModuleMode({}, 'checkin')).toBe('off');
   });
-  it('shows four selects with plain labels, shadow marked admin only', () => {
+  it('shows four selects with plain labels, admin marked Admin only', () => {
     const { f } = load({});
-    const out = f._setupElvantoModulesHtml({ newYouthForms: 'shadow' });
+    const out = f._setupElvantoModulesHtml({ newYouthForms: 'admin' });
     for (const label of ['New person', 'Check-in', 'Lifegroup report', 'Flow steps']) expect(out).toContain(label);
     expect(out.match(/<select/g)).toHaveLength(4);
-    expect(out.match(/selected/g)).toHaveLength(4); // each shows the inherited shadow
-    expect(out).toContain('Shadow (admin only)');
+    expect(out.match(/selected/g)).toHaveLength(4); // each shows the inherited admin
+    expect(out).toContain('Admin only');
   });
   it('changing one writes all four, so the others do not move by inheritance', () => {
     const body = `${extractFn(html, '_setupSetModule')}\n${extractFn(html, '_setupModuleMode')}\n${extractFn(html, '_nyModeOf')}`;
@@ -164,7 +164,7 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
       let _setupDraft = { modules: ${JSON.stringify(md)} }; function _setupRerender() {}
       ${body}
       _setupSetModule(${JSON.stringify(key)}, ${JSON.stringify(val)}); return _setupDraft.modules;`)();
-    expect(run({ newYouthForms: 'shadow' }, 'newYouthForms', 'on')).toMatchObject({ newYouthForms: 'on', checkin: 'shadow', lifegroupReport: 'shadow', flows: 'shadow' });
+    expect(run({ newYouthForms: 'admin' }, 'newYouthForms', 'on')).toMatchObject({ newYouthForms: 'on', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' });
     expect(run({ newYouthForms: 'on' }, 'flows', 'off')).toMatchObject({ newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'off' });
   });
   it('the settings file download writes the four values out', () => {

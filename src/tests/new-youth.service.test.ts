@@ -36,7 +36,7 @@ function fakeFetch(post: (url: string) => Response | Promise<Response> = () => n
   return { fetchFn: fn as unknown as typeof fetch, calls, posts: () => calls.filter((c) => c.method === 'POST') };
 }
 
-async function settingsWith(mode: 'off' | 'shadow' | 'on') {
+async function settingsWith(mode: 'off' | 'admin' | 'on') {
   const repo = new InMemorySettingsRepository();
   await repo.init();
   await repo.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: mode } } } as any);
@@ -64,16 +64,16 @@ describe('NewYouthService.send', () => {
     expect(f.calls).toHaveLength(0);
   });
 
-  it('shadow mode: the admin login can send (dry run here)', async () => {
+  it('admin-only mode: the admin login can send (dry run here)', async () => {
     const f = fakeFetch();
-    const svc = makeNewYouthService(await settingsWith('shadow'), { fetchFn: f.fetchFn });
+    const svc = makeNewYouthService(await settingsWith('admin'), { fetchFn: f.fetchFn });
     expect(await svc.send(ADMIN, INPUT)).toMatchObject({ student: 'skipped', parent: 'skipped', dryRun: true });
     expect(f.posts()).toHaveLength(0);
   });
 
-  it('shadow mode: the admin login sends live when live is set (shadow does not change sending)', async () => {
+  it('admin-only mode: the admin login sends live when live is set (admin only does not change sending)', async () => {
     const f = fakeFetch();
-    const svc = makeNewYouthService(await settingsWith('shadow'), { fetchFn: f.fetchFn, live: true });
+    const svc = makeNewYouthService(await settingsWith('admin'), { fetchFn: f.fetchFn, live: true });
     expect(await svc.send(ADMIN, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
   });
 
@@ -88,14 +88,14 @@ describe('NewYouthService.send', () => {
     expect((await svc.send(LEADER, INPUT)).ref).toBe(r.ref); // a repeat answers with the same send
   });
 
-  it.each([['leader', LEADER], ['grade', GRADE]] as const)('shadow mode: %s gets 404 ModuleDisabled and nothing is fetched', async (_n, who) => {
+  it.each([['leader', LEADER], ['grade', GRADE]] as const)('admin-only mode: %s gets 404 ModuleDisabled and nothing is fetched', async (_n, who) => {
     const f = fakeFetch();
-    const svc = makeNewYouthService(await settingsWith('shadow'), { fetchFn: f.fetchFn, live: true });
+    const svc = makeNewYouthService(await settingsWith('admin'), { fetchFn: f.fetchFn, live: true });
     await expect(svc.send(who, INPUT)).rejects.toMatchObject({ statusCode: 404 });
     expect(f.calls).toHaveLength(0);
   });
 
-  it.each([['off', LEADER], ['shadow', LEADER], ['shadow', GRADE]] as const)('the refusal (%s mode, actor %#) names the screen New person, never New youth', async (mode, who) => {
+  it.each([['off', LEADER], ['admin', LEADER], ['admin', GRADE]] as const)('the refusal (%s mode, actor %#) names the screen New person, never New youth', async (mode, who) => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith(mode), { fetchFn: f.fetchFn, live: true });
     const err: any = await svc.send(who, INPUT).catch((e) => e);

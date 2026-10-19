@@ -67,7 +67,7 @@ function assertSafeSuburb(s: string) {
 
 describe('GET /bus/run/cars follows the Bus module only (T10), not newYouthForms', () => {
   it('every bus:use login, in every newYouthForms mode; canSeeCars agrees', async () => {
-    for (const mode of ['off', 'shadow', 'on'] as const) {
+    for (const mode of ['off', 'admin', 'on'] as const) {
       const w = await world(mode);
       for (const role of ROLES) {
         await expect(w.svc.carsView(roleCtx(role)), `${mode}/${role}`).resolves.toBeTruthy();

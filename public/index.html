@@ -2627,7 +2627,7 @@ function moreItems() {
     if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
-    // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
+    // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
   }
   return xs;
@@ -7909,7 +7909,7 @@ function _setupPrayersToggle(el) {
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
-// Elvanto features (T10): four switches, each Off / Shadow (admin only) / On. A key that is not stored yet follows
+// Elvanto features (T10): four switches, each Off / Admin only / On. A key that is not stored yet follows
 // New person, like the server. A change writes all four, so changing one never moves the others by inheritance.
 const _SETUP_ELVANTO = [
   ['newYouthForms', 'New person', 'Adds a new student and parent to Elvanto from the app.'],
@@ -7919,8 +7919,8 @@ const _SETUP_ELVANTO = [
 ];
 function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
 function _setupElvantoModulesHtml(md) {
-  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Shadow mode shows it to the admin login only, for testing.')}</label>
-      <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['shadow', 'Shadow (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
+  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Admin only shows it to the admin login only.')}</label>
+      <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
 }
 // 2026-10-14: per flow the console pushes, the step Flow steps hides from every login and refuses to complete or assign.
 // '' = the first step (default), 'none' = none, else a step id. The steps come from GET /link/flows (admin gets `steps`).
@@ -9826,14 +9826,14 @@ function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.p
 const NY_ALLERGIES = ["Anaphylaxis","Asthmatic","Dairy Intolerance","Egg Allergy","Gluten Intolerance","Lactose Intolerance","Nut Allergy","Penicilin Allergy","Skin Allergy","Sugar Allergy","Wheat Allergy"];
 const NY_CONDITIONS = ["ADHD","Autism/Aspergers","Diabetes Type 1","Epilepsy"];
 let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
-// The module state: 'off' | 'shadow' | 'on'. A legacy boolean (true = on) is read too; the server normalises it.
-function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'shadow' ? 'shadow' : 'off'; }
+// The module state: 'off' | 'admin' | 'on' (D9: legacy 'shadow' = 'admin', legacy boolean true = on; the server normalises both).
+function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'admin' || v === 'shadow' ? 'admin' : 'off'; }
 function _nyMode() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
   return _nyModeOf(mc.modules && mc.modules.newYouthForms);
 }
-// Shadow mode shows the screen to the admin login only.
-function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin'); }
+// Admin only shows the screen to the admin login only.
+function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'admin' && !!S.user && S.user.role === 'admin'); }
 // New person is reached from the More menu only (moreItems); it has no Home tile.
 function _navSig() { return navItems().map(it => it.id + '|' + (it.action || '')).join(','); }
 // The host is the self-identified "I am" leader (ledger 22); a junior leader login uses its bound leader.
@@ -10152,18 +10152,18 @@ const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 const LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep']; // rev 6: one open action per flow row
 const LK_GROUP_TYPES = ['submitReport', 'editReport', 'addGroupMember', 'removeGroupMember'];
-// Elvanto features (T10, 2026-10-12): each has its own Off / Shadow / On switch under ministryConfig.modules.
+// Elvanto features (T10, 2026-10-12): each has its own Off / Admin only / On switch under ministryConfig.modules.
 // A stored config without the key inherits the New person value (same rule as the server).
 function _linkModeOf(feature) {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
   return _nyModeOf(m[feature] != null ? m[feature] : m.newYouthForms);
 }
-// _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (shadow = admin only).
+// _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (admin = admin login only).
 // No argument: any of the three is usable. The admin page is separate: _linkAdminOn.
 function _linkOn(feature) {
   if (!feature) return ['checkin', 'lifegroupReport', 'flows'].some((f) => _linkOn(f));
   const m = _linkModeOf(feature);
-  return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin');
+  return m === 'on' || (m === 'admin' && !!S.user && S.user.role === 'admin');
 }
 // The Elvanto link admin page: the admin login only, whatever the module switches say.
 function _linkAdminOn() { return !!S.user && S.user.role === 'admin'; }
@@ -10435,7 +10435,7 @@ function _lkFlush() {
   LINK.flushing = p;
   return p;
 }
-// The switch went Off (or to Shadow for this login) mid-night: stop retrying, keep the queue, say so, refresh the
+// The switch went Off (or to Admin only for this login) mid-night: stop retrying, keep the queue, say so, refresh the
 // settings and leave the link page (APP-17). The next tap or a later boot tries again.
 function _lkSwitchedOff() {
   if (LINK.timer) { clearTimeout(LINK.timer); LINK.timer = null; }

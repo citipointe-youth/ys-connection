@@ -1,7 +1,7 @@
 // Elvanto link SPA (plan Tasks F1.1–F1.4). Extract-and-run: the REAL functions from public/index.html run against
 // small stubs (localStorage, API, modal). No server: /link routes are stubbed with the spec's response shapes.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, loadFns } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
@@ -94,26 +94,26 @@ describe('F1.1 switch and More entries', () => {
   it('_linkOn(): any link feature usable; a missing key inherits New person', () => {
     for (const role of ['admin', 'director', 'quad', 'grade', 'leader']) {
       expect(makeEnv({ role, mode: 'off' }).fns._linkOn()).toBe(false);
-      expect(makeEnv({ role, mode: 'shadow' }).fns._linkOn()).toBe(role === 'admin');
+      expect(makeEnv({ role, mode: 'admin' }).fns._linkOn()).toBe(role === 'admin');
       expect(makeEnv({ role, mode: 'on' }).fns._linkOn()).toBe(true);
       for (const f of ['checkin', 'lifegroupReport', 'flows']) expect(makeEnv({ role, mode: 'on' }).fns._linkOn(f), f).toBe(true);
     }
   });
-  it('_linkOn(feature): each feature has its own switch; shadow is admin only', () => {
+  it('_linkOn(feature): each feature has its own switch; admin is admin only', () => {
     const on = (role: string, modules: Record<string, string>, f?: string) => makeEnv({ role, mode: 'off', modules }).fns._linkOn(f);
     expect(on('grade', { checkin: 'on' }, 'checkin')).toBe(true);
     expect(on('grade', { checkin: 'on' }, 'flows')).toBe(false);
     expect(on('grade', { checkin: 'on' }, 'lifegroupReport')).toBe(false);
     expect(on('grade', { checkin: 'on' })).toBe(true); // any
-    expect(on('grade', { flows: 'shadow' }, 'flows')).toBe(false);
-    expect(on('admin', { flows: 'shadow' }, 'flows')).toBe(true);
+    expect(on('grade', { flows: 'admin' }, 'flows')).toBe(false);
+    expect(on('admin', { flows: 'admin' }, 'flows')).toBe(true);
     expect(on('admin', { lifegroupReport: 'off', flows: 'on' }, 'lifegroupReport')).toBe(false);
     // an explicit off beats an inherited on
     expect(makeEnv({ role: 'grade', mode: 'on', modules: { checkin: 'off' } }).fns._linkOn('checkin')).toBe(false);
     expect(makeEnv({ role: 'grade', mode: 'on', modules: { checkin: 'off' } }).fns._linkOn('flows')).toBe(true);
   });
   it('_linkAdminOn: the admin login whatever the switches say, nobody else', () => {
-    for (const mode of ['off', 'shadow', 'on']) {
+    for (const mode of ['off', 'admin', 'on']) {
       expect(makeEnv({ role: 'admin', mode }).fns._linkAdminOn(), mode).toBe(true);
       for (const role of ['director', 'quad', 'grade', 'leader']) expect(makeEnv({ role, mode }).fns._linkAdminOn(), role + mode).toBe(false);
     }
@@ -125,8 +125,8 @@ describe('F1.1 switch and More entries', () => {
     expect(ids('quad', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('grade', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('leader', 'on')).toEqual(['link-checkin']);
-    expect(ids('admin', 'shadow')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
-    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'shadow')).toEqual([]);
+    expect(ids('admin', 'admin')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
+    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'admin')).toEqual([]);
     for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
     expect(ids('admin', 'off')).toEqual([]);
     // each entry by its own switch
@@ -134,10 +134,20 @@ describe('F1.1 switch and More entries', () => {
     expect(ids('grade', 'off', { flows: 'on', checkin: 'on' })).toEqual(['link-checkin', 'link-flows']);
     expect(ids('leader', 'off', { lifegroupReport: 'on', flows: 'on' })).toEqual([]);
   });
-  it('Youth Setup shows four Off / Shadow / On selects with plain labels, and the draft keeps all four keys', () => {
+  it('Youth Setup shows four Off / Admin only / On selects with plain labels, and the draft keeps all four keys', () => {
     expect(html).toContain("onchange=\"_setupSetModule('${k}', this.value)\"");
     for (const label of ["'New person'", "'Check-in'", "'Lifegroup report'", "'Flow steps'"]) expect(html).toContain(label);
     expect(html).toContain("checkin: 'off', lifegroupReport: 'off', flows: 'off'");
+  });
+  it('D9: the admin-only state is "admin" ("Admin only"); a legacy "shadow" still reads as admin only', () => {
+    expect(html).toContain("[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']]");
+    expect(html).not.toContain("'Shadow (admin only)'");
+    for (const role of ['admin', 'director', 'grade']) {
+      expect(makeEnv({ role, mode: 'shadow' }).fns._linkOn(), role).toBe(role === 'admin');
+      expect(makeEnv({ role, mode: 'off', modules: { flows: 'shadow' } }).fns._linkOn('flows'), role).toBe(role === 'admin');
+    }
+    const { _nyModeOf } = loadFns(['_nyModeOf']);
+    expect(['shadow', 'admin', 'on', true, 'off', false, undefined].map(_nyModeOf)).toEqual(['admin', 'admin', 'on', 'on', 'off', 'off', 'off']);
   });
   it('link pages are routed, and a junior leader may open the door screen only', () => {
     expect(html).toContain("else if (String(p).indexOf('link-') === 0) await renderLink(p);");

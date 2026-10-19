@@ -22,7 +22,13 @@ const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex c
 export const MINISTRY_PRESETS = ['large-graded-au', 'simple'] as const;
 export type MinistryPreset = (typeof MINISTRY_PRESETS)[number];
 
-export type NewYouthMode = 'off' | 'shadow' | 'on';
+export type NewYouthMode = 'off' | 'admin' | 'on';
+
+// D9 (2026-10-19): the admin-only state was called 'shadow'. Stored configs, settings files and cached
+// phones still send it, so 'shadow' is read as 'admin' forever.
+const MODE = z.enum(['off', 'admin', 'on']);
+const unShadow = (v: unknown) => (v === 'shadow' ? 'admin' : v);
+const moduleMode = z.preprocess(unShadow, MODE);
 
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
@@ -112,20 +118,18 @@ export const MinistryConfigSchema = z.object({
       exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
       busMinistry: z.boolean().default(false),
       // New person (internal name: new youth forms): the screen submits Citipointe's two public Elvanto connect forms.
-      // 'off' = nobody, 'shadow' = the admin login only (for testing), 'on' = every role. Off by default.
+      // 'off' = nobody, 'admin' = the admin login only, 'on' = every role. Off by default.
       // The old boolean is still read (true = on, false = off) so a config stored before this change parses.
-      newYouthForms: z
-        .preprocess((v) => (v === true ? 'on' : v === false ? 'off' : v), z.enum(['off', 'shadow', 'on']))
-        .default('off'),
+      newYouthForms: z.preprocess((v) => (v === true ? 'on' : v === false ? 'off' : unShadow(v)), MODE).default('off'),
       // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
       prayers: z.boolean().default(true),
       // Notices (2026-10-15): admin/director messages to the four quad logins. Off by default; off = every /notices route answers 404.
       notices: z.enum(['off', 'on']).default('off'),
-      // T10 (2026-10-12): the Elvanto link screens, each off / shadow (admin only) / on. Missing = the newYouthForms
-      // value, so a config stored before the split (prod: shadow) keeps behaving exactly as it did.
-      checkin: z.enum(['off', 'shadow', 'on']).optional(),
-      lifegroupReport: z.enum(['off', 'shadow', 'on']).optional(),
-      flows: z.enum(['off', 'shadow', 'on']).optional(),
+      // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms
+      // value, so a config stored before the split keeps behaving exactly as it did.
+      checkin: moduleMode.optional(),
+      lifegroupReport: moduleMode.optional(),
+      flows: moduleMode.optional(),
       // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
       intakeAdmin: z.enum(['off', 'on']).default('off'),
       // 2026-10-14: per flow (Elvanto flow id), the step no login lists, completes or assigns on Flow steps.

@@ -67,18 +67,25 @@ describe('branding.logoSvg (removed 2026-07-12)', () => {
   });
 });
 
-describe('modules.newYouthForms (off / shadow / on)', () => {
+describe('modules.newYouthForms (off / admin / on)', () => {
   const parseMode = (v: unknown) => MinistryConfigSchema.parse({ modules: { newYouthForms: v } }).modules.newYouthForms;
   it('defaults to off', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.modules.newYouthForms).toBe('off');
     expect(MinistryConfigSchema.parse({}).modules.newYouthForms).toBe('off');
   });
-  it('accepts the three states and round-trips shadow', () => {
+  it('accepts the three states and round-trips admin', () => {
     expect(parseMode('off')).toBe('off');
-    expect(parseMode('shadow')).toBe('shadow');
+    expect(parseMode('admin')).toBe('admin');
     expect(parseMode('on')).toBe('on');
-    const again = MinistryConfigSchema.parse(MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow' } }));
-    expect(again.modules.newYouthForms).toBe('shadow');
+    const again = MinistryConfigSchema.parse(MinistryConfigSchema.parse({ modules: { newYouthForms: 'admin' } }));
+    expect(again.modules.newYouthForms).toBe('admin');
+  });
+  it('D9: reads the legacy shadow as admin, forever', () => {
+    expect(parseMode('shadow')).toBe('admin');
+    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow', checkin: 'shadow', lifegroupReport: 'shadow', flows: 'shadow' } }).modules;
+    expect([m.newYouthForms, m.checkin, m.lifegroupReport, m.flows]).toEqual(['admin', 'admin', 'admin', 'admin']);
+    expect(MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow' } }).modules.flows).toBe('admin'); // inherited
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { checkin: 'shadow' } } as any).modules.checkin).toBe('admin');
   });
   it('still reads the old boolean: true -> on, false -> off', () => {
     expect(parseMode(true)).toBe('on');
@@ -90,24 +97,24 @@ describe('modules.newYouthForms (off / shadow / on)', () => {
   });
   it('a PATCH carrying the old boolean merges to the new state', () => {
     expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: true } } as any).modules.newYouthForms).toBe('on');
-    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: 'shadow' } }).modules.newYouthForms).toBe('shadow');
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { newYouthForms: 'admin' } }).modules.newYouthForms).toBe('admin');
   });
 });
 
-describe('T10 link modules checkin / lifegroupReport / flows (off / shadow / on)', () => {
+describe('T10 link modules checkin / lifegroupReport / flows (off / admin / on)', () => {
   const KEYS = ['checkin', 'lifegroupReport', 'flows'] as const;
-  it('a stored config without them inherits newYouthForms (prod is shadow: nothing changes on deploy)', () => {
-    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow' } }).modules;
-    for (const k of KEYS) expect(m[k], k).toBe('shadow');
+  it('a stored config without them inherits newYouthForms (nothing changes on deploy)', () => {
+    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'admin' } }).modules;
+    for (const k of KEYS) expect(m[k], k).toBe('admin');
     const legacy = MinistryConfigSchema.parse({ modules: { newYouthForms: true } }).modules;
     for (const k of KEYS) expect(legacy[k], k).toBe('on');
     for (const k of KEYS) expect(MINISTRY_CONFIG_DEFAULTS.modules[k], k).toBe('off');
   });
   it('each key is independent once set, and survives a re-parse and a merge', () => {
-    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'off', checkin: 'on', lifegroupReport: 'shadow' } }).modules;
-    expect([m.checkin, m.lifegroupReport, m.flows]).toEqual(['on', 'shadow', 'off']);
+    const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'off', checkin: 'on', lifegroupReport: 'admin' } }).modules;
+    expect([m.checkin, m.lifegroupReport, m.flows]).toEqual(['on', 'admin', 'off']);
     const again = MinistryConfigSchema.parse(MinistryConfigSchema.parse({ modules: m }));
-    expect(again.modules.lifegroupReport).toBe('shadow');
+    expect(again.modules.lifegroupReport).toBe('admin');
     const merged = mergeMinistryConfig(again, { modules: { newYouthForms: 'on' } });
     expect([merged.modules.newYouthForms, merged.modules.checkin, merged.modules.flows]).toEqual(['on', 'on', 'off']);
     expect(() => MinistryConfigSchema.parse({ modules: { flows: true } })).toThrow();
@@ -133,7 +140,7 @@ describe('logins and modules.prayers (October rework)', () => {
     expect(cfg.logins).toEqual({ simple: false, retiredGradeIds: [], gradeRoleWasOn: true });
     expect(cfg.modules.prayers).toBe(true);
     expect(cfg.modules.busMinistry).toBe(true);
-    expect(cfg.modules.newYouthForms).toBe('shadow');
+    expect(cfg.modules.newYouthForms).toBe('admin') // D9: legacy shadow reads as admin;
   });
 
   it('mergeMinistryConfig deep-merges logins (keeps retiredGradeIds/gradeRoleWasOn)', () => {

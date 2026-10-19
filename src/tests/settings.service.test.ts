@@ -493,12 +493,12 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
 describe('T10 link module keys through PATCH /settings (the settings file is a GET + PATCH round trip)', () => {
   it('saves each key on its own and a downloaded ministryConfig loads back unchanged', async () => {
     const { service } = await makeService();
-    await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: 'shadow', checkin: 'on', lifegroupReport: 'off', flows: 'shadow' } } });
+    await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: 'admin', checkin: 'on', lifegroupReport: 'off', flows: 'admin' } } });
     const file = JSON.parse(JSON.stringify((await service.get()).ministryConfig));
-    expect([file.modules.checkin, file.modules.lifegroupReport, file.modules.flows]).toEqual(['on', 'off', 'shadow']);
+    expect([file.modules.checkin, file.modules.lifegroupReport, file.modules.flows]).toEqual(['on', 'off', 'admin']);
     const fresh = await makeService();
     await fresh.service.update(ADMIN, { ministryConfig: file });
-    expect((await fresh.service.get()).ministryConfig.modules).toMatchObject({ newYouthForms: 'shadow', checkin: 'on', lifegroupReport: 'off', flows: 'shadow' });
+    expect((await fresh.service.get()).ministryConfig.modules).toMatchObject({ newYouthForms: 'admin', checkin: 'on', lifegroupReport: 'off', flows: 'admin' });
     await expect(service.update(ADMIN, { ministryConfig: { modules: { flows: 'sometimes' } } })).rejects.toBeTruthy();
   });
 });

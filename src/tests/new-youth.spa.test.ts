@@ -295,7 +295,7 @@ describe('result page buttons (M3)', () => {
 });
 
 
-// ---- Task 7: shadow mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
+// ---- Task 7: admin-only mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
 const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page: 'home', settings: { ministryConfig: { modules: { newYouthForms: mode, busMinistry: bus } } } });
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
 const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
@@ -315,9 +315,9 @@ describe('_nyOn: who sees the New person screen', () => {
   it('on: everybody', () => {
     for (const r of ROLES) expect(nyOnFn(modeOf('on', r))()).toBe(true);
   });
-  it('shadow: the admin login only', () => {
-    for (const r of ['leader', 'grade', 'quad', 'director']) expect(nyOnFn(modeOf('shadow', r))()).toBe(false);
-    expect(nyOnFn(modeOf('shadow', 'admin'))()).toBe(true);
+  it('admin: the admin login only', () => {
+    for (const r of ['leader', 'grade', 'quad', 'director']) expect(nyOnFn(modeOf('admin', r))()).toBe(false);
+    expect(nyOnFn(modeOf('admin', 'admin'))()).toBe(true);
   });
   it('a legacy boolean still works (true = on, false/missing = off)', () => {
     expect(nyOnFn(modeOf(true, 'grade'))()).toBe(true);
@@ -359,7 +359,7 @@ describe('bottom nav order', () => {
 describe('the More menu (in the Prayers slot)', () => {
   it('only Prayers available: the slot stays a plain Prayers tab', () => {
     for (const r of ROLES) {
-      for (const mode of ['off', 'shadow']) {
+      for (const mode of ['off', 'admin']) {
         if (r === 'admin') continue; // admin always has the Elvanto link entry: see the next test
         const n = navFns(modeOf(mode, r));
         expect(ids(n.moreItems()), `${mode}/${r}`).toEqual(['prayers']);
@@ -371,7 +371,7 @@ describe('the More menu (in the Prayers slot)', () => {
     }
   });
   it('Elvanto link is an Admin tab (2026-10-14): no role gets it in More', () => {
-    for (const mode of ['off', 'shadow', 'on']) {
+    for (const mode of ['off', 'admin', 'on']) {
       for (const r of ['admin', 'leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
     }
   });
@@ -386,17 +386,17 @@ describe('the More menu (in the Prayers slot)', () => {
       expect(noLink(ids(n.moreItems()))).toEqual(['prayers', 'bus']);
     }
   });
-  it('shadow: New person is in More for the admin only', () => {
-    expect(noLink(ids(navFns(modeOf('shadow', 'admin')).moreItems()))).toEqual(['prayers', 'new-youth']);
-    expect(noLink(ids(navFns(modeOf('shadow', 'admin', true)).moreItems()))).toEqual(['prayers', 'bus', 'new-youth']);
-    for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf('shadow', r, true)).moreItems()), r).toEqual(['prayers', 'bus']);
+  it('admin: New person is in More for the admin only', () => {
+    expect(noLink(ids(navFns(modeOf('admin', 'admin')).moreItems()))).toEqual(['prayers', 'new-youth']);
+    expect(noLink(ids(navFns(modeOf('admin', 'admin', true)).moreItems()))).toEqual(['prayers', 'bus', 'new-youth']);
+    for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf('admin', r, true)).moreItems()), r).toEqual(['prayers', 'bus']);
   });
   it('on: New person is in More for every role', () => {
     for (const r of ROLES) expect(noLink(ids(navFns(modeOf('on', r)).moreItems())), r).toEqual(['prayers', 'new-youth']);
   });
   it('the sheet lists each entry with its entry call; New person uses nyOpen (never a reset)', () => {
     let shown = '';
-    navFns(modeOf('shadow', 'admin', true), (h) => { shown = h; }).openMore();
+    navFns(modeOf('admin', 'admin', true), (h) => { shown = h; }).openMore();
     expect(shown).toContain('More');
     expect(shown).toContain(`closeModal();go('prayers')`);
     expect(shown).toContain(`closeModal();go('bus')`);
@@ -415,7 +415,7 @@ describe('the More menu (in the Prayers slot)', () => {
   });
   it('the row for the page you are on only closes the sheet: it never re-runs nyOpen over a form or result', () => {
     let shown = '';
-    navFns({ ...modeOf('shadow', 'admin', true), page: 'new-youth' }, (h) => { shown = h; }).openMore();
+    navFns({ ...modeOf('admin', 'admin', true), page: 'new-youth' }, (h) => { shown = h; }).openMore();
     expect(shown).not.toContain('nyOpen()');
     expect(shown).toMatch(/class="more-row on" onclick="closeModal\(\);"><i plus><span>New person/);
     expect(shown).toContain(`closeModal();go('prayers')`);
@@ -425,7 +425,7 @@ describe('the More menu (in the Prayers slot)', () => {
     expect(extractFn(html, '_initShell').match(/it\.action \? ' aria-haspopup="dialog"' : ''/g)).toHaveLength(2);
   });
   it('Prayers stays a root page behind More (no back arrow); Bus and New person stay sub-pages', () => {
-    const n = navFns(modeOf('shadow', 'admin', true));
+    const n = navFns(modeOf('admin', 'admin', true));
     expect(n._isRootPage('prayers')).toBe(true);
     expect(n._isRootPage('bus')).toBe(false);
     expect(n._isRootPage('new-youth')).toBe(false);
@@ -449,11 +449,11 @@ describe('"New person" is the name the host sees', () => {
     expect(extractFn(html, 'moreItems')).toContain("label:'New person'");
     expect(extractFn(html, 'moreItems')).toContain("id:'new-youth', ic:'plus', label:'New person'"); // F-24(a): the intake entry may say New youth & consent
   });
-  it('Youth Setup shows an Off / Shadow mode / On select and no checkbox for it', () => {
+  it('Youth Setup shows an Off / Admin only / On select and no checkbox for it', () => {
     // T10: four selects (New person, Check-in, Lifegroup report, Flow steps), written through _setupSetModule.
     expect(html).toContain("onchange=\"_setupSetModule('${k}', this.value)\"");
     expect(html).not.toContain("_setupSet('modules.newYouthForms', this.checked)");
-    expect(html).toMatch(/Shadow \(admin only\)/);
+    expect(html).toContain("['admin', 'Admin only']");
     expect(html).toMatch(/newYouthForms: 'off'/);
     expect(html).toMatch(/\['flows', 'Flow steps'/);
   });

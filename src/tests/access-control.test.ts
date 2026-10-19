@@ -5,6 +5,7 @@ import { can, assertCan, canAccessGrade, canAccessGender, canAccessStudent, canU
 import { deriveActorGender } from '../services/auth.service';
 import type { Actor, User } from '../core/entities/user';
 import { ForbiddenError } from '../core/errors/app-error';
+import { MinistryConfigSchema } from '../core/ministry-config';
 
 // Test helpers
 function actor(role: string, opts: { grade?: number; quad?: string; gender?: 'male' | 'female' | null } = {}): Actor {
@@ -165,7 +166,7 @@ describe('RBAC — intake:write (New youth forms)', () => {
   });
 });
 
-describe('RBAC — canUseNewYouth (off / shadow / on)', () => {
+describe('RBAC — canUseNewYouth (off / admin / on)', () => {
   const roles = ['leader', 'grade', 'quad', 'director', 'admin'];
   it.each(roles)('off: %s cannot', (role) => {
     expect(canUseNewYouth(actor(role), 'off')).toBe(false);
@@ -173,8 +174,8 @@ describe('RBAC — canUseNewYouth (off / shadow / on)', () => {
   it.each(roles)('on: %s can', (role) => {
     expect(canUseNewYouth(actor(role), 'on')).toBe(true);
   });
-  it.each(roles)('shadow: only admin (%s)', (role) => {
-    expect(canUseNewYouth(actor(role), 'shadow')).toBe(role === 'admin');
+  it.each(roles)('admin: only admin (%s)', (role) => {
+    expect(canUseNewYouth(actor(role), 'admin')).toBe(role === 'admin');
   });
 });
 
@@ -192,9 +193,9 @@ describe('RBAC — Elvanto link (link:use / link:admin)', () => {
     expect(canUseIntakeAdmin(actor(role), 'on')).toBe(role === 'admin');
     expect(canUseIntakeAdmin(actor(role), 'off')).toBe(false);
   });
-  it.each(roles)('modeAllows: on -> all, shadow -> admin only, off -> none (%s)', (role) => {
+  it.each(roles)('modeAllows: on -> all, admin -> admin only, off -> none (%s)', (role) => {
     expect(modeAllows(actor(role), 'on')).toBe(true);
-    expect(modeAllows(actor(role), 'shadow')).toBe(role === 'admin');
+    expect(modeAllows(actor(role), 'admin')).toBe(role === 'admin');
     expect(modeAllows(actor(role), 'off')).toBe(false);
   });
 });
@@ -235,8 +236,8 @@ describe('RBAC — modeAllows', () => {
   it.each(ALL_ROLES)('on: %s allowed', (role) => {
     expect(modeAllows(actor(role), 'on')).toBe(true);
   });
-  it.each(ALL_ROLES)('shadow: only admin (%s)', (role) => {
-    expect(modeAllows(actor(role), 'shadow')).toBe(role === 'admin');
+  it.each(ALL_ROLES)('admin: only admin (%s)', (role) => {
+    expect(modeAllows(actor(role), 'admin')).toBe(role === 'admin');
   });
   it.each(ALL_ROLES)('off: %s not allowed', (role) => {
     expect(modeAllows(actor(role), 'off')).toBe(false);
@@ -244,9 +245,9 @@ describe('RBAC — modeAllows', () => {
 });
 
 describe('RBAC — canUseNewYouth full table', () => {
-  const table: Array<[string, 'off' | 'shadow' | 'on', boolean]> = [];
+  const table: Array<[string, 'off' | 'admin' | 'on', boolean]> = [];
   for (const role of ALL_ROLES) {
-    table.push([role, 'off', false], [role, 'shadow', role === 'admin'], [role, 'on', true]);
+    table.push([role, 'off', false], [role, 'admin', role === 'admin'], [role, 'on', true]);
   }
   it.each(table)('%s in %s mode → %s', (role, mode, expected) => {
     expect(canUseNewYouth(actor(role), mode)).toBe(expected);
@@ -281,5 +282,13 @@ describe('T13 grade 6 is junior', () => {
     expect(canAccessGrade(actor('quad', { quad: 'g79' }), 6)).toBe(true);
     expect(canAccessGrade(actor('quad', { quad: 'b1012' }), 6)).toBe(false);
     expect(quadGradesOf('b79')).toEqual([6, 7, 8, 9]);
+  });
+});
+
+describe('D9: a stored legacy shadow gates as admin only', () => {
+  const m = MinistryConfigSchema.parse({ modules: { newYouthForms: 'shadow', checkin: 'shadow' } }).modules;
+  it.each(ALL_ROLES)('%s', (role) => {
+    expect(canUseNewYouth(actor(role), m.newYouthForms)).toBe(role === 'admin');
+    for (const f of [m.checkin, m.lifegroupReport, m.flows]) expect(modeAllows(actor(role), f)).toBe(role === 'admin');
   });
 });
