@@ -36,8 +36,9 @@ export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intak
 // PY-P3: 'shadowed' (the retired practice mode) is gone from the contract; the DB CHECK (0017) still allows it for old rows.
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'cancelled'] as const;
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
-// locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
-export const CAPABILITIES = ['live', 'locked', 'off'] as const;
+// off (or not listed) = the app refuses new rows of that type and never leases them. X-2: no 'locked' capability any more;
+// the refused reason 'locked' (Elvanto's 423) stays.
+export const CAPABILITIES = ['live', 'off'] as const;
 export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;

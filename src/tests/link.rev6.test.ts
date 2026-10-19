@@ -30,7 +30,7 @@ const DEV = { id: 'dev-1', label: 'test' };
 let idn = 9000;
 const nid = () => u(++idn);
 const ALL = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live',
-  removeFromFlowStep: 'live', consentLookup: 'live', consentFix: 'locked', consentLink: 'live' } as const;
+  removeFromFlowStep: 'live', consentLookup: 'live', consentFix: 'live', consentLink: 'live' } as const;
 
 async function setup(o: { intakeAdmin?: 'on' | 'off' } = {}) {
   const link = new InMemoryLinkRepository({ now: () => NOW });

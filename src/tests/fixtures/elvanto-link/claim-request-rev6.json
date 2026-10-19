@@ -7,7 +7,7 @@
   "pollSeconds": 60,
   "capabilities": {
     "checkIn": "live",
-    "checkOut": "locked",
+    "checkOut": "live",
     "submitReport": "live",
     "editReport": "live",
     "completeStep": "live",
@@ -16,7 +16,7 @@
     "removeGroupMember": "live",
     "removeFromFlowStep": "live",
     "consentLookup": "live",
-    "consentFix": "locked"
+    "consentFix": "live"
   },
   "max": 6,
   "leaseSeconds": 180,

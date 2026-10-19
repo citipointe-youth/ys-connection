@@ -7,7 +7,7 @@
   "pollSeconds": 60,
   "capabilities": {
     "checkIn": "live",
-    "checkOut": "locked",
+    "checkOut": "live",
     "submitReport": "live",
     "editReport": "live",
     "completeStep": "live",

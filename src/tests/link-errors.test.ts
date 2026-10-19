@@ -95,7 +95,7 @@ describe('link types (compile-only)', () => {
   it('compiles', () => {
     const t: ActionType = 'checkIn';
     const c: Capabilities = {
-      checkIn: 'live', checkOut: 'live', submitReport: 'locked', editReport: 'off', completeStep: 'live',
+      checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'off', completeStep: 'live',
       firstTimerCheckIn: 'live',
     };
     expect(t).toBe('checkIn');

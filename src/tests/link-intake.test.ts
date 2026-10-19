@@ -38,13 +38,13 @@ const DIRECTOR = actor(DIR_ID, 'director');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const BASE_CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
   firstTimerCheckIn: 'live' };
-const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' };
+const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live' };
 const SUB_S = '5b000000-0000-4000-8000-000000000001', SUB_P = '5b000000-0000-4000-8000-000000000002';
 const P_STU = '9e000000-0000-4000-8000-000000000011';
 const row1 = () => fx('push-intake.json').rows[0];
 /** A rev-4 console's claim (the same console id as the setup's, so it keeps its intake capabilities). */
 const CLAIM4 = (o: Record<string, unknown> = {}) => ({ ...fx('claim-request.json'), linkRev: 12,
-  capabilities: { ...fx('claim-request.json').capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' }, ...o });
+  capabilities: { ...fx('claim-request.json').capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live' }, ...o });
 const keysOf = (r: any) => r.steps.map((s: any) => s.key) as string[];
 let idn = 5000;
 const nid = () => u(++idn);

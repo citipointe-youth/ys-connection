@@ -166,8 +166,10 @@ describe('link contract: decisions 2026-10-12', () => {
     const today = push.takenAt.slice(0, 10);
     expect(push.rows.some((r) => r.ymd < today)).toBe(true);
   });
-  it('check-out is on: the console reports it locked until its writer exists, never off', () => {
-    expect(C.ClaimRequest.parse(load('claim-request.json')).capabilities.checkOut).toBe('locked');
+  it('check-out is on (live); X-2: locked is no longer a capability, the refused reason locked stays', () => {
+    expect(C.ClaimRequest.parse(load('claim-request.json')).capabilities.checkOut).toBe('live');
+    rejects(C.ClaimRequest, { ...load('claim-request.json'), capabilities: { ...load('claim-request.json').capabilities, checkOut: 'locked' } });
+    expect(C.REASONS).toContain('locked');
     expect(C.REASONS).not.toContain('pick-service' as never);
   });
 });
@@ -255,8 +257,8 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   const MIG = join(ROOT, 'supabase', 'migrations', '0021_link_intake.sql');
   it('a claim without the intake capability keys still parses; with them each must be a capability', () => {
     expect(C.ClaimRequest.parse(CR()).capabilities.intakeSave).toBeUndefined();
-    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' } };
-    expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'locked' });
+    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'off' } };
+    expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'off' });
     caps.capabilities.intakeSave = 'maybe'; rejects(C.ClaimRequest, caps);
   });
   it('the claim reply may carry the intake hint (mode off/on only, at most 4 refresh dates); without it an older reply parses', () => {

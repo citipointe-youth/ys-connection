@@ -181,7 +181,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const b = await repo.insertAction(newRow({ type: 'checkOut', payload: { serviceTimeId: randomUUID(), personId: randomUUID() } }));
         const args = claimArgs();
         args.console.capabilities.checkIn = 'off';
-        args.console.capabilities.checkOut = 'locked';
+        args.console.capabilities.checkOut = 'live';
         const got = (await repo.claim(args)).map((g) => g.row.id);
         expect(got).toContain(b.id);
         expect(got).not.toContain(a.id);

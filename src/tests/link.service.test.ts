@@ -41,7 +41,7 @@ const GRADE2 = actor(GRADE2_ID, 'grade', { grade: 9, gender: 'male' });
 const LEADER = actor(LEAD_ID, 'leader', { leaderId: L_CODY });
 const DEV = { id: 'dev-1', label: 'iPhone · Safari' };
 
-const CAPS: Capabilities = { checkIn: 'live', checkOut: 'locked', submitReport: 'live', editReport: 'live',
+const CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live',
   completeStep: 'live', firstTimerCheckIn: 'live' };
 
 let idn = 9000;
