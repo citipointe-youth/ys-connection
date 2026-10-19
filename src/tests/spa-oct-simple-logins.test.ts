@@ -48,11 +48,11 @@ const PRESET_CONFIGS_CLIENT = { simple: { structure: { cohortModel: 'none' }, mo
 const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { simple: 10 };
 let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
 
-  it('pickMinistryPreset keeps the draft logins and modules.prayers', () => {
-    const f = loadFns(['_deepMergeClient', 'pickMinistryPreset'],
+  it('_applyMinistryPreset keeps the draft logins and modules.prayers', () => {
+    const f = loadFns(['_deepMergeClient', '_presetPaths', '_applyMinistryPreset'],
       `${DEFAULTS} let _setupDraft = { logins: { simple: true }, modules: { prayers: false } }; function __d() { return _setupDraft; }`,
-      ['pickMinistryPreset', '__d']);
-    f.pickMinistryPreset('simple');
+      ['_applyMinistryPreset', '__d']);
+    f._applyMinistryPreset('simple');
     const d = f.__d();
     expect(d.logins.simple).toBe(true);
     expect(d.modules.prayers).toBe(false);
@@ -239,7 +239,7 @@ describe('S1.3 grade filter core', () => {
 });
 
 describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
-  const f = loadFns(['_vgStudents', '_vgLeaders', '_vgPrayers', '_vgGradeList']);
+  const f = loadFns(['_vgStudents', '_vgLeaders', '_vgPrayers']);
   const VG = [8];
   const studs = [{ id: 'a', grade: 7 }, { id: 'b', grade: 8 }, { id: 'c', grade: 9 }];
 
@@ -262,10 +262,6 @@ describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
     ];
     expect(f._vgPrayers(list, VG).map((p: any) => p.id)).toEqual(['s8', 'g78', 'gnull']);
     expect(f._vgPrayers(list, null)).toHaveLength(5);
-  });
-  it('Home narrows only the quad grade tiles list', () => {
-    expect(f._vgGradeList([7, 8, 9], VG)).toEqual([8]);
-    expect(f._vgGradeList([7, 8, 9], null)).toEqual([7, 8, 9]);
   });
 
   it('each screen renders _vgBar and applies its helper', () => {

@@ -152,7 +152,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 
 /* Cards */
 .card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);padding:var(--s4);margin-bottom:var(--s3)}
-.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3)}
 .card-title{font-size:15px;font-weight:700}
 .card-sub{font-size:12px;color:var(--ink-mid);margin-top:2px}
 
@@ -171,7 +170,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}.btn-primary:active{transform:translateY(0)}
 .btn-secondary{background:var(--paper-dark);color:var(--ink)}.btn-secondary:hover{background:#d1d5db}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
-.btn-warn{background:var(--warn);color:#fff}
 .btn-sm{padding:7px 12px;min-height:44px;font-size:13px;border-radius:6px}
 .btn-ghost{background:transparent;color:var(--ink-mid);padding:6px 8px}.btn-ghost:hover{background:var(--paper-dark);color:var(--ink)}
 .btn-ghost:disabled{opacity:.35;cursor:not-allowed}.btn-ghost:disabled:hover{background:transparent}
@@ -186,7 +184,6 @@ input,select,textarea{font-family:inherit;font-size:inherit}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .help-text{font-size:12px;color:var(--ink-faint);margin-top:4px}
 .setup-gen{display:flex;gap:8px;align-items:center;margin-top:6px}.setup-gen code{word-break:break-all;font-size:12px}
-.setup-ok .ic-s{color:var(--success)}.setup-fix .ic-s{color:var(--warn)}
 
 /* List items */
 .li{background:var(--paper-card);border-radius:var(--radius);border:1px solid var(--line);padding:var(--s3) var(--s4);margin-bottom:var(--s2);box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;transition:box-shadow .15s,transform .12s}
@@ -227,7 +224,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .prow .pmain{flex:1;min-width:0}
 .prow .pl1{font-size:13px;color:var(--ink-mid);line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .prow .pl1 b{font-weight:800;color:var(--ink)}
-.prow .pl2{font-size:10.5px;color:var(--ink-faint);line-height:1.2;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .pgo{flex-shrink:0;width:26px;height:26px;border-radius:8px;border:1px solid rgba(16,185,129,.35);background:var(--success-light);color:var(--success);display:grid;place-items:center}
 .prow .pans{flex-shrink:0;display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:800;color:#15803d;background:var(--success-light);border-radius:20px;padding:3px 8px;text-transform:uppercase;letter-spacing:.03em;border:none;cursor:pointer;font-family:inherit}
 .pfab{position:fixed;right:16px;bottom:114px;z-index:90;background:var(--accent);color:#fff;font-weight:800;font-size:13px;padding:11px 16px;border-radius:24px;box-shadow:0 8px 20px rgba(26,26,242,.4);display:flex;align-items:center;gap:6px;border:none;cursor:pointer}
@@ -247,15 +243,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .quad-g1012{background:#f3e8ff;color:#6d28d9}
 .quad-b1012{background:#d1fae5;color:#065f46}
 .risk-stopped{color:#7f1d1d;background:#fee2e2}
-.risk-atrisk{color:#92400e;background:#fef3c7}
 .risk-declining{color:#1e3a5f;background:#dbeafe}
-.risk-watch{color:#365314;background:#d9f99d}
-.risk-regular{color:#065f46;background:#d1fae5}
-.risk-new{color:#4c1d95;background:#ede9fe}
-
-/* Leader chips */
-.lc{display:inline-flex;align-items:center;gap:3px;padding:3px 10px 3px 10px;border-radius:20px;background:var(--accent-light);color:var(--accent-dark);font-size:12px;font-weight:600;border:1px solid rgba(37,99,235,.2);margin:2px}
-.lc .rm{padding:0 2px;cursor:pointer;opacity:.6;font-size:14px;line-height:1}.lc .rm:hover{opacity:1;color:var(--danger)}
 
 /* Progress */
 .pb{height:6px;background:var(--paper-dark);border-radius:3px;overflow:hidden;margin-top:5px}
@@ -266,7 +254,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ph{margin-bottom:var(--s4)}
 /* UI standard (D): a bare <h1> in .ph looks like .ph-title; .ph-eyebrow is the small parent name above a screen title. */
 .ph h1{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
-.ph-eyebrow{display:block;font-size:var(--t-label);font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin-bottom:var(--s1)}
 .ph-title{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em}
 .ph-sub{font-size:14px;color:var(--ink-mid);margin-top:4px}
 
@@ -388,11 +375,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .qcard.g79{border-color:#ec4899}.qcard.b79{border-color:#3b82f6}
 .qcard.g1012{border-color:#8b5cf6}.qcard.b1012{border-color:#10b981}
 
-/* Student detail */
-.detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--paper-dark);font-size:14px}
-.detail-lbl{color:var(--ink-mid);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px}
-.detail-val{font-weight:600}
-
 /* Tab bar */
 .tbbar{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:2px;-ms-overflow-style:none;scrollbar-width:none}
 .tbbar::-webkit-scrollbar{display:none}
@@ -402,20 +384,11 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .admin-tabs{flex-wrap:wrap} /* every Admin tab visible, none cut mid-word */
 @media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
 
-/* Audit timeline */
-.audit-entry{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--paper-dark)}
-.audit-entry:last-child{border-bottom:none}
-.audit-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:5px;flex-shrink:0}
-.audit-body{flex:1;min-width:0}
-.audit-who{font-size:12px;color:var(--ink-mid);margin-top:2px}
-.audit-detail{font-size:13px;color:var(--ink-mid);margin-top:3px}
-
 /* Destructive section */
 .destructive-section{border:2px solid var(--danger);border-radius:var(--radius-sm);padding:14px;margin-top:10px}
 .destructive-header{color:#991b1b;font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
 
-/* Lock banner */
-.lock-banner{background:var(--warn-light);border:1.5px solid var(--warn);color:#92400e;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+/* Preview banner */
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
 .preview-banner .btn{background:rgba(0,0,0,.15);color:#1a1200;border:none;padding:4px 10px;font-size:11px}
 .preview-banner .btn{min-height:44px;flex:none;white-space:nowrap}
@@ -431,8 +404,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .connect-leader:hover{box-shadow:var(--shadow-md)}
 .connect-leader-name{font-size:16px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .connect-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.connect-count-bar{height:8px;background:var(--paper-dark);border-radius:4px;overflow:hidden;margin-bottom:6px}
-.connect-count-fill{height:100%;border-radius:4px;transition:width .3s}
 .connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -499,13 +470,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .first-run-step{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
 .first-run-num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
 
-/* ── MY LEADERS WIDGET ── */
-.my-leaders-card{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
-.ml-leader-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--paper-dark)}
-.ml-leader-row:last-child{border-bottom:none}
-.ml-count-badge{background:var(--accent-light);color:var(--accent-dark);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;flex-shrink:0}
-.ml-count-badge.warn{background:var(--warn-light);color:#92400e}
-
 /* ── ADMIN ROLE GROUP ── */
 .role-group{margin-bottom:16px}
 .role-group-header{font-size:11px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px;padding:6px 0 8px;border-bottom:1px solid var(--paper-dark);margin-bottom:8px}
@@ -517,13 +481,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ccol-bar{width:100%;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
 .ccol-bar.lo{background:var(--warn)}.ccol-bar.cr{background:var(--danger)}
 .ccol-lbl{font-size:10px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
-.tbar-wrap{display:flex;flex-direction:column;gap:4px}
-.tbar-row{display:flex;align-items:center;gap:8px}
-.tbar-lbl{width:28px;text-align:right;color:var(--ink-mid);font-weight:700;flex:none;font-size:11px}
-.tbar-track{flex:1;height:8px;background:var(--paper-dark);border-radius:4px;overflow:hidden}
-.tbar-fill{height:100%;border-radius:4px;background:var(--accent)}
-.tbar-fill.low{background:var(--warn)}.tbar-fill.crit{background:var(--danger)}
-.tbar-val{width:36px;text-align:right;font-size:11px;font-weight:700;color:var(--ink-mid)}
 .tr-up{background:var(--success-light);color:#065f46;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
 .tr-dn{background:var(--danger-light);color:#991b1b;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
 .tr-st{background:var(--paper-dark);color:var(--ink-mid);border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
@@ -577,13 +534,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 /* ── CA MODULE CSS START ── */
 :root{--ca-navy:var(--navy);--ca-blue:var(--accent);--ca-teal:#0ea5a4;--ca-amber:#f59e0b;--ca-rose:#e11d48;--ca-green:#16a34a;--ca-paper:var(--paper);--ca-card:var(--paper-card);--ca-ink:var(--ink);--ca-muted:var(--ink-mid);--ca-line:var(--line);--ca-chip:var(--chip);--ca-r:14px;--ca-rs:11px;--ca-sh:0 3px 10px rgba(10,10,46,.06);}
 .ca-cw{background:#fef3c7;color:#92660b}
-.ca-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:4px}
-.ca-tile{background:var(--ca-card);border:1px solid var(--ca-line);border-radius:var(--ca-r);padding:13px 8px;min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-shadow:var(--ca-sh);cursor:pointer}
-.ca-tile .tic{display:flex;justify-content:center;margin-bottom:6px}.ca-tile .tic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.ca-tile .tl{font-size:.74rem;font-weight:700;color:var(--ca-navy)}
-.ca-tile .ts{font-size:.62rem;color:var(--ca-muted);margin-top:2px}
-.ca-lgbar{height:7px;background:var(--ca-paper);border-radius:999px;overflow:hidden;margin-top:5px;max-width:90px}
-.ca-lgbar i{display:block;height:100%;border-radius:999px;background:var(--ca-blue)}
 .ca-tabs{display:flex;gap:5px;overflow-x:auto;margin:0 0 12px;-webkit-overflow-scrolling:touch}
 .ca-tab{flex:none;background:var(--ca-card);border:1px solid var(--ca-line);border-radius:999px;padding:7px 10px;font-size:.62rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ca-muted);cursor:pointer}
 .ca-tab.on{background:var(--ca-navy);border-color:var(--ca-navy);color:#fff}
@@ -613,24 +563,18 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ca-fpill b{color:var(--ca-ink)}
 .ca-fpill.leak{border-color:#f5b5b1;background:#fff5f5;color:#b91c1c}
 .ca-fpill.leak b{color:#b91c1c}
-.ca-gb{height:7px;background:var(--ca-paper);border-radius:999px;overflow:hidden;margin-top:7px}
-.ca-gbf{height:100%;border-radius:999px}
 .ca-fch{display:flex;gap:6px;margin:0 0 11px;align-items:center;flex-wrap:wrap}
 .ca-sel{width:auto;padding:7px 10px;font-size:.72rem}
 .ca-scr{font-size:.95rem;font-weight:800;color:var(--ca-navy);flex:none;text-align:center}
 .ca-scr small{display:block;font-size:.5rem;font-weight:700;color:var(--ca-muted);text-transform:uppercase}
-.ca-uslot{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--ca-line)}
-.ca-uslot:last-child{border-bottom:none}
 .ca-uic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:15px;font-weight:800}.ca-uic svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ca-uic.ok{background:#e7f7ec;color:#15803d}
-.ca-uic.wn{background:#fef3c7;color:#92660b}
 .ca-usl{flex:1;min-width:0}
 .ca-ust{font-size:.78rem;font-weight:700}
 .ca-uss{font-size:.62rem;color:var(--ca-muted);margin-top:1px}
 .ca-warnb{position:sticky;bottom:78px;background:#fffaf0;border:1px solid #fbd38d;border-left:4px solid var(--ca-amber);border-radius:12px;padding:9px 11px;font-size:.66rem;color:#7a5a10;display:flex;gap:8px;align-items:flex-start;box-shadow:0 6px 18px rgba(18,35,59,.14);margin-top:14px;z-index:90}
 .ca-warnb b{color:#92660b}
 .ca-warnb .ca-wi{flex:none;font-size:.8rem;line-height:1}
-.ca-warnb .ca-wx{margin-left:auto;color:#b08a2e;font-weight:800;font-size:.7rem;cursor:pointer;padding:0 2px}
 @media(min-width:768px){.ca-warnb{bottom:12px}}
 /* ── CA MODULE CSS END ── */
 
@@ -642,8 +586,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
 /* Phone-tight layout: narrower gutters/cards, one-line title, tabs share the row instead of scrolling off. */
 /* R19-U14 #14: #page-main already gives the 16px phone gutter, so .bus-pg adds none (was 16 + 12 = 28). */
-@media(max-width:767px){.bus-pg{padding-left:0;padding-right:0}.bus-pg .card{padding:12px}.bus-wide{display:none}}
-.bus-wide{margin-left:2px}
+@media(max-width:767px){.bus-pg{padding-left:0;padding-right:0}.bus-pg .card{padding:12px}}
 .bus-pg .ph-title{white-space:nowrap}
 .bus-pg .ph{margin-bottom:12px}
 .bus-pg .tbbar{margin-bottom:10px}
@@ -895,7 +838,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 /* T4 Intake */
 .ik-grey{background:var(--paper-dark,#eee);border-color:var(--paper-dark,#eee)}
-.ik-v{background:none;border:none;padding:10px 4px;min-height:44px;font:inherit;font-weight:600;color:var(--accent);text-decoration:underline dotted;cursor:pointer;text-align:right}
 .ik-role{font-size:12px;font-weight:700;color:var(--ink-mid);margin:8px 0 2px}
 .ik-step{font-size:14px;padding:3px 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .ik-step .ic-s{width:14px;height:14px}.ik-step.ok .ic-s{color:#047857}
@@ -1704,16 +1646,6 @@ function _updateNavActive() {
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
 }
-// Root pages = this role's bottom-nav tabs (the "home base" screens). Anything
-// else (Trends, Student Search, Import, Admin, Connection Audit, Birthdays,
-// and every screen/tab/wizard nested inside those) counts as a
-// sub-page, so the header's brand mark swaps for a back arrow that always
-// returns to Home — a flat "back to base" rather than a real history stack.
-function _isRootPage(page) {
-  const bn = bottomNavItems();
-  // Prayers stays a root page when it sits behind More (it was a bottom tab before).
-  return bn.some(it => it.id === page) || (page === 'prayers' && bn.some(it => it.id === 'more'));
-}
 function _hdrBrandHtml() {
   if (S.page !== 'home') {
     return `<button type="button" class="hdr-back" onclick="navBack()" title="Back" aria-label="Back">${icN('arrl')}</button>`;
@@ -2157,7 +2089,6 @@ function _vgPrayers(list, vg) {
     ? !!(p.student && vg.includes(p.student.grade))
     : (!Array.isArray(p.createdByGrades) || p.createdByGrades.some(g => vg.includes(g))));
 }
-function _vgGradeList(grades, vg) { return vg ? grades.filter(g => vg.includes(g)) : grades; }
 function _vgToggle(g) {
   const cur = _vgGrades();
   if (!cur) return;
@@ -2627,7 +2558,7 @@ function moreItems() {
     if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
     if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
-    // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no shadow, no inheriting New person).
+    // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
   }
   return xs;
@@ -3075,12 +3006,6 @@ function _hScopeSvcAvg(trends, u) {
   if (u.role === 'quad') return _hQuadAvg(trends, u.quad);
   return trends.ministry ? Math.round(trends.ministry.averageAttendance) : 0;
 }
-function _hScopeSvcSess(trends, u) {
-  if (!trends) return 0;
-  if (u.role === 'quad') { const q = (trends.byQuad || []).find(x => x.quad === u.quad); return q && q.sessions ? q.sessions.length : 0; }
-  if (u.role === 'grade') { const first = userGrades(u)[0]; const g = (trends.byGrade || []).find(x => x.grade === first); return g && g.sessions ? g.sessions.length : 0; }
-  return trends.ministry && trends.ministry.sessions ? trends.ministry.sessions.length : 0;
-}
 // Merge per-grade session series (trends.byGrade) across a set of grades into a
 // single series (sum attendance per session date). For a single-grade login this
 // returns exactly that grade's series unchanged. Used by a multi-grade grade
@@ -3289,14 +3214,12 @@ async function _renderHomeInner(stale, fromCache) {
   // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
   _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
   const _connSet = new Set((conns || []).map(a => a.studentId));
-  const _lgQuad = q => (lgStats && lgStats.byQuad || []).find(x => x.quad === q);
   const _lgGrade = g => (lgStats && lgStats.byGrade || []).find(x => x.grade === g);
   const _lgScope = _hg != null ? _lgGrade(_hg) : (lgStats && lgStats.overall);
 
   // ── Hero card: welcome + attendance summary (current + previous term) ──
   const svcUniq = sc.filter(s => s.svcAttended > 0).length;
   const svcAvg = _hScopeSvcAvg(trends, u);
-  const svcSessN = _hScopeSvcSess(trends, u);
   const grpEnr = sc.filter(s => s.grpTotal > 0);
   const grpUniq = sc.filter(s => s.grpAttended > 0).length;
   const grpWeeks = grpEnr.length ? Math.max(0, ...grpEnr.map(s => s.grpTotal)) : 0;
@@ -3686,48 +3609,6 @@ function _toggleHomePrev() {
 // ============================================================
 // LEADERS
 // ============================================================
-async function showLeaderDetail(id) {
-  let leader, summary;
-  try {
-    [leader, summary] = await Promise.all([
-      API.get(`/leaders/${id}`),
-      API.get(`/connections/leader/${id}/summary`),
-    ]);
-  } catch { toast('Failed to load leader'); return; }
-  const u = S.user;
-  const canEdit = ['grade','director','admin'].includes(u.role);
-  const students = (summary.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-
-  let studRows = '';
-  for (const s of students) {
-    const pct = s.svcTotal > 0 ? Math.round(s.svcAttended / s.svcTotal * 100) : null;
-    studRows += `<div style="padding:10px 0;border-bottom:1px solid var(--paper-dark);display:flex;align-items:center;gap:10px">
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(s.fullName)}</div>
-        <div style="font-size:12px;color:var(--ink-mid)">Gr ${s.grade||'—'} · ${s.gender}</div>
-      </div>
-      ${pct!==null?`<div style="text-align:right">
-        <div style="font-size:12px;font-weight:700">${pct}%</div>
-        <div class="pb" style="width:50px">${pBar(pct)}</div>
-      </div>`:''}
-    </div>`;
-  }
-
-  modal(`
-    <div class="mo-title">${esc(leader.fullName)}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-      <span class="chip c-accent">${leader.gender||'any gender'}</span>
-      <span class="chip c-neutral">Gr ${leader.grades?.join(', ')||'All'}</span>
-      <span class="chip ${leader.active?'c-success':'c-neutral'}">${leader.active?'Active':'Inactive'}</span>
-    </div>
-    <div class="sh">Assigned Students (${students.length})</div>
-    ${students.length ? studRows : '<p style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students assigned yet</p>'}
-    <div style="display:flex;gap:8px;margin-top:16px">
-      ${canEdit?`<button class="btn btn-primary btn-sm" onclick="closeModal();openStudentPicker('${id}','${leader.gender||''}')">${icS('link')} Add Students</button>`:''}
-      ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="closeModal();showEditLeader('${id}')">${icS('edit')} Edit</button>`:''}
-      <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
-    </div>`);
-}
 
 function showAddLeader() {
   const u = S.user;
@@ -3764,8 +3645,11 @@ async function submitAddLeader() {
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
+// SY-01: the leader open in Edit leader. confirmDelLeader reads the name from here, never through onclick.
+let _editLeader = null;
 async function showEditLeader(id) {
   let l; try { l = await API.get(`/leaders/${id}`); } catch { toast('Not found'); return; }
+  _editLeader = l;
   const u = S.user;
   // Grade/quad logins can broaden which OTHER grades a leader covers, so they
   // can see and connect students from those grades too — not just their own
@@ -3795,7 +3679,7 @@ async function showEditLeader(id) {
       <button class="btn btn-primary" style="flex:1" onclick="submitEditLeader('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>
-    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}','${esc(l.fullName).replace(/'/g,"\\'")}')">${icS('trash')} Remove leader</button>`);
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}')">${icS('trash')} Remove leader</button>`);
 }
 
 async function submitEditLeader(id) {
@@ -3824,7 +3708,8 @@ async function submitEditLeader(id) {
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
-function confirmDelLeader(id, name) {
+function confirmDelLeader(id) {
+  const name = (_editLeader && _editLeader.id === id ? _editLeader.fullName : ((_aS.leaders || []).find(x => x.id === id) || {}).fullName) || 'This leader';
   // How many students are currently connected to this leader (blast radius)?
   const affected = Object.values(_aS.allocs || {}).filter(ids => (ids || []).includes(id));
   const n = affected.length;
@@ -5483,25 +5368,10 @@ function colChart(sessions, maxH, opts) {
     return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
-function hbarTr(label, pct, disp) {
-  const shown = disp !== undefined ? disp : pct + '%';
-  return `<div class="tbar-row"><div class="tbar-lbl">${label}</div><div class="tbar-track"><div class="tbar-fill ${pct<40?'crit':pct<70?'low':''}" style="width:${pct}%"></div></div><div class="tbar-val">${shown}</div></div>`;
-}
 function trendBadge(dir) {
   if (dir === 'up') return `<span class="tr-up" style="display:inline-flex;align-items:center;gap:2px">${icS('arru')} Improving</span>`;
   if (dir === 'down') return `<span class="tr-dn" style="display:inline-flex;align-items:center;gap:2px">${icS('arrd')} Declining</span>`;
   return `<span class="tr-st" style="display:inline-flex;align-items:center;gap:2px">${icS('arrr')} Stable</span>`;
-}
-function trendDir(sessions) {
-  const v = sessions.filter(s => s.tot > 0);
-  if (v.length < 4) return 'stable';
-  const h1 = v.slice(0, Math.floor(v.length/2)).reduce((s,x)=>s+x.pct,0)/Math.floor(v.length/2);
-  const h2 = v.slice(Math.floor(v.length/2)).reduce((s,x)=>s+x.pct,0)/(v.length-Math.floor(v.length/2));
-  if (h2-h1 > 4) return 'up'; if (h1-h2 > 4) return 'down'; return 'stable';
-}
-function avgAtt(sessions) {
-  const v = sessions.filter(s => s.tot > 0);
-  return v.length ? Math.round(v.reduce((s,x)=>s+x.att,0)/v.length) : 0;
 }
 function statCard(nums, labels, prevs) {
   const cols = nums.length;
@@ -5515,12 +5385,6 @@ function statCard(nums, labels, prevs) {
 function grpBar(uniq, enrolled) {
   const p = enrolled ? Math.round(uniq / enrolled * 100) : 0;
   return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-mid);margin-bottom:3px"><span>${uniq} of ${enrolled} enrolled attended at least once</span><span>${p}%</span></div><div class="pb"><div class="pb-f ${p>=75?'fill-g':p>=50?'fill-a':'fill-r'}" style="width:${p}%"></div></div></div>`;
-}
-// Compact trend arrow for at-risk prev-term comparison
-function trendArrow(dir) {
-  if (dir === 'up') return `<span style="color:var(--success);display:inline-flex">${icS('arru')}</span>`;
-  if (dir === 'down') return `<span style="color:var(--danger);display:inline-flex">${icS('arrd')}</span>`;
-  return '';
 }
 
 // Service attendance aggregate for a student subset. `prev=true` reads the
@@ -5653,11 +5517,6 @@ async function renderTrends() {
 
   const byGrade = gradeStats(students);
   const byQuad = quadStats(students);
-  const totalUniq = students.filter(s=>s.svcAttended>0).length;
-  const totalTot = students.reduce((s,x)=>s+x.svcTotal,0);
-  const totalAtt = students.reduce((s,x)=>s+x.svcAttended,0);
-  const totalAvgPct = totalTot > 0 ? Math.round(totalAtt/totalTot*100) : 0;
-  const totalAvgSess = students.length ? Math.round(totalAtt/students.length) : 0;
 
   const QUAD_COLORS = { g79:'#ec4899', b79:'#3b82f6', g1012:'#8b5cf6', b1012:'#10b981' };
 
@@ -6257,7 +6116,7 @@ async function previewServiceImport(filename, rows) {
       <div>Grades seen: ${[...grades].sort((a,b)=>a-b).join(', ') || '—'}</div>
     </div>${warn}
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   window._pendingServiceRows = rows;
@@ -6272,7 +6131,7 @@ function previewGroupImport(filename, parsed) {
       <div><strong>${totalMembers}</strong> member row${totalMembers!==1?'s':''}</div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${JSON.stringify(filename).replace(/"/g,'&quot;')})">Import</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   window._pendingGroups = parsed;
@@ -7416,22 +7275,38 @@ function _ensureSetupDraft(settings) {
   }
 }
 
-function pickMinistryPreset(id) {
-  // Always layer the preset onto a clean defaults baseline (not onto whatever
-  // _setupDraft currently holds) so switching presets fully replaces the
-  // previous preset's overrides instead of accumulating them. Doesn't touch
-  // serviceMinAttendance... actually it does (presets scale it) — but leaves
-  // termGapDays alone, since that's not part of any preset.
-  // A preset never flips Junior/Senior logins or Prayers on its own: keep the draft's values.
-  const prev = _setupDraft || {};
-  _setupDraft = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
-  if (prev.logins) _setupDraft.logins = JSON.parse(JSON.stringify(prev.logins));
-  if (prev.modules && prev.modules.prayers != null) {
-    _setupDraft.modules = _setupDraft.modules || {};
-    _setupDraft.modules.prayers = prev.modules.prayers;
+// Leaf paths of a preset object ('structure.cohortModel', ...).
+function _presetPaths(o, pre) {
+  return Object.keys(o).flatMap((k) => (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) ? _presetPaths(o[k], pre + k + '.') : [pre + k]);
+}
+// CY-D1: a preset sets ONLY the fields some preset defines (cohort model, gender rule, Director and
+// Quad, Connection Audit, Lifegroups, Export guides), each from defaults + this preset, so switching
+// presets never piles up overrides. Everything else in the draft is kept: the Elvanto screens, New
+// youth & consent, Bus (module and settings), branding, labels, logins, Prayers. It also scales
+// serviceMinAttendance; termGapDays is left alone.
+function _applyMinistryPreset(id) {
+  const full = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
+  const paths = new Set(['preset', ...Object.values(PRESET_CONFIGS_CLIENT).flatMap((p) => _presetPaths(p, ''))]);
+  const d = JSON.parse(JSON.stringify(_setupDraft || {}));
+  for (const p of paths) {
+    const ks = p.split('.');
+    let v = full, o = d;
+    for (const k of ks) v = v == null ? undefined : v[k];
+    for (const k of ks.slice(0, -1)) o = (o[k] && typeof o[k] === 'object') ? o[k] : (o[k] = {});
+    o[ks[ks.length - 1]] = v;
   }
+  _setupDraft = d;
   _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
   _setupRerender();
+}
+function pickMinistryPreset(id) {
+  const p = MINISTRY_PRESETS_INFO.find((x) => x.id === id) || { title: id };
+  modal(`<div class="mo-title">Use ${esc(p.title)}?</div>
+    <p style="color:var(--ink-mid);margin-bottom:20px">This sets the cohort model, gender rule, Director and Quad logins, Connection Audit, Lifegroups and Export guides. Everything else stays as it is. Nothing changes until you tap Save.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();_applyMinistryPreset('${id}')">Use ${esc(p.title)}</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
 }
 
 async function saveMinistrySetup() {
@@ -7889,7 +7764,7 @@ function _setupPrayersToggle(el) {
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
-// Elvanto features (T10): four switches, each Off / Shadow (admin only) / On. A key that is not stored yet follows
+// Elvanto features (T10): four switches, each Off / Admin only / On. A key that is not stored yet follows
 // New person, like the server. A change writes all four, so changing one never moves the others by inheritance.
 const _SETUP_ELVANTO = [
   ['newYouthForms', 'New person', 'Adds a new student and parent to Elvanto from the app.'],
@@ -7899,8 +7774,8 @@ const _SETUP_ELVANTO = [
 ];
 function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
 function _setupElvantoModulesHtml(md) {
-  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Shadow mode shows it to the admin login only, for testing.')}</label>
-      <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['shadow', 'Shadow (admin only)'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
+  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Admin only shows it to the admin login only.')}</label>
+      <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
 }
 // 2026-10-14: per flow the console pushes, the step Flow steps hides from every login and refuses to complete or assign.
 // '' = the first step (default), 'none' = none, else a step id. The steps come from GET /link/flows (admin gets `steps`).
@@ -7949,9 +7824,7 @@ function _setupSetGrade6(checked) {
 // Changing the Cohort model dropdown directly (not via the preset buttons
 // above) auto-selects Director/Quad the same way the Complex/Simple presets
 // do — Complex turns both on, Simple turns both off. Only touches those two
-// role toggles, unlike pickMinistryPreset() which replaces the whole draft —
-// an admin who's already customised branding/terminology shouldn't lose that
-// just from flipping this one dropdown.
+// role toggles (a preset, _applyMinistryPreset, also sets the other preset fields).
 function _setupSetCohortModel(value) {
   if (!_setupDraft) _setupDraft = {};
   if (!_setupDraft.structure) _setupDraft.structure = {};
@@ -8460,7 +8333,6 @@ let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
 let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
-const CA_NAMES=['Ava Okafor','Noah Castellanos','Isla Vandermeer','Eli Borowski','Maya Lindqvist','Levi Acheampong','Zara Kowalczyk','Finn Drummond','Lena Marchetti','Kai Stratford','Ruby Vasquez','Theo Lindgren','Nina Oyelaran','Jude Hartmann','Esme Calloway','Remy Delacroix','Sofia Andrade','Hugo Bertrand','Lola Fitzwilliam','Omar Castaneda','Iris Galloway','Felix Moreau','Tara Whitlock','Ezra Soderberg','Mila Beaumont','Arlo Kingsley'];
 
 // ---------- utils ----------
 function h32(x){let h=0;for(const c of String(x))h=(h*31+c.charCodeAt(0))>>>0;return h;}
@@ -8553,7 +8425,6 @@ function _auditLgStats(sel,prev){
   return {byQuad:Object.keys(quads).map(q=>({quad:q,grades:Object.values(quads[q].grades)}))};
 }
 function sessSeries(){const t=D&&D.trends&&D.trends.ministry;return((t&&t.sessions)||[]).filter(x=>!x.isOutlier).map(x=>({date:x.sessionDate,v:x.totalAttended||0}));}
-function sessDates(){const ss=sessSeries();if(ss.length)return ss.map(x=>x.date);const a=[];for(let i=9;i>=0;i--)a.push(new Date(Date.now()-i*7*864e5).toISOString().slice(0,10));return a;}
 function regR(){const s=D.settings||{};return(s.regRateNumerator||3)/(s.regRateDenominator||4);}
 
 // ---------- store ----------
@@ -8577,7 +8448,6 @@ function restore(){
 function reset(){try{localStorage.removeItem(KEY);}catch{}st=null;mdl=null;D=null;warnOff=false;AUDIT=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};}
 // Server audits have no localStorage-staleness/seed concept — the freshness cue
 // is the year + uploaded date shown in the switcher and Data tab.
-function seedOn(){return false;}
 function stale(){return false;}
 
 // (Demo seed removed — audit uploads start empty; see emptyUploads.)
@@ -9143,11 +9013,6 @@ function exportQuad(q){
   document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);
   closeModal();toast((rows.length-1)+' follow-ups exported');
 }
-function slotS(t,sub){return '<div class="ca-uslot"><div class="ca-uic ok">'+icS('check')+'</div><div class="ca-usl"><div class="ca-ust">'+t+'</div><div class="ca-uss">'+sub+'</div></div><span class="chip c-success">Synced</span></div>';}
-function slotU(kind,t,up){
-  const sd=up.src==='seed';
-  return '<div class="ca-uslot"><div class="ca-uic '+(sd?'wn':'ok')+'">'+icS('upload')+'</div><div class="ca-usl"><div class="ca-ust">'+t+'</div><div class="ca-uss">'+(sd?'Demo seed':esc(up.fn))+' · '+up.rows.length+' rows · '+fmtD(up.at)+'</div></div><button class="btn btn-secondary btn-sm" onclick="CA.pick(\''+kind+'\')">Replace</button><input type="file" id="ca-f-'+kind+'" accept=".csv,.xlsx" style="display:none" onchange="CA.upload(\''+kind+'\',this)"></div>';
-}
 function rData(){
   let b='';
   // ── Year selector (existing server-stored audits) ──
@@ -9310,11 +9175,10 @@ function _buildDeckBody(){
   const gSorted=m.groups.slice().sort((a,b)=>b.va-a.va);
   const strongLg=gSorted[0]||null,weakLg=gSorted[gSorted.length-1]||null;
   const gDecl=m.groups.filter(g=>g.trend==='declining').length;
-  const seedy=seedOn(),isStale=stale();
+  const isStale=stale();
   const upDate=fmtD(st.uploads.connect.at);
   const rrPct=Math.round(((D.settings&&D.settings.regRateNumerator)||3)/((D.settings&&D.settings.regRateDenominator)||4)*100);
-  const currency=seedy?'Student Team / Connect / Decision data is the demo seed (seeded '+upDate+') — replace it in the Data tab before presenting these figures.'
-    :isStale?'Student Team / Connect / Decision data was last updated '+upDate+' — refresh it in the Data tab for full currency.'
+  const currency=isStale?'Student Team / Connect / Decision data was last updated'+upDate+' — refresh it in the Data tab for full currency.'
     :'This audit — attendance, Student Team, Connect and Decision — was last saved on '+upDate+'.';
   const funnelViz=()=>{const max=Math.max(1,atLeast(1));return '<div class="funnel">'+m.rungs.map((r,i)=>{const w=Math.max(7,Math.round(r.v/max*100)),leaky=i===leak;return '<div class="frow"><span class="flabel">'+esc(r.lb)+'</span><span class="ftrack"><span class="fbar'+(leaky?' leaky':'')+'" style="width:'+w+'%"></span></span><b class="fval'+(leaky?' leaky':'')+'">'+r.v+'</b></div>';}).join('')+'</div>';};
   const sparkViz=()=>{
@@ -9619,7 +9483,7 @@ async function render(p){
   restore();mdl=null;
   dispatch(p);
 }
-return{render,reset,stale,seedOn,dismissWarn,setYear,setTerm,saveAudit,
+return{render,reset,stale,dismissWarn,setYear,setTerm,saveAudit,
   model:async()=>{await load();restore();return model();},
   fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,showLgRoster,exportMenu,exportQuad,buildDeck,
   pq,pstage,pquad,pmore};
@@ -9808,14 +9672,14 @@ function _busStopPoll() { if (BUS.pollTimer) clearInterval(BUS.pollTimer); BUS.p
 const NY_ALLERGIES = ["Anaphylaxis","Asthmatic","Dairy Intolerance","Egg Allergy","Gluten Intolerance","Lactose Intolerance","Nut Allergy","Penicilin Allergy","Skin Allergy","Sugar Allergy","Wheat Allergy"];
 const NY_CONDITIONS = ["ADHD","Autism/Aspergers","Diabetes Type 1","Epilepsy"];
 let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
-// The module state: 'off' | 'shadow' | 'on'. A legacy boolean (true = on) is read too; the server normalises it.
-function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'shadow' ? 'shadow' : 'off'; }
+// The module state: 'off' | 'admin' | 'on' (D9: legacy 'shadow' = 'admin', legacy boolean true = on; the server normalises both).
+function _nyModeOf(v) { return v === true || v === 'on' ? 'on' : v === 'admin' || v === 'shadow' ? 'admin' : 'off'; }
 function _nyMode() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
   return _nyModeOf(mc.modules && mc.modules.newYouthForms);
 }
-// Shadow mode shows the screen to the admin login only.
-function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin'); }
+// Admin only shows the screen to the admin login only.
+function _nyOn() { const m = _nyMode(); return m === 'on' || (m === 'admin' && !!S.user && S.user.role === 'admin'); }
 // New person is reached from the More menu only (moreItems); it has no Home tile.
 function _navSig() { return navItems().map(it => it.id + '|' + (it.action || '')).join(','); }
 // The host is the self-identified "I am" leader (ledger 22); a junior leader login uses its bound leader.
@@ -10134,18 +9998,18 @@ const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 const LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep']; // rev 6: one open action per flow row
 const LK_GROUP_TYPES = ['submitReport', 'editReport', 'addGroupMember', 'removeGroupMember'];
-// Elvanto features (T10, 2026-10-12): each has its own Off / Shadow / On switch under ministryConfig.modules.
+// Elvanto features (T10, 2026-10-12): each has its own Off / Admin only / On switch under ministryConfig.modules.
 // A stored config without the key inherits the New person value (same rule as the server).
 function _linkModeOf(feature) {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
   return _nyModeOf(m[feature] != null ? m[feature] : m.newYouthForms);
 }
-// _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (shadow = admin only).
+// _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (admin = admin login only).
 // No argument: any of the three is usable. The admin page is separate: _linkAdminOn.
 function _linkOn(feature) {
   if (!feature) return ['checkin', 'lifegroupReport', 'flows'].some((f) => _linkOn(f));
   const m = _linkModeOf(feature);
-  return m === 'on' || (m === 'shadow' && !!S.user && S.user.role === 'admin');
+  return m === 'on' || (m === 'admin' && !!S.user && S.user.role === 'admin');
 }
 // The Elvanto link admin page: the admin login only, whatever the module switches say.
 function _linkAdminOn() { return !!S.user && S.user.role === 'admin'; }
@@ -10417,7 +10281,7 @@ function _lkFlush() {
   LINK.flushing = p;
   return p;
 }
-// The switch went Off (or to Shadow for this login) mid-night: stop retrying, keep the queue, say so, refresh the
+// The switch went Off (or to Admin only for this login) mid-night: stop retrying, keep the queue, say so, refresh the
 // settings and leave the link page (APP-17). The next tap or a later boot tries again.
 function _lkSwitchedOff() {
   if (LINK.timer) { clearTimeout(LINK.timer); LINK.timer = null; }
@@ -11219,11 +11083,6 @@ function _lkGrFilter(v) {
   if (one.length === 1) { _lkOpenGroup(one[0].groupId); return; }
   const gl = document.getElementById('lk-glist');
   if (gl) gl.innerHTML = _lkGroupsHtml();
-}
-function _lkSvcName(id) {
-  if (!id) return 'No service';
-  const s = (LINK.services || []).find((x) => x.serviceTimeId === id);
-  return s ? _lkSvcLabel(s) : 'A service more than 7 days ago';
 }
 // One report: date, service, did-not-meet, guests, ticked members. Never notes. Edit only when the console says it can.
 function _lkReportHtml(g, r) {
@@ -12127,7 +11986,7 @@ function _nyLinkLoad() {
 }
 // ── Elvanto link admin page (F4.2; spec §11.4 second bullet, §6.3). link:admin = admin only (T9). ──
 function _lkAdmFresh() {
-  return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none', sDate: null, shadow: null, sErr: null,
+  return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none',
     from: null, to: null, login: '', event: '', log: null, lErr: null };
 }
 // The latest Friday on or before the given day (Brisbane date).
@@ -12220,7 +12079,8 @@ function _lkAdmStatusHtml() {
     <p class="lk-sub">Each link screen has its own switch in Youth Setup, Modules. To stop all data flow, also Turn off the link on the console.</p>
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? progBar('Loading')
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
-    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}</div></div>`).join('')}
+    ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}
+      <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div></div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
 // Matching: Unmatched / Several possible / Set by hand. Elvanto person in bold; YS candidates with grade and birth date.
@@ -12252,19 +12112,6 @@ function _lkAdmMatchHtml() {
   }
   return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${body}`;
 }
-function _lkAdmShadowHtml() {
-  const V = { 'matched': 'In Elvanto and in YS attendance', 'sent-not-imported': 'In Elvanto; in YS attendance after the next import.',
-    'practice-matched': 'Practice: in YS attendance', 'practice-missing': 'Practice: not in YS attendance', 'no-student': 'Not matched to a student' };
-  const A = LINK.adm, r = A.shadow;
-  let body = '';
-  if (A.sErr) body = `<p class="lk-sub">${esc(A.sErr)}</p>`;
-  else if (r && !r.imported) body = '<p class="lk-sub">Not in the import</p>';
-  else if (r) body = `<div class="lk-kv"><span>Attended with no app check-in</span><b>${esc(r.unlinkedAttenders)}</b></div>`
-    + (r.rows || []).map((x) => `<div class="lk-kv"><span>${esc(x.name || 'Unknown person')}</span><b>${esc(V[x.verdict] || x.verdict)}</b></div>`).join('');
-  return `<div class="lk-sec">Kiosk vs app check ${helpTip("Compares what the app would send with what Elvanto already shows, without sending anything.")}</div><p class="lk-sub">Check-ins against the attendance import for one day.</p>
-    <div class="lk-filters"><input type="date" class="fi" value="${esc(A.sDate || _lkLastFriday(_lkToday()))}" onchange="LINK.adm.sDate=this.value">
-    <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmShadow()">Check</button></div><div id="lk-adm-shadow-r">${body}</div>`;
-}
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
   if (A.lErr) return `<p class="lk-sub">${esc(A.lErr)}</p>`;
@@ -12287,7 +12134,28 @@ function _lkAdmLogHtml() {
 function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
-    <div class="card" id="lk-adm-shadow">${_lkAdmShadowHtml()}</div><div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+    <div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+}
+// CY-A1: the admin looked in Elvanto and says whether an unclear row landed. Landed = Saved; Not landed = refused,
+// so the same action can be sent again. Either way the row stops blocking (POST /link/admin/unclear/:id).
+function _lkAdmUnclearOpen(id, landed) {
+  const a = (LINK.adm.acts || []).find((x) => x.id === id);
+  if (!a) return;
+  LINK.adm.uAsk = { id, landed };
+  const what = _lkVerb(a.type) + ' · ' + (a.name || 'Unknown person');
+  modal(`<div class="mo-title">${landed ? 'Landed in Elvanto?' : 'Not landed in Elvanto?'}</div><div class="lk-d">${esc(what)}</div>`
+    + `<div class="ik-line">${landed ? 'Marks it Saved. Nothing is sent.' : 'Marks it Not landed. Send it again from the app if it is still needed.'}</div>`
+    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_lkAdmUnclearGo()">${landed ? 'Landed' : 'Not landed'}</button></div>`,
+    () => { LINK.adm.uAsk = null; });
+}
+async function _lkAdmUnclearGo() {
+  const u = LINK.adm.uAsk;
+  if (!u) return;
+  LINK.adm.uAsk = null;
+  closeModal();
+  try { await API.post('/link/admin/unclear/' + encodeURIComponent(u.id), { landed: u.landed }); toast(u.landed ? 'Marked Saved' : 'Marked Not landed'); }
+  catch (e) { toast(e.message || 'Could not save.'); }
+  await _lkAdmLoadActs();
 }
 function _lkAdmDraw(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 async function _lkAdmLoadActs() {
@@ -12312,14 +12180,6 @@ async function _lkAdmSet(personId, body) {
 }
 function _lkAdmMatch(personId, studentId) { return _lkAdmSet(personId, { studentId: studentId || null }); }
 function _lkAdmIgnore(personId) { return _lkAdmSet(personId, { studentId: null, ignore: true }); }
-async function _lkAdmShadow() {
-  const A = LINK.adm, d = A.sDate || _lkLastFriday(_lkToday());
-  A.sErr = null; A.shadow = null;
-  _lkAdmDraw('lk-adm-shadow-r', '<p class="lk-hint">Checking...</p>');
-  try { A.shadow = await API.fresh('/link/admin/shadow-check?date=' + encodeURIComponent(d)); }
-  catch (e) { A.sErr = e.message || 'Could not check.'; }
-  _lkAdmDraw('lk-adm-shadow', _lkAdmShadowHtml());
-}
 async function _lkAdmLoadLog() {
   const A = LINK.adm, today = _lkToday();
   const q = ['from=' + encodeURIComponent(A.from || _lkAddDays(today, -6)), 'to=' + encodeURIComponent(A.to || today)];
@@ -12365,13 +12225,6 @@ function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:pare
 function _ikOpenAct(a) { return !!a && (a.status === 'pending' || a.status === 'claimed'); }
 // The newest open action of these types (actions come newest first).
 function _ikOpenOf(actions, types) { return (actions || []).find((a) => a && types.includes(a.type) && _ikOpenAct(a)) || null; }
-// "2 h 10 m" since an ISO time.
-function _ikAge(iso, now) {
-  const ms = (now == null ? Date.now() : now) - Date.parse(iso);
-  if (!isFinite(ms)) return '';
-  const m = Math.max(0, Math.floor(ms / 60000));
-  return m < 60 ? m + ' m' : Math.floor(m / 60) + ' h ' + (m % 60) + ' m';
-}
 function _ikSeenLine(st) {
   const c = st && st.console;
   return c && !c.online && c.lastSeenAt ? ' Console last seen ' + _lkSeen(c.lastSeenAt) + '.' : '';
@@ -12457,16 +12310,6 @@ function _ikTextBlock(det, list, st) {
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'intakeText'])) return 'Waiting for the console';
   return '';
-}
-// R4: the Text card shows only after a Save stopped at the text step, or when the text is the only todo.
-function _ikShowText(d, actions) {
-  const t = _ikTextStep(d);
-  if (!t) return null;
-  const acts = actions || [];
-  if (acts.some((a) => a.type === 'intakeText' && (_ikOpenAct(a) || a.status === 'sent'))) return null;
-  const save = acts.find((a) => a.type === 'intakeSave' && a.status !== 'cancelled');
-  if (save && save.stop && save.stop.code === 'sms') return t;
-  return _ikTodo(d).length === 0 ? t : null;
 }
 // Provisional-rule tags (§10), from this one place; deleted when the operator settles the ruling.
 function _ikDTag(s) {
@@ -13020,15 +12863,6 @@ function _ikOneOpen(i) {
   I.sheet = { type: 'intakeSave', key: det.row.key, keys: [s.key], one: true };
   modal(_ikSheetHtml('Save this one step to Elvanto?', [s], '', 'Save'));
 }
-function _ikTextOpen() {
-  const I = _ik(), det = I.det, t = det && _ikShowText(det.detail, det.actions);
-  if (!t || _ikTextBlock(det, I.list, _ikSt())) return;
-  const sms = t.sms || { name: '', last3: '' };
-  I.sheet = { type: 'intakeText', key: det.row.key, keys: [t.key], one: true };
-  modal(`<div class="mo-title">${esc('Send the consent text to ' + sms.name + '?')}</div>
-    <p class="lk-sub">${esc('Mobile ends in ' + sms.last3 + ". Elvanto sends it. It can't be recalled.")}</p>
-    <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">Send the text</button></div>`);
-}
 // The step keys go verbatim as shown when the sheet opened (the console refuses a plan that moved since).
 async function _ikSheetGo() {
   const I = _ik(), x = I.sheet;
@@ -13170,7 +13004,6 @@ function _ikHead(det, st, d) {
   return `<div class="card"><div class="lk-svc-t">${esc(row.title)}</div>` + (nx ? `<div class="lk-d">${esc(nx)}</div>` : '')
     + (d ? _ikHoldLines(d) : []).map((t) => `<div class="lk-st bad">${esc(t)}</div>`).join('') + '</div>';
 }
-function _ikKv(label, val) { return `<div class="lk-kv"><span>${esc(label)}</span><b>${esc(val)}</b></div>`; }
 // The two forms side by side (spec 2026-10-14 §2): one row per question, the parent-name and parent-mobile mismatch
 // highlighted, flagged answers marked with what is wrong, Keep as is on its own row, the Elvanto links last.
 function _ikCompareHtml(d, a) {
@@ -13438,12 +13271,6 @@ async function _ikAnswersSave() {
   toast(title ? 'Answers noted for ' + title : 'Answers noted'); // I9b: no Elvanto write, so not "saved"
   if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
 }
-function _ikBack() {
-  const I = _ik();
-  _ikLeave();
-  I.key = null; I.det = null; I.detErr = null; I.pick = null;
-  _ikDraw(); _ikLoad(true);
-}
 async function _ikRefresh() {
   const I = _ik();
   const date = I.date || _lkLastFriday(new Date(Date.now() + 36e6).toISOString().slice(0, 10));
@@ -13485,11 +13312,6 @@ function _ikWeekHtml(I) {
   if (!I.dates.length) return '<div class="lk-hint">No weeks yet. Tap Refresh to ask the console.</div>';
   return '<div class="lk-d">New people from</div><div class="tbbar">' + I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">`
     + esc(_lkDay(_ikPrevWeek(x.date)) + (x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : '')) + '</button>').join('') + '</div>';
-}
-// Did the parent send a consent form? From the planned outcome; a held row says why in its reason instead.
-function _ikReturned(r) {
-  const o = r && r.outcome;
-  return o === 'Contact allowed' || o === 'No contact' ? 'yes' : o === 'No reply: assume consent' ? 'no' : null;
 }
 // UI review H2: ONE tag says both "form back?" and the outcome; DO NOT CONTACT is red (R1). [label, tone] or null.
 function _ikConsentTag(r) {
@@ -14316,7 +14138,7 @@ async function renderBus() {
   const date = fmtDay(_busHeadDate(v));
   const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
   const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + _busAllCarsSection(), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -15680,9 +15502,8 @@ async function _busLoadMap() {
 function _busExtraLine(x) {
   return `+${x.count} car${x.count === 1 ? '' : 's'}, ${x.seats} seats: longest drive ${x.after.longestMin} min (now ${x.before.longestMin}) · unassigned ${x.after.unassigned} (now ${x.before.unassigned})`;
 }
-// `cars` is new on the extra-cars response — handle it missing gracefully (older server).
 function _busExtraCarsHtml(x) {
-  if (!x.cars || !x.cars.length) return '';
+  if (!x.cars.length) return '';
   const rows = x.cars.map((c) => `<details class="an-extra-car">
     <summary>${esc(c.label)}${c.extra ? ' <span class="chip c-accent">Extra</span>' : ''} · ${c.riders} rider${c.riders === 1 ? '' : 's'} · ${c.driveMinutes} min drive · finish ~${esc(c.finishAt)} (drive time)</summary>
     ${c.stops.map((s, i) => `<div class="an-row"><div class="an-name">${i + 1}. ${esc(s.name)}</div><div class="an-val">${esc(s.suburb)}</div><div class="an-val">${esc(s.arriveAt)}</div></div>`).join('')}

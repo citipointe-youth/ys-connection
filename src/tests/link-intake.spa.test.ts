@@ -5,17 +5,17 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
-  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikAge', '_ikNameChanges', '_ikResultLine',
+  '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikNameChanges', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
-  '_ikShowText', '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
+  '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
-  '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikTextOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
-  '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikKv', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
+  '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
+  '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
   '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
-  '_ikSchedule', '_ikTab', '_ikOpen', '_ikBack', '_ikLeave',
+  '_ikSchedule', '_ikTab', '_ikOpen', '_ikLeave',
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
-  '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReturned', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
+  '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
   '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkSearch', '_ikLkKey', '_ikLkTurn', '_ikLkGo', '_ikLkErr', '_ikLkAgain',
   '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss', '_ikMisLines', '_ikMisVal', '_ikLkStatusHtml', '_ikFixBanner',
   '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
@@ -238,24 +238,7 @@ describe('family review footer (ux18 P9)', () => {
   });
 });
 
-describe('Text card (R4)', () => {
-  const show = (d: any, acts: any[]) => makeEnv().fns._ikShowText(d, acts);
-  it('not shown while other steps are todo and no Save stopped at the text', () => {
-    expect(show(DETAIL(), [])).toBe(null);
-    expect(show(DETAIL(), [act({ status: 'sent', stop: { code: 'finished', text: 'Done.' } })])).toBe(null);
-  });
-  it('shown after a Save result with stop.code sms', () => {
-    expect(show(DETAIL(), [act({ status: 'sent', stop: { code: 'sms', text: 'Stopped before the parent text.' } })])).toEqual(TEXT);
-  });
-  it('shown when the text is the only todo step', () => {
-    const d = DETAIL({ steps: [step({ state: 'done' }), TEXT] });
-    expect(show(d, [])).toEqual(TEXT);
-  });
-  it('hidden once a text row is pending or sent', () => {
-    const d = DETAIL({ steps: [step({ state: 'done' }), TEXT] });
-    expect(show(d, [act({ type: 'intakeText' })])).toBe(null);
-    expect(show(d, [act({ type: 'intakeText', status: 'sent' })])).toBe(null);
-  });
+describe('Parent text commentary (I8)', () => {
   it('I8 (R2-G4): a ready family with the parent text pending shows none of the deleted parent-text commentary', () => {
     const e = makeEnv();
     const det = DET({ actions: [act({ status: 'sent', stop: { code: 'sms', text: 'Stopped before the parent text.' }, steps: [] })] });
@@ -267,7 +250,6 @@ describe('Text card (R4)', () => {
     const t2 = strip(e.fns._ikFamilyHtml(only, LIST(), ST(), e.fns._ikSeed(only.detail)));
     expect(t2).not.toContain('Only the parent text is left.');
     expect(t2).toContain('In Flow steps');
-    expect(typeof e.fns._ikTextOpen).toBe('function'); // the intakeText plumbing stays
   });
 });
 

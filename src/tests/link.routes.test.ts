@@ -75,7 +75,7 @@ describe('link + sync live (memory)', () => {
     admin = (await c.services.setup.createFirstAdmin({ code: CODE, displayName: 'Pat', password: 'longenough' })).token;
     const s = await c.repos.settings.getSettings();
     await c.repos.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
-      modules: { ...s.ministryConfig.modules, newYouthForms: 'shadow', checkin: 'shadow', lifegroupReport: 'shadow', flows: 'shadow' } } });
+      modules: { ...s.ministryConfig.modules, newYouthForms: 'admin', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' } } });
   });
   afterAll(() => {
     server.close();
@@ -124,7 +124,7 @@ describe('link + sync live (memory)', () => {
     expect((await asAdmin('DELETE', `/link/actions/${item.id}`)).status).toBe(404);
   });
 
-  it('/link/batch as admin in Shadow, mixed batch → 200, one result per item, in order', async () => {
+  it('/link/batch as admin in Admin only, mixed batch → 200, one result per item, in order', async () => {
     const first = randomUUID();
     const body = { device: { id: 'd1', label: 'Test phone' }, items: [
       { kind: 'action', id: first, type: 'checkIn', payload: { serviceTimeId: svcTime, serviceId: svcId, personId: jamie } },

@@ -26,7 +26,7 @@ describe('oct rework routes (memory mode, seeded)', () => {
     await seedDemoData(repos);
     const cur = await repos.settings.getSettings();
     await repos.settings.updateSettings({
-      ministryConfig: { ...cur.ministryConfig, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...cur.ministryConfig.modules, newYouthForms: 'shadow', busMinistry: true } },
+      ministryConfig: { ...cur.ministryConfig, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...cur.ministryConfig.modules, newYouthForms: 'admin', busMinistry: true } },
     });
     const l = (await repos.leaders.findAll())[0]!;
     leaderId = l.id;

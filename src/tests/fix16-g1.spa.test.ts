@@ -4,10 +4,10 @@ import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const IK = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkAt', '_lkSeen', '_ik', '_ikFresh', '_ikRev', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct',
-  '_ikOpenOf', '_ikAge', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
+  '_ikOpenOf', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
-  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv',
-  '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn', '_lkAdmShadowHtml'];
+  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml',
+  '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');
 const extra = (src: string) => (src.match(/^function (_ik[A-Za-z0-9]+)\(/gm) || []).map((s) => s.slice(9, -1));
@@ -19,7 +19,7 @@ function env(o: { tab?: string; date?: string | null } = {}) {
   const prelude = `
     const __calls = globalThis.__g1;
     const S = { user: { id: 'u1', role: 'admin' }, page: 'link-intake', settings: { ministryConfig: { modules: { intakeAdmin: 'on' } } } };
-    const LINK = { ik: null, status: null, adm: { shadow: null, sErr: null, sDate: '2026-10-09' } };
+    const LINK = { ik: null, status: null, adm: {} };
     ${CONSTS}
     const localStorage = { getItem: () => null, setItem() {} };
     const document = { get visibilityState() { return __calls.vis; } };
@@ -176,7 +176,7 @@ describe('F-41 the Keep as is button stays short (fits at 360 px)', () => {
   });
 });
 
-describe('F-46(b) plain words: no "stale", no "Plan", no "Shadow check"', () => {
+describe('F-46(b) plain words: no "stale", no "Plan"', () => {
   it('an old plan says "Over 2 hours old. Tap Refresh." everywhere, and the list says "old"', () => {
     const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
     const old = LIST({ stale: true, takenAt: new Date(Date.now() - 3 * 36e5).toISOString() });
@@ -188,11 +188,6 @@ describe('F-46(b) plain words: no "stale", no "Plan", no "Shadow check"', () => 
     const t = strip(f._ikListPage());
     expect(t).toMatch(/Checked .* · old/);
     expect(t).not.toMatch(/stale|Plan /);
-  });
-  it('the admin link page calls the check "Kiosk vs app check"', () => {
-    const { f } = env();
-    expect(f._lkAdmShadowHtml()).toContain('Kiosk vs app check');
-    expect(f._lkAdmShadowHtml()).not.toContain('Shadow check');
   });
 });
 

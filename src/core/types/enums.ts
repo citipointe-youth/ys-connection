@@ -59,5 +59,6 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const STUDENT_GENDERS = ['male', 'female'] as const;
 export type StudentGender = (typeof STUDENT_GENDERS)[number];
 
-export const AT_RISK_STATUSES = ['regular', 'declining', 'atrisk', 'stopped', 'watch', 'new'] as const;
+// computeStatus (atrisk.service.ts) yields regular / declining / stopped; 'new' marks a fresh student (PY-P13).
+export const AT_RISK_STATUSES = ['regular', 'declining', 'stopped', 'new'] as const;
 export type AtRiskStatus = (typeof AT_RISK_STATUSES)[number];
