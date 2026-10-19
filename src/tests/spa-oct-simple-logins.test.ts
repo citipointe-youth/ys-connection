@@ -48,11 +48,11 @@ const PRESET_CONFIGS_CLIENT = { simple: { structure: { cohortModel: 'none' }, mo
 const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { simple: 10 };
 let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
 
-  it('pickMinistryPreset keeps the draft logins and modules.prayers', () => {
-    const f = loadFns(['_deepMergeClient', 'pickMinistryPreset'],
+  it('_applyMinistryPreset keeps the draft logins and modules.prayers', () => {
+    const f = loadFns(['_deepMergeClient', '_presetPaths', '_applyMinistryPreset'],
       `${DEFAULTS} let _setupDraft = { logins: { simple: true }, modules: { prayers: false } }; function __d() { return _setupDraft; }`,
-      ['pickMinistryPreset', '__d']);
-    f.pickMinistryPreset('simple');
+      ['_applyMinistryPreset', '__d']);
+    f._applyMinistryPreset('simple');
     const d = f.__d();
     expect(d.logins.simple).toBe(true);
     expect(d.modules.prayers).toBe(false);

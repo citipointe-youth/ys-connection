@@ -7420,22 +7420,38 @@ function _ensureSetupDraft(settings) {
   }
 }
 
-function pickMinistryPreset(id) {
-  // Always layer the preset onto a clean defaults baseline (not onto whatever
-  // _setupDraft currently holds) so switching presets fully replaces the
-  // previous preset's overrides instead of accumulating them. Doesn't touch
-  // serviceMinAttendance... actually it does (presets scale it) — but leaves
-  // termGapDays alone, since that's not part of any preset.
-  // A preset never flips Junior/Senior logins or Prayers on its own: keep the draft's values.
-  const prev = _setupDraft || {};
-  _setupDraft = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
-  if (prev.logins) _setupDraft.logins = JSON.parse(JSON.stringify(prev.logins));
-  if (prev.modules && prev.modules.prayers != null) {
-    _setupDraft.modules = _setupDraft.modules || {};
-    _setupDraft.modules.prayers = prev.modules.prayers;
+// Leaf paths of a preset object ('structure.cohortModel', ...).
+function _presetPaths(o, pre) {
+  return Object.keys(o).flatMap((k) => (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) ? _presetPaths(o[k], pre + k + '.') : [pre + k]);
+}
+// CY-D1: a preset sets ONLY the fields some preset defines (cohort model, gender rule, Director and
+// Quad, Connection Audit, Lifegroups, Export guides), each from defaults + this preset, so switching
+// presets never piles up overrides. Everything else in the draft is kept: the Elvanto screens, New
+// youth & consent, Bus (module and settings), branding, labels, logins, Prayers. It also scales
+// serviceMinAttendance; termGapDays is left alone.
+function _applyMinistryPreset(id) {
+  const full = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
+  const paths = new Set(['preset', ...Object.values(PRESET_CONFIGS_CLIENT).flatMap((p) => _presetPaths(p, ''))]);
+  const d = JSON.parse(JSON.stringify(_setupDraft || {}));
+  for (const p of paths) {
+    const ks = p.split('.');
+    let v = full, o = d;
+    for (const k of ks) v = v == null ? undefined : v[k];
+    for (const k of ks.slice(0, -1)) o = (o[k] && typeof o[k] === 'object') ? o[k] : (o[k] = {});
+    o[ks[ks.length - 1]] = v;
   }
+  _setupDraft = d;
   _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
   _setupRerender();
+}
+function pickMinistryPreset(id) {
+  const p = MINISTRY_PRESETS_INFO.find((x) => x.id === id) || { title: id };
+  modal(`<div class="mo-title">Use ${esc(p.title)}?</div>
+    <p style="color:var(--ink-mid);margin-bottom:20px">This sets the cohort model, gender rule, Director and Quad logins, Connection Audit, Lifegroups and Export guides. Everything else stays as it is. Nothing changes until you tap Save.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();_applyMinistryPreset('${id}')">Use ${esc(p.title)}</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
 }
 
 async function saveMinistrySetup() {
@@ -7953,9 +7969,7 @@ function _setupSetGrade6(checked) {
 // Changing the Cohort model dropdown directly (not via the preset buttons
 // above) auto-selects Director/Quad the same way the Complex/Simple presets
 // do — Complex turns both on, Simple turns both off. Only touches those two
-// role toggles, unlike pickMinistryPreset() which replaces the whole draft —
-// an admin who's already customised branding/terminology shouldn't lose that
-// just from flipping this one dropdown.
+// role toggles (a preset, _applyMinistryPreset, also sets the other preset fields).
 function _setupSetCohortModel(value) {
   if (!_setupDraft) _setupDraft = {};
   if (!_setupDraft.structure) _setupDraft.structure = {};
