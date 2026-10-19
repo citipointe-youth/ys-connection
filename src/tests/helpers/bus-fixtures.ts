@@ -1,6 +1,6 @@
 import { makeBusService, type BusCtx } from '../../services/bus.service';
 import { generateId } from '../../utils/id';
-import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository } from '../../repositories/in-memory';
+import { InMemoryBusRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemorySettingsRepository, InMemoryConnectionRepository } from '../../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../../core/ministry-config';
 import { FakeRoutingProvider } from '../../services/routing/fake-routing-provider';
 import type { RoutingProvider, SolveProblem, MapPath, MapMarker, RoutePoint } from '../../services/routing/routing-provider';
@@ -52,7 +52,8 @@ const leader = (id: string, name: string, gender: 'male' | 'female' | null): Lea
 export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceId?: string } = {}) {
   const bus = new InMemoryBusRepository(); const students = new InMemoryStudentRepository();
   const leaders = new InMemoryLeaderRepository(); const settings = new InMemorySettingsRepository();
-  await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
+  const connections = new InMemoryConnectionRepository(); // empty unless a test connects someone
+  await Promise.all([bus.init(), students.init(), leaders.init(), settings.init(), connections.init()]);
   await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
     modules: { busMinistry: true },
     busMinistry: { visibility: 'all', churchAddress: '1 Church St, Testville', churchPlaceId: opts.churchPlaceId ?? 'fake:church', regionCode: 'au' },
@@ -65,7 +66,7 @@ export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceI
   await leaders.save(leader('L2', 'Sarah', 'female'));
   await leaders.save(leader('L3', 'Amy', 'female'));
   await leaders.save(leader('L4', 'Ben', 'male'));
-  const svc = makeBusService(bus, students, leaders, settings, opts.routing ?? new FakeRoutingProvider());
+  const svc = makeBusService(bus, students, leaders, settings, opts.routing ?? new FakeRoutingProvider(), connections);
   const ctx = (role: string, asLeaderId: string | null = null): BusCtx => ({
     actor: { id: 'u-' + role, role, displayName: role.toUpperCase(), grade: null, quad: null, leaderId: null } as unknown as Actor,
     asLeaderId, localNow: FRI_7PM });
@@ -89,5 +90,5 @@ export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceI
     }
     return svc.addRider(admin, { studentId, newAddress: { label: 'Home', address: `${studentId} Test St, Testville`, placeId } });
   }
-  return { svc, bus, students, leaders, settings, ctx, admin, car, rider };
+  return { svc, bus, students, leaders, settings, connections, ctx, admin, car, rider };
 }

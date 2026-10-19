@@ -1015,6 +1015,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(UpdateRunVehicle, input);
       // I11: Car setup stays bus:use, but only a coordinator can tick or untick Lock.
       if (v.locked !== undefined && !allowed(ctx, c, 'bus:coordinate')) throw new ForbiddenError('Only a coordinator can lock a car');
+      // SY-03: joining a car would open its riders' addresses + phones in My car to a "My car only" login.
+      if (v.leaderIds && isRedactedLeader(ctx, c)) throw new ForbiddenError("Ask a coordinator to change a car's leaders");
       if (v.running === false) v.locked = false; // a car turned off is not locked; it starts fresh if turned back on
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this patch sets "ends at an address"
       const run = await writableRun(ctx, c);
