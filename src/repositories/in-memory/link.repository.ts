@@ -252,14 +252,16 @@ export class InMemoryLinkRepository implements ILinkRepository {
 
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {
     const now = this.nowIso();
-    for (const c of changes) {
-      const r = this.rosterRows.get(c.personId);
-      if (!r) continue;
-      if (c.studentId !== null && [...this.rosterRows.values()].some((o) => o.personId !== c.personId && o.studentId === c.studentId)) {
-        throw new Error('link_roster: student already matched to another person'); // link_roster_student_uq
-      }
-      Object.assign(r, { studentId: c.studentId, match: c.match, updatedAt: now });
+    // Same as the Supabase repo (CY-A2): changed rows are released first, so the check is on the end state; all or none.
+    const next = new Map(changes.filter((c) => this.rosterRows.has(c.personId)).map((c) => [c.personId, c]));
+    const held = new Set<string>();
+    for (const r of this.rosterRows.values()) {
+      const sid = next.has(r.personId) ? next.get(r.personId)!.studentId : r.studentId;
+      if (sid === null) continue;
+      if (held.has(sid)) throw new Error('link_roster: student already matched to another person'); // link_roster_student_uq
+      held.add(sid);
     }
+    for (const c of next.values()) Object.assign(this.rosterRows.get(c.personId)!, { studentId: c.studentId, match: c.match, updatedAt: now });
   }
 
   async flowAssignments(): Promise<LinkFlowAssign[]> { return clone([...this.assigns.values()]); }

@@ -589,6 +589,31 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         await repo.setMatches([{ personId: p, studentId: null, match: 'none' }]);
         expect((await repo.roster())[0]).toMatchObject({ studentId: null, match: 'none' });
       });
+      it('setMatches moves a student between rows when the assignee comes first (CY-A2)', async () => {
+        const a = randomUUID(); const b = randomUUID(); const sid = randomUUID();
+        await repo.replaceMirror('roster', [roster(a), roster(b)], { takenAt: ago(1000), consoleId: randomUUID() });
+        await repo.setMatches([{ personId: b, studentId: sid, match: 'auto' }]);
+        await repo.setMatches([{ personId: a, studentId: sid, match: 'auto' }, { personId: b, studentId: null, match: 'none' }]);
+        const rows = await repo.roster();
+        expect(rows.find((r) => r.personId === a)).toMatchObject({ studentId: sid, match: 'auto' });
+        expect(rows.find((r) => r.personId === b)).toMatchObject({ studentId: null, match: 'none' });
+      });
+      it('setMatches swaps two students in one push (CY-A2)', async () => {
+        const a = randomUUID(); const b = randomUUID(); const s1 = randomUUID(); const s2 = randomUUID();
+        await repo.replaceMirror('roster', [roster(a), roster(b)], { takenAt: ago(1000), consoleId: randomUUID() });
+        await repo.setMatches([{ personId: a, studentId: s1, match: 'auto' }, { personId: b, studentId: s2, match: 'auto' }]);
+        await repo.setMatches([{ personId: a, studentId: s2, match: 'manual' }, { personId: b, studentId: s1, match: 'manual' }]);
+        const rows = await repo.roster();
+        expect(rows.find((r) => r.personId === a)).toMatchObject({ studentId: s2, match: 'manual' });
+        expect(rows.find((r) => r.personId === b)).toMatchObject({ studentId: s1, match: 'manual' });
+      });
+      it('setMatches still refuses a student held by a row outside the push', async () => {
+        const a = randomUUID(); const b = randomUUID(); const sid = randomUUID();
+        await repo.replaceMirror('roster', [roster(a), roster(b)], { takenAt: ago(1000), consoleId: randomUUID() });
+        await repo.setMatches([{ personId: b, studentId: sid, match: 'auto' }]);
+        await expect(repo.setMatches([{ personId: a, studentId: sid, match: 'auto' }])).rejects.toThrow();
+        expect((await repo.roster()).find((r) => r.personId === b)).toMatchObject({ studentId: sid });
+      });
       it('addLog / listLog filter by range, user, event; newest first; limit', async () => {
         const u = randomUUID();
         const a = logRow({ userId: u, at: '2026-10-16T08:00:00.000Z', event: 'identity', leaderId: randomUUID(),

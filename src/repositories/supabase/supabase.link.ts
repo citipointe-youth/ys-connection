@@ -418,6 +418,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {
     if (!changes.length) return;
     await this.sql.begin(async (tx) => {
+      // CY-A2: link_roster_student_uq is not deferrable, so release every changed row first; a move or swap
+      // within one push then never sees the student on two rows. A student held by a row outside the push still fails.
+      await tx`update link_roster set student_id = null
+               where person_id in ${tx(changes.map((c) => c.personId))} and student_id is not null`;
       for (const c of changes) {
         await tx`update link_roster set student_id = ${c.studentId}, match = ${c.match}, updated_at = now()
                  where person_id = ${c.personId}`;

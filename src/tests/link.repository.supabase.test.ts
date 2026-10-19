@@ -99,6 +99,13 @@ describe('SupabaseLinkRepository SQL text', () => {
   it('T6: the flows push drops assignments whose (flow, person) it no longer carries, in the same transaction', () => {
     expect(flat(method('replaceMirror'))).toMatch(/delete from link_flow_assign a where not exists \( select 1 from link_flow_people f where f\.flow_id = a\.flow_id and f\.person_id = a\.person_id\)/);
   });
+  it('CY-A2: setMatches releases every changed row before assigning, in one transaction', () => {
+    const m = flat(method('setMatches'));
+    expect(m).toContain('.begin(');
+    const release = m.indexOf('set student_id = null where person_id in ${tx(changes.map((c) => c.personId))}');
+    expect(release).toBeGreaterThan(-1);
+    expect(release).toBeLessThan(m.indexOf('set student_id = ${c.studentId}'));
+  });
   it('0018 is additive and turns RLS on for link_flow_assign', () => {
     const m = readFileSync(join(ROOT, 'supabase', 'migrations', '0018_link_ux_batch.sql'), 'utf8');
     expect(m).not.toMatch(/\b(drop|rename|alter column)\b/i);
