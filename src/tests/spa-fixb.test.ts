@@ -74,8 +74,7 @@ describe('I8 (R2-G4): no parent-text card on the family review', () => {
   it('the family review has no Text card, Not now or Text the parent button', () => {
     const f = loadFns(['_ikFamilyHtml'], `${esc}
       const icS = () => '', _ikHead = () => '', _ikMatchHtml = () => '', _ikCompareHtml = () => '', _ikVerdictHtml = () => '', _ikStepsHtml = () => '',
-        _ikSaveHtml = () => '', _ikResultHtml = () => '', _ikOpenOf = () => null, _ikAct = () => null, _ikAlone = () => [], _ikTextBlock = () => '',
-        _ikShowText = () => ({ sms: { name: 'P', last3: '123' } }), _ikKv = () => '', _ik = () => ({});`);
+        _ikSaveHtml = () => '', _ikResultHtml = () => '', _ikOpenOf = () => null, _ikAct = () => null, _ikAlone = () => [], _ikTextBlock = () => '', _ik = () => ({});`);
     const det = { detail: { forms: {} }, row: { key: 'k' }, actions: [] };
     const h = f._ikFamilyHtml(det, {}, {}, { fixes: {}, keeps: {} });
     expect(h).not.toContain('Text the parent');

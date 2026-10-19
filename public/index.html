@@ -1704,16 +1704,6 @@ function _updateNavActive() {
   const brandIc = document.getElementById('hdr-brand-ic');
   if (brandIc) brandIc.innerHTML = _hdrBrandHtml();
 }
-// Root pages = this role's bottom-nav tabs (the "home base" screens). Anything
-// else (Trends, Student Search, Import, Admin, Connection Audit, Birthdays,
-// and every screen/tab/wizard nested inside those) counts as a
-// sub-page, so the header's brand mark swaps for a back arrow that always
-// returns to Home — a flat "back to base" rather than a real history stack.
-function _isRootPage(page) {
-  const bn = bottomNavItems();
-  // Prayers stays a root page when it sits behind More (it was a bottom tab before).
-  return bn.some(it => it.id === page) || (page === 'prayers' && bn.some(it => it.id === 'more'));
-}
 function _hdrBrandHtml() {
   if (S.page !== 'home') {
     return `<button type="button" class="hdr-back" onclick="navBack()" title="Back" aria-label="Back">${icN('arrl')}</button>`;
@@ -2157,7 +2147,6 @@ function _vgPrayers(list, vg) {
     ? !!(p.student && vg.includes(p.student.grade))
     : (!Array.isArray(p.createdByGrades) || p.createdByGrades.some(g => vg.includes(g))));
 }
-function _vgGradeList(grades, vg) { return vg ? grades.filter(g => vg.includes(g)) : grades; }
 function _vgToggle(g) {
   const cur = _vgGrades();
   if (!cur) return;
@@ -11153,11 +11142,6 @@ function _lkGrFilter(v) {
   const gl = document.getElementById('lk-glist');
   if (gl) gl.innerHTML = _lkGroupsHtml();
 }
-function _lkSvcName(id) {
-  if (!id) return 'No service';
-  const s = (LINK.services || []).find((x) => x.serviceTimeId === id);
-  return s ? _lkSvcLabel(s) : 'A service more than 7 days ago';
-}
 // One report: date, service, did-not-meet, guests, ticked members. Never notes. Edit only when the console says it can.
 function _lkReportHtml(g, r) {
   const att = r.attendees || [];
@@ -12320,13 +12304,6 @@ function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:pare
 function _ikOpenAct(a) { return !!a && (a.status === 'pending' || a.status === 'claimed'); }
 // The newest open action of these types (actions come newest first).
 function _ikOpenOf(actions, types) { return (actions || []).find((a) => a && types.includes(a.type) && _ikOpenAct(a)) || null; }
-// "2 h 10 m" since an ISO time.
-function _ikAge(iso, now) {
-  const ms = (now == null ? Date.now() : now) - Date.parse(iso);
-  if (!isFinite(ms)) return '';
-  const m = Math.max(0, Math.floor(ms / 60000));
-  return m < 60 ? m + ' m' : Math.floor(m / 60) + ' h ' + (m % 60) + ' m';
-}
 function _ikSeenLine(st) {
   const c = st && st.console;
   return c && !c.online && c.lastSeenAt ? ' Console last seen ' + _lkSeen(c.lastSeenAt) + '.' : '';
@@ -12412,16 +12389,6 @@ function _ikTextBlock(det, list, st) {
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'intakeText'])) return 'Waiting for the console';
   return '';
-}
-// R4: the Text card shows only after a Save stopped at the text step, or when the text is the only todo.
-function _ikShowText(d, actions) {
-  const t = _ikTextStep(d);
-  if (!t) return null;
-  const acts = actions || [];
-  if (acts.some((a) => a.type === 'intakeText' && (_ikOpenAct(a) || a.status === 'sent'))) return null;
-  const save = acts.find((a) => a.type === 'intakeSave' && a.status !== 'cancelled');
-  if (save && save.stop && save.stop.code === 'sms') return t;
-  return _ikTodo(d).length === 0 ? t : null;
 }
 // Provisional-rule tags (§10), from this one place; deleted when the operator settles the ruling.
 function _ikDTag(s) {
@@ -12975,15 +12942,6 @@ function _ikOneOpen(i) {
   I.sheet = { type: 'intakeSave', key: det.row.key, keys: [s.key], one: true };
   modal(_ikSheetHtml('Save this one step to Elvanto?', [s], '', 'Save'));
 }
-function _ikTextOpen() {
-  const I = _ik(), det = I.det, t = det && _ikShowText(det.detail, det.actions);
-  if (!t || _ikTextBlock(det, I.list, _ikSt())) return;
-  const sms = t.sms || { name: '', last3: '' };
-  I.sheet = { type: 'intakeText', key: det.row.key, keys: [t.key], one: true };
-  modal(`<div class="mo-title">${esc('Send the consent text to ' + sms.name + '?')}</div>
-    <p class="lk-sub">${esc('Mobile ends in ' + sms.last3 + ". Elvanto sends it. It can't be recalled.")}</p>
-    <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSheetGo()">Send the text</button></div>`);
-}
 // The step keys go verbatim as shown when the sheet opened (the console refuses a plan that moved since).
 async function _ikSheetGo() {
   const I = _ik(), x = I.sheet;
@@ -13125,7 +13083,6 @@ function _ikHead(det, st, d) {
   return `<div class="card"><div class="lk-svc-t">${esc(row.title)}</div>` + (nx ? `<div class="lk-d">${esc(nx)}</div>` : '')
     + (d ? _ikHoldLines(d) : []).map((t) => `<div class="lk-st bad">${esc(t)}</div>`).join('') + '</div>';
 }
-function _ikKv(label, val) { return `<div class="lk-kv"><span>${esc(label)}</span><b>${esc(val)}</b></div>`; }
 // The two forms side by side (spec 2026-10-14 §2): one row per question, the parent-name and parent-mobile mismatch
 // highlighted, flagged answers marked with what is wrong, Keep as is on its own row, the Elvanto links last.
 function _ikCompareHtml(d, a) {
@@ -13393,12 +13350,6 @@ async function _ikAnswersSave() {
   toast(title ? 'Answers noted for ' + title : 'Answers noted'); // I9b: no Elvanto write, so not "saved"
   if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
 }
-function _ikBack() {
-  const I = _ik();
-  _ikLeave();
-  I.key = null; I.det = null; I.detErr = null; I.pick = null;
-  _ikDraw(); _ikLoad(true);
-}
 async function _ikRefresh() {
   const I = _ik();
   const date = I.date || _lkLastFriday(new Date(Date.now() + 36e6).toISOString().slice(0, 10));
@@ -13440,11 +13391,6 @@ function _ikWeekHtml(I) {
   if (!I.dates.length) return '<div class="lk-hint">No weeks yet. Tap Refresh to ask the console.</div>';
   return '<div class="lk-d">New people from</div><div class="tbbar">' + I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">`
     + esc(_lkDay(_ikPrevWeek(x.date)) + (x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : '')) + '</button>').join('') + '</div>';
-}
-// Did the parent send a consent form? From the planned outcome; a held row says why in its reason instead.
-function _ikReturned(r) {
-  const o = r && r.outcome;
-  return o === 'Contact allowed' || o === 'No contact' ? 'yes' : o === 'No reply: assume consent' ? 'no' : null;
 }
 // UI review H2: ONE tag says both "form back?" and the outcome; DO NOT CONTACT is red (R1). [label, tone] or null.
 function _ikConsentTag(r) {

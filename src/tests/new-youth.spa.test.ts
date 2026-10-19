@@ -298,9 +298,9 @@ describe('result page buttons (M3)', () => {
 // ---- Task 7: admin-only mode, "New person" naming, nav swap; 2026-10-12: the More menu ----
 const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page: 'home', settings: { ministryConfig: { modules: { newYouthForms: mode, busMinistry: bus } } } });
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
-const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', '_isRootPage', 'openMore'];
-type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; _isRootPage: (p: string) => boolean; openMore: () => void };
-const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, _isRootPage, openMore };`)(
+const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', 'openMore'];
+type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; openMore: () => void };
+const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, openMore };`)(
   S, (k: string) => (k === 'busMinistry' ? 'Bus Ministry' : k), modal, (k: string) => `<i ${k}>`, (x: string) => x,
 ) as NavFns;
 const ids = (xs: any[]) => xs.map((i) => i.id);
@@ -423,12 +423,6 @@ describe('the More menu (in the Prayers slot)', () => {
   });
   it('the More nav item says it opens a popup', () => {
     expect(extractFn(html, '_initShell').match(/it\.action \? ' aria-haspopup="dialog"' : ''/g)).toHaveLength(2);
-  });
-  it('Prayers stays a root page behind More (no back arrow); Bus and New person stay sub-pages', () => {
-    const n = navFns(modeOf('admin', 'admin', true));
-    expect(n._isRootPage('prayers')).toBe(true);
-    expect(n._isRootPage('bus')).toBe(false);
-    expect(n._isRootPage('new-youth')).toBe(false);
   });
   it('More lights up while on any page it lists', () => {
     expect(extractFn(html, '_updateNavActive')).toContain("el.dataset.navPage === 'more' && moreItems().some(m => m.id === cur)");

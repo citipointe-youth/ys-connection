@@ -239,7 +239,7 @@ describe('S1.3 grade filter core', () => {
 });
 
 describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
-  const f = loadFns(['_vgStudents', '_vgLeaders', '_vgPrayers', '_vgGradeList']);
+  const f = loadFns(['_vgStudents', '_vgLeaders', '_vgPrayers']);
   const VG = [8];
   const studs = [{ id: 'a', grade: 7 }, { id: 'b', grade: 8 }, { id: 'c', grade: 9 }];
 
@@ -262,10 +262,6 @@ describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
     ];
     expect(f._vgPrayers(list, VG).map((p: any) => p.id)).toEqual(['s8', 'g78', 'gnull']);
     expect(f._vgPrayers(list, null)).toHaveLength(5);
-  });
-  it('Home narrows only the quad grade tiles list', () => {
-    expect(f._vgGradeList([7, 8, 9], VG)).toEqual([8]);
-    expect(f._vgGradeList([7, 8, 9], null)).toEqual([7, 8, 9]);
   });
 
   it('each screen renders _vgBar and applies its helper', () => {

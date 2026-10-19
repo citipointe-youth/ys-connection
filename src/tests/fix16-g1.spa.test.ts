@@ -4,9 +4,9 @@ import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const IK = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkAt', '_lkSeen', '_ik', '_ikFresh', '_ikRev', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct',
-  '_ikOpenOf', '_ikAge', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
+  '_ikOpenOf', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
-  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml', '_ikKv',
+  '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml',
   '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn', '_lkAdmShadowHtml'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');

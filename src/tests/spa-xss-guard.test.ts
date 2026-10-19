@@ -13,8 +13,7 @@ import { loadIndexHtml } from './helpers/extract-fn';
 // concatenation sinks ('<b>' + x.name), and JS-string-in-attribute contexts (phoneLink handles
 // its own) — see S2-xss-taint.md.
 const PROPS = 'name|notes?|text|address|answers?|label|title|reason|firstName|lastName|fullName|leaderName|studentName|groupName|stepName|flowName|message|email|mobile|phone|suburb|school';
-// _ikKv: esc()s its value itself (B Task 7, 2026-10-17).
-const SAFE_WRAPPERS = new Set(['esc', 'phoneLink', '_lkNoteCount', '_ikKv', 'localeCompare', 'includes', 'indexOf', 'startsWith', 'has', 'get', 'test']);
+const SAFE_WRAPPERS = new Set(['esc', 'phoneLink', '_lkNoteCount', 'localeCompare', 'includes', 'indexOf', 'startsWith', 'has', 'get', 'test']);
 const NON_RENDER_AFTER = /^\s*(\)*\s*(\?|&&|===?|!==?|(\|\||&&)[^?:`]*\?)|\.(length|localeCompare|includes|indexOf|startsWith|toLowerCase|trim|split)\b)/;
 // Lines reviewed and accepted (value is a constant or already-safe HTML). Keep this short.
 const ALLOW: Record<number, string> = {};
