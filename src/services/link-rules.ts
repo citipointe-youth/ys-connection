@@ -173,12 +173,12 @@ export const consentFridayPassed = (friday: string, now: Date) => now.getTime() 
  */
 export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
   consentRows: { key: string; status: string }[], now: Date, consoleRev: number): 'done' | 'notReceived' | null {
-  if (!row.personId) return null;
+  if (!row.personId || isDnc(row.consent)) return null; // CY-B1: DO NOT CONTACT first, even over a done consent row
   const mine = consentRows.filter((r) => r.key === row.personId);
   if (mine.some((r) => r.status === 'done')) return 'done';
   if (mine.length) return null; // an open consent row: the Consents screen saves it
   if (row.consent === 'ok') return 'done';
-  if (isDnc(row.consent) || consoleRev < NOT_RECEIVED_REV) return null;
+  if (consoleRev < NOT_RECEIVED_REV) return null;
   const f = consentFriday(row.due, row.textedOn);
   return f && consentFridayPassed(f, now) ? 'notReceived' : null;
 }

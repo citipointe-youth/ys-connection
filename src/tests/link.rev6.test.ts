@@ -102,6 +102,31 @@ describe('rev 6: completeStep guards (R4 DNC, review C1 consent step)', () => {
   });
 });
 
+describe('CY-B1: the batch decides DO NOT CONTACT as GET /link/flows does (roster sticky flag)', () => {
+  const dncRoster = (personId: string, consent: string) => [{ personId, firstName: 'Sample', lastName: 'Kid', gender: 'female', grade: 8,
+    kind: 'student', consent }] as never;
+  it('a queued Complete on a step after 0 is refused LINK_DNC when only the roster says DNC (flow row unknown)', async () => {
+    const h = await setup();
+    const FR_U = u(506);
+    await h.link.replaceMirror('flows', [{ rowId: FR_U, flowId: FLOW, flowName: 'Follow up', stepId: STEP1, stepName: 'Call', stepOrder: 2,
+      personId: P_UNK, name: 'Sample Kid', due: null, assignedTo: '', grade: 8, gender: 'female', mobile: '0400000001',
+      mobileIsParent: false, consent: 'unknown' }] as never, { takenAt: '2026-10-16T08:10:00.000Z', consoleId: CONSOLE });
+    const queued = complete(FR_U, FLOW, STEP1, P_UNK); // tapped on a phone before the roster said DNC
+    await h.link.replaceMirror('roster', dncRoster(P_UNK, 'contact'), { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
+    expect((await h.svc.flows(ADMIN)).rows.find((r) => r.rowId === FR_U)).toMatchObject({ dnc: true });
+    expect(h.oc(await h.one(ADMIN, queued))).toBe('LINK_DNC');
+    expect(h.oc(await h.one(ADMIN, queued))).toBe('LINK_DNC'); // replayed: still refused, nothing stored
+  });
+  it('step 0: a done consent row does not let a DNC youth through', async () => {
+    const h = await setup();
+    await h.intake.replace('consent', { date: '2026-10-16', takenAt: NOW.toISOString(), consoleId: CONSOLE, cut: false, inputs: null },
+      [consentRow(P_UNK, 'done')] as never);
+    await h.link.replaceMirror('roster', dncRoster(P_UNK, 'all'), { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
+    expect(h.oc(await h.one(ADMIN, complete(FR_C_UNK, NP, STEP0, P_UNK)))).toBe('LINK_DNC');
+    expect(consentStepAllowed({ personId: P_UNK, consent: 'all', due: null }, [{ key: P_UNK, status: 'done' }], NOW, 12)).toBeNull();
+  });
+});
+
 describe('rev 6: removeFromFlowStep (R4)', () => {
   it('admin/director only; I am needed only with a note; allowed on a DNC row; blocks a Complete of the same row', async () => {
     const h = await setup();
@@ -280,7 +305,7 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     const h = await rev9();
     await h.link.replaceMirror('roster', [{ personId: P_A, firstName: 'Sample', lastName: 'Kid', gender: 'female', grade: 8, kind: 'student', consent: 'contact' }] as never,
       { takenAt: '2026-10-16T08:40:00.000Z', consoleId: CONSOLE });
-    expect(h.oc(await h.one(ADMIN, done(FA, P_A)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, done(FA, P_A)))).toBe('LINK_DNC'); // CY-B1: as the step list shows it
     expect((await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FA)).toMatchObject({ dnc: true, notReceivedOk: false });
   });
   it('a phone-sent notReceived is never trusted: dropped on an ordinary Complete', async () => {
@@ -394,7 +419,7 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
       { takenAt: '2026-10-16T08:40:00.000Z', consoleId: CONSOLE });
     const { by } = await otherLookup(h);
     expect(by(FC)).toMatchObject({ dnc: true, notReceivedOk: false });
-    expect(h.oc(await h.one(ADMIN, done(FC, P_C)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, done(FC, P_C)))).toBe('LINK_DNC'); // CY-B1: the sticky roster flag, as the row shows it
     expect(h.oc(await h.one(ADMIN, done(FD, P_D)))).toBe('LINK_DNC');
   });
   it('R9: per-row and Mark all: one batch, each row its own answer (only rows past their Friday), then marking; a repeat is a duplicate', async () => {

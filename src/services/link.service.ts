@@ -661,14 +661,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         throw new LinkBusyRow();
       }
       if (it.type === 'completeStep') {
-        if (isDnc(row.consent)) throw new LinkDnc(); // R4: DO NOT CONTACT = Remove only
+        // R4: DO NOT CONTACT = Remove only. CY-B1: the flag GET /link/flows shows (the roster's sticky DNC when the flow
+        // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
+        const consent = shownConsent(row, new Map(roster.map((x) => [x.personId, x])));
+        if (isDnc(consent)) throw new LinkDnc();
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
         // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
         // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
-        // R4: the roster's sticky DO NOT CONTACT counts too (as GET /link/flows shows it), so a blip never records "not received".
-        const sticky = row.personId ? roster.find((x) => x.personId === row.personId)?.consent : undefined;
-        const seen = { ...row, consent: isDnc(sticky) ? sticky : row.consent };
-        const v = isConsentStep(row) ? consentStepAllowed(seen, await c.consentRows(), clock(), newest(await c.consoles())?.linkRev ?? 1) : 'done';
+        const v = isConsentStep(row) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock(), newest(await c.consoles())?.linkRev ?? 1) : 'done';
         if (!v) throw new ConsentCheckFirst();
         if (v === 'notReceived') (p as { notReceived?: true }).notReceived = true; else delete (p as { notReceived?: true }).notReceived;
       }
