@@ -94,7 +94,6 @@ export interface BusRunView {
   availablePoolLeaderIds: ID[];
   fleet: BusVehicle[];
   canCoordinate: boolean;
-  canSeeCars: boolean;               // October rework: All cars tab (T10: always true; follows the Bus module only)
   pendingNewPeople: number | null;   // null unless director/admin
   pastRiders: BusPastRiderView[];    // [] unless bus:roster; capped ~50, most recent first
   // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car
@@ -161,7 +160,7 @@ export interface BusHistoryNight {
   edits?: { at: string; by: string; detail: string }[];
 }
 export interface BusHistoryRide {
-  runId: ID; date: string; riderId: ID; studentId: ID | null; guestId: ID | null; kind: 'student' | 'guest'; wasGuest: boolean;
+  runId: ID; date: string; riderId: ID; studentId: ID | null; guestId: ID | null; kind: 'student' | 'guest';
   name: string; grade: number | null; gender: BusGender; car: string | null; carColour: number | null; runVehicleId: ID | null;
   leaders: string[]; stop: number | null; address: string; suburb: string;
   droppedAt: string | null; droppedBy: string | null; addedBy: string; notRiding: boolean; noShow: boolean; note: string | null;

@@ -166,14 +166,13 @@ describe('S2.3 Bus All cars', () => {
     const pre = `const BUS = { view: null, myCar: null, loading: null, loadingAs: null, gen: 0, failed: false, routeMin: {}, tab: 'mycar', cars: null, version: -1 };
 const S = { user: null, page: 'x' };
 function getMyLeaderId() { return null; } function toast() {} function renderBus() {} function renderHome() {} function _busEditing() { return false; }
-async function _busGet(p) { globalThis.__bc.push(p); if (p === '/bus/run') return { run: { id: 'r', version: 1 }, canSeeCars: true }; if (p === '/bus/run/cars') return { cars: [] }; return {}; }
+async function _busGet(p) { globalThis.__bc.push(p); if (p === '/bus/run') return { run: { id: 'r', version: 1 } }; if (p === '/bus/run/cars') return { cars: [] }; return {}; }
 function __b() { return BUS; }`;
     const f = loadFns(['busRefresh', '_busTripQs', '_busTripDate', '_busToday', '_busLocalNow'], pre, ['busRefresh', '__b']);
     await f.busRefresh();
     expect(calls).not.toContain('/bus/run/cars');
     expect(f.__b().cars).toBeNull();
     expect(f.__b().view.cars).toBeUndefined();
-    expect(f.__b().view.canSeeCars).toBe(true);
     calls.length = 0;
     f.__b().tab = 'mycar';
     await f.busRefresh();

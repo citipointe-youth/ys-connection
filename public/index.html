@@ -14159,7 +14159,7 @@ async function renderBus() {
   const date = fmtDay(_busHeadDate(v));
   const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
   const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : ''), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + _busAllCarsSection(), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -15523,9 +15523,8 @@ async function _busLoadMap() {
 function _busExtraLine(x) {
   return `+${x.count} car${x.count === 1 ? '' : 's'}, ${x.seats} seats: longest drive ${x.after.longestMin} min (now ${x.before.longestMin}) · unassigned ${x.after.unassigned} (now ${x.before.unassigned})`;
 }
-// `cars` is new on the extra-cars response — handle it missing gracefully (older server).
 function _busExtraCarsHtml(x) {
-  if (!x.cars || !x.cars.length) return '';
+  if (!x.cars.length) return '';
   const rows = x.cars.map((c) => `<details class="an-extra-car">
     <summary>${esc(c.label)}${c.extra ? ' <span class="chip c-accent">Extra</span>' : ''} · ${c.riders} rider${c.riders === 1 ? '' : 's'} · ${c.driveMinutes} min drive · finish ~${esc(c.finishAt)} (drive time)</summary>
     ${c.stops.map((s, i) => `<div class="an-row"><div class="an-name">${i + 1}. ${esc(s.name)}</div><div class="an-val">${esc(s.suburb)}</div><div class="an-val">${esc(s.arriveAt)}</div></div>`).join('')}

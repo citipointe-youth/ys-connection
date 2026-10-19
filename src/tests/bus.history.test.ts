@@ -92,13 +92,13 @@ describe('leaderSnap + wasGuest', () => {
     expect(past.vehicles[0]!.leaderNames.sort()).toEqual(['Sarah', 'Tom']);
   });
 
-  it('a guest linked to a student keeps wasGuest on their past rides', async () => {
+  it('a guest linked to a student shows as that student on their past rides', async () => {
     const f = await fixture();
     const g = await f.svc.createGuest(f.admin, { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: null });
     await f.svc.addRider(f.admin, { guestId: g.id, newAddress: { address: '3 C St, Wynnum', placeId: 'fake:3-c-st' } });
     await f.svc.linkGuest(f.admin, g.id, { studentId: 's3' });
     const h = await f.svc.history(f.at('admin', WK2));
-    expect(h.rides[0]).toMatchObject({ studentId: 's3', guestId: null, kind: 'student', wasGuest: true });
+    expect(h.rides[0]).toMatchObject({ studentId: 's3', guestId: null, kind: 'student' });
   });
 });
 
@@ -123,7 +123,7 @@ describe('history', () => {
     const w1 = all.nights[1]!;
     expect(w1).toMatchObject({ riders: 2, placed: 2, unassigned: 0, dropped: 1, notRiding: 1, noShow: 0, cars: 1, seats: 8, leaders: ['Tom'], firstTime: 2 });
     const ride = all.rides.find((r) => r.runId === w1.id && r.studentId === 's1')!;
-    expect(ride).toMatchObject({ kind: 'student', wasGuest: false, name: 'Jess Tran', car: 'Bus', leaders: ['Tom'], stop: 1,
+    expect(ride).toMatchObject({ kind: 'student', name: 'Jess Tran', car: 'Bus', leaders: ['Tom'], stop: 1,
       address: 's1 Test St, Testville', suburb: 'Testville', notRiding: false, noShow: false, note: null });
     expect(ride.droppedAt).not.toBeNull();
     expect(all.rides.filter((r) => r.runId === w1.id)).toHaveLength(3); // incl. the not-riding row

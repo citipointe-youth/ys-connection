@@ -152,12 +152,12 @@ describe('T5/T6/T7 All cars fetches its own list, only while the section is open
     f.busCarsToggle(false);
     expect(f.__b().carsOpen).toBe(false);
   });
-  it('busRefresh never fetches /bus/run/cars; renderBus has no All cars tab and appends the section to My car only for canSeeCars', () => {
+  it('busRefresh never fetches /bus/run/cars; renderBus has no All cars tab and appends the section to My car', () => {
     const src = loadIndexHtml();
     expect(extractFn(src, 'busRefresh')).not.toContain('/bus/run/cars');
     const rb = extractFn(src, 'renderBus');
     expect(rb).not.toContain('allcars');
-    expect(rb).toContain("mycar: () => _busMyCarHtml() + (v.canSeeCars ? _busAllCarsSection() : '')");
+    expect(rb).toContain("mycar: () => _busMyCarHtml() + _busAllCarsSection()");
   });
   it('a null stop shows no number; long names sit in a block element so the ellipsis works', () => {
     const f = loadFns(['_busAllCarsHtml', 'progBar'], `const BUS = { cars: { unassigned: 0, cars: [{ name: 'C', colourIndex: 0, leaderNames: [],

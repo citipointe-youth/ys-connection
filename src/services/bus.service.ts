@@ -460,7 +460,6 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       })) : riderViews,
       leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: fleet.filter((v) => !v.archived).map((v) => hideEnds(v)), canCoordinate,
-      canSeeCars: true, // T10: All cars follows the Bus module only (gate() above)
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
       onCarLeaders: await onCarLeaderList(run.id),
@@ -1400,7 +1399,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           || (a.stopOrder ?? 999) - (b.stopOrder ?? 999) || a.snapName.localeCompare(b.snapName))) {
           const car = r.runVehicleId ? carById.get(r.runVehicleId) ?? null : null;
           rides.push({ runId: run.id, date: run.serviceDate, riderId: r.id, studentId: r.studentId, guestId: r.guestId,
-            kind: r.guestId ? 'guest' : 'student', wasGuest: r.wasGuest, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
+            kind: r.guestId ? 'guest' : 'student', name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
             car: car ? (isBus(car) ? `${car.name} (bus)` : car.name) : null, carColour: car?.colourIndex ?? null, runVehicleId: car?.id ?? null, leaders: car ? leaderNamesOf(car, live) : [],
             stop: r.stopOrder, address: r.snapAddress, suburb: suburbOf(r.snapAddress), droppedAt: r.droppedAt, droppedBy: r.droppedBy,
             addedBy: r.addedBy, notRiding: r.notRiding, noShow: r.noShow, note: r.note });
