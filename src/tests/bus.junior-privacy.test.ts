@@ -3,6 +3,7 @@
 // through ?date= by bus:use logins (SY-05 = CY-C2).
 import { describe, it, expect } from 'vitest';
 import { busFixture, FRI_7PM } from './helpers/bus-fixtures';
+import { riderKey } from '../services/bus-logic';
 import type { BusCtx } from '../services/bus.service';
 import type { Actor } from '../core/entities/user';
 
@@ -40,6 +41,50 @@ describe('SY-03: a junior leader cannot put itself on a fleet car', () => {
     expect((await w.svc.updateRunVehicle(w.ctx('grade'), w.rv, { leaderIds: ['L1', 'L2'] })).leaderIds).toEqual(['L1', 'L2']);
     await coordinators(w, ['L3']);
     expect((await w.svc.updateRunVehicle(jr(), w.rv, { leaderIds: ['L3'] })).leaderIds).toEqual(['L3']);
+  });
+});
+
+describe('SY-04: own-car save by a junior leader takes only its own riders', () => {
+  it('an Unassigned rider who is not its student is refused; nothing is saved', async () => {
+    const w = await world();
+    await expect(w.svc.saveOwnCar(jr(), { car, riderIds: [w.a.id] })).rejects.toMatchObject({ statusCode: 403 });
+    expect(await w.ownCarOf('L3')).toBeUndefined();
+    expect((await w.bus.getRunRider(w.a.id))!.runVehicleId).toBeNull();
+  });
+  it('newRiders.studentId outside its connected students is refused before anything is created', async () => {
+    const w = await world();
+    for (const studentId of ['s1', 's4']) {
+      await expect(w.svc.saveOwnCar(jr(), { car, riderIds: [], newRiders: [{ studentId }] })).rejects.toMatchObject({ statusCode: 403 });
+    }
+    const run = (await w.svc.getRun(w.admin)).run;
+    expect((await w.bus.listRunRiders(run.id)).some((r) => r.studentId === 's4')).toBe(false);
+    expect(await w.ownCarOf('L3')).toBeUndefined();
+  });
+  it('its own students (riderIds or newRiders) and riders already in its car are accepted', async () => {
+    const w = await world();
+    const own = await w.svc.saveOwnCar(jr(), { car, riderIds: [w.b.id] });
+    // a coordinator puts s1 into the junior's car; the junior can re-save its car with them in it
+    await w.svc.moveRider(w.admin, w.a.id, { runVehicleId: own.id });
+    await expect(w.svc.saveOwnCar(jr(), { car, riderIds: [w.b.id, w.a.id] })).resolves.toBeTruthy();
+    // newRiders with its own student also works (fresh login, s2 not yet on the run)
+    const w2 = await world();
+    await w2.svc.removeRider(w2.admin, w2.b.id);
+    await expect(w2.svc.saveOwnCar(jr(), { car, riderIds: [], newRiders: [{ studentId: 's2' }] })).resolves.toBeTruthy();
+  });
+  it('grade/quad logins are unchanged: any rider, any student', async () => {
+    const w = await world();
+    const own = await w.svc.saveOwnCar(w.ctx('grade', 'L2'), { car, riderIds: [w.a.id], newRiders: [{ studentId: 's4' }] });
+    expect((await w.svc.myCar(w.ctx('grade', 'L2'))).stops.map((s) => s.studentId).sort()).toEqual(['s1', 's4']);
+    expect(own.ownerLeaderId).toBe('L2');
+  });
+  it('the own-car draft never pre-ticks a rider the junior could not save', async () => {
+    const w = await world();
+    const run = (await w.svc.getRun(w.admin)).run;
+    const riders = await w.bus.listRunRiders(run.id);
+    await w.bus.saveLeaderPrefs({ id: 'L3', inPool: false, ownCar: null, prefGrades: [], lastOwnRiderKeys: riders.map(riderKey) });
+    expect((await w.svc.myCar(jr())).ownCarDraft!.riderIds).toEqual([w.b.id]);
+    await w.bus.saveLeaderPrefs({ id: 'L2', inPool: false, ownCar: null, prefGrades: [], lastOwnRiderKeys: riders.map(riderKey) });
+    expect((await w.svc.myCar(w.ctx('grade', 'L2'))).ownCarDraft!.riderIds.sort()).toEqual([w.a.id, w.b.id].sort());
   });
 });
 

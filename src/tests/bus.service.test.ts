@@ -35,7 +35,10 @@ export async function setup(opts: { moduleOn?: boolean; visibility?: 'admin' | '
   await students.save(student('s3', 'Riley', 'Kim', 10, 'male'));
   await leaders.save(leader('L1', 'Tom', 'male'));
   await leaders.save(leader('L2', 'Sarah', 'female'));
-  const svc = makeBusService(bus, students, leaders, settings, opts.routing);
+  // SY-04: a junior leader's own car takes only its connected students — s1 is Tom's (L1).
+  const connections = new InMemoryConnectionRepository(); await connections.init();
+  await connections.save({ id: 'c-L1-s1', studentId: 's1', leaderId: 'L1', assignedByRole: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
+  const svc = makeBusService(bus, students, leaders, settings, opts.routing, connections);
   const ctx = (role: string, asLeaderId: string | null = null, localNow = FRI_7PM): BusCtx => ({ actor: actor(role), asLeaderId, localNow });
   return { svc, bus, students, leaders, settings, ctx };
 }
