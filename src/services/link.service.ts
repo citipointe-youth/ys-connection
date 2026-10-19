@@ -904,14 +904,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async listActions(actor, q) {
       const c = context(actor, await gate(actor, 'any'));
       const Q = z.object({ ids: z.union([z.string(), z.array(z.string())]).optional(), serviceDate: Ymd.optional(),
-        type: z.enum(ACTION_TYPES).optional() });
+        type: z.enum(ACTION_TYPES).optional(), status: z.literal('unclear').optional() }); // CY-A1: the admin card's unclear rows, any date
       const f = Q.parse(q ?? {});
       const ids = f.ids === undefined ? undefined
         : z.array(Uuid).max(200).parse((Array.isArray(f.ids) ? f.ids : f.ids.split(',')).map((s) => s.trim()).filter(Boolean));
-      if (!ids && !f.serviceDate && !f.type) throw new BadRequestError('Give ids, or a serviceDate and type.');
+      if (!ids && !f.serviceDate && !f.type && !f.status) throw new BadRequestError('Give ids, or a serviceDate, type or status.');
       const rows = await d.link.listActions({ ids, serviceDateFrom: f.serviceDate, serviceDateTo: f.serviceDate,
-        types: f.type ? [f.type] : undefined, createdBy: c.admin ? undefined : actor.id,
-        ...(!ids && !f.serviceDate ? { limit: TYPE_ONLY_MAX } : {}) }); // S-1: a type-only read is the newest 100
+        types: f.type ? [f.type] : undefined, statuses: f.status ? [f.status] : undefined, createdBy: c.admin ? undefined : actor.id,
+        ...(!ids && !f.serviceDate ? { limit: TYPE_ONLY_MAX } : {}) }); // S-1: a type/status-only read is the newest 100
       const logins = new Map<string, string>();
       await Promise.all([...new Set(rows.map((r) => r.createdBy))].map(async (id) =>
         logins.set(id, (await d.users.findById(id))?.email ?? '')));

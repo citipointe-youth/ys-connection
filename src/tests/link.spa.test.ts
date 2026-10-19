@@ -871,9 +871,10 @@ describe('F1.3 door', () => {
     const tick = extractFn(html, '_lkTick');
     for (const c of ['_lkLoadPeople(LINK.svc, true)', '_lkLoadGroups(true)', '_lkLoadFlows(true)']) expect(tick).toContain(c);
   });
-  it('APP-21: the admin Today card makes one /link/actions call for the day, not one per type', () => {
+  it('APP-21: the admin Today card makes one /link/actions call for the day (plus CY-A1 unclear rows), not one per type', () => {
     const f = extractFn(html, '_lkAdmLoadActs');
-    expect(f.match(/API\.fresh\(/g)).toHaveLength(1);
+    expect(f.match(/API\.fresh\(/g)).toHaveLength(2);
+    expect(f).toContain("API.fresh('/link/actions?status=unclear')");
     expect(f).toContain("API.fresh('/link/actions?serviceDate=' + today)");
     expect(f).not.toContain('&type=');
   });

@@ -12060,7 +12060,7 @@ function _lkAdmStatusHtml() {
   const acts = LINK.adm.acts || [];
   const counts = {};
   acts.forEach((a) => { counts[a.status] = (counts[a.status] || 0) + 1; });
-  const unclear = acts.filter((a) => a.status === 'unclear');
+  const unclear = LINK.adm.unclear || acts.filter((a) => a.status === 'unclear'); // CY-A1: every unclear row, any date
   // B17: first-timers still not in Elvanto an hour after the tap (the console gives up at 24 h, X7).
   const waiting = acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
     && Date.now() - Date.parse(a.createdAt) > 36e5);
@@ -12129,7 +12129,7 @@ function _lkAdminHtml() {
 // CY-A1: the admin looked in Elvanto and says whether an unclear row landed. Landed = Saved; Not landed = refused,
 // so the same action can be sent again. Either way the row stops blocking (POST /link/admin/unclear/:id).
 function _lkAdmUnclearOpen(id, landed) {
-  const a = (LINK.adm.acts || []).find((x) => x.id === id);
+  const a = (LINK.adm.unclear || []).concat(LINK.adm.acts || []).find((x) => x.id === id);
   if (!a) return;
   LINK.adm.uAsk = { id, landed };
   const what = _lkVerb(a.type) + ' · ' + (a.name || 'Unknown person');
@@ -12151,8 +12151,10 @@ function _lkAdmDraw(id, html) { const el = document.getElementById(id); if (el) 
 async function _lkAdmLoadActs() {
   const today = _lkToday();
   try {
-    const x = await API.fresh('/link/actions?serviceDate=' + today); // APP-21: one call; the card groups by status
+    // APP-21: today's rows, grouped by status; CY-A1: plus every unclear row of any date (the Landed / Not landed list).
+    const [x, u] = await Promise.all([API.fresh('/link/actions?serviceDate=' + today), API.fresh('/link/actions?status=unclear').catch(() => null)]);
     LINK.adm.acts = Array.isArray(x) ? x : [];
+    LINK.adm.unclear = Array.isArray(u) ? u : null;
     LINK.adm.aErr = null;
   } catch (e) { LINK.adm.aErr = e.message || 'Could not load the actions.'; }
   _lkAdmDraw('lk-adm-status', _lkAdmStatusHtml());

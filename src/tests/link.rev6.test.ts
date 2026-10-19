@@ -154,6 +154,16 @@ describe('CY-A1: the admin settles an unclear row (POST /link/admin/unclear/:id)
     await expect(h.svc.resolveUnclear(ADMIN, a.id, { landed: false })).rejects.toMatchObject({ statusCode: 409 });
     await expect(h.svc.resolveUnclear(ADMIN, u(8999), { landed: true })).rejects.toMatchObject({ statusCode: 404 });
   });
+  it('GET /link/actions?status=unclear lists unclear rows of any date for the admin card (the today read misses them)', async () => {
+    const { h, a } = await unclearRow();
+    const rows = await h.svc.listActions(ADMIN, { status: 'unclear' });
+    expect(rows.map((r) => r.id)).toEqual([a.id]);
+    expect(rows[0]).toMatchObject({ status: 'unclear', type: 'completeStep' });
+    expect(rows[0]).toHaveProperty('name');
+    await h.svc.resolveUnclear(ADMIN, a.id, { landed: true });
+    expect(await h.svc.listActions(ADMIN, { status: 'unclear' })).toEqual([]);
+    await expect(h.svc.listActions(ADMIN, { status: 'sent' })).rejects.toBeTruthy(); // unclear only
+  });
 });
 
 describe("E3: the consent step is step 0 of this year's New People flow", () => {

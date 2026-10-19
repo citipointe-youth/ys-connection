@@ -54,4 +54,21 @@ describe('CY-A1 admin Landed / Not landed on an unclear row', () => {
     expect(h).toMatch(/>Landed</);
     expect(h).toMatch(/>Not landed</);
   });
+
+  it('an older unclear row (not in the today list) still gets both buttons, and the load asks for status=unclear', async () => {
+    const OLD = { ...ROW, id: 'old1' };
+    const f = loadFns(['_lkAdmStatusHtml', '_lkAdmLoadActs', '_lkAdmUnclearOpen'], `
+      const LINK = { status: { console: { lastSeenAt: null }, mirrors: {} }, adm: { acts: null, aErr: null } };
+      const asked = [], out = { modal: '' };
+      const API = { fresh: async (p) => { asked.push(p); return p.indexOf('status=unclear') >= 0 ? [${JSON.stringify(OLD)}] : []; } };
+      function _lkToday() { return '2026-10-19'; } function _lkAdmDraw() {} function modal(h) { out.modal = h; }
+      function esc(s) { return String(s); } function icS() { return ''; } function _lkEvents() { return {}; } function _lkWord(a, b) { return b; }
+      function _lkRevLine() { return ''; } function _lkVerb(t) { return t; } function progBar() { return ''; } function _lkAt() { return ''; }
+      function __o() { return { asked, out }; }`, ['_lkAdmStatusHtml', '_lkAdmLoadActs', '_lkAdmUnclearOpen', '__o']);
+    await f._lkAdmLoadActs();
+    expect(f.__o().asked).toContain('/link/actions?status=unclear');
+    expect(f._lkAdmStatusHtml()).toContain(`_lkAdmUnclearOpen('old1',false)`);
+    f._lkAdmUnclearOpen('old1', true);
+    expect(f.__o().out.modal).toContain('Amy Adams');
+  });
 });
