@@ -147,9 +147,18 @@ export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editRep
 
 // ---------------- Rev 6: the New People consent step (review C1) ----------------
 
-/** The 7-day consent wait: flow "Brisbane - Youth - New People 2026", step "0" / "Step 0 ..." (youth-gather.js FLOW.people / STEP.people0). */
-export const isConsentStep = (r: { flowName: string; stepName: string }) =>
-  /^Brisbane - Youth - New People 2026/i.test(r.flowName) && /^(step\s*)?0\b/i.test(r.stepName.trim());
+const PEOPLE_FLOW_RE = /^Brisbane - Youth - New People (\d{4})$/i;
+/** E3: this year's New People flow among the pushed flow names: the highest year <= today's Brisbane year, else the highest
+ *  (January before the new flow exists keeps last year's). Same rule as 11.1 youth-gather.js FLOW.people. null = none. */
+export function peopleFlowName(names: Iterable<string>, today: string): string | null {
+  const year = Number(today.slice(0, 4));
+  const found = [...new Set(names)].map((n) => [Number(PEOPLE_FLOW_RE.exec(n.trim())?.[1]), n] as const)
+    .filter(([y]) => y > 0).sort((a, b) => b[0] - a[0]);
+  return (found.find(([y]) => y <= year) ?? found[0])?.[1] ?? null;
+}
+/** The 7-day consent wait: step "0" / "Step 0 ..." of `peopleFlow` (peopleFlowName; youth-gather.js STEP.people0). */
+export const isConsentStep = (r: { flowName: string; stepName: string }, peopleFlow: string | null) =>
+  peopleFlow !== null && r.flowName === peopleFlow && /^(step\s*)?0\b/i.test(r.stepName.trim());
 /** LINK_REV 9 (consents run 2026-10-17, R4): the console marks consent not received before a step-0 Complete. */
 export const NOT_RECEIVED_REV = 9;
 /**

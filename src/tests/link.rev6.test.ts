@@ -156,6 +156,23 @@ describe('CY-A1: the admin settles an unclear row (POST /link/admin/unclear/:id)
   });
 });
 
+describe("E3: the consent step is step 0 of this year's New People flow", () => {
+  it('2025 and 2026 pushed: only 2026 is the consent step; 2025 alone (January fallback) still is', async () => {
+    const h = await setup();
+    const N = (y: number) => `Brisbane - Youth - New People ${y}`;
+    const row = (rowId: string, flowName: string) => ({ rowId, flowId: rowId, flowName, stepId: STEP0, stepName: 'Step 0 - wait', stepOrder: 1,
+      personId: P_UNK, name: 'Sample Kid', due: null, assignedTo: '', grade: 8, gender: 'female', mobile: '0400000001', mobileIsParent: false, consent: 'unknown' });
+    const OLD = u(507), CUR = u(508);
+    await h.link.replaceMirror('flows', [row(OLD, N(2025)), row(CUR, N(2026))] as never, { takenAt: '2026-10-16T08:10:00.000Z', consoleId: CONSOLE });
+    const step = async (id: string) => (await h.svc.flows(ADMIN)).rows.find((r) => r.rowId === id)!.consentStep;
+    expect([await step(OLD), await step(CUR)]).toEqual([false, true]);
+    expect(h.oc(await h.one(ADMIN, complete(CUR, CUR, STEP0, P_UNK)))).toBe('CONSENT_CHECK_FIRST');
+    expect(h.oc(await h.one(ADMIN, complete(OLD, OLD, STEP0, P_UNK)))).toBe('saved'); // last year's flow: an ordinary step
+    await h.link.replaceMirror('flows', [row(OLD, N(2025))] as never, { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
+    expect(await step(OLD)).toBe(true);
+  });
+});
+
 describe('rev 6: removeFromFlowStep (R4)', () => {
   it('admin/director only; I am needed only with a note; allowed on a DNC row; blocks a Complete of the same row', async () => {
     const h = await setup();

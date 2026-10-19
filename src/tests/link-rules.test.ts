@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
@@ -431,5 +431,25 @@ describe('readLinkSyncToken', () => {
   });
   it('32+ characters -> trimmed token', () => {
     expect(readLinkSyncToken({ LINK_SYNC_TOKEN: ` ${'b'.repeat(32)} ` })).toBe('b'.repeat(32));
+  });
+});
+
+describe('E3: the New People flow by year (no hardcoded 2026)', () => {
+  const N = (y: number) => `Brisbane - Youth - New People ${y}`;
+  it('picks the highest year <= this Brisbane year, else the highest; other names never match', () => {
+    expect(peopleFlowName([N(2026)], '2026-10-19')).toBe(N(2026));
+    expect(peopleFlowName([N(2026), N(2027)], '2026-12-15')).toBe(N(2026)); // 2027 made early: 2026 until the year turns
+    expect(peopleFlowName([N(2026), N(2027)], '2027-01-01')).toBe(N(2027));
+    expect(peopleFlowName([N(2026)], '2027-01-20')).toBe(N(2026)); // January, 2027 not made yet
+    expect(peopleFlowName([N(2027)], '2026-12-15')).toBe(N(2027)); // only a future one: the highest
+    expect(peopleFlowName(['Brisbane - Youth - Parent Consent', 'Brisbane - Youth - New People 2026 old', 'Follow up'], '2026-10-19')).toBeNull();
+  });
+  it('isConsentStep: step 0 of the picked flow only', () => {
+    const r = (flowName: string, stepName: string) => ({ flowName, stepName });
+    expect(isConsentStep(r(N(2027), 'Step 0 - wait'), N(2027))).toBe(true);
+    expect(isConsentStep(r(N(2027), '0'), N(2027))).toBe(true);
+    expect(isConsentStep(r(N(2026), 'Step 0 - wait'), N(2027))).toBe(false); // last year's flow after the changeover
+    expect(isConsentStep(r(N(2027), 'Step 1 - text'), N(2027))).toBe(false);
+    expect(isConsentStep(r(N(2026), 'Step 0'), null)).toBe(false);
   });
 });
