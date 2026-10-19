@@ -159,8 +159,6 @@ export function peopleFlowName(names: Iterable<string>, today: string): string |
 /** The 7-day consent wait: step "0" / "Step 0 ..." of `peopleFlow` (peopleFlowName; youth-gather.js STEP.people0). */
 export const isConsentStep = (r: { flowName: string; stepName: string }, peopleFlow: string | null) =>
   peopleFlow !== null && r.flowName === peopleFlow && /^(step\s*)?0\b/i.test(r.stepName.trim());
-/** LINK_REV 9 (consents run 2026-10-17, R4): the console marks consent not received before a step-0 Complete. */
-export const NOT_RECEIVED_REV = 9;
 /**
  * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its date (a row due Fri 16 Oct is that week's
  * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). R8 (rev 10): the date is the parent-texted date
@@ -177,17 +175,16 @@ export const consentFridayPassed = (friday: string, now: Date) => now.getTime() 
  * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent > Consents) is done, or
  * their profile consent is 'ok' and no consent row for them is open. 'notReceived' (R4): no consent row at all, no consent
  * on the profile, not DO NOT CONTACT, and their consent Friday 9:00 has passed: allowed, and the console records consent
- * not received first (only a console at NOT_RECEIVED_REV can, so `consoleRev` gates it). null: refused (CONSENT_CHECK_FIRST).
+ * not received first. null: refused (CONSENT_CHECK_FIRST).
  * consentSave (the consent path) never comes here.
  */
 export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
-  consentRows: { key: string; status: string }[], now: Date, consoleRev: number): 'done' | 'notReceived' | null {
+  consentRows: { key: string; status: string }[], now: Date): 'done' | 'notReceived' | null {
   if (!row.personId || isDnc(row.consent)) return null; // CY-B1: DO NOT CONTACT first, even over a done consent row
   const mine = consentRows.filter((r) => r.key === row.personId);
   if (mine.some((r) => r.status === 'done')) return 'done';
   if (mine.length) return null; // an open consent row: the Consents screen saves it
   if (row.consent === 'ok') return 'done';
-  if (consoleRev < NOT_RECEIVED_REV) return null;
   const f = consentFriday(row.due, row.textedOn);
   return f && consentFridayPassed(f, now) ? 'notReceived' : null;
 }

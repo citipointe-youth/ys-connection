@@ -42,7 +42,7 @@ export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 
   supersede?: { type: ActionType; dedupeKey?: string; createdBy?: string; kind?: string } };
 export interface ConsoleRow { consoleId: string; label: string; lastSeenAt: string; contractVersion: number;
   consoleVersion: string; inWindow: boolean; pollSeconds: number; capabilities: Capabilities;
-  /** T1: the console's LINK_REV from its last claim (missing = 1). */
+  /** T1: the console's LINK_REV from its last claim (X-1: at least MIN_CONSOLE_REV). */
   linkRev: number;
   /** S5 (migration 0030): key -> the console's last progress post for that job (link-contract PROGRESS_KEY). */
   progress?: Record<string, LinkProgress>; }

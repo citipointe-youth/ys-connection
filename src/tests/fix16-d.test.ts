@@ -62,7 +62,7 @@ describe('F-37: GET /link/actions carries note failed', () => {
       limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => NOW } as never);
     const sync = makeSyncService({ link, settings, students, users, now: () => NOW } as never);
     const claim = (max: number) => sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false,
-      pollSeconds: 60, capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', removeFromFlowStep: 'live' } as never, max, leaseSeconds: 300, linkRev: 7 });
+      pollSeconds: 60, capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', removeFromFlowStep: 'live' } as never, max, leaseSeconds: 300, linkRev: 12 });
     await claim(0);
     return { svc, sync, claim };
   }

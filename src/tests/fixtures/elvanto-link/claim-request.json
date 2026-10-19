@@ -16,5 +16,6 @@
     "removeGroupMember": "live"
   },
   "max": 6,
-  "leaseSeconds": 180
+  "leaseSeconds": 180,
+  "linkRev": 12
 }

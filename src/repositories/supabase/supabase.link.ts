@@ -11,7 +11,6 @@ import type { ActionType, Capabilities, ClaimArgs, ClaimedRow, ConsoleRow, LinkP
   LinkRosterRow, LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem,
   ResultReply, Status } from '../../core/link-types';
 import { LinkIdExists, LinkOpenDuplicate } from '../../core/errors/link-errors';
-import { REHAND_REV } from '../../core/link-contract';
 import { applyOutcome } from '../../services/link-rules';
 import { createLogger } from '../../utils/logger';
 
@@ -198,7 +197,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
         select id, status from link_outbox o
         where type in ${tx(types)} and (
           (status = 'pending' and (retry_at is null or retry_at <= now()))
-          or (status = 'claimed' and lease_owner = ${c.consoleId} and (lease_until < now() or ${c.linkRev >= REHAND_REV}::boolean)))
+          or (status = 'claimed' and lease_owner = ${c.consoleId}))
           and not (o.type = 'checkOut' and exists (
             select 1 from link_outbox i
             where i.type = 'checkIn' and i.person_id = o.person_id

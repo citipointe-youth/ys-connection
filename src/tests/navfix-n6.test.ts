@@ -325,7 +325,7 @@ describe('B03: the claim hint hurries only for rows the console can lease now', 
   it('the claim passes its own (intake-stripped) capabilities to the hint', async () => {
     const h = await setup();
     const spy = vi.spyOn(h.intake, 'hint');
-    await h.sync.claim({ ...fx('claim-request.json'), linkRev: 7, max: 0 });
+    await h.sync.claim({ ...fx('claim-request.json'), linkRev: 12, max: 0 });
     expect(spy.mock.calls[0]![1]).toEqual(expect.objectContaining({ checkIn: expect.any(String) }));
   });
 });

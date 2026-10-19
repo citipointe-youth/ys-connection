@@ -60,7 +60,7 @@ async function setup(o: { intakeAdmin?: 'on' | 'off' } = {}) {
     limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => NOW, intake });
   const sync = makeSyncService({ link, settings, students, users, now: () => NOW });
   const claim = (max = 20, caps: Record<string, string> = ALL) => sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC',
-    consoleVersion: '1', inWindow: false, pollSeconds: 60, capabilities: caps, max, leaseSeconds: 300, linkRev: 6 });
+    consoleVersion: '1', inWindow: false, pollSeconds: 60, capabilities: caps, max, leaseSeconds: 300, linkRev: 12 });
   await claim(0);
   const one = async (a: Actor, item: object) => (await svc.batch(a, { device: DEV, items: [item] })).results[0]!;
   const oc = (r: { outcome: string; code?: string }) => (r.outcome === 'refused' ? r.code : r.outcome);
@@ -123,7 +123,7 @@ describe('CY-B1: the batch decides DO NOT CONTACT as GET /link/flows does (roste
       [consentRow(P_UNK, 'done')] as never);
     await h.link.replaceMirror('roster', dncRoster(P_UNK, 'all'), { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
     expect(h.oc(await h.one(ADMIN, complete(FR_C_UNK, NP, STEP0, P_UNK)))).toBe('LINK_DNC');
-    expect(consentStepAllowed({ personId: P_UNK, consent: 'all', due: null }, [{ key: P_UNK, status: 'done' }], NOW, 12)).toBeNull();
+    expect(consentStepAllowed({ personId: P_UNK, consent: 'all', due: null }, [{ key: P_UNK, status: 'done' }], NOW)).toBeNull();
   });
 });
 
@@ -297,7 +297,7 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
   const FA = u(531), FB = u(532), FC = u(533), FD = u(534), FE = u(535);
   const step0 = (rowId: string, personId: string, due: string | null, consent: string) => ({ rowId, flowId: NP, flowName: NPN, stepId: STEP0,
     stepName: 'Step 0 - wait', stepOrder: 1, personId, name: 'Sample Kid', due, assignedTo: '', grade: 8, gender: 'female', mobile: '0400000001', mobileIsParent: false, consent });
-  async function rev9(linkRev = 9) {
+  async function rev9() {
     const h = await setup();
     await h.link.replaceMirror('flows', [
       step0(FA, P_A, '2026-10-08', 'unknown'), // consent Fri 9 Oct 9:00: passed (NOW = Fri 16 Oct 19:00 Brisbane)
@@ -309,7 +309,7 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     await h.intake.replace('consent', { date: '2026-10-09', takenAt: NOW.toISOString(), consoleId: CONSOLE, cut: false, inputs: null },
       [consentRow(P_C, 'needs-you')] as never);
     await h.sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false, pollSeconds: 60,
-      capabilities: ALL, max: 0, leaseSeconds: 300, linkRev });
+      capabilities: ALL, max: 0, leaseSeconds: 300, linkRev: 12 });
     return h;
   }
   const done = (rowId: string, personId: string, extra: Record<string, unknown> = {}) =>
@@ -323,13 +323,12 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T22:59:00Z'))).toBe(false); // 8:59 Brisbane
     expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T23:00:00Z'))).toBe(true); // 9:00
     const r = (due: string | null, consent: string) => ({ personId: P_A, due, consent });
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW, 9)).toBe('notReceived');
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW, 8)).toBeNull(); // an older console cannot record it
-    expect(consentStepAllowed(r('2026-10-16', 'unknown'), [], NOW, 9)).toBeNull(); // before the Friday
-    expect(consentStepAllowed(r('2026-10-08', 'contact'), [], NOW, 9)).toBeNull(); // DO NOT CONTACT
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW, 9)).toBeNull(); // open consent row
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW, 9)).toBe('done');
-    expect(consentStepAllowed(r(null, 'ok'), [], NOW, 9)).toBe('done');
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-16', 'unknown'), [], NOW)).toBeNull(); // before the Friday
+    expect(consentStepAllowed(r('2026-10-08', 'contact'), [], NOW)).toBeNull(); // DO NOT CONTACT
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW)).toBeNull(); // open consent row
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW)).toBe('done');
+    expect(consentStepAllowed(r(null, 'ok'), [], NOW)).toBe('done');
   });
   it('allowed and stored with notReceived (set by the server); the claim carries it to the console', async () => {
     const h = await rev9();
@@ -339,13 +338,11 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     expect(row.payload).toMatchObject({ rowId: FA, personId: P_A, notReceived: true });
     expect(h.oc(await h.one(ADMIN, a))).toBe('replay'); // the phone resends what it sent: a replay, never LINK_ID_REUSED
   });
-  it('refused CONSENT_CHECK_FIRST before the Friday, with an open consent row, with no due date, or with a rev 8 console', async () => {
+  it('refused CONSENT_CHECK_FIRST before the Friday, with an open consent row, or with no due date', async () => {
     const h = await rev9();
     expect(h.oc(await h.one(ADMIN, done(FB, P_B)))).toBe('CONSENT_CHECK_FIRST');
     expect(h.oc(await h.one(ADMIN, done(FC, P_C)))).toBe('CONSENT_CHECK_FIRST');
     expect(h.oc(await h.one(ADMIN, done(FE, P_E)))).toBe('CONSENT_CHECK_FIRST');
-    const old = await rev9(8);
-    expect(old.oc(await old.one(ADMIN, done(FA, P_A)))).toBe('CONSENT_CHECK_FIRST');
   });
   it('a sticky roster DO NOT CONTACT (flow row read as unknown) never records consent not received', async () => {
     const h = await rev9();
@@ -370,8 +367,6 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     expect(by(FC)).toMatchObject({ consentFriday: '2026-10-09', notReceivedOk: false }); // an open consent row: the batch would refuse it
     expect(by(FD)).toMatchObject({ notReceivedOk: false }); // consent ok: the ordinary Complete
     expect(by(FE)).toMatchObject({ consentFriday: null, notReceivedOk: false });
-    const old = await rev9(8);
-    expect((await old.svc.flows(ADMIN)).rows.find((x) => x.rowId === FA)).toMatchObject({ notReceivedOk: false });
   });
 });
 
@@ -393,7 +388,7 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
       step0(FD, P_D, null, '2026-10-07', 'contact'), // DO NOT CONTACT: never
     ] as never, { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
     const claim = (max = 20) => h.sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false,
-      pollSeconds: 60, capabilities: ALL, max, leaseSeconds: 300, linkRev: 10 });
+      pollSeconds: 60, capabilities: ALL, max, leaseSeconds: 300, linkRev: 12 });
     await claim(0);
     return { ...h, claim };
   }
@@ -421,11 +416,11 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
     expect(consentFriday(null, '2026-10-07')).toBe('2026-10-09'); // no due date
     expect(consentFriday(null, null)).toBeNull();
     const r = (due: string | null, textedOn: string | null) => ({ personId: P_A, consent: 'unknown', due, textedOn });
-    expect(consentStepAllowed(r('2026-10-01', '2026-10-16'), [], NOW, 10)).toBeNull(); // the text says wait
-    expect(consentStepAllowed(r('2026-10-16', '2026-10-05'), [], NOW, 10)).toBe('notReceived');
-    expect(consentStepAllowed(r('2026-10-08', null), [], NOW, 10)).toBe('notReceived');
-    expect(consentStepAllowed(r(null, '2026-10-07'), [], NOW, 10)).toBe('notReceived');
-    expect(consentStepAllowed(r(null, null), [], NOW, 10)).toBeNull();
+    expect(consentStepAllowed(r('2026-10-01', '2026-10-16'), [], NOW)).toBeNull(); // the text says wait
+    expect(consentStepAllowed(r('2026-10-16', '2026-10-05'), [], NOW)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-08', null), [], NOW)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, '2026-10-07'), [], NOW)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, null), [], NOW)).toBeNull();
   });
   it('the flows push stores textedOn (rev 10 fixture); a row without it (an older console) reads null', async () => {
     const h = await rev10();

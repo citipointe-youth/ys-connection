@@ -43,7 +43,7 @@ const SUB_S = '5b000000-0000-4000-8000-000000000001', SUB_P = '5b000000-0000-400
 const P_STU = '9e000000-0000-4000-8000-000000000011';
 const row1 = () => fx('push-intake.json').rows[0];
 /** A rev-4 console's claim (the same console id as the setup's, so it keeps its intake capabilities). */
-const CLAIM4 = (o: Record<string, unknown> = {}) => ({ ...fx('claim-request.json'), linkRev: 4,
+const CLAIM4 = (o: Record<string, unknown> = {}) => ({ ...fx('claim-request.json'), linkRev: 12,
   capabilities: { ...fx('claim-request.json').capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked' }, ...o });
 const keysOf = (r: any) => r.steps.map((s: any) => s.key) as string[];
 let idn = 5000;
@@ -236,7 +236,7 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
     await expect(h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-31' })).rejects.toMatchObject({ statusCode: 400 });
     expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' })).toEqual({ asked: true });
     expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' })).toEqual({ asked: false });
-    const reply = await h.sync.claim({ ...fx('claim-request.json'), linkRev: 4 });
+    const reply = await h.sync.claim({ ...fx('claim-request.json'), linkRev: 12 });
     expect(reply.intake!.refresh).toEqual([{ mode: 'consent', date: '2026-10-09' }]);
     expect(await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-23' })).toEqual({ asked: true });
     expect((await h.intake.hint(await h.settings.getSettings())).refresh).toContainEqual({ mode: 'consent', date: '2026-10-23' });
@@ -342,9 +342,8 @@ describe('/link/batch intake items', () => {
 // ---------------------------------------------------------------- sync: claim hint, pushes, results
 
 describe('sync: intake hint, pushes, results', () => {
-  it('the hint only for a console at rev >= 4: mode, hurry (pending row or a recent view), and it parses', async () => {
+  it('the hint: mode, hurry (pending row or a recent view), and it parses', async () => {
     const h = await setup();
-    expect((await h.sync.claim(fx('claim-request.json'))).intake).toBeUndefined();
     let reply = await h.sync.claim(CLAIM4());
     expect(ClaimResponse.parse(reply).intake).toEqual({ mode: 'on', hurry: false, refresh: [] });
     await h.intake.list(ADMIN, { mode: 'intake', view: '1' }); // viewed now
@@ -362,7 +361,7 @@ describe('sync: intake hint, pushes, results', () => {
     await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
     await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
       modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off' } } } as never);
-    expect((await h.sync.claim({ ...fx('claim-request.json'), linkRev: 4 })).intake).toEqual({ mode: 'off', hurry: false, refresh: [] });
+    expect((await h.sync.claim({ ...fx('claim-request.json'), linkRev: 12 })).intake).toEqual({ mode: 'off', hurry: false, refresh: [] });
     expect(await h.intakeRepo.dates()).toEqual([]);
     expect(await h.sync.push('intakePlan', { ...fx('push-intake.json'), takenAt: '2026-10-16T09:49:00.000Z' })).toEqual({ applied: false });
   });
