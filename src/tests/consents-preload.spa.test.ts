@@ -7,7 +7,7 @@ const FNS = ['_ikLk', '_ikLkBusy', '_ikLkGate', '_ikRev', '_ikClCap', '_ikLkItem
   '_ikLkPreload', '_ikLkWarm', '_ikLkRestore', '_ikLkKeepKey', '_ikLkKept', '_ikLkKeep', '_ikLkMerge', '_ikLkDone'];
 const HTML = loadIndexHtml();
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
-const CONSTS = ['IK_LK_FRESH_MS', 'IK_LK_KINDS', 'IK_LK_SINCE_REV', 'IK_LK_LOCK_MS', 'IK_LK_TAB'].map((n) => HTML.match(new RegExp(`^const ${n} = [^;]*;`, "m"))![0]).join('\n');
+const CONSTS = ['IK_LK_FRESH_MS', 'IK_LK_KINDS', 'IK_LK_LOCK_MS', 'IK_LK_TAB'].map((n) => HTML.match(new RegExp(`^const ${n} = [^;]*;`, "m"))![0]).join('\n');
 const NOW = Date.parse('2026-10-18T05:30:00Z');
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -51,8 +51,8 @@ describe('P1/P2 preload: every Tidy up list on entry', () => {
     expect(env().fns._ikLkPreload(ST({}, { consentLookup: 'off' }), NOW)).toEqual([]);
     expect(env().fns._ikLkPreload(null, NOW)).toEqual([]);
   });
-  it('skips unlinked without consentLink and other below console rev 8', () => {
-    expect(env().fns._ikLkPreload(ST({}, { consentLink: 'off' }, 7), NOW)).toEqual(['mismatches', 'forms']);
+  it('skips unlinked without consentLink', () => {
+    expect(env().fns._ikLkPreload(ST({}, { consentLink: 'off' }), NOW)).toEqual(['mismatches', 'forms', 'other']);
   });
   it('keeps a search, a later page, a busy or failed ask and a fresh answer; asks again for a stale one', () => {
     const lk = {
@@ -142,11 +142,6 @@ describe('P4 two passes: new since the kept check, then everything', () => {
     expect(asked.find((a) => a.k === 'forms')).toEqual({ k: 'forms', p: 1, q: '', after: iso(20 * 60e3) });
     expect(I.lk.forms.full).toBe(true);
     expect(asked.find((a) => a.k === 'mismatches')!.after).toBeNull(); // nothing kept: one full pass
-  });
-  it('a console below rev 11 gets a full pass only (graceful)', () => {
-    const { fns, asked } = env({ lk: { forms: kept('forms') } });
-    fns._ikLkPreload(ST(), NOW);
-    expect(asked.find((a) => a.k === 'forms')!.after).toBeNull();
   });
   it('the outbox item carries since only for pass 1', () => {
     const { fns } = env();

@@ -199,22 +199,12 @@ describe('B10 leaders are told "Tell the admin", not "Do it in Elvanto"', () => 
     a.run([{ kind: 'undo', id: 'u1' }], [{ kind: 'undo', id: 'u1', outcome: 'too-late' }]);
     expect(a.toasts).toEqual(['Already sent. Do it in Elvanto.']);
   });
-  it('the locked line in the screen banner', () => {
-    const banner = (role: string) => new Function(`
-      const S = { user: { role: ${JSON.stringify(role)} } };
-      const esc = (s) => String(s), icS = () => '', _lkSeen = () => '', _lkOfflineSince = () => '';
-      ${fns(['_lkBoss', '_lkBanner'])}
-      return _lkBanner(['checkOut'], { console: { online: true, capabilities: { checkOut: 'locked' } } });`)();
-    expect(banner('grade')).toContain("Check-out: this isn't connected yet. Tell the admin.");
-    expect(banner('grade')).not.toContain('Do it in Elvanto');
-    expect(banner('admin')).toContain("Check-out: this isn't connected yet. Do it in Elvanto.");
-  });
 });
 
 describe('D6 door: a pending row over 15 min says the console has not picked it up', () => {
   const st = new Function(`
     ${LK_CONSTS}
-    const _lkOutsideWindow = () => false, _lkPracticeLine = () => '';
+    const _lkOutsideWindow = () => false;
     const _lkSeen = (iso) => 'SEEN(' + iso + ')';
     ${extractFn(html, '_lkStatusText')}
     return _lkStatusText;`)();
@@ -228,7 +218,7 @@ describe('D6 door: a pending row over 15 min says the console has not picked it 
     const on = new Function(`
       ${LK_CONSTS}
       const LINK = { status: { console: { online: true } } };
-      const _lkOutsideWindow = () => false, _lkPracticeLine = () => '', _lkSeen = (iso) => 'SEEN(' + iso + ')';
+      const _lkOutsideWindow = () => false, _lkSeen = (iso) => 'SEEN(' + iso + ')';
       ${extractFn(html, '_lkStatusText')}
       return _lkStatusText;`)();
     const old = new Date(Date.now() - 16 * 60000).toISOString();

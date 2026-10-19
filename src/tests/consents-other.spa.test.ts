@@ -62,12 +62,6 @@ describe('Consents Other: the 5th pill', () => {
     expect(h).toContain('On step 0, not in a week7');
     expect(h).toContain('Find any consent form'); expect(h).not.toContain('Find any consent form3');
   });
-  it('an older console (rev 7) says it needs an update and offers no Load', () => {
-    const { fns } = env();
-    const h = strip(fns._ikLkPage('other', ST(7)));
-    expect(h).toContain('The console needs an update before it can list these students.');
-    expect(h).not.toContain('Load students');
-  });
   it('a rev 8 console: no intro sentence (R1: the screen title says it), a search and one Load button', () => {
     const { fns } = env();
     const h = fns._ikLkPage('other', ST());

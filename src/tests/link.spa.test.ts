@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, extractFn, loadFns } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
-  '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkPracticeLine', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
+  '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
@@ -164,7 +164,6 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
     expect(t({ status: 'claimed' })).toBe('Sending to Elvanto…');
     expect(t({ status: 'sent', reason: null, resultAt: '2026-10-16T09:02:00.000Z' })).toBe('In Elvanto 7:02 pm');
     expect(t({ status: 'sent', reason: 'already' })).toBe('Already in Elvanto');
-    expect(t({ status: 'shadowed' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
     expect(t({ status: 'unclear', reason: 'lease-lost' })).toBe('Not sure it saved. The admin is checking Elvanto.');
     expect(t({ status: 'cancelled' })).toBe('Cancelled.');
     expect(t({ status: 'queued' })).toBe('Waiting to send.');
@@ -202,14 +201,6 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
 
 describe('A3 / X9 lines by action type', () => {
   const t = makeEnv().fns._lkStatusText;
-  it('shadowed: one line per type', () => {
-    expect(t({ status: 'shadowed', type: 'checkIn' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
-    expect(t({ status: 'shadowed', type: 'firstTimerCheckIn' })).toBe('Practice mode: not sent to Elvanto. Check in the usual way.');
-    expect(t({ status: 'shadowed', type: 'checkOut' })).toBe('Practice mode: not sent to Elvanto. Check out the usual way.');
-    for (const type of ['submitReport', 'editReport', 'completeStep']) {
-      expect(t({ status: 'shadowed', type })).toBe('Practice mode: not sent to Elvanto. Do it in Elvanto as usual.');
-    }
-  });
   it('check-out no-room and flow-step already', () => {
     expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
     expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.");
@@ -242,11 +233,9 @@ describe('F1.1 _lkBanner', () => {
       expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct, 4:12pm');
     } finally { vi.useRealTimers(); }
   });
-  it('check-out locked, off hides; no practice line (S1)', () => {
-    const b = strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkIn: 'shadow', checkOut: 'locked' }) })));
-    expect(b).not.toContain('Practice');
-    expect(b).toContain("Check-out: this isn't connected yet. Tell the admin."); // B10: non admin/director get the F-35 rewrite
-    expect(b).not.toContain('last seen');
+  it('live says nothing, off hides; no capability line (S1, X-2)', () => {
+    const b = strip(makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkIn: 'live', checkOut: 'live' }) })));
+    expect(b).toBe('');
     const off = makeEnv().fns._lkBanner(['checkIn', 'checkOut'], st({ capabilities: caps({ checkOut: 'off' }) }));
     expect(off).toBe('');
   });
@@ -931,9 +920,8 @@ describe('F1.3 door', () => {
     expect(p).toMatchObject({ checkedIn: true, mine: false, action: { id: P(77) } });
     expect(strip(h.fns._lkRowHtml(p))).not.toContain('Undo');
   });
-  it('practice rows show the practice line; a kiosk check-in reads "In Elvanto."', () => {
+  it('a kiosk check-in reads "In Elvanto."', () => {
     const h = setup();
-    expect(strip(h.fns._lkRowHtml(people[3]))).toContain('Practice mode: not sent to Elvanto. Check in the usual way.');
     expect(strip(h.fns._lkRowHtml(people[4]))).toContain('In Elvanto.');
   });
   it('every name passes through esc()', () => {
@@ -2037,12 +2025,12 @@ describe('T-46 UI minors', () => {
   it('APP-63: the admin page words modes, statuses, lists and outcomes (no raw codes)', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.status = { console: { lastSeenAt: '2026-10-16T08:00:00.000Z', online: true, inWindow: true, pollSeconds: 60,
-      capabilities: { checkIn: 'live', checkOut: 'locked', submitReport: 'shadow', editReport: 'shadow', completeStep: 'off', firstTimerCheckIn: 'live' }, consoles: 1 },
+      capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'off', firstTimerCheckIn: 'live' }, consoles: 1 },
       mirrors: { roster: { takenAt: null, ageSeconds: 120 } } };
     h.get().LINK.adm = h.fns._lkAdmFresh();
     h.get().LINK.adm.acts = [{ id: P(1), type: 'checkIn', status: 'pending' }, { id: P(2), type: 'checkIn', status: 'claimed' }, { id: P(3), type: 'checkIn', status: 'sent' }];
     const out = strip(h.fns._lkAdmStatusHtml());
-    for (const w of ['Live', 'Not connected', 'Practice', 'Off', 'People list', 'Waiting', 'Sending', 'Saved']) expect(out).toContain(w);
+    for (const w of ['Live', 'Off', 'People list', 'Waiting', 'Sending', 'Saved']) expect(out).toContain(w);
     for (const raw of ['shadow', 'locked', 'Mirror: roster', 'pending', 'claimed']) expect(out).not.toContain(raw);
     const row = (o: string) => strip(h.fns._lkLogRowHtml({ id: P(9), at: '2026-10-16T08:31:02.120Z', userId: 'u1', login: 'g', deviceId: 'd', deviceLabel: 'p',
       event: 'checkIn', leaderId: null, leaderName: null, prevLeaderId: null, prevLeaderName: null, targetKind: 'person', targetId: null, targetName: 'Ava', outboxId: null, outcome: o }));

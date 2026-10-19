@@ -92,8 +92,8 @@ describe('I6 step 0 Consents button', () => {
     expect(I.csub).toBe('other');
     expect(t.posts.length).toBe(1);
   });
-  it('(d) gate closed or console rev < 8: the name is filled in, nothing queued', async () => {
-    for (const st of [ST(7), ST(8, 'locked'), ST(8, 'off')]) {
+  it('(d) gate closed: the name is filled in, nothing queued', async () => {
+    for (const st of [ST(8, 'off')]) {
       const { fns, t, I } = env({ personId: null, st });
       fns._lkStepConsents();
       fns.__load([], DATES);

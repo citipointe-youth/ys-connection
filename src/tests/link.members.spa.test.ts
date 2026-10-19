@@ -13,7 +13,6 @@ const prelude = `
   function icS(k) { return '<i>' + k + '</i>'; }
   function _lkLastSeen() { return ''; }
   function _lkOutsideWindow() { return false; }
-  function _lkPracticeLine() { return 'Practice'; }
   function _lkTime() { return '7:02 pm'; }
   function setState(o) { if (o.LINK) LINK = Object.assign(LINK, o.LINK); if (o.Q) Q = o.Q; if ('MY' in o) MY = o.MY; if (o.role) S.user.role = o.role; }
 `;

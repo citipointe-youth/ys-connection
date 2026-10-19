@@ -583,10 +583,9 @@ describe('consents sub-menus (R2)', () => {
     e.fns._ikTab('intake');
     expect(e.fns._ik().tab).toBe('intake');
   });
-  it('an older console or a locked lookup says so instead of a search box', () => {
+  it('a console without the lookup says so instead of a search box', () => {
     const e = makeEnv();
-    expect(e.fns._ikLkGate(ST({ rev: 5 }))).toMatch(/needs an update/);
-    expect(e.fns._ikLkGate(ST6({ consentLookup: 'locked' }))).toMatch(/isn't switched on/);
+    expect(e.fns._ikLkGate(ST6({ consentLookup: 'off' }))).toMatch(/needs an update/);
     expect(e.fns._ikLkGate(ST6())).toBe('');
   });
 });
@@ -694,10 +693,10 @@ describe('form rows (R2 b; consents run 2026-10-17 R1: one chip in words, no ico
 describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
   const mis = { subId: P(3), personId: P(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date', 'opt-outs'],
     form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };
-  it('lines show form vs profile; a locked writer is said plainly', () => {
+  it('lines show form vs profile; a console without the writer is said plainly', () => {
     const f = makeEnv().fns;
     expect(f._ikMisLines(mis).map((l: string[]) => l.map((x) => x.replace(/ 2026$/, '')))).toEqual([['Consent date', 'Fri 9 Oct', 'blank'], ['Opt-outs', 'Contact with my child', 'blank']]);
-    expect(strip(f._ikFixBanner(ST6()))).toContain("isn't allowed to change profiles yet");
+    expect(strip(f._ikFixBanner(ST6({ consentFix: 'off' })))).toContain("isn't on this console yet");
     expect(f._ikFixText({ status: 'refused', reason: 'locked' }, ST6())).toEqual(['bad', 'Not sent. Waiting for first live approval in the console.']);
     expect(f._ikFixText({ status: 'sent', reason: 'already' }, ST6())[1]).toMatch(/Already matched/);
   });
@@ -705,8 +704,8 @@ describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
     const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved' }] }) });
     const x = e.fns._ikLk('mismatches');
     Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 1, rows: [mis] } });
-    expect(e.fns._ikLkResHtml('mismatches', x, ST6())).not.toContain('_ikFixOpen(0)'); // M5: locked = "Do in Elvanto"
-    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6()))).toContain('Do in Elvanto');
+    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' }))).not.toContain('_ikFixOpen(0)'); // M5: off = "Do in Elvanto"
+    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' })))).toContain('Do in Elvanto');
     expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live' }))).toContain('_ikFixOpen(0)');
     e.fns._ikFixOpen(0);
     expect(strip(e.calls.modals[0]!)).toContain("Change Ava Nguyen's profile to match the form?");

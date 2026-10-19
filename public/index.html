@@ -7240,7 +7240,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
   /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
-  /*BUS-HOOK*/ busMinistry: { visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], regionCode: '' },
+  /*BUS-HOOK*/ busMinistry: { churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [] },
 };
 
 // Lazily seed the draft from freshly-fetched settings — only when there isn't
@@ -10041,12 +10041,6 @@ function _lkDayCheck() {
   Object.assign(LINK, { services: null, today: null, defaultSvc: null, svc: null, people: {}, pickDay: null, okDay: {}, pickSel: null });
   return true;
 }
-// The practice line by action type (contract X9).
-function _lkPracticeLine(type) {
-  if (type === 'checkOut') return 'Practice mode: not sent to Elvanto. Check out the usual way.';
-  if (type === 'submitReport' || type === 'editReport' || type === 'completeStep' || type === 'removeFromFlowStep' || type === 'addGroupMember' || type === 'removeGroupMember') return 'Practice mode: not sent to Elvanto. Do it in Elvanto as usual.';
-  return 'Practice mode: not sent to Elvanto. Check in the usual way.';
-}
 // The leader line for one action (contract §5.3 / §5.4, word for word; X9 picks some lines by type). Two app-only
 // statuses: 'queued' (still on this phone) and 'mirror' (checked in on the kiosk; no app row).
 function _lkStatusText(row, lastSeen) {
@@ -10091,7 +10085,6 @@ function _lkStatusText(row, lastSeen) {
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
-    case 'shadowed': return _lkPracticeLine(row.type);
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
@@ -10113,7 +10106,7 @@ function _lkStatusHtml(row, lastSeen) {
 }
 function _lkStatusTone(row) {
   const s = row && row.status;
-  return s === 'sent' || s === 'mirror' ? 'ok' : s === 'refused' || s === 'unclear' ? 'bad' : s === 'shadowed' || s === 'cancelled' ? 'prac' : 'wait';
+  return s === 'sent' || s === 'mirror' ? 'ok' : s === 'refused' || s === 'unclear' ? 'bad' : s === 'cancelled' ? 'prac' : 'wait';
 }
 function _lkCap(type) {
   const c = LINK.status && LINK.status.console;
@@ -10141,8 +10134,7 @@ function _lkOutsideWindow() {
 function _lkBanner(types, st) {
   if (st === undefined) st = LINK.status;
   if (!st) return '';
-  const c = st.console || null, caps = (c && c.capabilities) || {}, out = [];
-  const names = { checkIn: 'Check-in', checkOut: 'Check-out', submitReport: 'Lifegroup report', editReport: 'Report edits', completeStep: 'Flow steps', removeFromFlowStep: 'Removing from steps', firstTimerCheckIn: 'First-timer check-in', addGroupMember: 'Adding students', removeGroupMember: 'Removing students' };
+  const c = st.console || null, out = [];
   // F-11/F-12: the console's own online flag decides; one plain line. Leaders get the pill only, except on
   // Check-in, where the kiosk line matters to whoever is on the door.
   const door = types.indexOf('checkIn') >= 0;
@@ -10151,8 +10143,6 @@ function _lkBanner(types, st) {
     const at = c && c.lastSeenAt;
     out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
   }
-  // B10 (F-35): only admin/director work in Elvanto; everyone else passes it on.
-  types.forEach((t) => { if (caps[t] === 'locked') out.push(['practice', names[t] + ": this isn't connected yet. " + (_lkBoss() ? 'Do it in Elvanto.' : 'Tell the admin.')]); });
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
 }
@@ -12041,8 +12031,8 @@ function _lkVerb(t) {
 // APP-63: words for the admin page, never raw codes (an unknown code still shows as itself).
 function _lkWord(kind, v) {
   const W = {
-    mode: { live: 'Live', shadow: 'Practice', locked: 'Not connected', off: 'Off' },
-    status: { pending: 'Waiting', claimed: 'Sending', unclear: 'Not sure', sent: 'Saved', shadowed: 'Practice', refused: 'Refused', cancelled: 'Cancelled' },
+    mode: { live: 'Live', off: 'Off' },
+    status: { pending: 'Waiting', claimed: 'Sending', unclear: 'Not sure', sent: 'Saved', refused: 'Refused', cancelled: 'Cancelled' },
     list: { roster: 'People list', services: 'Services list', groups: 'Lifegroups list', flows: 'Flow steps list' },
     outcome: { saved: 'Saved', replay: 'Already sent', duplicate: 'Already waiting', cancelled: 'Cancelled', 'too-late': 'Too late', logged: 'Logged' },
     code: { LINK_ID_REUSED: 'id used for another action', RATE_LIMITED: 'too many taps', LINK_STALE: 'changed by someone else',
@@ -12211,7 +12201,7 @@ function _ikFresh() {
     csub: 'last', lk: {}, lkPre: 0, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {} };
 }
 function _ik() { if (!LINK.ik) LINK.ik = _ikFresh(); return LINK.ik; }
-// The module switch for this login (admin + On). The page itself also needs a console at link rev 4 (_intakeOn).
+// The module switch for this login (admin + On). The page itself also needs a console that has claimed (_intakeOn: rev 0 = none yet).
 function _ikModuleOn() {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
   return !!S.user && S.user.role === 'admin' && m.intakeAdmin === 'on';
@@ -12229,13 +12219,11 @@ function _ikSeenLine(st) {
   const c = st && st.console;
   return c && !c.online && c.lastSeenAt ? ' Console last seen ' + _lkSeen(c.lastSeenAt) + '.' : '';
 }
-// The banner lines above the list (§7.1, §7.5, §9): console offline, practice, stale, cut, last writer of the answers.
+// The banner lines above the list (§7.1, §7.5, §9): console offline, stale, cut, last writer of the answers.
 function _ikBanner(st, list, tab) {
-  const out = [], c = (st && st.console) || null, caps = (c && c.capabilities) || {};
+  const out = [], c = (st && st.console) || null;
   if (!c || !c.lastSeenAt) out.push(['warn', "The console has not been seen yet. Saves wait until it's back."]);
   else if (!c.online) out.push(['warn', 'The console was last seen ' + _lkSeen(c.lastSeenAt) + ". Saves wait until it's back."]);
-  const types = tab === 'consent' ? ['consentSave'] : ['intakeSave', 'intakeText'];
-  if (tab !== 'consent' && caps.intakeText === 'locked') out.push(['practice', "The parent text isn't connected yet. Send it in Elvanto."]);
   if (list) {
     if (!list.takenAt) out.push(['warn', 'Not checked yet. Press Refresh to ask the console.']);
     else if (list.stale) out.push(['warn', 'Over 2 hours old. Tap Refresh.']);
@@ -12469,7 +12457,6 @@ function _ikResultHtml(a, d, st) {
     const r = o === 'confirmed' ? ['ok', 'tick', t + (x.at ? ' ' + _lkSeen(x.at) : '')]
       : o === 'already' ? ['ok', 'tick', t + ' (already in Elvanto)']
       : o === 'unconfirmed' ? ['bad', 'alert', 'Not sure it saved: ' + t]
-      : o === 'shadowed' ? ['prac', 'info', 'Practice, nothing sent: ' + t]
       : ['bad', 'xmark', 'Not sent: ' + t];
     return `<div class="lk-st ${r[0]}">${icS(r[1])} ${esc(r[2])}</div>`;
   }).filter((h, i, all) => all.indexOf(h) === i); // the console can report one step twice: show it once
@@ -13213,7 +13200,7 @@ async function _ikFind(f) {
   const x = _ikLk('other'), st = _ikSt();
   x.q = _ikFormName(f.name).slice(0, 60); // R5: First Last (the console matches either order)
   I.findMiss = x.q; // R7
-  if (x.q && !_ikLkGate(st) && _ikRev(st) >= 8) _ikLkGo('other', 1, x.q);
+  if (x.q && !_ikLkGate(st)) _ikLkGo('other', 1, x.q);
   else _ikDraw();
 }
 // Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
@@ -13438,8 +13425,7 @@ function _ikLkItem(kind, page, q, id, after) {
 }
 function _ikLkGate(st) {
   const c = st && st.console, cap = c && c.capabilities ? c.capabilities.consentLookup : undefined;
-  if (_ikRev(st) < 6 || !cap || cap === 'off') return 'The console needs an update before it can look up consent forms. Ask whoever runs the console.';
-  if (cap === 'locked') return "Looking up consent forms isn't switched on in the console yet.";
+  if (!cap || cap === 'off') return 'The console needs an update before it can look up consent forms. Ask whoever runs the console.';
   return '';
 }
 function _ikLkReason(r) {
@@ -13460,12 +13446,11 @@ function _ikLkTurn(kind, d) { const x = _ikLk(kind); if (x.res) _ikLkGo(kind, (N
 // ux-run-2026-10-18 (operator P1/P2/P4): entering New youth & consent (Consents tab) warms every Tidy up list in the background
 // (consentLookup is a READ: the console never writes Elvanto for it), so a tap shows it ready with its "checked" time.
 // P4 hybrid: the last full page-1 answer of each list is kept as its server ID only (never a name; the server keeps answers 24 h)
-// and read back at once after a reload; then pass 1 asks only for what is NEW since that answer (a console at link_rev >= 11,
-// payload `since`), pass 2 asks for everything again. An older console gets pass 2 only. Never in the service window (the console
+// and read back at once after a reload; then pass 1 asks only for what is NEW since that answer (payload `since`),
+// pass 2 asks for everything again. Never in the service window (the console
 // parks mismatches/other there), never over a search, a later page, a busy or failed ask, or an answer under 15 min old.
 const IK_LK_FRESH_MS = 15 * 60e3;
 const IK_LK_KINDS = ['unlinked', 'mismatches', 'forms', 'other']; // the quick ones first; other reads Elvanto longest
-const IK_LK_SINCE_REV = 11;
 // N06: one tab per login warms the lists (the server supersedes a login's older pending lookup of the same kind).
 const IK_LK_LOCK_MS = 3 * 60e3;
 const IK_LK_TAB = Math.random().toString(36).slice(2);
@@ -13499,12 +13484,12 @@ function _ikLkPreload(st, now) {
   const lockKey = 'ysc.ikLkPre.' + ((S.user && S.user.id) || '');
   try { const l = JSON.parse(localStorage.getItem(lockKey) || 'null'); if (l && l.tab !== IK_LK_TAB && now - l.at < IK_LK_LOCK_MS) return out; } catch (e) {}
   for (const k of IK_LK_KINDS) {
-    if ((k === 'unlinked' && !_ikClCap(st)) || (k === 'other' && _ikRev(st) < 8)) continue;
+    if ((k === 'unlinked' && !_ikClCap(st))) continue;
     const x = _ikLk(k);
     if (x.q || (x.st !== 'idle' && x.st !== 'ready') || _ikLkBusy(x)) continue;
     if (x.res && (x.resQ || Number(x.res.page) !== 1)) continue;
     if (x.res && now - Date.parse(x.res.takenAt) < IK_LK_FRESH_MS) continue;
-    const after = x.res && x.res.takenAt && _ikRev(st) >= IK_LK_SINCE_REV ? x.res.takenAt : null;
+    const after = x.res && x.res.takenAt ? x.res.takenAt : null;
     x.full = !!after;
     out.push(k);
     _ikLkGo(k, 1, '', null, after);
@@ -13689,14 +13674,12 @@ function _ikLkStatusHtml(kind, x, st) {
 function _ikFixBanner(st) {
   const caps = (st && st.console && st.console.capabilities) || {}, cap = caps.consentFix;
   const t = !cap || cap === 'off' ? "Make profile match form isn't on this console yet. Change the profile in Elvanto."
-    : cap === 'locked' ? "The app isn't allowed to change profiles yet. Change them in Elvanto (each row says what to change)."
     : '';
   return t ? `<div class="lk-alert practice">${icS('info')}<div>${esc(t)}</div></div>` : '';
 }
 function _ikLkPage(kind, st) {
   const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st)
-    || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '')
-    || (kind === 'other' && _ikRev(st) < 8 ? 'The console needs an update before it can list these students. Ask whoever runs the console.' : '');
+    || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
   // R1 (UX cut 6): no intro sentence; the screen title names the tool.
   if (gate) return `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
   if (kind !== 'forms' && typeof _ikFixRestore === 'function') _ikFixRestore(); // S-1: once per intake state
@@ -13733,7 +13716,7 @@ function _ikLkResHtml(kind, x, st) {
   const I = _ik();
   const one = (m, i) => {
     const fx = I.fixes[m.personId], ft = _ikFixText(fx, st, m.name), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status), done = !!fx && (fx.status === 'sent' || fx.status === 'unclear');
-    const caps = (st && st.console && st.console.capabilities) || {}, noFix = !caps.consentFix || caps.consentFix === 'off' || caps.consentFix === 'locked';
+    const caps = (st && st.console && st.console.capabilities) || {}, noFix = !caps.consentFix || caps.consentFix === 'off';
     const pill = !done && !m.linked && noFix ? '<span class="lk-tag ik-prac">Do in Elvanto</span>' : '';
     return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(m.name)}</div>${pill}</div>`
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
@@ -13837,7 +13820,7 @@ function _ikOtherMiss(q) {
 // (consentLink; nothing is written to Elvanto), and from then on that form counts as that person's (DO NOT CONTACT applies).
 function _ikClCap(st) {
   const c = st && st.console, cap = c && c.capabilities ? c.capabilities.consentLink : undefined;
-  return !!cap && cap !== 'off' && cap !== 'locked' && _ikRev(st) >= 6;
+  return !!cap && cap !== 'off';
 }
 // What a row shows now: the console's answer, or the link this phone just made / undid (fx.to).
 function _ikClNow(f) {
@@ -13953,7 +13936,6 @@ function _ikFixText(a, st, name) {
     : a.reason === 'form-unknown' ? "Not sent: this isn't their newest approved consent form. Search again."
     : IK_FIX_REASON[a.reason] ? 'Not sent: ' + IK_FIX_REASON[a.reason] : a.detail || "The console couldn't do this. Do it in Elvanto."];
   if (a.status === 'unclear') return ['bad', 'Elvanto may not have saved this change. Look at ' + (name ? name + "'s" : 'the') + ' profile in Elvanto.'];
-  if (a.status === 'shadowed') return ['prac', 'Practice: nothing was changed in Elvanto.'];
   if (a.status === 'failed') return ['bad', a.detail || 'Not sent. Try again.'];
   return null;
 }

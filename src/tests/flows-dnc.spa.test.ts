@@ -5,7 +5,7 @@ import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
-  '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkPracticeLine', '_lkFlowTypes',
+  '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkFlowTypes',
   '_lkMemOff', '_lkCanRemove'];
 const PRELUDE = `
   var STORE = {}, THROW = false, ROLE = 'admin', QUEUE = [];
@@ -170,9 +170,8 @@ describe('L5 flow rows', () => {
 });
 
 describe('Remove / consent refusal lines', () => {
-  it('locked remove (note path) and practice are said plainly', () => {
+  it('locked remove (note path) is said plainly', () => {
     expect(f._lkStatusText({ status: 'refused', reason: 'locked', type: 'removeFromFlowStep' })).toMatch(/remove with a note isn't switched on/);
-    expect(f._lkStatusText({ status: 'shadowed', type: 'removeFromFlowStep' })).toMatch(/^Practice mode/);
     expect(f._lkStatusText({ status: 'sent', type: 'removeFromFlowStep', reason: 'already' })).toBe('Not in this step any more.');
     expect(f._lkStatusText({ status: 'sent', type: 'removeFromFlowStep', resultAt: 'x' })).toBe('Removed from the step in Elvanto 7:02 pm');
   });
