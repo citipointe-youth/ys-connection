@@ -164,7 +164,7 @@ export function makeSettingsService(
           merged.logins.retiredGradeIds = [];
         }
         update.ministryConfig = merged;
-        intakeOff = merged.modules.intakeAdmin === 'off' && (cur.modules.intakeAdmin ?? 'off') !== 'off';
+        intakeOff = merged.modules.intakeAdmin === 'off' && cur.modules.intakeAdmin === 'on';
 
         const before = cur.roles?.enabled;
         const after = merged.roles.enabled;

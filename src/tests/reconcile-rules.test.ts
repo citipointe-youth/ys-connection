@@ -34,9 +34,9 @@ describe('check 1 check-ins', () => {
     const r = checkCheckins({ sessions, attendance, roster: [ros(2)], rows: [ci(2, '2026-10-23'), ci(2, '2026-10-23', { id: 'dup' })] });
     expect(r.count).toBe(1);
   });
-  it('compareCheckIns keeps the shadowCheck verdicts', () => {
-    const v = compareCheckIns(new Set(['s1']), [ros(1)], [ci(1, 'd', { status: 'shadowed' })]);
-    expect(v[0]?.verdict).toBe('practice-matched');
+  it('compareCheckIns: matched, sent-not-imported, no-student', () => {
+    const v = compareCheckIns(new Set(['s1']), [ros(1), ros(2), ros(3, { studentId: null })], [ci(1, 'd'), ci(2, 'd'), ci(3, 'd')]);
+    expect(v.map((x) => x.verdict)).toEqual(['matched', 'sent-not-imported', 'no-student']);
   });
 });
 
@@ -102,10 +102,9 @@ describe('check 4 group members', () => {
     expect(checkMembers({ ...mbase, roll, actions: [mem('add', 1)] }).count).toBe(0);
     expect(checkMembers({ ...mbase, roll, actions: [mem('add', 2)] }).items).toEqual([{ groupId: G1, personId: P(2), op: 'add' }]);
   });
-  it('remove still present counted; CHECK_REMOVALS=false ignores removes', () => {
+  it('remove still present counted', () => {
     const roll = [{ lifegroupId: 'lg1', nameKey: 'f1 l1' }];
     expect(checkMembers({ ...mbase, roll, actions: [mem('remove', 1)] }).count).toBe(1);
-    expect(checkMembers({ ...mbase, roll, actions: [mem('remove', 1)], checkRemovals: false }).count).toBe(0);
   });
   it('leader skipped, group with no id skipped, newest per person wins', () => {
     expect(checkMembers({ ...mbase, roll: [], actions: [mem('add', 3)] }).count).toBe(0);

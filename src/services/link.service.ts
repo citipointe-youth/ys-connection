@@ -16,6 +16,7 @@ import type {
   ActionType, Capabilities, ConsoleRow, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLastReport, LinkLogRow, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
+import { MATCHES } from '../core/link-types';
 import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
@@ -31,14 +32,13 @@ import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
 import {
-  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, leaderInScope, modeAllows, type StructureScope,
+  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, peopleFlowName, consentStepAllowed, consentFriday,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
-import { compareCheckIns } from './reconcile-rules';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -62,8 +62,7 @@ const LOOKUP_Q_MAX = 60;
 const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
 const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
-const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo'] as const;
-const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
+const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo', 'resolve'] as const;
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const ActionFields = { id: Uuid, type: z.enum(ACTION_TYPES), payload: z.record(z.unknown()),
@@ -164,11 +163,6 @@ export interface MemberChange { id: string; type: ActionType; personId: string |
 export interface GroupMembersView { groupId: string; canEdit: boolean; members: MemberView[]; changes: MemberChange[] }
 /** T6: the Add student picker: active youth roster rows (not 'other') this login may see. Name + grade only. */
 export interface YouthRow { personId: string; name: string; grade: number | null }
-export type ShadowVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
-/** The SPA words each verdict (APP-41: no server message). */
-export interface ShadowRow { id: string; personId: string | null; name: string | null; status: Status; studentId: string | null;
-  verdict: ShadowVerdict }
-export interface ShadowCheck { date: string; imported: boolean; rows: ShadowRow[]; unlinkedAttenders: number }
 
 export interface LinkService {
   status(actor: Actor): Promise<LinkStatus>;
@@ -184,7 +178,8 @@ export interface LinkService {
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
-  shadowCheck(actor: Actor, date: unknown): Promise<ShadowCheck>;
+  /** CY-A1: the admin says whether an unclear row landed in Elvanto (the console's own `resolved` transition). */
+  resolveUnclear(actor: Actor, id: string, body: unknown): Promise<{ ok: true; status: 'sent' | 'refused' }>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
   /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
   consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
@@ -216,7 +211,6 @@ function fixKeyOf(r: OutboxRow): string | null {
   if (r.type === 'consentLink' && typeof p.subId === 'string') return `cn:${p.subId}`;
   return null;
 }
-const isAdminRole = (a: Actor) => a.role === 'admin' || a.role === 'director';
 /** S5: how far a long console job has got (POST /sync/push/progress); stale after 2 min, or once `after` (the push it
  *  leads to) has landed. null = nothing known (the SPA slides its bar). */
 export interface ProgressView { done: number | null; total: number | null; stage: string }
@@ -230,11 +224,13 @@ const newest = (cs: ConsoleRow[]) => [...cs].sort((a, b) => Date.parse(b.lastSee
 /** R4/R6 (rev 9): the FlowView consent-wait fields of one flow row (see FlowView): the batch's own verdict, so the phone offers
  *  Complete exactly when the batch takes it. `consent` is the row's shown (sticky) flag. R8 (rev 10): the Friday counts from
  *  the row's textedOn when the console sent one, else its due date (one date for the step list and Consents Other). */
-function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string; status: string }[], rev: number, now: Date):
-  { consentFriday: string | null; notReceivedOk: boolean } {
-  const fri = isConsentStep(f) ? consentFriday(f.due, f.textedOn) : null;
-  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now, rev) === 'notReceived' };
+function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string; status: string }[], now: Date,
+  people: string | null): { consentFriday: string | null; notReceivedOk: boolean } {
+  const fri = isConsentStep(f, people) ? consentFriday(f.due, f.textedOn) : null;
+  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now) === 'notReceived' };
 }
+/** E3: this year's New People flow among the pushed flow rows. */
+const peopleFlowOf = (flows: LinkFlowRow[], now: Date) => peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now));
 /** Resilience H3: a flow row's shown consent flag; an unreadable flow profile (unknown) falls back to the roster's sticky flag. */
 function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
   if (f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all') return f.consent;
@@ -412,13 +408,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    *  "Mark not received" is offered exactly when the batch takes it. A row whose step-0 row has gone (moved on, a newer flows
    *  push) gets flowId null and no button; `marking` = a Complete for that row is already open. */
   async function otherWait(c: Ctx, rows: { rowId: string }[]) {
-    const [flows, roster, consoles, open, cRows] = await Promise.all([c.flows(), c.roster(), c.consoles(), c.openFlowRows(), c.consentRows()]);
-    const rev = newest(consoles)?.linkRev ?? 1, now = clock(), byId = new Map(roster.map((r) => [r.personId, r]));
+    const [flows, roster, open, cRows] = await Promise.all([c.flows(), c.roster(), c.openFlowRows(), c.consentRows()]);
+    const now = clock(), byId = new Map(roster.map((r) => [r.personId, r]));
+    const people = peopleFlowOf(flows, now);
     return rows.map((o) => {
-      const f = flows.find((x) => x.rowId === o.rowId && isConsentStep(x));
+      const f = flows.find((x) => x.rowId === o.rowId && isConsentStep(x, people));
       if (!f) return { ...o, flowId: null, stepId: null, dnc: false, consentFriday: null, notReceivedOk: false, marking: false };
       const consent = shownConsent(f, byId);
-      return { ...o, flowId: f.flowId, stepId: f.stepId, dnc: isDnc(consent), ...consentWait(f, consent, cRows, rev, now),
+      return { ...o, flowId: f.flowId, stepId: f.stepId, dnc: isDnc(consent), ...consentWait(f, consent, cRows, now, people),
         marking: open.some((r) => r.type === 'completeStep' && (r.payload as { rowId?: string }).rowId === f.rowId) };
     });
   }
@@ -661,14 +658,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         throw new LinkBusyRow();
       }
       if (it.type === 'completeStep') {
-        if (isDnc(row.consent)) throw new LinkDnc(); // R4: DO NOT CONTACT = Remove only
+        // R4: DO NOT CONTACT = Remove only. CY-B1: the flag GET /link/flows shows (the roster's sticky DNC when the flow
+        // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
+        const consent = shownConsent(row, new Map(roster.map((x) => [x.personId, x])));
+        if (isDnc(consent)) throw new LinkDnc();
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
         // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
         // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
-        // R4: the roster's sticky DO NOT CONTACT counts too (as GET /link/flows shows it), so a blip never records "not received".
-        const sticky = row.personId ? roster.find((x) => x.personId === row.personId)?.consent : undefined;
-        const seen = { ...row, consent: isDnc(sticky) ? sticky : row.consent };
-        const v = isConsentStep(row) ? consentStepAllowed(seen, await c.consentRows(), clock(), newest(await c.consoles())?.linkRev ?? 1) : 'done';
+        const v = isConsentStep(row, peopleFlowOf(await c.flows(), clock())) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock()) : 'done';
         if (!v) throw new ConsentCheckFirst();
         if (v === 'notReceived') (p as { notReceived?: true }).notReceived = true; else delete (p as { notReceived?: true }).notReceived;
       }
@@ -724,13 +721,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       const mirror = { mirrorIn: svc!.checkedIn.some((x) => x.personId === personId), mirrorTakenAt: takenAt(await c.mirror(), 'services') };
       const st = effectiveCheckState({ ...mirror, rows });
-      // A shadowed row is practice: it shows on the door, but it is not "in" for the duplicate check, so a re-tap
-      // once the type is live is sent for real (B5 / APP-46).
-      const real = rows.filter((r) => r.status !== 'shadowed');
-      const realIn = effectiveCheckState({ ...mirror, rows: real }).in;
-      const live = real.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
+      const live = rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused');
       // Same type AND the person is still in that state: a kiosk check-out after a sent check-in allows a new one.
-      if (live && live.type === it.type && realIn === (it.type === 'checkIn')) return dup(live);
+      if (live && live.type === it.type && st.in === (it.type === 'checkIn')) return dup(live);
       if (it.type === 'checkOut' && !st.in) throw new BadRequestError('Not checked in to this service.');
     }
 
@@ -1042,8 +1035,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
       const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
-      const rev = newest(consoles)?.linkRev ?? 1, now = clock();
-      const cRows = flows.some((f) => isConsentStep(f)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
+      const now = clock();
+      const people = peopleFlowOf(flows, now);
+      const cRows = flows.some((f) => isConsentStep(f, people)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
       const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
@@ -1056,7 +1050,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
-            consent, dnc, consentStep: isConsentStep(f), ...consentWait(f, consent, cRows, rev, now),
+            consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
@@ -1201,22 +1195,22 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return change;
     },
 
-    async shadowCheck(actor, date) {
-      await gate(actor, 'admin');
-      const day = Ymd.parse(date);
-      const sessions = (await d.serviceSessions.findAll()).filter((s) => s.sessionDate.slice(0, 10) === day);
-      if (sessions.length === 0) return { date: day, imported: false, rows: [], unlinkedAttenders: 0 };
-      const [att, roster, rows] = await Promise.all([
-        Promise.all(sessions.map((s) => d.serviceAttendance.findBySession(s.id))).then((x) => x.flat()),
-        d.link.roster(),
-        d.link.listActions({ types: ['checkIn'], statuses: ['sent', 'shadowed'], serviceDateFrom: day, serviceDateTo: day })]);
-      const attended = new Set(att.filter((a) => a.attended).map((a) => a.studentId));
-      const linked = new Set<string>();
-      const out: ShadowRow[] = compareCheckIns(attended, roster, rows).map(({ row: r, person: p, studentId, verdict }) => {
-        if (studentId) linked.add(studentId);
-        return { id: r.id, personId: r.personId, name: p ? fullName(p) : null, status: r.status, studentId, verdict };
-      });
-      return { date: day, imported: true, rows: out, unlinkedAttenders: [...attended].filter((s) => !linked.has(s)).length };
+    /** CY-A1: an unclear row (lease-lost, or a write the console could not confirm) blocks its dedupe key until resolved.
+     *  The console resolves only keys in its own sent-log; this is the admin's way out. landed -> sent; not landed ->
+     *  refused 'not-landed' (both final, so the key is free again). Same applyOutcome transition as the console's. */
+    async resolveUnclear(actor, id, body) {
+      const c = context(actor, await gate(actor, 'admin'));
+      const b = z.object({ landed: z.boolean() }).safeParse(body ?? {});
+      if (!b.success) throw new BadRequestError('Say whether it landed in Elvanto.');
+      const row = Uuid.safeParse(id).success ? await d.link.getAction(id) : null;
+      if (!row) throw new NotFoundError('This action is not on the server.');
+      if (row.status !== 'unclear') throw new ConflictError('This is no longer waiting for a check.');
+      const res = await d.link.applyResults(row.leaseOwner ?? 'admin', [{ id, outcome: 'resolved', landed: b.data.landed }], c.t);
+      if (!res.applied.includes(id)) throw new ConflictError('This is no longer waiting for a check.');
+      const status = b.data.landed ? 'sent' as const : 'refused' as const;
+      await d.link.addLog([await logRow(c, { id: null, label: null }, { event: 'resolve', targetKind: 'action', targetId: id,
+        targetName: null, outboxId: id, outcome: b.data.landed ? 'sent' : 'refused:not-landed' })]);
+      return { ok: true, status };
     },
 
     async log(actor, q) {

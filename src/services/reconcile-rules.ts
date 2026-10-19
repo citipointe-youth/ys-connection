@@ -3,24 +3,19 @@ import type { LinkRosterRow, OutboxRow } from '../core/link-types';
 import type { LifegroupAttendance, LifegroupWeek, ServiceAttendance, ServiceSession } from '../core/entities/attendance';
 import { saturdayOf } from './terms';
 
-/** F7: set false if the dry run shows the Elvanto group export keeps removed members on the roll. */
-export const CHECK_REMOVALS = true;
-
-export type CheckInVerdict = 'matched' | 'sent-not-imported' | 'practice-matched' | 'practice-missing' | 'no-student';
+export type CheckInVerdict = 'matched' | 'sent-not-imported' | 'no-student';
 export type CheckInRow = Pick<OutboxRow, 'id' | 'personId' | 'studentId' | 'status' | 'serviceDate'>;
 export interface CheckInVerdictRow { row: CheckInRow; person: LinkRosterRow | undefined; studentId: string | null; verdict: CheckInVerdict }
 export interface LgRef { id: string; elvantoGroupId?: string | null }
 type Act = Pick<OutboxRow, 'type' | 'status' | 'payload' | 'resultAt'>;
 
-/** The shadowCheck verdict loop, shared (link.service shadowCheck and check 1). */
+/** Check 1's verdict per sent check-in row: its student attended the imported service, or not, or has no student. */
 export function compareCheckIns(attended: Set<string>, roster: LinkRosterRow[], rows: CheckInRow[]): CheckInVerdictRow[] {
   const byId = new Map(roster.map((r) => [r.personId, r]));
   return rows.map((row) => {
     const person = row.personId ? byId.get(row.personId) : undefined;
     const studentId = row.studentId ?? person?.studentId ?? null;
-    const verdict: CheckInVerdict = !studentId ? 'no-student'
-      : row.status === 'sent' ? (attended.has(studentId) ? 'matched' : 'sent-not-imported')
-        : (attended.has(studentId) ? 'practice-matched' : 'practice-missing');
+    const verdict: CheckInVerdict = !studentId ? 'no-student' : attended.has(studentId) ? 'matched' : 'sent-not-imported';
     return { row, person, studentId, verdict };
   });
 }
@@ -95,9 +90,8 @@ export function checkLifegroups(i: {
 
 export function checkMembers(i: {
   actions: Act[]; lifegroups: LgRef[]; roll: { lifegroupId: string; nameKey: string }[]; roster: LinkRosterRow[];
-  keyOf: (r: LinkRosterRow) => string; sinceIso: string; beforeIso: string; checkRemovals?: boolean;
+  keyOf: (r: LinkRosterRow) => string; sinceIso: string; beforeIso: string;
 }) {
-  const removals = i.checkRemovals ?? CHECK_REMOVALS;
   const lgByGroup = new Map(i.lifegroups.filter((g) => g.elvantoGroupId).map((g) => [g.elvantoGroupId as string, g.id]));
   const roll = new Set(i.roll.map((r) => `${r.lifegroupId}|${r.nameKey}`));
   const byPerson = new Map(i.roster.map((r) => [r.personId, r]));
@@ -110,7 +104,7 @@ export function checkMembers(i: {
     if (!lgId || !p || p.kind === 'leader') continue;
     const onRoll = roll.has(`${lgId}|${i.keyOf(p)}`);
     if (a.type === 'addGroupMember' && !onRoll) items.push({ groupId, personId, op: 'add' });
-    if (a.type === 'removeGroupMember' && onRoll && removals) items.push({ groupId, personId, op: 'remove' });
+    if (a.type === 'removeGroupMember' && onRoll) items.push({ groupId, personId, op: 'remove' });
   }
   return { count: items.length, items };
 }

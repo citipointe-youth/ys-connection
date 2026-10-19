@@ -166,8 +166,10 @@ describe('link contract: decisions 2026-10-12', () => {
     const today = push.takenAt.slice(0, 10);
     expect(push.rows.some((r) => r.ymd < today)).toBe(true);
   });
-  it('check-out is on: the console reports it locked until its writer exists, never off', () => {
-    expect(C.ClaimRequest.parse(load('claim-request.json')).capabilities.checkOut).toBe('locked');
+  it('check-out is on (live); X-2: locked is no longer a capability, the refused reason locked stays', () => {
+    expect(C.ClaimRequest.parse(load('claim-request.json')).capabilities.checkOut).toBe('live');
+    rejects(C.ClaimRequest, { ...load('claim-request.json'), capabilities: { ...load('claim-request.json').capabilities, checkOut: 'locked' } });
+    expect(C.REASONS).toContain('locked');
     expect(C.REASONS).not.toContain('pick-service' as never);
   });
 });
@@ -177,8 +179,8 @@ describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSIO
     expect(C.LINK_REV).toBe(12); // 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
-  it('claim: linkRev is an optional int >= 1 both ways', () => {
-    expect(C.ClaimRequest.parse(load('claim-request.json')).linkRev).toBeUndefined();
+  it('claim: linkRev is an int >= 1 both ways', () => {
+    expect(C.ClaimRequest.parse(load('claim-request.json')).linkRev).toBe(12); // X-1: the service refuses below 12 (409), not the schema
     expect(C.ClaimRequest.parse({ ...load('claim-request.json'), linkRev: 2 }).linkRev).toBe(2);
     rejects(C.ClaimRequest, { ...load('claim-request.json'), linkRev: 0 });
     rejects(C.ClaimRequest, { ...load('claim-request.json'), linkRev: 1.5 });
@@ -255,8 +257,8 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   const MIG = join(ROOT, 'supabase', 'migrations', '0021_link_intake.sql');
   it('a claim without the intake capability keys still parses; with them each must be a capability', () => {
     expect(C.ClaimRequest.parse(CR()).capabilities.intakeSave).toBeUndefined();
-    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'shadow', consentSave: 'shadow', intakeText: 'locked' } };
-    expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'locked' });
+    const caps = { ...CR(), capabilities: { ...CR().capabilities, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'off' } };
+    expect(C.ClaimRequest.parse(caps).capabilities).toMatchObject({ intakeAnswer: 'live', intakeText: 'off' });
     caps.capabilities.intakeSave = 'maybe'; rejects(C.ClaimRequest, caps);
   });
   it('the claim reply may carry the intake hint (mode off/on only, at most 4 refresh dates); without it an older reply parses', () => {

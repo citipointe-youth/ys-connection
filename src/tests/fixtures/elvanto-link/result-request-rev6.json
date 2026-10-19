@@ -4,7 +4,7 @@
   "results": [
     {
       "id": "0a000000-0000-4000-8000-000000000201",
-      "outcome": "shadowed",
+      "outcome": "sent",
       "sentLogKey": "removeFromStep:ys:f7000000-0000-4000-8000-000000000001"
     },
     {

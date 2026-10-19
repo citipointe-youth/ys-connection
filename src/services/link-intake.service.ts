@@ -32,9 +32,8 @@ const Mode = z.enum(['intake', 'consent']);
 
 /** The module + RBAC check (Off = 404 for everyone, On = the admin login only, else 403). */
 export function intakeGate(actor: Actor, s: AppSettings): void {
-  const mode = s.ministryConfig.modules.intakeAdmin ?? 'off';
-  if (mode !== 'on') throw new ModuleDisabledError('Intake');
-  if (!canUseIntakeAdmin(actor, mode)) throw new ForbiddenError('Only the admin can do this.');
+  if (s.ministryConfig.modules.intakeAdmin !== 'on') throw new ModuleDisabledError('Intake');
+  if (!canUseIntakeAdmin(actor, 'on')) throw new ForbiddenError('Only the admin can do this.');
 }
 
 interface StepLike { key: string; alone?: boolean; alts?: { key: string }[] }
@@ -173,7 +172,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
     async hint(settings: AppSettings, caps?: Capabilities): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
-      const mode = settings.ministryConfig.modules.intakeAdmin ?? 'off';
+      const mode = settings.ministryConfig.modules.intakeAdmin === 'on' ? 'on' : 'off';
       // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s,
       // except awaiting-approval rows, which can wait days (review r1: no 10 s polling for 3 days).
       // B03: and only rows the claim could lease now: no future retryAt, and a type the console (caps = the claim's own
@@ -194,7 +193,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
 
     /** POST /sync/push/intakePlan | consentPlan (already parsed). Module Off: nothing is stored. */
     async push(kind: 'intakePlan' | 'consentPlan', req: z.infer<typeof IntakePush> | z.infer<typeof ConsentPush>, settings: AppSettings) {
-      if ((settings.ministryConfig.modules.intakeAdmin ?? 'off') !== 'on') return { applied: false };
+      if (settings.ministryConfig.modules.intakeAdmin !== 'on') return { applied: false };
       const mode: IntakeMode = kind === 'intakePlan' ? 'intake' : 'consent';
       const rows: IntakeRowWrite[] = req.rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.holds[0]?.text ?? '', outcome: 'outcome' in r ? r.outcome : '',
         fromApp: 'fromApp' in r ? r.fromApp : false,

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Response } from 'express';
 import { AppError, ConflictError } from '../core/errors/app-error';
 import {
-  LinkUnavailable, LinkIdReused, LinkEditInElvanto, LinkOpenDuplicate, LinkTooLate, LinkNotYours, LinkOff,
+  LinkUnavailable, LinkIdReused, LinkEditInElvanto, LinkOpenDuplicate, LinkNotYours, LinkOff,
   LinkContractMismatch, SyncValidation,
 } from '../core/errors/link-errors';
 import { sendError } from '../api/middleware/error.middleware';
@@ -24,7 +24,6 @@ describe('link errors: status, code, message', () => {
     [new LinkIdReused(), 409, 'LINK_ID_REUSED', null],
     [new LinkEditInElvanto('member-left'), 409, 'LINK_EDIT_IN_ELVANTO', null],
     [new LinkOpenDuplicate('x'), 409, 'LINK_DUPLICATE', null],
-    [new LinkTooLate(), 409, 'LINK_TOO_LATE', null],
     [new LinkNotYours(), 403, 'LINK_NOT_YOURS', 'Only the leader who sent this can undo it.'],
     [new LinkOff(), 503, 'LINK_OFF', null],
     [new LinkContractMismatch(), 409, 'LINK_CONTRACT_MISMATCH', null],
@@ -96,7 +95,7 @@ describe('link types (compile-only)', () => {
   it('compiles', () => {
     const t: ActionType = 'checkIn';
     const c: Capabilities = {
-      checkIn: 'live', checkOut: 'shadow', submitReport: 'locked', editReport: 'off', completeStep: 'live',
+      checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'off', completeStep: 'live',
       firstTimerCheckIn: 'live',
     };
     expect(t).toBe('checkIn');

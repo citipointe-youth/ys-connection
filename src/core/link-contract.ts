@@ -5,51 +5,14 @@ import { z } from 'zod';
 // A shape change bumps LINK_CONTRACT_VERSION, the fixtures and the manifest, and is copied to 11.1 in the same session.
 // (v1 was amended in place on 2026-10-12, operator decisions 9-13, before any release: no bump for that.)
 export const LINK_CONTRACT_VERSION = 1;
-// UX batch 2026-10-12 (T1): optional additions only, so the version stays 1 and an older peer still parses (row objects
-// strip unknown keys). Each side sends its LINK_REV in the claim (missing = 1); the app shows "Console out of date" when
-// the console's rev is lower, the console sends grade 6 only when the app's rev is >= 2.
-// UX batch 2026-10-13 (T6, contract X18): addGroupMember / removeGroupMember, again optional only (rev 3). An older
-// console does not list them in its capabilities: the app never leases them to it and refuses new ones (LINK_UNAVAILABLE).
-// UX batch 2026-10-13 (T4, contract X19): youth intake + consents (intakeAnswer / intakeSave / consentSave / intakeText,
-// pushes intakePlan / consentPlan, outcome `planned`, result steps/stop), optional only (rev 4). The console sends the four
-// capability keys and claims these types only when the app's reply linkRev >= 4; the app offers Intake only when the
-// latest console's link_rev >= 4.
-// UX batch 2026-10-14b (T8, T12), optional only (rev 5): POST /sync/leaders (the app's active leader names, asked for only
-// by a console whose claim reply said linkRev >= 5) and the flows push's optional `steps` (every step of each flow, in order,
-// so an empty step still shows; an older app strips the key, an older console sends none and the app lists steps from rows).
-// LINK_REV 6 (run 2026-10-15, lane A; ux-run-2026-10-15/CONTRACT-REV6.md), optional only: roster + flow rows carry `consent`
-// (R1 DO NOT CONTACT); types removeFromFlowStep (R4), consentLookup + consentFix (R2 b/c); push kind consentLookup (the
-// answer to one consentLookup row). The console sends them only when the app's claim reply says linkRev >= 6.
-// Run 2026-10-15b (L6), optional only, no rev bump (migration 0031): outbox type consentLink and consentLookup kind `unlinked`; the
-// console offers consentLink only after a claim reply with linkRev >= 6 AND consentLink: true (a rev 6 app before 0031 400s on the
-// key), and an older console never sees either.
-// Run 2026-10-15b (S5), optional only, no rev bump: the claim reply's `progress: true` says this app takes POST
-// /sync/push/progress (how far a lookup, the flows read or an intake ask has got). An older app sends no flag, so the
-// console never posts it; an older console ignores the flag. Progress is a hint: a lost or refused post changes nothing.
-// LINK_REV 7 (fix round 2026-10-16, contract C-1), optional only: consentLookup mismatch rows may carry `linked` (F-36: the
-// console linked that form itself; fix it in Elvanto), and a removeFromFlowStep `sent` result may carry `note` (F-37:
-// 'failed' = the remove landed but the Elvanto note did not). The console sends either only when the claim reply says
-// linkRev >= 7; an older app would 400 on the keys. The app stores note 'failed' as the row's detail (NOTE_FAILED_DETAIL).
-// LINK_REV 8 (Consents Other, 2026-10-16; migration 0033), optional only: consentLookup kind `other` (step-0 students in no pushed
-// consent week, with the earliest parent-texted date or why there is none; DISPLAY ONLY). The app offers the pill only when the
-// console's link_rev >= 8; an older console would refuse the kind (unknown).
-// LINK_REV 9 (consents run 2026-10-17, R4), optional only: a completeStep payload may carry `notReceived: true` (the app sets it
-// on a New People step-0 Complete whose consent Friday 9:00 passed with no reply; the console marks consent not received on the
-// student, then completes). The app sets it only when the newest console's link_rev >= 9; an older console never sees it.
-// LINK_REV 10 (consents run 2026-10-17, R8; migration 0037), optional only: a flows push row may carry `textedOn` (New People
-// step 0: the Consents Other "Parent texted" date, youth-plan.inferDate; null = none found). The app's consent Friday counts from
-// it, else from `due`. The console sends it only when the claim reply says linkRev >= 10; an older app strips the key, and a
-// row without it (an older console) falls back to `due`.
-// LINK_REV 11 (ux run 2026-10-18, P4; operator approved the console change), optional only: a consentLookup payload may carry
-// `since` (only rows NEW since then). The app sends it only when the newest console's link_rev >= 11 (IK_LK_SINCE_REV in the SPA);
-// a console at 10 just gets full passes (and the admin page shows "Console out of date" until it is restarted).
-// LINK_REV 12 (backlog C01, 2026-10-18), no shape change: a claim from a console at link_rev >= 12 also re-hands that console's
-// OWN still-leased rows (reclaimed: true), not only those whose lease ended. A claim reply the console lost (its 15 s HTTP
-// timeout while the app committed the lease) no longer strands the rows for the 600 s lease. Safe because the console runs one
-// claim at a time, skips a row whose result it still holds, and checks its sent-log by outbox id before any write (B1 / X6).
-// An older console gets the old rule (own rows only after the lease ends).
+// Each side sends its LINK_REV in the claim. Revs 2-12 (2026-10-12 to 2026-10-18) each added optional fields only; their
+// history is in docs/HISTORY.md and the 2026-10-11 contract spec. X-1 (review 2026-10-19): both sides run 12 and the app
+// refuses a claim from a console below MIN_CONSOLE_REV with 409 LINK_CONTRACT_MISMATCH, so no field is gated on a rev any
+// more. Rev 12 (C01): a claim also re-hands this console's OWN still-leased rows (reclaimed: true), so a claim reply the
+// console lost (its 15 s timeout while the app committed the lease) never strands rows for the 600 s lease.
+// A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
 export const LINK_REV = 12;
-export const REHAND_REV = 12;
+export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
@@ -70,10 +33,12 @@ export const stickyConsent = <C extends string>(old: C | null | undefined, next:
   (next == null || next === 'unknown') && isDnc(old) ? (old as C) : (next ?? null);
 /** X19: the four intake types (24 h expiry, admin only, module intakeAdmin). */
 export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
-export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'shadowed', 'cancelled'] as const;
-export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'shadowed', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
-// locked = the app queues it; the console claims it and answers refused 'locked' (no writer yet, or 11.1's 423). off = the app refuses it.
-export const CAPABILITIES = ['live', 'shadow', 'locked', 'off'] as const;
+// PY-P3: 'shadowed' (the retired practice mode) is gone from the contract; the DB CHECK (0017) still allows it for old rows.
+export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'cancelled'] as const;
+export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
+// off (or not listed) = the app refuses new rows of that type and never leases them. X-2: no 'locked' capability any more;
+// the refused reason 'locked' (Elvanto's 423) stays.
+export const CAPABILITIES = ['live', 'off'] as const;
 export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
@@ -193,7 +158,7 @@ export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Is
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence
 // X19: per chain step (intake types). Both optional, so an older app strips them (z.object default).
 export const ResultStep = z.object({ key: StepKey, action: Word, role: Role,
-  outcome: z.enum(['confirmed', 'already', 'not-sent', 'unconfirmed', 'locked', 'shadowed']), at: Iso.nullable() });
+  outcome: z.enum(['confirmed', 'already', 'not-sent', 'unconfirmed', 'locked']), at: Iso.nullable() });
 export const ResultStop = z.object({ code: z.enum(['finished', 'sms', 'needs-you', 'not-confirmed', 'stuck', 'locked', 'stalled', 'gone', 'busy']),
   text: Cut(200) });
 const chain = { steps: z.array(ResultStep).max(20).optional(), stop: ResultStop.optional() };
@@ -206,7 +171,6 @@ export const ResultItem = z.discriminatedUnion('outcome', [
   z.object({ id: Uuid, outcome: z.literal('refused'), reason: z.enum(REASONS), detail: Detail, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('unclear'), sentLogKey: LogKey, detail: Detail, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('retry'), retrySeconds: z.number().int().min(60).max(3600), reason: z.enum(RETRY_REASONS) }),
-  z.object({ id: Uuid, outcome: z.literal('shadowed'), sentLogKey: LogKey, ...chain }),
   z.object({ id: Uuid, outcome: z.literal('resolved'), landed: z.boolean() }),
   z.object({ id: Uuid, outcome: z.literal('planned') }), // X19: an intakeAnswer applied and that date re-pushed; nothing sent
 ]);

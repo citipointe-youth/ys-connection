@@ -30,7 +30,7 @@ async function setup() {
     limiter: new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now, intake: new InMemoryLinkIntakeRepository(now) });
   const sync = makeSyncService({ link, settings, students, users, now });
   const claim = () => sync.claim({ contractVersion: 1, consoleId: CONSOLE, consoleLabel: 'PC', consoleVersion: '1', inWindow: false,
-    pollSeconds: 60, capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', consentLookup: 'live' }, max: 20, leaseSeconds: 300, linkRev: 6 });
+    pollSeconds: 60, capabilities: { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live', consentLookup: 'live' }, max: 20, leaseSeconds: 300, linkRev: 12 });
   const prog = (key: string, done: number | null, total: number | null, stage = 'Reading') =>
     sync.push('progress', { contractVersion: 1, consoleId: CONSOLE, takenAt: now().toISOString(), key, done, total, stage });
   return { clock, link, svc, sync, claim, prog };

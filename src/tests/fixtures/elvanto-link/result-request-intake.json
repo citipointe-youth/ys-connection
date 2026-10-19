@@ -88,20 +88,20 @@
     },
     {
       "id": "0a000000-0000-4000-8000-000000000104",
-      "outcome": "shadowed",
+      "outcome": "sent",
       "sentLogKey": "complete:parent:5b000000-0000-4000-8000-000000000002:5b000000-0000-4000-8000-000000000001",
       "steps": [
         {
           "key": "complete:parent:5b000000-0000-4000-8000-000000000002:5b000000-0000-4000-8000-000000000001",
           "action": "completeStep",
           "role": "parent",
-          "outcome": "shadowed",
+          "outcome": "confirmed",
           "at": null
         }
       ],
       "stop": {
         "code": "finished",
-        "text": "Practice: nothing was sent."
+        "text": "Parent texted."
       }
     },
     {

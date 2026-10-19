@@ -6,15 +6,16 @@
   "inWindow": true,
   "pollSeconds": 60,
   "capabilities": {
-    "checkIn": "shadow",
-    "checkOut": "locked",
-    "submitReport": "shadow",
-    "editReport": "shadow",
-    "completeStep": "shadow",
-    "firstTimerCheckIn": "shadow",
+    "checkIn": "live",
+    "checkOut": "live",
+    "submitReport": "live",
+    "editReport": "live",
+    "completeStep": "live",
+    "firstTimerCheckIn": "live",
     "addGroupMember": "live",
     "removeGroupMember": "live"
   },
   "max": 6,
-  "leaseSeconds": 180
+  "leaseSeconds": 180,
+  "linkRev": 12
 }

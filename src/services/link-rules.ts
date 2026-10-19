@@ -147,11 +147,18 @@ export const ATTRIBUTED_TYPES: readonly ActionType[] = ['submitReport', 'editRep
 
 // ---------------- Rev 6: the New People consent step (review C1) ----------------
 
-/** The 7-day consent wait: flow "Brisbane - Youth - New People 2026", step "0" / "Step 0 ..." (youth-gather.js FLOW.people / STEP.people0). */
-export const isConsentStep = (r: { flowName: string; stepName: string }) =>
-  /^Brisbane - Youth - New People 2026/i.test(r.flowName) && /^(step\s*)?0\b/i.test(r.stepName.trim());
-/** LINK_REV 9 (consents run 2026-10-17, R4): the console marks consent not received before a step-0 Complete. */
-export const NOT_RECEIVED_REV = 9;
+const PEOPLE_FLOW_RE = /^Brisbane - Youth - New People (\d{4})$/i;
+/** E3: this year's New People flow among the pushed flow names: the highest year <= today's Brisbane year, else the highest
+ *  (January before the new flow exists keeps last year's). Same rule as 11.1 youth-gather.js FLOW.people. null = none. */
+export function peopleFlowName(names: Iterable<string>, today: string): string | null {
+  const year = Number(today.slice(0, 4));
+  const found = [...new Set(names)].map((n) => [Number(PEOPLE_FLOW_RE.exec(n.trim())?.[1]), n] as const)
+    .filter(([y]) => y > 0).sort((a, b) => b[0] - a[0]);
+  return (found.find(([y]) => y <= year) ?? found[0])?.[1] ?? null;
+}
+/** The 7-day consent wait: step "0" / "Step 0 ..." of `peopleFlow` (peopleFlowName; youth-gather.js STEP.people0). */
+export const isConsentStep = (r: { flowName: string; stepName: string }, peopleFlow: string | null) =>
+  peopleFlow !== null && r.flowName === peopleFlow && /^(step\s*)?0\b/i.test(r.stepName.trim());
 /**
  * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its date (a row due Fri 16 Oct is that week's
  * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). R8 (rev 10): the date is the parent-texted date
@@ -168,17 +175,16 @@ export const consentFridayPassed = (friday: string, now: Date) => now.getTime() 
  * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent > Consents) is done, or
  * their profile consent is 'ok' and no consent row for them is open. 'notReceived' (R4): no consent row at all, no consent
  * on the profile, not DO NOT CONTACT, and their consent Friday 9:00 has passed: allowed, and the console records consent
- * not received first (only a console at NOT_RECEIVED_REV can, so `consoleRev` gates it). null: refused (CONSENT_CHECK_FIRST).
+ * not received first. null: refused (CONSENT_CHECK_FIRST).
  * consentSave (the consent path) never comes here.
  */
 export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
-  consentRows: { key: string; status: string }[], now: Date, consoleRev: number): 'done' | 'notReceived' | null {
-  if (!row.personId) return null;
+  consentRows: { key: string; status: string }[], now: Date): 'done' | 'notReceived' | null {
+  if (!row.personId || isDnc(row.consent)) return null; // CY-B1: DO NOT CONTACT first, even over a done consent row
   const mine = consentRows.filter((r) => r.key === row.personId);
   if (mine.some((r) => r.status === 'done')) return 'done';
   if (mine.length) return null; // an open consent row: the Consents screen saves it
   if (row.consent === 'ok') return 'done';
-  if (isDnc(row.consent) || consoleRev < NOT_RECEIVED_REV) return null;
   const f = consentFriday(row.due, row.textedOn);
   return f && consentFridayPassed(f, now) ? 'notReceived' : null;
 }
@@ -196,7 +202,7 @@ export function noteRoom(leaderName: string): number {
 
 // ---------------- Outbox state machine (contract §3.3 / §5.3) ----------------
 
-const FINAL: Status[] = ['sent', 'refused', 'shadowed', 'cancelled', 'unclear'];
+const FINAL: Status[] = ['sent', 'refused', 'cancelled', 'unclear'];
 
 function targetStatus(item: ResultItem): Status {
   switch (item.outcome) {
@@ -240,7 +246,6 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
       case 'planned': return { next: { ...base, status: 'sent', reason: 'planned', detail: null, resultAt: at } };
       case 'refused': return { next: { ...base, status: 'refused', reason: item.reason, detail: item.detail ?? null, resultAt: at } };
       case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at } };
-      case 'shadowed': return { next: { ...base, status: 'shadowed', sentLogKey: item.sentLogKey, resultAt: at } };
       case 'retry': return { next: { ...base, status: 'pending', reason: item.reason,
         retryAt: new Date(now.getTime() + item.retrySeconds * 1000).toISOString(), leaseOwner: null, leaseUntil: null } };
     }
@@ -349,7 +354,7 @@ export function effectiveCheckState(a: { mirrorIn: boolean; mirrorTakenAt: strin
   const newest = a.rows.find((r) => r.status !== 'cancelled' && r.status !== 'refused') ?? null;
   if (newest) {
     const s = newest.status;
-    const decides = s === 'pending' || s === 'claimed' || s === 'unclear' || s === 'shadowed'
+    const decides = s === 'pending' || s === 'claimed' || s === 'unclear'
       || (s === 'sent' && (a.mirrorTakenAt == null
         || (newest.resultAt != null && Date.parse(newest.resultAt) + SENT_GRACE_MS > Date.parse(a.mirrorTakenAt))));
     if (decides) return { in: newest.type === 'checkIn' };

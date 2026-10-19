@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
@@ -189,10 +189,6 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
     const r = applyOutcome(row(), { id: U(1), outcome: 'unclear', sentLogKey: 'k2', detail: 'Maybe.' }, CONSOLE, NOW);
     expect(r).toEqual({ next: expect.objectContaining({ status: 'unclear', sentLogKey: 'k2', detail: 'Maybe.' }) });
   });
-  it('shadowed stores sentLogKey', () => {
-    const r = applyOutcome(row(), { id: U(1), outcome: 'shadowed', sentLogKey: 'k3' }, CONSOLE, NOW);
-    expect(r).toEqual({ next: expect.objectContaining({ status: 'shadowed', sentLogKey: 'k3', resultAt: nowIso }) });
-  });
   it('retry -> pending, retryAt = now + retrySeconds, lease cleared', () => {
     const r = applyOutcome(row(), { id: U(1), outcome: 'retry', retrySeconds: 300, reason: 'awaiting-approval' }, CONSOLE, NOW);
     expect(r).toEqual({ next: expect.objectContaining({ status: 'pending', reason: 'awaiting-approval',
@@ -218,7 +214,6 @@ describe('applyOutcome (contract 3.3 / 5.3)', () => {
   it('same outcome on a final row -> already-final', () => {
     expect(applyOutcome(row({ status: 'sent' }), { id: U(1), outcome: 'sent', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'refused', reason: 'no-room' }), { id: U(1), outcome: 'refused', reason: 'no-room' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
-    expect(applyOutcome(row({ status: 'shadowed' }), { id: U(1), outcome: 'shadowed', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'sent' }), { id: U(1), outcome: 'resolved', landed: true }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
     expect(applyOutcome(row({ status: 'unclear' }), { id: U(1), outcome: 'unclear', sentLogKey: 'k' }, CONSOLE, NOW)).toEqual({ ignored: 'already-final' });
   });
@@ -389,10 +384,6 @@ describe('effectiveCheckState (spec 5.2)', () => {
     const r = row({ type: 'checkIn', status });
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
   });
-  it('shadowed decides (APP-38: the view has no practice flag; the action status says it)', () => {
-    const r = row({ type: 'checkIn', status: 'shadowed', resultAt: T0 });
-    expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T2, rows: [r] })).toEqual({ in: true });
-  });
   it('sent decides only while resultAt > mirrorTakenAt', () => {
     const r = row({ type: 'checkIn', status: 'sent', resultAt: T1 });
     expect(effectiveCheckState({ mirrorIn: false, mirrorTakenAt: T0, rows: [r] }).in).toBe(true);
@@ -431,5 +422,25 @@ describe('readLinkSyncToken', () => {
   });
   it('32+ characters -> trimmed token', () => {
     expect(readLinkSyncToken({ LINK_SYNC_TOKEN: ` ${'b'.repeat(32)} ` })).toBe('b'.repeat(32));
+  });
+});
+
+describe('E3: the New People flow by year (no hardcoded 2026)', () => {
+  const N = (y: number) => `Brisbane - Youth - New People ${y}`;
+  it('picks the highest year <= this Brisbane year, else the highest; other names never match', () => {
+    expect(peopleFlowName([N(2026)], '2026-10-19')).toBe(N(2026));
+    expect(peopleFlowName([N(2026), N(2027)], '2026-12-15')).toBe(N(2026)); // 2027 made early: 2026 until the year turns
+    expect(peopleFlowName([N(2026), N(2027)], '2027-01-01')).toBe(N(2027));
+    expect(peopleFlowName([N(2026)], '2027-01-20')).toBe(N(2026)); // January, 2027 not made yet
+    expect(peopleFlowName([N(2027)], '2026-12-15')).toBe(N(2027)); // only a future one: the highest
+    expect(peopleFlowName(['Brisbane - Youth - Parent Consent', 'Brisbane - Youth - New People 2026 old', 'Follow up'], '2026-10-19')).toBeNull();
+  });
+  it('isConsentStep: step 0 of the picked flow only', () => {
+    const r = (flowName: string, stepName: string) => ({ flowName, stepName });
+    expect(isConsentStep(r(N(2027), 'Step 0 - wait'), N(2027))).toBe(true);
+    expect(isConsentStep(r(N(2027), '0'), N(2027))).toBe(true);
+    expect(isConsentStep(r(N(2026), 'Step 0 - wait'), N(2027))).toBe(false); // last year's flow after the changeover
+    expect(isConsentStep(r(N(2027), 'Step 1 - text'), N(2027))).toBe(false);
+    expect(isConsentStep(r(N(2026), 'Step 0'), null)).toBe(false);
   });
 });

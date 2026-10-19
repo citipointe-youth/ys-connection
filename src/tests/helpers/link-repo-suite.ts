@@ -181,7 +181,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const b = await repo.insertAction(newRow({ type: 'checkOut', payload: { serviceTimeId: randomUUID(), personId: randomUUID() } }));
         const args = claimArgs();
         args.console.capabilities.checkIn = 'off';
-        args.console.capabilities.checkOut = 'locked';
+        args.console.capabilities.checkOut = 'live';
         const got = (await repo.claim(args)).map((g) => g.row.id);
         expect(got).toContain(b.id);
         expect(got).not.toContain(a.id);
@@ -237,20 +237,12 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const again = (await repo.claim(mine)).find((g) => g.row.id === a.id)!;
         expect(again).toMatchObject({ reclaimed: true, noteUnreadable: false });
         expect(again.row).toMatchObject({ status: 'claimed', attempts: 2, note: 'again', leaseOwner: mine.console.consoleId });
-        // a live lease is not re-leased, even by its owner
-        expect((await repo.claim(mine)).map((g) => g.row.id)).not.toContain(a.id);
       });
-      it('C01 (LINK_REV 12): a rev 12 console gets its own LIVE-leased rows back (a claim reply it lost); rev 11 and others do not', async () => {
+      it('C01 (LINK_REV 12): a console gets its own LIVE-leased rows back (a claim reply it lost); others do not', async () => {
         const a = await repo.insertAction(newRow({ note: 'lost reply' }));
-        const old = claimArgs({ max: 3 });
-        old.console.linkRev = 11;
-        await repo.claim(old); // the reply never reached the console
-        expect((await repo.claim(old)).map((g) => g.row.id)).not.toContain(a.id); // rev 11: waits for the lease
-        const other = claimArgs();
-        other.console.linkRev = 12;
-        expect((await repo.claim(other)).map((g) => g.row.id)).not.toContain(a.id); // never another console's live lease
-        const mine = claimArgs({ max: 3 }, old.console.consoleId as ReturnType<typeof randomUUID>); // the same console, restarted on rev 12
-        mine.console.linkRev = 12;
+        const mine = claimArgs({ max: 3 });
+        await repo.claim(mine); // the reply never reached the console
+        expect((await repo.claim(claimArgs())).map((g) => g.row.id)).not.toContain(a.id); // never another console's live lease
         const again = (await repo.claim(mine)).find((g) => g.row.id === a.id)!;
         expect(again).toMatchObject({ reclaimed: true, noteUnreadable: false });
         // R19-L4: re-handing the console its own LIVE lease is the same attempt (it only lost the reply), so attempts
@@ -517,7 +509,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(await get('4')).toMatchObject({ status: 'refused', reason: 'report-changed', detail: 'This report changed in Elvanto.' });
         expect(await get('8')).toMatchObject({ status: 'unclear', detail: 'Elvanto may not have saved this.',
           sentLogKey: 'checkIn:service:57000000-0000-4000-8000-000000000001:9e000000-0000-4000-8000-000000000003' });
-        expect(await get('5')).toMatchObject({ status: 'shadowed', sentLogKey: 'complete:ys:f7000000-0000-4000-8000-000000000001' });
+        expect(await get('5')).toMatchObject({ status: 'sent', sentLogKey: 'complete:ys:f7000000-0000-4000-8000-000000000001' });
         expect(await get('a')).toMatchObject({ status: 'sent', sentLogKey: 'k:a' });
         for (const n of ['1', '3', '6', '7', '4', '8', '5']) expect((await get(n)).resultAt).not.toBeNull();
         const retry = await get('9');

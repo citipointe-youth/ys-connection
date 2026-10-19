@@ -32,7 +32,7 @@ const ADMIN = actor(ADMIN_ID, 'admin');
 const DIRECTOR = actor(DIR_ID, 'director');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
-  firstTimerCheckIn: 'live', intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'locked',
+  firstTimerCheckIn: 'live', intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live',
   consentLookup: 'live', consentFix: 'live', consentLink: 'live', removeFromFlowStep: 'live' };
 const SUB_S = '5b000000-0000-4000-8000-000000000001', SUB_P = '5b000000-0000-4000-8000-000000000002';
 let idn = 7000;
@@ -319,13 +319,13 @@ describe('B03: the claim hint hurries only for rows the console can lease now', 
     const rows = [{ type: 'intakeText', reason: null, retryAt: null }];
     expect((await svc(rows).hint(S('on'), { checkIn: 'live', intakeText: 'off' } as Capabilities)).hurry).toBe(false);
     expect((await svc(rows).hint(S('on'), { checkIn: 'live' } as Capabilities)).hurry).toBe(false);
-    expect((await svc(rows).hint(S('on'), { intakeText: 'locked' } as Capabilities)).hurry).toBe(true);
+    expect((await svc(rows).hint(S('on'), { intakeText: 'live' } as Capabilities)).hurry).toBe(true);
     expect((await svc(rows).hint(S('on'))).hurry).toBe(true);
   });
   it('the claim passes its own (intake-stripped) capabilities to the hint', async () => {
     const h = await setup();
     const spy = vi.spyOn(h.intake, 'hint');
-    await h.sync.claim({ ...fx('claim-request.json'), linkRev: 7, max: 0 });
+    await h.sync.claim({ ...fx('claim-request.json'), linkRev: 12, max: 0 });
     expect(spy.mock.calls[0]![1]).toEqual(expect.objectContaining({ checkIn: expect.any(String) }));
   });
 });

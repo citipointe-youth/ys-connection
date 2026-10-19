@@ -316,15 +316,16 @@ describe('sync.service push', () => {
 
 describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune, T8 history)', () => {
   const later = (b: any, takenAt: string) => ({ ...b, takenAt });
-  it('T1: the claim stores the console linkRev (missing = 1) and replies with the app LINK_REV', async () => {
+  it('X-1: a console below rev 12 (missing = 1) is refused 409 LINK_CONTRACT_MISMATCH before the heartbeat; 12 is stored', async () => {
     const { svc, link } = await setup();
-    const old = await svc.claim(claimReq);
-    expect(old.linkRev).toBe(12);
-    expect(old.intake).toBeUndefined(); // X19: no intake hint for a console below rev 4
-    expect((await link.listConsoles())[0]!.linkRev).toBe(1);
-    await svc.claim({ ...claimReq, linkRev: 2 });
-    expect((await link.listConsoles())[0]!.linkRev).toBe(2);
-    expect(ClaimResponse.parse(old).linkRev).toBe(12); // rev 12: C01 re-hand own leases; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
+    const { linkRev: _drop, ...noRev } = claimReq;
+    for (const body of [noRev, { ...claimReq, linkRev: 11 }, { ...claimReq, linkRev: 1 }]) {
+      await expect(svc.claim(body)).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH', statusCode: 409 });
+    }
+    expect(await link.listConsoles()).toEqual([]);
+    const ok = await svc.claim(claimReq);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(12);
+    expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

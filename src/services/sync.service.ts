@@ -2,7 +2,7 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
@@ -60,20 +60,23 @@ export function makeSyncService(d: SyncDeps) {
   return {
     async claim(body: unknown): Promise<z.infer<typeof ClaimResponse>> {
       const req = parseBody(ClaimRequest, body);
+      // X-1: a console below MIN_CONSOLE_REV (missing = 1) is refused before the heartbeat: it must be updated first.
+      const linkRev = req.linkRev ?? 1;
+      if (linkRev < MIN_CONSOLE_REV) throw new LinkContractMismatch();
       const settings = await d.settings.getSettings();
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
       const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
-        && (m.intakeAdmin ?? 'off') === 'off' ? 0 : req.max;
+        && m.intakeAdmin !== 'on' ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
-      if ((m.intakeAdmin ?? 'off') === 'off') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
+      if (m.intakeAdmin !== 'on') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,
-          capabilities, linkRev: req.linkRev ?? 1 },
+          capabilities, linkRev },
         max, leaseSeconds: req.leaseSeconds, cutoffDays: LINK_CUTOFF_DAYS, leaseLostMs: LEASE_LOST_MS, swept,
       });
       const ok = claimed.filter((c) => !c.noteUnreadable); // the repo already stored those as refused
@@ -105,8 +108,7 @@ export function makeSyncService(d: SyncDeps) {
             ? attributedNote(row.leaderName, row.note) : row.note,
         })),
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
-        // X19: only a console at rev >= 4 knows the hint (an older one would strip it anyway).
-        ...((req.linkRev ?? 1) >= 4 && d.intake ? { intake: await d.intake.hint(settings, capabilities) } : {}),
+        ...(d.intake ? { intake: await d.intake.hint(settings, capabilities) } : {}), // X19: the intake hint
         progress: true as const, // S5: this app takes POST /sync/push/progress (an older console ignores the key)
         consentLink: true as const, // L6 review: this app takes the consentLink capability key (an older rev 6 app 400s on it)
       };
