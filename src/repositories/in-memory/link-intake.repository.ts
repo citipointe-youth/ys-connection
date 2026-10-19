@@ -1,4 +1,4 @@
-// X19 (T4): in-memory intake plans (memory/json persistence; never saved to disk). Plain detail (only the Supabase repo
+// X19 (T4): in-memory intake plans (memory mode; never saved to disk). Plain detail (only the Supabase repo
 // encrypts). Deep-clones on every read and write.
 import type { ILinkIntakeRepository, IntakeDateRow, IntakeMode, IntakePushMeta, IntakeRowLite, IntakeRowWrite }
   from '../interfaces/link-intake.repository';

@@ -47,7 +47,7 @@ api (Express) → controllers → services → repositories (interfaces) → cor
 ```
 
 - `src/core/` — pure types, entities, enums, Zod schemas, errors.
-- `src/repositories/` — interfaces + in-memory / JSON-file / Supabase implementations.
+- `src/repositories/` — interfaces + in-memory / Supabase implementations.
 - `src/services/` — business logic + RBAC (`access-control.ts`).
 - `src/api/` — controllers → declarative route table → Express adapter.
 - `src/container.ts` — composition root (the only file naming concrete repositories).

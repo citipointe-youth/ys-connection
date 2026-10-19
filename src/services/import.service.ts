@@ -519,7 +519,7 @@ export function makeImportService(
           await writeServiceImport({ attendance: r.attendance, sessions: r.sessions, imports: r.imports, students: r.students });
         });
       } else {
-        // In-memory/JSON persistence: single process, no partial-crash story
+        // In-memory persistence: single process, no partial-crash story
         // worth modelling — no transaction primitive to wrap with anyway.
         await writeServiceImport({ attendance: attendanceRepo, sessions: sessionRepo, imports: importRepo, students: studentRepo });
       }

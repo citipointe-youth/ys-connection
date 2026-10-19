@@ -29,8 +29,7 @@ export function readLinkSyncToken(e: Record<string, string | undefined> = proces
 export const env = {
   PORT: parseInt(getEnv('PORT', '4300'), 10),
   NODE_ENV,
-  PERSISTENCE: getEnv('PERSISTENCE', 'memory') as 'memory' | 'json' | 'supabase',
-  DATA_DIR: getEnv('DATA_DIR', './data'),
+  PERSISTENCE: getEnv('PERSISTENCE', 'memory') as 'memory' | 'supabase',
   CORS_ORIGINS: getEnv('CORS_ORIGINS', corsDefault).split(','),
   APP_ORIGIN: process.env['APP_ORIGIN'],
   DATABASE_URL: process.env['DATABASE_URL'],

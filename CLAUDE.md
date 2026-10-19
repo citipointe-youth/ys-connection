@@ -56,7 +56,7 @@ api (Express) → controllers → services → repositories (interfaces) → cor
 ```
 
 - **`src/core/`** — pure types, entities, enums, Zod schemas, errors. No imports from other layers.
-- **`src/repositories/`** — interfaces (DB-swap surface) + in-memory implementations + JSON file persistence + `supabase/` layer.
+- **`src/repositories/`** — interfaces (DB-swap surface) + in-memory implementations + `supabase/` layer.
 - **`src/services/`** — all business logic + RBAC. Depend on repo *interfaces* only.
 - **`src/api/`** — thin controllers → declarative route table (`http/router.ts`) → Express adapter.
 - **`src/container.ts`** — composition root. The ONLY file that names concrete repositories.
@@ -68,7 +68,6 @@ api (Express) → controllers → services → repositories (interfaces) → cor
 | `PERSISTENCE` | Backend |
 |---|---|
 | `memory` (default) | In-memory; seed data runs on startup |
-| `json` | In-memory + JSON files in `DATA_DIR` |
 | `supabase` | Supabase (Sydney); requires `DATABASE_URL` |
 
 Seed data only runs when `PERSISTENCE=memory`. Production uses `PERSISTENCE=supabase`.
@@ -235,7 +234,6 @@ PORT=4300
 NODE_ENV=production      # LOCAL/other hosts only. Do NOT set NODE_ENV in Vercel: it makes Vercel skip devDependencies, so `tsx` is missing in the build.
 PERSISTENCE=supabase     # production; use "memory" for local dev with seed data
 DATABASE_URL=<supabase-connection-string>
-DATA_DIR=./data          # only used for PERSISTENCE=json
 CORS_ORIGINS=*
 APP_ORIGIN=https://<your-deployment>.vercel.app   # CORS fallback when CORS_ORIGINS is unset
 SESSION_SECRET=<random>  # REQUIRED in production, or session tokens can be forged
@@ -511,7 +509,7 @@ The old push feature was removed 2026-07-11 (archived to `../Archive/push-notifi
 
 Both fields are encrypted at rest with AES-256-GCM (`src/utils/field-crypto.ts`, ported from the Youth Camp Platform's field-encryption feature) so raw DB access (incl. Supabase staff/SQL editor) reveals only ciphertext, while every service/export still sees plaintext. Design: `docs/superpowers/specs/2026-07-18-phone-field-encryption-design.md`; plan: `docs/superpowers/plans/2026-07-18-phone-field-encryption.md`.
 
-- **Scope + seam:** the codec is called ONLY inside `supabase.students.ts` (`toStudent`/ `save`/`saveMany`, via `encryptPhoneFields()`). Services, `memory`/`json` persistence, and the SPA are all unaware encryption exists. No schema migration — both fields are plain `text` columns, encrypted in place (unlike the camp platform, which needed new `*_enc` columns for its array/jsonb fields).
+- **Scope + seam:** the codec is called ONLY inside `supabase.students.ts` (`toStudent`/ `save`/`saveMany`, via `encryptPhoneFields()`). Services, `memory` persistence, and the SPA are all unaware encryption exists. No schema migration — both fields are plain `text` columns, encrypted in place (unlike the camp platform, which needed new `*_enc` columns for its array/jsonb fields).
 - **Envelope:** `v1.<keyId>.<iv>.<tag>.<ct>` — the `v1.` prefix lets reads tolerate a table that's any mix of ciphertext + not-yet-migrated plaintext, and makes the backfill idempotent. Bound via AAD to `"students:<column>:<id>"`.
 - **Key:** `FIELD_ENCRYPTION_KEY` (base64, 32 bytes) in Vercel prod env — a key distinct from the camp platform's. Losing it = losing the two phone fields permanently (the security property, not a bug).
 - **Rollout:** deploy the encryption-aware code → run `scripts/backfill-field-encryption.ts` against prod (idempotent/resumable) → verify no non-null value lacks the `v1.` prefix → `VACUUM FULL students;` to physically purge leftover plaintext row versions from disk.
