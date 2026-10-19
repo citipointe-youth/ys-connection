@@ -62,7 +62,7 @@ const LOOKUP_Q_MAX = 60;
 const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
 const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
-const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo'] as const;
+const LOG_EVENTS = [...ACTION_TYPES, 'identity', 'cancel', 'undo', 'resolve'] as const;
 const MATCHES = ['auto', 'manual', 'none', 'ambiguous', 'ignored'] as const;
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -184,6 +184,8 @@ export interface LinkService {
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
+  /** CY-A1: the admin says whether an unclear row landed in Elvanto (the console's own `resolved` transition). */
+  resolveUnclear(actor: Actor, id: string, body: unknown): Promise<{ ok: true; status: 'sent' | 'refused' }>;
   shadowCheck(actor: Actor, date: unknown): Promise<ShadowCheck>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
   /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
@@ -1199,6 +1201,24 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (s) await saveGenderFixes(d.students, genderFixes(roster, [s], [change]));
       }
       return change;
+    },
+
+    /** CY-A1: an unclear row (lease-lost, or a write the console could not confirm) blocks its dedupe key until resolved.
+     *  The console resolves only keys in its own sent-log; this is the admin's way out. landed -> sent; not landed ->
+     *  refused 'not-landed' (both final, so the key is free again). Same applyOutcome transition as the console's. */
+    async resolveUnclear(actor, id, body) {
+      const c = context(actor, await gate(actor, 'admin'));
+      const b = z.object({ landed: z.boolean() }).safeParse(body ?? {});
+      if (!b.success) throw new BadRequestError('Say whether it landed in Elvanto.');
+      const row = Uuid.safeParse(id).success ? await d.link.getAction(id) : null;
+      if (!row) throw new NotFoundError('This action is not on the server.');
+      if (row.status !== 'unclear') throw new ConflictError('This is no longer waiting for a check.');
+      const res = await d.link.applyResults(row.leaseOwner ?? 'admin', [{ id, outcome: 'resolved', landed: b.data.landed }], c.t);
+      if (!res.applied.includes(id)) throw new ConflictError('This is no longer waiting for a check.');
+      const status = b.data.landed ? 'sent' as const : 'refused' as const;
+      await d.link.addLog([await logRow(c, { id: null, label: null }, { event: 'resolve', targetKind: 'action', targetId: id,
+        targetName: null, outboxId: id, outcome: b.data.landed ? 'sent' : 'refused:not-landed' })]);
+      return { ok: true, status };
     },
 
     async shadowCheck(actor, date) {

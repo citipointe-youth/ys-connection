@@ -127,6 +127,35 @@ describe('CY-B1: the batch decides DO NOT CONTACT as GET /link/flows does (roste
   });
 });
 
+describe('CY-A1: the admin settles an unclear row (POST /link/admin/unclear/:id)', () => {
+  async function unclearRow() {
+    const h = await setup();
+    const a = complete(FR_OK, FLOW, STEP1, P_OK);
+    expect(h.oc(await h.one(ADMIN, a))).toBe('saved');
+    expect((await h.claim()).rows.map((r) => r.id)).toContain(a.id);
+    await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: a.id, outcome: 'unclear', sentLogKey: 'k' }] });
+    return { h, a };
+  }
+  it('not landed: refused not-landed, logged, and the dedupe key is free again', async () => {
+    const { h, a } = await unclearRow();
+    expect(h.oc(await h.one(ADMIN, complete(FR_OK, FLOW, STEP1, P_OK)))).toBe('duplicate'); // unclear holds the key
+    expect(await h.svc.resolveUnclear(ADMIN, a.id, { landed: false })).toEqual({ ok: true, status: 'refused' });
+    expect(await h.link.getAction(a.id)).toMatchObject({ status: 'refused', reason: 'not-landed' });
+    const log = await h.link.listLog({ from: '2026-01-01T00:00:00Z', to: '2027-01-01T00:00:00Z', outboxId: a.id, limit: 10 });
+    expect(log.find((l) => l.event === 'resolve')).toMatchObject({ userId: ADMIN_ID, outcome: 'refused:not-landed', targetKind: 'action', targetId: a.id });
+    expect(h.oc(await h.one(ADMIN, complete(FR_OK, FLOW, STEP1, P_OK)))).toBe('saved');
+  });
+  it('landed: sent; 404 unknown id, 409 once it is no longer unclear, 403 for anyone but the admin, 400 without landed', async () => {
+    const { h, a } = await unclearRow();
+    await expect(h.svc.resolveUnclear(DIRECTOR, a.id, { landed: true })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.svc.resolveUnclear(ADMIN, a.id, {})).rejects.toMatchObject({ statusCode: 400 });
+    expect(await h.svc.resolveUnclear(ADMIN, a.id, { landed: true })).toEqual({ ok: true, status: 'sent' });
+    expect(await h.link.getAction(a.id)).toMatchObject({ status: 'sent', reason: null });
+    await expect(h.svc.resolveUnclear(ADMIN, a.id, { landed: false })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(h.svc.resolveUnclear(ADMIN, u(8999), { landed: true })).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
 describe('rev 6: removeFromFlowStep (R4)', () => {
   it('admin/director only; I am needed only with a note; allowed on a DNC row; blocks a Complete of the same row', async () => {
     const h = await setup();

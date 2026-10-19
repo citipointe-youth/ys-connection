@@ -80,7 +80,7 @@ export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; 
 export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; }
 /** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */
 export interface LinkFlowAssign { flowId: string; personId: string; leaderId: string; assignedBy: string; assignedAt: string; }
-export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo';
+export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo' | 'resolve'; // resolve: CY-A1 admin settles an unclear row
 export interface LinkLogRow { id: string; at: string; userId: string; login: string; deviceId: string | null;
   deviceLabel: string | null; event: LogEvent; leaderId: string | null; leaderName: string | null;
   prevLeaderId: string | null; prevLeaderName: string | null;

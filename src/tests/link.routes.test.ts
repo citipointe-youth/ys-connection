@@ -22,6 +22,7 @@ const SPEC_ROUTES = [
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/shadow-check', 'GET /link/admin/log',
+  'POST /link/admin/unclear/:id', // CY-A1
   'GET /link/intake', 'GET /link/intake/row', 'POST /link/intake/refresh', // T4 (X19)
   'GET /link/consents/lookup', // rev 6 (R2 b/c)
 ];
@@ -156,6 +157,12 @@ describe('link + sync live (memory)', () => {
       const r = await asAdmin('GET', p);
       expect([p, r.status]).toEqual([p, 200]);
     }
+  });
+  it('CY-A1: POST /link/admin/unclear/:id is routed (JSON 404 unknown id as admin; 401 with no token)', async () => {
+    const r = await asAdmin('POST', `/link/admin/unclear/${randomUUID()}`, { landed: false });
+    expect(r.status).toBe(404);
+    expect((await j(r)).code).toBe('NOT_FOUND');
+    expect((await call('POST', `/link/admin/unclear/${randomUUID()}`, { landed: false })).status).toBe(401);
   });
   it('T6: POST /link/flows/assign is routed (JSON 400 for a person not in the flow; 401 with no token)', async () => {
     const body = { flowId: 'f1000000-0000-4000-8000-0000000000ff', personId: '9e000000-0000-4000-8000-0000000000ff', leaderId: null };
