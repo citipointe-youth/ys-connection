@@ -1,6 +1,6 @@
 import { isProductionEnv } from '../config/is-production';
 import { randomBytes, createHmac, createHash, timingSafeEqual } from 'node:crypto';
-import { verifyPassword, hashPassword, needsRehash } from '../utils/crypto';
+import { verifyPassword } from '../utils/crypto';
 import type { IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { Actor, User, SafeUser } from '../core/entities/user';
 import { MAX_LOGIN_HISTORY, MAX_LOGIN_DEVICES } from '../core/entities/user';
@@ -184,12 +184,6 @@ export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: numb
       // (e.g. inactive, before a reactivation) copy. ponytail: per-instance only; another instance may lag <= 60 s.
       recent.delete(fresh.id);
 
-      // Silently upgrade legacy SHA-256 hashes to bcrypt on first login
-      if (needsRehash(user.passwordHash)) {
-        const newHash = await hashPassword(password);
-        await users.save({ ...fresh, passwordHash: newHash, updatedAt: new Date().toISOString() });
-      }
-
       // Login activity tracking (ported from the Youth Camp Platform, 2026-09-20): a short
       // per-account history so the admin can see who hasn't logged in yet. Fail-open — a
       // write failure here must never block or fail an otherwise-successful login. Uses the
@@ -204,9 +198,6 @@ export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: numb
         // Never let a tracking failure block a successful login.
       }
 
-      // ponytail: the fingerprint is fresh.passwordHash. On the legacy SHA-256 rehash path the tracking save above writes
-      // that same old hash back, so they agree; if that save throws after a rehash, the first request gets 401 and the
-      // user signs in again (legacy hashes only; prod has none).
       const token = signSession(toActor(fresh), Date.now() + TOKEN_TTL_MS, passwordFingerprint(fresh.passwordHash));
       return { token, user: toSafeUser(fresh) };
     },

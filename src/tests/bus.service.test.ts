@@ -22,12 +22,12 @@ export const leader = (id: string, name: string, gender: 'male' | 'female' | nul
 });
 export const FRI_7PM = '2026-10-09T19:00';
 
-export async function setup(opts: { moduleOn?: boolean; visibility?: 'admin' | 'all'; routing?: RoutingProvider } = {}) {
+export async function setup(opts: { moduleOn?: boolean; routing?: RoutingProvider } = {}) {
   const bus = new InMemoryBusRepository(); const students = new InMemoryStudentRepository();
   const leaders = new InMemoryLeaderRepository(); const settings = new InMemorySettingsRepository();
   await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
   const cfg = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
-    modules: { busMinistry: opts.moduleOn ?? true }, busMinistry: { visibility: opts.visibility ?? 'all' },
+    modules: { busMinistry: opts.moduleOn ?? true },
   });
   await settings.updateSettings({ ministryConfig: cfg });
   await students.save(student('s1', 'Jess', 'Tran', 9, 'female', '0412345678'));
@@ -44,10 +44,6 @@ describe('gate', () => {
   it('module off → MODULE_DISABLED for everyone', async () => {
     const { svc, ctx } = await setup({ moduleOn: false });
     await expect(svc.getRun(ctx('admin'))).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
-  });
-  it("a stored visibility 'admin' no longer hides it (setting removed 2026-10-09)", async () => {
-    const { svc, ctx } = await setup({ visibility: 'admin' });
-    await expect(svc.getRun(ctx('director'))).resolves.toBeTruthy();
   });
 });
 
@@ -129,7 +125,7 @@ describe('roster', () => {
     const settings = new InMemorySettingsRepository();
     await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
     await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
-      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+      { modules: { busMinistry: true } }) });
     await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
     const svc = makeBusService(bus, students, leaders, settings);
     const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
@@ -395,7 +391,7 @@ describe('parent consent', () => {
     const settings = new InMemorySettingsRepository();
     await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
     await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
-      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+      { modules: { busMinistry: true } }) });
     await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
     const svc = makeBusService(bus, students, leaders, settings);
     const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
@@ -572,7 +568,7 @@ describe('linking into a run where the student already has a rider (I4)', () => 
     const settings = new InMemorySettingsRepository();
     await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
     await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
-      { modules: { busMinistry: true }, busMinistry: { visibility: 'all' } }) });
+      { modules: { busMinistry: true } }) });
     await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
     await students.save(student('s2', 'Sam', 'Ode', 8, 'male'));
     const svc = makeBusService(bus, students, leaders, settings);

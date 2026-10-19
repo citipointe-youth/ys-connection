@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { makeAccountController } from '../api/controllers/account.controller';
 import { PREVIEW_TOKEN_TTL_MS } from '../services/auth.service';
-import { UnauthorizedError } from '../core/errors/app-error';
 import type { Actor, SafeUser } from '../core/entities/user';
-import type { HttpRequest } from '../api/http/types';
+import type { AuthedRequest } from '../api/http/types';
 
 function actor(role = 'admin'): Actor {
   return { id: 'u-admin', role: role as any, displayName: 'Admin', grade: null as any, quad: null as any };
 }
 
-function req(id: string, ctx: Actor | null = actor()): HttpRequest {
+function req(id: string, ctx: Actor = actor()): AuthedRequest {
   return { ctx, params: { id }, query: {}, body: undefined };
 }
 
@@ -36,11 +35,6 @@ function makeStubbed() {
 }
 
 describe('account controller — preview', () => {
-  it('throws UnauthorizedError with no ctx', async () => {
-    const { ctrl } = makeStubbed();
-    await expect(ctrl.preview(req('u-grade', null))).rejects.toBeInstanceOf(UnauthorizedError);
-  });
-
   it('delegates to account.previewAccount with the target id, then mints a short-lived token forcing mustChangePassword:false', async () => {
     const { ctrl, calls } = makeStubbed();
     await ctrl.preview(req('u-grade'));

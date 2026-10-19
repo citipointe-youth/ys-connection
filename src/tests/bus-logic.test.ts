@@ -7,18 +7,18 @@ import { currentRunDate, localDay, isServiceDay, addDays, eligibilityOf, capacit
 const A = (role: string): Actor => ({ id: 'x', role: role as any, displayName: 'X', grade: null as any, quad: null as any });
 
 describe('bus config defaults', () => {
-  it('module off, admin-only, no ministry-specific values', () => {
+  it('module off, no ministry-specific values', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.modules.busMinistry).toBe(false);
     expect(MINISTRY_CONFIG_DEFAULTS.labels.busMinistry).toBe('Bus Ministry');
     expect(MINISTRY_CONFIG_DEFAULTS.busMinistry).toEqual({
-      visibility: 'admin', churchAddress: '', churchPlaceId: '', leaveTime: '21:00',
+      churchAddress: '', churchPlaceId: '', leaveTime: '21:00',
       targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120,
-      detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], regionCode: '',
+      detourMin: 10, detourPct: 20, coordinatorLeaderIds: [],
     });
   });
   it('merges a partial busMinistry patch', () => {
-    const m = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { busMinistry: { visibility: 'all' } });
-    expect(m.busMinistry.visibility).toBe('all');
+    const m = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { busMinistry: { leaveTime: '20:30' } });
+    expect(m.busMinistry.leaveTime).toBe('20:30');
     expect(m.busMinistry.targetRouteMin).toBe(45);
   });
 });

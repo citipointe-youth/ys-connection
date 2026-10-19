@@ -1,11 +1,9 @@
-import type { HttpRequest } from '../http/types';
+import type { AuthedRequest } from '../http/types';
 import type { StudentService } from '../../services/student.service';
-import { UnauthorizedError } from '../../core/errors/app-error';
 
 export function makeStudentController(deps: { student: StudentService }) {
   return {
-    async list(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async list(req: AuthedRequest) {
       const grade = req.query['grade'] ? parseInt(req.query['grade']!, 10) : undefined;
       const gender = req.query['gender'];
       const query = req.query['q'];
@@ -13,24 +11,20 @@ export function makeStudentController(deps: { student: StudentService }) {
       return deps.student.list(req.ctx, { grade, gender, query, crossGrade });
     },
 
-    async get(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async get(req: AuthedRequest) {
       return deps.student.get(req.ctx, req.params['id']!);
     },
 
-    async create(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async create(req: AuthedRequest) {
       return deps.student.create(req.ctx, req.body);
     },
 
-    async update(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async update(req: AuthedRequest) {
       return deps.student.update(req.ctx, req.params['id']!, req.body);
     },
 
 
-    async remove(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async remove(req: AuthedRequest) {
       await deps.student.remove(req.ctx, req.params['id']!);
       return { ok: true };
     },

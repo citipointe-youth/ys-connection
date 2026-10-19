@@ -1,4 +1,4 @@
-import type { HttpRequest } from '../http/types';
+import type { HttpRequest, AuthedRequest } from '../http/types';
 import type { AuthService } from '../../services/auth.service';
 import type { IUserRepository } from '../../repositories/interfaces/entity-repositories';
 import { toSafeUser } from '../../services/auth.service';
@@ -10,8 +10,7 @@ export function makeAuthController(deps: { auth: AuthService; users: IUserReposi
       return deps.auth.login(req.body);
     },
 
-    async me(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async me(req: AuthedRequest) {
       const user = await deps.users.findById(req.ctx.id);
       if (!user) throw new UnauthorizedError();
       return toSafeUser(user);

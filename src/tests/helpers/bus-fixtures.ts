@@ -55,7 +55,7 @@ export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceI
   await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
   await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
     modules: { busMinistry: true },
-    busMinistry: { visibility: 'all', churchAddress: '1 Church St, Testville', churchPlaceId: opts.churchPlaceId ?? 'fake:church', regionCode: 'au' },
+    busMinistry: { churchAddress: '1 Church St, Testville', churchPlaceId: opts.churchPlaceId ?? 'fake:church' },
   }) });
   await students.save(student('s1', 'Jess', 'Tran', 9, 'female', '0412345678'));
   await students.save(student('s2', 'Sam', 'Ode', 8, 'male', '0499888777'));

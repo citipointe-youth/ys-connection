@@ -1,6 +1,6 @@
-import type { HttpRequest } from '../http/types';
+import type { AuthedRequest } from '../http/types';
 import type { Actor } from '../../core/entities/user';
-import { UnauthorizedError, BadRequestError } from '../../core/errors/app-error';
+import { BadRequestError } from '../../core/errors/app-error';
 import type { OverviewService } from '../../services/overview.service';
 import type { TrendsService } from '../../services/trends.service';
 import type { StudentService } from '../../services/student.service';
@@ -45,8 +45,7 @@ export function makeBatchController(deps: {
   };
 
   return {
-    async get(req: HttpRequest) {
-      if (!req.ctx) throw new UnauthorizedError();
+    async get(req: AuthedRequest) {
       const ctx = req.ctx;
 
       const raw = req.query['sections'];

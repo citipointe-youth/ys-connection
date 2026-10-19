@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { makeNewYouthController } from '../api/controllers/new-youth.controller';
-import { UnauthorizedError } from '../core/errors/app-error';
 import type { Actor } from '../core/entities/user';
 
 const ACTOR: Actor = { id: 'a', role: 'grade' as any, displayName: 'G', grade: null as any, quad: null as any };
@@ -12,10 +11,6 @@ describe('new-youth controller', () => {
     const body = { firstName: 'A' };
     expect(await c.send({ ctx: ACTOR, params: {}, query: {}, body })).toEqual({ student: 'sent', parent: 'sent', dryRun: false });
     expect(send).toHaveBeenCalledWith(ACTOR, body);
-  });
-  it('no session → Unauthorized', async () => {
-    const c = makeNewYouthController({ newYouth: { send: vi.fn() } as any });
-    await expect(c.send({ ctx: null, params: {}, query: {}, body: {} })).rejects.toBeInstanceOf(UnauthorizedError);
   });
 });
 
