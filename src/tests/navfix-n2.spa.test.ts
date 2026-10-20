@@ -1,7 +1,7 @@
 // Lane n2 (nav/save fix round 2026-10-16): intake queue, per-family busy, late-reply guards, wording.
 // Extract-and-run: the REAL functions from public/index.html run against small stubs.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -48,7 +48,8 @@ function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
     const navBack = () => { __calls.backs++; };
     function _here() { return { k: LINK.ik ? LINK.ik.key : null, p: S.page }; }
     function _still(h) { return !!h && h.k === (LINK.ik ? LINK.ik.key : null) && h.p === S.page; }
-    ${o.prelude ?? ''}`;
+    ${o.prelude ?? ''}
+    ${SITE_TIME_SRC}`;
   const f = new Function('__ls', '__post', '__calls', `${prelude}\n${avail.map((n) => extractFn(HTML, n)).join('\n')}
     return { ${avail.join(', ')}, get S() { return S; }, get LINK() { return LINK; } };`)(ls, post, calls);
   return { f, calls, store };

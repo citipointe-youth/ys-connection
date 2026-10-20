@@ -10,7 +10,7 @@ import { BadRequestError } from './errors/app-error';
 // them).
 
 const TZ_MSG = 'Time zone not recognised.';
-const CUTOFF_MSG = 'Consent closes at must be a 24-hour time such as 09:00 (Youth Setup).';
+const CUTOFF_MSG = '"Consent closes at" in Youth Setup must be a 24-hour time, such as 09:00.';
 const isTimeZone = (tz: string) => { try { new Intl.DateTimeFormat('en-CA', { timeZone: tz }); return tz !== ''; } catch { return false; } };
 
 const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex colour (e.g. #1a1af2)');

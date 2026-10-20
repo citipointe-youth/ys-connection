@@ -2361,15 +2361,15 @@ function pBar(pct) {
 }
 // UI standard (F), 2026-10-18: the one date format. "Fri 16 Oct"; the year only when it is not this year ("Fri 16 Oct 2025");
 // time = true adds ", 9am" / ", 5:20pm". v = 'YYYY-MM-DD' (a calendar day: never a time) or an ISO instant / Date, shown
-// in Brisbane (UTC+10, no daylight saving). '' when v is empty or not a date.
+// in the location's time zone (structure.timeZone). '' when v is empty or not a date.
 function fmtDay(v, time) {
   const str = typeof v === 'string' ? v.trim() : '', day = /^\d{4}-\d{2}-\d{2}$/.test(str);
   const t = day ? Date.parse(str + 'T00:00:00Z') : v instanceof Date ? v.getTime() : str ? Date.parse(str) : NaN;
   if (!isFinite(t)) return '';
-  const d = new Date(day ? t : t + 36e6), y = d.getUTCFullYear();
+  const d = new Date(day ? t : Date.parse(_siteDay(t) + 'T' + _siteHHMM(t) + ':00Z')), y = d.getUTCFullYear();
   let out = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] + ' ' + d.getUTCDate() + ' '
     + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]
-    + (y !== new Date(Date.now() + 36e6).getUTCFullYear() ? ' ' + y : '');
+    + (y !== Number(_siteDay(Date.now()).slice(0, 4)) ? ' ' + y : '');
   if (time && !day) {
     const h = d.getUTCHours(), m = d.getUTCMinutes();
     out += ', ' + (h % 12 || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (h < 12 ? 'am' : 'pm');
@@ -2462,6 +2462,39 @@ function _genderHidden() { return _genderPolicy() === 'off'; }    // hide gender
 function _gradeWord() { return _structure().gradeLabel || 'Grade'; } // "Grade" | "Year"
 function _serviceDow() { const d = _structure().serviceDayOfWeek; return typeof d === 'number' ? d : 5; }
 function _serviceDayName() { return _DAY_NAMES[_serviceDow()] || 'Friday'; }
+// Y3b: the location's clock (structure.timeZone) and the consent cut-off on the youth night (structure.consentCutoff).
+function _tz() { return _structure().timeZone || 'Australia/Brisbane'; }
+function _consentCutoff() { return _structure().consentCutoff || '09:00'; }
+// The cut-off as words: "9am" / "7:30pm"; sp = true: "9 am" / "7:30 pm" (the console's style).
+function _cutoffWords(sp) {
+  const c = _consentCutoff(), h = Number(c.slice(0, 2)), m = Number(c.slice(3, 5));
+  return (h % 12 || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (sp ? ' ' : '') + (h < 12 ? 'am' : 'pm');
+}
+// The wall clock of an instant (ms) in the location's zone: { ymd, hhmm }. Same as link-rules.ts wall(), one cached
+// formatter per zone.
+function _siteWall(ms, tz) {
+  tz = tz || _tz();
+  const c = _siteWall.f || (_siteWall.f = {});
+  const f = c[tz] || (c[tz] = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+  const p = {};
+  f.formatToParts(ms).forEach((x) => { p[x.type] = x.value; });
+  return { ymd: p.year + '-' + p.month + '-' + p.day, hhmm: p.hour + ':' + p.minute };
+}
+function _siteDay(ms) { return _siteWall(ms).ymd; }   // the location's date, YYYY-MM-DD
+function _siteHHMM(ms) { return _siteWall(ms).hhmm; } // the location's time, HH:MM (24 h)
+// The instant (ms) of wall time hhmm on ymd at the location. Copies link-rules.ts instantOf: in a daylight-saving gap the
+// instant after the gap (02:30 -> 03:30 new time); in a repeated hour the first one. NaN for a bad day.
+function _siteInstant(ymd, hhmm) {
+  const tz = _tz(), g = Date.parse(ymd + 'T' + hhmm + ':00Z'), D = 864e5;
+  if (!isFinite(g)) return NaN;
+  const off = (ms) => { const w = _siteWall(ms, tz); return Date.parse(w.ymd + 'T' + w.hhmm + ':00Z') - (ms - (((ms % 6e4) + 6e4) % 6e4)); };
+  const before = off(g - D), after = off(g + D);
+  for (const o of before >= after ? [before, after] : [after, before]) { // the larger offset is the earlier instant
+    const w = _siteWall(g - o, tz);
+    if (w.ymd === ymd && w.hhmm === hhmm) return g - o;
+  }
+  return g - before; // the gap
+}
 function _gradeList() {
   const s = _structure();
   const mn = typeof s.gradeMin === 'number' ? s.gradeMin : 7;
@@ -6519,7 +6552,7 @@ function _laFmtBrisbane(iso) {
   const ms = Date.parse(iso);
   if (isNaN(ms)) return '';
   const parts = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Brisbane', day: 'numeric', month: 'numeric', year: 'numeric',
+    timeZone: _tz(), day: 'numeric', month: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
   }).formatToParts(new Date(ms));
   const p = {};
@@ -7464,6 +7497,11 @@ function _youthSetupBody(settings, users) {
       </select></div>
     <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. This changes how the app works out term start/end dates and the Home screen\'s "Not Seen Last…" reminders — it\'s a real date setting, not just wording (see "Service night wording" in Terminology below for that).')}</label>
       <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
+    <div class="fg"><label class="fl">Time zone ${helpTip('Where this location is, e.g. Australia/Brisbane. Every date and time in the app uses it.')}</label>
+      <input class="fi" list="setup-tz" value="${esc(st.timeZone != null ? st.timeZone : dst.timeZone)}" onchange="_setupSet('structure.timeZone', this.value.trim())">
+      <datalist id="setup-tz">${['Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin', 'Australia/Hobart', 'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney'].map((z) => `<option value="${z}">`).join('')}</datalist></div>
+    <div class="fg"><label class="fl">Consent closes at ${helpTip('The time on the service day when parents can no longer reply to the consent text, e.g. 09:00.')}</label>
+      <input class="fi" type="time" value="${esc(st.consentCutoff != null ? st.consentCutoff : dst.consentCutoff)}" onchange="_setupSet('structure.consentCutoff', this.value)"></div>
     <div class="sh" style="margin:16px 0 8px">Roles</div>
     <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
     ${adminRoleRow}
@@ -9740,7 +9778,7 @@ function _nyDobError(text, today) {
   if (!iso) return 'That date does not exist. Write it as DD/MM/YYYY.';
   return iso > today ? 'The date of birth is in the future.' : '';
 }
-function _nyToday() { return new Date(Date.now() + 36e6).toISOString().slice(0, 10); } // Brisbane is UTC+10 all year
+function _nyToday() { return _siteDay(Date.now()); } // the location's date
 function _nyDobInput(el) {
   const v = _nyDobMask(el.value);
   if (el.value !== v) el.value = v;
@@ -10014,17 +10052,20 @@ function _linkOn(feature) {
 }
 // The Elvanto link admin page: the admin login only, whatever the module switches say.
 function _linkAdminOn() { return !!S.user && S.user.role === 'admin'; }
-// Brisbane is UTC+10 all year (no daylight saving).
+// The location's time of an instant: "9:05 am".
 function _lkTime(iso) {
   const t = Date.parse(iso);
   if (!isFinite(t)) return '';
-  const d = new Date(t + 36e6), h = d.getUTCHours(), m = d.getUTCMinutes();
+  const hm = _siteHHMM(t), h = Number(hm.slice(0, 2)), m = Number(hm.slice(3));
   return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' am' : ' pm');
 }
 function _lkDay(ymd) { return fmtDay(String(ymd || '').slice(0, 10)); } // a calendar day; UI standard F
 function _lkSvcLabel(s) { return s ? _lkDay(s.ymd) + ' · ' + (s.name || '') + ' ' + _lkTime(s.startsAt) : ''; }
-// The service day (D3, B9): the Brisbane day by this phone, or the previous day before 03:00 (UTC+10, no DST).
-function _lkSvcDay() { return new Date(Date.now() + 36e6 - 108e5).toISOString().slice(0, 10); }
+// The service day (D3, B9): the location's day by this phone, or the previous day before 03:00 local (link-rules serviceDay).
+function _lkSvcDay() {
+  const w = _siteWall(Date.now());
+  return w.hhmm < '03:00' ? new Date(Date.parse(w.ymd + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10) : w.ymd;
+}
 // An amber "Not today" chip for a service on another day (B9 / T-32).
 function _lkNotToday(s) { return s && s.ymd !== _lkSvcDay() ? '<span class="lk-tag amber">Not today</span>' : ''; }
 // No service for tonight in the mirror yet (the console pushes today-7 to today+7).
@@ -10123,8 +10164,7 @@ function _lkLastSeen() {
 function _lkSeen(iso) {
   const t = Date.parse(iso);
   if (!isFinite(t)) return '';
-  const day = (ms) => new Date(ms + 36e6).toISOString().slice(0, 10);
-  return day(t) === day(Date.now()) ? _lkTime(iso) : _lkAt(iso);
+  return _siteDay(t) === _siteDay(Date.now()) ? _lkTime(iso) : _lkAt(iso);
 }
 // Online but outside its window, the console polls about every 15 minutes (X14 / T-17).
 function _lkOutsideWindow() {
@@ -11498,8 +11538,8 @@ function _lkYpAdd(pid) {
   setTimeout(() => { if (LINK.yp === p && p.just === pid) { p.just = null; _lkYpDraw(); } }, 600);
 }
 // ── Flow steps (F3; spec §11.3) ──
-// Brisbane today (UTC+10): the check-in read's date when known, else the phone clock.
-function _lkToday() { return LINK.today || new Date(Date.now() + 36e6).toISOString().slice(0, 10); }
+// The location's today: the check-in read's date when known, else the phone clock.
+function _lkToday() { return LINK.today || _siteDay(Date.now()); }
 function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
 // The step's action: still on this phone, else this phone's last answer, else the server's open row, else the server's
 // last refusal (S-1/D7; absent on an older server).
@@ -11634,16 +11674,16 @@ function _lkTilesHtml() {
 function _lkStepBlock(r) {
   if (r && r.dnc) return 'Do not contact: this person can only be removed from the step.';
   if (r && r.consentStep && r.consent !== 'ok' && !r.notReceivedOk) {
-    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' 9am.' : 'Do the consent check first (New youth & consent > Consents).';
+    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : 'Do the consent check first (New youth & consent > Consents).';
   }
   return '';
 }
-// R6: a step-0 row before its consent Friday 9:00 Brisbane waits; it is not overdue.
-function _lkConsentWait(r) { return !!(r && r.consentStep && r.consentFriday) && Date.now() < Date.parse(r.consentFriday + 'T09:00:00+10:00'); }
+// R6: a step-0 row before its consent night's cut-off (location time) waits; it is not overdue.
+function _lkConsentWait(r) { return !!(r && r.consentStep && r.consentFriday) && Date.now() < _siteInstant(r.consentFriday, _consentCutoff()); }
 // R4: Complete on this row records consent not received first (what the admin is told before Complete).
 function _lkNotReceived(r) { return !!(r && r.consentStep && r.notReceivedOk && r.consent !== 'ok' && !r.dnc); }
 function _lkNotReceivedText(r) {
-  return 'No consent reply by ' + _lkDay(r.consentFriday) + ' 9am. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.';
+  return 'No consent reply by ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.';
 }
 // Free = nothing open for the row (none, or the last one was refused / cancelled).
 function _lkFlowFree(r) { const a = _lkFlowAct(r); return !(a && !['refused', 'cancelled'].includes(a.status)); }
@@ -11980,11 +12020,11 @@ function _lkAdmFresh() {
   return { acts: null, aErr: null, roster: null, rErr: null, mf: 'none',
     from: null, to: null, login: '', event: '', log: null, lErr: null };
 }
-// The latest Friday on or before the given day (Brisbane date).
+// The latest youth night (structure.serviceDayOfWeek; Brisbane Friday) on or before the given day (location date).
 function _lkLastFriday(ymd) {
   const t = Date.parse(String(ymd || '') + 'T00:00:00Z');
   if (!isFinite(t)) return '';
-  const back = (new Date(t).getUTCDay() + 2) % 7; // Fri = 0 days back, Sat = 1, ... Thu = 6
+  const back = (new Date(t).getUTCDay() - _serviceDow() + 7) % 7; // the night = 0 days back, the day after = 1, ...
   return _lkAddDays(ymd, -back);
 }
 function _lkAt(iso) { return fmtDay(iso, true); }
@@ -12342,9 +12382,7 @@ const IK_HOLD = {
   'No student form': 'No student form matches this parent form.',
   'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
   'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
-  'Late consent form': 'The consent form came in after Friday 9 am, so it counts for next week.',
   'Unmatched consent form': "This consent form doesn't match any student for this date. Check it in Elvanto.",
-  'Waiting for replies until Friday 9 am': "Parents can still reply until Friday 9 am, so consent isn't assumed yet. Check again after 9 am.",
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
   'Possible existing profile': 'Someone with this name may already be in Elvanto. Check before creating a new profile.',
@@ -12373,6 +12411,9 @@ function _ikHoldText(h, d) {
     return 'Parent texted ' + _lkDay(p[2] + '-' + p[1] + '-' + p[0]) + ', too late for ' + (wk ? 'the ' + _lkDay(wk) + ' week' : 'that week') + '. Look in Elvanto before saving.';
   }
   if (t === 'Saved before, not in Elvanto now') return "The console saved this before, but Elvanto doesn't show it now. Check in Elvanto and make the change there if it's missing.";
+  // Y3b: the night and cut-off come from the settings. The console names its own night and time after the prefix.
+  if (t === 'Late consent form') return 'The consent form came in after ' + _serviceDayName() + ' ' + _cutoffWords(true) + ', so it counts for next week.';
+  if (t.startsWith('Waiting for replies until')) return 'Parents can still reply until ' + _serviceDayName() + ' ' + _cutoffWords(true) + ", so consent isn't assumed yet. Check again after " + _cutoffWords(true) + '.';
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
   return IK_HOLD[t] || t;
 }
@@ -12612,7 +12653,7 @@ function _ikQFlush() {
     const I0 = LINK.ik; // RV-I-m6: a dropped answer is not "retrying" any more
     if (I0 && I0.resend) old.forEach((e) => (e.items || []).forEach((it) => { const fam = it.type === 'intakeAnswer' && ((it.payload && it.payload.family) || [])[0]; if (fam && I0.resend[fam] !== 'again') delete I0.resend[fam]; }));
     const n = old.reduce((t, e) => t + ((e && e.items) || []).length, 0), t = Date.parse(old[0] && old[0].at);
-    const day = isFinite(t) ? _lkDay(new Date(t + 36e6).toISOString().slice(0, 10)) : 'earlier';
+    const day = isFinite(t) ? _lkDay(_siteDay(t)) : 'earlier';
     toast(n === 1 ? '1 save from ' + day + ' was not sent' : n + ' saves from ' + day + ' were not sent', 6000);
   }
   const fly = LINK.ikFly || {}, due = q.filter((e) => fresh(e) && !e.items.some((it) => fly[it.id]));
@@ -12948,7 +12989,7 @@ function _ikRowsHtml(list, st, open) {
   if (!list) return _ik().err ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ik().err = null; _ikDraw(); _ikLoad(false)">Try again</button>' : progBar('Loading'); // F-19
   const rows = list.rows || [];
   if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
-    ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>'
+    ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at ' + _cutoffWords() + ' ' + _serviceDayName() + '.</div>'
     : '<div class="lk-hint">No families for this date.</div>';
   const grey = list.stale ? ' ik-grey' : '', I = _ik(), consent = I.tab === 'consent';
   const one = (r) => {
@@ -13263,7 +13304,7 @@ async function _ikAnswersSave() {
 }
 async function _ikRefresh() {
   const I = _ik();
-  const date = I.date || _lkLastFriday(new Date(Date.now() + 36e6).toISOString().slice(0, 10));
+  const date = I.date || _lkLastFriday(_siteDay(Date.now()));
   if (!date || I.ref || I.refBusy) return; // C-B10: one ask at a time (a double tap sent two)
   const mode = I.tab; // C-B10: the mode asked for, not whatever tab is showing when the reply lands
   I.refBusy = true;
@@ -13754,8 +13795,8 @@ function _ikNrRowHtml(o, i, busy) {
   if (o.dnc) return ''; // the Do not contact pill sits top-right (_ikOtherRow)
   if (o.marking || (s && s.sent)) return '<div class="lk-st wait" role="status">' + esc((s && s.msg) || 'Marking consent not received. The console does it next.') + '</div>';
   const err = s && s.msg ? '<div class="lk-st bad" role="status">' + esc(s.msg) + '</div>' : '';
-  if (_ikNrOk(o)) return err + '<div class="lk-d">' + esc('No reply by ' + fmtDay(o.consentFriday + 'T09:00:00+10:00', true)) + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
-  if (o.consentFriday && Date.now() < Date.parse(o.consentFriday + 'T09:00:00+10:00')) return err + '<div class="lk-d">' + esc('Waiting (consent ' + _lkDay(o.consentFriday) + ')') + '</div>';
+  if (_ikNrOk(o)) return err + '<div class="lk-d">' + esc('No reply by ' + fmtDay(new Date(_siteInstant(o.consentFriday, _consentCutoff())), true)) + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
+  if (o.consentFriday && Date.now() < _siteInstant(o.consentFriday, _consentCutoff())) return err + '<div class="lk-d">' + esc('Waiting (consent ' + _lkDay(o.consentFriday) + ')') + '</div>';
   return err;
 }
 function _ikNrAllHtml(rows, busy) {

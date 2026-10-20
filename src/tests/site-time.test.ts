@@ -75,7 +75,7 @@ describe('Y3a site time', () => {
       .toThrow(expect.objectContaining({ statusCode: 400, message: 'Time zone not recognised.' }));
     expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { timeZone: SYD, consentCutoff: '08:30' } }).structure)
       .toMatchObject({ timeZone: SYD, consentCutoff: '08:30', serviceDayOfWeek: 5 });
-    const CUTOFF = 'Consent closes at must be a 24-hour time such as 09:00 (Youth Setup).';
+    const CUTOFF = '"Consent closes at" in Youth Setup must be a 24-hour time, such as 09:00.';
     for (const bad of ['9am', '99:99', '24:00', '25:00', '23:60']) {
       expect(() => mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { consentCutoff: bad } }))
         .toThrow(expect.objectContaining({ statusCode: 400, message: CUTOFF }));

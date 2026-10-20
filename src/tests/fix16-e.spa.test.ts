@@ -1,7 +1,7 @@
 // fix16 lane E (Lifegroups): F-02(b), F-03, F-25, F-38, F-40(b), F-48(d), F-49, GAP-4. Harness copied from link.spa.test.ts
 // (no lane may edit a shared test file), with the picker functions added.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
@@ -29,7 +29,7 @@ const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: 
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-const BODY = FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
+const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 // APP-49: the real constant, read from the page (a copy here would hide a change).
 const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_OFFLINE_MS']
   .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
