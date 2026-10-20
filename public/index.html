@@ -6806,11 +6806,12 @@ async function elWho(code) {
   let d;
   try { d = await API.fresh('/admin/reconcile/latest'); } catch (e) { toast(e.message); return; }
   const li = (s) => `<li>${s}</li>`;
+  _elRs = [];
   const sec = {
-    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}`))],
+    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}${_elRsBtn({ kind: 'checkin', personId: x.personId, date: x.date })}`))],
     'recon-unmatched': ['Roster students with no YS record', d.unmatched.map((x) => li(`${esc(x.name)}${x.grade != null ? `, Grade ${esc(String(x.grade))}` : ''}`))],
-    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}`))],
-    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}`))],
+    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}${_elRsBtn({ kind: 'lifegroup', groupId: x.groupId, date: x.date })}`))],
+    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}${_elRsBtn({ kind: 'member', groupId: x.groupId, personId: x.personId, op: x.op })}`))],
     'recon-lifegroup-noid': ['Lifegroups with no Elvanto group id', d.noId.map((g) => li(esc(g)))],
   }[code];
   if (!sec) return;
@@ -6818,6 +6819,22 @@ async function elWho(code) {
   modal(`<h3>${esc(sec[0])}</h3><p class="help">${when}</p>${sec[1].length ? `<ul>${sec[1].join('')}</ul>` : '<p>Nobody now.</p>'}`);
 }
 // end elWho
+// r21 L6b (T9): Send again queues the app's own change once more (the console checks Elvanto first, so nothing is sent twice).
+let _elRs = [];
+function _elRsBtn(body) {
+  const i = _elRs.push(body) - 1;
+  return ` <button type="button" class="btn btn-secondary btn-sm" id="el-rs-${i}" onclick="elResend(${i})">Send again</button>`;
+}
+async function elResend(i) {
+  const btn = document.getElementById('el-rs-' + i);
+  if (!btn || btn.disabled) return;
+  if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Send to Elvanto?'; return; }
+  btn.disabled = true;
+  try { await API.post('/admin/reconcile/resend', _elRs[i]); } catch (e) { btn.disabled = false; btn.dataset.armed = ''; btn.textContent = 'Send again'; toast(e.message); return; }
+  btn.textContent = 'Queued';
+  toast('Queued. The console sends it soon.');
+}
+// end elResend
 function elToggle(id) { _elOpen = _elOpen === id ? '' : id; _elPaint(); }
 function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
 async function elFlag(id, flags) {
@@ -10323,8 +10340,8 @@ function _lkStatusText(row, lastSeen) {
     'note-too-long': 'Edit this report in Elvanto.',
     'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
     'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
-    'step-moved': 'This step changed in Elvanto. Do it there.',
-    'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
+    'step-moved': 'This step changed in Elvanto. Reload and try again.',
+    'assignee-needed': "Pick who gets the next step, or Elvanto's usual pick, then Complete again.", // r21 L6b (T4): the sheet's "Next step goes to"
     'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
     'too-old': 'Too late to send. Do it in Elvanto.',
     'not-landed': "It didn't save. Do it in Elvanto.",
@@ -10352,8 +10369,6 @@ function _lkStatusText(row, lastSeen) {
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Checked in with no room, so there is nothing to check out.'; // T6 (2026-10-21)
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
-      // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
-      if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
       return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
     case 'cancelled': return 'Cancelled.';
@@ -12129,7 +12144,10 @@ function _lkStepHtml() {
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
-    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>`
+    // r21 L6b (T4): who Elvanto gives the next step to (leaders matched to an Elvanto person); empty = Elvanto's own pick
+    + (_lkBoss() && (LINK.fAssignees || []).length ? `<div class="fg"><label class="fl" for="lk-next">Next step goes to</label><select class="fs" id="lk-next" onchange="LINK.fs.assignTo=this.value"><option value="">Elvanto's usual pick</option>
+      ${LINK.fAssignees.map((a) => `<option value="${esc(a.personId)}"${a.personId === f.assignTo ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : '') : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
     ${text}${blocked}${assign}${done}${rm}`;
@@ -12202,7 +12220,7 @@ function _lkStepSend() {
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(f.assignTo && _lkBoss() ? { assignTo: f.assignTo } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).
@@ -12243,6 +12261,7 @@ async function _lkLoadFlows(quiet) {
       if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
     });
     LINK.fSteps = (r && r.steps) || [];
+    LINK.fAssignees = (r && r.assignees) || []; // r21 L6b (T4)
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
     LINK.fProg = (r && r.progress) || null;

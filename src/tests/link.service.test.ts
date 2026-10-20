@@ -1316,6 +1316,22 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });
 
+  it('r21 L6b (T4): the flows view lists who can get the next step: active app leaders matched to one Elvanto person', async () => {
+    const h = await setup();
+    expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]); // Dana: no match, Eve: two, Fay: inactive
+  });
+
+  it('r21 L6b (T4): a Complete may carry assignTo (an Elvanto person id); it is stored on the payload', async () => {
+    const h = await setup();
+    expect((await enq(h.svc, ADMIN, step({ assignTo: 'x' }), DEV)).code).toBe('VALIDATION_ERROR');
+    const s = step({ assignTo: P_CODY });
+    expect((await enq(h.svc, ADMIN, s, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(s.id))!.payload).toMatchObject({ assignTo: P_CODY });
+    const g = await setup(); // review fix 1: only the admin or a director picks the next step's person
+    expect((await enq(g.svc, GRADE, step({ assignTo: P_CODY }), DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(g.svc, GRADE, step(), DEV)).outcome).toBe('saved');
+  });
+
   it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);

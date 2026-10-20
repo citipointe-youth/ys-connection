@@ -413,6 +413,13 @@ describe('Error log routes (memory, seeded)', () => {
     }
   });
 
+  it('r21 L6b (T9): POST /admin/reconcile/resend is admin only; a row not in the last check is a 400', async () => {
+    const body = { kind: 'checkin', personId: '00000000-0000-4000-8000-000000000001', date: '2026-10-20' };
+    expect((await call('POST', '/admin/reconcile/resend', undefined, body)).status).toBe(401);
+    expect((await call('POST', '/admin/reconcile/resend', tokens['grade7'], body)).status).toBe(403);
+    expect((await call('POST', '/admin/reconcile/resend', tokens['admin'], body)).status).toBe(400);
+  });
+
   it('a grade login may report but not read, flag or delete', async () => {
     expect((await call('POST', '/admin/errors/client', tokens['grade7'], { kind: 'js', code: 'TypeError', route: 'line 1:1' })).status).toBe(200);
     for (const [m, p] of [['GET', '/admin/errors'], ['DELETE', '/admin/errors'], ['PATCH', '/admin/errors/x'], ['DELETE', '/admin/errors/x']] as const) {
