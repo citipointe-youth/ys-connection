@@ -289,13 +289,16 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     expect(h.oc(await h.one(DIRECTOR, link))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, { ...link, payload: { subId: sub } }))).toBe('VALIDATION_ERROR');
     expect(h.oc(await h.one(ADMIN, link))).toBe('saved');
-    expect(h.oc(await h.one(ADMIN, { ...link, id: nid(), payload: { subId: sub, personId: null } }))).toBe('duplicate'); // one open per form
+    expect(h.oc(await h.one(ADMIN, { ...link, id: nid() }))).toBe('duplicate'); // one open link per form and person
+    // Rev 15 (L2): a form naming several children links each one, so a second person on the same form is its own request
+    expect(h.oc(await h.one(ADMIN, { ...link, id: nid(), payload: { subId: sub, personId: u(803) } }))).toBe('saved');
     const got = (await h.claim()).rows.find((r) => r.id === link.id)!;
     expect(got.type).toBe('consentLink');
     expect(got.payload).toEqual({ subId: sub, personId: P_OK });
     await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: link.id, outcome: 'planned' }] });
     const un = { ...link, id: nid(), payload: { subId: sub, personId: null } };
-    expect(h.oc(await h.one(ADMIN, un))).toBe('saved'); // closed, so unlinking is a new request
+    expect(h.oc(await h.one(ADMIN, un))).toBe('saved'); // unlinking is its own request
+    expect(h.oc(await h.one(ADMIN, { ...un, id: nid() }))).toBe('duplicate'); // one open unlink per form
     const p = JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-unlinked.json'), 'utf8')), id = p.requestId as string;
     await h.one(ADMIN, { ...lookup(id, null), payload: { kind: 'unlinked', page: 1, ref: id } });
     await h.claim();

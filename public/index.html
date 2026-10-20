@@ -14153,13 +14153,119 @@ function _ikClText(a, st) {
 function _ikClRow(f, i, grey, st) {
   const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
-  const act = open ? '' : !_ikClCap(st) ? '<div class="lk-d">Console needs an update</div>'
+  const multi = _ikClCap(st) ? _ikClMulti(f) : null; // L2: a form naming several children
+  const act = open ? '' : !_ikClCap(st) ? '<div class="lk-d">Console needs an update</div>' : multi ? _ikClMultiAct(multi, i)
     : now ? '<div class="lk-st ok">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
     : '<div class="rc-foot"><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
   return '<div class="li lk-row rc' + grey + '"><div class="rc-top"><div class="lk-nm">' + esc(_ikFormName(f.name)) + '</div>' + _ikFormRowEnd(f) + '</div><div class="lk-d">' + esc(meta) + '</div>'
     + ((f.names || []).length ? '<div class="lk-d">' + esc('Parent: ' + f.names.map((x) => tidyName(x)).join(', ')) + '</div>' : '')
     + _ikFormLines(f).map((t) => '<div class="ik-ict">' + esc(t) + '</div>').join('')
+    + (multi ? _ikClMultiLines(multi, st) : '')
     + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + '</div>';
+}
+// ── L2 (round 2026-10-21): a form naming several children ("Luke, Daniel & Claire Seo") ──
+// Operator ruling: suggest, one tap. The form's typed student name (formName, LINK_REV 15) splits on "," "&" "and" (whole word,
+// any case). A part of one word borrows the surname of the last part; a part with its own surname keeps it. -> the full names,
+// or null for one name (that form works exactly as before). ponytail: at most 6 names (one Link all = one /link/batch of 20).
+function _ikClSplit(raw) {
+  const parts = String(raw || '').replace(/\s+/g, ' ').trim().split(/\s*(?:,|&|(?<!\p{L})and(?!\p{L}))\s*/iu).map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const last = parts[parts.length - 1].split(' '), sur = last.length > 1 ? last.slice(1).join(' ') : '';
+  return parts.slice(0, 6).map((p) => (p.includes(' ') || !sur ? p : p + ' ' + sur));
+}
+// Each name against the consents person list (the Find person list): exactly one person with that full name = a suggestion
+// (personId); none or 2+ = pick (n says which). Case, accents, spaces and spaced hyphens are ignored; nothing else is guessed.
+function _ikClSuggest(names, roster) {
+  const k = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+  return names.map((name) => {
+    const hits = (roster || []).filter((r) => k(r.name) === k(name));
+    return { name, n: hits.length, personId: hits.length === 1 ? hits[0].personId : null, who: hits.length === 1 ? hits[0].name : '' };
+  });
+}
+// The consents person list, loaded once in the background for the suggestions (a failed load is not retried here; Find person retries).
+function _ikClRoster() {
+  if (LINK.cyouth || LINK.cyouthAsk || LINK.cyouthErr) return LINK.cyouth || null;
+  LINK.cyouthAsk = API.fresh('/link/youth?scope=consents', true)
+    .then((r) => { LINK.cyouth = (r && r.rows) || []; LINK.cyouthErr = null; }, (e) => { LINK.cyouthErr = (e && e.message) || 'Could not load the list of people.'; })
+    .then(() => { LINK.cyouthAsk = null; _ikDraw(); });
+  return null;
+}
+// A multi-name form now: { f, names: [{ name, n, personId, who, fx }], ids (linked now), roster }, or null (one name).
+// ids = the console's people (unless this phone just unlinked the form) + this phone's sent links (fixes 'cn:<sub>:<person>').
+function _ikClMulti(f) {
+  const parts = _ikClSplit(f.formName);
+  if (!parts) return null;
+  const I = _ik(), roster = _ikClRoster(), pre = 'cn:' + f.subId + ':', un = I.fixes['cn:' + f.subId];
+  let ids = un && un.status === 'sent' && un.to === null ? [] : f.linkedIds || (f.linked ? [f.linked.personId] : []);
+  for (const [key, a] of Object.entries(I.fixes)) if (key.startsWith(pre) && a.status === 'sent') ids = ids.concat(key.slice(pre.length));
+  ids = [...new Set(ids)];
+  const names = roster ? _ikClSuggest(parts, roster).map((s) => ({ ...s, fx: s.personId ? I.fixes[pre + s.personId] || null : null }))
+    : parts.map((name) => ({ name, n: null, personId: null, who: '', fx: null }));
+  return { f, names, ids, roster };
+}
+function _ikClBusy(fx) { return !!fx && ['asking', 'pending', 'claimed'].includes(fx.status); }
+// The names still to link with one tap: one match each, not linked, not on the way.
+function _ikClToLink(m) { return m.names.filter((s) => s.personId && !m.ids.includes(s.personId) && !_ikClBusy(s.fx)); }
+// Who a multi-name form is linked to now, in words (the console's own list when a name is not in the person list).
+function _ikClWho(m) {
+  const named = m.ids.map((id) => ((m.roster || []).find((r) => r.personId === id) || {}).name || '');
+  return named.every(Boolean) ? _ikAnd(named) : (m.f.linked && m.f.linked.name) || m.ids.length + ' people';
+}
+function _ikClMultiLines(m, st) {
+  const lines = m.names.map((s) => {
+    const t = s.personId && m.ids.includes(s.personId) ? 'linked' : s.fx && s.fx.status !== 'sent' ? (_ikClText(s.fx, st) || ['', ''])[1]
+      : m.roster === null ? 'checking…' : s.personId ? 'found ' + s.who : s.n ? 'pick: ' + s.n + ' people have this name' : 'pick: nobody has this name';
+    return '<div class="lk-d">' + esc(s.name + ': ' + t) + '</div>';
+  });
+  return '<div class="lk-d">Names on this form:</div>' + lines.join('') + (m.ids.length ? '<div class="lk-st ok">' + esc('Linked to ' + _ikClWho(m) + ' (not in Elvanto)') + '</div>' : '');
+}
+function _ikClMultiAct(m, i) {
+  const n = _ikClToLink(m).length;
+  return '<div class="rc-foot">' + (n ? '<button type="button" class="btn btn-primary btn-sm" onclick="_ikClAllOpen(' + i + ')">' + esc('Link all (' + n + ')') + '</button>' : '')
+    + '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button>'
+    + (m.ids.length ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button>' : '') + '</div>';
+}
+// Link all: one confirm, then one consentLink per suggested person (one /link/batch). Nothing links without this tap.
+function _ikClAllOpen(i) {
+  const I = _ik(), x = _ikLk('unlinked'), f = x.res && (x.res.rows || [])[i], m = f && _ikClMulti(f), go = m ? _ikClToLink(m) : [];
+  if (!go.length) return;
+  const dnc = !!f.contactOptOut || String(f.total || '') !== '', who = _ikAnd(go.map((s) => s.who));
+  I.clAll = { sub: f.subId, to: go.map((s) => ({ personId: s.personId, name: s.who })) };
+  modal('<div class="mo-title">' + esc('Link this form to ' + go.length + ' people?') + '</div>'
+    + go.map((s) => '<div class="ik-step"><span class="ik-dot"></span><span>' + esc(s.who) + '</span></div>').join('')
+    + '<p class="lk-sub">' + esc('Form: ' + _ikFormName(f.name) + (f.submitted ? ', filled in ' + _lkDay(f.submitted) : '')) + '</p>'
+    + (dnc ? '<div class="ik-step ik-chg-dnc" role="alert">' + esc('This form says do not contact. After this, ' + who + ' are DO NOT CONTACT and leaders lose their numbers.') + '</div>' : '')
+    + '<p class="lk-sub lk-mt">Only the console remembers these links. Nothing is changed in Elvanto, and you can unlink them later.</p>'
+    + '<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikClAllGo()">Link all</button></div>');
+}
+async function _ikClAllGo() {
+  const I = _ik(), p = I.clAll;
+  closeModal();
+  I.clAll = null;
+  if (!p) return;
+  if (I.fixes['cn:' + p.sub] && I.fixes['cn:' + p.sub].status === 'sent') delete I.fixes['cn:' + p.sub]; // a done unlink: these links come after it
+  const go = p.to.map((to) => {
+    const key = 'cn:' + p.sub + ':' + to.personId, was = I.fixes[key];
+    const id = was && was.status === 'failed' && was.noAns ? was.id : _lkUuid(); // C-B9: an unanswered try reuses its id (replay)
+    I.fixes[key] = { id, status: 'asking', since: Date.now(), to };
+    return { key, id, to };
+  });
+  _ikDraw();
+  try {
+    const res = await _ikPost(go.map((g) => ({ kind: 'action', id: g.id, type: 'consentLink', payload: { subId: p.sub, personId: g.to.personId }, note: null, leaderId: null })));
+    if (_ik() !== I) return;
+    for (const g of go) {
+      const r = _ikOutcome(res, g.id);
+      I.fixes[g.key] = r && (r.outcome === 'saved' || r.outcome === 'replay') ? { id: g.id, status: 'pending', since: Date.now(), to: g.to }
+        : r && r.outcome === 'duplicate' && r.existingId ? { id: r.existingId, status: (r.action && r.action.status) || 'pending', since: Date.now(), to: g.to }
+        : { id: g.id, status: 'failed', detail: (r && r.message) || 'Not saved. Try again.' };
+    }
+  } catch (e) {
+    if (_ik() !== I) return;
+    const noAns = !e || !e.status || e.status >= 500;
+    for (const g of go) I.fixes[g.key] = { id: g.id, status: 'failed', detail: noAns ? 'Not sent yet. It goes again by itself.' : e.message || 'Not saved. Try again.', noAns, to: g.to };
+  }
+  _ikDraw(); _ikFixPoll();
 }
 // Find person: the same name search as Add student (youth roster, any word order), here for the admin's whole roster.
 async function _ikClOpen(i) {
@@ -14192,7 +14298,8 @@ function _ikClDraw() {
 function _ikClPick(k) {
   const I = _ik(), p = I.clp, r = p && p.list[k], f = p && _ikLk('unlinked').res && _ikLk('unlinked').res.rows[p.i];
   if (!r || !f) return;
-  I.clPick = { sub: f.subId, to: { personId: r.personId, name: r.name }, dnc: !!f.contactOptOut || String(f.total || '') !== '' };
+  I.clPick = { sub: f.subId, to: { personId: r.personId, name: r.name }, dnc: !!f.contactOptOut || String(f.total || '') !== '',
+    ...(_ikClSplit(f.formName) ? { key: 'cn:' + f.subId + ':' + r.personId } : {}) }; // L2: on a multi-name form this person is added
   modal('<div class="mo-title">' + esc('Link this form to ' + r.name + '?') + '</div>'
     + '<div class="ik-step"><span class="ik-dot"></span><span>' + esc('Form: ' + _ikFormName(f.name) + (f.submitted ? ', filled in ' + _lkDay(f.submitted) : '')) + '</span></div>'
     + (I.clPick.dnc ? '<div class="ik-step ik-chg-dnc" role="alert">' + esc('This form says do not contact. After this, ' + r.name + ' is DO NOT CONTACT and leaders lose their number.') + '</div>' : '')
@@ -14200,7 +14307,8 @@ function _ikClPick(k) {
     + '<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikClGo()">Link</button></div>');
 }
 function _ikClUnlink(i) {
-  const I = _ik(), f = (_ikLk('unlinked').res || {}).rows && _ikLk('unlinked').res.rows[i], now = f && _ikClNow(f);
+  const I = _ik(), f = (_ikLk('unlinked').res || {}).rows && _ikLk('unlinked').res.rows[i], m = f && _ikClMulti(f);
+  const now = m ? (m.ids.length ? { name: _ikClWho(m) } : null) : f && _ikClNow(f); // L2: one Unlink undoes every link
   if (!f || !now) return;
   I.clPick = { sub: f.subId, to: null, dnc: false };
   modal('<div class="mo-title">' + esc('Unlink this form from ' + now.name + '?') + '</div>'
@@ -14213,7 +14321,8 @@ async function _ikClGo() {
   I.clPick = null;
   if (!p) return;
   // C-B9: a try that got no answer may have landed (or is kept by _ikPost): the same link again reuses its id (replay).
-  const key = 'cn:' + p.sub, was = I.fixes[key], pid = (v) => (v ? v.personId : null);
+  const key = p.key || 'cn:' + p.sub, was = I.fixes[key], pid = (v) => (v ? v.personId : null);
+  for (const k of Object.keys(I.fixes)) if (!p.to ? k.startsWith('cn:' + p.sub + ':') : p.key && k === 'cn:' + p.sub && I.fixes[k].status === 'sent') delete I.fixes[k]; // L2
   const id = was && was.status === 'failed' && was.noAns && pid(was.to) === pid(p.to) ? was.id : _lkUuid();
   I.fixes[key] = { id, status: 'asking', since: Date.now(), to: p.to };
   _ikDraw();

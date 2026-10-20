@@ -90,6 +90,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-flows-rev13.json': C.PUSH_SCHEMAS.flows,
   // Rev 14 (multi-location X1, 2026-10-20)
   'claim-response-rev14.json': C.ClaimResponse,
+  // Rev 15 (round 2026-10-21 L2, multi-name forms)
+  'push-consent-lookup-unlinked-rev15.json': C.PUSH_SCHEMAS.consentLookup,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -180,7 +182,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(14); // 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(15); // 2026-10-21 L2: rev 15 = unlinked formName + linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -433,11 +435,22 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     expect(C.ClaimResponse.parse(load('claim-response-rev14.json')).site).toEqual({ timeZone: 'Australia/Brisbane', serviceDay: 5,
       consentCutoff: '09:00', peopleFlowPrefix: 'Brisbane - Youth - New People', consentFlowPrefix: 'Brisbane - Youth - Parent Consent' });
     expect(C.ClaimResponse.parse(load('claim-response-rev9.json')).site).toBeUndefined(); // an older reply still parses
-    expect(C.LINK_REV).toBe(14);
+    expect(C.LINK_REV).toBeGreaterThanOrEqual(14);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     for (const [k, v] of [['serviceDay', 7], ['serviceDay', 1.5], ['consentCutoff', '9:00'], ['timeZone', 5], ['peopleFlowPrefix', null]] as const) {
       const bad = clone(load('claim-response-rev14.json')); bad.site[k] = v; rejects(C.ClaimResponse, bad);
     }
+  });
+  it('rev 15 (L2): an unlinked row may carry formName and linkedIds (2-10 uuids); both optional; MIN_CONSOLE_REV stays 12', () => {
+    const p = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-unlinked-rev15.json')) as any;
+    expect(p.rows.map((r: any) => r.formName)).toEqual(['Luke, Daniel & Claire Seo', 'Casey Test']);
+    expect(p.rows[1].linkedIds).toHaveLength(2);
+    const old = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-unlinked.json')) as any; // an older push still parses
+    expect(old.rows.every((r: any) => r.formName === undefined && r.linkedIds === undefined)).toBe(true);
+    expect(C.LINK_REV).toBe(15);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    for (const v of [[], ['x', 'y'], ['9e000000-0000-4000-8000-000000000003']]) { const bad = clone(load('push-consent-lookup-unlinked-rev15.json')); bad.rows[1].linkedIds = v; rejects(C.PUSH_SCHEMAS.consentLookup, bad); }
+    const bad = clone(load('push-consent-lookup-unlinked-rev15.json')); bad.rows[0].formName = 5; rejects(C.PUSH_SCHEMAS.consentLookup, bad);
   });
   it('0039: adds only link_flow_people.service_visits, additive', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0039_link_flow_service_visits.sql'), 'utf8');

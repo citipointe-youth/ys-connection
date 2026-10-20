@@ -12,8 +12,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // console lost (its 15 s timeout while the app committed the lease) never strands rows for the 600 s lease.
 // Rev 13 (Service Visits): a flows row may carry serviceVisits; MIN_CONSOLE_REV stays 12 so a rev-12 console still works.
 // Rev 14 (multi-location): claim reply may carry site
+// Rev 15 (round 2026-10-21 L2, multi-name forms): an unlinked consent row may carry formName and linkedIds; a consentLink
+// ADDS its person to the form (null unlinks them all). MIN_CONSOLE_REV stays 12.
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
-export const LINK_REV = 14;
+export const LINK_REV = 15;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -124,6 +126,7 @@ export const PAYLOAD_SCHEMAS = {
   // Rev 6 (R2 c): make the profile's consent fields match this (newest approved) consent form. The form always wins.
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
   // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
+  // Rev 15 (L2): a link ADDS that person (a form may name several children); null unlinks every person.
   consentLink: z.object({ subId: Uuid, personId: Uuid.nullable() }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
@@ -280,7 +283,10 @@ export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: 
   linked: z.boolean().optional() }).strict(); // linked: rev 7 (C-1, F-36)
 // Run 2026-10-15b (L6): a consent form with no person in Elvanto, or one the console linked (linked = that person).
 export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend({ names: z.array(Cut(80)).max(4),
-  linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable() }).strict();
+  linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable(),
+  // Rev 15 (L2): formName = the form's own first + last name fields ("Luke, Daniel & Claire Seo"); linkedIds = every linked
+  // person when the console linked 2+ (linked then names the first and linked.name lists them all).
+  formName: Cut(120).optional(), linkedIds: z.array(Uuid).min(2).max(10).optional() }).strict();
 // Rev 8 (Consents Other): a step-0 student in no pushed consent week. date = the earliest sign a parent was texted (Parent Consent
 // step 1 Complete): a confirmed console send ('console text') or a parent note naming the student ('parent note'); null = none, and
 // why says so. The row itself is never an input to a consent save or check; R8 (rev 10): the same date reaches the app as the
