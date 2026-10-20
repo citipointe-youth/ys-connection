@@ -430,17 +430,27 @@ describe('readLinkSyncToken', () => {
 
 describe('E3: the New People flow by year (no hardcoded 2026)', () => {
   const N = (y: number) => `Brisbane - Youth - New People ${y}`;
+  const BNP = 'Brisbane - Youth - New People'; // Y2a: Brisbane's peopleFlowPrefix (migration 0040)
   it('picks the highest year <= this Brisbane year, else the highest; other names never match', () => {
-    expect(peopleFlowName([N(2026)], '2026-10-19')).toBe(N(2026));
-    expect(peopleFlowName([N(2026), N(2027)], '2026-12-15')).toBe(N(2026)); // 2027 made early: 2026 until the year turns
-    expect(peopleFlowName([N(2026), N(2027)], '2027-01-01')).toBe(N(2027));
-    expect(peopleFlowName([N(2026)], '2027-01-20')).toBe(N(2026)); // January, 2027 not made yet
-    expect(peopleFlowName([N(2027)], '2026-12-15')).toBe(N(2027)); // only a future one: the highest
-    expect(peopleFlowName(['Brisbane - Youth - Parent Consent', 'Follow up'], '2026-10-19')).toBeNull();
+    expect(peopleFlowName([N(2026)], '2026-10-19', BNP)).toBe(N(2026));
+    expect(peopleFlowName([N(2026), N(2027)], '2026-12-15', BNP)).toBe(N(2026)); // 2027 made early: 2026 until the year turns
+    expect(peopleFlowName([N(2026), N(2027)], '2027-01-01', BNP)).toBe(N(2027));
+    expect(peopleFlowName([N(2026)], '2027-01-20', BNP)).toBe(N(2026)); // January, 2027 not made yet
+    expect(peopleFlowName([N(2027)], '2026-12-15', BNP)).toBe(N(2027)); // only a future one: the highest
+    expect(peopleFlowName(['Brisbane - Youth - Parent Consent', 'Follow up'], '2026-10-19', BNP)).toBeNull();
     // prefix like the console: a suffix still matches (never switches the gate off); the exact name wins a same-year tie
-    expect(peopleFlowName(['Brisbane - Youth - New People 2026 (Term 4)'], '2026-10-19')).toBe('Brisbane - Youth - New People 2026 (Term 4)');
-    expect(peopleFlowName(['Brisbane - Youth - New People 2026 old', N(2026)], '2026-10-19')).toBe(N(2026));
-    expect(peopleFlowName(['Brisbane - Youth - New People 20261'], '2026-10-19')).toBeNull();
+    expect(peopleFlowName(['Brisbane - Youth - New People 2026 (Term 4)'], '2026-10-19', BNP)).toBe('Brisbane - Youth - New People 2026 (Term 4)');
+    expect(peopleFlowName(['Brisbane - Youth - New People 2026 old', N(2026)], '2026-10-19', BNP)).toBe(N(2026));
+    expect(peopleFlowName(['Brisbane - Youth - New People 20261'], '2026-10-19', BNP)).toBeNull();
+  });
+  it('Y2a: custom prefix picks the right year; a blank prefix gives null', () => {
+    expect(peopleFlowName(['Logan - Youth - New People 2025', 'Logan - Youth - New People 2026'], '2026-10-20', 'Logan - Youth - New People')).toBe('Logan - Youth - New People 2026');
+    expect(peopleFlowName(['Brisbane - Youth - New People 2026'], '2026-10-20', 'Logan - Youth - New People')).toBeNull();
+    expect(peopleFlowName(['Brisbane - Youth - New People 2026'], '2026-10-20', '')).toBeNull();
+    expect(peopleFlowName(['Brisbane - Youth - New People 2026'], '2026-10-20', '   ')).toBeNull();
+    // regex characters in a location name match literally
+    expect(peopleFlowName(["St. Mark's (North) - Youth - New People 2026"], '2026-10-20', "St. Mark's (North) - Youth - New People")).toBe("St. Mark's (North) - Youth - New People 2026");
+    expect(peopleFlowName(["StX Mark's North - Youth - New People 2026"], '2026-10-20', "St. Mark's (North) - Youth - New People")).toBeNull();
   });
   it('isConsentStep: step 0 of the picked flow only', () => {
     const r = (flowName: string, stepName: string) => ({ flowName, stepName });

@@ -224,3 +224,35 @@ describe('status: Elvanto link token row', () => {
     }
   });
 });
+
+describe('status: New People flow row (Y2a)', () => {
+  const FIX = 'In Youth Setup, check the New People flow name. It must match Elvanto, and the console must be sending flows.';
+  const admin = { id: 'a', role: 'admin' } as any;
+  async function row(prefix: string | null, names: string[], o: { needs?: boolean; flows?: boolean } = {}) {
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    if (prefix !== null) {
+      const cur = await settings.getSettings();
+      await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, elvanto: { ...cur.ministryConfig.elvanto, peopleFlowPrefix: prefix } } } as never);
+    }
+    const { s } = svc(good, { settings, ...(o.flows === false ? {} : { flows: async () => names.map((flowName) => ({ flowName })) }) });
+    if (!o.needs) await s.createFirstAdmin({ code: good.SETUP_CODE, displayName: 'A', password: 'longenough' });
+    const r = await s.status(o.needs ? null : admin, 'https://church.vercel.app');
+    return { r, peopleFlow: byId(r.checks, 'peopleFlow') };
+  }
+  it('fix when the prefix is blank or no pushed flow matches', async () => {
+    expect((await row('', ['Brisbane - Youth - New People 2026'])).peopleFlow).toEqual({ id: 'peopleFlow', label: 'New People flow', state: 'fix', fix: FIX });
+    expect((await row(null, ['Brisbane - Youth - New People 2026'])).peopleFlow).toMatchObject({ state: 'fix', fix: FIX });
+    expect((await row('Logan - Youth - New People', ['Brisbane - Youth - New People 2026'])).peopleFlow).toMatchObject({ state: 'fix', fix: FIX });
+    expect((await row('Brisbane - Youth - New People', [])).peopleFlow).toMatchObject({ state: 'fix', fix: FIX });
+  });
+  it('ok with the flow name', async () => {
+    const { r, peopleFlow } = await row('Brisbane - Youth - New People', ['Follow up', 'Brisbane - Youth - New People 2026']);
+    expect(peopleFlow).toEqual({ id: 'peopleFlow', label: 'New People flow: Brisbane - Youth - New People 2026', state: 'ok' });
+    expect(r.checks.map((c) => c.id).slice(-2)).toEqual(['link', 'peopleFlow']);
+  });
+  it('not while the first admin is still to be made (it would block Create your admin), nor without the flows source', async () => {
+    expect((await row('', [], { needs: true })).peopleFlow).toBeUndefined();
+    expect((await row('', [], { flows: false })).peopleFlow).toBeUndefined();
+  });
+});

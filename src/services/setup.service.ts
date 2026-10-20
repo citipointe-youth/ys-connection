@@ -11,6 +11,7 @@ import { isEncryptionKeyValid } from '../utils/field-crypto';
 import { LATEST_MIGRATION } from '../core/schema-version';
 import { googleConfigStatus, googleStatusText } from './routing/google-config';
 import { readLinkSyncToken } from '../config/env';
+import { peopleFlowName, brisbaneToday } from './link-rules';
 import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from '../core/errors/app-error';
 
 export interface SetupCheck {
@@ -43,6 +44,8 @@ export function makeSetupService(deps: {
   sessionSecretOk?: () => boolean;
   /** Optional: when given, a new install starts with Simple (Junior/Senior) logins on. */
   settings?: ISettingsRepository;
+  /** Y2a: the pushed flow rows (link mirror); with `settings`, adds the "New People flow" row once an admin exists. */
+  flows?: () => Promise<{ flowName: string }[]>;
 }): SetupService {
   const { users, auth, env } = deps;
   const secretOk = deps.sessionSecretOk ?? (() => sessionSecretConfigured(env));
@@ -98,6 +101,14 @@ export function makeSetupService(deps: {
       const linkBlank = (env['LINK_SYNC_TOKEN'] ?? '').trim() === '';
       checks.push({ id: 'link', state: 'optional',
         label: `Elvanto link token: ${linkSet ? 'set' : linkBlank ? 'not set' : 'too short (32+ characters)'}` });
+      // Y2a: step-0 Complete refuses while this is unknown. Not on the first-admin page (no flows yet; it would block the create).
+      if (!needs && deps.settings && deps.flows) {
+        const mc = (await deps.settings.getSettings()).ministryConfig;
+        const name = peopleFlowName((await deps.flows()).map((f) => f.flowName), brisbaneToday(new Date(), mc.structure.timeZone),
+          mc.elvanto?.peopleFlowPrefix ?? '');
+        checks.push(name ? ok('peopleFlow', `New People flow: ${name}`) : fix('peopleFlow', 'New People flow',
+          'In Youth Setup, check the New People flow name. It must match Elvanto, and the console must be sending flows.'));
+      }
       return { needsAdmin: needs, checks };
     },
 
