@@ -1,13 +1,16 @@
 // Reconciliation after each groups import (spec 2026-10-17 §5). Reports only: never writes to Elvanto. Writes roster matches
 // (approved), error_log rows (category reconcile, setCount; 0 deletes) and one reconcile_runs row (ids only). Never throws.
 import { randomUUID } from 'node:crypto';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { createLogger } from '../utils/logger';
-import { addDays, brisbaneToday } from './link-rules';
+import { addDays, brisbaneToday, dedupeKey } from './link-rules';
 import { checkCheckins, checkLifegroups, checkMembers, checkUnmatched } from './reconcile-rules';
 import { parseBody, rematchRoster } from './sync.service';
 import { toView } from './error-log.service';
-import { LINK_CONTRACT_VERSION, ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
+import { LINK_CONTRACT_VERSION, PAYLOAD_SCHEMAS, ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
+import { BadRequestError } from '../core/errors';
+import { LinkUnavailable } from '../core/errors/link-errors';
+import type { ActionType, OutboxRow } from '../core/link-types';
 import { nameKey } from './name-key';
 import { assertCan } from './access-control';
 import type { Actor } from '../core/entities/user';
@@ -21,7 +24,7 @@ import type { CheckState, IReconcileRunRepository, ReconcileChecks, ReconcileIte
 const log = createLogger('reconcile');
 
 export interface ReconcileDeps {
-  link: Pick<ILinkRepository, 'roster' | 'setMatches' | 'listActions'>; students: IStudentRepository;
+  link: Pick<ILinkRepository, 'roster' | 'setMatches' | 'listActions' | 'insertAction' | 'groups' | 'listConsoles'>; students: IStudentRepository;
   lifegroups: Pick<ILifegroupRepository, 'findAll' | 'findRoll'>; lifegroupWeeks: Pick<ILifegroupWeekRepository, 'findAll'>;
   lifegroupAttendance: Pick<ILifegroupAttendanceRepository, 'findAll'>; serviceSessions: Pick<IServiceSessionRepository, 'findAll'>;
   serviceAttendance: Pick<IServiceAttendanceRepository, 'findBySession'>; imports: Pick<IImportRepository, 'findByType'>;
@@ -31,10 +34,20 @@ export interface ReconcileDeps {
 export type ReconcileLatest = z.infer<typeof ReconcileLatestResponse>;
 /** Names for the admin Who? view. Resolved at read time only: error_log and reconcile_runs hold ids. */
 export interface WhoLatest { ranAt: string | null; ok: boolean | null;
-  checkins: { name: string; date: string }[]; unmatched: { name: string; grade: number | null }[];
-  lifegroups: { group: string; date: string; missing: string[] }[]; members: { group: string; name: string; op: 'add' | 'remove' }[];
+  checkins: { name: string; date: string; personId: string }[]; unmatched: { name: string; grade: number | null }[];
+  lifegroups: { group: string; date: string; missing: string[]; groupId: string }[];
+  members: { group: string; name: string; op: 'add' | 'remove'; groupId: string; personId: string }[];
   noId: string[] }
-export interface ReconcileService { rematch(): Promise<void>; run(): Promise<void>; latest(body: unknown): Promise<ReconcileLatest>; whoLatest(actor: Actor): Promise<WhoLatest> }
+export interface ReconcileService { rematch(): Promise<void>; run(): Promise<void>; latest(body: unknown): Promise<ReconcileLatest>; whoLatest(actor: Actor): Promise<WhoLatest>;
+  resend(actor: Actor, body: unknown): Promise<{ ok: true; type: ActionType }> }
+
+// r21 L6b (T9): one Who? row's "Send again" (ids of an item in the latest run).
+const Id = z.string().uuid(), Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const ResendBody = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('checkin'), personId: Id, date: Day }),
+  z.object({ kind: z.literal('lifegroup'), groupId: Id, date: Day }),
+  z.object({ kind: z.literal('member'), groupId: Id, personId: Id, op: z.enum(['add', 'remove']) }),
+]);
 
 type CheckName = keyof ReconcileChecks;
 const CODE: Record<CheckName, string> = { checkins: 'recon-checkins', unmatched: 'recon-unmatched', lifegroups: 'recon-lifegroups', members: 'recon-members' };
@@ -154,12 +167,69 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
     const byLg = new Map(lgs.map((g) => [g.id, g.fullName]));
     const grp = (id: string) => byGroup.get(id) ?? '(group not in the last import)';
     return { ranAt: run.ranAt, ok: run.ok,
-      checkins: run.items.checkins.map((x) => ({ name: nm(x.personId), date: x.date })),
+      checkins: run.items.checkins.map((x) => ({ name: nm(x.personId), date: x.date, personId: x.personId })),
       unmatched: run.items.unmatched.map((id) => ({ name: nm(id), grade: person.get(id)?.grade ?? null })),
-      lifegroups: run.items.lifegroups.map((x) => ({ group: grp(x.groupId), date: x.date, missing: x.personIds.map(nm) })),
-      members: run.items.members.map((x) => ({ group: grp(x.groupId), name: nm(x.personId), op: x.op })),
+      lifegroups: run.items.lifegroups.map((x) => ({ group: grp(x.groupId), date: x.date, missing: x.personIds.map(nm), groupId: x.groupId })),
+      members: run.items.members.map((x) => ({ group: grp(x.groupId), name: nm(x.personId), op: x.op, groupId: x.groupId, personId: x.personId })),
       noId: run.items.noId.map((id) => byLg.get(id) ?? '(gone)') };
   }
 
-  return { rematch, run, latest, whoLatest };
+  /**
+   * r21 L6b (T9): queue the item's newest sent row again, same type, as a new outbox row (no note: notes are never read back).
+   * No double write: the console reads Elvanto first (checked in / already in or out of the group -> `already`, nothing sent);
+   * a report Elvanto has goes as an editReport whose base is the groups mirror (Elvanto's state), so a changed report is refused.
+   */
+  async function resend(actor: Actor, body: unknown): Promise<{ ok: true; type: ActionType }> {
+    assertCan(actor, 'admin:manage');
+    const parsed = ResendBody.safeParse(body);
+    if (!parsed.success) throw new BadRequestError('Pick a row to send again.');
+    const b = parsed.data;
+    const run = await d.runs.latest();
+    const inRun = !!run && (b.kind === 'checkin' ? run.items.checkins.some((x) => x.personId === b.personId && x.date === b.date)
+      : b.kind === 'lifegroup' ? run.items.lifegroups.some((x) => x.groupId === b.groupId && x.date === b.date)
+      : run.items.members.some((x) => x.groupId === b.groupId && x.personId === b.personId && x.op === b.op));
+    if (!inRun) throw new BadRequestError('This row is not in the last check. Reload.');
+    const pay = (r: OutboxRow) => r.payload as Record<string, unknown>;
+    const byResult = (a: OutboxRow, c: OutboxRow) => (c.resultAt ?? '').localeCompare(a.resultAt ?? '');
+    let src: OutboxRow | undefined; let type: ActionType; let payload: Record<string, unknown>;
+    if (b.kind === 'checkin') {
+      src = (await d.link.listActions({ types: ['checkIn'], statuses: ['sent'], personId: b.personId, serviceDateFrom: b.date, serviceDateTo: b.date }))
+        .filter((r) => r.type === 'checkIn' && r.status === 'sent' && r.personId === b.personId && r.serviceDate === b.date).sort(byResult)[0];
+      type = 'checkIn'; payload = src ? pay(src) : {};
+    } else if (b.kind === 'member') {
+      const t: ActionType = b.op === 'add' ? 'addGroupMember' : 'removeGroupMember';
+      type = t;
+      src = (await d.link.listActions({ types: [t], statuses: ['sent'], groupId: b.groupId }))
+        .filter((r) => r.type === t && r.status === 'sent' && pay(r)['groupId'] === b.groupId && pay(r)['personId'] === b.personId).sort(byResult)[0];
+      payload = src ? pay(src) : {};
+    } else {
+      src = (await d.link.listActions({ types: ['submitReport', 'editReport'], statuses: ['sent'], groupId: b.groupId }))
+        .filter((r) => (r.type === 'submitReport' || r.type === 'editReport') && r.status === 'sent' && pay(r)['groupId'] === b.groupId && pay(r)['date'] === b.date)
+        .sort(byResult)[0];
+      const g = (await d.link.groups()).find((x) => x.groupId === b.groupId);
+      if (src && !g) throw new BadRequestError("This group isn't in the app's list now. Reload.");
+      const p = src ? pay(src) : {};
+      const rid = src?.type === 'editReport' ? p['reportId'] : src?.reportId;
+      const reps = g ? [g.lastReport, ...g.history].filter((x): x is NonNullable<typeof x> => !!x) : [];
+      const have = reps.find((x) => x.reportId === rid) ?? reps.find((x) => x.date === b.date);
+      const fields = { groupId: p['groupId'], date: p['date'], didNotMeet: p['didNotMeet'], attendees: p['attendees'], guests: p['guests'],
+        notesPrivate: p['notesPrivate'], serviceTimeId: p['serviceTimeId'] };
+      if (src && have && !have.editable) throw new BadRequestError('Edit this report in Elvanto.');
+      type = have ? 'editReport' : 'submitReport';
+      payload = have ? { ...fields, reportId: have.reportId, base: { date: have.date, didNotMeet: have.didNotMeet, attendees: have.attendees,
+        guests: have.guests, serviceTimeId: have.serviceTimeId } } : fields;
+    }
+    if (!src) throw new BadRequestError('The app has no sent copy of this to send again.');
+    const ok = PAYLOAD_SCHEMAS[type].safeParse(payload);
+    if (!ok.success) throw new BadRequestError("This can't be sent again from here. Do it in Elvanto.");
+    const con = [...(await d.link.listConsoles())].sort((a, c) => c.lastSeenAt.localeCompare(a.lastSeenAt))[0];
+    if (con && (con.capabilities[type] ?? 'off') === 'off') throw new LinkUnavailable();
+    const data = ok.data as Record<string, unknown>;
+    // ponytail: no link_log line (the row's createdBy is the admin); add one if the activity log must list resends.
+    await d.link.insertAction({ id: randomUUID(), type, payload: data, note: null, dedupeKey: dedupeKey(type, data),
+      serviceDate: src.serviceDate, studentId: src.studentId, personId: src.personId, createdBy: actor.id, leaderId: src.leaderId, leaderName: src.leaderName });
+    return { ok: true, type };
+  }
+
+  return { rematch, run, latest, whoLatest, resend };
 }

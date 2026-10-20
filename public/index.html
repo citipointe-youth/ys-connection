@@ -6789,11 +6789,12 @@ async function elWho(code) {
   let d;
   try { d = await API.fresh('/admin/reconcile/latest'); } catch (e) { toast(e.message); return; }
   const li = (s) => `<li>${s}</li>`;
+  _elRs = [];
   const sec = {
-    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}`))],
+    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}${_elRsBtn({ kind: 'checkin', personId: x.personId, date: x.date })}`))],
     'recon-unmatched': ['Roster students with no YS record', d.unmatched.map((x) => li(`${esc(x.name)}${x.grade != null ? `, Grade ${esc(String(x.grade))}` : ''}`))],
-    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}`))],
-    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}`))],
+    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}${_elRsBtn({ kind: 'lifegroup', groupId: x.groupId, date: x.date })}`))],
+    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}${_elRsBtn({ kind: 'member', groupId: x.groupId, personId: x.personId, op: x.op })}`))],
     'recon-lifegroup-noid': ['Lifegroups with no Elvanto group id', d.noId.map((g) => li(esc(g)))],
   }[code];
   if (!sec) return;
@@ -6801,6 +6802,22 @@ async function elWho(code) {
   modal(`<h3>${esc(sec[0])}</h3><p class="help">${when}</p>${sec[1].length ? `<ul>${sec[1].join('')}</ul>` : '<p>Nobody now.</p>'}`);
 }
 // end elWho
+// r21 L6b (T9): Send again queues the app's own change once more (the console checks Elvanto first, so nothing is sent twice).
+let _elRs = [];
+function _elRsBtn(body) {
+  const i = _elRs.push(body) - 1;
+  return ` <button type="button" class="btn btn-secondary btn-sm" id="el-rs-${i}" onclick="elResend(${i})">Send again</button>`;
+}
+async function elResend(i) {
+  const btn = document.getElementById('el-rs-' + i);
+  if (!btn || btn.disabled) return;
+  if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Send to Elvanto?'; return; }
+  btn.disabled = true;
+  try { await API.post('/admin/reconcile/resend', _elRs[i]); } catch (e) { btn.disabled = false; btn.dataset.armed = ''; btn.textContent = 'Send again'; toast(e.message); return; }
+  btn.textContent = 'Queued';
+  toast('Queued. The console sends it soon.');
+}
+// end elResend
 function elToggle(id) { _elOpen = _elOpen === id ? '' : id; _elPaint(); }
 function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
 async function elFlag(id, flags) {
