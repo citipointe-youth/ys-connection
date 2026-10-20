@@ -1985,13 +1985,25 @@ describe('F4.2 admin page', () => {
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Elvanto: Olivia AC');
     expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
-    expect(out).toContain('No YS student with this surname.');
+    expect(out).toContain('No unmatched YS student has a name like this.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';
     const m = strip(h.fns._lkAdmMatchHtml());
     expect(m.indexOf('Matched by hand')).toBeLessThan(m.indexOf('Hand Made'));
     expect(m.indexOf('Marked Not in YS')).toBeLessThan(m.indexOf('Not Ours'));
     expect(m.indexOf('Hand Made')).toBeLessThan(m.indexOf('Marked Not in YS'));
+  });
+  it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(420), name: 'Kay Bee', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [] },
+      { personId: P(421), name: 'Two Same', grade: 9, kind: 'student', match: 'ambiguous', studentId: null, candidates: [] },
+    ];
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('In Elvanto, but no YS student has the same name yet.');
+    h.get().LINK.adm.mf = 'ambiguous';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('More than one person has this name. Pick the right one.');
+    h.get().LINK.adm.mf = 'manual';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('Pairs you set by hand');
   });
 });
 

@@ -12374,8 +12374,12 @@ function _lkAdmMatchHtml() {
     const acts = f === 'manual' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
     return `<div class="lk-log-row"><div class="lk-log-top"><b>Elvanto: ${esc(r.name)}</b><span class="lk-d">${esc(yr(r.grade))}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
-      ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No YS student with this surname.</p>')}<div class="lk-acts">${acts}</div></div>`;
+      ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No unmatched YS student has a name like this.</p>')}<div class="lk-acts">${acts}</div></div>`;
   };
+  // Round 2026-10-21 (L3): same names pair up by themselves (autoMatch), so say why someone is still listed. YS students
+  // come only from attendance imports, so a new youth is in Elvanto (and in this list) before they are in YS.
+  const why = { none: 'In Elvanto, but no YS student has the same name yet. Most are new and pair up by themselves after the next attendance import. If one is in YS under another name, match them by hand.',
+    ambiguous: 'More than one person has this name. Pick the right one.', manual: 'Pairs you set by hand, and people marked Not in YS.' }[f];
   let body;
   if (A.rErr) body = `<p class="lk-sub">${esc(A.rErr)}</p>`;
   else if (!A.roster) body = progBar('Loading');
@@ -12389,7 +12393,7 @@ function _lkAdmMatchHtml() {
       body = (hand.length ? `<div class="lk-sec">Matched by hand</div>${list(hand)}` : '') + (out.length ? `<div class="lk-sec">Marked Not in YS</div>${list(out)}` : '');
     }
   }
-  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${body}`;
+  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${why ? `<p class="lk-sub">${why}</p>` : ''}${body}`;
 }
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
