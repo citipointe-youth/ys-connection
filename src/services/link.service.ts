@@ -50,6 +50,7 @@ export const LINK_RATE_WINDOW_MS = 600_000; // … per 10 minutes (container bui
 const LOG_MAX = 2000;
 const logger = createLogger('link');
 const REPORT_BACK_DAYS = 14;
+const REPORT_SUBMIT_DAYS = 56; // T3 (2026-10-21): an app rule only (the console has no limit); the 8 weeks the app's week nav shows
 const FLOW_BACK_DAYS = 7;       // S-1: a refused flow step is shown back for a week
 const TYPE_ONLY_MAX = 100;      // S-1: GET /link/actions?type= alone returns the newest 100
 const CONSOLE_RECENT_MS = 600_000;
@@ -578,9 +579,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!g) throw new BadRequestError('This group is not in the list. Reload.');
       Object.assign(tgt, { kind: 'group', id: g.groupId, name: g.name });
       if (!groupVisible(c.actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
-      // The 14-day window is for a new report only; an edit keeps its own (older) report's date.
-      if (rp.date > c.today || (it.type === 'submitReport' && rp.date < addDays(c.today, -REPORT_BACK_DAYS))) {
-        throw new BadRequestError('The date must be in the last 14 days.');
+      // The 8-week window is for a new report only; an edit keeps its own (older) report's date.
+      if (rp.date > c.today || (it.type === 'submitReport' && rp.date < addDays(c.today, -REPORT_SUBMIT_DAYS))) {
+        throw new BadRequestError('The date must be in the last 8 weeks.');
       }
       const members = new Set(g.members.map((m) => m.personId));
       if (rp.attendees.some((a) => !members.has(a))) throw new BadRequestError('Someone ticked is not in this group. Reload.');

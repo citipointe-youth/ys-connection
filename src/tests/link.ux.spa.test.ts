@@ -95,12 +95,14 @@ describe('T8 week maths (Monday to Sunday, 8 weeks, newest first)', () => {
     expect(f._lkWeekReport({ lastReport: rep('h1', '2026-10-09'), history: [rep('h1', '2026-10-09')] }, w[1]).reportId).toBe('h1');
     expect(f._lkWeekReport({}, w[0])).toBeNull();
   });
-  it('the date to submit for an empty week: the meeting day, clipped to today, and only within 14 days', () => {
+  it('the date to submit for an empty week: the meeting day, clipped to today, and only within 8 weeks (T3, 2026-10-21)', () => {
     const w = f._lkWeeks('2026-10-14'); // Wed 14 Oct
     expect(f._lkReportDateFor('Monday 7:00 pm', w[1], '2026-10-14')).toEqual({ state: 'ok', date: '2026-10-05' });
     expect(f._lkReportDateFor('Mon 6:30 PM', w[0], '2026-10-14')).toEqual({ state: 'ok', date: '2026-10-12' });
     expect(f._lkReportDateFor('Friday', w[0], '2026-10-14')).toEqual({ state: 'later', date: null });
-    expect(f._lkReportDateFor('Monday', w[3], '2026-10-14')).toEqual({ state: 'old', date: null });
+    expect(f._lkReportDateFor('Monday', w[3], '2026-10-14')).toEqual({ state: 'ok', date: '2026-09-21' });
+    expect(f._lkReportDateFor('Monday', w[7], '2026-10-14')).toEqual({ state: 'ok', date: '2026-08-24' }); // the oldest week the app shows
+    expect(f._lkReportDateFor('Monday', { start: '2026-08-17', end: '2026-08-23' }, '2026-10-14')).toEqual({ state: 'old', date: null });
     expect(f._lkReportDateFor('', w[1], '2026-10-14')).toEqual({ state: 'ok', date: '2026-10-11' }); // no day named: the week's last day
   });
   it('RFIX: Tues, Weds, Thur and Thurs name their day, not the last day of the week', () => {

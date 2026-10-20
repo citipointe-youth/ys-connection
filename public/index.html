@@ -10332,7 +10332,7 @@ function _lkStatusText(row, lastSeen) {
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
-    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
+    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Already out of the room.'; // T6 (2026-10-21): nothing to check out
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
@@ -11295,7 +11295,7 @@ function _lkWeekReports(g, w) {
 }
 function _lkWeekReport(g, w) { return _lkWeekReports(g, w)[0] || null; }
 // The date a Submit in an empty week uses: the weekday in `meets` (else the week's last day), never after today, and only
-// within the 14 days the report form accepts. state: ok | later (day still ahead) | old (too old to send from here).
+// within the 8 weeks the report form accepts (T3, 2026-10-21: was 14 days). state: ok | later (day still ahead) | old (too old).
 function _lkReportDateFor(meets, w, today) {
   const m = String(meets || '').toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:s|r|rs|day|sday|nesday|rsday|urday)?\b/);
   let d = w.end;
@@ -11304,7 +11304,7 @@ function _lkReportDateFor(meets, w, today) {
     d = _lkAddDays(w.start, (i + 6) % 7);
     if (d > today) return { state: 'later', date: null };
   } else if (d > today) d = today;
-  return d < _lkAddDays(today, -14) ? { state: 'old', date: null } : { state: 'ok', date: d };
+  return d < _lkAddDays(today, -56) ? { state: 'old', date: null } : { state: 'ok', date: d };
 }
 function _lkGroup() { return (LINK.groups || []).find((g) => g.groupId === LINK.gid) || null; }
 // The group's report action: still on this phone, else this phone's last answer, else the server's open row, else the
@@ -11372,7 +11372,7 @@ function _lkWeekBodyHtml(g, w) {
   }
   const d = _lkReportDateFor(g.meets, w, _lkToday());
   if (d.state === 'later') return '<div class="card"><p class="lk-sub">This group has not met yet this week.</p></div>';
-  if (d.state === 'old') return '<div class="card"><p class="lk-sub">No report for this week. It is too old to send here. Send it in Elvanto.</p></div>';
+  if (d.state === 'old') return '<div class="card"><p class="lk-sub">No report for this week. It is more than 8 weeks ago.</p></div>';
   return `<div class="card"><p class="lk-sub">No report for this week.</p>${_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-primary btn-full" onclick="_lkNewReport('${esc(d.date)}')">${icS('plus')} Submit report</button>`}</div>`;
 }
 // Back and forward over the last 8 weeks (index 0 = this week).
@@ -11403,7 +11403,7 @@ function _lkNoteCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','
 function _lkFormHtml() {
   const f = LINK.rf, g = _lkGroup();
   if (!f || !g) return '';
-  const today = LINK.today || f.date, min = _lkAddDays(today, -14);
+  const today = LINK.today || f.date, min = _lkAddDays(today, -56);
   const last = _lkReportOn(g, f.date);
   const clash = f.mode === 'submit' && !!last; // F-03: the console refuses a second report on a date (report-exists)
   const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
@@ -11422,7 +11422,7 @@ function _lkFormHtml() {
       <div class="fg"><label class="fl">Service</label><select class="fs" onchange="_lkRfSvc(this.value)">
         ${f.svc ? '' : '<option value="" selected>Pick a service</option>'}
         ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
-        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Older services are not listed. Pick No service, or do it in Elvanto.</p>' : ''}</div>`;
+        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Services older than 7 days are not listed. Pick No service.</p>' : ''}</div>`;
   }
   return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
     <div class="fg"><label class="fl">Date</label>${date}</div>
@@ -11566,7 +11566,7 @@ function _lkReportSend() {
   const today = LINK.today || f.date;
   let err = '';
   if (f.mode === 'submit' && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
-  else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -14))) err = 'The date must be in the last 14 days.';
+  else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -56))) err = 'The date must be in the last 8 weeks.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
   const attendees = f.didNotMeet ? [] : (g.members || []).filter((m) => f.ticks[m.personId]).map((m) => m.personId);
@@ -12643,9 +12643,10 @@ const IK_HOLD = {
   'Unreadable date': "Couldn't read when a form was sent. Open it in Elvanto.",
   'Fix the flagged items': 'Fix the answers marked below in the console or Elvanto.',
   'No student form': 'No student form matches this parent form.',
-  'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
-  'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
-  'Unmatched consent form': "This consent form doesn't match any student for this date. Check it in Elvanto.",
+  // T14 (2026-10-21): a form linked on the console counts as that person's, so Tidy up's links settle these.
+  'Two consent forms': "Two consent forms match this student. If one is another student's, link it to them in Tidy up > Forms with no person. If Elvanto linked both, fix it in Elvanto.",
+  'Unsure consent form': "A consent form might be this student's. If it is, link it to them in Tidy up > Forms with no person. If their profile is wrong, use Profiles that differ from form.",
+  'Unmatched consent form': "This consent form doesn't match any student for this date. Link it to the right person in Tidy up > Forms with no person.",
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
   'Possible existing profile': 'Someone with this name may already be in Elvanto. Check before creating a new profile.',
@@ -12677,6 +12678,12 @@ function _ikHoldText(h, d) {
   // Y3b: the night and cut-off come from the settings. The console names its own night and time after the prefix.
   if (t === 'Late consent form') return 'The consent form came in after ' + _serviceDayName() + ' ' + _cutoffWords(true) + ', so it counts for next week.';
   if (t.startsWith('Waiting for replies until')) return 'Parents can still reply until ' + _serviceDayName() + ' ' + _cutoffWords(true) + ", so consent isn't assumed yet. Check again after " + _cutoffWords(true) + '.';
+  if (t === 'Parent mobile needs fixing') { // T12 (2026-10-21): the plan's Set mobile extra fixes it from the parent's form
+    const x = ((d && d.extras) || []).find((s) => s.action === 'setField' && s.field === 'mobile' && s.state !== 'done');
+    return "The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. " + (x
+      ? 'Press Set mobile in Elvanto below to use ' + x.value + ' from their form.'
+      : "The parent's form has no valid 04 number either. Ask the parent for it, then fix it on their profile in Elvanto.");
+  }
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
   return IK_HOLD[t] || t;
 }
