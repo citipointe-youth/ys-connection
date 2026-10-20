@@ -466,7 +466,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         // Rev 13: serviceVisits round-trips (0 stays 0, null stays null)
         const f4 = { ...flow(randomUUID()), serviceVisits: 0 }, f5 = { ...flow(randomUUID()), serviceVisits: 3 };
         await repo.replaceMirror('flows', [f4, f5], { takenAt: '2026-10-16T09:45:00.000Z', consoleId: c });
-        expect((await repo.flows()).map((x) => x.serviceVisits)).toEqual([0, 3]);
+        expect((await repo.flows()).map((x) => x.serviceVisits).sort()).toEqual([0, 3]); // ties broken by random rowId, so order-free
         // B18 / X10: rows: [] is a full replace that means "none now"
         expect(await repo.replaceMirror('flows', [], { takenAt: '2026-10-16T10:00:00.000Z', consoleId: c })).toEqual({ applied: true, rows: 0 });
         expect(await repo.flows()).toEqual([]);
