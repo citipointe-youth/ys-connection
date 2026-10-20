@@ -434,8 +434,8 @@ describe('D2 enqueue', () => {
     const h = await setup();
     const st = async (it: object) => oc(await enq(h.svc, DIRECTOR, it, DEV));
     expect(await st(report({ date: '2026-10-17' }))).toBe('BAD_REQUEST');                   // > today
-    expect(await st(report({ date: '2026-10-01' }))).toBe('BAD_REQUEST');                   // < today − 14
-    expect(await st(report({ date: '2026-10-02' }))).toBe('saved');                   // = today − 14
+    expect(await st(report({ date: '2026-08-20' }))).toBe('BAD_REQUEST');                   // < today − 56 (T3, 2026-10-21)
+    expect(await st(report({ date: '2026-08-21' }))).toBe('saved');                   // = today − 56
     expect(await st(report({ date: '2026-10-03', attendees: [P_BEN] }))).toBe('BAD_REQUEST'); // not a member
     expect(await st(report({ date: '2026-10-04', didNotMeet: true }))).toBe('VALIDATION_ERROR');  // attendees with didNotMeet
     expect(await st(report({ date: '2026-10-05', serviceTimeId: u(998) }))).toBe('BAD_REQUEST');
@@ -1435,7 +1435,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 describe('RFIX (review of the UX batch)', () => {
   const META = (takenAt = '2026-10-16T08:30:00.000Z') => ({ takenAt, consoleId: CONSOLE });
 
-  it('T8: an older week can be edited (the 14-day rule is for submit only); submit still stops at 14 days', async () => {
+  it('T8: an older week can be edited (the submit window is for submit only); submit stops at 8 weeks (T3, 2026-10-21)', async () => {
     const h = await setup();
     const OLD = u(419), NEWER = u(420);
     const oldRep = { reportId: OLD, date: '2026-09-22', time: '18:30', didNotMeet: false, attendees: [P_AMY], guests: 0,
@@ -1446,7 +1446,8 @@ describe('RFIX (review of the UX batch)', () => {
     const oldEdit = edit({ reportId: OLD, date: '2026-09-22', attendees: [P_AMY, P_EVE1], guests: 0,
       base: { date: '2026-09-22', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } });
     expect((await enq(h.svc, DIRECTOR, oldEdit, DEV)).outcome).toBe('saved');
-    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-22' }), DEV)).code).toBe('BAD_REQUEST'); // submit: still 14 days
+    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-08-20' }), DEV)).code).toBe('BAD_REQUEST'); // submit: past 8 weeks
+    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-01' }), DEV)).outcome).toBe('saved'); // 6 weeks back: now allowed
     // a report that is nowhere in the group is still refused
     expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(999) }), DEV)).code).toBe('BAD_REQUEST');
   });

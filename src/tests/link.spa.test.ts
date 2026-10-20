@@ -202,7 +202,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
 describe('A3 / X9 lines by action type', () => {
   const t = makeEnv().fns._lkStatusText;
   it('check-out no-room and flow-step already', () => {
-    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
+    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe('Checked in with no room, so there is nothing to check out.'); // T6 (2026-10-21)
     expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.");
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
@@ -1399,7 +1399,8 @@ describe('F2 lifegroup report', () => {
     expect(h.get().LINK.rf.svc).toBe('none'); // operator 2026-10-17 (reverses F-25): every new report starts on No service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
-    expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');
+    expect(h.fns._lkFormHtml()).toContain('Services older than 7 days are not listed. Pick No service.'); // T3 (2026-10-21)
+    expect(h.fns._lkFormHtml()).not.toContain('do it in Elvanto');
     expect(h.fns._lkFormHtml()).toContain('>No service</option>');
   });
   it('a refusal from the batch shows on the group; a pending answer offers Cancel', async () => {
