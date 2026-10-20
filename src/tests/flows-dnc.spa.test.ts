@@ -345,7 +345,7 @@ describe('Y6c Flow step wording', () => {
     expect(src.slice(i)).toMatch(/<\/select>[^]*?Saved in this app only\. Elvanto isn't changed\./);
   });
   it('assignee-needed says what to do', () => {
-    expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe('Pick who gets the next step, then Complete again.');
+    expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe("Pick who gets the next step, or Elvanto's usual pick, then Complete again.");
   });
 });
 

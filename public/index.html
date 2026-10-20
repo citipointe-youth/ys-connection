@@ -10324,7 +10324,7 @@ function _lkStatusText(row, lastSeen) {
     'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
     'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
     'step-moved': 'This step changed in Elvanto. Reload and try again.',
-    'assignee-needed': 'Pick who gets the next step, then Complete again.', // r21 L6b (T4): the sheet's "Next step goes to"
+    'assignee-needed': "Pick who gets the next step, or Elvanto's usual pick, then Complete again.", // r21 L6b (T4): the sheet's "Next step goes to"
     'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
     'too-old': 'Too late to send. Do it in Elvanto.',
     'not-landed': "It didn't save. Do it in Elvanto.",
@@ -12129,7 +12129,7 @@ function _lkStepHtml() {
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>`
     // r21 L6b (T4): who Elvanto gives the next step to (leaders matched to an Elvanto person); empty = Elvanto's own pick
-    + ((LINK.fAssignees || []).length ? `<div class="fg"><label class="fl" for="lk-next">Next step goes to</label><select class="fs" id="lk-next" onchange="LINK.fs.assignTo=this.value"><option value="">Elvanto's usual pick</option>
+    + (_lkBoss() && (LINK.fAssignees || []).length ? `<div class="fg"><label class="fl" for="lk-next">Next step goes to</label><select class="fs" id="lk-next" onchange="LINK.fs.assignTo=this.value"><option value="">Elvanto's usual pick</option>
       ${LINK.fAssignees.map((a) => `<option value="${esc(a.personId)}"${a.personId === f.assignTo ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : '') : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
@@ -12203,7 +12203,7 @@ function _lkStepSend() {
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(f.assignTo ? { assignTo: f.assignTo } : {}) },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(f.assignTo && _lkBoss() ? { assignTo: f.assignTo } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).

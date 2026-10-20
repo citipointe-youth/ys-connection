@@ -210,6 +210,14 @@ describe('reconcile.resend', () => {
     expect(row.id).not.toBe(CHECK.id);
     await expect(h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).rejects.toMatchObject({ code: 'LINK_DUPLICATE' });
   });
+  it('review fix 5: a check-in that went as firstTimerCheckIn is sent again as a plain checkIn of that person', async () => {
+    const h = await setup();
+    const FT = sent({ type: 'firstTimerCheckIn', serviceDate: DAY, personId: P(1),
+      payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'Ava', lastName: 'Test', grade: 9, gender: 'female' } });
+    h.link.listActions = async () => [FT] as OutboxRow[];
+    expect(await h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).toEqual({ ok: true, type: 'checkIn' });
+    expect((await h.queued())[0]).toMatchObject({ type: 'checkIn', payload: { serviceTimeId: ST, serviceId: SVC, personId: P(1) } });
+  });
   it('a member change: the same type again', async () => {
     const h = await setup();
     expect(await h.svc.resend(ADMIN, { kind: 'member', groupId: G, personId: P(1), op: 'add' })).toEqual({ ok: true, type: 'addGroupMember' });

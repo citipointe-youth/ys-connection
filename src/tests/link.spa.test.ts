@@ -185,7 +185,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
       'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
       'step-moved': 'This step changed in Elvanto. Reload and try again.',
-      'assignee-needed': 'Pick who gets the next step, then Complete again.',
+      'assignee-needed': "Pick who gets the next step, or Elvanto's usual pick, then Complete again.",
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",
@@ -1683,8 +1683,9 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
     expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
   });
-  it('r21 L6b (T4): Complete offers who gets the next step (matched leaders); the pick goes as payload.assignTo', () => {
-    const h = setup();
+  it('r21 L6b (T4): Complete offers who gets the next step (matched leaders, admin/director only); the pick goes as payload.assignTo', () => {
+    const h = makeEnv({ role: 'admin', leaderId: 'L1' });
+    h.get().LINK.today = '2026-10-16'; h.get().LINK.flows = ROWS(); h.get().LINK.ldrs = [];
     h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Cobb</b>' }];
     h.fns._lkOpenStep(F(2));
     const sheet = h.calls.modals[0]!;
@@ -1699,6 +1700,13 @@ describe('F3 flow steps', () => {
     none.get().LINK.fAssignees = [];
     none.fns._lkOpenStep(F(2));
     expect(none.calls.modals[0]).not.toContain('Next step goes to');
+    const leader = setup(); // a grade login: no picker, and a stale pick never goes
+    leader.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody' }];
+    leader.fns._lkOpenStep(F(2));
+    expect(leader.calls.modals[0]).not.toContain('Next step goes to');
+    leader.get().LINK.fs.assignTo = P(70);
+    leader.fns._lkStepSend();
+    expect(leader.fns._lkQGet()[0].payload.assignTo).toBeUndefined();
   });
   it('every value is escaped, in the list and in the sheet', () => {
     const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);

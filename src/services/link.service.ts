@@ -668,6 +668,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         throw new LinkBusyRow();
       }
       if (it.type === 'completeStep') {
+        // r21 L6b review fix 1: only the admin or a director picks who gets the next step (the SPA shows the picker to them only).
+        if ((p as { assignTo?: string }).assignTo && !isAdminRole(c.actor)) throw new ForbiddenError('Only the admin or a director can pick who gets the next step.');
         // R4: DO NOT CONTACT = Remove only. CY-B1: the flag GET /link/flows shows (the roster's sticky DNC when the flow
         // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
         const consent = shownConsent(row, new Map(roster.map((x) => [x.personId, x])));

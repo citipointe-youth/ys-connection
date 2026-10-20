@@ -193,9 +193,11 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
     const byResult = (a: OutboxRow, c: OutboxRow) => (c.resultAt ?? '').localeCompare(a.resultAt ?? '');
     let src: OutboxRow | undefined; let type: ActionType; let payload: Record<string, unknown>;
     if (b.kind === 'checkin') {
-      src = (await d.link.listActions({ types: ['checkIn'], statuses: ['sent'], personId: b.personId, serviceDateFrom: b.date, serviceDateTo: b.date }))
-        .filter((r) => r.type === 'checkIn' && r.status === 'sent' && r.personId === b.personId && r.serviceDate === b.date).sort(byResult)[0];
-      type = 'checkIn'; payload = src ? pay(src) : {};
+      // review fix 5: a first-timer check-in (its person known once sent) goes again as a plain checkIn of that person.
+      src = (await d.link.listActions({ types: ['checkIn', 'firstTimerCheckIn'], statuses: ['sent'], personId: b.personId, serviceDateFrom: b.date, serviceDateTo: b.date }))
+        .filter((r) => (r.type === 'checkIn' || r.type === 'firstTimerCheckIn') && r.status === 'sent' && r.personId === b.personId && r.serviceDate === b.date).sort(byResult)[0];
+      type = 'checkIn';
+      payload = !src ? {} : src.type === 'checkIn' ? pay(src) : { serviceTimeId: pay(src)['serviceTimeId'], serviceId: pay(src)['serviceId'], personId: b.personId };
     } else if (b.kind === 'member') {
       const t: ActionType = b.op === 'add' ? 'addGroupMember' : 'removeGroupMember';
       type = t;

@@ -1327,6 +1327,9 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const s = step({ assignTo: P_CODY });
     expect((await enq(h.svc, ADMIN, s, DEV)).outcome).toBe('saved');
     expect((await h.link.getAction(s.id))!.payload).toMatchObject({ assignTo: P_CODY });
+    const g = await setup(); // review fix 1: only the admin or a director picks the next step's person
+    expect((await enq(g.svc, GRADE, step({ assignTo: P_CODY }), DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(g.svc, GRADE, step(), DEV)).outcome).toBe('saved');
   });
 
   it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
