@@ -3220,6 +3220,76 @@ function _homeCheckinTile() {
   return `<div class="bus-tile" onclick="go('link-checkin')" role="button" tabindex="0">
     <div class="bt-ic">${icN('check')}</div><div class="bt-label">Check-in</div></div>`;
 }
+// Y6b (multisite SPEC Y6): Home "Needs attention" for admin and director. Every count comes from a route this login can
+// already read, so no permission is widened: the error log, Unsent new people, System check and the intake plan are
+// admin-only (admin:manage / the admin's intake module); a director gets the link lines only while a link screen is on.
+// The Admin tab badges show the same counts. Hidden when there is nothing (a healthy Brisbane never sees it).
+let _attn = null;
+function _attnMine() { return _attn && S.user && _attn.uid === S.user.id ? _attn : null; }
+// r = the route replies (null = not read or failed). Unclear and first-timers waiting are the Elvanto link page's counts.
+function _attnCounts(r, now) {
+  const rows = (x) => (x && Array.isArray(x.rows) ? x.rows : []), acts = Array.isArray(r.acts) ? r.acts : [];
+  const c = r.st && r.st.console;
+  return {
+    uid: r.uid, role: r.role, at: now,
+    errors: rows(r.errs).filter((e) => !e.ignored && e.tier === 'now').length,
+    unsent: rows(r.unsent).length,
+    unclear: (Array.isArray(r.unclear) ? r.unclear : acts.filter((a) => a.status === 'unclear')).length,
+    waiting: acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
+      && now - Date.parse(a.createdAt) > 36e5).length,
+    offlineAt: c && c.lastSeenAt && !c.online ? c.lastSeenAt : null,
+    fix: ((r.setup && r.setup.checks) || []).filter((x) => x && x.state === 'fix').map((x) => String(x.label || x.id)),
+    needsYou: ((r.ik && r.ik.dates) || []).reduce((n, d) => n + (Number(d && d.counts && d.counts.needsYou) || 0), 0),
+  };
+}
+// [text, onclick ('' = not a link)]. A director cannot open Admin, so their lines are plain text.
+function _attnLines(a) {
+  if (!a) return [];
+  const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
+  if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')"]);
+  if (a.unsent) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
+  if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save. Check it in Elvanto' : a.unclear + ' unclear saves. Check them in Elvanto')
+    + (adm ? (a.unclear === 1 ? ', then mark it' : ', then mark them') + ' in Admin > Elvanto link.' : '.'), link]);
+  if (a.waiting) L.push([a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.', link]);
+  if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
+  a.fix.forEach((x) => L.push(['System check: ' + x + ' needs fixing.', "switchAdminTab('system')"]));
+  if (a.needsYou) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
+  return L;
+}
+function _attnHtml(a) {
+  const L = _attnLines(a);
+  if (!L.length) return '';
+  return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
+    + L.map(([t, on]) => on ? `<div role="button" tabindex="0" onclick="${on}" style="padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="padding:5px 0">${esc(t)}</div>`).join('') + '</div>';
+}
+function _attnBadges(a) { return a ? { errors: a.errors, unsent: a.unsent, system: a.fix.length, link: a.unclear + a.waiting } : {}; }
+function _attnSlot(role) { return role === 'admin' || role === 'director' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
+// ponytail: one reload a minute per login (up to 7 small reads, admin/director only); a shared /batch section if it ever bites.
+async function _attnLoad(force) {
+  const u = S.user, role = u && u.role;
+  if (role !== 'admin' && role !== 'director') return;
+  const mine = _attnMine();
+  if (!force && mine && Date.now() - mine.at < 60000) return;
+  const admin = role === 'admin', link = admin || _linkOn();
+  const get = (on, p) => (on ? API.fresh(p, true).catch(() => null) : null);
+  const [errs, unsent, setup, acts, unclear, st, ik] = await Promise.all([get(admin, '/admin/errors'), get(admin, '/admin/unsent'),
+    get(admin, '/setup/status'), get(link, '/link/actions?serviceDate=' + _siteDay(Date.now())), get(link, '/link/actions?status=unclear'),
+    get(link, '/link/status'), get(admin && _ikModuleOn(), '/link/intake?mode=intake')]);
+  if (S.user !== u) return; // signed out or swapped while reading
+  _attn = _attnCounts({ uid: u.id, role, errs, unsent, setup, acts, unclear, st, ik }, Date.now());
+  _attnPaint();
+}
+// Redraws the Home card and the Admin tab list (badges) wherever they are on screen.
+function _attnPaint() {
+  const el = document.getElementById('home-attn');
+  if (el) el.innerHTML = _attnHtml(_attnMine());
+  const t = document.querySelector('.admin-tabs'), s = document.querySelector('.admin-tabsel');
+  if (!t || !s) return;
+  const w = document.createElement('div');
+  w.innerHTML = _adminTabsHtml(S.page === 'link-admin' ? 'link' : _adminTab);
+  const [nt, ns] = w.children;
+  t.replaceWith(nt); s.replaceWith(ns);
+}
 async function _renderHomeInner(stale, fromCache) {
   const qu = S.user; // the login; `u` below is who Home is drawn for
   const _pg = S.page;
@@ -3271,7 +3341,7 @@ async function _renderHomeInner(stale, fromCache) {
   // max weeks any one group ran. Fall back to the per-student calc when stats absent.
   const grpAvgWk = _lgScope ? _lgScope.current.avgPerWeek : (grpWeeks > 0 ? Math.round(grpAtt / grpWeeks) : 0);
 
-  let body = _noticeHomeHtml(notices) + `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
+  let body = _noticeHomeHtml(notices) + _attnSlot(qu.role) + `<div style="background:linear-gradient(150deg,var(--navy),#26276b);color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px">`;
   const heroTitle = u.role === 'grade' ? (gradeBadgeLabel(u) + _gsfx(_loginGender(u))) : u.displayName;
   body += `<div style="display:flex;align-items:center;margin-bottom:6px"><div style="font-family:var(--font-display);font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.1;display:flex;align-items:center;gap:7px">${icN('users')} ${esc(heroTitle)}</div></div>`;
   body += `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:40%"><col style="width:30%"><col style="width:30%"></colgroup>`;
@@ -3479,6 +3549,7 @@ async function _renderHomeInner(stale, fromCache) {
   setApp(shell(body));
   // Fill the follow-up container after the main paint (the div is now in the DOM).
   renderHomeFollowup(fromCache);
+  _attnLoad();
 }
 
 // Junior-leader home (§5.2): no ministry stats — just a greeting, quick actions,
@@ -6392,8 +6463,9 @@ async function renderAdmin() {
 // T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
 const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['unsent','Unsent new people'],['link','Elvanto link']];
 function _adminTabsHtml(cur) {
-  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}</button>`).join('')}</div>
-    <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  const b = typeof _attnBadges === 'function' ? _attnBadges(_attnMine()) : {}; // Y6b: the Home "Needs attention" counts
+  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>
+    <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}${b[id] ? ' (' + Number(b[id]) + ')' : ''}</option>`).join('')}</select>`;
 }
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
@@ -6528,6 +6600,7 @@ async function renderAdminView(settings, users, history) {
   if (_adminTab === 'system') renderSystemCheck();
   if (_adminTab === 'errors') _elLoad();
   if (_adminTab === 'unsent') _usLoad();
+  _attnLoad();
 }
 
 // ── Login Activity tab ──
@@ -12384,6 +12457,7 @@ async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster(); if (!LINK.adm.log) _lkAdmLoadLog();
+  _attnLoad();
 }
 // ── T4 Intake (spec 2026-10-13-intake-consent-app-spec.md §7, §9, §10, §11): youth intakes + parent consents, the
 // admin login only, module intakeAdmin (a plain Off / On switch, R3). The console plans and writes Elvanto; this page
@@ -12405,11 +12479,23 @@ function _ikModuleOn() {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
   return !!S.user && S.user.role === 'admin' && m.intakeAdmin === 'on';
 }
-function _ikRev(st) { return Number((st && st.consoleLinkRev) || 0); }
+// Y6b: a console whose claim left out every intake type (C2: this location's intake names or ids are blank) counts as rev 0.
+// An empty or missing capabilities object is not that (an old reply, or no console yet).
+function _ikRev(st) {
+  const c = st && st.console && st.console.capabilities;
+  if (c && Object.keys(c).length && !['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'].some((t) => t in c)) return 0;
+  return Number((st && st.consoleLinkRev) || 0);
+}
 function _intakeOn(st) { if (st === undefined) st = _ikSt(); return _ikModuleOn() && _ikRev(st) >= 4; }
 // The freshest console status: the intake reply carries it too.
 function _ikSt() { return (LINK.ik && LINK.ik.head) || LINK.status || null; }
-function _ikOldConsole() { return 'Console out of date: use New youth on the console PC'; }
+// Y6b: why the console cannot do intake. No console ever claimed; or a new enough one without the intake types (shown only
+// while this app's own intake module is on: the app strips the same types itself when it is off); else an old one.
+function _ikOldConsole(st) {
+  if (st && st.consoleLinkRev === null) return 'No console connected yet.';
+  if (st && Number(st.consoleLinkRev) >= 4 && _ikRev(st) === 0 && _ikModuleOn()) return "The console isn't set up for intake yet. Ask your admin.";
+  return 'Console out of date: use New youth on the console PC';
+}
 function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:parent:') === 0; }
 function _ikOpenAct(a) { return !!a && (a.status === 'pending' || a.status === 'claimed'); }
 // The newest open action of these types (actions come newest first).
@@ -12476,7 +12562,7 @@ function _ikTextStep(d) { return ((d && d.steps) || []).find((s) => s.state !== 
 function _ikAlone(d) { return ((d && d.extras) || []).filter((s) => s.state !== 'done'); }
 // Why Save is off ('' = it is on). det = GET /link/intake/row; list = the date (stale); st = the console status.
 function _ikSaveBlock(det, list, st) {
-  if (_ikRev(st) < 4) return _ikOldConsole();
+  if (_ikRev(st) < 4) return _ikOldConsole(st);
   { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
   if (!det || !det.detail) return det && det.unreadable ? 'Unreadable: refresh' : 'Nothing to save.';
   const row = det.row || {}, acts = det.actions || [];
@@ -12490,7 +12576,7 @@ function _ikSaveBlock(det, list, st) {
 }
 // The parent text has the same gates, minus the needs-you and the steps (it is sent after the Save).
 function _ikTextBlock(det, list, st) {
-  if (_ikRev(st) < 4) return _ikOldConsole();
+  if (_ikRev(st) < 4) return _ikOldConsole(st);
   { const I = _ik(); if (I.debT || (det && det.row && I.resend[det.row.key])) return 'Not sent yet. Retrying...'; }
   if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
   const acts = (det && det.actions) || [];
@@ -13103,7 +13189,7 @@ function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
   if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>`;
   if (!I.dates) return progBar('Loading');
-  if (!_intakeOn(st)) return `<div class="lk-alert warn">${icS('info')}<div>${esc(_ikOldConsole())}</div></div>`;
+  if (!_intakeOn(st)) return `<div class="lk-alert warn">${icS('info')}<div>${esc(_ikOldConsole(st))}</div></div>`;
   return I.key ? _ikFamilyPage() : _ikListPage();
 }
 function _ikListPage() {
