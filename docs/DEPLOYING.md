@@ -1,6 +1,6 @@
 # Set up YS Connection for your location
 
-Last checked: 2026-10-10.
+Last checked: 2026-10-20.
 
 This guide takes you from nothing to a working app. You do not need to write code. You use web pages only.
 
@@ -13,6 +13,8 @@ You need:
 - A payment card, only if you want Bus Ministry (see [GOOGLE-SETUP.md](GOOGLE-SETUP.md)).
 
 Cost: GitHub, Supabase and Vercel have free plans.
+
+WARNING: The Supabase Free plan has no backups. It also pauses your project after about 1 week with no use. A paused app shows errors until you restore it (see section 12).
 
 NOTE: The Vercel Hobby plan is for non-commercial use. Check which Vercel plan fits your church before step 3.
 
@@ -173,7 +175,10 @@ You can stop here. Your app works.
 1. Open **Admin** > **Youth Setup**.
 2. Under **Pre-set Configurations**, select **Complex Ministry** or **Simple Ministry**.
 3. If you have a settings file from another location, find the card **Use this setup at another location**. Select **Load settings file**. Select the file.
-4. Change the names and colours if you want.
+4. You must change these. A settings file from another location brings that location's names.
+   - In the card **Branding**, set **Ministry name**, **App name** and **Logo**.
+   - In the card **Terminology**, set **Group-name prefixes to strip** to the prefixes of your group names.
+   - In the card **Structure & Roles**, check **Time zone** and **Consent closes at**.
 5. Select **Save Youth Setup** at the bottom of the page. Select **Save** in the box.
 6. Select **Apply account layout for Complex** or **Apply account layout for Simple**. The button name ends with your preset.
 7. Read the list of accounts. Type `APPLY`. Select **Apply**.
@@ -184,7 +189,56 @@ Complex Ministry makes a girls login and a boys login for each grade, and four q
 
 Expected result: the accounts list shows the new logins.
 
-## 6. Updates (5 min)
+## 6. Change the app icon (required, 5 min)
+
+The app icon on a phone Home Screen comes from your fork. It shows the Brisbane icon until you change it.
+
+1. Open your fork on GitHub.
+2. Replace the four files in `public/icons/` with your own icon. Keep the same file names. Keep each PNG at the same size.
+3. Commit the change on GitHub.
+
+Expected result: Vercel deploys it by itself. The app name and colours come from **Youth Setup**.
+
+## 7. Elvanto for this location (10 min)
+
+The app sends new people to Elvanto with two public Elvanto forms: a student form and a parent form.
+
+1. Open **Admin** > **Youth Setup**. Find the card **Elvanto for this location**.
+2. Paste the public link of each form in **Student form link** and **Parent form link**.
+3. Fill in **Location to tick**, **New People flow name starts with**, **Parent Consent flow name starts with** and **Default state**.
+4. Select **Check forms**.
+5. Read each line. If a line says a row was not found, type its id in the box under that line.
+6. Select **Check forms** again until every row is found.
+7. Select **Save Youth Setup**. Select **Save** in the box.
+
+WARNING: Keep **New person** set to **Off** until **Check forms** finds every row.
+
+## 8. Elvanto link (15 min)
+
+The Elvanto link connects the app to the console on the location PC. The console does the Elvanto work.
+
+1. In your password manager, make a new password of 40 letters and numbers. This is `LINK_SYNC_TOKEN`.
+2. In Vercel, open **Settings** > **Environment Variables**. Select **Add**.
+3. Type `LINK_SYNC_TOKEN` as the name. Paste the value. Keep **Production** ticked. Select **Save**.
+4. Open **Deployments**. Select the three dots on the top row. Select **Redeploy**.
+5. Paste the same value in the YS link settings of the console. The console guide shows where.
+6. In the app, open **Admin** > **Elvanto link**.
+
+Expected result: within 2 minutes, the **Console** row says **Online**.
+
+7. Open **Admin** > **Youth Setup**. Find the card **Modules & Import**.
+8. Set **New person**, **Check-in**, **Lifegroup report** and **Flow steps** to **On** or **Admin only**.
+9. Set **New youth & consent (Elvanto)** to **On**.
+10. Select **Save Youth Setup**. Select **Save** in the box.
+11. Open **Admin** > **Elvanto link**. Find **Matching**.
+12. Open each tab: **Unmatched**, **Several possible** and **Set by hand**.
+13. Pair each Elvanto student with the correct YS student. Select **Match**, or select **Not in YS**.
+
+WARNING: Do not contact is not fully active until Matching is done. Until then the app shows a banner about it.
+
+New youth & consent in the app is the main place to add new people and send parent consents. The console tab is the backup for when the link is down.
+
+## 9. Updates (5 min)
 
 The developer improves the app. Get the new version like this:
 
@@ -197,19 +251,31 @@ Expected result: the newest deployment in Vercel shows **Ready**.
 
 The build also updates the database. It never deletes your data.
 
+WARNING: All locations use one codebase. Your settings are in **Youth Setup**, not in the code. Never change code in your fork. The only files you change are the icon files (section 6). Get every other change with **Sync fork** only.
+
 [Screenshot: 12 github-sync-fork — the Sync fork button]
 
-## 7. Bus Ministry (optional, 30 min)
+## 10. Bus Ministry (optional, 30 min)
 
 Bus needs a Google account. Follow [GOOGLE-SETUP.md](GOOGLE-SETUP.md). It takes about 30 minutes.
 
-NOTE: The app uses Queensland time. A state with daylight saving sees Bus times 1 hour off in summer.
+NOTE: The app uses the **Time zone** in **Youth Setup** for every date and time, Bus too.
 
-## 8. Change the app icon (optional, 5 min)
+## 11. Phone alerts for Notices (optional, 10 min)
 
-Replace the files in `public/icons/` in your fork. Commit the change on GitHub. Vercel deploys it by itself. The app name and colours come from **Youth Setup**.
+Alerts tell a phone when a new notice arrives. They need three VAPID values in Vercel. Without them, the app works, but it says alerts are not set up yet.
 
-## 9. Troubleshooting (as needed)
+1. Ask the developer for a VAPID key pair.
+
+Technical: make a pair with `npx web-push generate-vapid-keys`.
+
+2. In Vercel, add `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` with the two keys. Keep **Production** ticked.
+3. Add `VAPID_SUBJECT` with `mailto:` and the email address of your admin, for example `mailto:admin@example.org`.
+4. Open **Deployments**. Select **Redeploy** on the top row.
+
+Expected result: when **Notices** is **On** in **Modules & Import**, **More** > **Notices** shows the button **Turn on alerts**.
+
+## 12. Troubleshooting (as needed)
 
 | What you see | What to do |
 |---|---|
