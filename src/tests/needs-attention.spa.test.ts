@@ -51,7 +51,7 @@ function run(role: string, routes: Record<string, any>, modules: Record<string, 
   const f = loadFns(ATTN, `
     const __t = globalThis.__attnT;
     var S = { user: { id: 'u-' + __t.role, role: __t.role }, settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' }, modules: __t.modules } } };
-    let _attn = null;
+    let _attn = null, _attnBusy = null;
     ${ADMIN_TABS}
     const API = { fresh: async (p) => { __t.calls.push(p); if (!(p in __t.routes)) throw new Error('no route ' + p); return __t.routes[p]; } };
     const _linkOn = () => __t.modules.checkin === 'on';
@@ -76,7 +76,7 @@ describe('Y6b Home "Needs attention"', () => {
       '3 problems in the error log.',
       "2 new people weren't sent.",
       '1 unclear save. Check it in Elvanto, then mark it in Admin > Elvanto link.',
-      '2 first-timers have waited over 1 hour for Elvanto.',
+      '2 first-timers have waited over 1 hour for Elvanto. See Admin > Elvanto link.',
       'The console is offline since 7:40 pm.',
       'System check: New People flow needs fixing.',
       'System check: APP_ORIGIN needs fixing.',
@@ -104,7 +104,7 @@ describe('Y6b Home "Needs attention"', () => {
     expect(t).toContain('1 problem in the error log.');
     expect(t).toContain("1 new person wasn't sent.");
     expect(t).toContain('2 unclear saves. Check them in Elvanto, then mark them in Admin > Elvanto link.');
-    expect(t).toContain('1 first-timer has waited over 1 hour for Elvanto.');
+    expect(t).toContain('1 first-timer has waited over 1 hour for Elvanto. See Admin > Elvanto link.');
     expect(t).toContain('1 family needs you in More > New youth & consent.');
   });
   it('a director never reads /admin/unsent, System check or the error log (no admin:manage); the link lines stay', async () => {
@@ -163,6 +163,15 @@ describe('Y6b Home "Needs attention"', () => {
     const t = texts(f);
     expect(t.some((x: string) => /error log|offline/.test(x))).toBe(false);
     expect(t).toContain("2 new people weren't sent.");
+  });
+  it('a second call while a read is in flight waits for it instead of reading again', async () => {
+    at();
+    const { f, calls } = run('admin', broken());
+    await Promise.all([f._attnLoad(true), f._attnLoad(true), f._attnLoad()]);
+    expect(calls.length).toBe(7);
+    expect(texts(f)).toContain('3 problems in the error log.');
+    await f._attnLoad(true); // finished: the next forced load reads again
+    expect(calls.length).toBe(14);
   });
   it('one reload a minute; a forced load always reads', async () => {
     at();
@@ -239,15 +248,18 @@ describe('Y6b "Console out of date" branches on the intake page', () => {
     const f = ik(ST(null, null));
     expect(f._intakeOn(ST(null, null))).toBe(false);
     expect(f._ikPageHtml()).toContain('No console connected yet.');
+    expect(f._ikPageHtml()).not.toContain('Try again');
     expect(f._ikSaveBlock(DET, LIST, ST(null, null))).toBe('No console connected yet.');
     expect(f._ikTextBlock(DET, LIST, ST(null, null))).toBe('No console connected yet.');
   });
   it('a console whose claim leaves out the intake types (C2: names blank): "isn\'t set up for intake yet"', () => {
     const half = { checkIn: 'live', completeStep: 'live', removeFromFlowStep: 'live', submitReport: 'live' };
     const f = ik(ST(13, half));
-    const want = "The console isn't set up for intake yet. Ask your admin.";
+    const want = "The console isn't set up for intake yet. Set it up on the console, then select Try again.";
     expect(f._intakeOn(ST(13, half))).toBe(false);
     expect(f._ikPageHtml()).toContain(want);
+    // Right after the module is switched On the stored capabilities are still the stripped ones: Try again reloads.
+    expect(f._ikPageHtml()).toContain('onclick="_ikLoad(false)">Try again</button>');
     expect(f._ikSaveBlock(DET, LIST, ST(13, half))).toBe(want);
     expect(f._ikTextBlock(DET, LIST, ST(13, half))).toBe(want);
   });
@@ -263,6 +275,7 @@ describe('Y6b "Console out of date" branches on the intake page', () => {
     expect(f._ikSaveBlock(DET, LIST, ST(13))).toBe('');
     const old = ik(ST(3));
     expect(old._ikPageHtml()).toContain('Console out of date: use New youth on the console PC');
+    expect(old._ikPageHtml()).not.toContain('Try again'); // Brisbane's old-console page is unchanged
     expect(old._ikSaveBlock(DET, LIST, ST(3))).toBe('Console out of date: use New youth on the console PC');
     expect(old._ikOldConsole()).toBe('Console out of date: use New youth on the console PC');
   });

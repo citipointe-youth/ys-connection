@@ -3250,7 +3250,8 @@ function _attnLines(a) {
   if (a.unsent) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
   if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save. Check it in Elvanto' : a.unclear + ' unclear saves. Check them in Elvanto')
     + (adm ? (a.unclear === 1 ? ', then mark it' : ', then mark them') + ' in Admin > Elvanto link.' : '.'), link]);
-  if (a.waiting) L.push([a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.', link]);
+  if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
+    + (adm ? ' See Admin > Elvanto link.' : ''), link]);
   if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
   a.fix.forEach((x) => L.push(['System check: ' + x + ' needs fixing.', "switchAdminTab('system')"]));
   if (a.needsYou) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
@@ -3265,19 +3266,24 @@ function _attnHtml(a) {
 function _attnBadges(a) { return a ? { errors: a.errors, unsent: a.unsent, system: a.fix.length, link: a.unclear + a.waiting } : {}; }
 function _attnSlot(role) { return role === 'admin' || role === 'director' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
 // ponytail: one reload a minute per login (up to 7 small reads, admin/director only); a shared /batch section if it ever bites.
+let _attnBusy = null; // the read in flight: a second call meanwhile (stale paint + revalidate, Home then Admin) waits for it
 async function _attnLoad(force) {
   const u = S.user, role = u && u.role;
   if (role !== 'admin' && role !== 'director') return;
   const mine = _attnMine();
   if (!force && mine && Date.now() - mine.at < 60000) return;
-  const admin = role === 'admin', link = admin || _linkOn();
-  const get = (on, p) => (on ? API.fresh(p, true).catch(() => null) : null);
-  const [errs, unsent, setup, acts, unclear, st, ik] = await Promise.all([get(admin, '/admin/errors'), get(admin, '/admin/unsent'),
-    get(admin, '/setup/status'), get(link, '/link/actions?serviceDate=' + _siteDay(Date.now())), get(link, '/link/actions?status=unclear'),
-    get(link, '/link/status'), get(admin && _ikModuleOn(), '/link/intake?mode=intake')]);
-  if (S.user !== u) return; // signed out or swapped while reading
-  _attn = _attnCounts({ uid: u.id, role, errs, unsent, setup, acts, unclear, st, ik }, Date.now());
-  _attnPaint();
+  if (_attnBusy) return _attnBusy;
+  _attnBusy = (async () => {
+    const admin = role === 'admin', link = admin || _linkOn();
+    const get = (on, p) => (on ? API.fresh(p, true).catch(() => null) : null);
+    const [errs, unsent, setup, acts, unclear, st, ik] = await Promise.all([get(admin, '/admin/errors'), get(admin, '/admin/unsent'),
+      get(admin, '/setup/status'), get(link, '/link/actions?serviceDate=' + _siteDay(Date.now())), get(link, '/link/actions?status=unclear'),
+      get(link, '/link/status'), get(admin && _ikModuleOn(), '/link/intake?mode=intake')]);
+    if (S.user !== u) return; // signed out or swapped while reading
+    _attn = _attnCounts({ uid: u.id, role, errs, unsent, setup, acts, unclear, st, ik }, Date.now());
+    _attnPaint();
+  })().finally(() => { _attnBusy = null; });
+  return _attnBusy;
 }
 // Redraws the Home card and the Admin tab list (badges) wherever they are on screen.
 function _attnPaint() {
@@ -12491,9 +12497,11 @@ function _intakeOn(st) { if (st === undefined) st = _ikSt(); return _ikModuleOn(
 function _ikSt() { return (LINK.ik && LINK.ik.head) || LINK.status || null; }
 // Y6b: why the console cannot do intake. No console ever claimed; or a new enough one without the intake types (shown only
 // while this app's own intake module is on: the app strips the same types itself when it is off); else an old one.
+// The page is the admin's, so the middle line says where to fix it. It also shows for one console poll right after the
+// module is switched On (the stored capabilities were stripped while Off); its Try again button (_ikPageHtml) clears it.
 function _ikOldConsole(st) {
   if (st && st.consoleLinkRev === null) return 'No console connected yet.';
-  if (st && Number(st.consoleLinkRev) >= 4 && _ikRev(st) === 0 && _ikModuleOn()) return "The console isn't set up for intake yet. Ask your admin.";
+  if (st && Number(st.consoleLinkRev) >= 4 && _ikRev(st) === 0 && _ikModuleOn()) return "The console isn't set up for intake yet. Set it up on the console, then select Try again.";
   return 'Console out of date: use New youth on the console PC';
 }
 function _ikIsText(s) { return !!s && String(s.key || '').indexOf('complete:parent:') === 0; }
@@ -13189,7 +13197,11 @@ function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
   if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>`;
   if (!I.dates) return progBar('Loading');
-  if (!_intakeOn(st)) return `<div class="lk-alert warn">${icS('info')}<div>${esc(_ikOldConsole(st))}</div></div>`;
+  if (!_intakeOn(st)) {
+    const w = _ikOldConsole(st);
+    return `<div class="lk-alert warn">${icS('info')}<div>${esc(w)}</div></div>`
+      + (/select Try again\.$/.test(w) ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>' : '');
+  }
   return I.key ? _ikFamilyPage() : _ikListPage();
 }
 function _ikListPage() {

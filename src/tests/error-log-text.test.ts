@@ -144,7 +144,7 @@ describe('error-log-text', () => {
       expect(TEXT.ELVANTO_FORM_CHANGED![2]).toBe('Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.');
       expect(extractFn(html, '_setupElvCardHtml')).toContain("s.busy ? 'Checking…' : 'Check forms'");
       const fix = textFor('link', 'unclear', 'checkIn', null).line2;
-      expect(fix).toBe('Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the Services, Lifegroups or Flows page.');
+      expect(fix).toBe("Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.");
       expect(textFor('link', 'lease-lost', 'checkIn', null).line2).toBe(fix);
       expect(linkStatus).toContain(',true)">Landed</button>');
       expect(linkStatus).toContain(',false)">Not landed</button>');

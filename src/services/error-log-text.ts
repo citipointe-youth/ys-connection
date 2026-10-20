@@ -19,7 +19,7 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = 'Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the Services, Lifegroups or Flows page.';
+const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.";
 // Y6a: steps only the person who built the setup can do end with this.
 const TELL = ' Tell the person who set up the console.';
 
