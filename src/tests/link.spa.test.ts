@@ -13,7 +13,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
-  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
+  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
@@ -158,8 +158,8 @@ describe('F1.1 switch and More entries', () => {
 describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
   const t = makeEnv().fns._lkStatusText;
   it('every status', () => {
-    expect(t({ status: 'pending', reason: null })).toBe('Waiting for the console.');
-    expect(t({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for the console. Console last seen 7:02 pm');
+    expect(t({ status: 'pending', reason: null })).toBe('Waiting for Elvanto.');
+    expect(t({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for Elvanto. Elvanto last reached 7:02 pm');
     expect(t({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
     expect(t({ status: 'claimed' })).toBe('Sending to Elvanto…');
     expect(t({ status: 'sent', reason: null, resultAt: '2026-10-16T09:02:00.000Z' })).toBe('In Elvanto 7:02 pm');
@@ -189,8 +189,8 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",
-      'console-cannot-read': "The console couldn't do this. Do it in Elvanto.",
-      'unknown': "The console couldn't do this. Do it in Elvanto.",
+      'console-cannot-read': 'This did not go through. Do it in Elvanto.',
+      'unknown': 'This did not go through. Do it in Elvanto.',
       'lease-lost': 'Not sure it saved. The admin is checking Elvanto.',
       'note-unreadable': "This note couldn't be read. Do it in Elvanto.",
     };
@@ -1118,7 +1118,7 @@ describe('F1 fix: no Unicode symbols in the LINK block', () => {
     expect(block).not.toMatch(/[←-⇿☀-➿]/);
     const h = makeEnv();
     expect(h.fns._lkStatusHtml({ status: 'sent', reason: 'already' })).toBe('<svg data-ic="check"></svg> Already in Elvanto');
-    expect(h.fns._lkStatusHtml({ status: 'pending', reason: null })).toBe('Waiting for the console.');
+    expect(h.fns._lkStatusHtml({ status: 'pending', reason: null })).toBe('Waiting for Elvanto.');
     expect(h.fns._lkStatusHtml({ status: 'refused', reason: 'report-exists' })).toBe('There&#39;s already a report for that date. Edit it.');
   });
 });
@@ -1620,7 +1620,7 @@ describe('F3 flow steps', () => {
   it('a row with an open action (or one still on the phone) cannot be completed', () => {
     const h = setup('L1', [row(1, { openAction: { id: P(90), type: 'completeStep', status: 'pending', reason: null } }), row(2)]);
     const rows = h.fns._lkFlowsHtml().split('lk-row').slice(1);
-    expect(strip(rows[0])).toContain('Waiting for the console.');
+    expect(strip(rows[0])).toContain('Waiting for Elvanto.');
     // the detail sheet still opens (text, assign) but offers no Complete
     h.fns._lkOpenStep(F(1));
     expect(h.calls.modals).toHaveLength(1);
@@ -2001,12 +2001,12 @@ describe('T-17 / X14 outside the window a pending row says when it goes', () => 
   it('online, outside the window: "Usually under a minute. (fix16 GAP-3)"; inside the window or offline: not', () => {
     const h = makeEnv();
     h.get().LINK.status = st({});
-    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console. Usually under a minute.');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for Elvanto. Usually under a minute.');
     expect(h.fns._lkStatusText({ status: 'pending', reason: 'awaiting-approval' })).toBe('Waiting for the new-person form to be approved.');
     h.get().LINK.status = st({ inWindow: true });
-    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for the console.');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for Elvanto.');
     h.get().LINK.status = st({ online: false });
-    expect(h.fns._lkStatusText({ status: 'pending', reason: null }, '4:12 pm')).toBe('Waiting for the console. Console last seen 4:12 pm');
+    expect(h.fns._lkStatusText({ status: 'pending', reason: null }, '4:12 pm')).toBe('Waiting for Elvanto. Elvanto last reached 4:12 pm');
   });
 });
 

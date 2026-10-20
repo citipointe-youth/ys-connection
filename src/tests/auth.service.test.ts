@@ -233,3 +233,22 @@ describe('F5 (review 2026-10-16): session revocation', () => {
     spy.mockRestore();
   });
 });
+
+describe('Y5: one login error for every cause, with the next step', () => {
+  const MSG = 'Wrong username or password. Ask your admin to reset it.';
+  async function rejectMessage(p: Promise<unknown>): Promise<string> {
+    try { await p; } catch (e) { return (e as Error).message; }
+    throw new Error('login did not reject');
+  }
+
+  it('a bad username, a bad password, an inactive or password-less account all give the same exact message', async () => {
+    const { users, auth } = await seedUser(false);
+    expect(await rejectMessage(auth.login({ email: 'nobody', password: 'correcthorse1' }))).toBe(MSG);
+    expect(await rejectMessage(auth.login({ email: 'director', password: 'wronghorse1' }))).toBe(MSG);
+    const existing = await users.findById('u-1');
+    await users.save({ ...existing!, passwordHash: '' });
+    expect(await rejectMessage(auth.login({ email: 'director', password: 'correcthorse1' }))).toBe(MSG);
+    await users.save({ ...existing!, status: 'inactive' });
+    expect(await rejectMessage(auth.login({ email: 'director', password: 'correcthorse1' }))).toBe(MSG);
+  });
+});

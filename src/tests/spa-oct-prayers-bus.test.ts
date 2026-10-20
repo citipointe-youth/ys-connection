@@ -92,7 +92,12 @@ function _navItemsBase() { return ${JSON.stringify(base(role))}; }`;
     return loadFns(['moreItems', 'navItems', '_navSlots', 'bottomNavItems', 'quickActionItems'], pre);
   };
   const ids = (xs: any[]) => xs.map((x) => x && x.id);
-  for (const role of ['leader', 'grade', 'quad', 'director', 'admin']) {
+  // Y5 (controller ruling 2026-10-20): a junior leader has no Setup page, so its slot is always More (Change password).
+  it('slot rules hold for leader: the slot is always More', () => {
+    for (const o of [{ prayers: true, bus: true, ny: false }, { prayers: true, bus: false, ny: false }, { prayers: false, bus: true, ny: false },
+      { prayers: false, bus: false, ny: true }, { prayers: false, bus: false, ny: false }]) expect(ids(run('leader', o).navItems()), JSON.stringify(o)).toContain('more');
+  });
+  for (const role of ['grade', 'quad', 'director', 'admin']) {
     it(`slot rules hold for ${role}`, () => {
       expect(ids(run(role, { prayers: true, bus: true, ny: false }).navItems())).toContain('more');
       const alone = run(role, { prayers: true, bus: false, ny: false }).navItems();
@@ -120,7 +125,7 @@ function _navItemsBase() { return ${JSON.stringify(base(role))}; }`;
     expect(none._navSlots()[2]).toBeNull();
     expect(ids(none.bottomNavItems())).toEqual(['home', 'at-risk', 'leaders', 'admin']);
     expect(none.quickActionItems()).toEqual(withSlot.quickActionItems());
-    expect(run('leader', { prayers: false, bus: false, ny: false }).bottomNavItems()).toHaveLength(4);
+    expect(run('grade', { prayers: false, bus: false, ny: false }).bottomNavItems()).toHaveLength(4); // Y5: a leader keeps More instead
   });
 });
 

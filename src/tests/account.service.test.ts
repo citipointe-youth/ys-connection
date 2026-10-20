@@ -242,13 +242,14 @@ describe('Account Service — cohort account layout (bug 8)', () => {
     expect(await users.findAll()).toHaveLength(1); // just the seeded grade7g account from buildService()
   });
 
-  it('apply creates the target accounts with one-time passwords and mustChangePassword: true', async () => {
+  it('apply creates the target accounts with one-time passwords and mustChangePassword: false (shared logins, SPEC #5)', async () => {
     const { svc, users } = await buildService();
     const report = await svc.applyCohortLayout(admin, 'none');
     expect(report.created).toHaveLength(6);
     expect(report.created.every((c) => c.password.length >= 8)).toBe(true);
     const created = await users.findByEmail('grade78g');
-    expect(created?.mustChangePassword).toBe(true);
+    expect(created?.mustChangePassword).toBe(false);
+    for (const c of report.created) expect((await users.findByEmail(c.username))?.mustChangePassword).toBe(false);
     expect(created?.gender).toBe('female');
     expect(created?.grades).toEqual([7, 8]);
   });
@@ -265,9 +266,11 @@ describe('Account Service — cohort account layout (bug 8)', () => {
     const { svc, users } = await buildService();
     // grade7g already matches the Complex layout's own username convention,
     // so it must be left alone, not deactivated.
-    await svc.applyCohortLayout(admin, 'grades-quads');
+    const report = await svc.applyCohortLayout(admin, 'grades-quads');
     const stillActive = await users.findByEmail('grade7g');
     expect(stillActive?.status).toBe('active');
+    // Y5 (SPEC #5): layout logins are shared, so none forces a password change (grade and quad alike).
+    for (const c of report.created) expect((await users.findByEmail(c.username))?.mustChangePassword).toBe(false);
   }, 20000); // bcrypt for ~16 created accounts: over 5 s on a busy machine
 
   it('rejects a non-admin caller', async () => {

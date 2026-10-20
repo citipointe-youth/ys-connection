@@ -151,6 +151,9 @@ export function recordDevice(
   return [updated, ...list.filter((d) => d.id !== id)].slice(0, MAX_LOGIN_DEVICES);
 }
 
+// Y5 (SPEC #5): one message for every refused sign-in, so it never says which part was wrong, plus the next step.
+const LOGIN_ERROR = 'Wrong username or password. Ask your admin to reset it.';
+
 export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: number } = {}): AuthService {
   // F5 (review 2026-10-16): tokens stay stateless, but each request re-reads the account through a small per-instance
   // cache, so a deactivation, demotion or password reset bites within USER_TTL instead of at the 12 h expiry.
@@ -167,19 +170,18 @@ export function makeAuthService(users: IUserRepository, opts: { userTtlMs?: numb
     async login(input: unknown) {
       secretOrThrow();
       const parsed = LoginInputSchema.safeParse(input);
-      if (!parsed.success) throw new UnauthorizedError('Invalid credentials');
+      if (!parsed.success) throw new UnauthorizedError(LOGIN_ERROR);
 
       const { email, password, deviceId, deviceLabel } = parsed.data;
       const user = await users.findByEmail(email);
-      if (!user || user.status !== 'active') throw new UnauthorizedError('Invalid credentials');
-      if (!user.passwordHash) throw new UnauthorizedError('Account has no password set');
+      if (!user || user.status !== 'active' || !user.passwordHash) throw new UnauthorizedError(LOGIN_ERROR);
 
       const valid = await verifyPassword(password, user.passwordHash);
-      if (!valid) throw new UnauthorizedError('Invalid credentials');
+      if (!valid) throw new UnauthorizedError(LOGIN_ERROR);
       // Re-read after the slow bcrypt check: a retire (Simple logins on, role off, lock) that
       // landed meanwhile must win. The full-row saves below would otherwise write 'active' back.
       const fresh = await users.findById(user.id);
-      if (!fresh || fresh.status !== 'active') throw new UnauthorizedError('Invalid credentials');
+      if (!fresh || fresh.status !== 'active') throw new UnauthorizedError(LOGIN_ERROR);
       // F5: a sign-in just read the row, so this instance's cache must not answer the new token with an older
       // (e.g. inactive, before a reactivation) copy. ponytail: per-instance only; another instance may lag <= 60 s.
       recent.delete(fresh.id);
