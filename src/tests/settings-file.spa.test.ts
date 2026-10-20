@@ -21,7 +21,7 @@ const PRELUDE = `
 const f = loadFns(['_stripServerOwnedLogins', '_parseSettingsFile', 'exportSettingsFile', 'loadSettingsFile'], PRELUDE,
   ['_parseSettingsFile', 'exportSettingsFile', 'loadSettingsFile', '__o', 'setDraft', 'draft', 'TOASTS']);
 
-const LOADED = 'Settings loaded. Select Save Youth Setup. The file does not change the Elvanto settings or the Elvanto screens, such as New youth & consent. Set them up for this location.';
+const LOADED = 'Settings loaded. Select Save Youth Setup. Elvanto settings and screens are not changed. Set them up for this location.';
 
 describe('Y4 settings file', () => {
   it('an export has no elvanto and no Elvanto module mode', () => {
