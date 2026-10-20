@@ -25,4 +25,11 @@ describe('SupabaseLinkRepository.flows', () => {
     expect(logged).not.toContain(bad);
     warn.mockRestore();
   });
+
+  it('rev 13: service_visits maps 0 -> 0, 2 -> 2, null/missing -> null (0 must not become null)', async () => {
+    const sql = (async () => [{ ...row('a', null), service_visits: 0 }, { ...row('b', null), service_visits: 2 },
+      { ...row('c', null), service_visits: null }, row('d', null)]) as never;
+    const rows = await new SupabaseLinkRepository(sql).flows();
+    expect(rows.map((r) => r.serviceVisits)).toEqual([0, 2, null, null]);
+  });
 });
