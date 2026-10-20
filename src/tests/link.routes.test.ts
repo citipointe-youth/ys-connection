@@ -23,6 +23,7 @@ const SPEC_ROUTES = [
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
   'GET /link/admin/roster', 'POST /link/admin/roster/:personId', 'GET /link/admin/log',
   'POST /link/admin/unclear/:id', // CY-A1
+  'POST /link/admin/unclear/:id/recheck', 'GET /link/admin/recheck/:id', // L7 (rev 15)
   'POST /link/admin/create-students', // L3 r3 (2026-10-21)
   'GET /link/intake', 'GET /link/intake/row', 'POST /link/intake/refresh', // T4 (X19)
   'GET /link/consents/lookup', // rev 6 (R2 b/c)

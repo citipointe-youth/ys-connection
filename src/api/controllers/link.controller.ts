@@ -30,6 +30,8 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     setMatch: (r: HttpRequest) => L.setMatch(actor(r), r.params['personId']!, r.body),
     createStudents: (r: HttpRequest) => L.createStudents(actor(r), r.body),
     resolveUnclear: (r: HttpRequest) => L.resolveUnclear(actor(r), r.params['id']!, r.body), // CY-A1
+    recheckUnclear: (r: HttpRequest) => L.recheckUnclear(actor(r), r.params['id']!), // L7
+    recheckState: (r: HttpRequest) => L.recheckState(actor(r), r.params['id']!), // L7
     log: (r: HttpRequest) => L.log(actor(r), r.query),
   };
 }

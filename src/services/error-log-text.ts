@@ -15,11 +15,11 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
   checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
   editReport: 'Report edit', addGroupMember: 'Add to group', removeGroupMember: 'Remove from group', completeStep: 'Flow step',
   removeFromFlowStep: 'Flow step removal', intakeAnswer: 'Intake answer', intakeSave: 'Intake save', intakeText: 'Intake text',
-  consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link',
+  consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link', recheck: 'Re-check',
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.";
+const UNCLEAR_FIX = 'Tap Check again in Admin > Elvanto link. Or check it in Elvanto, then tap Landed or Not landed there.'; // L7 (2026-10-21)
 // Y6a: steps only the person who built the setup can do end with this.
 const TELL = ' Tell the person who set up the console.';
 

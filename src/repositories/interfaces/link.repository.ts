@@ -37,6 +37,8 @@ export interface ILinkRepository {
   /** true only when the row was pending (now cancelled). */
   /** `by`: the id of the opposite check tap that cancelled it, kept in `detail` as `cancelled-by:<id>` (a re-send replays). */
   cancelPending(id: string, by?: string): Promise<boolean>;
+  /** L7: close a recheck row left unclear (a lease-lost sweep) as cancelled, so its dedupe key is free. false if it is not one. */
+  cancelDeadRecheck(id: string): Promise<boolean>;
   /** ONE transaction, DB clock: console upsert + sweep + purge + lease. */
   claim(a: ClaimArgs): Promise<ClaimedRow[]>;
   /** S-2 / D6: pending rows past the cut-off (cutoffDays; intake types 24 h) -> refused too-old. Also run inside claim. */

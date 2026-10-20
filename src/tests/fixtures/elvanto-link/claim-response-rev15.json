@@ -1,0 +1,36 @@
+{
+  "contractVersion": 1,
+  "serverTime": "2026-10-24T00:05:00.000Z",
+  "linkRev": 15,
+  "rows": [
+    {
+      "id": "0a000000-0000-4000-8000-000000000301",
+      "type": "recheck",
+      "attempts": 1,
+      "reclaimed": false,
+      "createdAt": "2026-10-24T00:04:00.000Z",
+      "serviceDate": "2026-10-23",
+      "by": {
+        "login": "admin",
+        "leaderName": "Dana Day"
+      },
+      "payload": {
+        "ref": "0a000000-0000-4000-8000-000000000101",
+        "type": "submitReport",
+        "payload": {
+          "groupId": "6a000000-0000-4000-8000-000000000001",
+          "date": "2026-10-20",
+          "didNotMeet": false,
+          "attendees": ["9e000000-0000-4000-8000-000000000001"],
+          "guests": 0,
+          "notesPrivate": false,
+          "serviceTimeId": null
+        },
+        "sentLogKey": "submitReport:lifegroup:6a000000-0000-4000-8000-000000000001:20261020"
+      },
+      "note": "Self identified leader: Dana Day — Good night."
+    }
+  ],
+  "progress": true,
+  "consentLink": true
+}

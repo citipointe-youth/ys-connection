@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
-const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
+const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
   '_ikFresh', '_ik', '_ikModuleOn', '_ikRev', '_intakeOn', '_ikSt', '_ikOldConsole', '_ikIsText', '_ikOpenAct', '_ikOpenOf', '_ikNameChanges', '_ikResultLine',
   '_ikSeenLine', '_ikBanner', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikTextStep', '_ikAlone', '_ikSaveBlock', '_ikTextBlock',
@@ -28,7 +28,7 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt'
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
-  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m].map((re) => HTML.match(re)![0]).join('\n');
+  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m, /^const _LK_RC = \{\};$/m].map((re) => HTML.match(re)![0]).join('\n');
 
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const HOSTILE = '<img src=x onerror=alert(1)>';
@@ -719,6 +719,10 @@ describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
     expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' }))).not.toContain('_ikFixOpen(0)'); // M5: off = "Do in Elvanto"
     expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' })))).toContain('Do in Elvanto');
     expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live' }))).toContain('_ikFixOpen(0)');
+    e.fns._ik().fixes[mis.personId] = { id: P(77), status: 'unclear' }; // L7: an unclear fix offers Check again (rev 15 console only)
+    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live', recheck: 'live' }))).toContain(`_lkRecheck('${P(77)}')`);
+    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live' }))).not.toContain('_lkRecheck(');
+    delete e.fns._ik().fixes[mis.personId];
     e.fns._ikFixOpen(0);
     expect(strip(e.calls.modals[0]!)).toContain("Change Ava Nguyen's profile to match the form?");
     await e.fns._ikFixGo();

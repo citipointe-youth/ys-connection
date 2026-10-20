@@ -75,7 +75,7 @@ describe('Y6b Home "Needs attention"', () => {
     expect(texts(f)).toEqual([
       '3 problems in the error log.',
       "2 new people weren't sent.",
-      '1 unclear save. Check it in Elvanto, then mark it in Admin > Elvanto link.',
+      '1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.', // L7
       '2 first-timers have waited over 1 hour for Elvanto. See Admin > Elvanto link.',
       'The console is offline since 7:40 pm.',
       'System check: New People flow needs fixing.',
@@ -103,7 +103,7 @@ describe('Y6b Home "Needs attention"', () => {
     const t = texts(f);
     expect(t).toContain('1 problem in the error log.');
     expect(t).toContain("1 new person wasn't sent.");
-    expect(t).toContain('2 unclear saves. Check them in Elvanto, then mark them in Admin > Elvanto link.');
+    expect(t).toContain('2 unclear saves. Tap Check again on each in Admin > Elvanto link, or check them in Elvanto and mark them there.'); // L7
     expect(t).toContain('1 first-timer has waited over 1 hour for Elvanto. See Admin > Elvanto link.');
     expect(t).toContain('1 family needs you in More > New youth & consent.');
   });
