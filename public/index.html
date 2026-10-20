@@ -7833,6 +7833,7 @@ function _setupElvLink(kind, val) {
   s.err = bad ? (_setupElvText(bad).trim() ? `The ${bad} form link is not a public Elvanto form link.` : `Paste the ${bad} form link.`)
     : a.baseUrl !== b.baseUrl ? 'Both form links must be on the same Elvanto address.' : '';
   if (!s.err) {
+    if (!_setupDraft) _setupDraft = {};
     const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
     Object.assign(e, { baseUrl: a.baseUrl, studentFormId: a.id, parentFormId: b.id });
     delete s.student; delete s.parent;
@@ -7841,18 +7842,48 @@ function _setupElvLink(kind, val) {
 }
 // Check forms runs on the draft. Its ids merge into the draft (a key not found keeps its old id); checkedAt is set
 // only when every row is found. Save Youth Setup stores it.
+// A result that lands after the links or location changed is dropped. A reply without a missing list never
+// counts as all found (fail closed).
 async function _setupElvCheck() {
-  const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+  const cur = () => (_setupDraft && _setupDraft.elvanto) || {};
+  const ask = (e) => ({ baseUrl: e.baseUrl || '', studentFormId: e.studentFormId || '', parentFormId: e.parentFormId || '', location: e.location || '' });
   const s = _setupElv || (_setupElv = {});
-  s.busy = true; s.lines = null; _setupRerender();
+  const body = ask(cur());
+  s.busy = true; s.lines = null; s.keys = []; s.typed = {}; s.idErr = {}; _setupRerender();
   try {
-    const r = await API.post('/settings/elvanto-check', { baseUrl: e.baseUrl || '', studentFormId: e.studentFormId || '', parentFormId: e.parentFormId || '', location: e.location || '' });
-    e.fields = Object.assign({}, e.fields, r.fields);
-    e.options = Object.assign({}, e.options, r.options);
-    if (!(r.missing || []).length) e.checkedAt = new Date().toISOString();
-    s.lines = r.lines || [];
+    const r = (await API.post('/settings/elvanto-check', body)) || {};
+    if (JSON.stringify(ask(cur())) !== JSON.stringify(body)) s.lines = ['The links changed while checking. Select Check forms again.'];
+    else {
+      if (!_setupDraft) _setupDraft = {};
+      const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+      e.fields = Object.assign({}, e.fields, r.fields);
+      e.options = Object.assign({}, e.options, r.options);
+      if (Array.isArray(r.missing) && !r.missing.length) e.checkedAt = new Date().toISOString();
+      s.lines = r.lines || [];
+      s.keys = Array.isArray(r.missingKeys) ? r.missingKeys : [];
+    }
   } catch (x) { s.lines = [x.message]; }
   s.busy = false; _setupRerender();
+}
+// Decision 8: the admin can type an id for a row Check forms did not find. Same rule as the settings schema
+// (fields hold an input name up to 200 characters, options an id up to 64).
+function _elvIdProblem(key, v) {
+  const max = /^fields\./.test(key) ? 200 : 64;
+  return !v ? 'Type the id first.' : v.length > max ? `That id is too long. It can have up to ${max} characters.` : '';
+}
+function _setupElvId(i, val) {
+  const s = _setupElv || (_setupElv = {}), key = (s.keys || [])[i];
+  if (!key) return;
+  const v = String(val || '').trim(), dot = key.indexOf('.'), grp = key.slice(0, dot), k = key.slice(dot + 1);
+  s.typed = Object.assign({}, s.typed, { [i]: val });
+  s.idErr = Object.assign({}, s.idErr, { [i]: _elvIdProblem(key, v) });
+  if (!s.idErr[i]) {
+    if (!_setupDraft) _setupDraft = {};
+    const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+    e[grp] = Object.assign({}, e[grp], { [k]: v });
+    delete s.typed[i];
+  }
+  _setupRerender();
 }
 function _setupElvCardHtml(cfg) {
   const e = cfg.elvanto || {}, s = _setupElv || {};
@@ -7866,7 +7897,15 @@ function _setupElvCardHtml(cfg) {
     ${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
     ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'Default state')}
     <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
-    ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>`).join('')}</div>` : ''}`;
+    ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l, i) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>` + _setupElvIdHtml(e, s, i)).join('')}</div>` : ''}`;
+}
+function _setupElvIdHtml(e, s, i) {
+  const key = (s.keys || [])[i];
+  if (!key) return '';
+  const dot = key.indexOf('.'), have = ((e[key.slice(0, dot)] || {})[key.slice(dot + 1)]) || '';
+  const typed = (s.typed || {})[i], err = (s.idErr || {})[i];
+  return `<input class="fi" aria-label="Id for this row" placeholder="Type its id" value="${esc(typed != null ? typed : have)}" onchange="_setupElvId(${i}, this.value)">`
+    + (err ? `<div class="help-text" role="alert" style="color:var(--danger);margin:2px 0 6px">${esc(err)}</div>` : '');
 }
 function _setupPrayersOff() { closeModal(); _setupSet('modules.prayers', false); }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }

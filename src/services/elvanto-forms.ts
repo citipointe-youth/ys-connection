@@ -93,6 +93,8 @@ export function readFormFields(html: string): FormField[] {
 export interface FormCheck {
   ok: boolean; n: number; fields: Record<string, string>; options: Record<string, string>;
   missing: string[]; extra: string[]; lines: string[];
+  /** The draft key ('fields.<k>' / 'options.<k>') of each `missing` row, same order: the card types an id there. */
+  missingKeys: string[];
 }
 
 /** Check forms: map every key by label on both forms. `grades` are the ones this location sends (they must be found);
@@ -100,19 +102,19 @@ export interface FormCheck {
 export function checkForms(studentHtml: string, parentHtml: string, location: string, grades: number[]): FormCheck {
   const qs = [...readFormFields(studentHtml), ...readFormFields(parentHtml)];
   const q = (label: string) => qs.find((f) => f.label === label);
-  const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [];
+  const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [], missingKeys: string[] = [];
   let n = 0;
   for (const [k, label] of Object.entries(FIELD_LABELS.fields)) {
     n++;
     const f = q(label);
-    if (f?.name) fields[k] = f.name; else missing.push(label);
+    if (f?.name) fields[k] = f.name; else { missing.push(label); missingKeys.push(`fields.${k}`); }
   }
   const opts: [string, readonly [string, string]][] = [...Object.entries(FIELD_LABELS.options), ['location', [FIELD_LABELS.location, location]]];
   for (const [k, [ql, ol]] of opts) {
     const need = !/^grade\d+$/.test(k) || grades.includes(Number(k.slice(5)));
     if (need) n++;
     const v = ol && q(ql)?.options.find((o) => o.label === ol)?.value;
-    if (v) options[k] = v; else if (need) missing.push(ol ? `${ql}, option ${ol}` : ql);
+    if (v) options[k] = v; else if (need) { missing.push(ol ? `${ql}, option ${ol}` : ql); missingKeys.push(`options.${k}`); }
   }
   // A labelled question neither body posts (a new required one would make every send fail, as shapeProblems says).
   const e = { fields, options } as ElvantoConfig;
@@ -123,7 +125,7 @@ export function checkForms(studentHtml: string, parentHtml: string, location: st
     ...(missing.length ? missing.map((m) => `Not found: ${m}. Make the question match, or type its id.`) : [`All ${n} found.`]),
     ...extra.map((l) => `This form asks something the app doesn't fill: ${l}.`),
   ];
-  return { ok: !missing.length && !extra.length, n, fields, options, missing, extra, lines };
+  return { ok: !missing.length && !extra.length, n, fields, options, missing, missingKeys, extra, lines };
 }
 
 /** True when every key the body builders read is set (grade6 only when "Include Grade 6" is on). */

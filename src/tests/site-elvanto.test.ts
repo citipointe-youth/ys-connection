@@ -146,6 +146,10 @@ describe('readFormFields', () => {
     expect(r.missing).toEqual(['Citipointe Location, option Nowhere']);
     expect(r.lines[0]).toBe('Not found: Citipointe Location, option Nowhere. Make the question match, or type its id.');
   });
+  it('missingKeys names the draft key of each missing row, in the same order (the card types an id there)', () => {
+    expect(checkForms(STUDENT, PARENT, 'Nowhere', [7]).missingKeys).toEqual(['options.location']);
+    expect(checkForms(STUDENT, PARENT, 'Brisbane', [7, 8, 9, 10, 11, 12]).missingKeys).toEqual([]);
+  });
 });
 
 describe('POST /settings/elvanto-check', () => {

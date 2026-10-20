@@ -128,6 +128,82 @@ describe('Check forms puts its result into the draft', () => {
   });
 });
 
+describe('fix round 1: typed ids, fail closed, stale results, null draft', () => {
+  const base = `{ elvanto: { baseUrl: 'https://your-org.elvanto.com.au', studentFormId: '${ID}', parentFormId: '${PID}', location: 'North',
+      fields: { host: 'old-host' }, options: { location: 'old-loc' }, checkedAt: '2026-10-09' } }`;
+  const pre = (post = 'async () => ({})') => `
+    let _setupDraft = ${base};
+    let _setupElv = null;
+    const API = { post: ${post} };
+    const esc = (x) => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    function _setupRerender() {}
+    function setDraft(d) { _setupDraft = d; }
+    function setElv(v) { _setupElv = v; }
+    function state() { return { d: _setupDraft, s: _setupElv }; }`;
+  const FN = ['_elvSplitLink', '_setupElvText', '_setupElvLink', '_setupElvCheck', '_elvIdProblem', '_setupElvId', '_setupElvCardHtml', '_setupElvIdHtml'];
+  const load = (post?: string) => loadFns(FN, pre(post), [...FN, 'setDraft', 'setElv', 'state']);
+  const notFound = { ok: false, n: 2, fields: {}, options: {}, missing: ['Name of Host filling out form', 'Citipointe Location, option North'],
+    missingKeys: ['fields.host', 'options.location'], extra: [],
+    lines: ['Not found: Name of Host filling out form. Make the question match, or type its id.', 'Not found: Citipointe Location, option North. Make the question match, or type its id.'] };
+
+  it('each Not found line gets an id input; a valid id lands in the draft for that key', async () => {
+    const f = load(`async () => (${JSON.stringify(notFound)})`);
+    await f._setupElvCheck();
+    const html = f._setupElvCardHtml(f.state().d);
+    expect(html).toContain('_setupElvId(0, this.value)');
+    expect(html).toContain('_setupElvId(1, this.value)');
+    f._setupElvId(0, '  submissions[0][forms_custom_field][abc]  ');
+    f._setupElvId(1, 'c0ffee00-0000-4000-8000-000000000001');
+    expect(f.state().d.elvanto.fields).toEqual({ host: 'submissions[0][forms_custom_field][abc]' });
+    expect(f.state().d.elvanto.options).toEqual({ location: 'c0ffee00-0000-4000-8000-000000000001' });
+    expect(f.state().d.elvanto.checkedAt).toBe('2026-10-09');
+  });
+  it('an id that breaks the settings rule is refused in words and the draft is unchanged', async () => {
+    const f = load(`async () => (${JSON.stringify(notFound)})`);
+    await f._setupElvCheck();
+    f._setupElvId(1, 'x'.repeat(65));
+    expect(f.state().s.idErr[1]).toBe('That id is too long. It can have up to 64 characters.');
+    f._setupElvId(0, '   ');
+    expect(f.state().s.idErr[0]).toBe('Type the id first.');
+    expect(f.state().d.elvanto.fields).toEqual({ host: 'old-host' });
+    expect(f.state().d.elvanto.options).toEqual({ location: 'old-loc' });
+    const html = f._setupElvCardHtml(f.state().d);
+    expect(html).toContain('That id is too long. It can have up to 64 characters.');
+    expect(html).toContain('value="' + 'x'.repeat(65) + '"'); // the typed text stays in the box
+    expect(f._elvIdProblem('fields.host', 'x'.repeat(200))).toBe('');
+    expect(f._elvIdProblem('fields.host', 'x'.repeat(201))).toBe('That id is too long. It can have up to 200 characters.');
+  });
+  it('Brisbane, all found: the results show no id input', async () => {
+    const f = load(`async () => ({ ok: true, n: 39, fields: {}, options: {}, missing: [], missingKeys: [], extra: [], lines: ['All 39 found.'] })`);
+    await f._setupElvCheck();
+    const html = f._setupElvCardHtml(f.state().d);
+    expect(html).toContain('All 39 found.');
+    expect(html).not.toContain('_setupElvId(');
+  });
+  it('a reply without a missing list does not read as all found (fail closed)', async () => {
+    const f = load(`async () => ({ fields: { host: 'h' }, lines: ['All 39 found.'] })`);
+    await f._setupElvCheck();
+    expect(f.state().d.elvanto.checkedAt).toBe('2026-10-09');
+  });
+  it('a result that lands after a link edit is dropped', async () => {
+    const f = load(`async () => { _setupDraft.elvanto.studentFormId = '${PID}'; return { ok: true, n: 1, fields: { host: 'new' }, options: {}, missing: [], missingKeys: [], extra: [], lines: ['All 1 found.'] }; }`);
+    await f._setupElvCheck();
+    expect(f.state().d.elvanto.fields).toEqual({ host: 'old-host' });
+    expect(f.state().d.elvanto.checkedAt).toBe('2026-10-09');
+    expect(f.state().s.lines).toEqual(['The links changed while checking. Select Check forms again.']);
+  });
+  it('no draft yet: link, check and id do not throw', async () => {
+    const f = load();
+    f.setDraft(null);
+    expect(() => f._setupElvLink('student', `https://your-org.elvanto.com.au/form/${ID}`)).not.toThrow();
+    f.setDraft(null);
+    await expect(f._setupElvCheck()).resolves.toBeUndefined();
+    f.setDraft(null); f.setElv({ keys: ['fields.host'] });
+    expect(() => f._setupElvId(0, 'abc')).not.toThrow();
+    expect(f.state().d.elvanto.fields).toEqual({ host: 'abc' });
+  });
+});
+
 describe('the card copy', () => {
   const src = loadIndexHtml();
   it('the card and its fields', () => {
