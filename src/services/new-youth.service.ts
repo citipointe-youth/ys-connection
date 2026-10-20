@@ -7,7 +7,7 @@ import type { IUnsentRepository, UnsentReason } from '../repositories/interfaces
 import { decryptField, encryptField } from '../utils/field-crypto';
 import { RateLimiter } from '../utils/rate-limiter';
 import { assertCan, canUseNewYouth } from './access-control';
-import { gradeRange } from '../core/ministry-config';
+import { gradeRange, type ElvantoConfig } from '../core/ministry-config';
 import * as EF from './elvanto-forms';
 import type { ErrorLogService } from './error-log.service';
 
@@ -53,7 +53,6 @@ const LABELS: Record<string, string> = {
   parentGender: 'parent gender', send: 'request',
 };
 
-const keys = (r: Record<string, string>) => Object.keys(r) as [string, ...string[]];
 const name = z.string().trim().min(1).max(50).transform(EF.tidyName);
 const mobile = z.string().transform((v, ctx) => {
   const m = EF.toAuMobile(v);
@@ -72,7 +71,7 @@ const Schema = z.object({
     return d;
   }),
   gender: z.enum(['m', 'f']),
-  grade: z.enum(keys(EF.GRADES)),
+  grade: z.enum(['6', '7', '8', '9', '10', '11', '12']), // gradeRange() below narrows it to this ministry's grades
   school: z.string().trim().min(1).max(80),
   mobile,
   address: z.object({
@@ -81,8 +80,8 @@ const Schema = z.object({
     state: z.string().trim().max(20),
     postcode: z.string().trim().regex(/^(\d{4})?$/),
   }).optional(),
-  allergies: z.array(z.enum(keys(EF.ALLERGIES))).max(11).default([]),
-  conditions: z.array(z.enum(keys(EF.CONDITIONS))).max(4).default([]),
+  allergies: z.array(z.enum(EF.LABELS.allergies)).max(11).default([]),
+  conditions: z.array(z.enum(EF.LABELS.conditions)).max(4).default([]),
   medicalNotes: z.string().trim().max(500).default(''),
   parentFirst: name,
   parentLast: name,
@@ -113,9 +112,9 @@ export function makeNewYouthService(
   const limiter = new RateLimiter(60, 60 * 60 * 1000); // logins are shared (grade9g), so a busy night needs headroom
   const recent = new Map<string, { at: number; result: NewYouthResult }>();
 
-  async function getForm(id: string): Promise<string> {
+  async function getForm(url: string): Promise<string> {
     try {
-      const r = await fetchFn(EF.formUrl(id), { headers: { 'User-Agent': UA }, redirect: 'manual', signal: AbortSignal.timeout(GET_TIMEOUT_MS) });
+      const r = await fetchFn(url, { headers: { 'User-Agent': UA }, redirect: 'manual', signal: AbortSignal.timeout(GET_TIMEOUT_MS) });
       if (r.status !== 200) throw new Error(`status ${r.status}`);
       return await r.text();
     } catch {
@@ -123,10 +122,10 @@ export function makeNewYouthService(
     }
   }
 
-  async function post(form: EF.FormKind, body: URLSearchParams): Promise<EF.Outcome> {
-    const id = form === 'student' ? EF.STUDENT_FORM_ID : EF.PARENT_FORM_ID;
+  async function post(e: ElvantoConfig, form: EF.FormKind, body: URLSearchParams): Promise<EF.Outcome> {
+    const url = EF.formUrl(e, form);
     try {
-      const r = await fetchFn(EF.formUrl(id), {
+      const r = await fetchFn(url, {
         method: 'POST',
         body,
         redirect: 'manual',
@@ -134,8 +133,8 @@ export function makeNewYouthService(
         headers: {
           'User-Agent': UA,
           'Content-Type': 'application/x-www-form-urlencoded',
-          Origin: EF.ELVANTO_BASE,
-          Referer: EF.formUrl(id),
+          Origin: e.baseUrl,
+          Referer: url,
         },
       });
       return EF.classifyPost(form, { status: r.status, location: r.headers.get('location'), body: await r.text() });
@@ -195,6 +194,9 @@ export function makeNewYouthService(
       assertCan(actor, 'intake:write');
       const settings = await settingsRepo.getSettings();
       if (!canUseNewYouth(actor, settings.ministryConfig.modules.newYouthForms)) throw new ModuleDisabledError('New person');
+      // A blank or half-filled Elvanto block never reaches Elvanto (and never falls back to Brisbane's forms).
+      if (!EF.elvantoReady(settings.ministryConfig)) throw new AppError('ELVANTO_NOT_SET', "New person isn't set up here yet. Ask your admin.", 409);
+      const elv = settings.ministryConfig.elvanto;
 
       const parsed = Schema.safeParse(input);
       if (!parsed.success) {
@@ -234,11 +236,11 @@ export function makeNewYouthService(
 
       let sBody: URLSearchParams, pBody: URLSearchParams;
       try {
-        const [sHtml, pHtml] = await Promise.all([getForm(EF.STUDENT_FORM_ID), getForm(EF.PARENT_FORM_ID)]);
+        const [sHtml, pHtml] = await Promise.all([getForm(EF.formUrl(elv, 'student')), getForm(EF.formUrl(elv, 'parent'))]);
         const sHp = EF.honeypotName(sHtml), pHp = EF.honeypotName(pHtml);
-        sBody = EF.studentBody(y, sHp ?? 'elvanto-missing');
-        pBody = EF.parentBody(y, pHp ?? 'elvanto-missing');
-        if (!sHp || !pHp || EF.shapeProblems(sHtml, sBody).length || EF.shapeProblems(pHtml, pBody).length) {
+        sBody = EF.studentBody(y, sHp ?? 'elvanto-missing', elv);
+        pBody = EF.parentBody(y, pHp ?? 'elvanto-missing', elv);
+        if (!sHp || !pHp || EF.shapeProblems(sHtml, sBody, elv).length || EF.shapeProblems(pHtml, pBody, elv).length) {
           throw new AppError('ELVANTO_FORM_CHANGED', 'The Elvanto form has changed, so nothing was sent. Use the welcome-desk form and tell the admin.', 502);
         }
       } catch (e) {
@@ -257,8 +259,8 @@ export function makeNewYouthService(
 
       if (!live) return { student: 'skipped', parent: 'skipped', dryRun: true };
 
-      const student: EF.Outcome = data.send.includes('student') ? await post('student', sBody) : 'skipped';
-      const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post('parent', pBody);
+      const student: EF.Outcome = data.send.includes('student') ? await post(elv, 'student', sBody) : 'skipped';
+      const parent: EF.Outcome = !data.send.includes('parent') || student === 'failed' ? 'skipped' : await post(elv, 'parent', pBody);
       const result: NewYouthResult = { student, parent, dryRun: false, ref };
       // T3: an unconfirmed or rejected send goes to the admin Error log (form + outcome only, never the person).
       for (const [form, o] of [['STUDENT', student], ['PARENT', parent]] as const) {

@@ -6,6 +6,7 @@ import { invalidateLgStatsCache } from '../services/lifegroup-stats.service';
 import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryConnectionRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import type { Actor, User } from '../core/entities/user';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
 
 function actor(role: string): Actor {
   return { id: 'a-test', role: role as any, displayName: 'T', grade: null as any, quad: null as any };
@@ -493,12 +494,44 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
 describe('T10 link module keys through PATCH /settings (the settings file is a GET + PATCH round trip)', () => {
   it('saves each key on its own and a downloaded ministryConfig loads back unchanged', async () => {
     const { service } = await makeService();
-    await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: 'admin', checkin: 'on', lifegroupReport: 'off', flows: 'admin' } } });
+    await service.update(ADMIN, { ministryConfig: { elvanto: brisbaneElvanto(), modules: { newYouthForms: 'admin', checkin: 'on', lifegroupReport: 'off', flows: 'admin' } } });
     const file = JSON.parse(JSON.stringify((await service.get()).ministryConfig));
     expect([file.modules.checkin, file.modules.lifegroupReport, file.modules.flows]).toEqual(['on', 'off', 'admin']);
     const fresh = await makeService();
     await fresh.service.update(ADMIN, { ministryConfig: file });
     expect((await fresh.service.get()).ministryConfig.modules).toMatchObject({ newYouthForms: 'admin', checkin: 'on', lifegroupReport: 'off', flows: 'admin' });
     await expect(service.update(ADMIN, { ministryConfig: { modules: { flows: 'sometimes' } } })).rejects.toBeTruthy();
+  });
+});
+
+describe('Y1b: New person needs this location\'s Elvanto forms before it is turned on', () => {
+  const MSG = 'Fill in Elvanto for this location. Then select Check forms.';
+  it('PATCH refuses off -> on while incomplete', async () => {
+    const { service } = await makeService();
+    for (const mode of ['admin', 'on']) {
+      const err: any = await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: mode } } }).catch((e) => e);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe(MSG);
+    }
+    expect((await service.get()).ministryConfig.modules.newYouthForms).toBe('off');
+    // half filled is still incomplete
+    const { host: _h, ...fields } = brisbaneElvanto().fields;
+    const half: any = await service.update(ADMIN, { ministryConfig: { elvanto: { ...brisbaneElvanto(), fields }, modules: { newYouthForms: 'on' } } }).catch((e) => e);
+    expect(half.message).toBe(MSG);
+  });
+  it('PATCH accepts off -> on when the same save fills Elvanto', async () => {
+    const { service } = await makeService();
+    const s = await service.update(ADMIN, { ministryConfig: { elvanto: brisbaneElvanto(), modules: { newYouthForms: 'on' } } });
+    expect(s.ministryConfig.modules.newYouthForms).toBe('on');
+  });
+  it('PATCH accepts an unrelated save while incomplete', async () => {
+    const { repo, service } = await makeService();
+    const cur = (await repo.getSettings()).ministryConfig; // New person already on, Elvanto blank (e.g. after a rollback)
+    await repo.updateSettings({ ministryConfig: { ...cur, modules: { ...cur.modules, newYouthForms: 'on' } } } as any);
+    const s = await service.update(ADMIN, { ministryConfig: { structure: { serviceDayOfWeek: 4 } } });
+    expect(s.ministryConfig.structure.serviceDayOfWeek).toBe(4);
+    expect(s.ministryConfig.modules.newYouthForms).toBe('on');
+    const off = await service.update(ADMIN, { ministryConfig: { modules: { newYouthForms: 'off' } } }); // turning it off is never refused
+    expect(off.ministryConfig.modules.newYouthForms).toBe('off');
   });
 });

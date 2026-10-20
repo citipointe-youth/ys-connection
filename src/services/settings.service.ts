@@ -11,6 +11,7 @@ import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { AppError, BadRequestError } from '../core/errors/app-error';
 import { googleRoutingEnabled } from './routing/google-routing-provider';
+import { elvantoReady } from './elvanto-forms';
 
 // The optional roles a ministry can switch off in Setup (Admin always exists
 // and isn't toggleable — see ministry-config.ts). User.role values match these
@@ -134,6 +135,11 @@ export function makeSettingsService(
           cleanPatch = { ...ministryConfigPatch, logins: rest };
         }
         const merged = mergeMinistryConfig(cur, cleanPatch);
+        // Only turning New person on is refused: a save that leaves the mode alone (e.g. an incomplete block after a
+        // rollback) must not block unrelated Youth Setup saves; the send-time 409 ELVANTO_NOT_SET is the guard there.
+        if (cur.modules.newYouthForms === 'off' && merged.modules.newYouthForms !== 'off' && !elvantoReady(merged)) {
+          throw new BadRequestError('Fill in Elvanto for this location. Then select Check forms.');
+        }
         const wasOn = cur.logins.simple;
         const isOn = merged.logins.simple;
         simpleOnNow = isOn;

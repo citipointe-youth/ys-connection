@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { extractFn } from './helpers/extract-fn';
-import { ALLERGIES, CONDITIONS } from '../services/elvanto-forms';
+import { LABELS } from '../services/elvanto-forms';
 
 const html = readFileSync('public/index.html', 'utf8');
 const listOf = (name: string) => JSON.parse(new RegExp(`const ${name} = (\\[[^\\]]*\\]);`).exec(html)![1]!);
@@ -10,8 +10,8 @@ const nyErrorText = new Function(`${extractFn(html, '_nyErrorText')}; return _ny
 
 describe('New youth SPA', () => {
   it('checkbox labels match the server lists exactly', () => {
-    expect(listOf('NY_ALLERGIES')).toEqual(Object.keys(ALLERGIES));
-    expect(listOf('NY_CONDITIONS')).toEqual(Object.keys(CONDITIONS));
+    expect(listOf('NY_ALLERGIES')).toEqual(LABELS.allergies);
+    expect(listOf('NY_CONDITIONS')).toEqual(LABELS.conditions);
   });
   it('both sent → good, no retry', () => {
     const m = nyMessage({ student: 'sent', parent: 'sent', dryRun: false });

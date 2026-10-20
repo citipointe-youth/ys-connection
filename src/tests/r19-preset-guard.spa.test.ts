@@ -3,6 +3,7 @@ import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 import { makeSettingsService } from '../services/settings.service';
 import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
 
 // CY-D1 / PY-B1 (review 2026-10-19, presets KEPT by ruling D3): a Youth Setup preset changes only
 // the preset fields (structure / roles / CA, Lifegroups, Export guides). Module states, Bus settings
@@ -23,6 +24,7 @@ async function stored() {
   await svc.update(ADMIN, { ministryConfig: {
     branding: { ministryName: 'YS Gold Coast', appName: 'GC App', accent: '#ff0000' },
     labels: { groupNameStrip: ['Gold Coast - YS - '] },
+    elvanto: brisbaneElvanto(), // Y1b: turning New person on needs this location's forms
     modules: { intakeAdmin: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on', newYouthForms: 'on', busMinistry: true, flowHiddenStep: { f1: 's2' } },
     busMinistry: { churchAddress: '1 Church St', churchPlaceId: 'pl1', coordinatorLeaderIds: ['L1'], leaveTime: '20:30' },
   } } as any);

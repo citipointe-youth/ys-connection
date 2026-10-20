@@ -7,6 +7,8 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { makeNewYouthService } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
+const BRIS = brisbaneElvanto();
 import { InMemorySettingsRepository, InMemoryUnsentRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { isEncrypted } from '../utils/field-crypto';
@@ -31,7 +33,7 @@ function fakeFetch(posts: ('ok' | 'fail' | 'down')[], getStatus = 200) {
   const fn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     if ((init?.method ?? 'GET') === 'GET') {
-      return new Response(u.includes(EF.STUDENT_FORM_ID) ? studentHtml : parentHtml, { status: getStatus });
+      return new Response(u.includes(BRIS.studentFormId) ? studentHtml : parentHtml, { status: getStatus });
     }
     const p = posts.shift() ?? 'ok';
     if (p === 'ok') return new Response('<p>OK-TEST</p>', { status: 200 });
@@ -44,7 +46,7 @@ function fakeFetch(posts: ('ok' | 'fail' | 'down')[], getStatus = 200) {
 async function setup(posts: ('ok' | 'fail' | 'down')[], getStatus = 200) {
   const settings = new InMemorySettingsRepository();
   await settings.init();
-  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on' } } } as any);
+  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: BRIS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on' } } } as any);
   const unsent = new InMemoryUnsentRepository();
   const errorLog = { record: vi.fn(async () => {}) };
   const svc = makeNewYouthService(settings, { fetchFn: fakeFetch(posts, getStatus), live: true, unsent, errorLog });

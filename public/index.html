@@ -9713,7 +9713,7 @@ function _nyMessage(r) {
 // Only the service's own refusals, matched by their error CODE and never by status, mean nothing was posted:
 // Vercel itself answers a bare 502 when a function dies, possibly after the student POST. Anything else may have landed in Elvanto.
 function _nyErrorText(e) {
-  if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED'].includes(e.code)) return { unsent: true, text: e.message };
+  if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED', 'ELVANTO_NOT_SET'].includes(e.code)) return { unsent: true, text: e.message };
   return { unsent: false, text: "We don't know if the forms went in. Check the forms list in Elvanto before sending again." };
 }
 // Date of birth (T11): typed as DD/MM/YYYY, slashes added as you type. The server still gets YYYY-MM-DD,
