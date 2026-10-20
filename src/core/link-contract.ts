@@ -5,13 +5,14 @@ import { z } from 'zod';
 // A shape change bumps LINK_CONTRACT_VERSION, the fixtures and the manifest, and is copied to 11.1 in the same session.
 // (v1 was amended in place on 2026-10-12, operator decisions 9-13, before any release: no bump for that.)
 export const LINK_CONTRACT_VERSION = 1;
-// Each side sends its LINK_REV in the claim. Revs 2-12 (2026-10-12 to 2026-10-18) each added optional fields only; their
+// Each side sends its LINK_REV in the claim. Revs 2-13 (2026-10-12 to 2026-10-20) each added optional fields only; their
 // history is in docs/HISTORY.md and the 2026-10-11 contract spec. X-1 (review 2026-10-19): both sides run 12 and the app
 // refuses a claim from a console below MIN_CONSOLE_REV with 409 LINK_CONTRACT_MISMATCH, so no field is gated on a rev any
 // more. Rev 12 (C01): a claim also re-hands this console's OWN still-leased rows (reclaimed: true), so a claim reply the
 // console lost (its 15 s timeout while the app committed the lease) never strands rows for the 600 s lease.
+// Rev 13 (Service Visits): a flows row may carry serviceVisits; MIN_CONSOLE_REV stays 12 so a rev-12 console still works.
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
-export const LINK_REV = 12;
+export const LINK_REV = 13;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -201,7 +202,8 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   // T4: the person's own grade/gender, and their mobile as bare digits (else the parent's, mobileIsParent true).
   grade: Grade.optional(), gender: Gender.nullable().optional(), mobile: z.string().regex(/^\d{6,15}$/).nullable().optional(),
   mobileIsParent: z.boolean().optional(), consent: Consent.optional(), // rev 6 (R1)
-  textedOn: Ymd.nullable().optional() }); // rev 10 (R8): New People step 0 only
+  textedOn: Ymd.nullable().optional(), // rev 10 (R8): New People step 0 only
+  serviceVisits: z.number().int().min(0).max(999).nullable().optional() }); // rev 13: distinct service days this term since the student form (form day counts), null = unknown
 // T12 (rev 5): one step of a pushed flow, empty or not.
 export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0) });
 const push = <T extends z.ZodTypeAny>(row: T) =>

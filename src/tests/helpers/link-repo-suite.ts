@@ -437,7 +437,7 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         expect(await repo.services()).toEqual([s1Row]);
         // A push without the UX-batch fields (an older console) reads back with their empty values.
         expect(await repo.groups()).toEqual([{ ...g1Row, history: [] }]);
-        expect(await repo.flows()).toEqual([{ ...f1Row, grade: null, gender: null, mobile: null, mobileIsParent: false, consent: null, textedOn: null }]);
+        expect(await repo.flows()).toEqual([{ ...f1Row, grade: null, gender: null, mobile: null, mobileIsParent: false, consent: null, textedOn: null, serviceVisits: null }]);
         await repo.replaceMirror('services', [svc(s2)], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
         await repo.replaceMirror('groups', [{ ...grp(g2), grade: null, gender: null, lastReport: null }], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
         await repo.replaceMirror('flows', [flow(f2)], { takenAt: '2026-10-16T09:00:00.000Z', consoleId: c });
@@ -461,8 +461,12 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         await repo.replaceMirror('flows', [f3], { takenAt: '2026-10-16T09:30:00.000Z', consoleId: c });
         await repo.replaceMirror('services', [s3], { takenAt: '2026-10-16T09:30:00.000Z', consoleId: c });
         expect(await repo.groups()).toEqual([g3]);
-        expect(await repo.flows()).toEqual([{ ...f3, consent: null, textedOn: null }]);
+        expect(await repo.flows()).toEqual([{ ...f3, consent: null, textedOn: null, serviceVisits: null }]);
         expect(await repo.services()).toEqual([s3]);
+        // Rev 13: serviceVisits round-trips (0 stays 0, null stays null)
+        const f4 = { ...flow(randomUUID()), serviceVisits: 0 }, f5 = { ...flow(randomUUID()), serviceVisits: 3 };
+        await repo.replaceMirror('flows', [f4, f5], { takenAt: '2026-10-16T09:45:00.000Z', consoleId: c });
+        expect((await repo.flows()).map((x) => x.serviceVisits)).toEqual([0, 3]);
         // B18 / X10: rows: [] is a full replace that means "none now"
         expect(await repo.replaceMirror('flows', [], { takenAt: '2026-10-16T10:00:00.000Z', consoleId: c })).toEqual({ applied: true, rows: 0 });
         expect(await repo.flows()).toEqual([]);

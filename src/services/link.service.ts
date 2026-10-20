@@ -143,6 +143,8 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
    *  Complete is open as "consent not received" (that Friday 9:00 passed, no consent on the profile, a rev 9 console). The batch
    *  still refuses it while a consent row for the person is open. */
   consentFriday: string | null; notReceivedOk: boolean;
+  /** Rev 13: distinct service days this term since the student form (form day counts); null = unknown, the line is hidden. */
+  serviceVisits: number | null;
   /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). R9: an `other`
@@ -1048,7 +1050,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           const consent = shownConsent(f, byId), dnc = isDnc(consent);
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
-            grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent,
+            grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent, serviceVisits: f.serviceVisits ?? null,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
             consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };

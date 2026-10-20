@@ -11826,7 +11826,7 @@ function _lkStepHtml() {
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
-  return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>
+  return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
     ${text}${blocked}${assign}${done}${rm}`;
 }
 // The remove confirm (in the same sheet): an optional note goes to the person's Elvanto notes.

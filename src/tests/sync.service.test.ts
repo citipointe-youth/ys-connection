@@ -324,7 +324,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(12);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(13);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {

@@ -102,6 +102,13 @@ describe('I7 Flow steps tiles', () => {
     expect(f._lkStepBtns()).not.toContain('Send parent text');
     expect(f._lkStepHtml()).not.toContain('recalled');
   });
+  it('Service Visits line: shown for a number (including 0), hidden for null or missing', () => {
+    const sheet = (extra: any) => { L.flows = [...L.flows.filter((r: any) => r.rowId !== 'sv'), { ...L.flows.find((r: any) => r.rowId === 'a'), rowId: 'sv', ...extra }]; L.fs = { rowId: 'sv', note: '', priv: false }; return f._lkStepHtml(); };
+    expect(sheet({ serviceVisits: 2 })).toContain('<p class="lk-sub">Service Visits: 2</p>');
+    expect(sheet({ serviceVisits: 0 })).toContain('<p class="lk-sub">Service Visits: 0</p>');
+    expect(sheet({ serviceVisits: null })).not.toContain('Service Visits');
+    expect(sheet({ serviceVisits: undefined })).not.toContain('Service Visits');
+  });
   it('bulk in parent view: "Send parent text to 3 families?", Send 3, toast "3 parent texts queued"', () => {
     f._lkFlowPick('parent');
     L.fsel = { pp0: true, pp1: true, pp2: true };

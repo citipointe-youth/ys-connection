@@ -76,7 +76,9 @@ export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; 
   grade: number | null; gender: 'male' | 'female' | null; mobile: string | null; mobileIsParent: boolean;
   /** Rev 6 (R1): null = unknown (an older console). */ consent?: Consent | null;
   /** Rev 10 (R8): New People step 0, the parent-texted date the consent Friday counts from; null = none (or an older console). */
-  textedOn?: string | null; }
+  textedOn?: string | null;
+  /** Rev 13: distinct service days this term since the student form (the form day counts); null = unknown (or an older console). */
+  serviceVisits?: number | null; }
 /** T12: one step of a pushed flow (the flows push's optional `steps`). */
 export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; }
 /** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */

@@ -442,6 +442,16 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
     expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-16T08:55:00.000Z', rows: [old] })).toMatchObject({ applied: true });
     expect((await h.link.flows())[0]!.textedOn).toBeNull();
   });
+  it('rev 13: the flows push stores serviceVisits and GET /link/flows carries it (0 stays 0, absent reads null)', async () => {
+    const h = await rev10();
+    const fx = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'elvanto-link', 'push-flows-rev13.json'), 'utf8'));
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-20T10:50:00.000Z' })).toMatchObject({ applied: true });
+    const v = async () => (await h.svc.flows(ADMIN)).rows.map((x) => [x.rowId, x.serviceVisits] as const);
+    expect(new Map(await v())).toEqual(new Map(fx.rows.map((r: any) => [r.rowId, r.serviceVisits])));
+    const { serviceVisits: _s, ...old } = fx.rows[0];
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-20T10:55:00.000Z', rows: [old] })).toMatchObject({ applied: true });
+    expect((await h.svc.flows(ADMIN)).rows[0]!.serviceVisits).toBeNull();
+  });
   it('GET /link/flows and the batch use the same date: waiting by the text, eligible by the text, by the due date, with no due date', async () => {
     const h = await rev10();
     const by = async (id: string) => (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === id)!;

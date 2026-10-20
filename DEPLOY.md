@@ -14,6 +14,8 @@ Pushing `master` builds on Vercel and the build applies migrations (`vercel-buil
 
 **rel19/ys (BUS-1 Trip logging + BUS-2 Charter bus, SW `ysc-v130`) carries migration `0038_bus_charter.sql`** (additive: `kind` on `bus_vehicles` + `bus_run_vehicles`, `vehicle_id` on `bus_addresses`). Apply it the repo's way at ship: the Vercel build's `scripts/migrate.ts` applies it; read `Database up to date — … (1 new)` in the build log and `/health` `schema.current` = `0038` before the owner promotes (never via the Supabase MCP).
 
+**svc/ys (Service Visits, SW `ysc-v134`, `LINK_REV` 13) carries migration `0039_link_flow_service_visits.sql`** (additive: `service_visits int` on `link_flow_people`). The Vercel build applies it; read `Database up to date — … (1 new)` and `/health` `schema.current` = `0039` before the owner promotes (never via the Supabase MCP). Ship YS before the console's `feat/svc-visits`; a rev-13 console against an unpromoted rev-12 app is refused capabilities.
+
 **Rollback of rel19/ys (to a pre-0038 build, e.g. `ec467c5` / `ysc-v128`) is safe but degrades.** Promote the previous deployment as usual; 0038 stays (additive, nothing to undo) and nothing crashes (`setup.service` checks `schema >=`, inserts get `kind` from its default, old upserts never touch `kind`/`vehicle_id`). But while the old build serves:
 - bus drop-off rows (`bus_addresses.vehicle_id` set) show as ordinary saved addresses ("Bus drop off");
 - a fleet bus is copied into a new night as a car (it routes to its drop-off as a normal car);

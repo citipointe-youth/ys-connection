@@ -86,6 +86,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'claim-response-rev9.json': C.ClaimResponse,
   // Rev 10 (consents run 2026-10-17, R8)
   'push-flows-rev10.json': C.PUSH_SCHEMAS.flows,
+  // Rev 13 (Service Visits, 2026-10-20)
+  'push-flows-rev13.json': C.PUSH_SCHEMAS.flows,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -176,7 +178,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(12); // 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(13); // 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -417,6 +419,18 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     expect(p.rows.map((r) => r.textedOn)).toEqual(['2026-10-12', null]);
     expect(C.PUSH_SCHEMAS.flows.parse(load('push-flows-rev6.json')).rows.every((r) => r.textedOn === undefined)).toBe(true);
     const bad = clone(load('push-flows-rev10.json')); bad.rows[0].textedOn = '12/10/2026'; rejects(C.PUSH_SCHEMAS.flows, bad);
+  });
+  it('rev 13: a flows row may carry serviceVisits (int 0-999 or null); optional; MIN_CONSOLE_REV stays 12', () => {
+    const p = C.PUSH_SCHEMAS.flows.parse(load('push-flows-rev13.json'));
+    expect(p.rows.map((r) => r.serviceVisits)).toEqual([2, 0, null]);
+    expect(C.PUSH_SCHEMAS.flows.parse(load('push-flows-rev10.json')).rows.every((r) => r.serviceVisits === undefined)).toBe(true);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    for (const v of [-1, 1.5, 1000, '2']) { const bad = clone(load('push-flows-rev13.json')); bad.rows[0].serviceVisits = v; rejects(C.PUSH_SCHEMAS.flows, bad); }
+  });
+  it('0039: adds only link_flow_people.service_visits, additive', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0039_link_flow_service_visits.sql'), 'utf8');
+    expect(sql).toMatch(/alter table link_flow_people add column if not exists service_visits int;/);
+    expect(sql).not.toMatch(/(drop|delete|truncate)/i);
   });
   it('0037: adds only link_flow_people.texted_on, additive', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0037_link_flow_texted_on.sql'), 'utf8');

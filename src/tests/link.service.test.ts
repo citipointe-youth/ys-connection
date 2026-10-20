@@ -1253,11 +1253,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
     const h = await setup();
-    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 12 }); // rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 13 }); // rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
     await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
     expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
     const none = await setup('on', { console: false });
-    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 12 });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 13 });
   });
 
   it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
@@ -1281,7 +1281,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const h = await setup();
     const r = (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FR1)!;
     expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'dnc', 'due', 'flowId', 'flowName',
-      'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'notReceivedOk', 'openAction', 'personId', 'rowId', 'stepId', 'stepName', 'stepOrder']);
+      'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'notReceivedOk', 'openAction', 'personId', 'rowId', 'serviceVisits', 'stepId', 'stepName', 'stepOrder']);
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });
 
