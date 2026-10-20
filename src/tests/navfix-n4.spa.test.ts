@@ -210,7 +210,7 @@ describe('D6 door: a pending row over 15 min says the console has not picked it 
     return _lkStatusText;`)();
   it('16 min old -> since line; 5 min old -> the normal pending line; awaiting-approval unchanged', () => {
     const old = new Date(Date.now() - 16 * 60000).toISOString();
-    expect(st({ status: 'pending', reason: null, createdAt: old }, '7:02 pm')).toBe(`Console hasn't picked this up yet (since SEEN(${old})).`);
+    expect(st({ status: 'pending', reason: null, createdAt: old }, '7:02 pm')).toBe(`Not sent to Elvanto yet (since SEEN(${old})).`);
     expect(st({ status: 'pending', reason: null, createdAt: new Date(Date.now() - 5 * 60000).toISOString() })).toBe('Waiting for Elvanto.');
     expect(st({ status: 'pending', reason: 'awaiting-approval', createdAt: old })).toBe('Waiting for the new-person form to be approved.');
   });

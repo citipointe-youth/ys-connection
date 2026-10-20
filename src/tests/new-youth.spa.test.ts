@@ -333,9 +333,9 @@ describe('bottom nav order', () => {
     expect(ids(n.bottomNavItems())).toEqual(['home', 'at-risk', 'my-students', 'prayers', 'leaders']);
     expect(ids(n.navItems())).toEqual(['home', 'at-risk', 'my-students', 'prayers', 'leaders', 'trends', 'birthdays']);
   });
-  it('leader: Home | Prayers | Health | My Connections | Birthdays', () => {
+  it('leader: Home | More | Health | My Connections | Birthdays (Y5: More always, for Change password)', () => {
     const n = navFns(modeOf('off', 'leader'));
-    expect(ids(n.bottomNavItems())).toEqual(['home', 'prayers', 'at-risk', 'my-students', 'birthdays']);
+    expect(ids(n.bottomNavItems())).toEqual(['home', 'more', 'at-risk', 'my-students', 'birthdays']);
   });
   it('the swap keeps each item id, icon, label and mbl as they were', () => {
     const g = navFns(modeOf('off', 'grade')).navItems();
@@ -361,6 +361,7 @@ describe('the More menu (in the Prayers slot)', () => {
     for (const r of ROLES) {
       for (const mode of ['off', 'admin']) {
         if (r === 'admin') continue; // admin always has the Elvanto link entry: see the next test
+        if (r === 'leader') continue; // Y5 (controller ruling): a junior leader always gets More (Change password); leader-friction.spa.test.ts
         const n = navFns(modeOf(mode, r));
         expect(ids(n.moreItems()), `${mode}/${r}`).toEqual(['prayers']);
         const p = n.navItems().find((i) => i.id === 'prayers')!;

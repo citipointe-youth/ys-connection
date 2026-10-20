@@ -2566,9 +2566,10 @@ function moreItems() {
 // The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
 function _navSlots(u) {
   const more = moreItems();
+  const pw = ((u || S.user) || {}).role === 'leader'; // Y5: a junior leader has no Setup page, so More (with Change password) is always there
   return _navItemsBase(u).map(it => {
     if (it.id !== 'prayers') return it;
-    if (more.length >= 2) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
+    if (more.length >= 2 || pw) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
     if (more.length === 0) return null;
     const m = more[0];
     if (m.id === 'prayers') return it;
@@ -10072,8 +10073,8 @@ function _lkStatusText(row, lastSeen) {
     'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
     'too-old': 'Too late to send. Do it in Elvanto.',
     'not-landed': "It didn't save. Do it in Elvanto.",
-    'console-cannot-read': "The console couldn't do this. Do it in Elvanto.",
-    'unknown': "The console couldn't do this. Do it in Elvanto.",
+    'console-cannot-read': 'This did not go through. Do it in Elvanto.',
+    'unknown': 'This did not go through. Do it in Elvanto.',
     'lease-lost': 'Not sure it saved. The admin is checking Elvanto.',
     'note-unreadable': "This note couldn't be read. Do it in Elvanto.",
     'stale': 'Someone else changed this after your tap. Reload.',
@@ -10087,7 +10088,7 @@ function _lkStatusText(row, lastSeen) {
       // D6: open over 15 min (the server sweeps it too-old later): console online = busy with older saves (N02, the
       // _ikChip wording); otherwise say since when.
       : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS
-        ? (typeof LINK !== 'undefined' && LINK.status && LINK.status.console && LINK.status.console.online ? 'Queued behind other saves.' : "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').')
+        ? (typeof LINK !== 'undefined' && LINK.status && LINK.status.console && LINK.status.console.online ? 'Queued behind other saves.' : 'Not sent to Elvanto yet (since ' + _lkSeen(row.createdAt) + ').')
       : 'Waiting for Elvanto.' + (lastSeen ? ' Elvanto last reached ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');

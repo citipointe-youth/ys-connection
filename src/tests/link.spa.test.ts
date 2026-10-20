@@ -189,8 +189,8 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",
-      'console-cannot-read': "The console couldn't do this. Do it in Elvanto.",
-      'unknown': "The console couldn't do this. Do it in Elvanto.",
+      'console-cannot-read': 'This did not go through. Do it in Elvanto.',
+      'unknown': 'This did not go through. Do it in Elvanto.',
       'lease-lost': 'Not sure it saved. The admin is checking Elvanto.',
       'note-unreadable': "This note couldn't be read. Do it in Elvanto.",
     };

@@ -189,6 +189,29 @@ describe('Y5 Change password for every role', () => {
   });
 });
 
+describe('controller ruling: a junior leader always has the More button', () => {
+  const NAV = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', 'openMore'];
+  const nav = (role: string, modules: any) => {
+    let shown = '';
+    const n = new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV.map((x) => extractFn(HTML, x)).join('\n')}; return { navItems, bottomNavItems, moreItems, openMore };`)(
+      { user: { role }, page: 'home', settings: { ministryConfig: { modules } } }, (k: string) => k, (h: string) => { shown = h; }, (k: string) => `<i ${k}>`, (x: string) => x);
+    return { n, shown: () => shown };
+  };
+  it('fewer than 2 More modules (only Prayers, or none): the leader still gets More, holding Change password', () => {
+    for (const modules of [{}, { prayers: false }]) {
+      const { n, shown } = nav('leader', modules);
+      expect(n.moreItems().length, JSON.stringify(modules)).toBeLessThan(2);
+      const m = n.bottomNavItems().find((i: any) => i.id === 'more');
+      expect(m, JSON.stringify(modules)).toMatchObject({ label: 'More', action: 'openMore()' });
+      n.openMore();
+      expect(shown()).toContain('showChangeOwnPassword()');
+    }
+  });
+  it('the other roles keep their nav (Setup has Reset Password): plain Prayers tab with only Prayers', () => {
+    for (const r of ['grade', 'quad', 'director', 'admin']) expect(nav(r, {}).n.navItems().map((i: any) => i.id), r).not.toContain('more');
+  });
+});
+
 describe('Y5 leader wording', () => {
   const statusFns = () => new Function(`
     let LINK = { status: null }; const LK_OFFLINE_MS = 9e5; const S = { user: { role: 'grade' } };
@@ -201,23 +224,32 @@ describe('Y5 leader wording', () => {
     expect(f._lkStatusText({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for Elvanto. Elvanto last reached 7:02 pm');
     expect(f._lkStatusHtml({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for Elvanto. Elvanto last reached 7:02 pm');
   });
+  it('controller ruling: the other leader-visible status lines say Elvanto, not console', () => {
+    const f = statusFns();
+    const old = new Date(Date.now() - 16 * 60000).toISOString();
+    expect(f._lkStatusText({ status: 'pending', reason: null, createdAt: old })).toBe('Not sent to Elvanto yet (since ' + old + ').');
+    for (const reason of ['console-cannot-read', 'unknown', 'never-heard-of']) {
+      expect(f._lkStatusText({ status: 'refused', reason }), reason).toBe('This did not go through. Do it in Elvanto.');
+      expect(f._lkStatusHtml({ status: 'refused', reason }), reason).toBe('This did not go through. Tell the admin.');
+    }
+  });
   it('the dead ends say the next step', () => {
     expect(extractFn(HTML, '_lkIamListHtml')).toContain("'No leaders found. Ask your admin to add leaders.'");
     expect(extractFn(HTML, '_lkGroupsHtml')).toContain('No lifegroups for this login. Ask your admin.');
   });
   // The leader pages' render functions (Home, Health, My Connections, Prayers, Birthdays, Bus, New person, Setup,
   // Check-in, Lifegroup report, Flow steps, the "I am" picker, the password screens, the More menu). No string literal in
-  // them says "console". _lkStatusText and _lkBanner are checked by what they show a leader (above and below): their
-  // admin-only lines may name the console.
+  // them says "console" (reason-code object keys such as 'console-cannot-read' are never shown, so they are skipped).
+  // _lkBanner is checked by what it shows a leader (below): its admin-only line may name the consoles.
   const LEADER_FNS = ['renderLeaderHome', 'renderHome', 'renderMyStudents', 'renderAtRisk', 'renderPrayers', 'renderUpcomingBirthdays',
     'renderBus', 'renderNewYouth', 'renderConnect', 'renderConnectView', 'renderLink', 'renderLinkCheckin', 'renderLinkGroups', 'renderLinkFlows',
     '_lkListHtml', '_lkDoneRowsHtml', '_lkRowHtml', '_lkPickHtml', '_lkLeadersHtml', '_lkIamListHtml', '_lkGroupsHtml', '_lkReportHtml',
     '_lkWeekBodyHtml', '_lkGroupHtml', '_lkFormHtml', '_lkMembersHtml', '_lkFfHtml', '_lkTilesHtml', '_lkFlowRowHtml', '_lkFlowsHtml',
-    '_lkHomeFlowsHtml', '_lkStepHtml', '_lkRemoveHtml', '_lkOfflineHtml', '_lkStatusHtml', 'showChangeOwnPassword',
+    '_lkHomeFlowsHtml', '_lkStepHtml', '_lkRemoveHtml', '_lkOfflineHtml', '_lkStatusText', '_lkStatusHtml', 'showChangeOwnPassword',
     'renderMustChangePassword', 'openMore', 'moreItems'];
   it('rule: no leader-page string contains "console"', () => {
     for (const n of LEADER_FNS) {
-      const body = extractFn(HTML, n).replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      const body = extractFn(HTML, n).replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'[a-z-]+':/g, '');
       const lits = body.match(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`[^`]*`/g) || [];
       expect(lits.filter((l) => /console/i.test(l)), n).toEqual([]);
     }
