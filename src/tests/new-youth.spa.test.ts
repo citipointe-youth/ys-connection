@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { extractFn } from './helpers/extract-fn';
+import { extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 import { ALLERGIES, CONDITIONS } from '../services/elvanto-forms';
 
 const html = readFileSync('public/index.html', 'utf8');
@@ -82,6 +82,7 @@ function harness(post: (path: string, body: any, ms?: number) => Promise<any>, h
   const factory = new Function('S', 'API', 'toast', 'document', 'localStorage', 'setApp', 'shell', 'esc', 'go', 'window', '_nyRead', 'NY_ALLERGIES', 'NY_CONDITIONS',
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS',
     `let NY = ${FRESH};
+    ${SITE_TIME_SRC}
     ${FNS.map((n) => extractFn(html, n)).join('\n')}
     return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },

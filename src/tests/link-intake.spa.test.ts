@@ -1,7 +1,7 @@
 // T4 Intake + Consents SPA (spec 2026-10-13-intake-consent-app-spec.md §7, §10, §11, §12 item 4). Extract-and-run: the
 // REAL functions from public/index.html run against small stubs (localStorage, API, modal). No server.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt', '_lkUuid', '_lkFresh', '_lkAdmFresh', '_lkSoftReset',
   '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkTick',
@@ -26,7 +26,7 @@ const FNS = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkSeen', '_lkAt'
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
   '_navSnap', '_navSame', '_here', '_still'];
 const HTML = loadIndexHtml();
-const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
+const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
   /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m].map((re) => HTML.match(re)![0]).join('\n');
 

@@ -1,7 +1,7 @@
 // Review fixes (RV-*) for the nav/save fix round 2026-10-16: intake queue, logout, consents, notices.
 // Extract-and-run: the REAL functions from public/index.html run against small stubs.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -37,7 +37,8 @@ function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
     const navBack = () => { __calls.backs++; };
     function _here() { return { k: LINK.ik ? LINK.ik.key : null, p: S.page }; }
     function _still(h) { return !!h && h.k === (LINK.ik ? LINK.ik.key : null) && h.p === S.page; }
-    ${o.prelude ?? ''}`;
+    ${o.prelude ?? ''}
+    ${SITE_TIME_SRC}`;
   const f = new Function('__ls', '__post', '__calls', `${prelude}\n${avail.map((n) => extractFn(HTML, n)).join('\n')}
     return { ${avail.join(', ')}, get S() { return S; }, get LINK() { return LINK; } };`)(ls, post, calls);
   return { f, calls, store };
@@ -146,6 +147,7 @@ function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<an
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS', 'navigator',
     `let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
     ${fns(NY_FNS)}
+    ${SITE_TIME_SRC}
     return { nySend, nyOpen, nyReset, nyBack, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string) => toasts.push(m), doc, ls,
     (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },

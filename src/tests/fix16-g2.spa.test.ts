@@ -1,12 +1,12 @@
 // Fix round 2026-10-16, lane G2 (Consents tab): F-08, F-18, F-32(b), F-36, F-42, F-48(a), L6-8.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
   '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
   '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
 const HTML = loadIndexHtml();
-const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
+const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
 const strip = (h: string) => h.replace(/<[^>]*>/g, '');
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

@@ -37,6 +37,7 @@ import {
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, peopleFlowName, consentStepAllowed, consentFriday,
+  instantOf, type SiteTime,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
 
@@ -50,7 +51,6 @@ const REPORT_BACK_DAYS = 14;
 const FLOW_BACK_DAYS = 7;       // S-1: a refused flow step is shown back for a week
 const TYPE_ONLY_MAX = 100;      // S-1: GET /link/actions?type= alone returns the newest 100
 const CONSOLE_RECENT_MS = 600_000;
-const BRISBANE_MS = 10 * 3_600_000;
 const SWEEP_EVERY_MS = 5 * 60_000; // S-2: the read-path too-old sweep, per instance
 
 const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep', 'removeFromFlowStep'];
@@ -227,12 +227,12 @@ const newest = (cs: ConsoleRow[]) => [...cs].sort((a, b) => Date.parse(b.lastSee
  *  Complete exactly when the batch takes it. `consent` is the row's shown (sticky) flag. R8 (rev 10): the Friday counts from
  *  the row's textedOn when the console sent one, else its due date (one date for the step list and Consents Other). */
 function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string; status: string }[], now: Date,
-  people: string | null): { consentFriday: string | null; notReceivedOk: boolean } {
-  const fri = isConsentStep(f, people) ? consentFriday(f.due, f.textedOn) : null;
-  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now) === 'notReceived' };
+  people: string | null, s: SiteTime): { consentFriday: string | null; notReceivedOk: boolean } {
+  const fri = isConsentStep(f, people) ? consentFriday(f.due, f.textedOn, s.serviceDayOfWeek) : null;
+  return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now, s) === 'notReceived' };
 }
 /** E3: this year's New People flow among the pushed flow rows. */
-const peopleFlowOf = (flows: LinkFlowRow[], now: Date) => peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now));
+const peopleFlowOf = (flows: LinkFlowRow[], now: Date, tz: string) => peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now, tz));
 /** Resilience H3: a flow row's shown consent flag; an unreadable flow profile (unknown) falls back to the roster's sticky flag. */
 function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
   if (f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all') return f.consent;
@@ -247,8 +247,8 @@ function stable(v: unknown): string {
   }
   return JSON.stringify(v);
 }
-/** Brisbane midnight of a date, as an instant. */
-const brisbaneStart = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) - BRISBANE_MS).toISOString();
+/** Local midnight of a date, as an instant. */
+const brisbaneStart = (ymd: string, tz: string) => new Date(instantOf(ymd, '00:00', tz)).toISOString();
 
 function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
   if (g.grade == null) return isAdminRole(a);
@@ -370,7 +370,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const memo = <T>(f: () => Promise<T>) => { let p: Promise<T> | undefined; return () => (p ??= f()); };
     const t = clock();
     return {
-      actor, settings, t, today: brisbaneToday(t), structure: settings.ministryConfig.structure as StructureScope,
+      actor, settings, t, today: brisbaneToday(t, settings.ministryConfig.structure.timeZone), structure: settings.ministryConfig.structure as StructureScope,
+      time: settings.ministryConfig.structure satisfies SiteTime, // Y3a: the location's time zone, youth night and consent cut-off
       admin: can(actor, 'link:admin'),
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
@@ -412,12 +413,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   async function otherWait(c: Ctx, rows: { rowId: string }[]) {
     const [flows, roster, open, cRows] = await Promise.all([c.flows(), c.roster(), c.openFlowRows(), c.consentRows()]);
     const now = clock(), byId = new Map(roster.map((r) => [r.personId, r]));
-    const people = peopleFlowOf(flows, now);
+    const people = peopleFlowOf(flows, now, c.time.timeZone);
     return rows.map((o) => {
       const f = flows.find((x) => x.rowId === o.rowId && isConsentStep(x, people));
       if (!f) return { ...o, flowId: null, stepId: null, dnc: false, consentFriday: null, notReceivedOk: false, marking: false };
       const consent = shownConsent(f, byId);
-      return { ...o, flowId: f.flowId, stepId: f.stepId, dnc: isDnc(consent), ...consentWait(f, consent, cRows, now, people),
+      return { ...o, flowId: f.flowId, stepId: f.stepId, dnc: isDnc(consent), ...consentWait(f, consent, cRows, now, people, c.time),
         marking: open.some((r) => r.type === 'completeStep' && (r.payload as { rowId?: string }).rowId === f.rowId) };
     });
   }
@@ -667,7 +668,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
         // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
         // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
-        const v = isConsentStep(row, peopleFlowOf(await c.flows(), clock())) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock()) : 'done';
+        const v = isConsentStep(row, peopleFlowOf(await c.flows(), clock(), c.time.timeZone)) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock(), c.time) : 'done';
         if (!v) throw new ConsentCheckFirst();
         if (v === 'notReceived') (p as { notReceived?: true }).notReceived = true; else delete (p as { notReceived?: true }).notReceived;
       }
@@ -866,8 +867,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const list = pickList(services, c.today);
       const out: CheckinView = { today: c.today,
         services: list.map((s) => ({ serviceTimeId: s.serviceTimeId, serviceId: s.serviceId, name: s.name, startsAt: s.startsAt, ymd: s.ymd,
-          isDefault: defaultService(s.ymd, services, s.ymd === serviceDay(c.t) ? c.t : undefined)?.serviceTimeId === s.serviceTimeId })),
-        defaultServiceTimeId: defaultService(serviceDay(c.t), services, c.t)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
+          isDefault: defaultService(s.ymd, services, s.ymd === serviceDay(c.t, c.time.timeZone) ? c.t : undefined, c.time)?.serviceTimeId === s.serviceTimeId })),
+        defaultServiceTimeId: defaultService(serviceDay(c.t, c.time.timeZone), services, c.t, c.time)?.serviceTimeId ?? null }; // D3: before 03:00, yesterday
       if (!svc) return out;
       const svcAt = takenAt(mirrors, 'services');
       const byPerson = new Map<string, OutboxRow[]>();
@@ -1038,7 +1039,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const now = clock();
-      const people = peopleFlowOf(flows, now);
+      const people = peopleFlowOf(flows, now, c.time.timeZone);
       const cRows = flows.some((f) => isConsentStep(f, people)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
@@ -1052,7 +1053,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent, serviceVisits: f.serviceVisits ?? null,
             assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
-            consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people),
+            consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people, c.time),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
@@ -1216,10 +1217,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async log(actor, q) {
-      await gate(actor, 'admin');
+      const tz = (await gate(actor, 'admin')).ministryConfig.structure.timeZone;
       const f = z.object({ from: Ymd.optional(), to: Ymd.optional(), login: z.string().max(200).optional(),
         event: z.enum(LOG_EVENTS).optional() }).parse(q ?? {});
-      const to = f.to ?? brisbaneToday(clock());
+      const to = f.to ?? brisbaneToday(clock(), tz);
       const from = f.from ?? addDays(to, -6);
       let userId: string | undefined;
       if (f.login) {
@@ -1227,7 +1228,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (!u) return { rows: [] };
         userId = u.id;
       }
-      return { rows: await d.link.listLog({ from: brisbaneStart(from), to: brisbaneStart(addDays(to, 1)), userId,
+      return { rows: await d.link.listLog({ from: brisbaneStart(from, tz), to: brisbaneStart(addDays(to, 1), tz), userId,
         event: f.event, limit: LOG_MAX }) };
     },
   };

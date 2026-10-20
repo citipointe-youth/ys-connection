@@ -1,7 +1,7 @@
 // Backlog lane Y2 (2026-10-18): N10 (no service picked: the 60 s refresh reloads the services) and N11 (a past
 // service on a service day with no service today asks first). Real functions from public/index.html, small stubs.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
 const FNS = ['_lkTick', '_lkSvcReload', '_lkSvcDay', '_lkSvc', '_lkTakeServices', '_lkPickService', '_lkPickHtml', '_lkPickFoot',
@@ -14,6 +14,7 @@ function setup(services: any[], fresh: (p: string) => any = () => ({})) {
   const t = { fresh: [] as string[], modals: [] as string[], closed: 0, renders: 0, leaders: 0, els: {} as Record<string, any> };
   const f = new Function('__t', '__fresh', '__services', `
     const S = { user: { id: 'u' }, page: 'link-checkin' };
+    ${SITE_TIME_SRC}
     let LINK = { svc: null, services: __services, defaultSvc: null, people: {}, pickSel: null, pickThen: null };
     const document = { visibilityState: 'visible', getElementById: (id) => __t.els[id] || null };
     const API = { fresh: (p) => { __t.fresh.push(p); return Promise.resolve(__fresh(p)); } };

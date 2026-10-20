@@ -1,7 +1,7 @@
 // Fix round 2026-10-16 lane n4 (SPA): Unsent retry busy (C-B2), New person result kept (C-B5),
 // New person request id + unsent marker (C-B9/D3), door wording (B10, D6), _lkBoot intake flush.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
 const fns = (names: string[]) => names.map((n) => extractFn(html, n)).join('\n');
@@ -65,6 +65,7 @@ function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<an
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS', 'navigator',
     `let NY = { keep: null, sibling: false, sending: false, result: null, last: null, error: null, unknown: false };
     ${fns(NY_FNS)}
+    ${SITE_TIME_SRC}
     return { nySend, nyOpen, nyReset, nyBack, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string) => toasts.push(m), doc, ls,
     (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },

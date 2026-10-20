@@ -2,13 +2,13 @@
 // the earliest parent-texted date (console text | parent note) or why there is none, and a profile link. R9 (consents run 2026-10-17):
 // a row past its consent Friday with no reply offers Mark not received (one row or Mark all N, one confirm, one batch, per-row results).
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', '_ikConsentSub', '_ikTidyHtml', '_ikTidyList', '_ikTidyTitle', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkApply', '_ikLkStatusHtml',
   '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
   '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikOtherRow', 'fmtDay', '_ikNrState', '_ikNrOk', '_ikNrRowHtml', '_ikNrAllHtml', '_ikNrOpen', '_ikNrGo'];
 const HTML = loadIndexHtml();
-const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
+const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
 const strip = (h: string) => h.replace(/<[^>]*>/g, '');
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

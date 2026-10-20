@@ -1,6 +1,6 @@
 // Error log tab (Part 1 rework 2026-10-17), SPA side: the REAL functions from public/index.html (extract-and-run).
 import { describe, it, expect, vi } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
 const EL_GROUPS_SRC = html.match(/^const EL_GROUPS = \[[\s\S]*?\];/m)![0];
@@ -10,6 +10,8 @@ const NAMES = ['esc', '_laFmtBrisbane', '_laRelTime', '_elVisible', '_elIsNew', 
 function load(token: string | null = 'tok') {
   const sent: any[] = [];
   const prelude = `${EL_GROUPS_SRC}
+    const S = {};
+    ${SITE_TIME_SRC}
     const API = { get token() { return ${JSON.stringify(token)}; } };
     const _errSent = new Set();
     const _errNet = { at: 0 };
