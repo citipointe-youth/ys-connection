@@ -331,6 +331,8 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
 
       const now = new Date().toISOString();
       const created: CohortLayoutApplyReport['created'] = [];
+      // Y5 (SPEC #5): layout logins are shared, so none forces a password change: the first leader to sign in
+      // must not lock the rest of the team out.
       for (const spec of plan.toCreate) {
         const password = generateTempPassword();
         const passwordHash = await hashPassword(password);
@@ -340,12 +342,12 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
                 id: generateId(), displayName: spec.displayName, email: spec.username, role: 'grade',
                 grade: (spec.grades.length === 1 ? spec.grades[0]! : null) as Grade | null,
                 grades: spec.grades as Grade[], gender: spec.gender, quad: null, leaderId: null,
-                status: 'active', passwordHash, mustChangePassword: true, createdAt: now, updatedAt: now,
+                status: 'active', passwordHash, mustChangePassword: false, createdAt: now, updatedAt: now,
               }
             : {
                 id: generateId(), displayName: spec.displayName, email: spec.username, role: 'quad',
                 grade: null, grades: null, gender: null, quad: spec.quad as Quad, leaderId: null,
-                status: 'active', passwordHash, mustChangePassword: true, createdAt: now, updatedAt: now,
+                status: 'active', passwordHash, mustChangePassword: false, createdAt: now, updatedAt: now,
               };
         await users.save(user);
         created.push({ username: spec.username, displayName: spec.displayName, password });
