@@ -141,6 +141,11 @@ describe('readFormFields', () => {
     const html = STUDENT.replace('>Redcliffe</label>', '>St. Mark&#039;s (North)</label>');
     expect(checkForms(html, PARENT, "St. Mark's (North)", [7]).options.location).toBe('6c3e1500-6b5f-11e2-9eb8-3170a1d64e04');
   });
+  it('a missing option reads "<question>, option <option>" (one colon only)', () => {
+    const r = checkForms(STUDENT, PARENT, 'Nowhere', [7]);
+    expect(r.missing).toEqual(['Citipointe Location, option Nowhere']);
+    expect(r.lines[0]).toBe('Not found: Citipointe Location, option Nowhere. Make the question match, or type its id.');
+  });
 });
 
 describe('POST /settings/elvanto-check', () => {
@@ -220,7 +225,8 @@ describe('POST /settings/elvanto-check', () => {
     });
   it('a form id that is not a uuid is never fetched', async () => {
     stub();
-    await expect(check({ ...DRAFT, studentFormId: '../admin' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(check({ ...DRAFT, studentFormId: '../admin' })).rejects.toMatchObject({ statusCode: 400,
+      message: "Paste each form's public link in Youth Setup, Elvanto for this location." });
     expect(fetchStub).not.toHaveBeenCalled();
   });
   it('a non-admin gets 403 and nothing is fetched', async () => {

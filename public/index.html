@@ -1413,7 +1413,7 @@ function EXPORT_GUIDES() { return {
       imgs: [['/img/export-help/services-report.png', 'Elvanto: Services menu then Reports, Service Individual Attendance in the built-in report list'],
              ['/img/export-help/services-settings.png', 'Service Individual Attendance settings with the required options highlighted']] },
     { step: 'Step 2 of 2 · '+L('smallGroup')+' attendance', note: _EG_DATE_NOTE,
-      cap: 'Open <b>Groups › Reports</b> and generate <b>Group Individual Attendance</b>: Status <b>Active</b>; <b>All Groups</b>; Group Categories <b>Men\'s + Women\'s '+L('smallGroup')+'</b>; Demographics <b>Youth</b>; Locations <b>Brisbane</b>; Output <b>Comma Delimited .csv</b>. Then upload both files on this screen — each is detected automatically.',
+      cap: 'Open <b>Groups › Reports</b> and generate <b>Group Individual Attendance</b>: Status <b>Active</b>; <b>All Groups</b>; Group Categories <b>Men\'s + Women\'s '+L('smallGroup')+'</b>; Demographics <b>Youth</b>; Locations <b>your location</b>; Output <b>Comma Delimited .csv</b>. Then upload both files on this screen — each is detected automatically.',
       imgs: [['/img/export-help/groups-report.png', 'Elvanto: Groups menu then Reports, Group Individual Attendance in the built-in report list'],
              ['/img/export-help/groups-settings.png', 'Group Individual Attendance settings with the required options highlighted']] }
   ]},
@@ -1422,13 +1422,13 @@ function EXPORT_GUIDES() { return {
       cap: 'The team roster comes from <b>Sunday service attendance</b>: run the same <b>Service Individual Attendance</b> report (Services › Reports), but under "Filter services by service types" tick the <b>Sunday 10:15am</b> service instead of '+L('serviceNight')+'. Keep <b>"Only people who did attend"</b>, Demographics <b>Youth</b> and <b>.csv</b> output.',
       imgs: [['/img/export-help/team-report.png', 'Service Individual Attendance settings with the Sunday 10:15am service selected']] },
     { step: 'Step 2 of 4 · Decisions',
-      cap: 'Open <b>Forms › Brisbane - Youth - Decision Form › Submissions</b>, press <b>Export</b> (top right) and choose <b>CSV</b> — every decision with its date.',
+      cap: 'Open <b>Forms › your youth Decision Form › Submissions</b>, press <b>Export</b> (top right) and choose <b>CSV</b> — every decision with its date.',
       imgs: [['/img/export-help/decision-export.png', 'Elvanto Forms: Decision Form submissions with the Export format dialog open']] },
     { step: 'Step 3 of 4 · New people',
       cap: 'Open <b>Forms › the New Child/Youth form › Submissions</b>, press <b>Export</b> and choose <b>CSV</b>. This is the <b>New Connect</b> file — new people and the date they first connected.',
       imgs: [['/img/export-help/newpeople-export.png', 'Elvanto Forms: New Child/Youth form submissions with the Export format dialog open']] },
     { step: 'Step 4 of 4 · People Flows',
-      cap: 'Open <b>People › Reports</b> and generate the built-in <b>People Flow Steps Detail</b> report: pick the <b>Brisbane - Youth - New People</b> flow for the year, Report Type <b>"All people in the People Flow"</b>, leave the date ranges and statuses blank, Output <b>Comma Delimited .csv</b>.',
+      cap: 'Open <b>People › Reports</b> and generate the built-in <b>People Flow Steps Detail</b> report: pick your youth <b>New People</b> flow for the year, Report Type <b>"All people in the People Flow"</b>, leave the date ranges and statuses blank, Output <b>Comma Delimited .csv</b>.',
       imgs: [['/img/export-help/flows-report.png', 'Elvanto: People menu then Reports, People Flow Steps Detail in the built-in report list'],
              ['/img/export-help/flows-settings.png', 'People Flow Steps Detail settings with the New People flow and CSV output highlighted']] }
   ]}
@@ -7273,6 +7273,7 @@ function _ensureSetupDraft(settings) {
     _setupServiceMinAttendance = (settings && settings.serviceMinAttendance) ?? 100;
     _setupTermGapDays = (settings && settings.termGapDays) ?? 14;
     _logoModeOverride = null;
+    _setupElv = null;
   }
 }
 
@@ -7322,6 +7323,7 @@ async function saveMinistrySetup() {
     // page stays live until the re-render, and a tap there must not start from {}).
     _setupDraft = JSON.parse(JSON.stringify(fresh.ministryConfig || {}));
     _setupBase = _setupBaseOf(fresh.ministryConfig);
+    _setupElv = null;
     Cache.del('/settings');
     const navBefore = _navSig();
     S.settings = fresh;
@@ -7548,6 +7550,8 @@ function _youthSetupBody(settings, users) {
       </select></div>
     <div class="fg"><label class="fl">Leader name tag ${helpTip('When importing a lifegroup file, a name written like "John Smith (leader)" marks that person as a leader. This sets the word used in the brackets.')}</label>
       <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>`);
+
+  b += _setupCard('elvanto', 'Elvanto for this location', _setupElvCardHtml(cfg));
 
   b += _setupCard('review', 'Review', `
     <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
@@ -7808,6 +7812,61 @@ function _setupSetModule(key, val) {
   for (const [k] of _SETUP_ELVANTO) eff[k] = _setupModuleMode(md, k);
   Object.assign(md, eff, { [key]: val });
   _setupRerender();
+}
+// Y1d: Elvanto for this location (admin). A pasted form link splits into the allow-listed address + form id, or
+// null. Never stored raw: a trailing slash or query is dropped; www or another host fails the allow-list.
+function _elvSplitLink(url) {
+  const m = /^https:\/\/([a-z0-9-]+\.elvanto\.(?:com\.au|com|net|eu))\/form\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?(?:[?#].*)?$/.exec(String(url || '').trim().toLowerCase());
+  return m ? { baseUrl: 'https://' + m[1], id: m[2] } : null;
+}
+// The typed links (until both split into one address), the inline refusal, and the Check forms result.
+let _setupElv = null;
+function _setupElvText(kind) {
+  const s = _setupElv || {}, e = (_setupDraft && _setupDraft.elvanto) || {}, id = e[kind + 'FormId'];
+  return s[kind] != null ? s[kind] : (e.baseUrl && id ? e.baseUrl + '/form/' + id : '');
+}
+function _setupElvLink(kind, val) {
+  const s = _setupElv || (_setupElv = {});
+  s[kind] = val; s.lines = null;
+  const a = _elvSplitLink(_setupElvText('student')), b = _elvSplitLink(_setupElvText('parent'));
+  const bad = !a ? 'student' : !b ? 'parent' : '';
+  s.err = bad ? (_setupElvText(bad).trim() ? `The ${bad} form link is not a public Elvanto form link.` : `Paste the ${bad} form link.`)
+    : a.baseUrl !== b.baseUrl ? 'Both form links must be on the same Elvanto address.' : '';
+  if (!s.err) {
+    const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+    Object.assign(e, { baseUrl: a.baseUrl, studentFormId: a.id, parentFormId: b.id });
+    delete s.student; delete s.parent;
+  }
+  _setupRerender();
+}
+// Check forms runs on the draft. Its ids merge into the draft (a key not found keeps its old id); checkedAt is set
+// only when every row is found. Save Youth Setup stores it.
+async function _setupElvCheck() {
+  const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+  const s = _setupElv || (_setupElv = {});
+  s.busy = true; s.lines = null; _setupRerender();
+  try {
+    const r = await API.post('/settings/elvanto-check', { baseUrl: e.baseUrl || '', studentFormId: e.studentFormId || '', parentFormId: e.parentFormId || '', location: e.location || '' });
+    e.fields = Object.assign({}, e.fields, r.fields);
+    e.options = Object.assign({}, e.options, r.options);
+    if (!(r.missing || []).length) e.checkedAt = new Date().toISOString();
+    s.lines = r.lines || [];
+  } catch (x) { s.lines = [x.message]; }
+  s.busy = false; _setupRerender();
+}
+function _setupElvCardHtml(cfg) {
+  const e = cfg.elvanto || {}, s = _setupElv || {};
+  const link = (k, label) => `<div class="fg"><label class="fl" for="setup-elv-${k}">${label}</label>
+      <input class="fi" id="setup-elv-${k}" inputmode="url" autocomplete="off" placeholder="https://your-org.elvanto.com.au/form/..." value="${esc(_setupElvText(k))}" onchange="_setupElvLink('${k}', this.value)"></div>`;
+  const text = (k, label) => `<div class="fg"><label class="fl" for="setup-elv-${k}">${label}</label>
+      <input class="fi" id="setup-elv-${k}" value="${esc(e[k] || '')}" onchange="_setupSet('elvanto.${k}', this.value.trim())"></div>`;
+  return `<div class="help-text" style="margin-bottom:8px">New person sends these two Elvanto forms. Paste each form's public link.</div>
+    ${link('student', 'Student form link')}${link('parent', 'Parent form link')}
+    ${s.err ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.err)}</div>` : ''}
+    ${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
+    ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'Default state')}
+    <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
+    ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>`).join('')}</div>` : ''}`;
 }
 function _setupPrayersOff() { closeModal(); _setupSet('modules.prayers', false); }
 function _setupSetNum(path, val) { const n = parseInt(val, 10); _setupSet(path, isNaN(n) ? 0 : n); }
@@ -9869,7 +9928,7 @@ function renderNewYouth() {
       <details id="ny-addr"><summary>Address (optional)</summary>
         <div class="fg"><input class="fi" id="ny-street" placeholder="Street" value="${esc(addr.street || '')}"></div>
         <div class="fg"><input class="fi" id="ny-suburb" placeholder="Suburb" value="${esc(addr.suburb || '')}"></div>
-        <div class="fg"><input class="fi" id="ny-state" placeholder="State" value="${esc(addr.state || 'QLD')}"></div>
+        <div class="fg"><input class="fi" id="ny-state" placeholder="State" value="${esc(addr.state || ((S.settings && S.settings.ministryConfig && S.settings.ministryConfig.elvanto) || {}).state || '')}"></div>
         <div class="fg"><input class="fi" id="ny-postcode" placeholder="Postcode" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${esc(addr.postcode || '')}" aria-describedby="ny-postcode-err" onblur="_nyBlur(this)"><div class="fl" id="ny-postcode-err" role="alert" style="color:var(--danger)"></div></div>
       </details>
       <details><summary>Medical (optional)</summary>
@@ -12975,7 +13034,7 @@ function _ikRowsHtml(list, st, open) {
 function _ikDoneToggle(open) { _ik().doneOpen = !!open; }
 function _ikConsentHelp() {
   return `<details class="lk-done"${_ik().helpOpen ? ' open' : ''} ontoggle="_ik().helpOpen = this.open"><summary>How consent is decided ${icS('chevd')}</summary><div class="card lk-d">`
-    + [`For students whose first form was the Friday before, the parent's reply is form 3 ("Brisbane - Youth - 3.").`,
+    + [`For students whose first form was the Friday before, the parent's reply is form 3 of your youth forms.`,
       `A reply in the window (that Friday 00:00 to this Friday 9:00, Brisbane) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
       'A reply without the opt-out is Contact allowed: approve the form and complete step 0.',
       'No reply is assume consent only with dated proof the parent was texted about this student: mark consent not received and complete step 0.',

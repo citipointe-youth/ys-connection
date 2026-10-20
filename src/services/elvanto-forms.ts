@@ -112,7 +112,7 @@ export function checkForms(studentHtml: string, parentHtml: string, location: st
     const need = !/^grade\d+$/.test(k) || grades.includes(Number(k.slice(5)));
     if (need) n++;
     const v = ol && q(ql)?.options.find((o) => o.label === ol)?.value;
-    if (v) options[k] = v; else if (need) missing.push(ol ? `${ql}: ${ol}` : ql);
+    if (v) options[k] = v; else if (need) missing.push(ol ? `${ql}, option ${ol}` : ql);
   }
   // A labelled question neither body posts (a new required one would make every send fail, as shapeProblems says).
   const e = { fields, options } as ElvantoConfig;

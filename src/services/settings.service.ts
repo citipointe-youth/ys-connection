@@ -81,7 +81,7 @@ export function makeSettingsService(
       assertCan(actor, 'admin:manage');
       const d = ElvantoCheckSchema.safeParse(input);
       if (!d.success || !d.data.baseUrl || !d.data.studentFormId || !d.data.parentFormId) {
-        throw new BadRequestError("Paste each form's public Elvanto link.");
+        throw new BadRequestError("Paste each form's public link in Youth Setup, Elvanto for this location.");
       }
       const cfg = (await repo.getSettings()).ministryConfig;
       const e = { ...cfg.elvanto, ...d.data };
