@@ -1394,6 +1394,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]); // Dana: no match, Eve: two, Fay: inactive
   });
 
+  it('r21 fix (review #4): only admin/director get the assignees list', async () => {
+    const h = await setup();
+    expect((await h.svc.flows(DIRECTOR)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]);
+    for (const a of [GRADE, LEADER]) expect((await h.svc.flows(a)).assignees).toBeUndefined();
+  });
+
   it('r21 L6b (T4): a Complete may carry assignTo (an Elvanto person id); it is stored on the payload', async () => {
     const h = await setup();
     expect((await enq(h.svc, ADMIN, step({ assignTo: 'x' }), DEV)).code).toBe('VALIDATION_ERROR');

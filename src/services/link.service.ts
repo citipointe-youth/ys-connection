@@ -190,7 +190,7 @@ export interface LinkService {
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
-  flows(actor: Actor): Promise<{ rows: FlowView[]; assignees: { personId: string; name: string }[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
+  flows(actor: Actor): Promise<{ rows: FlowView[]; assignees?: { personId: string; name: string }[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor, q?: unknown): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -1150,7 +1150,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const personOf = rosterPersonMatcher(roster, leaders);
       const assignees = leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
         .flatMap((l) => { const personId = personOf(l); return personId ? [{ personId, name: l.fullName }] : []; });
-      return { rows, assignees, steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
+      // only admin/director have the picker, so only they get assignees
+      return { rows, ...(isAdminRole(actor) ? { assignees } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder), progress };
     },
 

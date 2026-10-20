@@ -10381,7 +10381,8 @@ function _lkStatusHtml(row, lastSeen) {
   // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
   const role = S.user && S.user.role;
   if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
-    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.');
+    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
+    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.'); // r21: only admin/director have the picker
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
