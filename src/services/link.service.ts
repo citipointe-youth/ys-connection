@@ -214,7 +214,8 @@ const refusedLast = (open: OutboxRow | undefined, rows: OutboxRow[]): { lastRefu
 function fixKeyOf(r: OutboxRow): string | null {
   const p = r.payload as { personId?: unknown; subId?: unknown };
   if (r.type === 'consentFix' && typeof p.personId === 'string') return p.personId;
-  if (r.type === 'consentLink' && typeof p.subId === 'string') return `cn:${p.subId}`;
+  // L2 fix round 1: a link is keyed per person (cn:<sub>:<person>, as the SPA keys it and as dedupeKey); an unlink per form.
+  if (r.type === 'consentLink' && typeof p.subId === 'string') return typeof p.personId === 'string' ? `cn:${p.subId}:${p.personId}` : `cn:${p.subId}`;
   return null;
 }
 /** S5: how far a long console job has got (POST /sync/push/progress); stale after 2 min, or once `after` (the push it

@@ -292,6 +292,9 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     expect(h.oc(await h.one(ADMIN, { ...link, id: nid() }))).toBe('duplicate'); // one open link per form and person
     // Rev 15 (L2): a form naming several children links each one, so a second person on the same form is its own request
     expect(h.oc(await h.one(ADMIN, { ...link, id: nid(), payload: { subId: sub, personId: u(803) } }))).toBe('saved');
+    // L2 fix round 1: the S-1 restore key is per person too (the SPA's cn:<sub>:<person>), so each person's line comes back on reopen
+    const keys = ((await h.svc.listActions(ADMIN, { type: 'consentLink' })) as any[]).map((a) => a.fixKey).sort();
+    expect(keys).toEqual([`cn:${sub}:${P_OK}`, `cn:${sub}:${u(803)}`].sort());
     const got = (await h.claim()).rows.find((r) => r.id === link.id)!;
     expect(got.type).toBe('consentLink');
     expect(got.payload).toEqual({ subId: sub, personId: P_OK });

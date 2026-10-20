@@ -40,6 +40,7 @@ describe('_ikClSplit: the name split (one pure function)', () => {
     ['Luke, Daniel & Claire Seo', ['Luke Seo', 'Daniel Seo', 'Claire Seo']],
     ['Luke and Claire Seo', ['Luke Seo', 'Claire Seo']],
     ['Luke & Claire Seo', ['Luke Seo', 'Claire Seo']],
+    ['Luke & Mary Jane Seo', ['Luke Jane Seo', 'Mary Jane Seo']], // a middle name: "Luke Jane Seo" matches nobody, so it goes to pick
     ['Luke AND Claire Seo', ['Luke Seo', 'Claire Seo']],
     ['Anne-Marie Seo', null],
     ['Sam Smith & Jo Brown', ['Sam Smith', 'Jo Brown']],
@@ -53,7 +54,7 @@ describe('_ikClSplit: the name split (one pure function)', () => {
     ['', null], [null as any, null], ['Luke &', null],
   ];
   for (const [inp, out] of T) it(JSON.stringify(inp), () => expect(fns._ikClSplit(inp)).toEqual(out));
-  it('at most 6 names', () => expect(fns._ikClSplit('A, B, C, D, E, F, G Seo')).toHaveLength(6));
+  it('every name comes back (the row shows 6 and says so)', () => expect(fns._ikClSplit('A, B, C, D, E, F, G Seo')).toHaveLength(7));
 });
 
 describe('_ikClSuggest: exactly one match = a suggestion, else pick', () => {
@@ -66,6 +67,33 @@ describe('_ikClSuggest: exactly one match = a suggestion, else pick', () => {
 });
 
 describe('a multi-name unlinked row', () => {
+  it('"Luke & Mary Jane Seo": the middle-name split matches nobody -> pick (never a wrong person)', () => {
+    const { fns } = env([]);
+    const h = strip(fns._ikClRow(ROW({ formName: 'Luke & Mary Jane Seo' }), 0, '', ST));
+    expect(h).toContain('Luke Jane Seo: pick: nobody has this name');
+    expect(h).not.toContain('Link all');
+  });
+  it('more than 6 names: the first 6 are shown and the operator is told to use Find person for the rest', () => {
+    const { fns } = env([]);
+    const h = strip(fns._ikClRow(ROW({ formName: 'Luke, Ann, Bo, Cy, Di, Ed, Fay Seo' }), 0, '', ST));
+    expect(h).toContain('Ed Seo: pick');
+    expect(h).not.toContain('Fay Seo');
+    expect(h).toContain('Showing the first 6 names; use Find person for the rest.');
+    expect(strip(fns._ikClRow(ROW(), 0, '', ST))).not.toContain('Showing the first');
+  });
+  it('after reopen (fixKey per person, cn:<sub>:<person>): each person keeps their own line; a one-name form shows its restored link', () => {
+    const { fns, I } = env([]);
+    I.fixes['cn:' + P(90) + ':' + P(1)] = { id: 'a', status: 'pending', since: Date.now() };
+    I.fixes['cn:' + P(90) + ':' + P(2)] = { id: 'b', status: 'refused', detail: 'Only the admin can do this.' };
+    const h = strip(fns._ikClRow(ROW(), 0, '', ST));
+    expect(h).toContain('Luke Seo: Waiting for the console.');
+    expect(h).toContain('Claire Seo: Not saved: Only the admin can do this.');
+    expect(h).toContain('Link all'); // the refused one can be linked again
+    const one = ROW({ formName: 'Andrew Seo', name: 'Seo, Andrew' });
+    const h1 = strip(fns._ikClRow(one, 0, '', ST));
+    expect(h1).toContain('Waiting for the console.');
+    expect(h1).not.toContain('Find person'); // open: no second link while one is on the way
+  });
   it('shows each name found / pick, Link all (n), Find person; nothing is linked without a tap', () => {
     const { fns, t } = env([ROW()]);
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));

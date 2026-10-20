@@ -14154,9 +14154,13 @@ function _ikClText(a, st) {
   return ['bad', a.detail || 'Not saved. Try again.'];
 }
 function _ikClRow(f, i, grey, st) {
-  const now = _ikClNow(f), fx = _ik().fixes['cn:' + f.subId], ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
-  const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const multi = _ikClCap(st) ? _ikClMulti(f) : null; // L2: a form naming several children
+  // L2 fix round 1: the form's own line ('cn:<sub>': an unlink, or this phone's link); on a one-name form also a link restored after
+  // reopen, which the server keys per person ('cn:<sub>:<person>').
+  const fxs = _ik().fixes, pre = 'cn:' + f.subId + ':';
+  const fx = fxs['cn:' + f.subId] || (multi ? null : Object.keys(fxs).filter((k) => k.startsWith(pre)).map((k) => fxs[k])[0] || null);
+  const now = _ikClNow(f), ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
+  const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const act = open ? '' : !_ikClCap(st) ? '<div class="lk-d">Console needs an update</div>' : multi ? _ikClMultiAct(multi, i)
     : now ? '<div class="lk-st ok">' + esc('Linked to ' + now.name + ' (not in Elvanto)') + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(' + i + ')">Unlink</button></div>'
     : '<div class="rc-foot"><button type="button" class="btn btn-primary btn-sm" onclick="_ikClOpen(' + i + ')">Find person</button></div>';
@@ -14169,13 +14173,14 @@ function _ikClRow(f, i, grey, st) {
 // ── L2 (round 2026-10-21): a form naming several children ("Luke, Daniel & Claire Seo") ──
 // Operator ruling: suggest, one tap. The form's typed student name (formName, LINK_REV 15) splits on "," "&" "and" (whole word,
 // any case). A part of one word borrows the surname of the last part; a part with its own surname keeps it. -> the full names,
-// or null for one name (that form works exactly as before). ponytail: at most 6 names (one Link all = one /link/batch of 20).
+// or null for one name (that form works exactly as before). All names come back; _ikClMulti shows the first 6 (ponytail: one Link all = one /link/batch of 20) and says so.
 function _ikClSplit(raw) {
   const parts = String(raw || '').replace(/\s+/g, ' ').trim().split(/\s*(?:,|&|(?<!\p{L})and(?!\p{L}))\s*/iu).map((x) => x.trim()).filter(Boolean);
   if (parts.length < 2) return null;
   const last = parts[parts.length - 1].split(' '), sur = last.length > 1 ? last.slice(1).join(' ') : '';
-  return parts.slice(0, 6).map((p) => (p.includes(' ') || !sur ? p : p + ' ' + sur));
+  return parts.map((p) => (p.includes(' ') || !sur ? p : p + ' ' + sur));
 }
+
 // Each name against the consents person list (the Find person list): exactly one person with that full name = a suggestion
 // (personId); none or 2+ = pick (n says which). Case, accents, spaces and spaced hyphens are ignored; nothing else is guessed.
 function _ikClSuggest(names, roster) {
@@ -14196,15 +14201,16 @@ function _ikClRoster() {
 // A multi-name form now: { f, names: [{ name, n, personId, who, fx }], ids (linked now), roster }, or null (one name).
 // ids = the console's people (unless this phone just unlinked the form) + this phone's sent links (fixes 'cn:<sub>:<person>').
 function _ikClMulti(f) {
-  const parts = _ikClSplit(f.formName);
-  if (!parts) return null;
+  const all = _ikClSplit(f.formName);
+  if (!all) return null;
+  const parts = all.slice(0, 6), more = all.length - parts.length; // L2 fix round 1: past 6 the operator is told
   const I = _ik(), roster = _ikClRoster(), pre = 'cn:' + f.subId + ':', un = I.fixes['cn:' + f.subId];
   let ids = un && un.status === 'sent' && un.to === null ? [] : f.linkedIds || (f.linked ? [f.linked.personId] : []);
   for (const [key, a] of Object.entries(I.fixes)) if (key.startsWith(pre) && a.status === 'sent') ids = ids.concat(key.slice(pre.length));
   ids = [...new Set(ids)];
   const names = roster ? _ikClSuggest(parts, roster).map((s) => ({ ...s, fx: s.personId ? I.fixes[pre + s.personId] || null : null }))
     : parts.map((name) => ({ name, n: null, personId: null, who: '', fx: null }));
-  return { f, names, ids, roster };
+  return { f, names, ids, roster, more };
 }
 function _ikClBusy(fx) { return !!fx && ['asking', 'pending', 'claimed'].includes(fx.status); }
 // The names still to link with one tap: one match each, not linked, not on the way.
@@ -14220,7 +14226,8 @@ function _ikClMultiLines(m, st) {
       : m.roster === null ? 'checking…' : s.personId ? 'found ' + s.who : s.n ? 'pick: ' + s.n + ' people have this name' : 'pick: nobody has this name';
     return '<div class="lk-d">' + esc(s.name + ': ' + t) + '</div>';
   });
-  return '<div class="lk-d">Names on this form:</div>' + lines.join('') + (m.ids.length ? '<div class="lk-st ok">' + esc('Linked to ' + _ikClWho(m) + ' (not in Elvanto)') + '</div>' : '');
+  return '<div class="lk-d">Names on this form:</div>' + lines.join('')
+    + (m.more > 0 ? '<div class="lk-d">' + esc('Showing the first 6 names; use Find person for the rest.') + '</div>' : '') + (m.ids.length ? '<div class="lk-st ok">' + esc('Linked to ' + _ikClWho(m) + ' (not in Elvanto)') + '</div>' : '');
 }
 function _ikClMultiAct(m, i) {
   const n = _ikClToLink(m).length;
