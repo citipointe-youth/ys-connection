@@ -14157,8 +14157,12 @@ function _ikClRow(f, i, grey, st) {
   const multi = _ikClCap(st) ? _ikClMulti(f) : null; // L2: a form naming several children
   // L2 fix round 1: the form's own line ('cn:<sub>': an unlink, or this phone's link); on a one-name form also a link restored after
   // reopen, which the server keys per person ('cn:<sub>:<person>').
-  const fxs = _ik().fixes, pre = 'cn:' + f.subId + ':';
-  const fx = fxs['cn:' + f.subId] || (multi ? null : Object.keys(fxs).filter((k) => k.startsWith(pre)).map((k) => fxs[k])[0] || null);
+  // Fix round 2 (N2): the NEWEST such line; once the form is linked, a finished try (refused, failed) is stale.
+  const fxs = _ik().fixes, pre = 'cn:' + f.subId + ':', cur = f.linked ? f.linked.personId : null;
+  const when = (a) => Date.parse(a.createdAt || '') || a.since || 0;
+  const fx = fxs['cn:' + f.subId] || (multi ? null : Object.keys(fxs).filter((k) => k.startsWith(pre))
+    .filter((k) => !cur || ['asking', 'pending', 'claimed'].includes(fxs[k].status)) // linked now: only a try still on the way shows
+    .map((k) => fxs[k]).sort((a, b) => when(b) - when(a))[0] || null);
   const now = _ikClNow(f), ft = _ikClText(fx, st), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status);
   const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '');
   const act = open ? '' : !_ikClCap(st) ? '<div class="lk-d">Console needs an update</div>' : multi ? _ikClMultiAct(multi, i)

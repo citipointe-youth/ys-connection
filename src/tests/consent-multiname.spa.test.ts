@@ -94,6 +94,20 @@ describe('a multi-name unlinked row', () => {
     expect(h1).toContain('Waiting for the console.');
     expect(h1).not.toContain('Find person'); // open: no second link while one is on the way
   });
+  it('fix round 2 (N2): a one-name form shows the NEWEST restored line, and never a stale refused link to another person beside the current link', () => {
+    const { fns, I } = env([]);
+    const one = ROW({ formName: 'Andrew Seo', name: 'Seo, Andrew' });
+    I.fixes['cn:' + P(90) + ':' + P(1)] = { id: 'a', status: 'refused', detail: 'Old try A.', createdAt: '2026-10-20T01:00:00Z' };
+    I.fixes['cn:' + P(90) + ':' + P(7)] = { id: 'b', status: 'refused', detail: 'Newer try B.', createdAt: '2026-10-20T02:00:00Z' };
+    expect(strip(fns._ikClRow(one, 0, '', ST))).toContain('Not saved: Newer try B.');
+    expect(strip(fns._ikClRow(one, 0, '', ST))).not.toContain('Old try A.');
+    const linked = { ...one, linked: { personId: P(7), name: 'Andrew Seo' } };
+    I.fixes['cn:' + P(90) + ':' + P(7)] = { id: 'b', status: 'refused', detail: 'Newer try B.', createdAt: '2026-10-20T00:30:00Z' }; // now OLDER than A's
+    const h = strip(fns._ikClRow(linked, 0, '', ST));
+    expect(h).toContain('Linked to Andrew Seo (not in Elvanto)');
+    expect(h).not.toContain('Old try A.'); // finished tries are stale next to the current link
+    expect(h).not.toContain('Newer try B.');
+  });
   it('shows each name found / pick, Link all (n), Find person; nothing is linked without a tap', () => {
     const { fns, t } = env([ROW()]);
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));
