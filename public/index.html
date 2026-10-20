@@ -12360,7 +12360,7 @@ function _lkAdmStatusHtml() {
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? progBar('Loading')
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}
-      <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div>${_lkRcHtml(a.id, caps)}</div></div>`).join('')}
+      ${_lkRcDone(a.id) ? '' : `<div class="lk-acts lk-mt" id="lk-rcb-${esc(a.id)}"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div>`}${_lkRcHtml(a.id, caps)}</div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
 // Matching: Unmatched / Several possible / Set by hand. Elvanto person in bold; YS candidates with grade and birth date.
@@ -12427,8 +12427,13 @@ function _lkRcHtml(id, caps) {
     + (again ? `<button type="button" class="btn btn-secondary btn-sm"${busy ? ' disabled' : ''} onclick="_lkRecheck('${esc(id)}')">${busy ? 'Checking…' : 'Check again'}</button>` : '')
     + (r ? `<div class="lk-st ${r.state === 'saved' ? 'ok' : busy ? 'wait' : 'bad'}" role="status">${esc(r.text)}</div>` : '') + '</div>';
 }
+// Saved / Not saved settled the row: Landed / Not landed have nothing left to mark.
+function _lkRcDone(id) { const r = _LK_RC[id]; return !!r && (r.state === 'saved' || r.state === 'not-saved'); }
 async function _lkRecheck(id) {
-  const draw = () => { const el = document.getElementById('lk-rc-' + id); if (el) el.outerHTML = _lkRcHtml(id, { recheck: 'live' }); };
+  const draw = () => {
+    const el = document.getElementById('lk-rc-' + id); if (el) el.outerHTML = _lkRcHtml(id, { recheck: 'live' });
+    const b = _lkRcDone(id) && document.getElementById('lk-rcb-' + id); if (b) b.remove();
+  };
   _LK_RC[id] = { state: 'checking', text: 'Sent to the console.' };
   draw();
   let rid;

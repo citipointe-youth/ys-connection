@@ -363,7 +363,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     lastSweep = t;
     try {
       const n = new Map<string, number>();
-      for (const s of await d.link.sweepTooOld(LINK_CUTOFF_DAYS)) n.set(s.type, (n.get(s.type) ?? 0) + 1);
+      for (const s of await d.link.sweepTooOld(LINK_CUTOFF_DAYS)) if (s.type !== 'recheck') n.set(s.type, (n.get(s.type) ?? 0) + 1); // L7: never an Error log line
       await Promise.all([...n].map(([route, count]) => d.errorLog?.record({ category: 'link', code: 'too-old', route, role: 'console', count })));
     } catch (e) {
       logger.warn('too-old sweep failed', { message: e instanceof Error ? e.message : String(e) });
@@ -1253,6 +1253,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const con = newest(await c.consoles());
       if (!con || (con.capabilities.recheck ?? 'off') === 'off') throw new LinkUnavailable();
       const payload = PAYLOAD_SCHEMAS.recheck.parse({ ref: row.id, type: row.type, payload: row.payload, sentLogKey: row.sentLogKey });
+      // Review fix 2: an open re-check is reused only while it can still be answered (pending / claimed). One left unclear (a
+      // lease-lost sweep) is closed (resolved not landed: final, so its dedupe key is free) and a new one is queued.
+      const open = (await d.link.listActions({ types: ['recheck'], statuses: ['pending', 'claimed', 'unclear'] }))
+        .find((x) => (x.payload as { ref?: unknown }).ref === row.id);
+      if (open && open.status !== 'unclear') return { id: open.id };
+      if (open) await d.link.applyResults(open.leaseOwner ?? 'admin', [{ id: open.id, outcome: 'resolved', landed: false }], c.t);
       try {
         const r = await d.link.insertAction({ id: randomUUID(), type: 'recheck', payload, note: null, dedupeKey: dedupeKey('recheck', payload),
           serviceDate: row.serviceDate, studentId: null, personId: row.personId, createdBy: c.actor.id, leaderId: row.leaderId, leaderName: row.leaderName });

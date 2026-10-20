@@ -10,7 +10,7 @@ function env(answers: unknown[], post: (p: string) => unknown = () => ({ id: 'r1
     const out = { posts: [], gets: [], els: {} };
     const _LK_RC = {};
     function esc(s) { return String(s); }
-    const document = { getElementById: (id) => (out.els[id] = out.els[id] || { outerHTML: '' }) };
+    const document = { getElementById: (id) => (out.els[id] = out.els[id] || { outerHTML: '', remove() { this.removed = true; } }) };
     const API = { post: async (p, b) => { out.posts.push(p); return (${post.toString()})(p); },
       fresh: async (p) => { out.gets.push(p); const a = __answers.shift(); if (a instanceof Error) throw a; return a; } };
     const __answers = ${JSON.stringify(answers)};
@@ -40,6 +40,7 @@ describe('L7 SPA: Check again', () => {
     expect(out.gets).toEqual(['/link/admin/recheck/r1', '/link/admin/recheck/r1']);
     expect(rc.a1).toEqual({ state: 'not-saved', text: 'Not saved in Elvanto. Send it again from the app if it is still needed.' });
     expect(out.els['lk-rc-a1'].outerHTML).toContain('Not saved in Elvanto.');
+    expect(out.els['lk-rcb-a1'].removed).toBe(true); // fix 8: Landed / Not landed go at once
   });
   it('a refused ask (an older console) shows the server words', async () => {
     const f = env([], () => { throw new Error('Do this in Elvanto for now.'); });
@@ -60,6 +61,16 @@ describe('L7 SPA: Check again', () => {
     const h = _lkAdmStatusHtml();
     expect(h).toContain(`_lkRecheck('a1')`);
     expect(h).toContain(`_lkAdmUnclearOpen('a1',true)`); // the manual way stays
+  });
+  it('fix 8: a row a re-check settled has no Landed / Not landed (still unclear keeps them)', () => {
+    const mk = (st: string) => loadFns(['_lkAdmStatusHtml'], `
+      const _LK_RC = { a1: { state: '${st}', text: 'x' } };
+      const LINK = { status: { console: { lastSeenAt: null, capabilities: { recheck: 'live' } }, mirrors: {} }, adm: { acts: [${JSON.stringify(ROW)}], aErr: null } };
+      function esc(s) { return String(s); } function icS() { return ''; } function _lkEvents() { return {}; } function _lkWord(a, b) { return b; }
+      function _lkRevLine() { return ''; } function _lkVerb(t) { return t; } function progBar() { return ''; } function _lkAt() { return ''; }`)._lkAdmStatusHtml();
+    expect(mk('saved')).not.toContain('_lkAdmUnclearOpen(');
+    expect(mk('not-saved')).not.toContain('_lkAdmUnclearOpen(');
+    expect(mk('unclear')).toContain('_lkAdmUnclearOpen(');
   });
   it('Home: the admin line points at Check again', async () => {
     const { _attnLines } = loadFns(['_attnLines'], '');

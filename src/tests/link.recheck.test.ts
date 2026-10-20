@@ -138,6 +138,26 @@ describe('L7: the console answer', () => {
     // and the admin may ask again
     expect((await h.svc.recheckUnclear(ADMIN, h.a.id)).id).not.toBe(id);
   });
+  it('fix 2: a dead re-check (unclear, e.g. lease-lost) is never handed back: Check again queues a new one', async () => {
+    const h = await setup();
+    const { id } = await h.svc.recheckUnclear(ADMIN, h.a.id);
+    await h.claim();
+    await h.result([{ id, outcome: 'unclear', sentLogKey: 'x' }]); // as a lease-lost sweep leaves it
+    const again = await h.svc.recheckUnclear(ADMIN, h.a.id);
+    expect(again.id).not.toBe(id);
+    expect((await h.link.getAction(id))!.status).not.toBe('unclear'); // final, so its dedupe key is free
+    expect((await h.link.getAction(again.id))!.status).toBe('pending');
+    const claimed = await h.svc.recheckUnclear(ADMIN, h.a.id);
+    expect(claimed.id).toBe(again.id); // a live (pending) one is reused
+  });
+  it('fix 2: a swept (too-old) re-check writes no Error log line', async () => {
+    const h = await setup();
+    const { id } = await h.svc.recheckUnclear(ADMIN, h.a.id);
+    (h.link as unknown as { outbox: Map<string, { row: { createdAt: string } }> }).outbox.get(id)!.row.createdAt = '2026-10-01T00:00:00.000Z';
+    await h.claim();
+    expect((await h.link.getAction(id))!.reason).toBe('too-old');
+    expect(h.recorded).toEqual([]);
+  });
   it('recheckState: admin only, 404 for an unknown or non-recheck id', async () => {
     const h = await setup();
     const { id } = await h.svc.recheckUnclear(ADMIN, h.a.id);

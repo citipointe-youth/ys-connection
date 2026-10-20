@@ -87,8 +87,8 @@ export function makeSyncService(d: SyncDeps) {
           const g = groups.get(`${route}|${code}`);
           if (g) g.count++; else groups.set(`${route}|${code}`, { code, route, count: 1 });
         };
-        for (const s of swept) add(s.reason, s.type);
-        for (const c of claimed) if (c.noteUnreadable) add('note-unreadable', c.row.type);
+        for (const s of swept) if (s.type !== 'recheck') add(s.reason, s.type); // L7: a re-check's fate shows on its own row only
+        for (const c of claimed) if (c.noteUnreadable && c.row.type !== 'recheck') add('note-unreadable', c.row.type);
         await Promise.all([...groups.values()].map((g) => d.errorLog!.record({ category: 'link', ...g, role: 'console' })));
       }
       // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
