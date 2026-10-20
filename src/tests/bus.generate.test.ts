@@ -483,20 +483,25 @@ describe('Move re-orders the car', () => {
   });
 });
 
-// Leader preferred grades: a car's effective prefGrades unions its vehicle's own with the
-// prefGrades of whichever leaders end up in it. Both fleet vehicles start at the same church
-// placeId, so FakeRoutingProvider's score() (cost*60 + fakeSeconds) is driven entirely by the
-// prefWeightMin cost difference below — deterministic regardless of the fake distance.
-describe('leader preferred grades feed the solver', () => {
-  it('a Y10 rider lands in the car whose leader prefers Y10, not a car that excludes it', async () => {
-    const f = await busFixture();
-    const a = await f.car('Van A', 8, ['L1', 'L2'], { prefGrades: [8] }); // vehicle itself excludes Y10
-    const b = await f.car('Van B', 8, ['L3', 'L4']); // no vehicle prefGrades at all
-    await f.svc.setLeaderPrefs(f.admin, 'L3', { prefGrades: [10] }); // only L3's own prefs name Y10
-    const riley = await f.rider('s3'); // Riley Kim, Y10
-    await f.svc.generate(f.admin, { mode: 'all' });
-    const v = await f.svc.getRun(f.admin);
-    expect(v.riders.find((r) => r.id === riley.id)!.runVehicleId).toBe(b);
+// B1 (2026-10-20, operator): preferred grades were removed from the planner. Saved vehicle or
+// leader prefGrades must not change what is sent to the solver or where riders land.
+describe('preferred grades are ignored by the solver', () => {
+  it('the same plan with and without vehicle + leader prefGrades', async () => {
+    const plan = async (withPrefs: boolean) => {
+      const rec = recordingRouting();
+      const f = await busFixture({ routing: rec.provider });
+      await f.car('Van A', 8, ['L1', 'L2'], withPrefs ? { prefGrades: [8] } : {});
+      await f.car('Van B', 8, ['L3', 'L4']);
+      if (withPrefs) await f.svc.setLeaderPrefs(f.admin, 'L3', { prefGrades: [10] }); // an old client may still send it
+      await f.rider('s1'); await f.rider('s3');
+      await f.svc.generate(f.admin, { mode: 'all' });
+      const v = await f.svc.getRun(f.admin);
+      const carName = (id: string | null) => v.vehicles.find((x) => x.id === id)?.name ?? null;
+      return { problem: rec.calls.solve, placed: v.riders.map((r) => [r.name, carName(r.runVehicleId)]).sort() };
+    };
+    const without = await plan(false), withPrefs = await plan(true);
+    expect(without.problem).toHaveLength(1);
+    expect(withPrefs).toEqual(without);
   });
 });
 

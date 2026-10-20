@@ -752,45 +752,27 @@ describe('_busIdentityChanged (BUS-1: no reload)', () => {
   it('index.html no longer uses the yap_bus_reload flag', () => { expect(loadIndexHtml()).not.toContain('yap_bus_reload'); });
 });
 
-// Leader preferred grades (Task 2): Edit Pool sheet gets a per-leader grade checkbox block
-// (same #ve-grades pattern busEditVehicle uses), and the pool list shows a compact chip.
-describe('leader preferred grades UI', () => {
-  it('busEditPoolSheet renders a checked box for each of a leader\'s prefGrades, scoped by leader id', () => {
+// B1 (2026-10-20, operator): preferred grades are gone from the vehicle and leader pool sheets.
+describe('no preferred grades in bus setup', () => {
+  it('the vehicle sheet and the leader pool sheet render no grade choices', () => {
     const prelude = `
-      const BUS = { view: { leaders: [{ id: 'L1', name: 'Amy', gender: 'female', inPool: true, prefGrades: [9, 10] }] } };
+      const BUS = { ac: {}, view: { fleet: [{ id: 'v1', name: 'Van', plate: '', seats: 8, prefGrades: [9], endsAt: 'church', endsAddress: '', kind: 'car' }], vehicles: [],
+        leaders: [{ id: 'L1', name: 'Amy', gender: 'female', inPool: true, prefGrades: [9, 10] }] } };
       function esc(s) { return String(s); }
       function icS() { return ''; }
       function _gradeList() { return [7, 8, 9, 10, 11, 12]; }
       function _gradeWord() { return 'Year'; }
-      let __captured = '';
-      function modal(h) { __captured = h; }
-      function __state() { return { captured: __captured }; }
-    `;
-    const { busEditPoolSheet, __state } = loadFns(['busEditPoolSheet'], prelude, ['busEditPoolSheet', '__state']);
-    busEditPoolSheet();
-    const html = __state().captured;
-    expect(html).toContain('id="pg-L1"');
-    expect(html).toMatch(/value="9"[^>]*checked/);
-    expect(html).toMatch(/value="10"[^>]*checked/);
-    expect(html).not.toMatch(/value="7"[^>]*checked/);
-  });
-  it('busSetLeaderGrades reads only the checked boxes inside this leader\'s own block', async () => {
-    const prelude = `
-      const __calls = [];
-      const document = { querySelectorAll: (sel) => (sel === '#pg-L1 input:checked' ? [{ value: '9' }, { value: '11' }] : []) };
-      async function _busSend(method, path, body) { __calls.push({ method, path, body }); }
-      function busEditPoolSheet() {}
-      function toast() {}
-      function __state() { return { calls: __calls }; }
-    `;
-    const { busSetLeaderGrades, __state } = loadFns(['busSetLeaderGrades'], prelude, ['busSetLeaderGrades', '__state']);
-    await busSetLeaderGrades('L1');
-    expect(__state().calls[0]).toEqual({ method: 'PATCH', path: '/bus/leader-prefs/L1', body: { prefGrades: [9, 11] } });
-  });
-  it('_busPrefGradesChip is compact and empty when there are no preferred grades', () => {
-    const { _busPrefGradesChip } = loadFns(['_busPrefGradesChip']);
-    expect(_busPrefGradesChip({ prefGrades: [9, 10] })).toContain('Y9,Y10');
-    expect(_busPrefGradesChip({ prefGrades: [] })).toBe('');
+      const window = {};
+      let __m = [];
+      function modal(h) { __m.push(h); }
+      function __state() { return __m; }`;
+    const f = loadFns(['busEditVehicle', 'busEditPoolSheet', '_busEndsAtField', '_busAcField', '_busUuid'], prelude, ['busEditVehicle', 'busEditPoolSheet', '__state']);
+    f.busEditVehicle('v1'); f.busEditVehicle(null); f.busEditPoolSheet();
+    const sheets = f.__state() as string[];
+    expect(sheets).toHaveLength(3);
+    for (const h of sheets) expect(h).not.toMatch(/Preferred grades|Prefers|ve-grades|id="pg-|Year \d/);
+    expect(sheets[2]).toContain('Amy');
+    expect(loadIndexHtml()).not.toMatch(/busSetLeaderGrades|_busPrefGradesChip|Preferred grades/);
   });
 });
 
@@ -1050,7 +1032,7 @@ describe('_busCarsHtml computes the real leader shortfall (Task 10)', () => {
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
       function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }
+      function getMyLeaderId() { return BUS.me || null; }
     `;
     return loadFns(['_busCarsHtml', '_busBusChips', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
   };
@@ -1551,7 +1533,7 @@ describe('_busCarsHtml header totals (I12)', () => {
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
       function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }
+      function getMyLeaderId() { return BUS.me || null; }
     `;
     return loadFns(['_busCarsHtml', '_busBusChips', '_busLockedBy'], prelude, ['_busCarsHtml'])._busCarsHtml();
   };
@@ -1900,7 +1882,7 @@ describe('BUS-2 Car setup', () => {
       const BUS = { generating: false, me: '${me}', view: ${JSON.stringify(v)} };
       function esc(s) { return String(s); }
       function icS(k) { return ''; }
-      function _busPrefGradesChip() { return ''; } function getMyLeaderId() { return BUS.me || null; }`, ['_busCarsHtml'])._busCarsHtml();
+      function getMyLeaderId() { return BUS.me || null; }`, ['_busCarsHtml'])._busCarsHtml();
   it('bus card: Bus chip, Over by N, Drop-off label, no gender chip; leaders unchanged', () => {
     const h = cars(view());
     expect(h).toContain('>Bus</span>');
@@ -1946,17 +1928,16 @@ describe('BUS-2 Car setup', () => {
     expect(sheet('car')).not.toMatch(/id="ve-bus" checked/);
     expect(sheet()).not.toMatch(/id="ve-bus" checked/); // Add vehicle defaults to a car
   });
-  it('R19-U10: Preferred grades is hidden for a bus and follows the Charter bus tick', () => {
-    expect(sheet('bus')).toMatch(/id="ve-grades-sec" hidden/);
-    expect(sheet('car')).not.toMatch(/id="ve-grades-sec" hidden/);
-    const els: Record<string, any> = { 've-ends': { value: 'church' }, 've-ends-wrap': { hidden: true }, 've-ends-addr': { focus() {} }, 've-grades-sec': { hidden: false } };
+  it('ticking Charter bus sets Ends at to Address; unticking leaves it', () => {
+    const els: Record<string, any> = { 've-ends': { value: 'church' }, 've-ends-wrap': { hidden: true }, 've-ends-addr': { focus() {} } };
     const { _busVeBusTick } = loadFns(['_busVeBusTick'], 'const document = { getElementById: (id) => globalThis.__els[id] };');
     (globalThis as any).__els = els;
     _busVeBusTick(true);
-    expect(els['ve-grades-sec'].hidden).toBe(true);
     expect(els['ve-ends'].value).toBe('address');
+    expect(els['ve-ends-wrap'].hidden).toBe(false);
+    els['ve-ends'].value = 'church';
     _busVeBusTick(false);
-    expect(els['ve-grades-sec'].hidden).toBe(false);
+    expect(els['ve-ends'].value).toBe('church');
     delete (globalThis as any).__els;
   });
   it('busSaveVehicle sends kind, and refuses a bus without a drop-off address', async () => {

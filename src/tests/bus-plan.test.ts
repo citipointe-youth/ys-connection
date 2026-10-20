@@ -54,22 +54,17 @@ describe('autoFillPool', () => {
 
 describe('riderCost', () => {
   it('gender penalty when leaders do not cover the rider; unknown-gender leaders cover neither', () => {
-    expect(riderCost({ gender: 'female', grade: null }, boysOnly, [], W)).toBe(120);
-    expect(riderCost({ gender: 'male', grade: null }, boysOnly, [], W)).toBe(0);
-    expect(riderCost({ gender: 'male', grade: null }, unknown, [], W)).toBe(120);
-    expect(riderCost({ gender: null, grade: null }, unknown, [], W)).toBe(0);
-  });
-  it('grade penalty only when the car has preferred grades', () => {
-    expect(riderCost({ gender: null, grade: 9 }, mixed, [10, 11], W)).toBe(10);
-    expect(riderCost({ gender: null, grade: 9 }, mixed, [], W)).toBe(0);
-    expect(riderCost({ gender: 'female', grade: 9 }, boysOnly, [10], W)).toBe(130);
+    expect(riderCost({ gender: 'female', grade: null }, boysOnly, W)).toBe(120);
+    expect(riderCost({ gender: 'male', grade: null }, boysOnly, W)).toBe(0);
+    expect(riderCost({ gender: 'male', grade: null }, unknown, W)).toBe(120);
+    expect(riderCost({ gender: null, grade: null }, unknown, W)).toBe(0);
   });
 });
 
 describe('fleet problem', () => {
   const cars: FleetCar[] = [
-    { id: 'A', capacity: 5, eligibility: boysOnly, prefGrades: [], endPlaceId: 'C' },
-    { id: 'B', capacity: 3, eligibility: mixed, prefGrades: [10], endPlaceId: null },
+    { id: 'A', capacity: 5, eligibility: boysOnly, endPlaceId: 'C' },
+    { id: 'B', capacity: 3, eligibility: mixed, endPlaceId: null },
   ];
   const r = (id: string, extra: object = {}) => ({ id, placeId: 'P' + id, gender: 'female' as const, grade: 9, runVehicleId: null, pinned: false, ...extra });
   it('pins, fit mode, penalties, ends and labels', () => {
@@ -81,7 +76,7 @@ describe('fleet problem', () => {
     // has a female leader, so a non-fixed girl's allowedVehicles is hard-restricted to [1] —
     // not null — even though 'all' mode would otherwise leave her free.
     expect(problem.stops[0]).toEqual({ point: { placeId: 'P1' }, allowedVehicles: [1],
-      costs: [{ vehicle: 0, cost: 120 }, { vehicle: 1, cost: 10 }], optional: true });
+      costs: [{ vehicle: 0, cost: 120 }], optional: true });
     expect(problem.stops[1]!.allowedVehicles).toEqual([1]);   // pinned → its car (fixed wins over the gender rule)
     expect(problem.stops[2]!.allowedVehicles).toEqual([1]);   // placed but not pinned → still hard-restricted to female-eligible cars
     const fit = buildFleetProblem('fit', cars, [r('3', { runVehicleId: 'A' })], 'C', '2026-10-09T21:00:00.000Z', W);
@@ -97,13 +92,13 @@ describe('fleet problem', () => {
       expect(boy.problem.stops[0]!.allowedVehicles).toBeNull();
     });
     it('a girl is left unassignable (empty allowedVehicles) when no car has a female leader', () => {
-      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, prefGrades: [], endPlaceId: 'C' }];
+      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, endPlaceId: 'C' }];
       const { problem } = buildFleetProblem('all', allBoysCars, [r('1', { gender: 'female' })], 'C', '2026-10-09T21:00:00.000Z', W);
       expect(problem.stops[0]!.allowedVehicles).toEqual([]);
       expect(problem.stops[0]!.optional).toBe(true); // Google skips her rather than erroring
     });
     it('a pinned/fixed girl keeps her car even if it has no female leader (hand placement is not enforced)', () => {
-      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, prefGrades: [], endPlaceId: 'C' }];
+      const allBoysCars: FleetCar[] = [{ id: 'A', capacity: 5, eligibility: boysOnly, endPlaceId: 'C' }];
       const { problem } = buildFleetProblem('all', allBoysCars, [r('1', { gender: 'female', runVehicleId: 'A', pinned: true })], 'C', '2026-10-09T21:00:00.000Z', W);
       expect(problem.stops[0]!.allowedVehicles).toEqual([0]);
     });

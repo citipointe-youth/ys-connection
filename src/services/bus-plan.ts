@@ -1,7 +1,7 @@
 import type { BusEligibility, BusGender, EndsAt } from '../core/entities/bus';
 import type { SolveProblem, SolveResult, SolveStop } from './routing/routing-provider';
 
-export interface Weights { targetRouteMin: number; genderWeightMin: number; prefWeightMin: number }
+export interface Weights { targetRouteMin: number; genderWeightMin: number }
 
 /**
  * Pool auto-fill (spec §7): leaders already on the car stay; each car under 2 leaders takes available
@@ -38,13 +38,10 @@ export function autoFillPool(cars: { id: string; seats: number; leaderIds: strin
   return out;
 }
 
-/** Penalty minutes for a rider in a car (spec §7). A leader with no gender covers neither. */
-export function riderCost(r: { gender: BusGender; grade: number | null }, elig: BusEligibility, prefGrades: number[],
-  w: Pick<Weights, 'genderWeightMin' | 'prefWeightMin'>): number {
-  let cost = 0;
-  if (r.gender && !elig[r.gender]) cost += w.genderWeightMin;
-  if (r.grade != null && prefGrades.length && !prefGrades.includes(r.grade)) cost += w.prefWeightMin;
-  return cost;
+/** Penalty minutes for a rider in a car (spec §7). A leader with no gender covers neither.
+ *  B1 (2026-10-20): preferred grades were removed; only gender costs anything. */
+export function riderCost(r: { gender: BusGender; grade: number | null }, elig: BusEligibility, w: Pick<Weights, 'genderWeightMin'>): number {
+  return r.gender && !elig[r.gender] ? w.genderWeightMin : 0;
 }
 
 export function endPlaceOf(endsAt: EndsAt, endsPlaceId: string | null, churchPlaceId: string): string | null {
@@ -54,7 +51,7 @@ export function endPlaceOf(endsAt: EndsAt, endsPlaceId: string | null, churchPla
 /** Nominal leave time. Traffic is off, so labelling local time as UTC changes no drive times. */
 export function leaveIso(serviceDate: string, leaveTime: string): string { return `${serviceDate}T${leaveTime}:00.000Z`; }
 
-export interface FleetCar { id: string; capacity: number; eligibility: BusEligibility; prefGrades: number[]; endPlaceId: string | null }
+export interface FleetCar { id: string; capacity: number; eligibility: BusEligibility; endPlaceId: string | null }
 export interface FleetRider { id: string; placeId: string; gender: BusGender; grade: number | null; runVehicleId: string | null; pinned: boolean }
 
 /** 'all' = everyone except pinned is free; 'fit' = already-placed riders are fixed to their car. */
@@ -72,7 +69,7 @@ export function buildFleetProblem(mode: 'all' | 'fit', cars: FleetCar[], riders:
     const fixed = own !== undefined && (r.pinned || mode === 'fit');
     const allowedVehicles = fixed ? [own] : r.gender === 'female' ? femaleCars : null;
     return { point: { placeId: r.placeId }, allowedVehicles, optional: true,
-      costs: cars.map((c, k) => ({ vehicle: k, cost: riderCost(r, c.eligibility, c.prefGrades, w) })).filter((c) => c.cost > 0) };
+      costs: cars.map((c, k) => ({ vehicle: k, cost: riderCost(r, c.eligibility, w) })).filter((c) => c.cost > 0) };
   });
   return {
     problem: { startIso, targetRouteMin: w.targetRouteMin, polylines: false, stops,

@@ -466,7 +466,7 @@ Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-1
 - Trip logging "I am" picker = `onCarLeaders` (leaders on a running car this week, unscoped by the login's grade/quad).
 - Parent consent = warning only, never blocks.
 - Moving someone to **Unassigned unpins them** (Generate/Fit in place them again). Move sheet has **Unpin** (`{ unpin: true }`).
-- Leaders can have **preferred grades** (Leader pool sheet); the solver unions vehicle + leaders' `prefGrades` per car (soft cost).
+- **Preferred grades were removed 2026-10-20** (operator, B1): no grade choices on the vehicle or Leader pool sheets, and the solver ignores `prefGrades` (gender is the only soft cost). The `pref_grades` columns, mapper and API fields are kept (accepted, stored, unused) so an old cached SPA never gets a 400; config `prefWeightMin` is unused.
 - **Finish sooner counts:** `globalDurationCostPerHour = COST_PER_HOUR` (1 min of makespan = 1 min of driving), so "Try +N cars" / Generate split riders when it ends the night earlier.
 
 #### Reference
