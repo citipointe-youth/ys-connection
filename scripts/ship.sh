@@ -61,7 +61,9 @@ if ! command -v vercel >/dev/null || ! vercel whoami >/dev/null 2>&1; then
 [ -n "$DRY" ] && { echo "dry: wait for vercel deployment of $SHA, then promote only with --promote"; exit 0; }
 # ponytail: untested here (no CLI on the build box); polls ~3 min for the git deployment to appear.
 URL=
-for _ in $(seq 36); do URL=$(vercel ls ys-connection -m githubCommitSha="$SHA" 2>/dev/null | grep -m1 https || true); [ -n "$URL" ] && break; sleep 5; done
+# The Vercel project name of this location (a fork links its own project); Brisbane has none checked in, so ys-connection.
+PROJ=$(node -e "try{process.stdout.write((p=>p.projectName||p.name||'ys-connection')(require('./.vercel/project.json')))}catch{process.stdout.write('ys-connection')}")
+for _ in $(seq 36); do URL=$(vercel ls "$PROJ" -m githubCommitSha="$SHA" 2>/dev/null | grep -m1 https || true); [ -n "$URL" ] && break; sleep 5; done
 [ -n "$URL" ] || { echo "pushed ${SHA:0:7}; no Vercel deployment seen yet: check Vercel"; exit 1; }
 vercel inspect "$URL" --wait --timeout 10m >/dev/null 2>&1 || { echo "FAIL: Vercel build failed: $URL"; exit 1; }
 if [ -n "$PROMOTE" ]; then vercel promote "$URL" --yes >/dev/null && echo "promoted: $URL"

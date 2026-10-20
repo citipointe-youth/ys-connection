@@ -24,6 +24,7 @@ import {
 import {
   ConsentCheckFirst, LinkBusyRow, LinkDnc, LinkEditInElvanto, LinkIdExists, LinkIdReused, LinkNotYours, LinkOpenDuplicate, LinkStale,
   LinkStillSending, LinkTooOld, LinkUnavailable,
+  ConsentFlowUnknown,
 } from '../core/errors/link-errors';
 import { makeLeaderService } from './leader.service';
 import { createLogger } from '../utils/logger';
@@ -36,7 +37,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, peopleFlowName, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
@@ -232,7 +233,10 @@ function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string
   return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now, s) === 'notReceived' };
 }
 /** E3: this year's New People flow among the pushed flow rows. */
-const peopleFlowOf = (flows: LinkFlowRow[], now: Date, tz: string) => peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now, tz));
+const peopleFlowOf = (flows: LinkFlowRow[], now: Date, tz: string, prefix: string) =>
+  peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now, tz), prefix);
+/** Y2a: this location's New People flow prefix (Youth Setup). `?.`: a json-mode settings file stored before Y1 is never re-parsed. */
+const peoplePrefix = (s: AppSettings) => s.ministryConfig.elvanto?.peopleFlowPrefix ?? '';
 /** Resilience H3: a flow row's shown consent flag; an unreadable flow profile (unknown) falls back to the roster's sticky flag. */
 function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
   if (f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all') return f.consent;
@@ -413,7 +417,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   async function otherWait(c: Ctx, rows: { rowId: string }[]) {
     const [flows, roster, open, cRows] = await Promise.all([c.flows(), c.roster(), c.openFlowRows(), c.consentRows()]);
     const now = clock(), byId = new Map(roster.map((r) => [r.personId, r]));
-    const people = peopleFlowOf(flows, now, c.time.timeZone);
+    const people = peopleFlowOf(flows, now, c.time.timeZone, peoplePrefix(c.settings));
     return rows.map((o) => {
       const f = flows.find((x) => x.rowId === o.rowId && isConsentStep(x, people));
       if (!f) return { ...o, flowId: null, stepId: null, dnc: false, consentFriday: null, notReceivedOk: false, marking: false };
@@ -668,7 +672,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
         // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
         // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
-        const v = isConsentStep(row, peopleFlowOf(await c.flows(), clock(), c.time.timeZone)) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock(), c.time) : 'done';
+        const people = peopleFlowOf(await c.flows(), clock(), c.time.timeZone, peoplePrefix(c.settings));
+        // Y2a (operator ruling, fail closed): with no New People flow known, no step 0 can be told from the consent step.
+        if (people === null && isStepZero(row.stepName)) throw new ConsentFlowUnknown();
+        const v = isConsentStep(row, people) ? consentStepAllowed({ ...row, consent }, await c.consentRows(), clock(), c.time) : 'done';
         if (!v) throw new ConsentCheckFirst();
         if (v === 'notReceived') (p as { notReceived?: true }).notReceived = true; else delete (p as { notReceived?: true }).notReceived;
       }
@@ -1039,7 +1046,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
       const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
       const now = clock();
-      const people = peopleFlowOf(flows, now, c.time.timeZone);
+      const people = peopleFlowOf(flows, now, c.time.timeZone, peoplePrefix(c.settings));
       const cRows = flows.some((f) => isConsentStep(f, people)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
