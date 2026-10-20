@@ -94,6 +94,15 @@ describe('F-36 linked mismatch rows', () => {
     expect(h).toContain('_ikFixOpen(1)');
     expect(strip(h)).toContain('Linked on the console; fix in Elvanto.');
   });
+  it('L2 (2026-10-21): a rev 15 console copies a console-linked form too, so the linked row gets the Fix button', () => {
+    const { fns } = env();
+    const x = fns._ikLk('mismatches');
+    const row = (n: number, o: any = {}) => ({ personId: P(n), name: 'Tom Test', submitted: '2026-10-09', diffs: ['consent date'], form: { consentDate: '09/10/2026' }, profile: {}, ...o });
+    Object.assign(x, { st: 'ready', res: { rows: [row(1, { linked: true }), row(2)], page: 1, pageSize: 25, total: 2 } });
+    const h = fns._ikLkResHtml('mismatches', x, { ...ST(), consoleLinkRev: 15 });
+    expect(h.match(/_ikFixOpen\(/g)).toHaveLength(2);
+    expect(strip(h)).not.toContain('fix in Elvanto');
+  });
 });
 
 describe('F-42 Unlinked intro + tag', () => {

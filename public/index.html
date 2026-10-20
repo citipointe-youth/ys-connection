@@ -12781,12 +12781,13 @@ function _ikResultLine(x, d, now) {
     unarchive: 'Unarchived ' + (who || 'the profile'), familyLink: 'Linked the parent to the student', category: parent ? 'Set the parent to Affiliate' : 'Moved ' + (who || 'the student') + ' to New People',
     locDemo: "Set the parent's location and demographic", note: 'Added a note to the parent', removeFromStep: 'Removed from New People step 0',
     consentNotReceived: 'Marked consent not received', setField: 'Updated ' + of + ' profile', formFix: 'Corrected ' + of + ' form',
-    complete: parent ? 'Parent texted' : 'Completed New People step 0', youthDemo: 'Ticked ' + of + ' Youth' };
+    complete: parent ? 'Parent texted' : 'Completed New People step 0', youthDemo: 'Ticked ' + of + ' Youth',
+    consentFix: 'Copied the consent form to ' + of + ' profile' }; // L2 (2026-10-21): a console-linked form
   const t = W[x.action] || 'Saved a change';
   if (!now) return t;
   if (t === 'Parent texted') return 'Text the parent';
   const P = { Approved: 'Approve', Unlinked: 'Unlink', Unarchived: 'Unarchive', Linked: 'Link', Added: 'Add', Removed: 'Remove', Marked: 'Mark',
-    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick', Moved: 'Move' }, w = t.split(' ')[0];
+    Updated: 'Update', Corrected: 'Correct', Completed: 'Complete', Saved: 'Save', Ticked: 'Tick', Moved: 'Move', Copied: 'Copy' }, w = t.split(' ')[0];
   return P[w] ? P[w] + t.slice(w.length) : t;
 }
 
@@ -14028,12 +14029,14 @@ function _ikLkResHtml(kind, x, st) {
   const one = (m, i) => {
     const fx = I.fixes[m.personId], ft = _ikFixText(fx, st, m.name), open = !!fx && ['asking', 'pending', 'claimed'].includes(fx.status), done = !!fx && (fx.status === 'sent' || fx.status === 'unclear');
     const caps = (st && st.console && st.console.capabilities) || {}, noFix = !caps.consentFix || caps.consentFix === 'off';
-    const pill = !done && !m.linked && noFix ? '<span class="lk-tag ik-prac">Do in Elvanto</span>' : '';
+    // L2 (2026-10-21): a rev 15 console copies a console-linked form to the profile too; an older one refuses it (fix in Elvanto).
+    const oldLink = !!m.linked && !(st && st.consoleLinkRev >= 15);
+    const pill = !done && !oldLink && noFix ? '<span class="lk-tag ik-prac">Do in Elvanto</span>' : '';
     return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(m.name)}</div>${pill}</div>`
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
       + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><div class="ik-mis2"><div><i>Form</i>${_ikMisVal(l[1])}</div><div><i>Profile</i>${_ikMisVal(l[2])}</div></div></div>`).join('')
       + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '')
-      + (done || m.linked || noFix ? (!done && m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : '')
+      + (done || oldLink || noFix ? (!done && oldLink ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : '')
         : `<div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
       + '</div>';
   };
@@ -14235,7 +14238,7 @@ function _ikClAllOpen(i) {
     + go.map((s) => '<div class="ik-step"><span class="ik-dot"></span><span>' + esc(s.who) + '</span></div>').join('')
     + '<p class="lk-sub">' + esc('Form: ' + _ikFormName(f.name) + (f.submitted ? ', filled in ' + _lkDay(f.submitted) : '')) + '</p>'
     + (dnc ? '<div class="ik-step ik-chg-dnc" role="alert">' + esc('This form says do not contact. After this, ' + who + ' are DO NOT CONTACT and leaders lose their numbers.') + '</div>' : '')
-    + '<p class="lk-sub lk-mt">Only the console remembers these links. Nothing is changed in Elvanto, and you can unlink them later.</p>'
+    + '<p class="lk-sub lk-mt">The links are kept on the console, not in Elvanto. When each consent is saved, the answers on this form go on each profile. You can unlink them later.</p>'
     + '<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikClAllGo()">Link all</button></div>');
 }
 async function _ikClAllGo() {
@@ -14303,7 +14306,7 @@ function _ikClPick(k) {
   modal('<div class="mo-title">' + esc('Link this form to ' + r.name + '?') + '</div>'
     + '<div class="ik-step"><span class="ik-dot"></span><span>' + esc('Form: ' + _ikFormName(f.name) + (f.submitted ? ', filled in ' + _lkDay(f.submitted) : '')) + '</span></div>'
     + (I.clPick.dnc ? '<div class="ik-step ik-chg-dnc" role="alert">' + esc('This form says do not contact. After this, ' + r.name + ' is DO NOT CONTACT and leaders lose their number.') + '</div>' : '')
-    + '<p class="lk-sub lk-mt">Only the console remembers this link. Nothing is changed in Elvanto, and you can unlink it later.</p>'
+    + '<p class="lk-sub lk-mt">The link is kept on the console, not in Elvanto. When their consent is saved, the answers on this form go on their profile. You can unlink it later.</p>'
     + '<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikClGo()">Link</button></div>');
 }
 function _ikClUnlink(i) {

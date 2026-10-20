@@ -135,3 +135,13 @@ describe('a multi-name unlinked row', () => {
     }
   });
 });
+
+describe('L2 consent plan step: consentFix result line', () => {
+  const f = new Function(`${['_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikResultLine'].map((n) => extractFn(HTML, n)).join('\n')}
+    return { _ikResultLine };`)();
+  const d = { forms: { student: { values: { first: 'Luke', last: 'Seo' } }, parent: null } };
+  it('reads Copied ..., present tense Copy ...', () => {
+    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d)).toBe("Copied the consent form to Luke's profile");
+    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d, true)).toBe("Copy the consent form to Luke's profile");
+  });
+});
