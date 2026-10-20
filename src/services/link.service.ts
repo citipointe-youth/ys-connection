@@ -1339,11 +1339,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!con || (con.capabilities.recheck ?? 'off') === 'off') throw new LinkUnavailable();
       const payload = PAYLOAD_SCHEMAS.recheck.parse({ ref: row.id, type: row.type, payload: row.payload, sentLogKey: row.sentLogKey });
       // Review fix 2: an open re-check is reused only while it can still be answered (pending / claimed). One left unclear (a
-      // lease-lost sweep) is closed (resolved not landed: final, so its dedupe key is free) and a new one is queued.
+      // lease-lost sweep) is closed as cancelled (reads "Still unclear"; final, so its dedupe key is free) and a new one is queued.
       const open = (await d.link.listActions({ types: ['recheck'], statuses: ['pending', 'claimed', 'unclear'] }))
         .find((x) => (x.payload as { ref?: unknown }).ref === row.id);
       if (open && open.status !== 'unclear') return { id: open.id };
-      if (open) await d.link.applyResults(open.leaseOwner ?? 'admin', [{ id: open.id, outcome: 'resolved', landed: false }], c.t);
+      if (open) await d.link.cancelDeadRecheck(open.id);
       try {
         const r = await d.link.insertAction({ id: randomUUID(), type: 'recheck', payload, note: null, dedupeKey: dedupeKey('recheck', payload),
           serviceDate: row.serviceDate, studentId: null, personId: row.personId, createdBy: c.actor.id, leaderId: row.leaderId, leaderName: row.leaderName });

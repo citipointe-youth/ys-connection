@@ -145,7 +145,8 @@ describe('L7: the console answer', () => {
     await h.result([{ id, outcome: 'unclear', sentLogKey: 'x' }]); // as a lease-lost sweep leaves it
     const again = await h.svc.recheckUnclear(ADMIN, h.a.id);
     expect(again.id).not.toBe(id);
-    expect((await h.link.getAction(id))!.status).not.toBe('unclear'); // final, so its dedupe key is free
+    expect((await h.link.getAction(id))!.status).toBe('cancelled'); // final, so its dedupe key is free
+    expect((await h.svc.recheckState(ADMIN, id)).state).toBe('unclear'); // a dead check never reads Not saved
     expect((await h.link.getAction(again.id))!.status).toBe('pending');
     const claimed = await h.svc.recheckUnclear(ADMIN, h.a.id);
     expect(claimed.id).toBe(again.id); // a live (pending) one is reused

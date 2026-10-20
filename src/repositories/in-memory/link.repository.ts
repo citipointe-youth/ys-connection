@@ -94,6 +94,13 @@ export class InMemoryLinkRepository implements ILinkRepository {
     return true;
   }
 
+  async cancelDeadRecheck(id: string): Promise<boolean> {
+    const e = this.outbox.get(id);
+    if (!e || e.row.type !== 'recheck' || e.row.status !== 'unclear') return false;
+    Object.assign(e.row, { status: 'cancelled', updatedAt: this.nowIso() });
+    return true;
+  }
+
   async claim(a: ClaimArgs): Promise<ClaimedRow[]> {
     const now = this.nowMs(); const nowIso = this.nowIso();
     this.consoles.set(a.console.consoleId, { ...clone(a.console), lastSeenAt: nowIso });

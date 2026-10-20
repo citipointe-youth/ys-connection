@@ -144,6 +144,12 @@ export class SupabaseLinkRepository implements ILinkRepository {
     return r.length > 0;
   }
 
+  async cancelDeadRecheck(id: string): Promise<boolean> {
+    const r = await this.sql`
+      update link_outbox set status = 'cancelled', updated_at = now() where id = ${id} and type = 'recheck' and status = 'unclear' returning id`;
+    return r.length > 0;
+  }
+
   async claim(a: ClaimArgs): Promise<ClaimedRow[]> {
     const c = a.console;
     return this.sql.begin(async (tx) => {

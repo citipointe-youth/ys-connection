@@ -186,6 +186,17 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         const got = await repo.claim({ ...args, console: { ...args.console, capabilities: { ...ALL_LIVE, recheck: 'live' } } });
         expect(got.map((g) => [g.row.id, g.row.note])).toEqual([[r.id, 'orig words']]);
       });
+      it('L7: cancelDeadRecheck closes only an unclear recheck row', async () => {
+        const a = await repo.insertAction(newRow({ note: null }));
+        const r = await repo.insertAction(newRow({ type: 'recheck', personId: null, payload: { ref: a.id, type: 'checkIn', payload: a.payload, sentLogKey: null } }));
+        expect(await repo.cancelDeadRecheck(r.id)).toBe(false); // pending: not dead
+        const args = claimArgs({}, randomUUID());
+        await repo.claim({ ...args, console: { ...args.console, capabilities: { ...ALL_LIVE, recheck: 'live' } } });
+        await repo.applyResults(args.console.consoleId, [{ id: r.id, outcome: 'unclear', sentLogKey: 'k' }], new Date());
+        expect(await repo.cancelDeadRecheck(a.id)).toBe(false); // not a recheck
+        expect(await repo.cancelDeadRecheck(r.id)).toBe(true);
+        expect((await repo.getAction(r.id))!.status).toBe('cancelled');
+      });
       it('skips a type whose capability is off', async () => {
         const a = await repo.insertAction(newRow());
         const b = await repo.insertAction(newRow({ type: 'checkOut', payload: { serviceTimeId: randomUUID(), personId: randomUUID() } }));
