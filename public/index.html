@@ -402,25 +402,34 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 @media(min-width:900px){.connect-grid{grid-template-columns:repeat(3,1fr)}}
 .connect-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
 .connect-leader:hover{box-shadow:var(--shadow-md)}
-.connect-leader-name{font-size:16px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.connect-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
+.connect-leader-name{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* r21 L1: two 44px header rows (name + edit; meta + count + Add Students) so the list window fits ~3.5 students in the
+   same 279px card (old: name row, meta line, full-width Add bar, 2.3 tall rows). The half row says it scrolls. */
+.connect-leader-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.connect-leader-sub{display:flex;align-items:center;gap:8px}
+.connect-leader-meta{flex:1;min-width:0;display:flex;gap:6px;font-size:12px;color:var(--ink-mid)}
+.connect-leader-meta>:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connect-leader-meta>:last-child{flex:none;white-space:nowrap}
+.connect-add-btn{flex:none;min-height:44px;padding:0 10px;font-size:13px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
+/* Two- and three-column cards (>= 540px, the grid's own breakpoint) are narrow: keep the full meta line, Add bar below it */
+@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
 /* A native scrollbar only flashes during an active touch drag on phones (OS-level
    overlay-scrollbar behavior that CSS can't override), so this preview draws its own
    always-visible track/thumb (sized in _syncConnectThumb) instead of relying on one. */
 .connect-students-wrap{position:relative;margin-top:12px}
-.connect-students{border-top:1px solid var(--paper-dark);padding:10px 10px 0 0;max-height:126px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.connect-students{border-top:1px solid var(--paper-dark);padding:4px 10px 0 0;max-height:141px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .connect-students::-webkit-scrollbar{display:none}
-.connect-students-track{position:absolute;top:11px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
+.connect-students-track{position:absolute;top:5px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
 .connect-students-thumb{position:absolute;left:0;width:3px;background:rgba(100,116,139,.55);border-radius:2px}
 /* Student profile "Search a leader to assign" results — same track/thumb
    pattern as .connect-students above, sized for this list's rows (~39px
    each incl. margin) so ~2.5 rows show before it scrolls. */
 .leader-assign-list{max-height:98px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .leader-assign-list::-webkit-scrollbar{display:none}
-.connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
+.connect-stud-row{display:flex;align-items:center;gap:8px;min-height:39px;border-bottom:1px solid var(--paper-dark)} /* 38px + 1px rule (border-box) */
+.connect-stud-row .btn-sm{min-height:36px;min-width:36px} /* compact in-row Profile / remove */
 .connect-stud-row:last-child{border-bottom:none}
 .connect-stud-name{flex:1;font-size:14px;font-weight:600}
 .connect-stud-meta{font-size:11px;color:var(--ink-mid)}
@@ -910,6 +919,12 @@ button.rc-go{padding:0;text-align:left}
 .rc.rc-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);padding:var(--s3) var(--s4)}
 .rc-row>.rc-main{flex:1 1 140px;min-width:0}
 .rc-row>.rc-foot{flex:0 1 auto;margin-top:0;margin-left:auto}
+.rc-icons>.acct-pv{margin-right:16px}
+/* r21 L1: on a phone the pill + 5 icons did not fit beside the name, so the footer wrapped into its own 44px band (~124px a
+   row). Under 600px the row is a grid: name/username in column 1, each icon a 40px column (footer flattened by
+   display:contents, buttons span both text rows), the pill in the username row's right end (never the name row); both text
+   lines are one line with an ellipsis. ~58px a row, about twice as many per screen. */
+@media(max-width:599px){.rc.rc-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;grid-auto-columns:40px;grid-auto-flow:column;align-items:center;align-content:center;gap:0;padding:var(--s1) var(--s3);margin-bottom:var(--s1)}.rc-row>.rc-main,.rc-row>.rc-foot{display:contents}.rc-row .lk-nm,.rc-row .lk-d{grid-column:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rc-row .lk-nm{grid-row:1;margin-right:var(--s2)}.rc-row .lk-d{grid-row:2;margin:2px var(--s2) 0 0;padding-right:64px}.rc-row>.rc-foot>.chip{grid-column:1;grid-row:2;justify-self:end;margin:2px var(--s2) 0 0}.rc-row>.rc-foot>.btn{grid-row:1/span 2}.rc-row>.rc-foot>.acct-pv{margin:0}}
 /* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
 .rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
@@ -2584,16 +2599,16 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
-  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', open:"go('notices')" });
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
     const r = S.user && S.user.role;
-    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
-    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
-    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
+    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', mbl:'Check-in', open:"go('link-checkin')" });
+    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', mbl:'Report', open:"go('link-groups')" });
+    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -2608,8 +2623,10 @@ function _navSlots(u) {
     const m = more[0];
     if (m.id === 'prayers') return it;
     if (m.id === 'bus') return { id:'bus', ic:'bus', label:L('busMinistry'), mbl:'Bus' }; // _initShell escapes labels (Plan B 2026-10-17)
-    if (m.id === 'notices') return { id:'notices', ic:'bell', label:'Notices', mbl:'Notices' };
-    return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+    if (m.id === 'new-youth') return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+    // r21 L1: any other single module (Notices, Check-in, Lifegroup report, Flow steps, Intake) is its own tab; it used to
+    // fall through to New person, so a Check-in-only login could not reach Check-in.
+    return { id:m.id, ic:m.ic, label:m.label, mbl:m.mbl }; // short one-word bottom-bar label (mbl is raw HTML: constants only)
   });
 }
 function navItems() { return _navSlots().filter(Boolean); }
@@ -2619,8 +2636,8 @@ function openMore() {
   const rows = moreItems().map(m => {
     const here = S.page === m.id;
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
-  }).join('') // Y5: every role can change its own password here (junior leaders have no Setup page)
-    + `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>`;
+  }).join('') // Y5: a junior leader changes its password here (no Setup page); r21 L1: the other roles use Setup's button
+    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -3978,6 +3995,7 @@ function renderConnectView() {
   const fGrades = u.role === 'quad' ? quadGrades(u.quad)
     : ['director','admin'].includes(u.role) ? _gradeList() : [];
   const showGender = ['director','admin'].includes(u.role);
+  const showSearch = showGender || u.role === 'quad'; // r21 L1: Junior/Senior logins get the same leader search
   const gChips = fGrades.map(g =>
     `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleAF('g',${g})" aria-pressed="${gf.has(g)}">${g}</button>`
   ).join('');
@@ -4023,7 +4041,7 @@ function renderConnectView() {
       <div class="stat"><div class="stat-v" style="color:var(--warn)">${Math.max(0, totalStudents - connectedCount)}</div><div class="stat-l">Pending</div></div>
     </div>
     ${unallocDrop}
-    ${showGender ? `<div class="sbar"><span class="si">${icS('search')}</span><input id="cs-lq" type="search" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search leaders" placeholder="Search leaders…" value="${esc(_aS.lq || '')}" oninput="_csLeaderQ(this.value)"></div>` : ''}
+    ${showSearch ? `<div class="sbar"><span class="si">${icS('search')}</span><input id="cs-lq" type="search" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search leaders" placeholder="Search leaders…" value="${esc(_aS.lq || '')}" oninput="_csLeaderQ(this.value)"></div>` : ''}
     ${vgOn ? _vgBar() : gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}
     </div>` : ''}
@@ -4039,7 +4057,7 @@ function renderConnectView() {
       const assignedStudents = students.filter(s => allocs[s.id]?.includes(l.id)).sort(_pickByFirst);
       const n = assignedStudents.length;
 
-      // Preview is capped to a ~3-row scroll window (.connect-students max-height);
+      // Preview is capped to a ~3.5-row scroll window (.connect-students max-height, r21 L1);
       // all assigned students render into it so a drag/scroll reveals the rest,
       // rather than truncating with a "+N more" link.
       let studentRows = '';
@@ -4057,17 +4075,16 @@ function renderConnectView() {
       const gi = l.gender==='female'?icS('genderF'):l.gender==='male'?icS('genderM'):'';
 
       // I3: the leader search hides non-matches (kept in the DOM so a wider search shows them again without a repaint).
-      const lq = showGender ? (_aS.lq || '') : '';
+      const lq = showSearch ? (_aS.lq || '') : '';
       body += `<div class="connect-leader" data-name="${esc(l.fullName.toLowerCase())}"${lq && !l.fullName.toLowerCase().includes(lq) ? ' style="display:none"' : ''}>
-        <div style="display:flex;align-items:flex-start;gap:6px">
+        <div class="connect-leader-head">
           <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
-        <div class="connect-leader-meta" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span>
-          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
+        <div class="connect-leader-sub">
+          <span class="connect-leader-meta"><span>Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span><span><b>${n}</b> student${n!==1?'s':''}</span></span>
+          ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         </div>
-        ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students-wrap"><div class="connect-students" onscroll="_syncConnectThumb(this)">${studentRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`:''}
       </div>`;
     }
@@ -4085,7 +4102,7 @@ function renderConnectView() {
   document.querySelectorAll('.connect-students').forEach(_syncConnectThumb);
 }
 
-// I3 (R2 2026-10-17): Connect Setup leader search, admin/director only; matches active leader names (the cards shown).
+// I3 (R2 2026-10-17): Connect Setup leader search, admin/director (+ quad, r21 L1); matches active leader names (the cards shown).
 function _csLeaderQ(v) {
   _aS.lq = String(v || '').trim().toLowerCase();
   for (const c of document.querySelectorAll('.connect-leader')) c.style.display = (c.dataset.name || '').includes(_aS.lq) ? '' : 'none';
@@ -6547,7 +6564,7 @@ async function renderAdminView(settings, users, history) {
         body += `<div class="li rc rc-row${acctGenderClass}">
           <div class="rc-main"><div class="lk-nm">${esc(u.displayName)}</div><div class="lk-d">${esc(u.email)}</div></div>
           <div class="rc-foot rc-icons">${statusChip(u.status)}
-            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" style="margin-right:16px" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
+            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm acct-pv" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
             <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
