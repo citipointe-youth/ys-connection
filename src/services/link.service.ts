@@ -178,7 +178,7 @@ export interface LinkService {
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
-  flows(actor: Actor): Promise<{ rows: FlowView[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
+  flows(actor: Actor): Promise<{ rows: FlowView[]; assignees: { personId: string; name: string }[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor, q?: unknown): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -1075,7 +1075,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
-      return { rows, steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
+      // r21 L6b (T4): who can get the next step on a Complete: active app leaders matched to one Elvanto person (as the door's leaders).
+      const personOf = rosterPersonMatcher(roster, leaders);
+      const assignees = leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
+        .flatMap((l) => { const personId = personOf(l); return personId ? [{ personId, name: l.fullName }] : []; });
+      return { rows, assignees, steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder), progress };
     },
 

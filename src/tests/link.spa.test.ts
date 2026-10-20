@@ -184,8 +184,8 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'note-too-long': 'Edit this report in Elvanto.',
       'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
       'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
-      'step-moved': 'This step changed in Elvanto. Do it there.',
-      'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
+      'step-moved': 'This step changed in Elvanto. Reload and try again.',
+      'assignee-needed': 'Pick who gets the next step, then Complete again.',
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",
@@ -1683,6 +1683,23 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
     expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
   });
+  it('r21 L6b (T4): Complete offers who gets the next step (matched leaders); the pick goes as payload.assignTo', () => {
+    const h = setup();
+    h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Cobb</b>' }];
+    h.fns._lkOpenStep(F(2));
+    const sheet = h.calls.modals[0]!;
+    expect(strip(sheet)).toContain('Next step goes to');
+    expect(sheet).toContain(`<option value="">Elvanto's usual pick</option>`);
+    expect(sheet).toContain(`<option value="${P(70)}">Cody &lt;b&gt;Cobb&lt;/b&gt;</option>`);
+    expect(sheet).toContain('onchange="LINK.fs.assignTo=this.value"');
+    h.get().LINK.fs.assignTo = P(70);
+    h.fns._lkStepSend();
+    expect(h.fns._lkQGet()[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: false, assignTo: P(70) });
+    const none = setup();
+    none.get().LINK.fAssignees = [];
+    none.fns._lkOpenStep(F(2));
+    expect(none.calls.modals[0]).not.toContain('Next step goes to');
+  });
   it('every value is escaped, in the list and in the sheet', () => {
     const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);
     const list = h.fns._lkFlowsHtml();
@@ -1700,7 +1717,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
-    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Tell the admin.'); // fix16 F-35
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Reload and try again.'); // fix16 F-35; r21 L6b: reload, no Elvanto step
     expect(h.calls.toasts).toEqual([]);
     const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
     k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
@@ -1792,7 +1809,9 @@ describe('F3 flow steps', () => {
     const h = boss([row(1)], reply(P(90), 'refused', { code: 'LINK_LOCKED', reason: 'locked', message: 'x' }));
     h.fns._lkQSet([{ kind: 'action', id: P(90), type: 'removeFromFlowStep', payload: { rowId: F(1) }, note: 'n', leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
-    expect(strip(h.fns._lkFlowsHtml())).toContain("Not sent: a remove with a note isn't switched on yet.");
+    // r21 L6b (T5): remove with a note is live (personNote); a locked refusal reads as the plain locked line, never "not switched on"
+    expect(strip(h.fns._lkFlowsHtml())).not.toContain('switched on');
+    expect(strip(h.fns._lkFlowsHtml())).toContain("This isn't connected yet.");
     const k = boss([row(2, { consentStep: true, consent: 'ok' })], reply(P(91), 'refused', { code: 'CONSENT_CHECK_FIRST', message: 'Do the consent check first (New youth & consent > Consents).' }));
     k.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1', _f: F(2) }]);
     await k.fns._lkFlush();

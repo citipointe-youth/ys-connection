@@ -171,8 +171,8 @@ describe('L5 flow rows', () => {
 });
 
 describe('Remove / consent refusal lines', () => {
-  it('locked remove (note path) is said plainly', () => {
-    expect(f._lkStatusText({ status: 'refused', reason: 'locked', type: 'removeFromFlowStep' })).toMatch(/remove with a note isn't switched on/);
+  it('locked remove reads as the plain locked line (r21 L6b T5: remove with a note is live, never "not switched on")', () => {
+    expect(f._lkStatusText({ status: 'refused', reason: 'locked', type: 'removeFromFlowStep' })).toBe("This isn't connected yet. Do it in Elvanto.");
     expect(f._lkStatusText({ status: 'sent', type: 'removeFromFlowStep', reason: 'already' })).toBe('Not in this step any more.');
     expect(f._lkStatusText({ status: 'sent', type: 'removeFromFlowStep', resultAt: 'x' })).toBe('Removed from the step in Elvanto 7:02 pm');
   });
@@ -345,7 +345,7 @@ describe('Y6c Flow step wording', () => {
     expect(src.slice(i)).toMatch(/<\/select>[^]*?Saved in this app only\. Elvanto isn't changed\./);
   });
   it('assignee-needed says what to do', () => {
-    expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe('Elvanto needs someone assigned to this step. Do it in Elvanto.');
+    expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe('Pick who gets the next step, then Complete again.');
   });
 });
 
