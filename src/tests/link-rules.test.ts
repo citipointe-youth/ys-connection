@@ -5,6 +5,9 @@ import {
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
+import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+
+const BNE = MINISTRY_CONFIG_DEFAULTS.structure; // Y3a: Brisbane's time zone and youth night, injected
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
@@ -16,8 +19,8 @@ function svc(n: number, ymd: string, startsAt: string): LinkServiceRow {
 
 describe('link-rules time helpers', () => {
   it('brisbaneToday flips at 14:00Z', () => {
-    expect(brisbaneToday(new Date('2026-10-15T13:59:00Z'))).toBe('2026-10-15');
-    expect(brisbaneToday(new Date('2026-10-15T14:00:00Z'))).toBe('2026-10-16');
+    expect(brisbaneToday(new Date('2026-10-15T13:59:00Z'), BNE.timeZone)).toBe('2026-10-15');
+    expect(brisbaneToday(new Date('2026-10-15T14:00:00Z'), BNE.timeZone)).toBe('2026-10-16');
   });
   it('addDays crosses a month and a year end', () => {
     expect(addDays('2026-10-31', 1)).toBe('2026-11-01');
@@ -30,8 +33,8 @@ describe('link-rules time helpers', () => {
     expect(weekdayOf('2026-10-18')).toBe(0);
   });
   it('brisbaneHHMM', () => {
-    expect(brisbaneHHMM('2026-10-16T08:30:00Z')).toBe('18:30');
-    expect(brisbaneHHMM('2026-10-17T14:05:00Z')).toBe('00:05');
+    expect(brisbaneHHMM('2026-10-16T08:30:00Z', BNE.timeZone)).toBe('18:30');
+    expect(brisbaneHHMM('2026-10-17T14:05:00Z', BNE.timeZone)).toBe('00:05');
   });
   it('constants', () => {
     expect(LINK_CUTOFF_DAYS).toBe(3);
@@ -59,10 +62,10 @@ describe('pickList', () => {
 
 describe('serviceDay (D3)', () => {
   it('before 03:00 Brisbane the service day is the previous day', () => {
-    expect(serviceDay(new Date('2026-10-16T14:30:00Z'))).toBe('2026-10-16'); // Sat 00:30 Brisbane
-    expect(serviceDay(new Date('2026-10-16T16:59:00Z'))).toBe('2026-10-16'); // Sat 02:59
-    expect(serviceDay(new Date('2026-10-16T17:00:00Z'))).toBe('2026-10-17'); // Sat 03:00
-    expect(serviceDay(new Date('2026-10-16T09:00:00Z'))).toBe('2026-10-16'); // Fri 19:00
+    expect(serviceDay(new Date('2026-10-16T14:30:00Z'), BNE.timeZone)).toBe('2026-10-16'); // Sat 00:30 Brisbane
+    expect(serviceDay(new Date('2026-10-16T16:59:00Z'), BNE.timeZone)).toBe('2026-10-16'); // Sat 02:59
+    expect(serviceDay(new Date('2026-10-16T17:00:00Z'), BNE.timeZone)).toBe('2026-10-17'); // Sat 03:00
+    expect(serviceDay(new Date('2026-10-16T09:00:00Z'), BNE.timeZone)).toBe('2026-10-16'); // Fri 19:00
   });
 });
 
@@ -70,27 +73,27 @@ describe('defaultService', () => {
   const fri = '2026-10-16';
   const sun = '2026-10-18';
   it('Friday with one service -> it', () => {
-    expect(defaultService(fri, [svc(1, fri, '2026-10-16T08:30:00Z'), svc(9, '2026-10-09', '2026-10-09T08:30:00Z')])?.serviceTimeId).toBe(U(1));
+    expect(defaultService(fri, [svc(1, fri, '2026-10-16T08:30:00Z'), svc(9, '2026-10-09', '2026-10-09T08:30:00Z')], undefined, BNE)?.serviceTimeId).toBe(U(1));
   });
   it('Friday with two -> none', () => {
-    expect(defaultService(fri, [svc(1, fri, '2026-10-16T08:30:00Z'), svc(2, fri, '2026-10-16T09:30:00Z')])).toBeNull();
+    expect(defaultService(fri, [svc(1, fri, '2026-10-16T08:30:00Z'), svc(2, fri, '2026-10-16T09:30:00Z')], undefined, BNE)).toBeNull();
   });
   it('Sunday with one 10:15 service -> it', () => {
-    expect(defaultService(sun, [svc(1, sun, '2026-10-18T00:15:00Z')])?.serviceTimeId).toBe(U(1));
+    expect(defaultService(sun, [svc(1, sun, '2026-10-18T00:15:00Z')], undefined, BNE)?.serviceTimeId).toBe(U(1));
   });
   it('Sunday with a 10:15 and a 17:00 -> the 10:15', () => {
-    expect(defaultService(sun, [svc(2, sun, '2026-10-18T07:00:00Z'), svc(1, sun, '2026-10-18T00:15:00Z')])?.serviceTimeId).toBe(U(1));
+    expect(defaultService(sun, [svc(2, sun, '2026-10-18T07:00:00Z'), svc(1, sun, '2026-10-18T00:15:00Z')], undefined, BNE)?.serviceTimeId).toBe(U(1));
   });
   it('N12: Sunday with one service not at 10:15 -> it', () => {
-    expect(defaultService(sun, [svc(2, sun, '2026-10-18T00:30:00Z')])?.serviceTimeId).toBe(U(2));
+    expect(defaultService(sun, [svc(2, sun, '2026-10-18T00:30:00Z')], undefined, BNE)?.serviceTimeId).toBe(U(2));
   });
   it('N12: Sunday with two services -> the one nearest now (Brisbane time of day)', () => {
     const two = [svc(1, sun, '2026-10-18T00:30:00Z'), svc(2, sun, '2026-10-18T07:00:00Z')]; // 10:30 and 17:00
-    expect(defaultService(sun, two, new Date('2026-10-18T00:00:00Z'))?.serviceTimeId).toBe(U(1)); // 10:00 now
-    expect(defaultService(sun, two, new Date('2026-10-18T06:00:00Z'))?.serviceTimeId).toBe(U(2)); // 16:00 now
+    expect(defaultService(sun, two, new Date('2026-10-18T00:00:00Z'), BNE)?.serviceTimeId).toBe(U(1)); // 10:00 now
+    expect(defaultService(sun, two, new Date('2026-10-18T06:00:00Z'), BNE)?.serviceTimeId).toBe(U(2)); // 16:00 now
   });
   it('a weekday -> none', () => {
-    expect(defaultService('2026-10-14', [svc(1, '2026-10-14', '2026-10-14T08:30:00Z')])).toBeNull();
+    expect(defaultService('2026-10-14', [svc(1, '2026-10-14', '2026-10-14T08:30:00Z')], undefined, BNE)).toBeNull();
   });
 });
 

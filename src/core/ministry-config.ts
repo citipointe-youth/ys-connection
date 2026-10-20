@@ -9,6 +9,9 @@ import { BadRequestError } from './errors/app-error';
 // (repos and the SPA's mirror both read MINISTRY_CONFIG_DEFAULTS, never redeclare
 // them).
 
+const TZ_MSG = 'Time zone not recognised.';
+const isTimeZone = (tz: string) => { try { new Intl.DateTimeFormat('en-CA', { timeZone: tz }); return tz !== ''; } catch { return false; } };
+
 const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex colour (e.g. #1a1af2)');
 
 // 'two-bracket' was dropped 2026-07-10: a medium ministry wanting bracket-sized
@@ -92,6 +95,8 @@ export const MinistryConfigSchema = z.object({
         ]),
       genderPolicy: z.enum(['strict', 'soft', 'off']).default('strict'),
       serviceDayOfWeek: z.number().int().min(0).max(6).default(5),
+      timeZone: z.string().max(60).refine(isTimeZone, TZ_MSG).default('Australia/Brisbane'),
+      consentCutoff: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
     })
     .default({}),
 
@@ -250,6 +255,8 @@ function deepMerge<T>(base: T, patch: unknown): T {
 // path that should ever produce a stored MinistryConfig from a partial PATCH —
 // callers must not merge configs by hand.
 export function mergeMinistryConfig(base: MinistryConfig, patch: unknown): MinistryConfig {
-  const merged = deepMerge(base, patch);
-  return MinistryConfigSchema.parse(merged);
+  const r = MinistryConfigSchema.safeParse(deepMerge(base, patch));
+  if (r.success) return r.data;
+  if (r.error.issues.some((i) => i.message === TZ_MSG)) throw new BadRequestError(TZ_MSG); // the refusal in plain words
+  throw r.error;
 }

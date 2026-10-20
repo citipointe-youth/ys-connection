@@ -18,6 +18,7 @@ import { join } from 'node:path';
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = new Date('2026-10-16T09:00:00.000Z');
+const BNE = MINISTRY_CONFIG_DEFAULTS.structure; // Y3a: Brisbane's time zone, youth night and consent cut-off, injected
 const T0 = '2026-10-01T00:00:00.000Z';
 const ADMIN_ID = u(1), DIR_ID = u(2), QUAD_ID = u(3), L_DANA = u(301), CONSOLE = u(601);
 const P_DNC = u(101), P_OK = u(102), P_UNK = u(103), P_OK2 = u(104);
@@ -123,7 +124,7 @@ describe('CY-B1: the batch decides DO NOT CONTACT as GET /link/flows does (roste
       [consentRow(P_UNK, 'done')] as never);
     await h.link.replaceMirror('roster', dncRoster(P_UNK, 'all'), { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
     expect(h.oc(await h.one(ADMIN, complete(FR_C_UNK, NP, STEP0, P_UNK)))).toBe('LINK_DNC');
-    expect(consentStepAllowed({ personId: P_UNK, consent: 'all', due: null }, [{ key: P_UNK, status: 'done' }], NOW)).toBeNull();
+    expect(consentStepAllowed({ personId: P_UNK, consent: 'all', due: null }, [{ key: P_UNK, status: 'done' }], NOW, BNE)).toBeNull();
   });
 });
 
@@ -326,19 +327,19 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     ({ ...complete(rowId, NP, STEP0, personId), payload: { rowId, flowId: NP, stepId: STEP0, personId, notePrivate: false, ...extra } });
 
   it('the rules: consent Friday = the first Friday after the due date; passed at 9:00 Brisbane; the verdicts', () => {
-    expect(consentFriday('2026-10-16')).toBe('2026-10-23'); // a Friday -> the next one
-    expect(consentFriday('2026-10-15')).toBe('2026-10-16');
-    expect(consentFriday('2026-10-17')).toBe('2026-10-23');
-    expect(consentFriday(null)).toBeNull();
-    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T22:59:00Z'))).toBe(false); // 8:59 Brisbane
-    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T23:00:00Z'))).toBe(true); // 9:00
+    expect(consentFriday('2026-10-16', undefined, BNE.serviceDayOfWeek)).toBe('2026-10-23'); // a Friday -> the next one
+    expect(consentFriday('2026-10-15', undefined, BNE.serviceDayOfWeek)).toBe('2026-10-16');
+    expect(consentFriday('2026-10-17', undefined, BNE.serviceDayOfWeek)).toBe('2026-10-23');
+    expect(consentFriday(null, undefined, BNE.serviceDayOfWeek)).toBeNull();
+    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T22:59:00Z'), BNE.consentCutoff, BNE.timeZone)).toBe(false); // 8:59 Brisbane
+    expect(consentFridayPassed('2026-10-23', new Date('2026-10-22T23:00:00Z'), BNE.consentCutoff, BNE.timeZone)).toBe(true); // 9:00
     const r = (due: string | null, consent: string) => ({ personId: P_A, due, consent });
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW)).toBe('notReceived');
-    expect(consentStepAllowed(r('2026-10-16', 'unknown'), [], NOW)).toBeNull(); // before the Friday
-    expect(consentStepAllowed(r('2026-10-08', 'contact'), [], NOW)).toBeNull(); // DO NOT CONTACT
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW)).toBeNull(); // open consent row
-    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW)).toBe('done');
-    expect(consentStepAllowed(r(null, 'ok'), [], NOW)).toBe('done');
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [], NOW, BNE)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-16', 'unknown'), [], NOW, BNE)).toBeNull(); // before the Friday
+    expect(consentStepAllowed(r('2026-10-08', 'contact'), [], NOW, BNE)).toBeNull(); // DO NOT CONTACT
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW, BNE)).toBeNull(); // open consent row
+    expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW, BNE)).toBe('done');
+    expect(consentStepAllowed(r(null, 'ok'), [], NOW, BNE)).toBe('done');
   });
   it('allowed and stored with notReceived (set by the server); the claim carries it to the console', async () => {
     const h = await rev9();
@@ -419,18 +420,18 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
   }
 
   it('the rules: the texted date is preferred over the due date, the due date is the fallback, a texted date alone is enough', () => {
-    expect(consentFriday('2026-10-01', '2026-10-16')).toBe('2026-10-23'); // texted wins over an earlier due
-    expect(consentFriday('2026-10-16', '2026-10-05')).toBe('2026-10-09'); // and over a later one
-    expect(consentFriday('2026-10-08', null)).toBe('2026-10-09'); // no texted date: the due date
-    expect(consentFriday('2026-10-08', 'not-a-date')).toBe('2026-10-09');
-    expect(consentFriday(null, '2026-10-07')).toBe('2026-10-09'); // no due date
-    expect(consentFriday(null, null)).toBeNull();
+    expect(consentFriday('2026-10-01', '2026-10-16', BNE.serviceDayOfWeek)).toBe('2026-10-23'); // texted wins over an earlier due
+    expect(consentFriday('2026-10-16', '2026-10-05', BNE.serviceDayOfWeek)).toBe('2026-10-09'); // and over a later one
+    expect(consentFriday('2026-10-08', null, BNE.serviceDayOfWeek)).toBe('2026-10-09'); // no texted date: the due date
+    expect(consentFriday('2026-10-08', 'not-a-date', BNE.serviceDayOfWeek)).toBe('2026-10-09');
+    expect(consentFriday(null, '2026-10-07', BNE.serviceDayOfWeek)).toBe('2026-10-09'); // no due date
+    expect(consentFriday(null, null, BNE.serviceDayOfWeek)).toBeNull();
     const r = (due: string | null, textedOn: string | null) => ({ personId: P_A, consent: 'unknown', due, textedOn });
-    expect(consentStepAllowed(r('2026-10-01', '2026-10-16'), [], NOW)).toBeNull(); // the text says wait
-    expect(consentStepAllowed(r('2026-10-16', '2026-10-05'), [], NOW)).toBe('notReceived');
-    expect(consentStepAllowed(r('2026-10-08', null), [], NOW)).toBe('notReceived');
-    expect(consentStepAllowed(r(null, '2026-10-07'), [], NOW)).toBe('notReceived');
-    expect(consentStepAllowed(r(null, null), [], NOW)).toBeNull();
+    expect(consentStepAllowed(r('2026-10-01', '2026-10-16'), [], NOW, BNE)).toBeNull(); // the text says wait
+    expect(consentStepAllowed(r('2026-10-16', '2026-10-05'), [], NOW, BNE)).toBe('notReceived');
+    expect(consentStepAllowed(r('2026-10-08', null), [], NOW, BNE)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, '2026-10-07'), [], NOW, BNE)).toBe('notReceived');
+    expect(consentStepAllowed(r(null, null), [], NOW, BNE)).toBeNull();
   });
   it('the flows push stores textedOn (rev 10 fixture); a row without it (an older console) reads null', async () => {
     const h = await rev10();

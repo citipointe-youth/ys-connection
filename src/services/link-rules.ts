@@ -8,19 +8,49 @@ import { NOTE_FAILED_DETAIL, isDnc } from '../core/link-contract';
 export const LINK_CUTOFF_DAYS = 3;
 export const LEASE_LOST_MS = 3_600_000;
 
-// ---------------- Time (Brisbane = UTC+10, no DST) ----------------
+// ---------------- Time (the location's time zone, structure.timeZone; Brisbane = UTC+10, no DST) ----------------
 
-const BRISBANE_MS = 10 * 3_600_000;
 const DAY_MS = 86_400_000;
 
-/** Today's date in Brisbane (YYYY-MM-DD). The day flips at 14:00Z. */
-export function brisbaneToday(now: Date): string {
-  return new Date(now.getTime() + BRISBANE_MS).toISOString().slice(0, 10);
+/** The location's time facts (ministryConfig.structure): pass the structure itself. */
+export interface SiteTime { timeZone: string; serviceDayOfWeek: number; consentCutoff: string }
+
+const FMT = new Map<string, Intl.DateTimeFormat>();
+/** The wall clock of an instant in `tz`: { ymd, hhmm }. One cached formatter per tz. */
+function wall(ms: number, tz: string): { ymd: string; hhmm: string } {
+  if (!tz) throw new Error('time zone required');
+  let f = FMT.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    FMT.set(tz, f);
+  }
+  const p = Object.fromEntries(f.formatToParts(ms).map((x) => [x.type, x.value]));
+  return { ymd: `${p.year}-${p.month}-${p.day}`, hhmm: `${p.hour}:${p.minute}` };
+}
+/** `tz`'s UTC offset at an instant, in ms. */
+const offsetAt = (ms: number, tz: string) => { const w = wall(ms, tz); return Date.parse(`${w.ymd}T${w.hhmm}:00Z`) - (ms - (((ms % 60_000) + 60_000) % 60_000)); };
+
+/** The instant of a wall-clock time `hhmm` on `ymd` in `tz`. In a daylight-saving gap: the instant after the gap
+ *  (02:30 -> 03:30 new time). In a repeated hour: the first one. Same rule as the console's zoned.instantOf (C4a). */
+export function instantOf(ymd: string, hhmm: string, tz: string): number {
+  const g = Date.parse(`${ymd}T${hhmm}:00Z`);
+  const before = offsetAt(g - DAY_MS, tz), after = offsetAt(g + DAY_MS, tz);
+  for (const o of before >= after ? [before, after] : [after, before]) { // the larger offset is the earlier instant
+    const w = wall(g - o, tz);
+    if (w.ymd === ymd && w.hhmm === hhmm) return g - o;
+  }
+  return g - before; // the gap
 }
 
-/** The service day (D3): the Brisbane day, or the previous day before 03:00 (check-outs after midnight on a Friday). */
-export function serviceDay(now: Date): string {
-  return brisbaneToday(new Date(now.getTime() - 3 * 3_600_000));
+/** Today's date in the location's time zone (YYYY-MM-DD). Brisbane: the day flips at 14:00Z. */
+export function brisbaneToday(now: Date, tz: string): string {
+  return wall(now.getTime(), tz).ymd;
+}
+
+/** The service day (D3): the local day, or the previous day before 03:00 local (check-outs after midnight on a Friday). */
+export function serviceDay(now: Date, tz: string): string {
+  const w = wall(now.getTime(), tz);
+  return w.hhmm < '03:00' ? addDays(w.ymd, -1) : w.ymd;
 }
 
 export function addDays(ymd: string, n: number): string {
@@ -32,9 +62,9 @@ export function weekdayOf(ymd: string): number {
   return new Date(`${ymd}T00:00:00Z`).getUTCDay();
 }
 
-/** The Brisbane wall-clock time of an instant, "HH:MM". */
-export function brisbaneHHMM(iso: string): string {
-  return new Date(Date.parse(iso) + BRISBANE_MS).toISOString().slice(11, 16);
+/** The local wall-clock time of an instant, "HH:MM". */
+export function brisbaneHHMM(iso: string, tz: string): string {
+  return wall(Date.parse(iso), tz).hhmm;
 }
 
 // ---------------- Which service (spec §2.3) ----------------
@@ -47,18 +77,19 @@ export function pickList(services: LinkServiceRow[], today: string): LinkService
     .sort((a, b) => (a.ymd === b.ymd ? Date.parse(b.startsAt) - Date.parse(a.startsAt) : a.ymd < b.ymd ? 1 : -1));
 }
 
-/** Friday: the day's only service. Sunday (N12): the day's only service, else the one whose Brisbane time of day is
- *  nearest `now` (10:15 without `now`). Otherwise none. */
-export function defaultService(day: string, services: LinkServiceRow[], now?: Date): LinkServiceRow | null {
+/** The youth night (structure.serviceDayOfWeek; Brisbane Friday): the day's only service. Sunday (N12): the day's only
+ *  service, else the one whose local time of day is nearest `now` (10:15 without `now`). Otherwise none. */
+export function defaultService(day: string, services: LinkServiceRow[], now: Date | undefined,
+  s: Pick<SiteTime, 'timeZone' | 'serviceDayOfWeek'>): LinkServiceRow | null {
   const wd = weekdayOf(day);
   const candidates = services.filter((s) => s.ymd === day);
   if (wd === 0 && candidates.length > 1) {
     const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-    const at = mins(now ? brisbaneHHMM(now.toISOString()) : '10:15');
-    const gap = (s: LinkServiceRow) => Math.abs(mins(brisbaneHHMM(s.startsAt)) - at);
+    const at = mins(now ? brisbaneHHMM(now.toISOString(), s.timeZone) : '10:15');
+    const gap = (x: LinkServiceRow) => Math.abs(mins(brisbaneHHMM(x.startsAt, s.timeZone)) - at);
     return candidates.reduce((a, b) => (gap(b) < gap(a) ? b : a));
   }
-  if (wd !== 0 && wd !== 5) return null;
+  if (wd !== 0 && wd !== s.serviceDayOfWeek) return null;
   return candidates.length === 1 ? candidates[0]! : null;
 }
 
@@ -161,17 +192,18 @@ export function peopleFlowName(names: Iterable<string>, today: string): string |
 export const isConsentStep = (r: { flowName: string; stepName: string }, peopleFlow: string | null) =>
   peopleFlow !== null && r.flowName === peopleFlow && /^(step\s*)?0\b/i.test(r.stepName.trim());
 /**
- * R4/R6: the consent Friday a step-0 row waits for: the first Friday after its date (a row due Fri 16 Oct is that week's
- * new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). R8 (rev 10): the date is the parent-texted date
- * (`textedOn`, the Consents Other date) when the console sent one, else the due date. null with neither.
+ * R4/R6: the consent Friday a step-0 row waits for: the first youth night (`serviceDayOfWeek`, Brisbane Friday) after its
+ * date (a row due Fri 16 Oct is that week's new person, so its consent window closes Fri 23 Oct 9:00 Brisbane). R8 (rev 10):
+ * the date is the parent-texted date (`textedOn`, the Consents Other date) when the console sent one, else the due date.
+ * null with neither.
  */
-export function consentFriday(due: string | null | undefined, textedOn?: string | null): string | null {
+export function consentFriday(due: string | null | undefined, textedOn: string | null | undefined, serviceDayOfWeek: number): string | null {
   const d = textedOn && /^\d{4}-\d{2}-\d{2}$/.test(textedOn) ? textedOn : due;
   if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
-  return addDays(d, ((5 - weekdayOf(d) + 6) % 7) + 1);
+  return addDays(d, ((serviceDayOfWeek - weekdayOf(d) + 6) % 7) + 1);
 }
-/** That Friday's 9:00 Brisbane (the consent cutoff) has passed. */
-export const consentFridayPassed = (friday: string, now: Date) => now.getTime() >= Date.parse(`${friday}T09:00:00+10:00`);
+/** That night's consent cut-off (structure.consentCutoff, local time; Brisbane 9:00) has passed. */
+export const consentFridayPassed = (friday: string, now: Date, cutoff: string, tz: string) => now.getTime() >= instantOf(friday, cutoff, tz);
 /**
  * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent > Consents) is done, or
  * their profile consent is 'ok' and no consent row for them is open. 'notReceived' (R4): no consent row at all, no consent
@@ -180,14 +212,14 @@ export const consentFridayPassed = (friday: string, now: Date) => now.getTime() 
  * consentSave (the consent path) never comes here.
  */
 export function consentStepAllowed(row: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
-  consentRows: { key: string; status: string }[], now: Date): 'done' | 'notReceived' | null {
+  consentRows: { key: string; status: string }[], now: Date, s: SiteTime): 'done' | 'notReceived' | null {
   if (!row.personId || isDnc(row.consent)) return null; // CY-B1: DO NOT CONTACT first, even over a done consent row
   const mine = consentRows.filter((r) => r.key === row.personId);
   if (mine.some((r) => r.status === 'done')) return 'done';
   if (mine.length) return null; // an open consent row: the Consents screen saves it
   if (row.consent === 'ok') return 'done';
-  const f = consentFriday(row.due, row.textedOn);
-  return f && consentFridayPassed(f, now) ? 'notReceived' : null;
+  const f = consentFriday(row.due, row.textedOn, s.serviceDayOfWeek);
+  return f && consentFridayPassed(f, now, s.consentCutoff, s.timeZone) ? 'notReceived' : null;
 }
 
 /** `Self identified leader: <name> — <note>`, or the name alone when the leader wrote no note. */

@@ -9,6 +9,7 @@ import type { ActionType, Capabilities, OutboxRow } from '../core/link-types';
 import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
+import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILinkIntakeRepository, IntakeMode, IntakeRowWrite } from '../repositories/interfaces/link-intake.repository';
 import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
@@ -102,10 +103,10 @@ export function makeIntakeService(d: IntakeServiceDeps) {
   const gate = async (actor: Actor) => { const s = await d.settings.getSettings(); intakeGate(actor, s); return s; };
   // ponytail: per instance (serverless), so at worst one purge per warm instance per hour; a DB-side schedule if that bites.
   let lastPurge = 0;
-  const purgeIfDue = async (t: Date) => {
+  const purgeIfDue = async (t: Date, tz: string) => {
     if (t.getTime() - lastPurge < 3_600_000) return;
     lastPurge = t.getTime();
-    await d.intake.purge(addDays(brisbaneToday(t), -INTAKE_KEEP_DAYS));
+    await d.intake.purge(addDays(brisbaneToday(t, tz), -INTAKE_KEEP_DAYS));
   };
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>
@@ -115,10 +116,10 @@ export function makeIntakeService(d: IntakeServiceDeps) {
   return {
     /** GET /link/intake?mode=[&date=]: the dates (counts), or one date's rows with their latest outbox actions. */
     async list(actor: Actor, q: unknown) {
-      await gate(actor);
+      const s = await gate(actor);
       const f = z.object({ mode: Mode, date: Ymd.optional(), view: z.string().optional() }).parse(q ?? {});
       const t = clock();
-      await purgeIfDue(t);
+      await purgeIfDue(t, s.ministryConfig.structure.timeZone);
       if (f.view === '1') await d.intake.markViewed(); // B18: page entry only (the SPA's quiet 5 s reloads send no view)
       const st = await d.status(actor);
       const head = { console: st.console, consoleLinkRev: st.consoleLinkRev, appLinkRev: st.appLinkRev };
@@ -155,9 +156,9 @@ export function makeIntakeService(d: IntakeServiceDeps) {
 
     /** POST /link/intake/refresh {mode, date}: asks the console to push that date now (once per 60 s). */
     async refresh(actor: Actor, body: unknown) {
-      await gate(actor);
+      const s = await gate(actor);
       const f = z.object({ mode: Mode, date: Ymd }).parse(body ?? {});
-      const today = brisbaneToday(clock());
+      const today = brisbaneToday(clock(), s.ministryConfig.structure.timeZone);
       // T14: a consent date may be the coming Friday (its repliers are pushed early)
       if (f.date > (f.mode === 'consent' ? addDays(today, 7) : today) || f.date < addDays(today, -REFRESH_BACK_DAYS)) throw new BadRequestError('Pick a date in the last 8 weeks.');
       return { asked: await d.intake.askRefresh(f.mode, f.date) };
@@ -180,8 +181,10 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
         && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
-      const today = brisbaneToday(t);
-      await purgeIfDue(t);
+      // The claim passes whole settings; a partial one (no structure) reads as the default zone (a harmless default, SPEC §0.2).
+      const tz = settings.ministryConfig.structure?.timeZone ?? MINISTRY_CONFIG_DEFAULTS.structure.timeZone;
+      const today = brisbaneToday(t, tz);
+      await purgeIfDue(t, tz);
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = soon(pending) || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);

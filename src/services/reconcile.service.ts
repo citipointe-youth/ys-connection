@@ -67,7 +67,7 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
 
     const work = async () => {
       await rematch();
-      const at = now(); const today = brisbaneToday(at);
+      const at = now(); const today = brisbaneToday(at, (await d.settings.getSettings()).ministryConfig.structure.timeZone);
       const [latest] = await d.imports.findByType('lifegroup');
       imp = latest;
       const beforeIso = latest?.importedAt ?? at.toISOString();

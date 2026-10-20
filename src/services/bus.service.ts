@@ -204,7 +204,7 @@ const leaderNamesOf = (v: BusRunVehicle, live: Map<string, string>): string[] =>
   const snap = new Map(v.leaderSnap.map((l) => [l.id, l.name]));
   return v.leaderIds.map((id) => snap.get(id) ?? live.get(id)).filter((n): n is string => !!n);
 };
-const clockAt = (iso: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: 'numeric', minute: '2-digit', hour12: true });
+const clockAt = (iso: string, tz: string) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true });
 // A soft-removed ("not riding") rider keeps the row but loses any car/stop.
 const OFF_CAR = { runVehicleId: null, stopOrder: null, pinned: false } as const;
 const SEAT_KEYS = ['snapAddress', 'snapPlaceId', 'runVehicleId', 'stopOrder', 'pinned'] as const;
@@ -1428,7 +1428,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       if (v.droppedAt !== undefined && v.droppedAt !== r.droppedAt) {
         next.droppedAt = v.droppedAt; next.droppedBy = v.droppedAt ? r.droppedBy ?? await whoLabel(ctx) : null;
-        parts.push(`dropped ${r.droppedAt ? clockAt(r.droppedAt) : 'none'} → ${v.droppedAt ? clockAt(v.droppedAt) : 'none'}`);
+        parts.push(`dropped ${r.droppedAt ? clockAt(r.droppedAt, c.structure.timeZone) : 'none'} → ${v.droppedAt ? clockAt(v.droppedAt, c.structure.timeZone) : 'none'}`);
       }
       if (v.noShow !== undefined && v.noShow !== r.noShow) { next.noShow = v.noShow; parts.push(`no-show: ${r.noShow ? 'yes' : 'no'} → ${v.noShow ? 'yes' : 'no'}`); }
       if (v.note !== undefined && (v.note || null) !== r.note) { next.note = v.note || null; parts.push(next.note ? 'note edited' : 'note cleared'); }
