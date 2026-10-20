@@ -8001,15 +8001,25 @@ function _stripServerOwnedLogins(cfg) {
 function exportSettingsFile() {
   const cfg = _stripServerOwnedLogins(JSON.parse(JSON.stringify(_setupDraft || {})));
   delete cfg.busMinistry; // church address, coordinators: location-specific
-  if (cfg.modules) for (const [k] of _SETUP_ELVANTO) cfg.modules[k] = _setupModuleMode(cfg.modules, k); // write the inherited values out, so the file carries all four
+  _dropLocationKeys(cfg);
   const file = { kind: 'ys-connection-settings', version: 1, ministryConfig: cfg,
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
   _downloadText('ys-connection-settings.json', JSON.stringify(file, null, 2), 'application/json');
 }
+// Y4: Elvanto ids and the Elvanto screen switches belong to one location, so a settings file never carries them.
+function _dropLocationKeys(cfg) {
+  delete cfg.elvanto;
+  if (cfg.modules && typeof cfg.modules === 'object') {
+    const md = cfg.modules = { ...cfg.modules };
+    for (const [k] of _SETUP_ELVANTO) delete md[k];
+    delete md.newYouthForms; delete md.flowHiddenStep;
+  }
+  return cfg;
+}
 function _parseSettingsFile(text) {
   let j; try { j = JSON.parse(text); } catch { return null; }
   if (!j || j.kind !== 'ys-connection-settings' || typeof j.ministryConfig !== 'object' || !j.ministryConfig) return null;
-  const cfg = _stripServerOwnedLogins({ ...j.ministryConfig }); delete cfg.busMinistry;
+  const cfg = _dropLocationKeys(_stripServerOwnedLogins({ ...j.ministryConfig })); delete cfg.busMinistry;
   return { ministryConfig: cfg,
     serviceMinAttendance: typeof j.serviceMinAttendance === 'number' ? j.serviceMinAttendance : null,
     termGapDays: typeof j.termGapDays === 'number' ? j.termGapDays : null };
@@ -8033,7 +8043,7 @@ function loadSettingsFile(input) {
     if (r.serviceMinAttendance != null) _setupServiceMinAttendance = r.serviceMinAttendance;
     if (r.termGapDays != null) _setupTermGapDays = r.termGapDays;
     _setupRerender();
-    toast('Settings loaded. Select Save Youth Setup.');
+    toast('Settings loaded. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
   });
 }
 function _downloadText(filename, text, mime) {
