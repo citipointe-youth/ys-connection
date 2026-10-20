@@ -324,8 +324,19 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(13);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(14);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
+  });
+  it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {
+    const { svc, settings } = await setup();
+    const reply = ClaimResponse.parse(await svc.claim({ ...claimReq, linkRev: 12 }));
+    expect(reply.site).toEqual({ timeZone: 'Australia/Brisbane', serviceDay: 5, consentCutoff: '09:00', peopleFlowPrefix: '', consentFlowPrefix: '' });
+    const cfg = (await settings.getSettings()).ministryConfig;
+    await settings.updateSettings({ ministryConfig: { ...cfg,
+      structure: { ...cfg.structure, timeZone: 'Australia/Sydney', serviceDayOfWeek: 3, consentCutoff: '17:30' },
+      elvanto: { ...cfg.elvanto, peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' } } } as any);
+    expect(ClaimResponse.parse(await svc.claim(claimReq)).site).toEqual({ timeZone: 'Australia/Sydney', serviceDay: 3, consentCutoff: '17:30',
+      peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' });
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

@@ -11,8 +11,9 @@ export const LINK_CONTRACT_VERSION = 1;
 // more. Rev 12 (C01): a claim also re-hands this console's OWN still-leased rows (reclaimed: true), so a claim reply the
 // console lost (its 15 s timeout while the app committed the lease) never strands rows for the 600 s lease.
 // Rev 13 (Service Visits): a flows row may carry serviceVisits; MIN_CONSOLE_REV stays 12 so a rev-12 console still works.
+// Rev 14 (multi-location): claim reply may carry site
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
-export const LINK_REV = 13;
+export const LINK_REV = 14;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -153,7 +154,9 @@ export const IntakeHint = z.object({ mode: z.enum(INTAKE_MODES), hurry: z.boolea
   refresh: z.array(z.object({ mode: z.enum(['intake', 'consent']), date: Ymd })).max(4) });
 export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Iso, rows: z.array(ClaimRow).max(20), linkRev: LinkRev,
   intake: IntakeHint.optional(), progress: z.literal(true).optional(), // S5: this app takes POST /sync/push/progress
-  consentLink: z.literal(true).optional() }); // L6 review: this app takes the consentLink capability key
+  consentLink: z.literal(true).optional(), // L6 review: this app takes the consentLink capability key
+  // Rev 14 (multisite X1): this app's location facts; the console warns (never refuses) when its own differ.
+  site: z.object({ timeZone: z.string(), serviceDay: z.number().int().min(0).max(6), consentCutoff: z.string().regex(/^\d{2}:\d{2}$/), peopleFlowPrefix: z.string(), consentFlowPrefix: z.string() }).optional() });
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence

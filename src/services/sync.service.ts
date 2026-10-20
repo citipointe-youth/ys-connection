@@ -111,6 +111,10 @@ export function makeSyncService(d: SyncDeps) {
         ...(d.intake ? { intake: await d.intake.hint(settings, capabilities) } : {}), // X19: the intake hint
         progress: true as const, // S5: this app takes POST /sync/push/progress (an older console ignores the key)
         consentLink: true as const, // L6 review: this app takes the consentLink capability key (an older rev 6 app 400s on it)
+        // X1 (rev 14): the location facts; an older console strips the key (z.object default), a rev 14 one compares them.
+        site: { timeZone: settings.ministryConfig.structure.timeZone, serviceDay: settings.ministryConfig.structure.serviceDayOfWeek,
+          consentCutoff: settings.ministryConfig.structure.consentCutoff, peopleFlowPrefix: settings.ministryConfig.elvanto.peopleFlowPrefix,
+          consentFlowPrefix: settings.ministryConfig.elvanto.consentFlowPrefix },
       };
     },
 

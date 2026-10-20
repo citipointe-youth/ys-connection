@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "serverTime": "2026-10-24T00:01:00.000Z",
+  "linkRev": 14,
+  "rows": [],
+  "progress": true,
+  "consentLink": true,
+  "site": {
+    "timeZone": "Australia/Brisbane",
+    "serviceDay": 5,
+    "consentCutoff": "09:00",
+    "peopleFlowPrefix": "Brisbane - Youth - New People",
+    "consentFlowPrefix": "Brisbane - Youth - Parent Consent"
+  }
+}
