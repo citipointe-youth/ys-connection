@@ -33,6 +33,7 @@ export type NewYouthMode = 'off' | 'admin' | 'on';
 const MODE = z.enum(['off', 'admin', 'on']);
 const unShadow = (v: unknown) => (v === 'shadow' ? 'admin' : v);
 const moduleMode = z.preprocess(unShadow, MODE);
+const uuidOrEmpty = z.union([z.literal(''), z.string().uuid()]);
 
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
@@ -178,9 +179,29 @@ export const MinistryConfigSchema = z.object({
       coordinatorLeaderIds: z.array(z.string()).default([]),
     })
     .default({}),
+
+  // This location's Elvanto forms and flows (multisite SPEC §2.2). Write targets, so every default is blank
+  // and a blank one refuses (never falls back to Brisbane). Brisbane's values arrive via migration 0040.
+  elvanto: z
+    .object({
+      // The server fetches this (Check forms, New person), so it is an allow-list, not free text (no SSRF).
+      // "https://<org>.elvanto.com.au", no trailing slash.
+      baseUrl: z.union([z.literal(''), z.string().regex(/^https:\/\/[a-z0-9-]+\.elvanto\.(com\.au|com|net|eu)$/)]).default(''),
+      studentFormId: uuidOrEmpty.default(''),
+      parentFormId: uuidOrEmpty.default(''),
+      location: z.string().max(60).default(''), // Location option LABEL on both forms, e.g. "Brisbane"
+      peopleFlowPrefix: z.string().max(120).default(''), // "Brisbane - Youth - New People"
+      consentFlowPrefix: z.string().max(120).default(''), // "Brisbane - Youth - Parent Consent"
+      state: z.string().max(10).default(''), // New person default State
+      fields: z.record(z.string().max(40), z.string().max(200)).default({}), // key -> Elvanto input name (Check forms)
+      options: z.record(z.string().max(40), z.string().max(64)).default({}), // key -> option id (Check forms)
+      checkedAt: z.string().max(40).default(''),
+    })
+    .default({}),
 });
 
 export type MinistryConfig = z.infer<typeof MinistryConfigSchema>;
+export type ElvantoConfig = MinistryConfig['elvanto'];
 
 // The inclusive list of grade numbers a deployment uses (structure.gradeMin..
 // gradeMax). Replaces the hardcoded [7..12] iterations in the aggregate

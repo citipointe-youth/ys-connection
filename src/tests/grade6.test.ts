@@ -6,6 +6,8 @@ import { makeAccountService } from '../services/account.service';
 import { makeLeaderService } from '../services/leader.service';
 import { makeNewYouthService } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
+const BRIS = brisbaneElvanto();
 import {
   InMemoryStudentRepository, InMemoryUserRepository, InMemoryLeaderRepository, InMemorySettingsRepository,
 } from '../repositories/in-memory';
@@ -22,6 +24,7 @@ async function settings(gradeMin: 6 | 7) {
   await repo.updateSettings({
     ministryConfig: {
       ...MINISTRY_CONFIG_DEFAULTS,
+      elvanto: BRIS,
       structure: { ...MINISTRY_CONFIG_DEFAULTS.structure, gradeMin },
       modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on' },
     },
@@ -61,7 +64,7 @@ describe.each([[6, true], [7, false]] as const)('Include Grade 6 (gradeMin=%i): 
   });
 
   it('new person form', async () => {
-    const fetchFn = (async (url: any) => new Response(String(url).includes(EF.STUDENT_FORM_ID) ? studentHtml : parentHtml, { status: 200 })) as typeof fetch;
+    const fetchFn = (async (url: any) => new Response(String(url).includes(BRIS.studentFormId) ? studentHtml : parentHtml, { status: 200 })) as typeof fetch;
     const svc = makeNewYouthService(await settings(gradeMin), { fetchFn });
     const input = {
       host: 'Sam', firstName: 'Alex', lastName: 'Test', dob: '2014-04-03', gender: 'f', grade: '6', school: 'CCC',

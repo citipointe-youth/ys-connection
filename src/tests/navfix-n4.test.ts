@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { makeNewYouthService } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
+const BRIS = brisbaneElvanto();
 import { InMemorySettingsRepository, InMemoryUnsentRepository } from '../repositories/in-memory';
 import { SupabaseUnsentRepository } from '../repositories/supabase/supabase.unsent';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
@@ -24,7 +26,7 @@ const INPUT = {
 function fakeFetch(posts: ('ok' | 'fail' | 'down')[], delayMs = 0) {
   const n = { posts: 0 };
   const fn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-    if ((init?.method ?? 'GET') === 'GET') return new Response(String(url).includes(EF.STUDENT_FORM_ID) ? studentHtml : parentHtml, { status: 200 });
+    if ((init?.method ?? 'GET') === 'GET') return new Response(String(url).includes(BRIS.studentFormId) ? studentHtml : parentHtml, { status: 200 });
     n.posts++;
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
     const p = posts.shift() ?? 'ok';
@@ -38,7 +40,7 @@ function fakeFetch(posts: ('ok' | 'fail' | 'down')[], delayMs = 0) {
 async function settingsOn() {
   const settings = new InMemorySettingsRepository();
   await settings.init();
-  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on' } } } as any);
+  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: BRIS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on' } } } as any);
   return settings;
 }
 async function setup(posts: ('ok' | 'fail' | 'down')[] = [], delayMs = 0, unsent = new InMemoryUnsentRepository()) {

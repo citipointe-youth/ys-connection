@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeNewYouthService } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
+const BRIS = brisbaneElvanto();
 import { InMemorySettingsRepository } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import type { Actor } from '../core/entities/user';
@@ -30,7 +32,7 @@ function fakeFetch(post: (url: string) => Response | Promise<Response> = () => n
   const fn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url), method = init?.method ?? 'GET';
     calls.push({ method, url: u, body: init?.body ? String(init.body) : '' });
-    if (method === 'GET') return new Response(u.includes(EF.STUDENT_FORM_ID) ? html.student : html.parent, { status: 200 });
+    if (method === 'GET') return new Response(u.includes(BRIS.studentFormId) ? html.student : html.parent, { status: 200 });
     return post(u);
   });
   return { fetchFn: fn as unknown as typeof fetch, calls, posts: () => calls.filter((c) => c.method === 'POST') };
@@ -39,7 +41,7 @@ function fakeFetch(post: (url: string) => Response | Promise<Response> = () => n
 async function settingsWith(mode: 'off' | 'admin' | 'on') {
   const repo = new InMemorySettingsRepository();
   await repo.init();
-  await repo.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: mode } } } as any);
+  await repo.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: BRIS, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: mode } } } as any);
   return repo;
 }
 
@@ -110,8 +112,8 @@ describe('NewYouthService.send', () => {
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
     expect(await svc.send(LEADER, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
     const [s, p] = f.posts();
-    expect(s!.url).toContain(EF.STUDENT_FORM_ID);
-    expect(p!.url).toContain(EF.PARENT_FORM_ID);
+    expect(s!.url).toContain(BRIS.studentFormId);
+    expect(p!.url).toContain(BRIS.parentFormId);
     const sb = new URLSearchParams(s!.body), pb = new URLSearchParams(p!.body);
     expect(sb.get('submissions[0][first_name]')).toBe('Alex');
     expect(sb.get('submissions[0][birthday]')).toBe('03/04/2012');
@@ -120,6 +122,19 @@ describe('NewYouthService.send', () => {
     expect(sb.get('submissions[0][people_custom_field][c184c020-76ce-11e5-9d36-06ba798128be]')).toBe('0498765432');
     expect(pb.get('submissions[0][first_name]')).toBe('Pat');
     expect(pb.get('submissions[0][mobile_number]')).toBe('0498765432');
+  });
+
+  it('blank config -> 409 ELVANTO_NOT_SET and no fetch', async () => {
+    const f = fakeFetch();
+    const repo = await settingsWith('on');
+    const cur = (await repo.getSettings()).ministryConfig;
+    await repo.updateSettings({ ministryConfig: { ...cur, elvanto: MINISTRY_CONFIG_DEFAULTS.elvanto } } as any);
+    const svc = makeNewYouthService(repo, { fetchFn: f.fetchFn, live: true });
+    const err: any = await svc.send(LEADER, INPUT).catch((e) => e);
+    expect(err.statusCode).toBe(409);
+    expect(err.code).toBe('ELVANTO_NOT_SET');
+    expect(err.message).toBe("New person isn't set up here yet. Ask your admin.");
+    expect(f.fetchFn).not.toHaveBeenCalled();
   });
 
   it('bad input → 400 with a field label and no submitted value; nothing fetched', async () => {
@@ -153,7 +168,7 @@ describe('NewYouthService.send', () => {
 
   it('a POST that throws is unconfirmed and the parent still goes', async () => {
     const f = fakeFetch((url) => {
-      if (url.includes(EF.STUDENT_FORM_ID)) throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+      if (url.includes(BRIS.studentFormId)) throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
       return new Response('<p>OK-TEST</p>', { status: 200 });
     });
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
@@ -162,7 +177,7 @@ describe('NewYouthService.send', () => {
 
   it('T3: an unconfirmed form goes to the Error log (form + outcome + role, never the person)', async () => {
     const f = fakeFetch((url) => {
-      if (url.includes(EF.STUDENT_FORM_ID)) throw new Error('timed out');
+      if (url.includes(BRIS.studentFormId)) throw new Error('timed out');
       return new Response('<p>OK-TEST</p>', { status: 200 });
     });
     const record = vi.fn(async () => {});
@@ -175,7 +190,7 @@ describe('NewYouthService.send', () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
     expect(await svc.send(LEADER, { ...INPUT, send: ['parent'] })).toEqual({ student: 'skipped', parent: 'sent', dryRun: false, ref: REF });
-    expect(f.posts().map((c) => c.url)).toEqual([EF.formUrl(EF.PARENT_FORM_ID)]);
+    expect(f.posts().map((c) => c.url)).toEqual([EF.formUrl(BRIS, 'parent')]);
   });
 
   it('identical send within 2 minutes is not posted again', async () => {
@@ -208,7 +223,7 @@ describe('NewYouthService.send', () => {
       calls.push({ method, url: u, body: init?.body ? String(init.body) : '' });
       if (method === 'GET') {
         await gate; // the form pages are slow
-        return new Response(u.includes(EF.STUDENT_FORM_ID) ? studentHtml : parentHtml, { status: 200 });
+        return new Response(u.includes(BRIS.studentFormId) ? studentHtml : parentHtml, { status: 200 });
       }
       return new Response('<p>OK-TEST</p>', { status: 200 });
     }) as unknown as typeof fetch;
@@ -238,7 +253,7 @@ describe('NewYouthService.send', () => {
     let changed = true;
     const f = fakeFetch();
     const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      if (changed && (init?.method ?? 'GET') === 'GET' && String(url).includes(EF.STUDENT_FORM_ID)) {
+      if (changed && (init?.method ?? 'GET') === 'GET' && String(url).includes(BRIS.studentFormId)) {
         return new Response(studentHtml.replace('name="submissions[0][birthday]"', 'name="x"'), { status: 200 });
       }
       return f.fetchFn(url, init);

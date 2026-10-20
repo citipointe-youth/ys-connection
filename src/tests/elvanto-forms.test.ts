@@ -2,6 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as EF from '../services/elvanto-forms';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
+const BRIS = brisbaneElvanto();
 import { makeRef } from '../services/new-youth.service';
 import { APP_REF_RE } from '../core/link-contract';
 
@@ -42,14 +44,14 @@ describe('isoToDmy', () => {
 describe('T4 (X19): the app submission ref on the student form', () => {
   const HOST = 'submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]';
   it('the host answer ends with (ref) on the student form only; both bodies still match the real forms', () => {
-    const s = EF.studentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(studentHtml)!);
+    const s = EF.studentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(studentHtml)!, BRIS);
     expect(s.get(HOST)).toBe('Sam Host (YS-7K2M9Q)');
     expect(/\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/.exec(s.get(HOST)!)![1]).toBe('YS-7K2M9Q'); // the console's own regex
-    expect(EF.shapeProblems(studentHtml, s)).toEqual([]);
-    const p = EF.parentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(parentHtml)!);
+    expect(EF.shapeProblems(studentHtml, s, BRIS)).toEqual([]);
+    const p = EF.parentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(parentHtml)!, BRIS);
     expect(p.toString()).not.toContain('YS-7K2M9Q');
-    expect(EF.shapeProblems(parentHtml, p)).toEqual([]);
-    expect(EF.studentBody(SAMPLE, 'elvanto1').get(HOST)).toBe('Sam Host'); // no ref: unchanged
+    expect(EF.shapeProblems(parentHtml, p, BRIS)).toEqual([]);
+    expect(EF.studentBody(SAMPLE, 'elvanto1', BRIS).get(HOST)).toBe('Sam Host'); // no ref: unchanged
   });
   it('makeRef: YS- + 6 Crockford base32, varied', () => {
     const refs = Array.from({ length: 200 }, () => makeRef());
@@ -62,15 +64,15 @@ describe('bodies match the real forms', () => {
   it('student body: every name and option id exists on the real student form', () => {
     const hp = EF.honeypotName(studentHtml)!;
     expect(hp).toMatch(/^elvanto\d+$/);
-    expect(EF.shapeProblems(studentHtml, EF.studentBody(SAMPLE, hp))).toEqual([]);
-    expect(EF.shapeProblems(studentHtml, EF.studentBody({ ...SAMPLE, allergies: [], conditions: [] }, hp))).toEqual([]);
+    expect(EF.shapeProblems(studentHtml, EF.studentBody(SAMPLE, hp, BRIS), BRIS)).toEqual([]);
+    expect(EF.shapeProblems(studentHtml, EF.studentBody({ ...SAMPLE, allergies: [], conditions: [] }, hp, BRIS), BRIS)).toEqual([]);
   });
   it('parent body: every name and option id exists on the real parent form', () => {
     const hp = EF.honeypotName(parentHtml)!;
-    expect(EF.shapeProblems(parentHtml, EF.parentBody(SAMPLE, hp))).toEqual([]);
+    expect(EF.shapeProblems(parentHtml, EF.parentBody(SAMPLE, hp, BRIS), BRIS)).toEqual([]);
   });
   it('student body carries the fixed answers, the parent once, and empty honeypots', () => {
-    const b = EF.studentBody(SAMPLE, 'elvanto1');
+    const b = EF.studentBody(SAMPLE, 'elvanto1', BRIS);
     expect(b.get('submissions[0][people_custom_field][bab736a4-dbe8-4a0c-ae3e-7c2c5799f9a3]')).toBe('Pat Test');
     expect(b.get('submissions[0][people_custom_field][c184c020-76ce-11e5-9d36-06ba798128be]')).toBe('0498765432');
     expect(b.get('submissions[0][forms_custom_field][4c438bd3-d34e-4e21-bfa5-2ceeb60064bc]')).toBe('575602b7-2cfc-41be-a18a-4d37b9a006e4');
@@ -84,12 +86,12 @@ describe('bodies match the real forms', () => {
     expect(b.get('url')).toBe('');
   });
   it('no address: still "regularly attend", address fields posted empty', () => {
-    const b = EF.studentBody({ ...SAMPLE, address: undefined }, 'elvanto1');
+    const b = EF.studentBody({ ...SAMPLE, address: undefined }, 'elvanto1', BRIS);
     expect(b.get('submissions[0][forms_custom_field][508f3b2c-58c9-4a96-b299-2666c706831b]')).toBe('a6004ba1-0199-4f77-b833-0fd99ab22d1f');
     expect(b.get('submissions[0][mailing_address]')).toBe('');
   });
   it('parent body: name, mobile, Adults, Brisbane', () => {
-    const b = EF.parentBody(SAMPLE, 'elvanto1');
+    const b = EF.parentBody(SAMPLE, 'elvanto1', BRIS);
     expect(b.get('submissions[0][first_name]')).toBe('Pat');
     expect(b.get('submissions[0][mobile_number]')).toBe('0498765432');
     expect(b.get('submissions[0][demographic][]')).toBe('428c637c-090b-11e1-9229-ea942707ad51');
@@ -101,17 +103,17 @@ describe('shapeProblems', () => {
   it('names a removed field', () => {
     const hp = EF.honeypotName(studentHtml)!;
     const edited = studentHtml.replace('name="submissions[0][birthday]"', 'name="submissions[0][dob]"');
-    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp))).toContain('submissions[0][birthday]');
+    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp, BRIS), BRIS)).toContain('submissions[0][birthday]');
   });
   it('names a removed option id', () => {
     const hp = EF.honeypotName(studentHtml)!;
     const edited = studentHtml.replace('value="807cbbb6-3825-11e1-9229-ea942707ad51"', 'value="gone"');
-    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp))).toContain('submissions[0][school_grade]=807cbbb6-3825-11e1-9229-ea942707ad51');
+    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp, BRIS), BRIS)).toContain('submissions[0][school_grade]=807cbbb6-3825-11e1-9229-ea942707ad51');
   });
   it('names a field the church added (a new question or a second honeypot)', () => {
     const hp = EF.honeypotName(studentHtml)!;
     const edited = studentHtml.replace('<input type="hidden" name="save" value="1">', '<input type="hidden" name="save" value="1"><input type="text" name="submissions[0][new_question]">');
-    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp))).toContain('new:submissions[0][new_question]');
+    expect(EF.shapeProblems(edited, EF.studentBody(SAMPLE, hp, BRIS), BRIS)).toContain('new:submissions[0][new_question]');
   });
 });
 

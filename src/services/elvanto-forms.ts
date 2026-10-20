@@ -1,7 +1,7 @@
-// The Citipointe Brisbane youth connect forms (public, no login), as fetched 2026-10-11.
-// Every Elvanto field name and option id lives here. If the church edits a form,
-// shapeProblems() refuses before anything is sent (new-youth.service.ts).
-// ponytail: one location hard-coded; move these into ministryConfig when a second location forks.
+// This location's youth connect forms (public, no login). The Elvanto field names and option ids live in
+// ministryConfig.elvanto (Youth Setup, filled by Check forms; Brisbane's came from migration 0040).
+// If the church edits a form, shapeProblems() refuses before anything is sent (new-youth.service.ts).
+import { gradeRange, type ElvantoConfig, type MinistryConfig } from '../core/ministry-config';
 
 export type Outcome = 'sent' | 'failed' | 'unconfirmed' | 'skipped';
 
@@ -27,70 +27,115 @@ export interface NewYouth {
   parentGender?: 'm' | 'f';
 }
 
-export const ELVANTO_BASE = 'https://citipointe.elvanto.com.au';
-export const STUDENT_FORM_ID = '45803e81-0c8f-4398-9891-3287df77ab91';
-export const PARENT_FORM_ID = 'f10f6d33-7dc1-440c-aa62-c7e407138ef6';
-export const formUrl = (id: string): string => `${ELVANTO_BASE}/form/${id}`;
+export type FormKind = 'student' | 'parent';
+export const formUrl = (e: ElvantoConfig, kind: FormKind): string => `${e.baseUrl}/form/${kind === 'student' ? e.studentFormId : e.parentFormId}`;
 
 const S = 'submissions[0]';
-const FC = (id: string): string => `${S}[forms_custom_field][${id}]`;
-const PC = (id: string): string => `${S}[people_custom_field][${id}]`;
 
-const F = {
-  host: FC('70d2227e-1a78-47c0-be6d-4fd8ddc12735'),
-  givenBy: FC('4c438bd3-d34e-4e21-bfa5-2ceeb60064bc'),
-  attending: FC('508f3b2c-58c9-4a96-b299-2666c706831b'),
-  school: PC('45928c2c-37f0-11e1-9229-ea942707ad51'),
-  allergies: `${PC('de842f02-366b-11e1-9229-ea942707ad51')}[]`,
-  conditions: `${PC('24ec0de9-1bfb-4268-9f95-2c2c52adda28')}[]`,
-  medicalNotes: PC('f62c3b36-366b-11e1-9229-ea942707ad51'),
-  parentName: PC('bab736a4-dbe8-4a0c-ae3e-7c2c5799f9a3'),
-  parentPhone: PC('c184c020-76ce-11e5-9d36-06ba798128be'),
-  withParent: FC('739c2f1d-19cb-442a-9d81-aa6b2de6e7a9'),
-  contactedParent: FC('6da70308-7365-46d2-b30c-e91b275c1359'),
+// The keys the body builders read: e.fields[key] is an input name, e.options[key] an option id.
+const FIELD_KEYS = ['host', 'givenBy', 'attending', 'school', 'allergies', 'conditions', 'medicalNotes',
+  'parentName', 'parentPhone', 'withParent', 'contactedParent'] as const;
+// attendRegular: operator 2026-10-11, everyone; "just visiting" is never sent.
+const OPTION_KEYS = ['givenByChild', 'attendRegular', 'withParentNo', 'contactedYes', 'demoYouth', 'demoAdults', 'location'] as const;
+
+// Labels exactly as the form shows them (including Elvanto's "Penicilin" spelling). Their ids are
+// options['allergy:<label>'] / options['condition:<label>']; grades are options['grade<n>'].
+export const LABELS = {
+  allergies: ['Anaphylaxis', 'Asthmatic', 'Dairy Intolerance', 'Egg Allergy', 'Gluten Intolerance', 'Lactose Intolerance',
+    'Nut Allergy', 'Penicilin Allergy', 'Skin Allergy', 'Sugar Allergy', 'Wheat Allergy'],
+  conditions: ['ADHD', 'Autism/Aspergers', 'Diabetes Type 1', 'Epilepsy'],
 } as const;
 
-const OPT = {
-  givenByChild: '575602b7-2cfc-41be-a18a-4d37b9a006e4',
-  attendRegular: 'a6004ba1-0199-4f77-b833-0fd99ab22d1f', // operator 2026-10-11: everyone, "just visiting" is never sent
-  withParentNo: '8270a2b8-76d3-426c-9ac7-a7ef632e07b0',
-  contactedYes: '1c0d32b8-ef70-46e5-aa47-af4410c4219b',
-  demoYouth: '428c8fa0-090b-11e1-9229-ea942707ad51',
-  demoAdults: '428c637c-090b-11e1-9229-ea942707ad51',
-  locBrisbane: '33bec66a-20bb-11e1-9229-ea942707ad51',
-} as const;
-
-export const GRADES: Record<string, string> = {
-  '6': '807c9c80-3825-11e1-9229-ea942707ad51', // only offered when "Include Grade 6" is on (new-youth.service)
-  '7': '807cac70-3825-11e1-9229-ea942707ad51',
-  '8': '807cbbb6-3825-11e1-9229-ea942707ad51',
-  '9': '807ccf48-3825-11e1-9229-ea942707ad51',
-  '10': '807ce56e-3825-11e1-9229-ea942707ad51',
-  '11': '807cfbf8-3825-11e1-9229-ea942707ad51',
-  '12': '807d108e-3825-11e1-9229-ea942707ad51',
+// P16: each key's Elvanto question label (and option label), read from the two public forms. Labels are code
+// constants, the same across the tenant (decision 8); Check forms maps them to this location's ids.
+const Q = {
+  host: 'Name of Host filling out form', givenBy: 'This information is given by the',
+  attending: 'Are you intending on regularly attending Youth Society or are you just visiting?',
+  school: 'What school do you attend?', allergies: 'Allergies', conditions: 'Medical Conditions',
+  medicalNotes: 'Medical Comments (other allergies and instructions)', parentName: 'Youth Parent Full Name',
+  parentPhone: 'Youth Parent Phone Number', withParent: 'Young person is present with a parent/guardian',
+  contactedParent: 'Young person has contacted parent',
+} as const satisfies Record<(typeof FIELD_KEYS)[number], string>;
+export const FIELD_LABELS = {
+  fields: Q,
+  // option key -> [question label, option label]; 'location' takes its option label from the location's setting.
+  options: {
+    givenByChild: [Q.givenBy, 'Child'], attendRegular: [Q.attending, 'I would like to regularly attend'],
+    withParentNo: [Q.withParent, 'No'], contactedYes: [Q.contactedParent, 'Yes'],
+    demoYouth: ['Demographics', 'Youth'], demoAdults: ['Demographics', 'Adults'],
+    ...Object.fromEntries([6, 7, 8, 9, 10, 11, 12].map((g) => [`grade${g}`, ['School Grade', String(g)]])),
+    ...Object.fromEntries(LABELS.allergies.map((l) => [`allergy:${l}`, [Q.allergies, l]])),
+    ...Object.fromEntries(LABELS.conditions.map((l) => [`condition:${l}`, [Q.conditions, l]])),
+  } as Record<string, readonly [string, string]>,
+  location: 'Citipointe Location',
 };
 
-// Labels exactly as the form shows them (including Elvanto's "Penicilin" spelling).
-export const ALLERGIES: Record<string, string> = {
-  'Anaphylaxis': '5603d8b4-3736-11e1-9229-ea942707ad51',
-  'Asthmatic': 'de848312-366b-11e1-9229-ea942707ad51',
-  'Dairy Intolerance': '56044380-3736-11e1-9229-ea942707ad51',
-  'Egg Allergy': 'd6b1eebb-7133-42fe-8615-23aaba311f4b',
-  'Gluten Intolerance': 'de8474bc-366b-11e1-9229-ea942707ad51',
-  'Lactose Intolerance': '6bc1cea5-018b-404d-917a-38b4e3e24a54',
-  'Nut Allergy': 'de84578e-366b-11e1-9229-ea942707ad51',
-  'Penicilin Allergy': 'de84677e-366b-11e1-9229-ea942707ad51',
-  'Skin Allergy': '5604e90c-3736-11e1-9229-ea942707ad51',
-  'Sugar Allergy': 'ee28892c-9bba-4d70-9d40-331f47c73076',
-  'Wheat Allergy': 'cd80a9cf-ed3b-4b45-8b96-f625ea618984',
-};
+export interface FormField { label: string; name: string; options: { label: string; value: string }[] }
 
-export const CONDITIONS: Record<string, string> = {
-  'ADHD': '9e950f27-cc7e-4d52-8830-f571876478f5',
-  'Autism/Aspergers': 'b553987f-2a35-4192-b49e-2452741bd477',
-  'Diabetes Type 1': '4b1c793c-c907-4acf-83d7-137c261109ff',
-  'Epilepsy': '37267e16-aaeb-4408-a7d3-f10dfd496555',
-};
+const text = (s: string) => s.replace(/&#0*39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const attr = (tag: string, a: string) => new RegExp(`\\b${a}="([^"]*)"`).exec(tag)?.[1];
+
+/** Each labelled question on a public form: its label, its input name and its options (markup as the fixtures). */
+export function readFormFields(html: string): FormField[] {
+  return html.split('<label class="control-label">').slice(1).map((chunk) => {
+    const label = text(chunk.slice(0, chunk.indexOf('<')));
+    const name = [...chunk.matchAll(/\bname="([^"]+)"/g)].map((m) => m[1]!).find((n) => !n.startsWith('multi_select_filter_')) ?? '';
+    const options: FormField['options'] = [];
+    for (const m of chunk.matchAll(/<(option|input)\b([^>]*)>([^<]*)/g)) {
+      const value = attr(m[2]!, 'value');
+      if (value && (m[1] === 'option' || attr(m[2]!, 'name') === name)) options.push({ label: text(m[3]!), value });
+    }
+    return { label, name, options };
+  });
+}
+
+export interface FormCheck {
+  ok: boolean; n: number; fields: Record<string, string>; options: Record<string, string>;
+  missing: string[]; extra: string[]; lines: string[];
+  /** The draft key ('fields.<k>' / 'options.<k>') of each `missing` row, same order: the card types an id there. */
+  missingKeys: string[];
+}
+
+/** Check forms: map every key by label on both forms. `grades` are the ones this location sends (they must be found);
+ *  other grades are mapped when present. The result is returned, never saved. */
+export function checkForms(studentHtml: string, parentHtml: string, location: string, grades: number[]): FormCheck {
+  const qs = [...readFormFields(studentHtml), ...readFormFields(parentHtml)];
+  const q = (label: string) => qs.find((f) => f.label === label);
+  const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [], missingKeys: string[] = [];
+  let n = 0;
+  for (const [k, label] of Object.entries(FIELD_LABELS.fields)) {
+    n++;
+    const f = q(label);
+    if (f?.name) fields[k] = f.name; else { missing.push(label); missingKeys.push(`fields.${k}`); }
+  }
+  const opts: [string, readonly [string, string]][] = [...Object.entries(FIELD_LABELS.options), ['location', [FIELD_LABELS.location, location]]];
+  for (const [k, [ql, ol]] of opts) {
+    const need = !/^grade\d+$/.test(k) || grades.includes(Number(k.slice(5)));
+    if (need) n++;
+    const v = ol && q(ql)?.options.find((o) => o.label === ol)?.value;
+    if (v) options[k] = v; else if (need) { missing.push(ol ? `${ql}, option ${ol}` : ql); missingKeys.push(`options.${k}`); }
+  }
+  // A labelled question neither body posts (a new required one would make every send fail, as shapeProblems says).
+  const e = { fields, options } as ElvantoConfig;
+  const y = { allergies: [], conditions: [] } as unknown as NewYouth;
+  const posted = new Set([...studentBody(y, '', e).keys(), ...parentBody(y, '', e).keys(), fields.allergies, fields.conditions]);
+  const extra = [...new Set(qs.filter((f) => f.name && !posted.has(f.name)).map((f) => f.label))];
+  const lines = [
+    ...(missing.length ? missing.map((m) => `Not found: ${m}. Make the question match, or type its id.`) : [`All ${n} found.`]),
+    ...extra.map((l) => `This form asks something the app doesn't fill: ${l}.`),
+  ];
+  return { ok: !missing.length && !extra.length, n, fields, options, missing, missingKeys, extra, lines };
+}
+
+/** True when every key the body builders read is set (grade6 only when "Include Grade 6" is on). */
+export function elvantoReady(cfg: Pick<MinistryConfig, 'elvanto' | 'structure'>): boolean {
+  const e = cfg.elvanto;
+  const opts = [...OPTION_KEYS, ...gradeRange(cfg.structure).map((g) => `grade${g}`),
+    ...LABELS.allergies.map((l) => `allergy:${l}`), ...LABELS.conditions.map((l) => `condition:${l}`)];
+  return !!(e.baseUrl && e.studentFormId && e.parentFormId)
+    && FIELD_KEYS.every((k) => !!e.fields[k]) && opts.every((k) => !!e.options[k]);
+}
 
 // Bare 04 digits: Elvanto's parent-phone field refuses spaces (11.1 hotfix 1bd39c6).
 export function toAuMobile(raw: string): string | null {
@@ -122,48 +167,50 @@ export function isoToDmy(iso: string, today: Date = new Date()): string | null {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-export function studentBody(y: NewYouth, honeypot: string): URLSearchParams {
+export function studentBody(y: NewYouth, honeypot: string, e: ElvantoConfig): URLSearchParams {
+  const F = e.fields, O = e.options;
   const b = new URLSearchParams();
   b.append('save', '1');
-  b.append(F.host, y.ref ? `${y.host} (${y.ref})` : y.host); // the console reads /\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/
-  b.append(F.givenBy, OPT.givenByChild);
-  b.append(F.attending, OPT.attendRegular);
+  b.append(F.host ?? '', y.ref ? `${y.host} (${y.ref})` : y.host); // the console reads /\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/
+  b.append(F.givenBy ?? '', O.givenByChild ?? '');
+  b.append(F.attending ?? '', O.attendRegular ?? '');
   b.append(`${S}[first_name]`, y.firstName);
   b.append(`${S}[birthday]`, y.dob);
-  b.append(F.school, y.school);
+  b.append(F.school ?? '', y.school);
   b.append(`${S}[mobile_number]`, y.mobile);
   b.append(`${S}[mailing_address]`, y.address?.street ?? '');
   b.append(`${S}[mailing_city]`, y.address?.suburb ?? '');
-  b.append(`${S}[demographic][]`, OPT.demoYouth);
+  b.append(`${S}[demographic][]`, O.demoYouth ?? '');
   b.append(`${S}[last_name]`, y.lastName);
   b.append(`${S}[gender]`, y.gender);
-  b.append(`${S}[school_grade]`, GRADES[y.grade] ?? '');
+  b.append(`${S}[school_grade]`, O[`grade${y.grade}`] ?? '');
   b.append(`${S}[email]`, '');
   b.append(`${S}[mailing_state]`, y.address?.state ?? '');
   b.append(`${S}[mailing_postcode]`, y.address?.postcode ?? '');
-  b.append(`${S}[location][]`, OPT.locBrisbane);
-  for (const a of y.allergies) b.append(F.allergies, ALLERGIES[a] ?? '');
-  for (const c of y.conditions) b.append(F.conditions, CONDITIONS[c] ?? '');
-  b.append(F.medicalNotes, y.medicalNotes);
-  b.append(F.parentName, `${y.parentFirst} ${y.parentLast}`);
-  b.append(F.parentPhone, y.parentMobile);
-  b.append(F.withParent, OPT.withParentNo);
-  b.append(F.contactedParent, OPT.contactedYes);
+  b.append(`${S}[location][]`, O.location ?? '');
+  for (const a of y.allergies) b.append(F.allergies ?? '', O[`allergy:${a}`] ?? '');
+  for (const c of y.conditions) b.append(F.conditions ?? '', O[`condition:${c}`] ?? '');
+  b.append(F.medicalNotes ?? '', y.medicalNotes);
+  b.append(F.parentName ?? '', `${y.parentFirst} ${y.parentLast}`);
+  b.append(F.parentPhone ?? '', y.parentMobile);
+  b.append(F.withParent ?? '', O.withParentNo ?? '');
+  b.append(F.contactedParent ?? '', O.contactedYes ?? '');
   b.append(honeypot, '');
   b.append('url', '');
   return b;
 }
 
-export function parentBody(y: NewYouth, honeypot: string): URLSearchParams {
+export function parentBody(y: NewYouth, honeypot: string, e: ElvantoConfig): URLSearchParams {
+  const O = e.options;
   const b = new URLSearchParams();
   b.append('save', '1');
   b.append(`${S}[first_name]`, y.parentFirst);
   b.append(`${S}[last_name]`, y.parentLast);
   b.append(`${S}[mobile_number]`, y.parentMobile);
-  b.append(`${S}[demographic][]`, OPT.demoAdults);
+  b.append(`${S}[demographic][]`, O.demoAdults ?? '');
   b.append(`${S}[gender]`, y.parentGender ?? '');
   b.append(`${S}[email]`, '');
-  b.append(`${S}[location][]`, OPT.locBrisbane);
+  b.append(`${S}[location][]`, O.location ?? '');
   b.append(honeypot, '');
   b.append('url', '');
   return b;
@@ -174,27 +221,25 @@ export function honeypotName(html: string): string | null {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Ticked-only lists: absent from the body when nothing is ticked, but known.
-const LIST_KEYS = new Set<string>([F.allergies, F.conditions]);
 
 // The live form must match what we post, both ways:
 // - every field we post exists, and every option id we post is offered;
 // - every input the form has is one we post (a new required question or a second honeypot would
 //   otherwise make every send fail with advice the host can't follow). Reported as "new:<name>".
-export function shapeProblems(html: string, body: URLSearchParams): string[] {
+export function shapeProblems(html: string, body: URLSearchParams, e: ElvantoConfig): string[] {
   const problems = new Set<string>();
+  // Ticked-only lists: absent from the body when nothing is ticked, but known.
+  const listKeys = new Set([e.fields.allergies, e.fields.conditions]);
   for (const [k, v] of body) {
     if (!html.includes(`name="${k}"`)) problems.add(k);
     if (UUID.test(v) && !html.includes(`value="${v}"`)) problems.add(`${k}=${v}`);
   }
   for (const m of html.matchAll(/<(?:input|select|textarea)\b[^>]*\bname="([^"]+)"/g)) {
     const n = m[1]!;
-    if (!body.has(n) && !LIST_KEYS.has(n) && !n.startsWith('multi_select_filter_')) problems.add(`new:${n}`);
+    if (!body.has(n) && !listKeys.has(n) && !n.startsWith('multi_select_filter_')) problems.add(`new:${n}`);
   }
   return [...problems];
 }
-
-export type FormKind = 'student' | 'parent';
 
 // Optional per-form success rules. With none set, an accepted-looking reply (a redirect, or a 200 that
 // isn't the form again) is 'sent': owner 2026-10-12, after a live test landed both forms in Elvanto.
