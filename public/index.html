@@ -2464,6 +2464,7 @@ function _serviceDow() { const d = _structure().serviceDayOfWeek; return typeof 
 function _serviceDayName() { return _DAY_NAMES[_serviceDow()] || 'Friday'; }
 // Y3b: the location's clock (structure.timeZone) and the consent cut-off on the youth night (structure.consentCutoff).
 function _tz() { return _structure().timeZone || 'Australia/Brisbane'; }
+function _tzCity() { return _tz().split('/').pop().replace(/_/g, ' '); } // "Brisbane", "Lord Howe"
 function _consentCutoff() { return _structure().consentCutoff || '09:00'; }
 // The cut-off as words: "9am" / "7:30pm"; sp = true: "9 am" / "7:30 pm" (the console's style).
 function _cutoffWords(sp) {
@@ -6631,7 +6632,7 @@ function _loginActivityBodyHtml(users) {
   return `<div class="card" style="margin-bottom:10px">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px">${never} of ${users.length} accounts never logged in · ${quiet} quiet for 30+ days</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${chip('all', 'All')}${chip('never', 'Never logged in')}${chip('quiet', 'Quiet 30+ days')}</div>
-      <div class="help-text" style="margin-top:8px">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are Brisbane time.</div>
+      <div class="help-text" style="margin-top:8px">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are ${esc(_tzCity())} time.</div>
     </div>${list}`;
 }
 
@@ -12348,7 +12349,7 @@ function _ikDTag(s) {
   if (s && s.action === 'consentNotReceived') return ['D20(b)', 'Provisional: this re-saves the whole profile form.'];
   return null;
 }
-function _ikD26() { return 'Assume consent only where the parent was texted before the Monday after the intake Friday, and no unmatched form came in.'; }
+function _ikD26() { return 'Assume consent only where the parent was texted before the Monday after the intake ' + _serviceDayName() + ', and no unmatched form came in.'; }
 // The ruling's sentence only, on the confirm sheet; its code (D25, D20(b), D26) is never shown.
 function _ikTagHtml(tag) { return tag ? `<div class="ik-line">${esc(tag[1])}</div>` : ''; }
 // ── Wording, ported from the console's ix-logic.js (holdText, nextAction, holdReason, saveConsequence, issueText). ──
@@ -13017,7 +13018,7 @@ function _ikDoneToggle(open) { _ik().doneOpen = !!open; }
 function _ikConsentHelp() {
   return `<details class="lk-done"${_ik().helpOpen ? ' open' : ''} ontoggle="_ik().helpOpen = this.open"><summary>How consent is decided ${icS('chevd')}</summary><div class="card lk-d">`
     + [`For students whose first form was the Friday before, the parent's reply is form 3 ("Brisbane - Youth - 3.").`,
-      `A reply in the window (that Friday 00:00 to this Friday 9:00, Brisbane) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
+      `A reply in the window (that ${_serviceDayName()} 00:00 to this ${_serviceDayName()} ${_consentCutoff().replace(/^0/, '')}, ${_tzCity()}) with the opt-out "Contact with my child" ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.`,
       'A reply without the opt-out is Contact allowed: approve the form and complete step 0.',
       'No reply is assume consent only with dated proof the parent was texted about this student: mark consent not received and complete step 0.',
       'A late, unmatched, unsure or double reply needs you.'].map((p) => `<p class="ik-line">${esc(p)}</p>`).join('') + '</div></details>';
@@ -13801,7 +13802,7 @@ function _ikNrRowHtml(o, i, busy) {
 }
 function _ikNrAllHtml(rows, busy) {
   const n = (rows || []).filter(_ikNrOk).length;
-  return n > 1 ? '<div class="strip"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent Friday.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
+  return n > 1 ? '<div class="strip"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent ' + _serviceDayName() + '.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
 }
 // i = a row index on this page, or -1 = every markable row on it.
 function _ikNrOpen(i) {
