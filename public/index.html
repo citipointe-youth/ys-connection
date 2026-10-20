@@ -12373,12 +12373,14 @@ function _lkAdmMatchHtml() {
     held: 'Same name in YS, already matched to another Elvanto profile (likely a duplicate).' };
   const row = (r) => {
     const pid = esc(r.personId), why1 = f === 'none' ? WHY1[r.why] || '' : '';
+    // L3 r2: not in YS Students, but Flows / Lifegroups show them (Elvanto's data), so they look like they are in YS.
+    const seen1 = (r.seenIn || []).map((x) => (x === 'flow' ? 'Flows' : 'Lifegroups')).join(' and ');
     const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv lk-cand"><span>In YS: ${esc(c.name)} · ${esc(yr(c.grade))} · ${c.dob ? 'born ' + esc(c.dob) : 'no birth date'}</span>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
     const acts = f === 'manual' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
     return `<div class="lk-log-row"><div class="lk-log-top"><b>Elvanto: ${esc(r.name)}</b><span class="lk-d">${esc(yr(r.grade))}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
-      ${why1 ? `<p class="lk-sub">${why1}</p>` : ''}${cands || (f === 'manual' || why1 ? '' : '<p class="lk-sub">No unmatched YS student has a name like this.</p>')}<div class="lk-acts">${acts}</div></div>`;
+      ${why1 ? `<p class="lk-sub">${why1}</p>` : ''}${cands || (f === 'manual' || why1 ? '' : `<p class="lk-sub">Not a YS student yet.${seen1 ? ' YS shows them from Elvanto, in ' + seen1 + '.' : ''}</p>`)}<div class="lk-acts">${acts}</div></div>`;
   };
   // Round 2026-10-21 (L3): same names pair up by themselves (autoMatch), so say why someone is still listed. YS students
   // come mostly from attendance imports, so a new youth is usually in Elvanto (and in this list) before they are in YS.

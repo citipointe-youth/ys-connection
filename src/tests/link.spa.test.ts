@@ -1985,7 +1985,7 @@ describe('F4.2 admin page', () => {
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Elvanto: Olivia AC');
     expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
-    expect(out).toContain('No unmatched YS student has a name like this.');
+    expect(out).toContain('Not a YS student yet.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';
     const m = strip(h.fns._lkAdmMatchHtml());
@@ -2006,7 +2006,17 @@ describe('F4.2 admin page', () => {
     expect(out).toContain('Same name in YS, but the genders differ. Check the gender, then Match.');
     expect(out).toContain('Same name in YS, already matched to another Elvanto profile (likely a duplicate).');
     expect(out).toContain('Same name in YS. It pairs by itself at the next update, or tap Match.');
-    expect(out).not.toContain('No unmatched YS student has a name like this.'); // the held row says why instead
+    expect(out).not.toContain('Not a YS student yet.'); // the same-name rows say why instead
+  });
+  it('round 2026-10-21 (L3 r2): an Unmatched row with no YS student says it is in YS only from Elvanto', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(440), name: 'Flo Only', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [], seenIn: ['flow', 'lifegroup'] },
+      { personId: P(441), name: 'Nowhere Else', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [] },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('Not a YS student yet. YS shows them from Elvanto, in Flows and Lifegroups.');
+    expect(out.split('Not a YS student yet.').length - 1).toBe(2);
   });
   it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
     const h = makeEnv({ role: 'admin' });

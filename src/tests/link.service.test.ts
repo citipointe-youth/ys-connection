@@ -1201,7 +1201,7 @@ describe('D6 admin: matching, log', () => {
     expect(all.map((x) => x.personId).sort()).toEqual([P_BEN, P_EVE1, P_EVE2, P_TOM].sort()); // no auto, leader or other
     expect(all.some((x) => x.match === 'auto')).toBe(false);
     for (const x of all) {
-      expect(Object.keys(x).filter((k) => k !== 'why').sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
+      expect(Object.keys(x).filter((k) => k !== 'why' && k !== 'seenIn').sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
       for (const c of x.candidates) expect(Object.keys(c).sort()).toEqual(['dob', 'grade', 'name', 'studentId']);
     }
     expect(all.find((x) => x.personId === P_TOM)!.candidates).toEqual([]); // manual: no candidates computed
@@ -1216,6 +1216,13 @@ describe('D6 admin: matching, log', () => {
     await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'male' } as never);
     await h.link.setMatches([{ personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
     expect(await why(P_BEN)).toBe('held');        // another roster row (a duplicate profile) holds it
+  });
+
+  it('round 2026-10-21 (L3 r2): an Unmatched row says where YS shows them from Elvanto (flow / lifegroup)', async () => {
+    const rows = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows;
+    expect(rows.find((x) => x.personId === P_EVE1)!.seenIn).toEqual(['lifegroup']);
+    expect(rows.find((x) => x.personId === P_BEN)!.seenIn).toEqual(['flow']);
+    expect(rows.find((x) => x.personId === P_EVE2)!.seenIn).toBeUndefined();
   });
 
   it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {

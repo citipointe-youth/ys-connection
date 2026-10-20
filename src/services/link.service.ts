@@ -163,7 +163,9 @@ export interface MatchRow { personId: string; name: string; grade: number | null
   active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[];
   /** L3 (2026-10-21), `none` rows only: a same-name YS student exists. later = free and the gender fits (pairs at the next
    *  roster push or import); gender = genderFits refuses every free one; held = another roster row holds it. */
-  why?: 'later' | 'gender' | 'held' }
+  why?: 'later' | 'gender' | 'held';
+  /** L3 r2, `none` rows only: the Elvanto-fed YS screens that show this person (they are not a YS student). */
+  seenIn?: ('flow' | 'lifegroup')[] }
 /** T5: a group member as this login may see them: studentId only when that student is in its scope (canAccessStudent). */
 export interface MemberView { personId: string; name: string; leader: boolean; grade: number | null; studentId: string | null }
 /** T6: a member change of the last 3 days (not cancelled), newest first. name = the roster's (an add is not a member yet). */
@@ -1167,7 +1169,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async rosterForMatching(actor, q) {
       await gate(actor, 'admin');
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
-      const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
+      const [roster, students, flows, groups] = await Promise.all([d.link.roster(), d.students.findAll(), d.link.flows(), d.link.groups()]);
+      // L3 r2: a person not in YS Students still shows in YS through the Elvanto mirror (Flows, Lifegroups).
+      const inFlow = new Set(flows.map((f) => f.personId)), inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.personId)));
+      const seenOf = (r: LinkRosterRow) => { const x = [inFlow.has(r.personId) && 'flow', inGroup.has(r.personId) && 'lifegroup'].filter(Boolean) as ('flow' | 'lifegroup')[]; return r.match === 'none' && x.length ? x : undefined; };
       // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
       // admin can release it (APP-11). Candidates only for none/ambiguous, from one index of folded names.
       const rows = roster.filter((r) => ((r.active && r.kind === 'student' && r.match !== 'auto') || (!r.active && r.studentId))
@@ -1199,7 +1204,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         return free.length ? 'gender' : 'held';
       };
       return { rows: rows.map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
-        studentId: r.studentId, match: r.match, candidates: candidatesOf(r), ...(whyOf(r) ? { why: whyOf(r) } : {}) })) };
+        studentId: r.studentId, match: r.match, candidates: candidatesOf(r), ...(whyOf(r) ? { why: whyOf(r) } : {}), ...(seenOf(r) ? { seenIn: seenOf(r) } : {}) })) };
     },
 
     async setMatch(actor, personId, body) {
