@@ -236,8 +236,10 @@ describe('status: link token row is needed once a link screen is on (Y6c)', () =
     const { s } = svc({ ...good, LINK_SYNC_TOKEN: v }, { settings, ...(o.probeDb ? { probeDb: o.probeDb } : {}) });
     return byId((await s.status(null, 'https://church.vercel.app')).checks, 'link');
   }
-  it('fix when New person, Check-in or Flows is on and the token is missing or short', async () => {
-    const on: Record<string, string>[] = [{ newYouthForms: 'on' }, { checkin: 'admin' }, { flows: 'on' }];
+  it('fix when New person, Check-in, Flows, Lifegroup report or New youth & consent is on and the token is missing or short', async () => {
+    const off = { newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off' };
+    const on: Record<string, string>[] = [{ newYouthForms: 'on' }, { checkin: 'admin' }, { flows: 'on' },
+      { ...off, lifegroupReport: 'on' }, { ...off, intakeAdmin: 'on' }]; // R4a#2 (2026-10-21)
     for (const m of on) {
       expect(await row(undefined, m)).toEqual({ id: 'link', label: 'Elvanto link token: not set', state: 'fix', fix: FIX });
       expect(await row('a'.repeat(31), m)).toMatchObject({ label: 'Elvanto link token: too short (32+ characters)', state: 'fix', fix: FIX });
@@ -246,9 +248,8 @@ describe('status: link token row is needed once a link screen is on (Y6c)', () =
   it('ok when a module is on and the token is set', async () => {
     expect(await row(TOKEN, { flows: 'on' })).toEqual({ id: 'link', label: 'Elvanto link token: set', state: 'ok' });
   });
-  it('optional with every one of them off (Lifegroup report alone does not count)', async () => {
+  it('optional with every one of them off', async () => {
     expect(await row(undefined, {})).toEqual({ id: 'link', label: 'Elvanto link token: not set', state: 'optional' });
-    expect(await row(undefined, { lifegroupReport: 'on' })).toMatchObject({ state: 'optional' });
   });
   it('optional when the database is down (the settings cannot be read)', async () => {
     expect(await row(undefined, { flows: 'on' }, { probeDb: async () => false })).toMatchObject({ state: 'optional' });

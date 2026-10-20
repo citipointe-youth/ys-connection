@@ -385,6 +385,7 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 - **Google**: `GOOGLE_SA_JSON` (+ `GOOGLE_MAPS_API_KEY`); Bus settings has **Test Google connection** (`POST /bus/google-check`, 5 rows). `scripts/google-setup.sh` runs in Cloud Shell; the guide pastes it pinned to a commit SHA (`COMMIT_SHA` placeholder until pushed).
 - **`/health`** reports `db` and `schema {current, expected}`.
 - **Settings file**: Youth Setup "Use this setup at another location" (Download/Load settings file) replaces the old in-app deploy-guide card.
+  2026-10-21 (R4a): `_dropLocationKeys` also drops `modules.intakeAdmin` (New youth & consent), so a file never changes it; System check's link-token row is `fix` when any of New person, Check-in, Flows, Lifegroup report or New youth & consent is on. DEPLOYING §5 step 8 points to `docs/leader-handout.md` (fill its blanks).
 - `/setup` is in `router.ts`, the `vercel.json` regex and `sw.js` `API_RE`.
 
 ### New person (Elvanto connect forms)
