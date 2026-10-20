@@ -22,7 +22,7 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   // integration review fixes (run 2026-10-15)
   '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', 'fmtDay', '_ikFixChanges', '_ikDncLine',
   // L6 Unlinked consent forms (run 2026-10-15b)
-  '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
+  '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
   '_navSnap', '_navSame', '_here', '_still'];
 const HTML = loadIndexHtml();

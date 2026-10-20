@@ -144,7 +144,8 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'removeFromFlowStep': return `rm:${p.rowId}`;
     case 'consentLookup': return `cl:${p.ref}`;
     case 'consentFix': return `cf:${p.personId}`;
-    case 'consentLink': return `cn:${p.subId}`; // one open link / unlink per form
+    // Rev 15 (L2): one open link per form AND person (a form may name several children); one open unlink per form.
+    case 'consentLink': return p.personId ? `cn:${p.subId}:${p.personId}` : `cn:${p.subId}`;
     case 'recheck': return `rc:${p.ref}`; // rev 15 (L7): one open re-check per unclear row
   }
 }

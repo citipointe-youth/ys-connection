@@ -4,7 +4,7 @@ import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
   '_ikLkPage', '_ikLkResHtml', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
-  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow'];
+  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const FIX_REASON = HTML.match(/^const IK_FIX_REASON = \{[\s\S]*?\};$/m)![0];
@@ -93,6 +93,15 @@ describe('F-36 linked mismatch rows', () => {
     expect(h.match(/_ikFixOpen\(/g)).toHaveLength(1);
     expect(h).toContain('_ikFixOpen(1)');
     expect(strip(h)).toContain('Linked on the console; fix in Elvanto.');
+  });
+  it('L2 (2026-10-21): a rev 15 console copies a console-linked form too, so the linked row gets the Fix button', () => {
+    const { fns } = env();
+    const x = fns._ikLk('mismatches');
+    const row = (n: number, o: any = {}) => ({ personId: P(n), name: 'Tom Test', submitted: '2026-10-09', diffs: ['consent date'], form: { consentDate: '09/10/2026' }, profile: {}, ...o });
+    Object.assign(x, { st: 'ready', res: { rows: [row(1, { linked: true }), row(2)], page: 1, pageSize: 25, total: 2 } });
+    const h = fns._ikLkResHtml('mismatches', x, { ...ST(), consoleLinkRev: 15 });
+    expect(h.match(/_ikFixOpen\(/g)).toHaveLength(2);
+    expect(strip(h)).not.toContain('fix in Elvanto');
   });
 });
 

@@ -287,13 +287,13 @@ describe('S-1 / D7: the last refused result comes back from the server after you
     await finish(h, b.id, 'sent');
     expect((await flow(h, ROW1.rowId)).lastRefused).toBeUndefined();
   });
-  it('listActions: fixKey (consentFix = personId, consentLink = cn:<subId>) for the admin only; type-only capped at 100', async () => {
+  it('listActions: fixKey (consentFix = personId, consentLink = cn:<subId>:<personId>, L2 fix round 1) for the admin only; type-only capped at 100', async () => {
     const h = await setup();
     const P = u(900), S = u(901);
     const fix = await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: `cf:${P}`, personId: P, payload: { personId: P } }));
-    const ln = await h.link.insertAction(newRow({ type: 'consentLink', dedupeKey: `cn:${S}`, payload: { subId: S, personId: P } }));
+    const ln = await h.link.insertAction(newRow({ type: 'consentLink', dedupeKey: `cn:${S}:${P}`, payload: { subId: S, personId: P } }));
     expect((await h.svc.listActions(ADMIN, { type: 'consentFix' })).map((r) => [r.id, r.fixKey])).toEqual([[fix.id, P]]);
-    expect((await h.svc.listActions(ADMIN, { type: 'consentLink' })).map((r) => [r.id, r.fixKey])).toEqual([[ln.id, `cn:${S}`]]);
+    expect((await h.svc.listActions(ADMIN, { type: 'consentLink' })).map((r) => [r.id, r.fixKey])).toEqual([[ln.id, `cn:${S}:${P}`]]);
     await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: 'cf:d', createdBy: DIR_ID, payload: { personId: P } }));
     const dir = await h.svc.listActions(DIRECTOR, { type: 'consentFix' });
     expect(dir).toHaveLength(1);
