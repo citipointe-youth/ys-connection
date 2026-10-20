@@ -181,7 +181,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
         && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
-      // The claim passes whole settings; a partial one (no structure) reads as the default zone (a harmless default, SPEC §0.2).
+      // Live settings always carry structure (parseMinistryConfig); this fallback is for test fixtures that pass a partial
+      // { ministryConfig: { modules } }. The default zone is a harmless default (SPEC §0.2).
       const tz = settings.ministryConfig.structure?.timeZone ?? MINISTRY_CONFIG_DEFAULTS.structure.timeZone;
       const today = brisbaneToday(t, tz);
       await purgeIfDue(t, tz);

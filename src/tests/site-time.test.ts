@@ -38,6 +38,7 @@ describe('Y3a site time', () => {
     expect(brisbaneToday(new Date('2026-12-04T13:30:00Z'), SYD)).toBe('2026-12-05'); // 00:30 +11
     expect(serviceDay(new Date('2026-12-04T15:59:00Z'), SYD)).toBe('2026-12-04'); // Sat 02:59 +11
     expect(serviceDay(new Date('2026-12-04T16:00:00Z'), SYD)).toBe('2026-12-05'); // Sat 03:00 +11
+    expect(serviceDay(new Date('2026-10-03T16:30:00Z'), SYD)).toBe('2026-10-04'); // DST start: 03:30 +11, local rule
   });
 
   it('consentFriday follows serviceDayOfWeek: 6 gives a Saturday, 5 the old Friday', () => {
@@ -62,6 +63,11 @@ describe('Y3a site time', () => {
     // Sydney summer: the cut-off is 9:00 +11:00
     expect(consentFridayPassed('2026-12-04', new Date('2026-12-03T21:59:00Z'), '09:00', SYD)).toBe(false);
     expect(consentFridayPassed('2026-12-04', new Date('2026-12-03T22:00:00Z'), '09:00', SYD)).toBe(true);
+    // A Sunday night whose cut-off falls in the DST gap (02:30 Sun 4 Oct 2026 Sydney): it closes at 03:30 +11, on that night
+    const sun = consentFriday('2026-09-30', undefined, 0)!;
+    expect(sun).toBe('2026-10-04');
+    expect(consentFridayPassed(sun, new Date('2026-10-03T16:29:00Z'), '02:30', SYD)).toBe(false);
+    expect(consentFridayPassed(sun, new Date('2026-10-03T16:30:00Z'), '02:30', SYD)).toBe(true);
   });
 
   it('PATCH refuses an unknown time zone in plain words', () => {
@@ -69,6 +75,11 @@ describe('Y3a site time', () => {
       .toThrow(expect.objectContaining({ statusCode: 400, message: 'Time zone not recognised.' }));
     expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { timeZone: SYD, consentCutoff: '08:30' } }).structure)
       .toMatchObject({ timeZone: SYD, consentCutoff: '08:30', serviceDayOfWeek: 5 });
-    expect(() => mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { consentCutoff: '9am' } })).toThrow();
+    const CUTOFF = 'Consent closes at must be a 24-hour time such as 09:00 (Youth Setup).';
+    for (const bad of ['9am', '99:99', '24:00', '25:00', '23:60']) {
+      expect(() => mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { consentCutoff: bad } }))
+        .toThrow(expect.objectContaining({ statusCode: 400, message: CUTOFF }));
+    }
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { structure: { consentCutoff: '23:59' } }).structure.consentCutoff).toBe('23:59');
   });
 });

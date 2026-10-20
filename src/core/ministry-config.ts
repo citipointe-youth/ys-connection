@@ -10,6 +10,7 @@ import { BadRequestError } from './errors/app-error';
 // them).
 
 const TZ_MSG = 'Time zone not recognised.';
+const CUTOFF_MSG = 'Consent closes at must be a 24-hour time such as 09:00 (Youth Setup).';
 const isTimeZone = (tz: string) => { try { new Intl.DateTimeFormat('en-CA', { timeZone: tz }); return tz !== ''; } catch { return false; } };
 
 const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex colour (e.g. #1a1af2)');
@@ -96,7 +97,7 @@ export const MinistryConfigSchema = z.object({
       genderPolicy: z.enum(['strict', 'soft', 'off']).default('strict'),
       serviceDayOfWeek: z.number().int().min(0).max(6).default(5),
       timeZone: z.string().max(60).refine(isTimeZone, TZ_MSG).default('Australia/Brisbane'),
-      consentCutoff: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
+      consentCutoff: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, CUTOFF_MSG).default('09:00'), // 00:00-23:59 (a strict subset of the claim's ^\d{2}:\d{2}$)
     })
     .default({}),
 
@@ -257,6 +258,7 @@ function deepMerge<T>(base: T, patch: unknown): T {
 export function mergeMinistryConfig(base: MinistryConfig, patch: unknown): MinistryConfig {
   const r = MinistryConfigSchema.safeParse(deepMerge(base, patch));
   if (r.success) return r.data;
-  if (r.error.issues.some((i) => i.message === TZ_MSG)) throw new BadRequestError(TZ_MSG); // the refusal in plain words
+  const plain = r.error.issues.find((i) => i.message === TZ_MSG || i.message === CUTOFF_MSG);
+  if (plain) throw new BadRequestError(plain.message); // the refusal in plain words
   throw r.error;
 }
