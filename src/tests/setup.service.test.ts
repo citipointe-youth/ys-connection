@@ -225,6 +225,36 @@ describe('status: Elvanto link token row', () => {
   });
 });
 
+describe('status: link token row is needed once a link screen is on (Y6c)', () => {
+  const TOKEN = 'Lk' + 'q7'.repeat(20);
+  const FIX = "In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as the console's link settings. Then redeploy.";
+  async function row(v: string | undefined, modules: Record<string, string>, o: { probeDb?: () => Promise<boolean> } = {}) {
+    const settings = new InMemorySettingsRepository();
+    await settings.init();
+    const cur = await settings.getSettings();
+    await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, modules: { ...cur.ministryConfig.modules, ...modules } } } as never);
+    const { s } = svc({ ...good, LINK_SYNC_TOKEN: v }, { settings, ...(o.probeDb ? { probeDb: o.probeDb } : {}) });
+    return byId((await s.status(null, 'https://church.vercel.app')).checks, 'link');
+  }
+  it('fix when New person, Check-in or Flows is on and the token is missing or short', async () => {
+    const on: Record<string, string>[] = [{ newYouthForms: 'on' }, { checkin: 'admin' }, { flows: 'on' }];
+    for (const m of on) {
+      expect(await row(undefined, m)).toEqual({ id: 'link', label: 'Elvanto link token: not set', state: 'fix', fix: FIX });
+      expect(await row('a'.repeat(31), m)).toMatchObject({ label: 'Elvanto link token: too short (32+ characters)', state: 'fix', fix: FIX });
+    }
+  });
+  it('ok when a module is on and the token is set', async () => {
+    expect(await row(TOKEN, { flows: 'on' })).toEqual({ id: 'link', label: 'Elvanto link token: set', state: 'ok' });
+  });
+  it('optional with every one of them off (Lifegroup report alone does not count)', async () => {
+    expect(await row(undefined, {})).toEqual({ id: 'link', label: 'Elvanto link token: not set', state: 'optional' });
+    expect(await row(undefined, { lifegroupReport: 'on' })).toMatchObject({ state: 'optional' });
+  });
+  it('optional when the database is down (the settings cannot be read)', async () => {
+    expect(await row(undefined, { flows: 'on' }, { probeDb: async () => false })).toMatchObject({ state: 'optional' });
+  });
+});
+
 describe('status: New People flow row (Y2a)', () => {
   const FIX = 'In Youth Setup, check the New People flow name. It must match Elvanto, and the console must be sending flows.';
   const admin = { id: 'a', role: 'admin' } as any;

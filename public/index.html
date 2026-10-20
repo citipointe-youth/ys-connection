@@ -3238,6 +3238,7 @@ function _attnCounts(r, now) {
     waiting: acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
       && now - Date.parse(a.createdAt) > 36e5).length,
     offlineAt: c && c.lastSeenAt && !c.online ? c.lastSeenAt : null,
+    dnc: !!(r.st && r.st.dncReady === false), // Y6c: roster never pushed, or active students unmatched
     fix: ((r.setup && r.setup.checks) || []).filter((x) => x && x.state === 'fix').map((x) => String(x.label || x.id)),
     needsYou: ((r.ik && r.ik.dates) || []).reduce((n, d) => n + (Number(d && d.counts && d.counts.needsYou) || 0), 0),
   };
@@ -3253,6 +3254,7 @@ function _attnLines(a) {
   if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
     + (adm ? ' See Admin > Elvanto link.' : ''), link]);
   if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
+  if (a.dnc) L.push([_lkDncText(), link]);
   a.fix.forEach((x) => L.push(['System check: ' + x + ' needs fixing.', "switchAdminTab('system')"]));
   if (a.needsYou) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
   return L;
@@ -10300,7 +10302,7 @@ function _lkStatusText(row, lastSeen) {
     'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
     'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
     'step-moved': 'This step changed in Elvanto. Do it there.',
-    'assignee-needed': 'This step changed in Elvanto. Do it there.',
+    'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
     'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
     'too-old': 'Too late to send. Do it in Elvanto.',
     'not-landed': "It didn't save. Do it in Elvanto.",
@@ -10384,6 +10386,8 @@ function _lkBanner(types, st) {
     out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
   }
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
+  // Y6c: Flow steps only (its types carry completeStep). The server sends dncReady to admin/director only; missing = say nothing.
+  if (types.indexOf('completeStep') >= 0 && _lkBoss() && st.dncReady === false) out.push(['warn', _lkDncText()]);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
 }
 // R8: admin/director see "Console offline since HH:MM" once the console's last check-in (GET /link/status
@@ -10394,6 +10398,7 @@ function _lkOfflineSince(st, now) {
   if (c && c.online) return ''; // F-11: the server's online flag (2 x poll + 60 s) wins over the 15-minute guess
   return isFinite(t) && now - t > LK_OFFLINE_MS ? c.lastSeenAt : '';
 }
+function _lkDncText() { return "Do not contact isn't fully on yet. Finish Matching in Admin > Elvanto link."; }
 function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
 function _lkOfflineHtml() {
   const at = _lkBoss() ? _lkOfflineSince(LINK.status, Date.now()) : '';
@@ -12095,7 +12100,8 @@ function _lkStepHtml() {
     const known = ls.some((l) => l.id === r.assignedLeaderId);
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="_lkAssign(this.value)"><option value="">Nobody</option>
       ${r.assignedLeaderId && !known ? `<option value="${esc(r.assignedLeaderId)}" selected>${esc(r.assignedLeaderName || 'A leader')}</option>` : ''}
-      ${ls.map((l) => `<option value="${esc(l.id)}"${l.id === r.assignedLeaderId ? ' selected' : ''}>${esc(l.fullName)}</option>`).join('')}</select></div>`;
+      ${ls.map((l) => `<option value="${esc(l.id)}"${l.id === r.assignedLeaderId ? ' selected' : ''}>${esc(l.fullName)}</option>`).join('')}</select>
+      <p class="lk-hint">Saved in this app only. Elvanto isn't changed.</p></div>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
@@ -12302,7 +12308,8 @@ async function _lkLogExport() {
 // The action as a verb, for the admin's unclear list ("Check in · Amy Adams · by Dana Day"; B3 / T-7).
 function _lkVerb(t) {
   return { checkIn: 'Check in', checkOut: 'Check out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
-    editReport: 'Report edit', completeStep: 'Flow step' }[t] || t;
+    editReport: 'Report edit', completeStep: 'Flow step', intakeAnswer: 'Intake answer', intakeSave: 'Intake save', intakeText: 'Intake text',
+    consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link' }[t] || t;
 }
 // APP-63: words for the admin page, never raw codes (an unknown code still shows as itself).
 function _lkWord(kind, v) {

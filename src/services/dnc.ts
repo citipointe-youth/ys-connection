@@ -6,6 +6,13 @@ import { isDnc } from '../core/link-contract';
 import { canSeeDncPhones } from './access-control';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { Actor } from '../core/entities/user';
+import type { LinkRosterRow } from '../core/link-types';
+
+// Y6c: the DNC flag above only reaches a student through a matched roster row, so DNC is fully on once the roster was
+// pushed and no active roster student is still unmatched (none / ambiguous). Not in YS (ignored) is a decision, not a gap.
+export function dncFullyOn(rosterPushed: boolean, rows: Pick<LinkRosterRow, 'active' | 'kind' | 'match'>[]): boolean {
+  return rosterPushed && !rows.some((r) => r.active && r.kind === 'student' && (r.match === 'none' || r.match === 'ambiguous'));
+}
 
 // Any student-shaped object; only a mobile / parentPhone key that is present is nulled.
 export type DncMark = <T extends object>(o: T, studentId: string | null | undefined) => T & { dnc: boolean };
