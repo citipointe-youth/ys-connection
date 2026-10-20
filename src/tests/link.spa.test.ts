@@ -2038,6 +2038,38 @@ describe('F4.2 admin page', () => {
     expect(h.calls.posts[0]).toMatchObject({ p: '/link/admin/create-students', b: { personIds: [P(450)] } });
     expect(h.calls.toasts.pop()).toBe('Created and linked 1. 1 skipped: same name twice in Elvanto.');
   });
+  it('round 2026-10-21 (L3 r4): Create all sends batches of 10, sums them, stops on an error, and ignores a second tap', async () => {
+    let n = 0, release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const h = makeEnv({ role: 'admin', post: async (_p: string, b: any) => {
+      n++; if (n === 1) await gate; if (n === 3) throw new Error('Server busy');
+      return { created: b.personIds.length, skipped: {} }; } });
+    h.get().LINK.adm.roster = Array.from({ length: 25 }, (_, i) =>
+      ({ personId: P(500 + i), name: 'N ' + i, grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true }));
+    h.answers.push(true);
+    const first = h.fns._lkAdmCreate(null);
+    await vi.waitFor(() => expect(h.calls.posts).toHaveLength(1));
+    expect(h.get().LINK.adm.creating).toBe(true);
+    expect(h.fns._lkAdmMatchHtml()).toContain('disabled'); // buttons off while it runs
+    await h.fns._lkAdmCreate(null);                      // a second tap: nothing asked, nothing sent
+    expect(h.calls.asks).toHaveLength(1);
+    release();
+    await first;
+    expect(h.calls.posts.map((x: any) => x.b.personIds.length)).toEqual([10, 10, 5].slice(0, 3));
+    expect(h.calls.toasts.pop()).toBe('Created and linked 20. Server busy');
+    expect(h.get().LINK.adm.creating).toBe(false);
+  });
+  it('round 2026-10-21 (L3 r4): a row with no gender or no grade says why there is no Create', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(530), name: 'No Gen', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'noGender' },
+      { personId: P(531), name: 'No Grade', grade: null, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'badData' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('No gender in Elvanto. Set it there, or use Match.');
+    expect(out).toContain('No grade or name in Elvanto. Set it there, or use Match.');
+    expect(out).not.toContain('Create all');
+  });
   it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.adm.roster = [

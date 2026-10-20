@@ -29,6 +29,7 @@ import {
 import { makeLeaderService } from './leader.service';
 import { dncFullyOn } from './dnc';
 import { makeStudentService } from './student.service';
+import { gradeRange } from '../core/ministry-config';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
@@ -168,7 +169,10 @@ export interface MatchRow { personId: string; name: string; grade: number | null
   /** L3 r2, `none` rows only: the Elvanto-fed YS screens that show this person (they are not a YS student). */
   seenIn?: ('flow' | 'lifegroup')[];
   /** L3 r3: Create (and Create all) may make a YS student for this row. */
-  create?: true }
+  create?: true;
+  /** L3 r4: why a no-candidate Unmatched row has no Create: no male/female gender, or no usable grade or name. */
+  noCreate?: 'noGender' | 'badData' }
+type CreateBlock = 'notUnmatched' | 'candidate' | 'sameNameInYs' | 'sameNameTwice' | 'noGender' | 'badData';
 /** T5: a group member as this login may see them: studentId only when that student is in its scope (canAccessStudent). */
 export interface MemberView { personId: string; name: string; leader: boolean; grade: number | null; studentId: string | null }
 /** T6: a member change of the last 3 days (not cancelled), newest first. name = the roster's (an add is not a member yet). */
@@ -348,7 +352,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    * always (its page reads status and actions, and cancels through the batch).
    */
   /** The Matching rows (rosterForMatching) with their roster row; `twice` = Elvanto has this folded name on another active student row. */
-  async function matchRows(only?: Match) {
+  async function matchRows(structure: { gradeMin: number; gradeMax: number }, only?: Match) {
       const [roster, students, flows, groups] = await Promise.all([d.link.roster(), d.students.findAll(), d.link.flows(), d.link.groups()]);
       // L3 r2: a person not in YS Students still shows in YS through the Elvanto mirror (Flows, Lifegroups).
       const inFlow = new Set(flows.map((f) => f.personId)), inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.personId)));
@@ -386,12 +390,19 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const keyOf = (r: LinkRosterRow) => `${matchFold(r.firstName)}|${matchFold(r.lastName)}`;
       const keyCount = new Map<string, number>();
       for (const r of roster) if (r.active && r.kind === 'student') keyCount.set(keyOf(r), (keyCount.get(keyOf(r)) ?? 0) + 1);
+      const grades = new Set(gradeRange(structure));
       return rows.map((r) => {
-        const candidates = candidatesOf(r), why = whyOf(r), seenIn = seenOf(r), twice = (keyCount.get(keyOf(r)) ?? 0) > 1;
-        const create = r.active && r.match === 'none' && !candidates.length && !why && !twice;
+        const candidates = candidatesOf(r), why = whyOf(r), seenIn = seenOf(r);
+        // L3 r4: the ONE Create eligibility rule, for the list (create / noCreate) and for createStudents.
+        const block: CreateBlock | null = !r.active || r.match !== 'none' || r.studentId ? 'notUnmatched' : candidates.length ? 'candidate'
+          : why ? 'sameNameInYs' : (keyCount.get(keyOf(r)) ?? 0) > 1 ? 'sameNameTwice'
+          : r.gender !== 'male' && r.gender !== 'female' ? 'noGender' // operator ruling: never created as 'other'
+          : !r.firstName.trim() || !r.lastName.trim() || r.grade == null || !grades.has(r.grade) ? 'badData' : null;
+        const noCreate = block === 'noGender' || block === 'badData' ? block : undefined;
         const row: MatchRow = { personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
-          studentId: r.studentId, match: r.match, candidates, ...(why ? { why } : {}), ...(seenIn ? { seenIn } : {}), ...(create ? { create: true as const } : {}) };
-        return { r, row, twice };
+          studentId: r.studentId, match: r.match, candidates, ...(why ? { why } : {}), ...(seenIn ? { seenIn } : {}),
+          ...(block === null ? { create: true as const } : {}), ...(noCreate ? { noCreate } : {}) };
+        return { r, row, block };
       });
   }
 
@@ -1220,37 +1231,35 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async rosterForMatching(actor, q) {
-      await gate(actor, 'admin');
+      const st = (await gate(actor, 'admin')).ministryConfig.structure;
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
-      return { rows: (await matchRows(f.match)).map((x) => x.row) };
+      return { rows: (await matchRows(st, f.match)).map((x) => x.row) };
     },
 
     /** L3 r3 (operator 2026-10-21): a YS student for each Unmatched row with nothing to pair with (no candidate, no
      *  same-name YS student, a name Elvanto has once), made by the student create service and linked as a manual Match.
      *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest.
-   *  ponytail: no lock; two admins at the same instant could each create one (the roster-student unique index stops only a
-   *  double link). Add an advisory lock if that ever happens. */
+   *  ponytail: no lock; one admin's re-tap is guarded (SPA in-flight flag, batches of 10, the re-read below), but two admins
+   *  in the same second could each create one (the roster-student unique index stops only a double link). Advisory lock if it bites. */
     async createStudents(actor, body) {
-      await gate(actor, 'admin');
-      const b = z.object({ personIds: z.array(Uuid).max(1000).optional() }).parse(body ?? {});
-      const rows = await matchRows();
-      const byId = new Map(rows.map((x) => [x.r.personId, x]));
-      const ids = b.personIds ?? rows.filter((x) => x.r.match === 'none' && x.r.active).map((x) => x.r.personId);
+      const st = (await gate(actor, 'admin')).ministryConfig.structure;
+      // L3 r4: at most 25 ids a call (the SPA sends 10), so a call ends well inside the 20 s route limit.
+      const b = z.object({ personIds: z.array(Uuid).min(1).max(25) }).parse(body ?? {});
+      const ids = [...new Set(b.personIds)];
       const students = makeStudentService(d.students, d.settings);
       const skipped: Record<string, number> = {};
       const skip = (k: string) => { skipped[k] = (skipped[k] ?? 0) + 1; };
       let created = 0;
       for (const id of ids) {
-        const x = byId.get(id);
-        if (!x || x.r.match !== 'none' || !x.r.active) { skip('notUnmatched'); continue; }
-        if (x.row.candidates.length) { skip('candidate'); continue; }
-        if (x.row.why) { skip('sameNameInYs'); continue; }
-        if (x.twice) { skip('sameNameTwice'); continue; }
+        // Re-read right before each create: a row another call (or this one) has just linked is no longer eligible.
+        const x = (await matchRows(st)).find((m) => m.r.personId === id);
+        const block = x ? x.block : 'notUnmatched';
+        if (block || !x) { skip(block ?? 'notUnmatched'); continue; }
         let s;
         try {
-          s = await students.create(actor, { firstName: x.r.firstName, lastName: x.r.lastName, gender: x.r.gender ?? 'other',
+          s = await students.create(actor, { firstName: x.r.firstName, lastName: x.r.lastName, gender: x.r.gender as 'male' | 'female',
             grade: x.r.grade, dataSource: 'Elvanto link' }); // never a birthday: the roster has none
-        } catch (e) { if (isDbError(e)) throw e; skip('badData'); continue; } // a blank name or a grade outside Setup
+        } catch (e) { if (isDbError(e)) throw e; skip('badData'); continue; }
         await d.link.setMatches([{ personId: id, studentId: s.id, match: 'manual' }]); // the same record a manual Match writes
         created++;
       }

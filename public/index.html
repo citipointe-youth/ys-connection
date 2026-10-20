@@ -12371,6 +12371,7 @@ function _lkAdmMatchHtml() {
   const WHY1 = { later: 'Same name in YS. It pairs by itself at the next update, or tap Match.',
     gender: 'Same name in YS, but the genders differ. Check the gender, then Match.',
     held: 'Same name in YS, already matched to another Elvanto profile (likely a duplicate).' };
+  const NOC = { noGender: 'No gender in Elvanto. Set it there, or use Match.', badData: 'No grade or name in Elvanto. Set it there, or use Match.' };
   const row = (r) => {
     const pid = esc(r.personId), why1 = f === 'none' ? WHY1[r.why] || '' : '';
     // L3 r2: not in YS Students, but Flows / Lifegroups show them (Elvanto's data), so they look like they are in YS.
@@ -12378,10 +12379,10 @@ function _lkAdmMatchHtml() {
     const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv lk-cand"><span>In YS: ${esc(c.name)} · ${esc(yr(c.grade))} · ${c.dob ? 'born ' + esc(c.dob) : 'no birth date'}</span>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
     const acts = f === 'manual' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
-      : (f === 'none' && r.create ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmCreate('${pid}')">Create</button>` : '')
+      : (f === 'none' && r.create ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmCreate('${pid}')"${A.creating ? ' disabled' : ''}>Create</button>` : '')
         + `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
     return `<div class="lk-log-row"><div class="lk-log-top"><b>Elvanto: ${esc(r.name)}</b><span class="lk-d">${esc(yr(r.grade))}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
-      ${why1 ? `<p class="lk-sub">${why1}</p>` : ''}${cands || (f === 'manual' || why1 ? '' : `<p class="lk-sub">Not a YS student yet.${seen1 ? ' YS shows them from Elvanto, in ' + seen1 + '.' : ''}</p>`)}<div class="lk-acts">${acts}</div></div>`;
+      ${why1 ? `<p class="lk-sub">${why1}</p>` : ''}${cands || (f === 'manual' || why1 ? '' : `<p class="lk-sub">Not a YS student yet.${seen1 ? ' YS shows them from Elvanto, in ' + seen1 + '.' : ''}${NOC[r.noCreate] ? ' ' + NOC[r.noCreate] : ''}</p>`)}<div class="lk-acts">${acts}</div></div>`;
   };
   // Round 2026-10-21 (L3): same names pair up by themselves (autoMatch), so say why someone is still listed. YS students
   // come mostly from attendance imports, so a new youth is usually in Elvanto (and in this list) before they are in YS.
@@ -12402,7 +12403,7 @@ function _lkAdmMatchHtml() {
       body = (hand.length ? `<div class="lk-sec">Matched by hand</div>${list(hand)}` : '') + (out.length ? `<div class="lk-sec">Marked Not in YS</div>${list(out)}` : '');
     }
   }
-  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${why ? `<p class="lk-sub">${why}</p>` : ''}${nNew ? `<div class="lk-acts lk-mb"><button type="button" class="btn btn-primary btn-sm" onclick="_lkAdmCreate(null)">Create all (${nNew})</button></div>` : ''}${body}`;
+  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${why ? `<p class="lk-sub">${why}</p>` : ''}${nNew ? `<div class="lk-acts lk-mb"><button type="button" class="btn btn-primary btn-sm" onclick="_lkAdmCreate(null)"${A.creating ? ' disabled' : ''}>${A.creating ? 'Creating…' : `Create all (${nNew})`}</button></div>` : ''}${body}`;
 }
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
@@ -12478,17 +12479,30 @@ function _lkAdmIgnore(personId) { return _lkAdmSet(personId, { studentId: null, 
 // Health (both _hasAttended) leave them out; check-in finds them by the roster as before. One call; the server skips any row
 // that has something to pair with, so a second tap creates nothing.
 async function _lkAdmCreate(personId) {
+  const A = LINK.adm;
+  if (A.creating) return; // L3 r4: one run at a time (the buttons are disabled meanwhile)
   const SKIP = { candidate: 'has a possible YS match', sameNameInYs: 'same name already in YS', sameNameTwice: 'same name twice in Elvanto',
-    notUnmatched: 'already linked or marked', badData: 'name or grade not usable' };
-  const ids = personId ? [personId] : (LINK.adm.roster || []).filter((r) => r.kind === 'student' && r.match === 'none' && r.create).map((r) => r.personId);
+    notUnmatched: 'already linked or marked', noGender: 'no gender in Elvanto (set it there or use Match)', badData: 'name or grade not usable' };
+  const ids = personId ? [personId] : (A.roster || []).filter((r) => r.kind === 'student' && r.match === 'none' && r.create).map((r) => r.personId);
   if (!ids.length) return;
   const n = ids.length;
   if (!(await _lkAsk(`Create ${n} YS ${n === 1 ? 'student' : 'students'} and link them to Elvanto? They won't show on Student Connect or Health until they attend.`, 'Create', 'Cancel', 'Create YS students'))) return;
-  let r;
-  try { r = await API.post('/link/admin/create-students', { personIds: ids }); }
-  catch (e) { toast(e.message || 'Could not create.'); return; }
-  const sk = Object.keys((r && r.skipped) || {}), m = sk.reduce((t, k) => t + r.skipped[k], 0);
-  toast(`Created and linked ${(r && r.created) || 0}.` + (m ? ` ${m} skipped: ${sk.map((k) => (sk.length > 1 ? r.skipped[k] + ' ' : '') + (SKIP[k] || k)).join(', ')}.` : ''));
+  A.creating = true;
+  _lkAdmDraw('lk-adm-match', _lkAdmMatchHtml());
+  // Batches of 10, so each call ends well inside the route's 20 s limit; the counts add up; the first error stops the run.
+  let created = 0, err = '';
+  const skipped = {};
+  try {
+    for (let i = 0; i < ids.length; i += 10) {
+      let r;
+      try { r = await API.post('/link/admin/create-students', { personIds: ids.slice(i, i + 10) }); }
+      catch (e) { err = e.message || 'Could not create.'; break; }
+      created += (r && r.created) || 0;
+      Object.keys((r && r.skipped) || {}).forEach((k) => { skipped[k] = (skipped[k] || 0) + r.skipped[k]; });
+    }
+  } finally { A.creating = false; }
+  const sk = Object.keys(skipped), m = sk.reduce((t, k) => t + skipped[k], 0);
+  toast(`Created and linked ${created}.` + (m ? ` ${m} skipped: ${sk.map((k) => (sk.length > 1 ? skipped[k] + ' ' : '') + (SKIP[k] || k)).join(', ')}.` : '') + (err ? ' ' + err : ''));
   if (typeof Cache !== 'undefined') Cache.del('/students');
   await _lkAdmLoadRoster();
 }
