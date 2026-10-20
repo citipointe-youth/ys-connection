@@ -340,7 +340,7 @@ describe('GAP-4 fewer taps: newest week with no report, Yr chip opens a lone gro
   it('no jump when every week in reach has a report', () => {
     const h = setup();
     const g = h.get().LINK.groups[0];
-    g.history = ['2026-10-06', '2026-09-29', '2026-09-22'].map((date, i) => ({ ...g.lastReport, reportId: G(20 + i), date }));
+    g.history = ['2026-10-06', '2026-09-29', '2026-09-22', '2026-09-15', '2026-09-08', '2026-09-01', '2026-08-25'].map((date, i) => ({ ...g.lastReport, reportId: G(20 + i), date })); // all 8 weeks (T3, 2026-10-21)
     expect(h.fns._lkGroupHtml(g)).not.toContain('Go to the newest week');
   });
   it('a Yr chip with one group opens it; with two it only filters', () => {

@@ -189,6 +189,8 @@ Complex Ministry makes a girls login and a boys login for each grade, and four q
 
 Expected result: the accounts list shows the new logins.
 
+8. Open the [leader guide](leader-handout.md). Fill in the two blanks: the web address of the app and the phone number of the admin. Give a copy to each leader with their login after you complete section 8 (Elvanto link).
+
 ## 6. Change the app icon (required, 5 min)
 
 The app icon on a phone Home Screen comes from your fork. It shows the Brisbane icon until you change it.

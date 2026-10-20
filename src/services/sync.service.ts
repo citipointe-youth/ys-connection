@@ -114,7 +114,7 @@ export function makeSyncService(d: SyncDeps) {
           note: noteFor(row),
         })),
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
-        ...(d.intake ? { intake: await d.intake.hint(settings, capabilities) } : {}), // X19: the intake hint
+        ...(d.intake ? { intake: await d.intake.hint(settings, capabilities, req.inWindow) } : {}), // X19: the intake hint
         progress: true as const, // S5: this app takes POST /sync/push/progress (an older console ignores the key)
         consentLink: true as const, // L6 review: this app takes the consentLink capability key (an older rev 6 app 400s on it)
         // X1 (rev 14): the location facts; an older console strips the key (z.object default), a rev 14 one compares them.

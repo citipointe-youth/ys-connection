@@ -14,3 +14,17 @@ describe('Who? sheet', () => {
     expect(row).toContain('elWho(');
   });
 });
+describe('r21 L6b (T9) Who? > Send again', () => {
+  const who = html.slice(html.indexOf('async function elWho('), html.indexOf('// end elWho'));
+  it('check-in, report and member rows get a Send again button; the other sections do not', () => {
+    expect((who.match(/_elRsBtn\(/g) || []).length).toBe(3);
+    expect(who).toContain("kind: 'checkin', personId: x.personId, date: x.date");
+    expect(who).toContain("kind: 'lifegroup', groupId: x.groupId, date: x.date");
+    expect(who).toContain("kind: 'member', groupId: x.groupId, personId: x.personId, op: x.op");
+  });
+  it('elResend asks first (two taps), then posts one row to the resend endpoint', () => {
+    const fn = html.slice(html.indexOf('async function elResend('), html.indexOf('// end elResend'));
+    expect(fn).toContain("dataset.armed !== '1'");
+    expect(fn).toContain("API.post('/admin/reconcile/resend', _elRs[i])");
+  });
+});

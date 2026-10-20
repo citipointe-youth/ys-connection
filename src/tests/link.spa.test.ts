@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFfGet',
@@ -185,8 +185,8 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'note-too-long': 'Edit this report in Elvanto.',
       'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
       'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
-      'step-moved': 'This step changed in Elvanto. Do it there.',
-      'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
+      'step-moved': 'This step changed in Elvanto. Reload and try again.',
+      'assignee-needed': "Pick who gets the next step, or Elvanto's usual pick, then Complete again.",
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",
@@ -203,7 +203,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
 describe('A3 / X9 lines by action type', () => {
   const t = makeEnv().fns._lkStatusText;
   it('check-out no-room and flow-step already', () => {
-    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe("They aren't in a room in Elvanto. Check them out in Elvanto.");
+    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe('Checked in with no room, so there is nothing to check out.'); // T6 (2026-10-21)
     expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.");
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');
@@ -1400,7 +1400,8 @@ describe('F2 lifegroup report', () => {
     expect(h.get().LINK.rf.svc).toBe('none'); // operator 2026-10-17 (reverses F-25): every new report starts on No service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
-    expect(h.fns._lkFormHtml()).toContain('Older services are not listed. Pick No service, or do it in Elvanto.');
+    expect(h.fns._lkFormHtml()).toContain('Services older than 7 days are not listed. Pick No service.'); // T3 (2026-10-21)
+    expect(h.fns._lkFormHtml()).not.toContain('do it in Elvanto');
     expect(h.fns._lkFormHtml()).toContain('>No service</option>');
   });
   it('a refusal from the batch shows on the group; a pending answer offers Cancel', async () => {
@@ -1684,6 +1685,31 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
     expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
   });
+  it('r21 L6b (T4): Complete offers who gets the next step (matched leaders, admin/director only); the pick goes as payload.assignTo', () => {
+    const h = makeEnv({ role: 'admin', leaderId: 'L1' });
+    h.get().LINK.today = '2026-10-16'; h.get().LINK.flows = ROWS(); h.get().LINK.ldrs = [];
+    h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Cobb</b>' }];
+    h.fns._lkOpenStep(F(2));
+    const sheet = h.calls.modals[0]!;
+    expect(strip(sheet)).toContain('Next step goes to');
+    expect(sheet).toContain(`<option value="">Elvanto's usual pick</option>`);
+    expect(sheet).toContain(`<option value="${P(70)}">Cody &lt;b&gt;Cobb&lt;/b&gt;</option>`);
+    expect(sheet).toContain('onchange="LINK.fs.assignTo=this.value"');
+    h.get().LINK.fs.assignTo = P(70);
+    h.fns._lkStepSend();
+    expect(h.fns._lkQGet()[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: false, assignTo: P(70) });
+    const none = setup();
+    none.get().LINK.fAssignees = [];
+    none.fns._lkOpenStep(F(2));
+    expect(none.calls.modals[0]).not.toContain('Next step goes to');
+    const leader = setup(); // a grade login: no picker, and a stale pick never goes
+    leader.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody' }];
+    leader.fns._lkOpenStep(F(2));
+    expect(leader.calls.modals[0]).not.toContain('Next step goes to');
+    leader.get().LINK.fs.assignTo = P(70);
+    leader.fns._lkStepSend();
+    expect(leader.fns._lkQGet()[0].payload.assignTo).toBeUndefined();
+  });
   it('every value is escaped, in the list and in the sheet', () => {
     const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);
     const list = h.fns._lkFlowsHtml();
@@ -1701,7 +1727,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
-    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Tell the admin.'); // fix16 F-35
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Reload and try again.'); // fix16 F-35; r21 L6b: reload, no Elvanto step
     expect(h.calls.toasts).toEqual([]);
     const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
     k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
@@ -1793,7 +1819,9 @@ describe('F3 flow steps', () => {
     const h = boss([row(1)], reply(P(90), 'refused', { code: 'LINK_LOCKED', reason: 'locked', message: 'x' }));
     h.fns._lkQSet([{ kind: 'action', id: P(90), type: 'removeFromFlowStep', payload: { rowId: F(1) }, note: 'n', leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
-    expect(strip(h.fns._lkFlowsHtml())).toContain("Not sent: a remove with a note isn't switched on yet.");
+    // r21 L6b (T5): remove with a note is live (personNote); a locked refusal reads as the plain locked line, never "not switched on"
+    expect(strip(h.fns._lkFlowsHtml())).not.toContain('switched on');
+    expect(strip(h.fns._lkFlowsHtml())).toContain("This isn't connected yet.");
     const k = boss([row(2, { consentStep: true, consent: 'ok' })], reply(P(91), 'refused', { code: 'CONSENT_CHECK_FIRST', message: 'Do the consent check first (New youth & consent > Consents).' }));
     k.fns._lkQSet([{ kind: 'action', id: P(91), type: 'completeStep', payload: { rowId: F(2) }, note: null, leaderId: 'L1', _f: F(2) }]);
     await k.fns._lkFlush();
@@ -1986,13 +2014,102 @@ describe('F4.2 admin page', () => {
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Elvanto: Olivia AC');
     expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
-    expect(out).toContain('No YS student with this surname.');
+    expect(out).toContain('Not a YS student yet.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';
     const m = strip(h.fns._lkAdmMatchHtml());
     expect(m.indexOf('Matched by hand')).toBeLessThan(m.indexOf('Hand Made'));
     expect(m.indexOf('Marked Not in YS')).toBeLessThan(m.indexOf('Not Ours'));
     expect(m.indexOf('Hand Made')).toBeLessThan(m.indexOf('Marked Not in YS'));
+  });
+  it('round 2026-10-21 (L3): an Unmatched row with a same-name YS student says why, per row', () => {
+    const h = makeEnv({ role: 'admin' });
+    const cand = [{ studentId: P(431), name: 'Sam Same', grade: 9, dob: null }];
+    h.get().LINK.adm.roster = [
+      { personId: P(430), name: 'Sam Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'gender' },
+      { personId: P(432), name: 'Dup Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [], why: 'held' },
+      { personId: P(433), name: 'New Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'later' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('In YS: Sam Same');
+    expect(out).toContain('Same name in YS, but the genders differ. Check the gender, then Match.');
+    expect(out).toContain('Same name in YS, already matched to another Elvanto profile (likely a duplicate).');
+    expect(out).toContain('Same name in YS. It pairs by itself at the next update, or tap Match.');
+    expect(out).not.toContain('Not a YS student yet.'); // the same-name rows say why instead
+  });
+  it('round 2026-10-21 (L3 r2): an Unmatched row with no YS student says it is in YS only from Elvanto', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(440), name: 'Flo Only', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [], seenIn: ['flow', 'lifegroup'] },
+      { personId: P(441), name: 'Nowhere Else', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [] },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('Not a YS student yet. YS shows them from Elvanto, in Flows and Lifegroups.');
+    expect(out.split('Not a YS student yet.').length - 1).toBe(2);
+  });
+  it('round 2026-10-21 (L3 r3): Create all / Create on the no-candidate rows, after a confirm with the count', async () => {
+    const h = makeEnv({ role: 'admin', post: () => Promise.resolve({ created: 1, skipped: { sameNameTwice: 1 } }) });
+    h.get().LINK.adm.roster = [
+      { personId: P(450), name: 'Make Me', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true },
+      { personId: P(451), name: 'Has One', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [{ studentId: P(452), name: 'Has One', grade: 9, dob: null }] },
+    ];
+    const out = h.fns._lkAdmMatchHtml();
+    expect(out).toContain('_lkAdmCreate(null)');
+    expect(strip(out)).toContain('Create all (1)');
+    expect(out).toContain(`_lkAdmCreate('${P(450)}')`);
+    expect(out).not.toContain(`_lkAdmCreate('${P(451)}')`);
+    h.answers.push(false);
+    await h.fns._lkAdmCreate(null);
+    expect(h.calls.asks[0]).toContain('Create 1 YS student and link them to Elvanto?');
+    expect(h.calls.posts).toHaveLength(0); // Cancel: nothing sent
+    h.answers.push(true);
+    await h.fns._lkAdmCreate(`${P(450)}`);
+    expect(h.calls.posts[0]).toMatchObject({ p: '/link/admin/create-students', b: { personIds: [P(450)] } });
+    expect(h.calls.toasts.pop()).toBe('Created and linked 1. 1 skipped: same name twice in Elvanto.');
+  });
+  it('round 2026-10-21 (L3 r4): Create all sends batches of 10, sums them, stops on an error, and ignores a second tap', async () => {
+    let n = 0, release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const h = makeEnv({ role: 'admin', post: async (_p: string, b: any) => {
+      n++; if (n === 1) await gate; if (n === 3) throw new Error('Server busy');
+      return { created: b.personIds.length, skipped: {} }; } });
+    h.get().LINK.adm.roster = Array.from({ length: 25 }, (_, i) =>
+      ({ personId: P(500 + i), name: 'N ' + i, grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true }));
+    h.answers.push(true);
+    const first = h.fns._lkAdmCreate(null);
+    await vi.waitFor(() => expect(h.calls.posts).toHaveLength(1));
+    expect(h.get().LINK.adm.creating).toBe(true);
+    expect(h.fns._lkAdmMatchHtml()).toContain('disabled'); // buttons off while it runs
+    await h.fns._lkAdmCreate(null);                      // a second tap: nothing asked, nothing sent
+    expect(h.calls.asks).toHaveLength(1);
+    release();
+    await first;
+    expect(h.calls.posts.map((x: any) => x.b.personIds.length)).toEqual([10, 10, 5].slice(0, 3));
+    expect(h.calls.toasts.pop()).toBe('Created and linked 20. Server busy');
+    expect(h.get().LINK.adm.creating).toBe(false);
+  });
+  it('round 2026-10-21 (L3 r4): a row with no gender or no grade says why there is no Create', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(530), name: 'No Gen', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'noGender' },
+      { personId: P(531), name: 'No Grade', grade: null, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'badData' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('No gender in Elvanto. Set it there, or use Match.');
+    expect(out).toContain('No grade or name in Elvanto. Set it there, or use Match.');
+    expect(out).not.toContain('Create all');
+  });
+  it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(420), name: 'Kay Bee', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [] },
+      { personId: P(421), name: 'Two Same', grade: 9, kind: 'student', match: 'ambiguous', studentId: null, candidates: [] },
+    ];
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('In Elvanto, but not paired with a YS student.');
+    h.get().LINK.adm.mf = 'ambiguous';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('More than one person has this name. Pick the right one.');
+    h.get().LINK.adm.mf = 'manual';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('Pairs you set by hand');
   });
 });
 

@@ -156,6 +156,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'DELETE', path: '/admin/errors',        auth: true, handler: (r) => admin.deleteErrors(r) },
     { method: 'POST',   path: '/admin/errors/client', auth: true, handler: (r) => admin.reportError(r) },
     { method: 'GET',    path: '/admin/reconcile/latest', auth: true, handler: (r) => admin.reconcileLatest(r) }, // Part 2 Who?
+    { method: 'POST',   path: '/admin/reconcile/resend', auth: true, handler: (r) => admin.reconcileResend(r) }, // r21 L6b (T9) Send again
     { method: 'PATCH',  path: '/admin/errors/:id',    auth: true, handler: (r) => admin.setErrorFlags(r) },
     { method: 'DELETE', path: '/admin/errors/:id',    auth: true, handler: (r) => admin.deleteError(r) },
     // T10 Unsent new people: admin only (admin:manage in the service).
@@ -238,6 +239,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/link/flows/assign',       auth: true, handler: (r) => linkCtl.assignFlow(r) }, // T6
     { method: 'GET',    path: '/link/admin/roster',       auth: true, handler: (r) => linkCtl.roster(r) },
     { method: 'POST',   path: '/link/admin/roster/:personId', auth: true, handler: (r) => linkCtl.setMatch(r) },
+    { method: 'POST',   path: '/link/admin/create-students', auth: true, handler: (r) => linkCtl.createStudents(r) },
     { method: 'POST',   path: '/link/admin/unclear/:id', auth: true, handler: (r) => linkCtl.resolveUnclear(r) }, // CY-A1
     { method: 'POST',   path: '/link/admin/unclear/:id/recheck', auth: true, handler: (r) => linkCtl.recheckUnclear(r) }, // L7 (rev 15)
     { method: 'GET',    path: '/link/admin/recheck/:id', auth: true, handler: (r) => linkCtl.recheckState(r) }, // L7

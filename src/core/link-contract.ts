@@ -106,7 +106,8 @@ export const PAYLOAD_SCHEMAS = {
       serviceTimeId: Uuid.nullable() }).strict(),
   }).strict().refine(didNotMeetIsEmpty, DID_NOT_MEET),
   completeStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), notePrivate: z.boolean(),
-    notReceived: z.literal(true).optional() }).strict(), // rev 9 (R4): set by the server, never trusted from the phone
+    notReceived: z.literal(true).optional(), // rev 9 (R4): set by the server, never trusted from the phone
+    assignTo: Uuid.optional() }).strict(), // r21 L6b (T4, no rev): the Elvanto person who gets the next step; an older console ignores it
   firstTimerCheckIn: z.object({ serviceTimeId: Uuid, serviceId: Uuid, firstName: Name, lastName: Name, grade: Grade, gender: Gender }).strict(),
   // X18 (T6): one Elvanto lifegroup membership change. The console answers `already` when Elvanto is already that way.
   addGroupMember: z.object({ groupId: Uuid, personId: Uuid }).strict(),

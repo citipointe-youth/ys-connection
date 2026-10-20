@@ -168,3 +168,81 @@ describe('container wiring (C5)', () => {
     expect(r.run!.checks.lifegroups).toEqual({ count: 0, noId: 1 });   // no link_groups pushed -> no id
   });
 });
+
+// r21 L6b (T9): "Send again" on a Who? row re-queues the same outbox type. Only an item of the latest run; the console reads
+// Elvanto first (checked in / in the group = already, nothing sent), so a send that did land is never written twice.
+describe('reconcile.resend', () => {
+  const ADMIN = { id: 'u-admin', role: 'admin', displayName: 'A', grade: null, quad: null } as any;
+  const LEADER = { id: 'u-l', role: 'leader', displayName: 'L', grade: 9, quad: null } as any;
+  const G = P(50), ST = P(60), SVC = P(61), R1 = P(70), DAY = '2026-10-20';
+  const sent = (o: Partial<OutboxRow>) => ({ id: P(Math.floor(Math.random() * 1e6) + 1000), status: 'sent', resultAt: '2026-10-21T00:00:00.000Z',
+    note: null, hasNote: false, studentId: 's1', personId: P(1), leaderId: 'L1', leaderName: 'Dana Day', createdBy: 'u-l', reportId: null, ...o }) as OutboxRow;
+  const CHECK = sent({ type: 'checkIn', serviceDate: DAY, payload: { serviceTimeId: ST, serviceId: SVC, personId: P(1) } });
+  const ADD = sent({ type: 'addGroupMember', serviceDate: DAY, payload: { groupId: G, personId: P(1) } });
+  const REP = sent({ type: 'submitReport', serviceDate: DAY, reportId: R1, payload: { groupId: G, date: DAY, didNotMeet: false, attendees: [P(1)], guests: 0, notesPrivate: false, serviceTimeId: null } });
+  const report = { reportId: R1, date: DAY, time: '6:30 PM', didNotMeet: false, attendees: [], guests: 0, serviceTimeId: null, editable: true, blocked: null };
+  async function setup(o: { lastReport?: unknown } = {}) {
+    const h = await harness({ actions: [CHECK, ADD, REP] });
+    await h.link.replaceMirror('groups', [{ groupId: G, name: 'Grade 9 Girls', grade: 9, gender: 'female', meets: 'Tue 6:30 PM',
+      members: [{ personId: P(1), name: 'Ava Test', leader: false }], thisWeek: 'reported', lastReport: 'lastReport' in o ? o.lastReport : report, history: [] }],
+      { takenAt: NOW.toISOString(), consoleId: P(99) });
+    await h.runs.save({ id: 'run1', ranAt: NOW.toISOString(), importId: 'imp-1', ok: true,
+      checks: { checkins: { count: 1 }, unmatched: { count: 0 }, lifegroups: { count: 1, noId: 0 }, members: { count: 1 } },
+      items: { checkins: [{ personId: P(1), date: DAY }], unmatched: [], lifegroups: [{ groupId: G, date: DAY, personIds: [P(1)] }], noId: [],
+        members: [{ groupId: G, personId: P(1), op: 'add' }] } } as any);
+    const queued = async () => [...(h.link as any).outbox.values()].map((e: any) => e.row);
+    return { ...h, queued };
+  }
+
+  it('whoLatest rows carry the ids Send again needs', async () => {
+    const h = await setup();
+    const w = await h.svc.whoLatest(ADMIN);
+    expect(w.checkins[0]).toMatchObject({ personId: P(1), date: DAY });
+    expect(w.lifegroups[0]).toMatchObject({ groupId: G, date: DAY });
+    expect(w.members[0]).toMatchObject({ groupId: G, personId: P(1), op: 'add' });
+  });
+  it('a check-in: a new checkIn row with the sent payload, no note, made by the admin; a second tap while it waits is a duplicate', async () => {
+    const h = await setup();
+    expect(await h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).toEqual({ ok: true, type: 'checkIn' });
+    const [row] = await h.queued();
+    expect(row).toMatchObject({ type: 'checkIn', status: 'pending', payload: CHECK.payload, note: null, createdBy: 'u-admin', serviceDate: DAY,
+      personId: P(1), dedupeKey: `checkIn:${ST}:${P(1)}` });
+    expect(row.id).not.toBe(CHECK.id);
+    await expect(h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).rejects.toMatchObject({ code: 'LINK_DUPLICATE' });
+  });
+  it('review fix 5: a check-in that went as firstTimerCheckIn is sent again as a plain checkIn of that person', async () => {
+    const h = await setup();
+    const FT = sent({ type: 'firstTimerCheckIn', serviceDate: DAY, personId: P(1),
+      payload: { serviceTimeId: ST, serviceId: SVC, firstName: 'Ava', lastName: 'Test', grade: 9, gender: 'female' } });
+    h.link.listActions = async () => [FT] as OutboxRow[];
+    expect(await h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).toEqual({ ok: true, type: 'checkIn' });
+    expect((await h.queued())[0]).toMatchObject({ type: 'checkIn', payload: { serviceTimeId: ST, serviceId: SVC, personId: P(1) } });
+  });
+  it('a member change: the same type again', async () => {
+    const h = await setup();
+    expect(await h.svc.resend(ADMIN, { kind: 'member', groupId: G, personId: P(1), op: 'add' })).toEqual({ ok: true, type: 'addGroupMember' });
+    expect((await h.queued())[0]).toMatchObject({ type: 'addGroupMember', payload: { groupId: G, personId: P(1) } });
+  });
+  it('a lifegroup report in Elvanto: an editReport of that report, base = what Elvanto has (the groups mirror)', async () => {
+    const h = await setup();
+    expect(await h.svc.resend(ADMIN, { kind: 'lifegroup', groupId: G, date: DAY })).toEqual({ ok: true, type: 'editReport' });
+    expect((await h.queued())[0]).toMatchObject({ type: 'editReport', note: null, leaderName: 'Dana Day', payload: { ...REP.payload, reportId: R1,
+      base: { date: DAY, didNotMeet: false, attendees: [], guests: 0, serviceTimeId: null } } });
+  });
+  it('a lifegroup report Elvanto does not have: submitReport again; one Elvanto will not let the app edit is refused', async () => {
+    const h = await setup({ lastReport: null });
+    expect(await h.svc.resend(ADMIN, { kind: 'lifegroup', groupId: G, date: DAY })).toEqual({ ok: true, type: 'submitReport' });
+    expect((await h.queued())[0]).toMatchObject({ type: 'submitReport', payload: REP.payload });
+    const b = await setup({ lastReport: { ...report, editable: false, blocked: 'multi-service' } });
+    await expect(b.svc.resend(ADMIN, { kind: 'lifegroup', groupId: G, date: DAY })).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('refuses: not admin, not in the latest run, a bad body, the console has the type off', async () => {
+    const h = await setup();
+    await expect(h.svc.resend(LEADER, { kind: 'checkin', personId: P(1), date: DAY })).rejects.toBeTruthy();
+    await expect(h.svc.resend(ADMIN, { kind: 'checkin', personId: P(2), date: DAY })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(h.svc.resend(ADMIN, { kind: 'nope' })).rejects.toMatchObject({ statusCode: 400 });
+    h.link.listConsoles = async () => [{ consoleId: P(99), lastSeenAt: NOW.toISOString(), capabilities: { checkIn: 'off' } } as any];
+    await expect(h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).rejects.toMatchObject({ code: 'LINK_UNAVAILABLE' });
+    expect(await h.queued()).toEqual([]);
+  });
+});

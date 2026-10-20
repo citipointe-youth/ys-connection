@@ -26,7 +26,9 @@ describe('fix16 lane C', () => {
     expect(eye).toBeLessThan(edit);
     expect(edit).toBeLessThan(lock);
     expect(lock).toBeLessThan(del);
-    expect(src.slice(eye - 200, eye)).toContain('margin-right:16px');
+    // r21 L1: the 16px gap is the acct-pv class (desktop/iPad); a phone row drops it for width (edit + key still sit between)
+    expect(src.slice(eye - 200, eye)).toContain('acct-pv');
+    expect(HTML).toContain('.rc-icons>.acct-pv{margin-right:16px}');
   });
 
   it('F-46(a): preview confirm reads "Preview as X?" with Cancel on the left', () => {

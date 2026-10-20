@@ -402,25 +402,34 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 @media(min-width:900px){.connect-grid{grid-template-columns:repeat(3,1fr)}}
 .connect-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
 .connect-leader:hover{box-shadow:var(--shadow-md)}
-.connect-leader-name{font-size:16px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.connect-leader-meta{font-size:12px;color:var(--ink-mid);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.connect-add-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
+.connect-leader-name{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* r21 L1: two 44px header rows (name + edit; meta + count + Add Students) so the list window fits ~3.5 students in the
+   same 279px card (old: name row, meta line, full-width Add bar, 2.3 tall rows). The half row says it scrolls. */
+.connect-leader-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.connect-leader-sub{display:flex;align-items:center;gap:8px}
+.connect-leader-meta{flex:1;min-width:0;display:flex;gap:6px;font-size:12px;color:var(--ink-mid)}
+.connect-leader-meta>:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connect-leader-meta>:last-child{flex:none;white-space:nowrap}
+.connect-add-btn{flex:none;min-height:44px;padding:0 10px;font-size:13px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
+/* Two- and three-column cards (>= 540px, the grid's own breakpoint) are narrow: keep the full meta line, Add bar below it */
+@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
 /* A native scrollbar only flashes during an active touch drag on phones (OS-level
    overlay-scrollbar behavior that CSS can't override), so this preview draws its own
    always-visible track/thumb (sized in _syncConnectThumb) instead of relying on one. */
 .connect-students-wrap{position:relative;margin-top:12px}
-.connect-students{border-top:1px solid var(--paper-dark);padding:10px 10px 0 0;max-height:126px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.connect-students{border-top:1px solid var(--paper-dark);padding:4px 10px 0 0;max-height:141px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .connect-students::-webkit-scrollbar{display:none}
-.connect-students-track{position:absolute;top:11px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
+.connect-students-track{position:absolute;top:5px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
 .connect-students-thumb{position:absolute;left:0;width:3px;background:rgba(100,116,139,.55);border-radius:2px}
 /* Student profile "Search a leader to assign" results — same track/thumb
    pattern as .connect-students above, sized for this list's rows (~39px
    each incl. margin) so ~2.5 rows show before it scrolls. */
 .leader-assign-list{max-height:98px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .leader-assign-list::-webkit-scrollbar{display:none}
-.connect-stud-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--paper-dark)}
+.connect-stud-row{display:flex;align-items:center;gap:8px;min-height:39px;border-bottom:1px solid var(--paper-dark)} /* 38px + 1px rule (border-box) */
+.connect-stud-row .btn-sm{min-height:36px;min-width:36px} /* compact in-row Profile / remove */
 .connect-stud-row:last-child{border-bottom:none}
 .connect-stud-name{flex:1;font-size:14px;font-weight:600}
 .connect-stud-meta{font-size:11px;color:var(--ink-mid)}
@@ -910,6 +919,12 @@ button.rc-go{padding:0;text-align:left}
 .rc.rc-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);padding:var(--s3) var(--s4)}
 .rc-row>.rc-main{flex:1 1 140px;min-width:0}
 .rc-row>.rc-foot{flex:0 1 auto;margin-top:0;margin-left:auto}
+.rc-icons>.acct-pv{margin-right:16px}
+/* r21 L1: on a phone the pill + 5 icons did not fit beside the name, so the footer wrapped into its own 44px band (~124px a
+   row). Under 600px the row is a grid: name/username in column 1, each icon a 40px column (footer flattened by
+   display:contents, buttons span both text rows), the pill in the username row's right end (never the name row); both text
+   lines are one line with an ellipsis. ~58px a row, about twice as many per screen. */
+@media(max-width:599px){.rc.rc-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;grid-auto-columns:40px;grid-auto-flow:column;align-items:center;align-content:center;gap:0;padding:var(--s1) var(--s3);margin-bottom:var(--s1)}.rc-row>.rc-main,.rc-row>.rc-foot{display:contents}.rc-row .lk-nm,.rc-row .lk-d{grid-column:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rc-row .lk-nm{grid-row:1;margin-right:var(--s2)}.rc-row .lk-d{grid-row:2;margin:2px var(--s2) 0 0;padding-right:64px}.rc-row>.rc-foot>.chip{grid-column:1;grid-row:2;justify-self:end;margin:2px var(--s2) 0 0}.rc-row>.rc-foot>.btn{grid-row:1/span 2}.rc-row>.rc-foot>.acct-pv{margin:0}}
 /* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
 .rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
@@ -2584,16 +2599,16 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
-  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', open:"go('notices')" });
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
     const r = S.user && S.user.role;
-    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
-    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
-    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
+    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', mbl:'Check-in', open:"go('link-checkin')" });
+    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', mbl:'Report', open:"go('link-groups')" });
+    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -2608,8 +2623,10 @@ function _navSlots(u) {
     const m = more[0];
     if (m.id === 'prayers') return it;
     if (m.id === 'bus') return { id:'bus', ic:'bus', label:L('busMinistry'), mbl:'Bus' }; // _initShell escapes labels (Plan B 2026-10-17)
-    if (m.id === 'notices') return { id:'notices', ic:'bell', label:'Notices', mbl:'Notices' };
-    return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+    if (m.id === 'new-youth') return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
+    // r21 L1: any other single module (Notices, Check-in, Lifegroup report, Flow steps, Intake) is its own tab; it used to
+    // fall through to New person, so a Check-in-only login could not reach Check-in.
+    return { id:m.id, ic:m.ic, label:m.label, mbl:m.mbl }; // short one-word bottom-bar label (mbl is raw HTML: constants only)
   });
 }
 function navItems() { return _navSlots().filter(Boolean); }
@@ -2619,8 +2636,8 @@ function openMore() {
   const rows = moreItems().map(m => {
     const here = S.page === m.id;
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
-  }).join('') // Y5: every role can change its own password here (junior leaders have no Setup page)
-    + `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>`;
+  }).join('') // Y5: a junior leader changes its password here (no Setup page); r21 L1: the other roles use Setup's button
+    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -3979,6 +3996,7 @@ function renderConnectView() {
   const fGrades = u.role === 'quad' ? quadGrades(u.quad)
     : ['director','admin'].includes(u.role) ? _gradeList() : [];
   const showGender = ['director','admin'].includes(u.role);
+  const showSearch = showGender || u.role === 'quad'; // r21 L1: Junior/Senior logins get the same leader search
   const gChips = fGrades.map(g =>
     `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleAF('g',${g})" aria-pressed="${gf.has(g)}">${g}</button>`
   ).join('');
@@ -4024,7 +4042,7 @@ function renderConnectView() {
       <div class="stat"><div class="stat-v" style="color:var(--warn)">${Math.max(0, totalStudents - connectedCount)}</div><div class="stat-l">Pending</div></div>
     </div>
     ${unallocDrop}
-    ${showGender ? `<div class="sbar"><span class="si">${icS('search')}</span><input id="cs-lq" type="search" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search leaders" placeholder="Search leaders…" value="${esc(_aS.lq || '')}" oninput="_csLeaderQ(this.value)"></div>` : ''}
+    ${showSearch ? `<div class="sbar"><span class="si">${icS('search')}</span><input id="cs-lq" type="search" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search" aria-label="Search leaders" placeholder="Search leaders…" value="${esc(_aS.lq || '')}" oninput="_csLeaderQ(this.value)"></div>` : ''}
     ${vgOn ? _vgBar() : gChips ? `<div class="filter-row" role="group" aria-label="Filter by grade">
       <span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}
     </div>` : ''}
@@ -4040,7 +4058,7 @@ function renderConnectView() {
       const assignedStudents = students.filter(s => allocs[s.id]?.includes(l.id)).sort(_pickByFirst);
       const n = assignedStudents.length;
 
-      // Preview is capped to a ~3-row scroll window (.connect-students max-height);
+      // Preview is capped to a ~3.5-row scroll window (.connect-students max-height, r21 L1);
       // all assigned students render into it so a drag/scroll reveals the rest,
       // rather than truncating with a "+N more" link.
       let studentRows = '';
@@ -4058,17 +4076,16 @@ function renderConnectView() {
       const gi = l.gender==='female'?icS('genderF'):l.gender==='male'?icS('genderM'):'';
 
       // I3: the leader search hides non-matches (kept in the DOM so a wider search shows them again without a repaint).
-      const lq = showGender ? (_aS.lq || '') : '';
+      const lq = showSearch ? (_aS.lq || '') : '';
       body += `<div class="connect-leader" data-name="${esc(l.fullName.toLowerCase())}"${lq && !l.fullName.toLowerCase().includes(lq) ? ' style="display:none"' : ''}>
-        <div style="display:flex;align-items:flex-start;gap:6px">
+        <div class="connect-leader-head">
           <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
           ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
-        <div class="connect-leader-meta" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:normal;overflow:visible;text-overflow:clip">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span>
-          <span style="flex:none;white-space:nowrap"><b>${n}</b> student${n!==1?'s':''}</span>
+        <div class="connect-leader-sub">
+          <span class="connect-leader-meta"><span>Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span><span><b>${n}</b> student${n!==1?'s':''}</span></span>
+          ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         </div>
-        ${canEdit?`<button class="connect-add-btn" onclick="openStudentPicker('${l.id}','${l.gender||''}')">+ Add Students</button>`:''}
         ${assignedStudents.length?`<div class="connect-students-wrap"><div class="connect-students" onscroll="_syncConnectThumb(this)">${studentRows}</div><div class="connect-students-track"><div class="connect-students-thumb"></div></div></div>`:''}
       </div>`;
     }
@@ -4086,7 +4103,7 @@ function renderConnectView() {
   document.querySelectorAll('.connect-students').forEach(_syncConnectThumb);
 }
 
-// I3 (R2 2026-10-17): Connect Setup leader search, admin/director only; matches active leader names (the cards shown).
+// I3 (R2 2026-10-17): Connect Setup leader search, admin/director (+ quad, r21 L1); matches active leader names (the cards shown).
 function _csLeaderQ(v) {
   _aS.lq = String(v || '').trim().toLowerCase();
   for (const c of document.querySelectorAll('.connect-leader')) c.style.display = (c.dataset.name || '').includes(_aS.lq) ? '' : 'none';
@@ -6548,7 +6565,7 @@ async function renderAdminView(settings, users, history) {
         body += `<div class="li rc rc-row${acctGenderClass}">
           <div class="rc-main"><div class="lk-nm">${esc(u.displayName)}</div><div class="lk-d">${esc(u.email)}</div></div>
           <div class="rc-foot rc-icons">${statusChip(u.status)}
-            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm" style="margin-right:16px" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
+            ${(u.role==='grade'||u.role==='quad') && u.status==='active' ? `<button class="btn btn-ghost btn-sm acct-pv" onclick="confirmEnterPreview('${u.id}')" title="Preview as ${esc(u.displayName)}" aria-label="Preview as ${esc(u.displayName)}">${icS('eye')}</button>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}')" title="Edit account" aria-label="Edit ${esc(u.displayName)}">${icS('edit')}</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetPassword('${u.id}')" title="Reset password" aria-label="Reset password for ${esc(u.displayName)}">${icS('key')}</button>
             <button class="btn btn-ghost btn-sm" ${isProtectedAdmin?'disabled':''} onclick="toggleUserStatus('${u.id}','${u.status}')" title="${lockTitle}" aria-label="${lockTitle}">${u.status==='active'?icS('lock'):icS('unlock')}</button>
@@ -6790,11 +6807,12 @@ async function elWho(code) {
   let d;
   try { d = await API.fresh('/admin/reconcile/latest'); } catch (e) { toast(e.message); return; }
   const li = (s) => `<li>${s}</li>`;
+  _elRs = [];
   const sec = {
-    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}`))],
+    'recon-checkins': ['Check-ins missing from Elvanto', d.checkins.map((x) => li(`${esc(x.name)}, ${esc(x.date)}${_elRsBtn({ kind: 'checkin', personId: x.personId, date: x.date })}`))],
     'recon-unmatched': ['Roster students with no YS record', d.unmatched.map((x) => li(`${esc(x.name)}${x.grade != null ? `, Grade ${esc(String(x.grade))}` : ''}`))],
-    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}`))],
-    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}`))],
+    'recon-lifegroups': ["Reports that don't match Elvanto", d.lifegroups.map((x) => li(`${esc(x.group)}, ${esc(x.date)}${x.missing.length ? `: missing ${x.missing.map((m) => esc(m)).join(', ')}` : ': marked did not meet'}${_elRsBtn({ kind: 'lifegroup', groupId: x.groupId, date: x.date })}`))],
+    'recon-members': ['Member changes not in Elvanto', d.members.map((x) => li(`${x.op === 'add' ? 'Add' : 'Remove'} ${esc(x.name)}, ${esc(x.group)}${_elRsBtn({ kind: 'member', groupId: x.groupId, personId: x.personId, op: x.op })}`))],
     'recon-lifegroup-noid': ['Lifegroups with no Elvanto group id', d.noId.map((g) => li(esc(g)))],
   }[code];
   if (!sec) return;
@@ -6802,6 +6820,22 @@ async function elWho(code) {
   modal(`<h3>${esc(sec[0])}</h3><p class="help">${when}</p>${sec[1].length ? `<ul>${sec[1].join('')}</ul>` : '<p>Nobody now.</p>'}`);
 }
 // end elWho
+// r21 L6b (T9): Send again queues the app's own change once more (the console checks Elvanto first, so nothing is sent twice).
+let _elRs = [];
+function _elRsBtn(body) {
+  const i = _elRs.push(body) - 1;
+  return ` <button type="button" class="btn btn-secondary btn-sm" id="el-rs-${i}" onclick="elResend(${i})">Send again</button>`;
+}
+async function elResend(i) {
+  const btn = document.getElementById('el-rs-' + i);
+  if (!btn || btn.disabled) return;
+  if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Send to Elvanto?'; return; }
+  btn.disabled = true;
+  try { await API.post('/admin/reconcile/resend', _elRs[i]); } catch (e) { btn.disabled = false; btn.dataset.armed = ''; btn.textContent = 'Send again'; toast(e.message); return; }
+  btn.textContent = 'Queued';
+  toast('Queued. The console sends it soon.');
+}
+// end elResend
 function elToggle(id) { _elOpen = _elOpen === id ? '' : id; _elPaint(); }
 function elToggleIgnored() { _elShowIgnored = !_elShowIgnored; _elPaint(); }
 async function elFlag(id, flags) {
@@ -8093,13 +8127,13 @@ function exportSettingsFile() {
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
   _downloadText('ys-connection-settings.json', JSON.stringify(file, null, 2), 'application/json');
 }
-// Y4: Elvanto ids and the Elvanto screen switches belong to one location, so a settings file never carries them.
+// Y4: Elvanto ids and the Elvanto screen switches (and New youth & consent) belong to one location, so a settings file never carries them.
 function _dropLocationKeys(cfg) {
   delete cfg.elvanto;
   if (cfg.modules && typeof cfg.modules === 'object') {
     const md = cfg.modules = { ...cfg.modules };
     for (const [k] of _SETUP_ELVANTO) delete md[k];
-    delete md.newYouthForms; delete md.flowHiddenStep;
+    delete md.newYouthForms; delete md.flowHiddenStep; delete md.intakeAdmin; // R4a#1: New youth & consent too
   }
   return cfg;
 }
@@ -8130,7 +8164,7 @@ function loadSettingsFile(input) {
     if (r.serviceMinAttendance != null) _setupServiceMinAttendance = r.serviceMinAttendance;
     if (r.termGapDays != null) _setupTermGapDays = r.termGapDays;
     _setupRerender();
-    toast('Settings loaded. Select Save Youth Setup. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
+    toast('Settings loaded. Select Save Youth Setup. Elvanto settings and screens are not changed. Set them up for this location.');
   });
 }
 function _downloadText(filename, text, mime) {
@@ -10307,8 +10341,8 @@ function _lkStatusText(row, lastSeen) {
     'note-too-long': 'Edit this report in Elvanto.',
     'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
     'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
-    'step-moved': 'This step changed in Elvanto. Do it there.',
-    'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
+    'step-moved': 'This step changed in Elvanto. Reload and try again.',
+    'assignee-needed': "Pick who gets the next step, or Elvanto's usual pick, then Complete again.", // r21 L6b (T4): the sheet's "Next step goes to"
     'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
     'too-old': 'Too late to send. Do it in Elvanto.',
     'not-landed': "It didn't save. Do it in Elvanto.",
@@ -10333,11 +10367,9 @@ function _lkStatusText(row, lastSeen) {
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
-    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
+    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Checked in with no room, so there is nothing to check out.'; // T6 (2026-10-21)
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
-      // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
-      if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
       return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
     case 'cancelled': return 'Cancelled.';
@@ -10350,7 +10382,8 @@ function _lkStatusHtml(row, lastSeen) {
   // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
   const role = S.user && S.user.role;
   if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
-    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.');
+    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
+    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.'); // r21: only admin/director have the picker
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
@@ -11296,7 +11329,7 @@ function _lkWeekReports(g, w) {
 }
 function _lkWeekReport(g, w) { return _lkWeekReports(g, w)[0] || null; }
 // The date a Submit in an empty week uses: the weekday in `meets` (else the week's last day), never after today, and only
-// within the 14 days the report form accepts. state: ok | later (day still ahead) | old (too old to send from here).
+// within the 8 weeks the report form accepts (T3, 2026-10-21: was 14 days). state: ok | later (day still ahead) | old (too old).
 function _lkReportDateFor(meets, w, today) {
   const m = String(meets || '').toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:s|r|rs|day|sday|nesday|rsday|urday)?\b/);
   let d = w.end;
@@ -11305,7 +11338,7 @@ function _lkReportDateFor(meets, w, today) {
     d = _lkAddDays(w.start, (i + 6) % 7);
     if (d > today) return { state: 'later', date: null };
   } else if (d > today) d = today;
-  return d < _lkAddDays(today, -14) ? { state: 'old', date: null } : { state: 'ok', date: d };
+  return d < _lkAddDays(today, -56) ? { state: 'old', date: null } : { state: 'ok', date: d };
 }
 function _lkGroup() { return (LINK.groups || []).find((g) => g.groupId === LINK.gid) || null; }
 // The group's report action: still on this phone, else this phone's last answer, else the server's open row, else the
@@ -11373,7 +11406,7 @@ function _lkWeekBodyHtml(g, w) {
   }
   const d = _lkReportDateFor(g.meets, w, _lkToday());
   if (d.state === 'later') return '<div class="card"><p class="lk-sub">This group has not met yet this week.</p></div>';
-  if (d.state === 'old') return '<div class="card"><p class="lk-sub">No report for this week. It is too old to send here. Send it in Elvanto.</p></div>';
+  if (d.state === 'old') return '<div class="card"><p class="lk-sub">No report for this week. It is more than 8 weeks ago.</p></div>';
   return `<div class="card"><p class="lk-sub">No report for this week.</p>${_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-primary btn-full" onclick="_lkNewReport('${esc(d.date)}')">${icS('plus')} Submit report</button>`}</div>`;
 }
 // Back and forward over the last 8 weeks (index 0 = this week).
@@ -11404,7 +11437,7 @@ function _lkNoteCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','
 function _lkFormHtml() {
   const f = LINK.rf, g = _lkGroup();
   if (!f || !g) return '';
-  const today = LINK.today || f.date, min = _lkAddDays(today, -14);
+  const today = LINK.today || f.date, min = _lkAddDays(today, -56);
   const last = _lkReportOn(g, f.date);
   const clash = f.mode === 'submit' && !!last; // F-03: the console refuses a second report on a date (report-exists)
   const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
@@ -11423,7 +11456,7 @@ function _lkFormHtml() {
       <div class="fg"><label class="fl">Service</label><select class="fs" onchange="_lkRfSvc(this.value)">
         ${f.svc ? '' : '<option value="" selected>Pick a service</option>'}
         ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
-        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Older services are not listed. Pick No service, or do it in Elvanto.</p>' : ''}</div>`;
+        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Services older than 7 days are not listed. Pick No service.</p>' : ''}</div>`;
   }
   return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
     <div class="fg"><label class="fl">Date</label>${date}</div>
@@ -11567,7 +11600,7 @@ function _lkReportSend() {
   const today = LINK.today || f.date;
   let err = '';
   if (f.mode === 'submit' && _lkReportOn(g, f.date)) err = "There's already a report for that date. Edit it.";
-  else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -14))) err = 'The date must be in the last 14 days.';
+  else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -56))) err = 'The date must be in the last 8 weeks.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
   const attendees = f.didNotMeet ? [] : (g.members || []).filter((m) => f.ticks[m.personId]).map((m) => m.personId);
@@ -12113,7 +12146,10 @@ function _lkStepHtml() {
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
-    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>`
+    // r21 L6b (T4): who Elvanto gives the next step to (leaders matched to an Elvanto person); empty = Elvanto's own pick
+    + (_lkBoss() && (LINK.fAssignees || []).length ? `<div class="fg"><label class="fl" for="lk-next">Next step goes to</label><select class="fs" id="lk-next" onchange="LINK.fs.assignTo=this.value"><option value="">Elvanto's usual pick</option>
+      ${LINK.fAssignees.map((a) => `<option value="${esc(a.personId)}"${a.personId === f.assignTo ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : '') : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
     ${text}${blocked}${assign}${done}${rm}`;
@@ -12186,7 +12222,7 @@ function _lkStepSend() {
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(f.assignTo && _lkBoss() ? { assignTo: f.assignTo } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).
@@ -12227,6 +12263,7 @@ async function _lkLoadFlows(quiet) {
       if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
     });
     LINK.fSteps = (r && r.steps) || [];
+    LINK.fAssignees = (r && r.assignees) || []; // r21 L6b (T4)
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
     LINK.fProg = (r && r.progress) || null;
@@ -12368,15 +12405,29 @@ function _lkAdmMatchHtml() {
   const A = LINK.adm, f = A.mf;
   const tabs = [['none', 'Unmatched'], ['ambiguous', 'Several possible'], ['manual', 'Set by hand']];
   const yr = (g) => 'Yr ' + (g == null ? '-' : g);
+  // L3: the server's per-row reason (rosterForMatching `why`) when a same-name YS student exists but autoMatch left it.
+  const WHY1 = { later: 'Same name in YS. It pairs by itself at the next update, or tap Match.',
+    gender: 'Same name in YS, but the genders differ. Check the gender, then Match.',
+    held: 'Same name in YS, already matched to another Elvanto profile (likely a duplicate).' };
+  const NOC = { noGender: 'No gender in Elvanto. Set it there, or use Match.', badData: 'No grade or name in Elvanto. Set it there, or use Match.' };
   const row = (r) => {
-    const pid = esc(r.personId);
+    const pid = esc(r.personId), why1 = f === 'none' ? WHY1[r.why] || '' : '';
+    // L3 r2: not in YS Students, but Flows / Lifegroups show them (Elvanto's data), so they look like they are in YS.
+    const seen1 = (r.seenIn || []).map((x) => (x === 'flow' ? 'Flows' : 'Lifegroups')).join(' and ');
     const cands = f === 'manual' ? '' : (r.candidates || []).map((c) => `<div class="lk-kv lk-cand"><span>In YS: ${esc(c.name)} · ${esc(yr(c.grade))} · ${c.dob ? 'born ' + esc(c.dob) : 'no birth date'}</span>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','${esc(c.studentId)}')">Match</button></div>`).join('');
     const acts = f === 'manual' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmMatch('${pid}','')">${r.match === 'ignored' ? 'Undo' : 'Clear'}</button>`
-      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
+      : (f === 'none' && r.create ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmCreate('${pid}')"${A.creating ? ' disabled' : ''}>Create</button>` : '')
+        + `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmIgnore('${pid}')">Not in YS</button>`;
     return `<div class="lk-log-row"><div class="lk-log-top"><b>Elvanto: ${esc(r.name)}</b><span class="lk-d">${esc(yr(r.grade))}${r.match === 'ignored' ? ' · Not in YS' : ''}${r.active === false ? ' · No longer in Elvanto' : ''}</span></div>
-      ${cands || (f === 'manual' ? '' : '<p class="lk-sub">No YS student with this surname.</p>')}<div class="lk-acts">${acts}</div></div>`;
+      ${why1 ? `<p class="lk-sub">${why1}</p>` : ''}${cands || (f === 'manual' || why1 ? '' : `<p class="lk-sub">Not a YS student yet.${seen1 ? ' YS shows them from Elvanto, in ' + seen1 + '.' : ''}${NOC[r.noCreate] ? ' ' + NOC[r.noCreate] : ''}</p>`)}<div class="lk-acts">${acts}</div></div>`;
   };
+  // Round 2026-10-21 (L3): same names pair up by themselves (autoMatch), so say why someone is still listed. YS students
+  // come mostly from attendance imports, so a new youth is usually in Elvanto (and in this list) before they are in YS.
+  const why = { none: 'In Elvanto, but not paired with a YS student. If one is in YS under another name, tap Match. Create makes them a YS student, linked to Elvanto. Not in YS hides the row.',
+    ambiguous: 'More than one person has this name. Pick the right one.', manual: 'Pairs you set by hand, and people marked Not in YS.' }[f];
+  // L3 r3: Create all = a YS student for each Unmatched row the server marked `create` (nothing to pair with).
+  const nNew = f === 'none' && A.roster ? A.roster.filter((r) => r.kind === 'student' && r.match === 'none' && r.create).length : 0;
   let body;
   if (A.rErr) body = `<p class="lk-sub">${esc(A.rErr)}</p>`;
   else if (!A.roster) body = progBar('Loading');
@@ -12390,7 +12441,7 @@ function _lkAdmMatchHtml() {
       body = (hand.length ? `<div class="lk-sec">Matched by hand</div>${list(hand)}` : '') + (out.length ? `<div class="lk-sec">Marked Not in YS</div>${list(out)}` : '');
     }
   }
-  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${body}`;
+  return `<div class="lk-sec">Matching ${helpTip("Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.")}</div><div class="lk-tabs">${tabs.map((t) => `<button type="button" class="btn btn-sm ${f === t[0] ? 'btn-primary' : 'btn-secondary'}" onclick="_lkAdmFilter('${t[0]}')">${t[1]}</button>`).join('')}</div>${why ? `<p class="lk-sub">${why}</p>` : ''}${nNew ? `<div class="lk-acts lk-mb"><button type="button" class="btn btn-primary btn-sm" onclick="_lkAdmCreate(null)"${A.creating ? ' disabled' : ''}>${A.creating ? 'Creating…' : `Create all (${nNew})`}</button></div>` : ''}${body}`;
 }
 function _lkAdmLogListHtml() {
   const A = LINK.adm;
@@ -12496,6 +12547,37 @@ async function _lkAdmSet(personId, body) {
 }
 function _lkAdmMatch(personId, studentId) { return _lkAdmSet(personId, { studentId: studentId || null }); }
 function _lkAdmIgnore(personId) { return _lkAdmSet(personId, { studentId: null, ignore: true }); }
+// L3 r3 (operator 2026-10-21): Create (one row) / Create all (personId null). They never attended, so Student Connect and
+// Health (both _hasAttended) leave them out; check-in finds them by the roster as before. One call; the server skips any row
+// that has something to pair with, so a second tap creates nothing.
+async function _lkAdmCreate(personId) {
+  const A = LINK.adm;
+  if (A.creating) return; // L3 r4: one run at a time (the buttons are disabled meanwhile)
+  const SKIP = { candidate: 'has a possible YS match', sameNameInYs: 'same name already in YS', sameNameTwice: 'same name twice in Elvanto',
+    notUnmatched: 'already linked or marked', noGender: 'no gender in Elvanto (set it there or use Match)', badData: 'name or grade not usable' };
+  const ids = personId ? [personId] : (A.roster || []).filter((r) => r.kind === 'student' && r.match === 'none' && r.create).map((r) => r.personId);
+  if (!ids.length) return;
+  const n = ids.length;
+  if (!(await _lkAsk(`Create ${n} YS ${n === 1 ? 'student' : 'students'} and link them to Elvanto? They won't show on Student Connect or Health until they attend.`, 'Create', 'Cancel', 'Create YS students'))) return;
+  A.creating = true;
+  _lkAdmDraw('lk-adm-match', _lkAdmMatchHtml());
+  // Batches of 10, so each call ends well inside the route's 20 s limit; the counts add up; the first error stops the run.
+  let created = 0, err = '';
+  const skipped = {};
+  try {
+    for (let i = 0; i < ids.length; i += 10) {
+      let r;
+      try { r = await API.post('/link/admin/create-students', { personIds: ids.slice(i, i + 10) }); }
+      catch (e) { err = e.message || 'Could not create.'; break; }
+      created += (r && r.created) || 0;
+      Object.keys((r && r.skipped) || {}).forEach((k) => { skipped[k] = (skipped[k] || 0) + r.skipped[k]; });
+    }
+  } finally { A.creating = false; }
+  const sk = Object.keys(skipped), m = sk.reduce((t, k) => t + skipped[k], 0);
+  toast(`Created and linked ${created}.` + (m ? ` ${m} skipped: ${sk.map((k) => (sk.length > 1 ? skipped[k] + ' ' : '') + (SKIP[k] || k)).join(', ')}.` : '') + (err ? ' ' + err : ''));
+  if (typeof Cache !== 'undefined') Cache.del('/students');
+  await _lkAdmLoadRoster();
+}
 async function _lkAdmLoadLog() {
   const A = LINK.adm, today = _lkToday();
   const q = ['from=' + encodeURIComponent(A.from || _lkAddDays(today, -6)), 'to=' + encodeURIComponent(A.to || today)];
@@ -12712,6 +12794,12 @@ function _ikHoldText(h, d) {
   // Y3b: the night and cut-off come from the settings. The console names its own night and time after the prefix.
   if (t === 'Late consent form') return 'The consent form came in after ' + _serviceDayName() + ' ' + _cutoffWords(true) + ', so it counts for next week.';
   if (t.startsWith('Waiting for replies until')) return 'Parents can still reply until ' + _serviceDayName() + ' ' + _cutoffWords(true) + ", so consent isn't assumed yet. Check again after " + _cutoffWords(true) + '.';
+  if (t === 'Parent mobile needs fixing') { // T12 (2026-10-21): the plan's Set mobile extra fixes it from the parent's form
+    const x = ((d && d.extras) || []).find((s) => s.action === 'setField' && s.field === 'mobile' && s.state !== 'done');
+    return "The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. " + (x
+      ? 'Press the Set mobile button below to use ' + fmtPhone(x.value) + ' from their form.'
+      : "The parent's form has no valid 04 number either. Ask the parent for it, then fix it on their profile in Elvanto.");
+  }
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
   return IK_HOLD[t] || t;
 }
@@ -13479,7 +13567,8 @@ function _ikConsentHtml(det, list, st) {
 async function _ikLoad(quiet) {
   const I = _ik(), gen = ++I.gen, mode = I.tab;
   try {
-    const r = await API.fresh('/link/intake?mode=' + mode + (quiet ? '' : '&view=1'), quiet); // B18: only a real page entry marks it viewed
+    // B18: only a real page entry marks it viewed. L8 (2026-10-21): so does a quiet Consents load that will warm the lookups (_ikLkWarm below).
+    const r = await API.fresh('/link/intake?mode=' + mode + (quiet && !(mode === 'consent' && !I.lkPre) ? '' : '&view=1'), quiet);
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: r && r.console, consoleLinkRev: r && r.consoleLinkRev, appLinkRev: r && r.appLinkRev };
     I.dates = (r && r.dates) || [];
@@ -13920,13 +14009,14 @@ function _ikLkApply(x, r, now) {
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
   return true;
 }
-// L6-8: 10 s while waiting for the console to claim, 2.5 s once working, 5 s after a minute of working.
+// L6-8: 2.5 s once working, 5 s after a minute of working. L8 (2026-10-21): waiting for the claim is 2.5 s for the first minute
+// (the console claims every 3 s after a lookup), then 10 s.
 // L2-3: a network blip (no status) is retried silently up to 3 times before the offline line shows.
 function _ikLkPoll(kind) {
   const I = _ik(), x = _ikLk(kind), id = x.id;
   if (x.poll) clearTimeout(x.poll);
   if (x.st !== 'working') x.workSince = 0; else if (!x.workSince) x.workSince = Date.now();
-  const ms = x.st !== 'working' ? 10000 : Date.now() - x.workSince > 60000 ? 5000 : 2500;
+  const ms = x.st !== 'working' ? (Date.now() - (x.since || 0) <= 60000 ? 2500 : 10000) : Date.now() - x.workSince > 60000 ? 5000 : 2500;
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { dncFullyOn } from '../services/dnc';
+import { loadFns } from './helpers/extract-fn';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
@@ -434,8 +435,8 @@ describe('D2 enqueue', () => {
     const h = await setup();
     const st = async (it: object) => oc(await enq(h.svc, DIRECTOR, it, DEV));
     expect(await st(report({ date: '2026-10-17' }))).toBe('BAD_REQUEST');                   // > today
-    expect(await st(report({ date: '2026-10-01' }))).toBe('BAD_REQUEST');                   // < today − 14
-    expect(await st(report({ date: '2026-10-02' }))).toBe('saved');                   // = today − 14
+    expect(await st(report({ date: '2026-08-20' }))).toBe('BAD_REQUEST');                   // < today − 56 (T3, 2026-10-21)
+    expect(await st(report({ date: '2026-08-21' }))).toBe('saved');                   // = today − 56
     expect(await st(report({ date: '2026-10-03', attendees: [P_BEN] }))).toBe('BAD_REQUEST'); // not a member
     expect(await st(report({ date: '2026-10-04', didNotMeet: true }))).toBe('VALIDATION_ERROR');  // attendees with didNotMeet
     expect(await st(report({ date: '2026-10-05', serviceTimeId: u(998) }))).toBe('BAD_REQUEST');
@@ -1201,10 +1202,82 @@ describe('D6 admin: matching, log', () => {
     expect(all.map((x) => x.personId).sort()).toEqual([P_BEN, P_EVE1, P_EVE2, P_TOM].sort()); // no auto, leader or other
     expect(all.some((x) => x.match === 'auto')).toBe(false);
     for (const x of all) {
-      expect(Object.keys(x).sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
+      expect(Object.keys(x).filter((k) => !['why', 'seenIn', 'create', 'noCreate'].includes(k)).sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
       for (const c of x.candidates) expect(Object.keys(c).sort()).toEqual(['dob', 'grade', 'name', 'studentId']);
     }
     expect(all.find((x) => x.personId === P_TOM)!.candidates).toEqual([]); // manual: no candidates computed
+  });
+
+  it('round 2026-10-21 (L3): an Unmatched row with a same-name YS student says why (later / gender / held)', async () => {
+    const why = async (id: string) => (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows.find((x) => x.personId === id)!.why;
+    expect(await why(P_BEN)).toBe('later');       // free, gender fits: pairs at the next roster push or import
+    expect(await why(P_EVE1)).toBeUndefined();    // no YS student of that name
+    await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'female' } as never);
+    expect(await why(P_BEN)).toBe('gender');      // genderFits refuses it
+    await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'male' } as never);
+    await h.link.setMatches([{ personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
+    expect(await why(P_BEN)).toBe('held');        // another roster row (a duplicate profile) holds it
+  });
+
+  it('round 2026-10-21 (L3 r2): an Unmatched row says where YS shows them from Elvanto (flow / lifegroup)', async () => {
+    const rows = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows;
+    expect(rows.find((x) => x.personId === P_EVE1)!.seenIn).toEqual(['lifegroup']);
+    expect(rows.find((x) => x.personId === P_BEN)!.seenIn).toEqual(['flow']);
+    expect(rows.find((x) => x.personId === P_EVE2)!.seenIn).toBeUndefined();
+  });
+
+  it('round 2026-10-21 (L3 r3): createStudents makes + links a YS student for each no-candidate Unmatched row, once', async () => {
+    const P_NIA = u(120);
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_NIA, firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const before = (await h.students.findAll()).length;
+    // P_BEN has a candidate; P_EVE1/P_EVE2 share one name in Elvanto (a likely duplicate): both skipped.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA, P_BEN, P_EVE1, P_EVE2] })).toEqual({ created: 1, skipped: { candidate: 1, sameNameTwice: 2 } });
+    const r = (await h.link.roster()).find((x) => x.personId === P_NIA)!;
+    expect(r).toMatchObject({ match: 'manual' });
+    const s = (await h.students.findById(r.studentId!))!;
+    expect(s).toMatchObject({ firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, dateOfBirth: null,
+      svcAttended: 0, grpAttended: 0, prevSvcAttended: 0, prevGrpAttended: 0 }); // never attended: off Connect + Health
+    // Student Connect (renderConnectView ownScope) and Health (renderAtRisk) both keep only _hasAttended students.
+    expect(loadFns(['_hasAttended'])._hasAttended(s)).toBe(false);
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // Idempotent: a second tap creates nothing, never a duplicate.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA, P_BEN, P_EVE1, P_EVE2] })).toEqual({ created: 0, skipped: { notUnmatched: 1, candidate: 1, sameNameTwice: 2 } });
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // One row: only that row; a row that is already linked is skipped.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA] })).toEqual({ created: 0, skipped: { notUnmatched: 1 } });
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_BEN] })).toEqual({ created: 0, skipped: { candidate: 1 } });
+    await expect(h.svc.createStudents(DIRECTOR, { personIds: [P_NIA] })).rejects.toThrow();
+    await expect(h.svc.createStudents(ADMIN, {})).rejects.toThrow(); // ids are required (the SPA sends batches)
+    // Check-in still finds them (the roster lists them, as before).
+    expect((await h.svc.checkin(ADMIN, ST)).people!.some((p) => p.personId === P_NIA)).toBe(true);
+  });
+
+  it('round 2026-10-21 (L3 r4): repeated ids create once; no gender / no grade / blank name are not eligible', async () => {
+    const [P_A, P_NOG, P_NOGR, P_NOLAST] = [u(121), u(122), u(123), u(124)];
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_A, firstName: 'Ann', lastName: 'Once', gender: 'female', grade: 8, kind: 'student' },
+      { personId: P_NOG, firstName: 'Gee', lastName: 'Blank', gender: null, grade: 8, kind: 'student' },
+      { personId: P_NOGR, firstName: 'Gra', lastName: 'Deless', gender: 'male', grade: null, kind: 'student' },
+      { personId: P_NOLAST, firstName: 'Solo', lastName: '', gender: 'male', grade: 9, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const rows = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows;
+    const row = (id: string) => rows.find((x) => x.personId === id)!;
+    expect(row(P_A).create).toBe(true);
+    expect(row(P_NOG)).toMatchObject({ noCreate: 'noGender' });
+    expect(row(P_NOG).create).toBeUndefined();
+    expect(row(P_NOGR)).toMatchObject({ noCreate: 'badData' });
+    expect(row(P_NOLAST)).toMatchObject({ noCreate: 'badData' });
+    const before = (await h.students.findAll()).length;
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_A, P_A] })).toEqual({ created: 1, skipped: {} });
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NOG, P_NOGR, P_NOLAST] }))
+      .toEqual({ created: 0, skipped: { noGender: 1, badData: 2 } });
+    expect((await h.students.findAll()).length).toBe(before + 1); // never created as 'other', never a duplicate
   });
 
   it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {
@@ -1314,6 +1387,28 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'dnc', 'due', 'flowId', 'flowName',
       'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'notReceivedOk', 'openAction', 'personId', 'rowId', 'serviceVisits', 'stepId', 'stepName', 'stepOrder']);
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
+  });
+
+  it('r21 L6b (T4): the flows view lists who can get the next step: active app leaders matched to one Elvanto person', async () => {
+    const h = await setup();
+    expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]); // Dana: no match, Eve: two, Fay: inactive
+  });
+
+  it('r21 fix (review #4): only admin/director get the assignees list', async () => {
+    const h = await setup();
+    expect((await h.svc.flows(DIRECTOR)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]);
+    for (const a of [GRADE, LEADER]) expect((await h.svc.flows(a)).assignees).toBeUndefined();
+  });
+
+  it('r21 L6b (T4): a Complete may carry assignTo (an Elvanto person id); it is stored on the payload', async () => {
+    const h = await setup();
+    expect((await enq(h.svc, ADMIN, step({ assignTo: 'x' }), DEV)).code).toBe('VALIDATION_ERROR');
+    const s = step({ assignTo: P_CODY });
+    expect((await enq(h.svc, ADMIN, s, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(s.id))!.payload).toMatchObject({ assignTo: P_CODY });
+    const g = await setup(); // review fix 1: only the admin or a director picks the next step's person
+    expect((await enq(g.svc, GRADE, step({ assignTo: P_CODY }), DEV)).code).toBe('FORBIDDEN');
+    expect((await enq(g.svc, GRADE, step(), DEV)).outcome).toBe('saved');
   });
 
   it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
@@ -1435,7 +1530,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 describe('RFIX (review of the UX batch)', () => {
   const META = (takenAt = '2026-10-16T08:30:00.000Z') => ({ takenAt, consoleId: CONSOLE });
 
-  it('T8: an older week can be edited (the 14-day rule is for submit only); submit still stops at 14 days', async () => {
+  it('T8: an older week can be edited (the submit window is for submit only); submit stops at 8 weeks (T3, 2026-10-21)', async () => {
     const h = await setup();
     const OLD = u(419), NEWER = u(420);
     const oldRep = { reportId: OLD, date: '2026-09-22', time: '18:30', didNotMeet: false, attendees: [P_AMY], guests: 0,
@@ -1446,7 +1541,8 @@ describe('RFIX (review of the UX batch)', () => {
     const oldEdit = edit({ reportId: OLD, date: '2026-09-22', attendees: [P_AMY, P_EVE1], guests: 0,
       base: { date: '2026-09-22', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } });
     expect((await enq(h.svc, DIRECTOR, oldEdit, DEV)).outcome).toBe('saved');
-    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-22' }), DEV)).code).toBe('BAD_REQUEST'); // submit: still 14 days
+    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-08-20' }), DEV)).code).toBe('BAD_REQUEST'); // submit: past 8 weeks
+    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-01' }), DEV)).outcome).toBe('saved'); // 6 weeks back: now allowed
     // a report that is nowhere in the group is still refused
     expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(999) }), DEV)).code).toBe('BAD_REQUEST');
   });

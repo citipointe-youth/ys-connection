@@ -184,12 +184,14 @@ describe('F-35 refusals: "Tell the admin." for non-admin logins', () => {
       expect(h('Do this in Elvanto for now.')).toBe('Tell the admin.');
       expect(h('This step changed in Elvanto. Do it there.')).toBe('This step changed in Elvanto. Tell the admin.');
       expect(h('Edit this report in Elvanto.')).toBe('Tell the admin.');
+      expect(h("Pick who gets the next step, or Elvanto's usual pick, then Complete again.")).toBe('Tell the admin.'); // r21 review #1
     }
   });
   it('admin / director keep "Do it in Elvanto."', () => {
     for (const r of ['admin', 'director']) {
       f.role(r);
       expect(h('Too late to send. Do it in Elvanto.')).toBe('Too late to send. Do it in Elvanto.');
+      expect(h("Pick who gets the next step, or Elvanto's usual pick, then Complete again.")).toBe("Pick who gets the next step, or Elvanto's usual pick, then Complete again.");
     }
   });
 });
