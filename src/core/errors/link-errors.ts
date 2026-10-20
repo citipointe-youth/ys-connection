@@ -15,6 +15,10 @@ export class LinkDnc extends AppError {
 export class ConsentCheckFirst extends AppError {
   constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (New youth & consent > Consents).', 409); }
 }
+/** Y2a: no New People flow known (blank or unmatched peopleFlowPrefix): no step 0 can be told from the consent step (fail closed). */
+export class ConsentFlowUnknown extends AppError {
+  constructor() { super('CONSENT_FLOW_UNKNOWN', "Can't check consent. This year's New People flow wasn't found. Ask your admin.", 409); }
+}
 /** Rev 6 (R4): a Complete and a Remove for the same flow row cannot both be open. */
 export class LinkBusyRow extends AppError {
   constructor() { super('LINK_BUSY_ROW', 'Something is already waiting to be sent for this person. Wait for it, or cancel it.', 409); }

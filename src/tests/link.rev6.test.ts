@@ -11,6 +11,7 @@ import {
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
 } from '../repositories/in-memory';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { brisbaneElvanto } from './helpers/brisbane-elvanto';
 import { RateLimiter } from '../utils/rate-limiter';
 import type { Actor } from '../core/entities/user';
 import { readFileSync } from 'node:fs';
@@ -33,13 +34,13 @@ const nid = () => u(++idn);
 const ALL = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live',
   removeFromFlowStep: 'live', consentLookup: 'live', consentFix: 'live', consentLink: 'live' } as const;
 
-async function setup(o: { intakeAdmin?: 'on' | 'off' } = {}) {
+async function setup(o: { intakeAdmin?: 'on' | 'off'; elvanto?: object } = {}) {
   const link = new InMemoryLinkRepository({ now: () => NOW });
   const intake = new InMemoryLinkIntakeRepository(() => NOW);
   const settings = new InMemorySettingsRepository(), students = new InMemoryStudentRepository(), leaders = new InMemoryLeaderRepository();
   const users = new InMemoryUserRepository(), sessions = new InMemoryServiceSessionRepository(), attendance = new InMemoryServiceAttendanceRepository();
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
-  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
+  await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: o.elvanto ?? brisbaneElvanto(), // Y2a: Brisbane's flow prefixes, injected
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, flows: 'on', intakeAdmin: o.intakeAdmin ?? 'on' } } } as never);
   for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [QUAD_ID, 'g79', 'quad']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
@@ -181,6 +182,38 @@ describe("E3: the consent step is step 0 of this year's New People flow", () => 
     expect(h.oc(await h.one(ADMIN, complete(OLD, OLD, STEP0, P_UNK)))).toBe('saved'); // last year's flow: an ordinary step
     await h.link.replaceMirror('flows', [row(OLD, N(2025))] as never, { takenAt: '2026-10-16T08:20:00.000Z', consoleId: CONSOLE });
     expect(await step(OLD)).toBe(true);
+  });
+});
+
+describe('Y2a: step-0 Complete fails closed while the New People flow is unknown', () => {
+  const OTHER0 = u(509), OTHER_FLOW = u(513);
+  const withOtherStep0 = async (h: Awaited<ReturnType<typeof setup>>) => {
+    const flows = await h.link.flows();
+    await h.link.replaceMirror('flows', [...flows, { ...flows.find((f) => f.rowId === FR_OK)!, rowId: OTHER0, flowId: OTHER_FLOW,
+      flowName: 'Follow up - Youth', stepId: STEP0, stepName: 'Step 0 - call' }] as never, { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
+  };
+  const MSG = "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
+  for (const [label, elvanto] of [['blank prefix', { ...brisbaneElvanto(), peopleFlowPrefix: '' }],
+    ['unmatched prefix', { ...brisbaneElvanto(), peopleFlowPrefix: 'Logan - Youth - New People' }]] as const) {
+    it(`${label}: every step-0 Complete refuses CONSENT_FLOW_UNKNOWN; a later step is unchanged`, async () => {
+      const h = await setup({ elvanto });
+      await withOtherStep0(h);
+      for (const [row, flow, pid] of [[FR_C_OK, NP, P_OK], [FR_C_UNK, NP, P_UNK], [OTHER0, OTHER_FLOW, P_OK]] as const) {
+        const r = await h.one(ADMIN, complete(row, flow, STEP0, pid));
+        expect(r).toMatchObject({ outcome: 'refused', code: 'CONSENT_FLOW_UNKNOWN', message: MSG });
+      }
+      expect(h.oc(await h.one(ADMIN, complete(FR_OK, FLOW, STEP1, P_OK)))).toBe('saved'); // step "Call": not a step 0
+    });
+  }
+  it("people flow found (Brisbane): another flow's step 0 is still an ordinary Complete; the consent step still checks", async () => {
+    const h = await setup();
+    await withOtherStep0(h);
+    expect(h.oc(await h.one(ADMIN, complete(OTHER0, OTHER_FLOW, STEP0, P_OK)))).toBe('saved');
+    expect(h.oc(await h.one(ADMIN, complete(FR_C_UNK, NP, STEP0, P_UNK)))).toBe('CONSENT_CHECK_FIRST');
+  });
+  it('the error is a 409 with the plain words', async () => {
+    const { ConsentFlowUnknown } = await import('../core/errors/link-errors');
+    expect(new ConsentFlowUnknown()).toMatchObject({ code: 'CONSENT_FLOW_UNKNOWN', statusCode: 409, message: MSG });
   });
 });
 

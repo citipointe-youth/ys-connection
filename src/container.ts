@@ -323,7 +323,7 @@ export async function buildContainer(): Promise<Container> {
     }
     catch { return null; }
   };
-  const setup = makeSetupService({ users, auth, settings, env: process.env, probeDb, schemaVersion });
+  const setup = makeSetupService({ users, auth, settings, env: process.env, probeDb, schemaVersion, flows: () => link.flows() }); // Y2a: New People flow row
   const health = cachedProbe(async (): Promise<Record<string, unknown>> => {
     const [db, current] = await Promise.all([probeDb(), schemaVersion()]);
     return { db: db ? 'ok' : 'down', schema: { current, expected: LATEST_MIGRATION } };

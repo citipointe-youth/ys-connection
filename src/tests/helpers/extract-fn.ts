@@ -33,6 +33,9 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
     if (!/\b(?:var|let|const) S\b/.test(prelude)) prelude = 'var S = {};\n' + prelude;
     if (!/\b_DAY_NAMES\b/.test(prelude)) prelude = SITE_TIME_CONSTS + '\n' + prelude;
   }
+  // Y4: the settings-file functions bring _dropLocationKeys and the Elvanto module list along.
+  if (/\b_dropLocationKeys\(/.test(body) && !names.includes('_dropLocationKeys')) body += '\n' + extractFn(src, '_dropLocationKeys');
+  if (/\b_SETUP_ELVANTO\b/.test(body) && !/\b_SETUP_ELVANTO\s*=/.test(prelude)) prelude = src.match(/^const _SETUP_ELVANTO = \[[\s\S]*?^\];/m)![0] + '\n' + prelude;
   // eslint-disable-next-line no-new-func
   return new Function(`${prelude}\n${body}\nreturn { ${returns.join(', ')} };`)();
 }

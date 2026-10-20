@@ -167,7 +167,10 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
     expect(run({ newYouthForms: 'admin' }, 'newYouthForms', 'on')).toMatchObject({ newYouthForms: 'on', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' });
     expect(run({ newYouthForms: 'on' }, 'flows', 'off')).toMatchObject({ newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'off' });
   });
-  it('the settings file download writes the four values out', () => {
-    expect(extractFn(html, 'exportSettingsFile')).toContain('_setupModuleMode(cfg.modules, k)');
+  // Y4 (SPEC Y4) supersedes T10 here: the settings file never carries the four Elvanto switches (settings-file.spa.test.ts).
+  it('the settings file download leaves the four values out', () => {
+    const fn = extractFn(html, 'exportSettingsFile');
+    expect(fn).not.toContain('_setupModuleMode(cfg.modules, k)');
+    expect(fn).toContain('_dropLocationKeys(cfg)');
   });
 });
