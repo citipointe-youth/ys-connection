@@ -20,9 +20,10 @@ const mk = (role: string, lq = '') => loadFns(['renderConnectView', '_csLeaderQ'
 ['renderConnectView', '_csLeaderQ', '__html', '__cards', '__aS']);
 
 describe('I3 Connect Setup leader search', () => {
-  it('the box is inside the director/admin gate, and cards carry data-name', () => {
+  it('the box is inside the director/admin (+ quad, r21 L1) gate, and cards carry data-name', () => {
     const src = extractFn(loadIndexHtml(), 'renderConnectView');
-    expect(src).toMatch(/showGender \? `<div class="sbar">[^`]*id="cs-lq"/);
+    expect(src).toMatch(/showSearch \? `<div class="sbar">[^`]*id="cs-lq"/);
+    expect(src).toContain("const showSearch = showGender || u.role === 'quad';");
     expect(src).toContain("const showGender = ['director','admin'].includes(u.role);");
     expect(src).toContain('data-name="${esc(l.fullName.toLowerCase())}"');
     expect(src).toContain('oninput="_csLeaderQ(this.value)"');

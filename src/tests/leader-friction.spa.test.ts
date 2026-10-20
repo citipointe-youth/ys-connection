@@ -171,11 +171,11 @@ describe('Y5 Change password for every role', () => {
     expect(e.shown()).toContain('Change Your Password');
     expect(e.shown()).toContain('id="cpw-new"');
   });
-  it('every role gets the row', () => {
+  it('r21 L1: only the junior leader gets the row (the other roles use Setup; r21-ys-ui.spa.test.ts)', () => {
     for (const r of ['admin', 'director', 'quad', 'grade', 'leader']) {
       const e = pwEnv(r);
       e.fns.openMore();
-      expect(e.shown(), r).toContain('showChangeOwnPassword()');
+      expect(e.shown().includes('showChangeOwnPassword()'), r).toBe(r === 'leader');
     }
   });
   it('the shared-login warning shows on a shared (grade or quad) login only, on both password screens', () => {
