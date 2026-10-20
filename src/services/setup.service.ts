@@ -39,7 +39,7 @@ function within3s<T>(p: Promise<T>): Promise<T> {
   return Promise.race([p, new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 3000); })])
     .finally(() => clearTimeout(timer));
 }
-const LINK_TOKEN_FIX = "In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as the console's link settings. Then redeploy.";
+const LINK_TOKEN_FIX = 'In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as in the console (Advanced › Setup › YS link). Then redeploy.';
 
 export function makeSetupService(deps: {
   users: IUserRepository;

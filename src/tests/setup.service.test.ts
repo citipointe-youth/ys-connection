@@ -227,7 +227,7 @@ describe('status: Elvanto link token row', () => {
 
 describe('status: link token row is needed once a link screen is on (Y6c)', () => {
   const TOKEN = 'Lk' + 'q7'.repeat(20);
-  const FIX = "In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as the console's link settings. Then redeploy.";
+  const FIX = 'In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as in the console (Advanced › Setup › YS link). Then redeploy.';
   async function row(v: string | undefined, modules: Record<string, string>, o: { probeDb?: () => Promise<boolean> } = {}) {
     const settings = new InMemorySettingsRepository();
     await settings.init();

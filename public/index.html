@@ -3239,7 +3239,8 @@ function _attnCounts(r, now) {
       && now - Date.parse(a.createdAt) > 36e5).length,
     offlineAt: c && c.lastSeenAt && !c.online ? c.lastSeenAt : null,
     dnc: !!(r.st && r.st.dncReady === false), // Y6c: roster never pushed, or active students unmatched
-    fix: ((r.setup && r.setup.checks) || []).filter((x) => x && x.state === 'fix').map((x) => String(x.label || x.id)),
+    // Y6c: the name only ("Elvanto link token: not set" reads as "Elvanto link token"), so the line is one plain sentence.
+    fix: ((r.setup && r.setup.checks) || []).filter((x) => x && x.state === 'fix').map((x) => String(x.label || x.id).split(': ')[0]),
     needsYou: ((r.ik && r.ik.dates) || []).reduce((n, d) => n + (Number(d && d.counts && d.counts.needsYou) || 0), 0),
   };
 }
@@ -3278,10 +3279,14 @@ async function _attnLoad(force) {
   _attnBusy = (async () => {
     const admin = role === 'admin', link = admin || _linkOn();
     const get = (on, p) => (on ? API.fresh(p, true).catch(() => null) : null);
+    // Y6c: /link/status is shared with the Home offline line (_lkHomeFlows): one read a minute, kept in LINK.status.
+    const lk = typeof LINK !== 'undefined' ? LINK : null, stFresh = !force && lk && lk.status && Date.now() - (lk.statusAt || 0) < 60000;
+    if (link && lk && !stFresh) lk.statusAt = Date.now();
     const [errs, unsent, setup, acts, unclear, st, ik] = await Promise.all([get(admin, '/admin/errors'), get(admin, '/admin/unsent'),
       get(admin, '/setup/status'), get(link, '/link/actions?serviceDate=' + _siteDay(Date.now())), get(link, '/link/actions?status=unclear'),
-      get(link, '/link/status'), get(admin && _ikModuleOn(), '/link/intake?mode=intake')]);
+      stFresh ? lk.status : get(link, '/link/status'), get(admin && _ikModuleOn(), '/link/intake?mode=intake')]);
     if (S.user !== u) return; // signed out or swapped while reading
+    if (lk && st && !stFresh) lk.status = st;
     _attn = _attnCounts({ uid: u.id, role, errs, unsent, setup, acts, unclear, st, ik }, Date.now());
     _attnPaint();
   })().finally(() => { _attnBusy = null; });
@@ -12045,6 +12050,7 @@ async function _lkHomeFlows() {
   const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _lkOfflineHtml() + (_linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''); };
   draw();
   // R8: admin/director Home shows the red console-offline line too (status read at most once a minute).
+  if (typeof _attnBusy !== 'undefined' && _attnBusy) _attnBusy.then(draw); // Y6c: Needs attention is reading it; draw when it lands
   if (_lkBoss() && _linkOn() && Date.now() - (LINK.statusAt || 0) > 60000) {
     LINK.statusAt = Date.now();
     API.fresh('/link/status', true).then((st) => { LINK.status = st; draw(); }).catch(() => {});

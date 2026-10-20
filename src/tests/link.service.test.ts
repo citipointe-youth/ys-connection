@@ -1260,6 +1260,14 @@ describe('Y6c status dncReady (admin and director only)', () => {
     expect((await h.svc.status(ADMIN)).dncReady).toBe(true);
     expect((await h.svc.status(DIRECTOR)).dncReady).toBe(true);
   });
+  it('fix round: not sent while every link screen is off (a site that does not use the link yet), and no roster read', async () => {
+    const h = await setup('off');
+    const read = vi.spyOn(h.link, 'roster');
+    expect(await h.svc.status(ADMIN)).not.toHaveProperty('dncReady');
+    expect(read).not.toHaveBeenCalled();
+    const one = await setup({ flows: 'admin' });
+    expect((await one.svc.status(ADMIN)).dncReady).toBe(false);
+  });
   it('dncFullyOn: never pushed = not on; inactive, leader and other rows do not count', () => {
     const row = (o: object) => ({ active: true, kind: 'student' as const, match: 'auto' as const, ...o });
     expect(dncFullyOn(false, [])).toBe(false);

@@ -847,9 +847,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
   return {
     async status(actor) {
-      await gate(actor, 'any');
+      const settings = await gate(actor, 'any');
       const t = clock().getTime();
-      const boss = isAdminRole(actor); // Y6c: the DNC state is for admin/director only (one roster read, in parallel)
+      // Y6c: the DNC state is for admin/director only, and only once a link screen is on (one roster read, in parallel).
+      const mods = settings.ministryConfig.modules;
+      const boss = isAdminRole(actor) && FEATURES.some((f) => (mods[f] ?? mods.newYouthForms) !== 'off');
       const [consoles, mirrors, roster] = await Promise.all([d.link.listConsoles(), d.link.mirrorState(), boss ? d.link.roster() : null]);
       const n = newest(consoles);
       const console = n

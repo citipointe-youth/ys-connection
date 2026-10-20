@@ -310,6 +310,31 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
     expect(lines('director')).toEqual([]);
   });
   it('the words name no console (leader-friction rule)', () => { expect(DNC).not.toMatch(/console/i); });
+  it('fix round: a System check fix row reads as one plain sentence (no second colon)', () => {
+    const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
+    const setup = { checks: [{ id: 'link', label: 'Elvanto link token: not set', state: 'fix' }, { id: 'appOrigin', label: 'APP_ORIGIN', state: 'fix' }] };
+    expect(h._attnLines(h._attnCounts({ uid: 'u', role: 'admin', setup }, Date.now())).map((l: string[]) => l[0]))
+      .toEqual(['System check: Elvanto link token needs fixing.', 'System check: APP_ORIGIN needs fixing.']);
+  });
+  it('fix round: Home makes one /link/status read a minute (Needs attention and the offline line share it)', async () => {
+    const calls: string[] = [];
+    (globalThis as any).__y6 = calls;
+    const h = loadFns(['_attnLoad', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
+      var S = { user: { id: 'u', role: 'admin' }, page: 'home', settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' }, modules: {} } } };
+      var LINK = { status: null, statusAt: 0, flowsAt: 0 };
+      let _attn = null, _attnBusy = null;
+      const LK_OFFLINE_MS = 15 * 60000;
+      const API = { fresh: async (p) => { globalThis.__y6.push(p); return p === '/link/status' ? { console: { online: true }, dncReady: false } : null; } };
+      const _linkOn = () => true, _ikModuleOn = () => false, _attnPaint = () => {}, getMyLeaderId = () => null;
+      const icS = () => '', esc = (v) => String(v);
+      const document = { getElementById: () => null };
+    `, ['_attnLoad', '_lkHomeFlows', 'LINK']);
+    const p = h._attnLoad(); await h._lkHomeFlows(); await p;
+    expect(calls.filter((c) => c === '/link/status')).toEqual(['/link/status']);
+    expect(h.LINK.status).toMatchObject({ dncReady: false });
+    await h._attnLoad(); await h._lkHomeFlows();
+    expect(calls.filter((c) => c === '/link/status').length).toBe(1);
+  });
 });
 
 describe('Y6c Flow step wording', () => {
