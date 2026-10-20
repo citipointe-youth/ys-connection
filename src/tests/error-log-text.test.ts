@@ -143,9 +143,13 @@ describe('error-log-text', () => {
     it('ELVANTO_FORM_CHANGED and UNCLEAR_FIX read as in SPEC Y6', () => {
       expect(TEXT.ELVANTO_FORM_CHANGED![2]).toBe('Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.');
       expect(extractFn(html, '_setupElvCardHtml')).toContain("s.busy ? 'Checking…' : 'Check forms'");
-      const fix = textFor('link', 'unclear', 'checkIn', null).line2;
+      const fix = textFor('link', 'unclear', 'checkIn', null, 1, true).line2;
       expect(fix).toBe('Tap Check again in Admin > Elvanto link. Or check it in Elvanto, then tap Landed or Not landed there.'); // L7 (2026-10-21)
-      expect(textFor('link', 'lease-lost', 'checkIn', null).line2).toBe(fix);
+      expect(textFor('link', 'lease-lost', 'checkIn', null, 1, true).line2).toBe(fix);
+      // YSREL2 fix: no Check again (type not re-checkable, or the console does not list recheck live) = the old wording.
+      const old = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.";
+      expect(textFor('link', 'unclear', 'checkIn', null).line2).toBe(old);
+      expect(textFor('link', 'lease-lost', 'intakeSave', null, 1, true).line2).toBe(old);
       expect(linkStatus).toContain(',true)">Landed</button>');
       expect(linkStatus).toContain(',false)">Not landed</button>');
     });

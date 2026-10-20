@@ -38,7 +38,8 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
   if (/\b_SETUP_ELVANTO\b/.test(body) && !/\b_SETUP_ELVANTO\s*=/.test(prelude)) prelude = src.match(/^const _SETUP_ELVANTO = \[[\s\S]*?^\];/m)![0] + '\n' + prelude;
   // L7: a renderer with a Check again line brings _lkRcHtml and its state along.
   if (/\b_lkRcHtml\(/.test(body) && !names.includes('_lkRcHtml')) body += '\n' + extractFn(src, '_lkRcHtml');
-  if (/\b_lkRcDone\(/.test(body) && !names.includes('_lkRcDone')) body += '\n' + extractFn(src, '_lkRcDone');
+  if (/\b_lkRcType\(/.test(body) && !names.includes('_lkRcType')) body += '\n' + extractFn(src, '_lkRcType');
+  if (/\b_lkRcDone\(/.test(body) &&!names.includes('_lkRcDone')) body += '\n' + extractFn(src, '_lkRcDone');
   if (/\b_LK_RC\b/.test(body) && !/\b_LK_RC\s*=/.test(prelude)) prelude = 'const _LK_RC = {};\n' + prelude;
   // eslint-disable-next-line no-new-func
   return new Function(`${prelude}\n${body}\nreturn { ${returns.join(', ')} };`)();

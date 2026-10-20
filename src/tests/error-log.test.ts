@@ -289,6 +289,29 @@ describe('error-log.service', () => {
     link._backdate('link_outbox', id, 'created_at', now.toISOString()); // stands in for "the console picked it up"
     expect((await svc.list(admin)).rows).toEqual([]);
   });
+  it('YSREL2 fix: a recheck row pending past 24 h never writes an Error log line', async () => {
+    const repo = new InMemoryErrorLogRepository();
+    const old = new Date(Date.parse('2026-10-13T10:00:00Z') - 30 * 3_600_000).toISOString();
+    const link = { listActions: async () => [{ type: 'recheck', createdAt: old }] } as any;
+    const svc = makeErrorLogService({ repo, link, now: () => new Date('2026-10-13T10:00:00Z') });
+    expect((await svc.list(admin)).rows).toEqual([]);
+  });
+  it('YSREL2 fix: "Tap Check again" only for a re-checkable type while the console lists recheck live', async () => {
+    const at = '2026-10-13T10:00:00Z';
+    const view = async (caps: Record<string, string> | null, route: string) => {
+      const repo = new InMemoryErrorLogRepository();
+      const link = { listActions: async () => [],
+        listConsoles: async () => (caps ? [{ lastSeenAt: at, capabilities: caps }] : []) } as any;
+      const svc = makeErrorLogService({ repo, link, now: () => new Date(at) });
+      await svc.record({ category: 'link', code: 'unclear', route });
+      return (await svc.list(admin)).rows[0]!.line2;
+    };
+    expect(await view({ recheck: 'live' }, 'checkIn')).toMatch(/^Tap Check again/);
+    expect(await view({ recheck: 'live' }, 'intakeSave')).toMatch(/^Check it in Elvanto/); // not re-checkable
+    expect(await view({ recheck: 'off' }, 'checkIn')).toMatch(/^Check it in Elvanto/);
+    expect(await view({ checkIn: 'live' }, 'checkIn')).toMatch(/^Check it in Elvanto/); // rev 14 console
+    expect(await view(null, 'checkIn')).toMatch(/^Check it in Elvanto/);
+  });
   it('removeAll by tier (Clear FYI) deletes FYI rows only; a bad tier is refused', async () => {
     const { svc } = mk();
     await svc.record({ category: 'server', code: 'SERVICE_UNAVAILABLE', route: 'GET /x', status: 503 });

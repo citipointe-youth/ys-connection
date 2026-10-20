@@ -45,8 +45,8 @@ export const categoryForCode = (code: string): ErrorCategory => (code.startsWith
 
 /** A stored row plus its texts, computed from the code at read time (a wording change applies to old rows). */
 export type ErrorLogView = ErrorLogRow & { line1: string; line2: string; counted: boolean };
-export function toView(r: ErrorLogRow): ErrorLogView {
-  const t = textFor(r.category, r.code, r.route, r.status, r.count);
+export function toView(r: ErrorLogRow, recheckLive = false): ErrorLogView {
+  const t = textFor(r.category, r.code, r.route, r.status, r.count, recheckLive);
   return { ...r, tier: t.tier, line1: t.line1, line2: t.line2, counted: t.counted };
 }
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 32);
@@ -71,7 +71,7 @@ const Tier = z.enum(ERROR_TIERS);
 export interface ErrorLogDeps {
   repo: IErrorLogRepository;
   /** For the stale-pending sweep on the admin view. */
-  link?: Pick<ILinkRepository, 'listActions'>;
+  link?: Pick<ILinkRepository, 'listActions'> & Partial<Pick<ILinkRepository, 'listConsoles'>>;
   now?: () => Date;
 }
 
@@ -121,7 +121,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
     const cut = now().getTime() - STALE_PENDING_MS;
     const byType = new Map<string, number>();
     for (const r of await d.link.listActions({ statuses: ['pending'] })) {
-      if (Date.parse(r.createdAt) < cut) byType.set(r.type, (byType.get(r.type) ?? 0) + 1);
+      if (r.type !== 'recheck' && Date.parse(r.createdAt) < cut) byType.set(r.type, (byType.get(r.type) ?? 0) + 1);
     }
     for (const [type, n] of byType) await record({ category: 'link', code: 'pending-24h', route: type }, n);
     for (const r of existing) {
@@ -156,7 +156,13 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       assertCan(actor, 'admin:manage');
       await d.repo.purgeBefore(new Date(now().getTime() - ERROR_LOG_KEEP_DAYS * DAY).toISOString());
       try { await sweepStale(await d.repo.list()); } catch (e) { logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' }); }
-      const rows = (await d.repo.list()).map(toView);
+      // Check again is offered only while the newest console lists recheck live (as the SPA's _lkRcHtml).
+      let live = false;
+      try {
+        const con = [...((await d.link?.listConsoles?.()) ?? [])].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))[0];
+        live = con?.capabilities?.recheck === 'live';
+      } catch { /* no consoles read: the old wording */ }
+      const rows = (await d.repo.list()).map((r) => toView(r, live));
       rows.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || b.lastSeen.localeCompare(a.lastSeen));
       return { rows };
     },

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
+import { ACTION_TYPES, RECHECK_TYPES } from '../core/link-contract';
 
 // L7 (round 2026-10-21, LINK_REV 15): "Check again" on an unclear save. POST /link/admin/unclear/:id/recheck queues a read-only
 // re-check on the console; the SPA polls GET /link/admin/recheck/:rid and shows Saved / Not saved / Still unclear in words.
@@ -74,7 +75,31 @@ describe('L7 SPA: Check again', () => {
   });
   it('Home: the admin line points at Check again', async () => {
     const { _attnLines } = loadFns(['_attnLines'], '');
-    const l = _attnLines({ role: 'admin', unclear: 1, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
+    const l = _attnLines({ role: 'admin', unclear: 1, recheck: true, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
     expect(l[0]).toBe('1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.');
+    const o = _attnLines({ role: 'admin', unclear: 2, recheck: false, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
+    expect(o[0]).toBe('2 unclear saves. Check them in Elvanto, then mark them in Admin > Elvanto link.');
+  });
+  it('YSREL2 fix: Home says Check again only when every unclear row can be re-checked and the console lists recheck live', () => {
+    const { _attnCounts } = loadFns(['_attnCounts'], '');
+    const rc = (types: string[], recheck?: string) => _attnCounts({ unclear: types.map((type) => ({ type, status: 'unclear' })),
+      st: { console: { capabilities: recheck ? { recheck } : {} } } }, Date.now()).recheck;
+    expect(rc(['checkIn', 'consentFix'], 'live')).toBe(true);
+    expect(rc(['checkIn', 'intakeSave'], 'live')).toBe(false);
+    expect(rc(['checkIn'], 'off')).toBe(false);
+    expect(rc(['checkIn'])).toBe(false);
+  });
+  it('YSREL2 fix: no Check again button on an unclear row the console cannot re-check', () => {
+    const { _lkAdmStatusHtml } = loadFns(['_lkAdmStatusHtml'], `
+      const LINK = { status: { console: { lastSeenAt: null, capabilities: { recheck: 'live' } }, mirrors: {} }, adm: { acts: [${JSON.stringify({ ...ROW, type: 'intakeSave' })}], aErr: null } };
+      function esc(s) { return String(s); } function icS() { return ''; } function _lkEvents() { return {}; } function _lkWord(a, b) { return b; }
+      function _lkRevLine() { return ''; } function _lkVerb(t) { return t; } function progBar() { return ''; } function _lkAt() { return ''; }`);
+    const h = _lkAdmStatusHtml();
+    expect(h).not.toContain('_lkRecheck(');
+    expect(h).toContain(`_lkAdmUnclearOpen('a1',true)`);
+  });
+  it('YSREL2 fix: the SPA re-check list is RECHECK_TYPES', () => {
+    const { _lkRcType } = loadFns(['_lkRcType'], '');
+    for (const t of ACTION_TYPES) expect(_lkRcType(t), t).toBe((RECHECK_TYPES as readonly string[]).includes(t));
   });
 });

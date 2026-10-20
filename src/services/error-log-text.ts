@@ -1,7 +1,7 @@
 // Error-log rework Part 1 (2026-10-17). The fixed two-line text for every Error log code, computed at READ time from the
 // stored code (so a wording change applies to old rows). Line 1 = what happened; line 2 = what to fix and where.
 // Never a name or value: placeholders are only {type} (action label), {a_type} (label with a/an), {route}, {n}, {code}.
-import { ACTION_TYPES } from '../core/link-contract';
+import { ACTION_TYPES, RECHECK_TYPES } from '../core/link-contract';
 
 export const ERROR_TIERS = ['now', 'later', 'fyi'] as const;
 export type ErrorTier = (typeof ERROR_TIERS)[number];
@@ -19,7 +19,9 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = 'Tap Check again in Admin > Elvanto link. Or check it in Elvanto, then tap Landed or Not landed there.'; // L7 (2026-10-21)
+const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.";
+// L7 (2026-10-21): only where Check again is there: a RECHECK_TYPES row while the newest console lists recheck live.
+const RECHECK_FIX = 'Tap Check again in Admin > Elvanto link. Or check it in Elvanto, then tap Landed or Not landed there.';
 // Y6a: steps only the person who built the setup can do end with this.
 const TELL = ' Tell the person who set up the console.';
 
@@ -105,8 +107,8 @@ function label(route: string): string {
   return own(LABELS as Record<string, string>, t) ?? 'Elvanto link action';
 }
 
-/** The tier and two lines for one stored row. Pure; never throws. */
-export function textFor(category: string, code: string, route: string, status: number | null, count = 1): ErrorText {
+/** The tier and two lines for one stored row. Pure; never throws. `recheckLive` = the newest console lists recheck live. */
+export function textFor(category: string, code: string, route: string, status: number | null, count = 1, recheckLive = false): ErrorText {
   let e: Entry;
   if (category === 'client') {
     if (code.startsWith('JS_')) e = CLIENT.JS!;
@@ -126,5 +128,6 @@ export function textFor(category: string, code: string, route: string, status: n
     k === 'type' ? (off ? (type === 'Elvanto link action' && s.slice(0, off).endsWith('refused ') ? 'an ' : '') + lc(type) : type)
       : k === 'a_type' ? (off ? lc(aType) : aType.replace(/ (\S)/, (_x, c: string) => ' ' + (type === 'Elvanto link action' ? c : c.toLowerCase())))
         : k === 'route' ? route : k === 'n' ? String(count) : k === 'code' ? code : m);
-  return { tier, line1: fill(l1), line2: fill(e[2]), counted };
+  const fix = e[2] === UNCLEAR_FIX && recheckLive && (RECHECK_TYPES as readonly string[]).includes(route) ? RECHECK_FIX : e[2];
+  return { tier, line1: fill(l1), line2: fill(fix), counted };
 }

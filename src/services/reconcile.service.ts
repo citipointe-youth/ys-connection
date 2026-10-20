@@ -146,7 +146,7 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
     // only moves when its count changes (Review Focus 1). Every other row must have been seen in the last 7 days.
     // Legacy A12 (recon C3): code/line1 are clipped to the contract limits so one oversized row never 500s the whole answer.
     // toView recomputes the tier and fills {n} (singular/plural) from the count; `counted` tells the console not to add (xN).
-    const entries = rows.map(toView)
+    const entries = rows.map((r) => toView(r))
       .filter((r) => !r.ignored && (r.tier === 'now' || r.tier === 'later') && (r.category === 'reconcile' || Date.parse(r.lastSeen) >= cut))
       .map((r) => ({ tier: r.tier as 'now' | 'later', code: r.code.slice(0, 80), line1: r.line1.slice(0, 300), count: r.count, counted: r.counted, lastSeen: r.lastSeen }))
       .sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || b.lastSeen.localeCompare(a.lastSeen))
