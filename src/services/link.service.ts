@@ -38,7 +38,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
@@ -160,7 +160,10 @@ export interface ConsentLookupView { id: string; kind: ConsentLookupKind; status
 export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
-  active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[] }
+  active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[];
+  /** L3 (2026-10-21), `none` rows only: a same-name YS student exists. later = free and the gender fits (pairs at the next
+   *  roster push or import); gender = genderFits refuses every free one; held = another roster row holds it. */
+  why?: 'later' | 'gender' | 'held' }
 /** T5: a group member as this login may see them: studentId only when that student is in its scope (canAccessStudent). */
 export interface MemberView { personId: string; name: string; leader: boolean; grade: number | null; studentId: string | null }
 /** T6: a member change of the last 3 days (not cancelled), newest first. name = the roster's (an add is not a member yet). */
@@ -1184,8 +1187,19 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             || (r.grade != null && s.grade != null && Math.abs(s.grade - r.grade) <= 1)))
           .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
       };
+      // L3: why a `none` row with a same-name YS student is still unpaired (the same tests autoMatch applies).
+      const holderOf = new Map(roster.filter((r) => r.studentId).map((r) => [r.studentId!, r.personId]));
+      const whyOf = (r: LinkRosterRow): MatchRow['why'] => {
+        if (r.match !== 'none') return undefined;
+        const k = `${matchFold(r.firstName)}|${matchFold(r.lastName)}`;
+        const same = (bySurname.get(matchFold(r.lastName)) ?? []).filter((s) => `${matchFold(s.firstName)}|${matchFold(s.lastName)}` === k);
+        const free = same.filter((s) => (holderOf.get(s.id) ?? r.personId) === r.personId);
+        if (!same.length) return undefined;
+        if (free.some((s) => genderFits(r.gender, s.gender))) return 'later';
+        return free.length ? 'gender' : 'held';
+      };
       return { rows: rows.map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
-        studentId: r.studentId, match: r.match, candidates: candidatesOf(r) })) };
+        studentId: r.studentId, match: r.match, candidates: candidatesOf(r), ...(whyOf(r) ? { why: whyOf(r) } : {}) })) };
     },
 
     async setMatch(actor, personId, body) {

@@ -1993,13 +1993,28 @@ describe('F4.2 admin page', () => {
     expect(m.indexOf('Marked Not in YS')).toBeLessThan(m.indexOf('Not Ours'));
     expect(m.indexOf('Hand Made')).toBeLessThan(m.indexOf('Marked Not in YS'));
   });
+  it('round 2026-10-21 (L3): an Unmatched row with a same-name YS student says why, per row', () => {
+    const h = makeEnv({ role: 'admin' });
+    const cand = [{ studentId: P(431), name: 'Sam Same', grade: 9, dob: null }];
+    h.get().LINK.adm.roster = [
+      { personId: P(430), name: 'Sam Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'gender' },
+      { personId: P(432), name: 'Dup Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [], why: 'held' },
+      { personId: P(433), name: 'New Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'later' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('In YS: Sam Same');
+    expect(out).toContain('Same name in YS, but the genders differ. Check the gender, then Match.');
+    expect(out).toContain('Same name in YS, already matched to another Elvanto profile (likely a duplicate).');
+    expect(out).toContain('Same name in YS. It pairs by itself at the next update, or tap Match.');
+    expect(out).not.toContain('No unmatched YS student has a name like this.'); // the held row says why instead
+  });
   it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.adm.roster = [
       { personId: P(420), name: 'Kay Bee', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [] },
       { personId: P(421), name: 'Two Same', grade: 9, kind: 'student', match: 'ambiguous', studentId: null, candidates: [] },
     ];
-    expect(strip(h.fns._lkAdmMatchHtml())).toContain('In Elvanto, but no YS student has the same name yet.');
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('In Elvanto, but not paired with a YS student.');
     h.get().LINK.adm.mf = 'ambiguous';
     expect(strip(h.fns._lkAdmMatchHtml())).toContain('More than one person has this name. Pick the right one.');
     h.get().LINK.adm.mf = 'manual';
