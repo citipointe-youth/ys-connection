@@ -21,6 +21,7 @@ import { addDays, brisbaneToday } from './link-rules';
 export const INTAKE_STALE_MS = 2 * 3_600_000;  // a plan older than this greys out; Save / Text refuse
 export const INTAKE_KEEP_DAYS = 14;            // rows and dates older than this are deleted
 export const INTAKE_NOTE_MAX = 1900;
+const HURRY_LOOKUP_MS = 5 * 60_000;           // L8: a consentLookup made in the last 5 min (any status: its own claim leased it)
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
 const REFRESH_ASK_MS = 10 * 60_000;            // R2: a refresh ask is offered to the console for 10 min only
 const REFRESH_BACK_DAYS = 56;                  // a Refresh may ask for a date up to 8 weeks back
@@ -171,7 +172,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     },
 
     /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
-    async hint(settings: AppSettings, caps?: Capabilities): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
+    async hint(settings: AppSettings, caps?: Capabilities, inWindow = false): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin === 'on' ? 'on' : 'off';
       // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s,
@@ -180,6 +181,11 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       // capabilities, intake keys stripped when off) has not switched off. No caps: every type counts.
       const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
         && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
+      // L8 (2026-10-21): the hint is worked out after the claim leased its rows, so a lookup just handed out is no longer pending;
+      // the admin's next search or second pass follows within seconds. A console with lookups off is not hurried by them, nor one
+      // in its service window (the window cadence is the console's own; review L8 #3).
+      const lookedUp = async () => !inWindow && (!caps || (caps.consentLookup ?? 'off') !== 'off')
+        && (await d.link.listActions({ types: ['consentLookup'], limit: 1 })).some((r) => t.getTime() - Date.parse(r.createdAt) < HURRY_LOOKUP_MS);
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
       // Live settings always carry structure (parseMinistryConfig); this fallback is for test fixtures that pass a partial
       // { ministryConfig: { modules } }. The default zone is a harmless default (SPEC §0.2).
@@ -188,7 +194,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       await purgeIfDue(t, tz);
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
-      const hurry = soon(pending) || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS);
+      const hurry = soon(pending) || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS) || await lookedUp();
       const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= (x.mode === 'consent' ? addDays(today, 7) : today))
         .sort((a, b) => Date.parse(b.refreshAskedAt!) - Date.parse(a.refreshAskedAt!)).slice(0, 4)
         .map((x) => ({ mode: x.mode, date: x.date }));
