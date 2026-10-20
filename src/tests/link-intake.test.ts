@@ -356,7 +356,7 @@ describe('sync: intake hint, pushes, results', () => {
   });
   it('L8 (2026-10-21): a consentLookup made in the last 5 min keeps hurry on, also after its own claim leased and answered it', async () => {
     const h = await setup();
-    const C = (o: Record<string, unknown> = {}) => CLAIM4({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'live' }, ...o });
+    const C = (o: Record<string, unknown> = {}) => CLAIM4({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'live' }, inWindow: false, ...o }); // the fixture claims in the window
     expect((await h.sync.claim(C())).intake!.hurry).toBe(false);
     const id = nid();
     expect((await one(h, act('consentLookup', { kind: 'forms', page: 1, ref: id }, null, id))).outcome).toBe('saved');
@@ -369,6 +369,17 @@ describe('sync: intake hint, pushes, results', () => {
     expect((await h.sync.claim(C({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'off' } }))).intake!.hurry).toBe(false); // a console with lookups off is not hurried
     h.clock.now = new Date(NOW.getTime() + 6 * 60_000);
     expect((await h.sync.claim(C())).intake!.hurry).toBe(false);
+  });
+  it('L8 fix 1: inside the service window a recent lookup does not turn hurry on (the window cadence is the console one)', async () => {
+    const h = await setup();
+    const C = (o: Record<string, unknown> = {}) => CLAIM4({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'live' }, inWindow: false, ...o }); // the fixture claims in the window
+    await h.sync.claim(C()); // the console is known (a lookup needs a console)
+    const id = nid();
+    expect((await one(h, act('consentLookup', { kind: 'forms', page: 1, ref: id }, null, id))).outcome).toBe('saved');
+    const r = await h.sync.claim(C({ inWindow: true }));
+    expect(r.rows.map((x) => x.id)).toContain(id);
+    expect(r.intake!.hurry).toBe(false);
+    expect((await h.sync.claim(C({ inWindow: false }))).intake!.hurry).toBe(true);
   });
   it('module Off: hint mode off, the Off save clears the intake tables, a push not stored, nothing leased by the intake switch alone', async () => {
     const h = await setup();

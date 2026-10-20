@@ -172,7 +172,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     },
 
     /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
-    async hint(settings: AppSettings, caps?: Capabilities): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
+    async hint(settings: AppSettings, caps?: Capabilities, inWindow = false): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin === 'on' ? 'on' : 'off';
       // GAP-3: any pending link row (a check-in, a report, not only intake) asks the console to claim again in 10 s,
@@ -182,8 +182,9 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const soon = (rows: Pick<OutboxRow, 'type' | 'reason' | 'retryAt'>[]) => rows.some((r) => r.reason !== 'awaiting-approval'
         && (!r.retryAt || Date.parse(r.retryAt) <= t.getTime()) && (!caps || (caps[r.type] ?? 'off') !== 'off'));
       // L8 (2026-10-21): the hint is worked out after the claim leased its rows, so a lookup just handed out is no longer pending;
-      // the admin's next search or second pass follows within seconds. A console with lookups off is not hurried by them.
-      const lookedUp = async () => (!caps || (caps.consentLookup ?? 'off') !== 'off')
+      // the admin's next search or second pass follows within seconds. A console with lookups off is not hurried by them, nor one
+      // in its service window (the window cadence is the console's own; review L8 #3).
+      const lookedUp = async () => !inWindow && (!caps || (caps.consentLookup ?? 'off') !== 'off')
         && (await d.link.listActions({ types: ['consentLookup'], limit: 1 })).some((r) => t.getTime() - Date.parse(r.createdAt) < HURRY_LOOKUP_MS);
       if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
       // Live settings always carry structure (parseMinistryConfig); this fallback is for test fixtures that pass a partial
