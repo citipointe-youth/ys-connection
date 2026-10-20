@@ -4,12 +4,12 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-scr
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
 
 <!-- live -->
-- master sha: ba418bc (svc/ys)
-- last ship: 2026-10-20 13:52 EAST
-- migration: 0039
-- SW version: ysc-v134
+- master sha: b00eda8 (ms/ys)
+- last ship: 2026-10-20 20:59 EAST
+- migration: 0040
+- SW version: ysc-v135
 - promote: pending (Vercel) — update this line by hand once promoted; last promoted: feed087 (ysc-v130, 2026-10-18 ~14:55)
-- pending branches: chore/ship ux17/bus 
+- pending branches: chore/ship ms/d2-docs ux17/bus 
 <!-- /live -->
 
 **rel19/ys (BUS-1 Trip logging + BUS-2 Charter bus, SW `ysc-v130`) carries migration `0038_bus_charter.sql`** (additive: `kind` on `bus_vehicles` + `bus_run_vehicles`, `vehicle_id` on `bus_addresses`). Apply it the repo's way at ship: the Vercel build's `scripts/migrate.ts` applies it; read `Database up to date — … (1 new)` in the build log and `/health` `schema.current` = `0038` before the owner promotes (never via the Supabase MCP).
