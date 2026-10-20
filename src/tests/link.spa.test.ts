@@ -202,7 +202,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
 describe('A3 / X9 lines by action type', () => {
   const t = makeEnv().fns._lkStatusText;
   it('check-out no-room and flow-step already', () => {
-    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe('Already out of the room.'); // T6 (2026-10-21): nothing to do in Elvanto
+    expect(t({ status: 'refused', type: 'checkOut', reason: 'no-room' })).toBe('Checked in with no room, so there is nothing to check out.'); // T6 (2026-10-21)
     expect(t({ status: 'refused', type: 'checkIn', reason: 'no-room' })).toBe("No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.");
     expect(t({ status: 'sent', type: 'completeStep', reason: 'already' })).toBe("Done once already. If it's back on the list, do it in Elvanto.");
     expect(t({ status: 'sent', type: 'checkIn', reason: 'already' })).toBe('Already in Elvanto');

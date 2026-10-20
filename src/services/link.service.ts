@@ -49,7 +49,6 @@ export const LINK_RATE_MAX = 600;          // new outbox rows per login … (B12
 export const LINK_RATE_WINDOW_MS = 600_000; // … per 10 minutes (container builds the RateLimiter with these)
 const LOG_MAX = 2000;
 const logger = createLogger('link');
-const REPORT_BACK_DAYS = 14;
 const REPORT_SUBMIT_DAYS = 56; // T3 (2026-10-21): an app rule only (the console has no limit); the 8 weeks the app's week nav shows
 const FLOW_BACK_DAYS = 7;       // S-1: a refused flow step is shown back for a week
 const TYPE_ONLY_MAX = 100;      // S-1: GET /link/actions?type= alone returns the newest 100
@@ -133,7 +132,7 @@ export interface ActionListRow { id: string; type: ActionType; status: Status; r
 export interface LifegroupView { groupId: string; name: string; grade: number | null; gender: LinkGroupRow['gender'];
   meets: string; members: LinkGroupRow['members']; thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null;
   history: LinkLastReport[]; defaultDate: string; openAction: ActionView | null;
-  /** S-1 / D7: the newest report row of the last 14 days when it was refused and nothing is open; else the key is absent. */
+  /** S-1 / D7: the newest report row of the last 8 weeks (REPORT_SUBMIT_DAYS) when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
 /** T4/T6: the person's own grade/gender/mobile (decrypted, bare digits) and the app-side assignee. */
 export interface FlowView { rowId: string; flowId: string; stepId: string; flowName: string; stepName: string; stepOrder: number;
@@ -1021,7 +1020,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const [groups, mirrors, sent, open, done] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN }),
-        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -REPORT_BACK_DAYS) })]);
+        d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -REPORT_SUBMIT_DAYS) })]); // T3: refusals show back as far as a submit can go
       const gAt = takenAt(mirrors, 'groups');
       // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
       const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));

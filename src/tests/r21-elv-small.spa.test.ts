@@ -4,7 +4,7 @@ import { loadFns, loadIndexHtml, SITE_TIME_FNS, SITE_TIME_CONSTS } from './helpe
 
 const HTML = loadIndexHtml();
 const IK_HOLD = HTML.match(/^const IK_HOLD = \{[\s\S]*?\n\};/m)![0];
-const f = loadFns([...SITE_TIME_FNS, 'esc', '_lkDay', '_lkAddDays', '_ikHoldText', '_ikNames', '_ikNm', '_ikVal', '_ikPoss'], `
+const f = loadFns([...SITE_TIME_FNS, 'esc', '_lkDay', '_lkAddDays', '_ikHoldText', '_ikNames', '_ikNm', '_ikVal', '_ikPoss', 'fmtPhone'], `
   const S = { settings: null };
   const _ik = () => ({ tab: 'intake' });
   ${SITE_TIME_CONSTS}
@@ -13,9 +13,11 @@ const f = loadFns([...SITE_TIME_FNS, 'esc', '_lkDay', '_lkAddDays', '_ikHoldText
 describe('T12 parent mobile needs fixing', () => {
   const h = { text: 'Parent mobile needs fixing', role: 'parent' };
   it('with the Set mobile extra: press it here', () => {
-    const d = { extras: [{ action: 'setField', field: 'mobile', value: '0412 345 678', state: 'todo', text: 'Set mobile' }] };
+    // as the console pushes it: IX.stepText's text, phoneFix's bare digits
+    const d = { extras: [{ key: 'k1', action: 'setField', role: 'parent', field: 'mobile', value: '0412345678', state: 'todo', text: "Set Jane Smith's mobile to 0412 345 678" }] };
     const t = f._ikHoldText(h, d);
-    expect(t).toBe("The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. Press Set mobile in Elvanto below to use 0412 345 678 from their form.");
+    expect(t).toBe("The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. Press the Set mobile button below to use " + f.fmtPhone('0412345678') + ' from their form.');
+    expect(t).not.toContain('0412345678');
   });
   it('without it (the form has no valid number either): ask the parent', () => {
     const t = f._ikHoldText(h, { extras: [] });
@@ -24,11 +26,11 @@ describe('T12 parent mobile needs fixing', () => {
   });
 });
 
-describe('T14 consent form holds point at Tidy up', () => {
+describe('T14 consent form holds keep the Elvanto wording (fix round 1: Tidy up links do not reach the planner)', () => {
   const t = (text: string) => f._ikHoldText({ text, role: 'student' }, {});
-  it('two, unsure and unmatched forms name Forms with no person', () => {
-    for (const k of ['Two consent forms', 'Unsure consent form', 'Unmatched consent form']) expect(t(k)).toContain('Tidy up > Forms with no person');
-    expect(t('Unsure consent form')).not.toContain('Elvanto');
-    expect(t('Unmatched consent form')).not.toContain('Elvanto');
+  it('two, unsure and unmatched', () => {
+    expect(t('Two consent forms')).toBe('Two consent forms match this student. Pick the right one in Elvanto.');
+    expect(t('Unsure consent form')).toBe("A consent form might be this student's. Check it in Elvanto.");
+    expect(t('Unmatched consent form')).toBe("This consent form doesn't match any student for this date. Check it in Elvanto.");
   });
 });

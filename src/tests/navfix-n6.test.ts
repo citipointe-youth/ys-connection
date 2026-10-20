@@ -265,11 +265,17 @@ describe('S-1 / D7: the last refused result comes back from the server after you
     expect(await h.link.cancelPending(b.id)).toBe(true);
     expect((await grp(h, G1)).lastRefused).toBeUndefined();
   });
-  it('lifegroups: a refusal older than 14 days is not shown', async () => {
+  it('lifegroups: a refusal older than the 8-week submit window is not shown (T3, 2026-10-21)', async () => {
     const h = await setup(); await pushed(h);
-    const a = await h.link.insertAction(rep(G1, '2026-09-30'));
+    const a = await h.link.insertAction(rep(G1, '2026-08-20'));
     await finish(h, a.id, 'refused');
     expect((await grp(h, G1)).lastRefused).toBeUndefined();
+  });
+  it('lifegroups: a refused submit 30 days back still shows (T3, 2026-10-21)', async () => {
+    const h = await setup(); await pushed(h);
+    const a = await h.link.insertAction(rep(G1, '2026-09-16'));
+    await finish(h, a.id, 'refused');
+    expect((await grp(h, G1)).lastRefused).toMatchObject({ id: a.id, status: 'refused' });
   });
   it('flows: a refused Complete -> lastRefused on that row; a later sent one -> null', async () => {
     const h = await setup(); await pushed(h);

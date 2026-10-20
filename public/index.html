@@ -10332,7 +10332,7 @@ function _lkStatusText(row, lastSeen) {
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
-    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Already out of the room.'; // T6 (2026-10-21): nothing to check out
+    case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Checked in with no room, so there is nothing to check out.'; // T6 (2026-10-21)
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
@@ -10349,7 +10349,7 @@ function _lkStatusHtml(row, lastSeen) {
   // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
   const role = S.user && S.user.role;
   if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
-    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.');
+    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.');
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
@@ -12643,10 +12643,9 @@ const IK_HOLD = {
   'Unreadable date': "Couldn't read when a form was sent. Open it in Elvanto.",
   'Fix the flagged items': 'Fix the answers marked below in the console or Elvanto.',
   'No student form': 'No student form matches this parent form.',
-  // T14 (2026-10-21): a form linked on the console counts as that person's, so Tidy up's links settle these.
-  'Two consent forms': "Two consent forms match this student. If one is another student's, link it to them in Tidy up > Forms with no person. If Elvanto linked both, fix it in Elvanto.",
-  'Unsure consent form': "A consent form might be this student's. If it is, link it to them in Tidy up > Forms with no person. If their profile is wrong, use Profiles that differ from form.",
-  'Unmatched consent form': "This consent form doesn't match any student for this date. Link it to the right person in Tidy up > Forms with no person.",
+  'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
+  'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
+  'Unmatched consent form': "This consent form doesn't match any student for this date. Check it in Elvanto.",
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
   'Possible existing profile': 'Someone with this name may already be in Elvanto. Check before creating a new profile.',
@@ -12681,7 +12680,7 @@ function _ikHoldText(h, d) {
   if (t === 'Parent mobile needs fixing') { // T12 (2026-10-21): the plan's Set mobile extra fixes it from the parent's form
     const x = ((d && d.extras) || []).find((s) => s.action === 'setField' && s.field === 'mobile' && s.state !== 'done');
     return "The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. " + (x
-      ? 'Press Set mobile in Elvanto below to use ' + x.value + ' from their form.'
+      ? 'Press the Set mobile button below to use ' + fmtPhone(x.value) + ' from their form.'
       : "The parent's form has no valid 04 number either. Ask the parent for it, then fix it on their profile in Elvanto.");
   }
   if (t === 'Location/Demographic not on the form') return "Couldn't find Location and Demographic on " + _ikPoss(n.parent, 'parent') + ' profile form, so nothing will be changed there. Set them in Elvanto, then press Refresh.';
