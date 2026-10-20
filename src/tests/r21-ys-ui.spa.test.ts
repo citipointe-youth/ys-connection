@@ -26,6 +26,9 @@ describe('L1-1 Setup leader cards: same outer size, ~3.5 student rows', () => {
     expect(css('.connect-add-btn')).toContain('min-height:44px');
     expect(css('.connect-add-btn')).toContain('flex:none');
   });
+  it('>= 540px (2-3 column grid) keeps the full meta line with the Add bar below it', () => {
+    expect(HTML).toContain('@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}');
+  });
   it('student rows are 39px (38 + rule) with 36px Profile/remove buttons; the list window shows 3.5 rows', () => {
     const row = px(css('.connect-stud-row'), 'min-height');
     expect(row).toBeGreaterThanOrEqual(36);
@@ -47,15 +50,20 @@ describe('L1-1 Setup leader cards: same outer size, ~3.5 student rows', () => {
 });
 
 describe('L1-2 Accounts rows on a phone', () => {
-  it('under 600px a row is one line: name/username left, icons right, status pill on the username line', () => {
+  it('under 600px a row is one line: name/username left, icons right, pill in the username row, text ellipsised', () => {
     const m = HTML.match(/@media\(max-width:599px\)\{\.rc\.rc-row\{([^}]*)\}([^\n]*)/);
     expect(m).not.toBeNull();
     expect(m![1]).toContain('display:grid');
+    expect(m![1]).toContain('grid-template-rows:auto auto');
     expect(m![1]).toContain('grid-auto-flow:column');
     expect(m![1]).toContain('margin-bottom:var(--s1)');
-    expect(m![2]).toContain('.rc-row>.rc-foot{display:contents}');
-    expect(m![2]).toContain('.rc-row>.rc-foot>.chip{grid-column:1;grid-row:1;justify-self:end;align-self:end');
-    expect(m![2]).toContain('.rc-row .lk-d{padding-right:64px}');
+    expect(m![2]).toContain('.rc-row>.rc-main,.rc-row>.rc-foot{display:contents}');
+    expect(m![2]).toContain('.rc-row .lk-nm,.rc-row .lk-d{grid-column:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}');
+    expect(m![2]).toContain('.rc-row .lk-nm{grid-row:1;');
+    expect(m![2]).toMatch(/\.rc-row \.lk-d\{grid-row:2;[^}]*padding-right:64px\}/);
+    // the pill shares the username row only, so it can never overlap the name line
+    expect(m![2]).toContain('.rc-row>.rc-foot>.chip{grid-column:1;grid-row:2;justify-self:end;');
+    expect(m![2]).toContain('.rc-row>.rc-foot>.btn{grid-row:1/span 2}');
   });
   it('the Preview gap is a class (the phone rule drops it), not an inline style', () => {
     expect(HTML).toContain('class="btn btn-ghost btn-sm acct-pv" onclick="confirmEnterPreview(');
@@ -106,9 +114,11 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
         expect(it, r + ' ' + id).toBeTruthy();
         expect(it.action ? it.action : `go('${it.id}')`).toBe(click);
         expect(it.ic).toBe(n.moreItems()[0].ic);
+        if (id !== 'new-youth') expect(it.mbl, id).toMatch(/^[A-Z][a-z-]+$/); // one short word in the bottom bar
       }
     }
-    expect(ids(nav('admin', { prayers: false, intakeAdmin: 'on' }).n.bottomNavItems())).toContain('link-intake');
+    expect(nav('admin', { prayers: false, intakeAdmin: 'on' }).n.bottomNavItems().find((i: any) => i.id === 'link-intake')).toMatchObject({ mbl: 'Intake' });
+    expect(nav('grade', { prayers: false, lifegroupReport: 'on' }).n.bottomNavItems().find((i: any) => i.id === 'link-groups')).toMatchObject({ mbl: 'Report' });
   });
   it('Check-in on: every login reaches it (tab or More)', () => {
     for (const r of ['admin', 'director', 'quad', 'grade', 'leader']) {

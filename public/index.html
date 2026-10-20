@@ -412,6 +412,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .connect-leader-meta>:last-child{flex:none;white-space:nowrap}
 .connect-add-btn{flex:none;min-height:44px;padding:0 10px;font-size:13px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
+/* Two- and three-column cards (>= 540px, the grid's own breakpoint) are narrow: keep the full meta line, Add bar below it */
+@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
 /* A native scrollbar only flashes during an active touch drag on phones (OS-level
    overlay-scrollbar behavior that CSS can't override), so this preview draws its own
@@ -920,8 +922,9 @@ button.rc-go{padding:0;text-align:left}
 .rc-icons>.acct-pv{margin-right:16px}
 /* r21 L1: on a phone the pill + 5 icons did not fit beside the name, so the footer wrapped into its own 44px band (~124px a
    row). Under 600px the row is a grid: name/username in column 1, each icon a 40px column (footer flattened by
-   display:contents), the pill laid over the right end of the username line. ~58px a row, about twice as many per screen. */
-@media(max-width:599px){.rc.rc-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto;grid-auto-columns:40px;grid-auto-flow:column;align-items:center;gap:0;padding:var(--s1) var(--s3);margin-bottom:var(--s1)}.rc-row>.rc-main{grid-column:1;grid-row:1;padding-right:var(--s2)}.rc-row>.rc-foot{display:contents}.rc-row>.rc-foot>.chip{grid-column:1;grid-row:1;justify-self:end;align-self:end;margin:0 var(--s2) 4px 0}.rc-row>.rc-foot>.acct-pv{margin:0}.rc-row .lk-d{padding-right:64px}}
+   display:contents, buttons span both text rows), the pill in the username row's right end (never the name row); both text
+   lines are one line with an ellipsis. ~58px a row, about twice as many per screen. */
+@media(max-width:599px){.rc.rc-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;grid-auto-columns:40px;grid-auto-flow:column;align-items:center;align-content:center;gap:0;padding:var(--s1) var(--s3);margin-bottom:var(--s1)}.rc-row>.rc-main,.rc-row>.rc-foot{display:contents}.rc-row .lk-nm,.rc-row .lk-d{grid-column:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rc-row .lk-nm{grid-row:1;margin-right:var(--s2)}.rc-row .lk-d{grid-row:2;margin:2px var(--s2) 0 0;padding-right:64px}.rc-row>.rc-foot>.chip{grid-column:1;grid-row:2;justify-self:end;margin:2px var(--s2) 0 0}.rc-row>.rc-foot>.btn{grid-row:1/span 2}.rc-row>.rc-foot>.acct-pv{margin:0}}
 /* The footer's empty space falls through to the whole-card link; its own children keep their taps. */
 .rc-foot{pointer-events:none}.rc-foot>*{pointer-events:auto}
 .rc-go{color:inherit;text-decoration:none}
@@ -2596,16 +2599,16 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
-  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', open:"go('notices')" });
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
     const r = S.user && S.user.role;
-    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', open:"go('link-checkin')" });
-    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', open:"go('link-groups')" });
-    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', open:"go('link-flows')" });
+    if (_linkOn('checkin')) xs.push({ id:'link-checkin', ic:'check', label:'Check-in', mbl:'Check-in', open:"go('link-checkin')" });
+    if (r !== 'leader' && _linkOn('lifegroupReport')) xs.push({ id:'link-groups', ic:'clipboard', label:'Lifegroup report', mbl:'Report', open:"go('link-groups')" });
+    if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
-    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', open:"go('link-intake')" });
+    if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
   }
   return xs;
 }
@@ -2623,7 +2626,7 @@ function _navSlots(u) {
     if (m.id === 'new-youth') return { id:'new-youth', ic:'plus', label:'New person', action:'nyOpen()' };
     // r21 L1: any other single module (Notices, Check-in, Lifegroup report, Flow steps, Intake) is its own tab; it used to
     // fall through to New person, so a Check-in-only login could not reach Check-in.
-    return { id:m.id, ic:m.ic, label:m.label }; // no mbl: the bottom bar escapes the label
+    return { id:m.id, ic:m.ic, label:m.label, mbl:m.mbl }; // short one-word bottom-bar label (mbl is raw HTML: constants only)
   });
 }
 function navItems() { return _navSlots().filter(Boolean); }
