@@ -9,6 +9,7 @@ Guidance for Claude Code when working in this package. **Current truth first.** 
 - **GitHub:** `citipointe-youth/ys-connection` (migrated from `987tom1` 2026-06-22; renamed from `connection-made-simple` → `youth-connection` → `ys-connection` 2026-07-11; org owns the GitHub repo, Supabase org, and Vercel team)
 - **Deployed:** https://ys-connection.vercel.app (Vercel team `citipointe-youth`; `master` pushes build, the owner promotes to production)
 - **Deploy:** state in `DEPLOY.md`; ship with `/ship` (`bash scripts/ship.sh <branch>`). Pushing `master` builds; the owner promotes.
+- **UI release window (operator 2026-10-21):** Restart/ship blocked only Friday 17:30-20:00 and Sunday 10:00-12:00 (site time); any other time is fine. `scripts/ship.sh` has no gate for this: it is a rule for the shipper (ship and promote outside those windows).
 - **Supabase:** Sydney region (`ap-southeast-2`), project ref `ltcblcudlzlzfcyzlhpc` — `PERSISTENCE=supabase` + `DATABASE_URL` env var
 
 ## Commands and testing
