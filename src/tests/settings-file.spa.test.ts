@@ -4,13 +4,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadFns } from './helpers/extract-fn';
 
-const ELV_KEYS = ['newYouthForms', 'checkin', 'lifegroupReport', 'flows', 'flowHiddenStep'];
+const ELV_KEYS = ['newYouthForms', 'checkin', 'lifegroupReport', 'flows', 'flowHiddenStep', 'intakeAdmin'];
 const BRIS = () => ({
   branding: { appName: 'YS Connection', primaryColor: '#123456' },
   labels: { groupNameStrip: 'Brisbane - Youth - ' },
   structure: { timeZone: 'Australia/Brisbane', consentCutoff: { day: 5, time: '12:00' } },
   elvanto: { peopleFlowPrefix: 'Brisbane - Youth - New People', newPersonFormId: 'abc' },
-  modules: { prayers: true, newYouthForms: 'on', checkin: 'on', lifegroupReport: 'admin', flows: 'on', flowHiddenStep: 'Welcome' },
+  modules: { prayers: true, newYouthForms: 'on', checkin: 'on', lifegroupReport: 'admin', flows: 'on', flowHiddenStep: 'Welcome', intakeAdmin: 'on' },
 });
 const PRELUDE = `
   let _setupDraft = null, _setupServiceMinAttendance = 100, _setupTermGapDays = 14, __out = null, TOASTS = [];
@@ -20,6 +20,8 @@ const PRELUDE = `
 `;
 const f = loadFns(['_stripServerOwnedLogins', '_parseSettingsFile', 'exportSettingsFile', 'loadSettingsFile'], PRELUDE,
   ['_parseSettingsFile', 'exportSettingsFile', 'loadSettingsFile', '__o', 'setDraft', 'draft', 'TOASTS']);
+
+const LOADED = 'Settings loaded. Select Save Youth Setup. Elvanto settings and screens are not changed. Set them up for this location.';
 
 describe('Y4 settings file', () => {
   it('an export has no elvanto and no Elvanto module mode', () => {
@@ -43,18 +45,27 @@ describe('Y4 settings file', () => {
 
   it('loading an old Brisbane file keeps this draft’s module modes and elvanto', async () => {
     const mine = { elvanto: { peopleFlowPrefix: 'Sydney - Youth - New People' },
-      modules: { prayers: false, newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off' } };
+      modules: { prayers: false, newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off' } };
     f.setDraft(JSON.parse(JSON.stringify(mine)));
     const text = JSON.stringify({ kind: 'ys-connection-settings', version: 1, ministryConfig: BRIS() });
     f.loadSettingsFile({ value: 'x', files: [{ text: () => Promise.resolve(text) }] });
     await new Promise((r) => setTimeout(r, 0));
     const d = f.draft();
     expect(d.elvanto).toEqual(mine.elvanto);
-    for (const k of ['newYouthForms', 'checkin', 'lifegroupReport', 'flows']) expect(d.modules[k], k).toBe('off');
+    for (const k of ['newYouthForms', 'checkin', 'lifegroupReport', 'flows', 'intakeAdmin']) expect(d.modules[k], k).toBe('off');
     expect(d.modules).not.toHaveProperty('flowHiddenStep');
     expect(d.modules.prayers).toBe(true); // a non-Elvanto module still loads
     expect(d.branding.appName).toBe('YS Connection');
-    expect(f.TOASTS.at(-1)).toBe('Settings loaded. Select Save Youth Setup. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
+    expect(f.TOASTS.at(-1)).toBe(LOADED);
+  });
+
+  it('the file never turns on a screen that is off here, and never turns off one that is on (R4a#1)', async () => {
+    f.setDraft({ modules: { newYouthForms: 'on', intakeAdmin: 'on' } });
+    const text = JSON.stringify({ kind: 'ys-connection-settings', version: 1, ministryConfig: { modules: { intakeAdmin: 'off', newYouthForms: 'off' } } });
+    f.loadSettingsFile({ value: 'x', files: [{ text: () => Promise.resolve(text) }] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(f.draft().modules).toMatchObject({ newYouthForms: 'on', intakeAdmin: 'on' });
+    expect(f.TOASTS.at(-1)).toBe(LOADED);
   });
 });
 

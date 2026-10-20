@@ -8109,13 +8109,13 @@ function exportSettingsFile() {
     serviceMinAttendance: _setupServiceMinAttendance, termGapDays: _setupTermGapDays };
   _downloadText('ys-connection-settings.json', JSON.stringify(file, null, 2), 'application/json');
 }
-// Y4: Elvanto ids and the Elvanto screen switches belong to one location, so a settings file never carries them.
+// Y4: Elvanto ids and the Elvanto screen switches (and New youth & consent) belong to one location, so a settings file never carries them.
 function _dropLocationKeys(cfg) {
   delete cfg.elvanto;
   if (cfg.modules && typeof cfg.modules === 'object') {
     const md = cfg.modules = { ...cfg.modules };
     for (const [k] of _SETUP_ELVANTO) delete md[k];
-    delete md.newYouthForms; delete md.flowHiddenStep;
+    delete md.newYouthForms; delete md.flowHiddenStep; delete md.intakeAdmin; // R4a#1: New youth & consent too
   }
   return cfg;
 }
@@ -8146,7 +8146,7 @@ function loadSettingsFile(input) {
     if (r.serviceMinAttendance != null) _setupServiceMinAttendance = r.serviceMinAttendance;
     if (r.termGapDays != null) _setupTermGapDays = r.termGapDays;
     _setupRerender();
-    toast('Settings loaded. Select Save Youth Setup. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
+    toast('Settings loaded. Select Save Youth Setup. Elvanto settings and screens are not changed. Set them up for this location.');
   });
 }
 function _downloadText(filename, text, mime) {
