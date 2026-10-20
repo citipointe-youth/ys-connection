@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MinistryConfigSchema, MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { ELVANTO_0040_SQL as sql, brisbaneElvanto, brisbaneElvantoJson } from './helpers/brisbane-elvanto';
 import { loadIndexHtml } from './helpers/extract-fn';
-import { studentBody, parentBody } from '../services/elvanto-forms';
+import { studentBody, parentBody, GRADES, ALLERGIES, CONDITIONS } from '../services/elvanto-forms';
 import golden from './fixtures/elvanto-bodies-brisbane.json';
 
 const parseMinistryConfig = (o: unknown) => MinistryConfigSchema.parse(o);
@@ -14,6 +14,10 @@ describe('0040 site elvanto', () => {
   it('fills only when users exist and never overwrites', () => {
     expect(sql).toMatch(/where\s+not\s+\(ministry_config\s+\?\s+'elvanto'\)/i);
     expect(sql).toMatch(/and\s+exists\s*\(select 1 from users\)/i);
+  });
+  it('touches only the global row, and only when it is a jsonb object (a legacy double-encoded string is left alone)', () => {
+    expect(sql).toMatch(/and\s+id\s*=\s*'global'/i);
+    expect(sql).toMatch(/and\s+jsonb_typeof\(ministry_config\)\s*=\s*'object'/i);
   });
   it('the Brisbane block parses through the schema unchanged', () => {
     const cfg = parseMinistryConfig({ elvanto: brisbaneElvanto() });
@@ -29,6 +33,9 @@ describe('0040 site elvanto', () => {
     expect(Object.keys(b.options)).toHaveLength(29);
     expect(b.options.location).toBe('33bec66a-20bb-11e1-9229-ea942707ad51');
     expect(b.options.locBrisbane).toBeUndefined();
+    for (const [g, id] of Object.entries(GRADES)) expect(b.options[`grade${g}`]).toBe(id);
+    for (const [l, id] of Object.entries(ALLERGIES)) expect(b.options[`allergy:${l}`]).toBe(id);
+    for (const [l, id] of Object.entries(CONDITIONS)) expect(b.options[`condition:${l}`]).toBe(id);
   });
   it('defaults are blank', () => {
     const e = parseMinistryConfig({}).elvanto;
