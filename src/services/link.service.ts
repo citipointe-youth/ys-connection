@@ -1227,7 +1227,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     /** L3 r3 (operator 2026-10-21): a YS student for each Unmatched row with nothing to pair with (no candidate, no
      *  same-name YS student, a name Elvanto has once), made by the student create service and linked as a manual Match.
-     *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest. */
+     *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest.
+   *  ponytail: no lock; two admins at the same instant could each create one (the roster-student unique index stops only a
+   *  double link). Add an advisory lock if that ever happens. */
     async createStudents(actor, body) {
       await gate(actor, 'admin');
       const b = z.object({ personIds: z.array(Uuid).max(1000).optional() }).parse(body ?? {});
