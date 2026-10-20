@@ -1,8 +1,9 @@
 // Error-log rework Part 1 (2026-10-17): the fixed two-line texts. Rules, not lists: every refusal reason and every
 // action type is covered, nothing tells "the developer", no placeholder survives.
 import { describe, it, expect } from 'vitest';
-import { TEXT, textFor, ERROR_TIERS } from '../services/error-log-text';
+import { TEXT, CLIENT, textFor, ERROR_TIERS } from '../services/error-log-text';
 import { ACTION_TYPES, REASONS } from '../core/link-contract';
+import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NON_REFUSALS = new Set(['already', 'console-busy', 'awaiting-approval']);
 
@@ -72,7 +73,7 @@ describe('error-log-text', () => {
 
   it('fallbacks name the code and say where to add it', () => {
     expect(textFor('server', 'WEIRD', 'GET /x', 502)).toMatchObject({ tier: 'later', line1: 'An error with no description yet (WEIRD)',
-      line2: 'Add WEIRD to TEXT in error-log-text.ts and fix its cause.' });
+      line2: 'The app has no words for WEIRD yet. Tell the person who set up the console.' });
     expect(textFor('link', 'brand-new', 'checkIn', null)).toMatchObject({ tier: 'later', line1: 'The console refused check-in (brand-new)' });
   });
 
@@ -89,5 +90,64 @@ describe('error-log-text', () => {
       const t = textFor(cat, code, 'checkIn', 500, 2);
       expect(t.line1 + t.line2, code).not.toMatch(/\{\w+\}/);
     }
+  });
+
+  // Y6a (SPEC Y6, preflight P9): the error log says what to do in real menu paths; no file names; engineer steps say who.
+  describe('Y6a: real menu paths, no file names', () => {
+    const all = { ...TEXT, ...CLIENT };
+    const strs = (e: (typeof TEXT)[string]) => [...(typeof e[1] === 'string' ? [e[1]] : e[1]), e[2]];
+    const lines = [...Object.values(all).flatMap(strs),
+      textFor('server', 'WEIRD', 'GET /x', 502).line2, textFor('link', 'brand-new', 'checkIn', null).line2];
+    const html = loadIndexHtml();
+    const grab = (src: string, re: RegExp) => [...src.matchAll(re)].map((m) => m[1]!.trim());
+    const nav = grab(extractFn(html, '_navItemsBase') + extractFn(html, '_navSlots'), /label:'([^']+)'/g);
+    const adminTabs = grab(/const ADMIN_TABS = (.*);/.exec(html)![1]!, /\['\w+','([^']+)'\]/g);
+    const more = grab(extractFn(html, 'moreItems'), /label:'([^']+)'/g);
+    const cards = grab(html, /_setupCard\('\w+', '([^']+)'/g);
+    const linkStatus = extractFn(html, '_lkAdmStatusHtml');
+    const linkSecs = grab(linkStatus + extractFn(html, '_lkAdmMatchHtml'), /lk-sec">([^<$]+)/g);
+    const PATHS = [...adminTabs.map((t) => `Admin > ${t}`), ...linkSecs.map((t) => `Admin > Elvanto link > ${t}`),
+      ...cards.map((t) => `Admin > Youth Setup > ${t}`), ...more.map((t) => `More > ${t}`)].sort((a, b) => b.length - a.length);
+    const CONSOLE_PATHS = ['Interact > Unclear saves']; // the console's own screen, not a YS nav label
+
+    it('the label arrays are the SPA nav: Admin and More are nav slots; Youth Setup and Elvanto link are Admin tabs', () => {
+      expect(nav).toEqual(expect.arrayContaining(['Admin', 'More']));
+      expect(adminTabs).toEqual(expect.arrayContaining(['Youth Setup', 'Elvanto link', 'Unsent new people']));
+      for (const p of ['More > New youth & consent', 'Admin > Elvanto link > Matching', 'Admin > Unsent new people',
+        'Admin > Youth Setup > Elvanto for this location']) {
+        expect(PATHS, p).toContain(p);
+        expect(lines.some((l) => l.includes(p)), p).toBe(true);
+      }
+    });
+
+    it('every menu path named is a real one (each segment is a label of the menu before it)', () => {
+      for (const l of lines) {
+        let rest = l;
+        for (const p of [...PATHS, ...CONSOLE_PATHS]) rest = rest.split(p).join('#');
+        expect(rest, l).not.toContain('>');
+      }
+    });
+
+    it('no entry names a file', () => {
+      for (const l of lines) expect(l).not.toMatch(/\.(ts|js|log|html)\b/);
+    });
+
+    it('ELVANTO_FORM_CHANGED and UNCLEAR_FIX read as in SPEC Y6', () => {
+      expect(TEXT.ELVANTO_FORM_CHANGED![2]).toBe('Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.');
+      expect(html).toContain("s.busy ? 'Checking…' : 'Check forms'");
+      const fix = textFor('link', 'unclear', 'checkIn', null).line2;
+      expect(fix).toBe("Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link (or the console's Interact > Unclear saves).");
+      expect(textFor('link', 'lease-lost', 'checkIn', null).line2).toBe(fix);
+      expect(linkStatus).toContain(',true)">Landed</button>');
+      expect(linkStatus).toContain(',false)">Not landed</button>');
+    });
+
+    it('engineer-only steps end "Tell the person who set up the console."', () => {
+      const ENGINEER = /in Vercel|Vercel (runtime )?logs|Supabase|Google Cloud|console's log|mapping|bug/;
+      const l2 = [...Object.values(all).map((e) => e[2]), lines[lines.length - 2]!, lines[lines.length - 1]!];
+      for (const l of l2) if (ENGINEER.test(l)) expect(l, l).toMatch(/ Tell the person who set up the console\.$/);
+      for (const c of ['INTERNAL_ERROR', 'INTERNAL', 'LINK_OFF', 'PUSH_OFF', 'SETUP_INCOMPLETE', 'note-unreadable', 'recon-failed',
+        'console-cannot-read', 'unknown', 'bad-answer', 'JS', 'HTTP_403']) expect(all[c]![2], c).toMatch(/ Tell the person who set up the console\.$/);
+    });
   });
 });

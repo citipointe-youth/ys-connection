@@ -19,50 +19,52 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = "Check it in Elvanto, then mark it in the console's Interact > Unclear saves.";
+const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link (or the console's Interact > Unclear saves).";
+// Y6a: steps only the person who built the setup can do end with this.
+const TELL = ' Tell the person who set up the console.';
 
 export const TEXT: Record<string, Entry> = {
   // 6.1 Server and New person forms
-  INTERNAL_ERROR: ['later', 'A screen failed with a server error ({route})', "Find the stack in Vercel runtime logs at that time and fix that route's service."],
-  INTERNAL: ['later', '{a_type} from a phone crashed on the server and was not queued', 'The leader was told to do it in Elvanto. Find "batch item failed" in Vercel logs and fix the bug.'],
-  SERVICE_UNAVAILABLE: ['fyi', 'The database was busy for a moment', 'Nothing to do; phones retry. If it happens most days, check the Supabase pooler in the Supabase dashboard.'],
-  REQUEST_TIMEOUT: ['fyi', 'A screen took over 20 seconds to load ({route})', "Nothing to do if rare. If it repeats, speed up that route's queries."],
-  LINK_OFF: ['now', 'The Elvanto link is off: no sync token in Vercel', 'Set LINK_SYNC_TOKEN (32+ characters) in Vercel, redeploy, and save the same token in the console.'],
-  ROUTING_FAILED: ['later', 'Bus route planning failed at Google', 'Check GOOGLE_MAPS_API_KEY and its quota in Google Cloud, then replan the run.'],
+  INTERNAL_ERROR: ['later', 'A screen failed with a server error ({route})', `The stack is in Vercel runtime logs at that time.${TELL}`],
+  INTERNAL: ['later', '{a_type} from a phone crashed on the server and was not queued', `The leader was told to do it in Elvanto. The bug is under "batch item failed" in Vercel logs.${TELL}`],
+  SERVICE_UNAVAILABLE: ['fyi', 'The database was busy for a moment', `Nothing to do; phones retry. If it happens most days, the Supabase pooler needs a look.${TELL}`],
+  REQUEST_TIMEOUT: ['fyi', 'A screen took over 20 seconds to load ({route})', `Nothing to do if rare. If it repeats, that route's queries need speeding up.${TELL}`],
+  LINK_OFF: ['now', 'The Elvanto link is off: no sync token in Vercel', `Set LINK_SYNC_TOKEN (32+ characters) in Vercel, redeploy, and save it in the console.${TELL}`],
+  ROUTING_FAILED: ['later', 'Bus route planning failed at Google', `Replan the run later. GOOGLE_MAPS_API_KEY or its quota in Google Cloud needs a look.${TELL}`],
   PUSH_FAILED: ['fyi', 'Some phone alerts for a notice failed', 'Nothing to do; the notice is in the app.'],
-  PUSH_OFF: ['later', 'Notice alerts are not set up', 'Add VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in Vercel and redeploy.'],
-  SETUP_INCOMPLETE: ['now', 'Logins are failing: SESSION_SECRET is not set', 'Set SESSION_SECRET in Vercel and redeploy.'],
+  PUSH_OFF: ['later', 'Notice alerts are not set up', `Add VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in Vercel and redeploy.${TELL}`],
+  SETUP_INCOMPLETE: ['now', 'Logins are failing: SESSION_SECRET is not set', `Set SESSION_SECRET in Vercel and redeploy.${TELL}`],
   ELVANTO_UNREACHABLE: ['now', 'Elvanto was unreachable, so a new person was not sent', 'Resend from Admin > Unsent new people.'],
-  ELVANTO_FORM_CHANGED: ['now', 'An Elvanto form changed, so a new person was not sent', 'Compare the form in Elvanto with the field map in new-youth.service.ts, fix it, then resend from Admin > Unsent new people.'],
+  ELVANTO_FORM_CHANGED: ['now', 'An Elvanto form changed, so a new person was not sent', 'Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.'],
   STUDENT_FORM_UNCONFIRMED: ['now', "A student form was sent but Elvanto didn't confirm it", "Search Elvanto for the person. Resend from Admin > Unsent new people only if they're missing."],
   PARENT_FORM_UNCONFIRMED: ['now', "A parent form was sent but Elvanto didn't confirm it", "Search Elvanto for the parent. Resend from Admin > Unsent new people only if they're missing."],
   STUDENT_FORM_FAILED: ['now', 'Elvanto rejected a student form', 'Open Admin > Unsent new people, fix the details and resend.'],
   PARENT_FORM_FAILED: ['now', 'Elvanto rejected a parent form', 'Open Admin > Unsent new people, fix the details and resend.'],
-  UNSENT_SAVE_FAILED: ['now', 'A failed new-person send could not be saved, so they may be lost', 'Re-enter them from the welcome-desk form, and check FIELD_ENCRYPTION_KEY is set in Vercel.'],
-  NY_REQ_FAILED: ['fyi', 'The new-person double-tap guard was skipped (database blip)', 'Nothing to do; the send went ahead. If it repeats, check Unsent new people for a duplicate.'],
+  UNSENT_SAVE_FAILED: ['now', 'A failed new-person send could not be saved, so they may be lost', `Re-enter them from the welcome-desk form. FIELD_ENCRYPTION_KEY in Vercel needs checking.${TELL}`],
+  NY_REQ_FAILED: ['fyi', 'The new-person double-tap guard was skipped (database blip)', 'Nothing to do; the send went ahead. If it repeats, check Admin > Unsent new people for a duplicate.'],
   // 6.2 Elvanto link sweeps/results and reconcile
   unclear: ['now', '{type} sent but Elvanto never confirmed it', UNCLEAR_FIX],
   'lease-lost': ['now', '{type}: the console stopped mid-send, result unknown', UNCLEAR_FIX],
   'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (its YS link card).'],
-  'note-unreadable': ['later', 'A queued note could not be decrypted', 'Check FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel match the key it was saved with.'],
-  'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', 'Check FIELD_ENCRYPTION_KEY(_PREV) in Vercel, then press Refresh in Admin > Intakes.'],
+  'note-unreadable': ['later', 'A queued note could not be decrypted', `FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel must match the key it was saved with.${TELL}`],
+  'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', `Press Refresh in More > New youth & consent. If it stays, the Vercel encryption keys need checking.${TELL}`],
   'pending-24h': ['now', ['1 {type} action has waited over 24 hours', '{n} {type} actions have waited over 24 hours'], 'Start the console on the PC and check its YS link card says Running.'],
   'recon-checkins': ['now', ['1 app check-in is missing from Elvanto attendance', '{n} app check-ins are missing from Elvanto attendance'], 'Tap Who?, then tick each person in Elvanto for that Friday.'],
-  'recon-unmatched': ['later', ['1 roster student has no student record in YS', '{n} roster students have no student record in YS'], 'Tap Who?; fix the name in Elvanto or match them in Admin > Elvanto link > Roster. New youth clear after the next import.'],
+  'recon-unmatched': ['later', ['1 roster student has no student record in YS', '{n} roster students have no student record in YS'], 'Tap Who?; fix the name in Elvanto or match them in Admin > Elvanto link > Matching. New youth clear after the next import.'],
   'recon-lifegroups': ['now', ["1 lifegroup report from the app doesn't match Elvanto", "{n} lifegroup reports from the app don't match Elvanto"], "Tap Who?, open that group's report in Elvanto and fix the attendance."],
   'recon-lifegroup-noid': ['later', ['1 lifegroup has no Elvanto group id', '{n} lifegroups have no Elvanto group id'], 'Tap Who?; make the console push that group (YS link groups) so its name matches, then re-import groups.'],
   'recon-members': ['now', ["1 group member change from the app isn't in Elvanto", "{n} group member changes from the app aren't in Elvanto"], 'Tap Who?, then add or remove each person in that Elvanto group.'],
-  'recon-failed': ['later', 'The {route} check failed to run', 'Find "reconcile" in Vercel logs at that time and fix the error.'],
+  'recon-failed': ['later', 'The {route} check failed to run', `The error is under "reconcile" in Vercel logs at that time.${TELL}`],
   // 6.3 Link refusal reasons (code = reason, route = action type)
-  locked: ['later', "{type} isn't switched on in the console", "Turn that type on in the console's YS link card, or in Admin > Youth Setup."],
+  locked: ['later', "{type} isn't switched on in the console", "Turn that type on in the console's YS link card, or in Admin > Youth Setup > Modules & Import."],
   // Incident 18 Oct: 41 refusals were one cause (rooms not read yet, normal before a service's first check-in); counted, so they fold into one line.
   'no-room': ['later', ['1 {type} refused: no room found', '{n} {type}s refused: no room found'],
     "Many at once: rooms not read yet; re-tap later. One: their Demographics match no room."],
   'person-unknown': ['later', '{type} was for someone no longer in Elvanto', 'Nothing to fix if they were archived; the next roster push drops them.'],
   'group-unknown': ['later', '{type} was for a group no longer in Elvanto', 'Nothing to fix if the group was closed; the next groups push drops it.'],
   'form-unknown': ['later', 'A consent fix pointed at the wrong form', "Check that person's newest approved consent form in Elvanto."],
-  'console-cannot-read': ['later', "The console couldn't read the Elvanto page for {type}", "Run that action in the console's Interact screen and fix the reader it names in ys-link.js."],
-  unknown: ['later', 'The console refused {type} for an unknown reason', 'Read ys-link.log on the PC at that time and add a reason for it.'],
+  'console-cannot-read': ['later', "The console couldn't read the Elvanto page for {type}", `Run that action in the console's Interact screen to see which Elvanto page it could not read.${TELL}`],
+  unknown: ['later', 'The console refused {type} for an unknown reason', `The console's log on the PC at that time has the reason.${TELL}`],
   'not-landed': ['now', "{type} didn't save in Elvanto", 'Do it in Elvanto by hand; the leader was told to as well.'],
   'report-exists': ['fyi', 'A report for that date already existed', `${LEADER_TOLD} edit it.`],
   'report-not-found': ['fyi', 'A report edit found the report gone', `${LEADER_TOLD} reload.`],
@@ -78,23 +80,23 @@ export const TEXT: Record<string, Entry> = {
   'assignee-needed': ['fyi', 'A flow step needed an assignee in Elvanto', `${LEADER_TOLD} do it in Elvanto.`],
   'ambiguous-first-timer': ['fyi', 'Two new people had the same name', `${LEADER_TOLD} use the kiosk.`],
   'leader-member': ['fyi', 'The app tried to remove a leader from a group', 'Nothing to do; leaders are removed in Elvanto.'],
-  'needs-you': ['later', 'An intake step is waiting for you', 'Open Admin > Intakes for that date and finish it.'],
+  'needs-you': ['later', 'An intake step is waiting for you', 'Open More > New youth & consent for that date and finish it.'],
   'plan-changed': ['fyi', 'An intake plan changed before it was saved', 'Nothing to do; the next refresh redoes it.'],
   'saved-before': ['fyi', 'An intake answer was already saved', 'Nothing to do.'],
   'chain-not-done': ['fyi', 'An intake step ran before the one before it finished', 'Nothing to do; the chain retries.'],
-  'bad-answer': ['fyi', "An intake answer didn't fit the Elvanto field", 'Nothing to do if rare; if it repeats, fix the answer mapping in youth-plan.js.'],
+  'bad-answer': ['fyi', "An intake answer didn't fit the Elvanto field", `Nothing to do if rare. If it repeats, the console's answer mapping needs fixing.${TELL}`],
 };
 
 // 6.5 App (client) rows and the two fallbacks.
-const CLIENT: Record<string, Entry> = {
+export const CLIENT: Record<string, Entry> = {
   NETWORK: ['fyi', 'Phones lost signal while loading', 'Nothing to do unless everyone hits it at once; then check Vercel status.'],
-  JS: ['later', 'A screen crashed in a browser ({route})', 'Open public/index.html at that line, fix the error, then run check-spa-syntax.'],
+  JS: ['later', 'A screen crashed in a browser ({route})', `The app has a bug at that line.${TELL}`],
   HTTP_401: ['fyi', 'A login had expired', 'Nothing to do.'],
-  HTTP_403: ['fyi', "Someone tried something their role can't do", 'Nothing to do unless a role should have access; then fix access-control.ts.'],
+  HTTP_403: ['fyi', "Someone tried something their role can't do", `Nothing to do, unless a role should have access.${TELL}`],
   OTHER: ['fyi', 'A phone request was refused ({route})', 'Nothing to do if rare.'],
 };
-const FALLBACK_SERVER: Entry = ['later', 'An error with no description yet ({code})', 'Add {code} to TEXT in error-log-text.ts and fix its cause.'];
-const FALLBACK_LINK: Entry = ['later', 'The console refused {type} ({code})', "Add {code} to TEXT in error-log-text.ts; Admin > Elvanto link shows the console's sentence."];
+const FALLBACK_SERVER: Entry = ['later', 'An error with no description yet ({code})', `The app has no words for {code} yet.${TELL}`];
+const FALLBACK_LINK: Entry = ['later', 'The console refused {type} ({code})', `Admin > Elvanto link shows the console's own words.${TELL}`];
 
 const lc = (s: string) => s.toLowerCase().replace('elvanto link action', 'Elvanto link action'); // proper noun mid-sentence
 const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.hasOwn(o, k) ? o[k] : undefined); // codes can be untrusted
