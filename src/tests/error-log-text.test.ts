@@ -73,7 +73,7 @@ describe('error-log-text', () => {
 
   it('fallbacks name the code and say where to add it', () => {
     expect(textFor('server', 'WEIRD', 'GET /x', 502)).toMatchObject({ tier: 'later', line1: 'An error with no description yet (WEIRD)',
-      line2: 'The app has no words for WEIRD yet. Tell the person who set up the console.' });
+      line2: 'The app has no words for this error yet. Tell the person who set up the console.' });
     expect(textFor('link', 'brand-new', 'checkIn', null)).toMatchObject({ tier: 'later', line1: 'The console refused check-in (brand-new)' });
   });
 
@@ -108,7 +108,6 @@ describe('error-log-text', () => {
     const linkSecs = grab(linkStatus + extractFn(html, '_lkAdmMatchHtml'), /lk-sec">([^<$]+)/g);
     const PATHS = [...adminTabs.map((t) => `Admin > ${t}`), ...linkSecs.map((t) => `Admin > Elvanto link > ${t}`),
       ...cards.map((t) => `Admin > Youth Setup > ${t}`), ...more.map((t) => `More > ${t}`)].sort((a, b) => b.length - a.length);
-    const CONSOLE_PATHS = ['Interact > Unclear saves']; // the console's own screen, not a YS nav label
 
     it('the label arrays are the SPA nav: Admin and More are nav slots; Youth Setup and Elvanto link are Admin tabs', () => {
       expect(nav).toEqual(expect.arrayContaining(['Admin', 'More']));
@@ -123,9 +122,18 @@ describe('error-log-text', () => {
     it('every menu path named is a real one (each segment is a label of the menu before it)', () => {
       for (const l of lines) {
         let rest = l;
-        for (const p of [...PATHS, ...CONSOLE_PATHS]) rest = rest.split(p).join('#');
+        for (const p of PATHS) rest = rest.split(p).join('#');
         expect(rest, l).not.toContain('>');
       }
+    });
+
+    // Places named without ">": the console is named only by SPEC C5's own words; no retired place names survive.
+    it('console places use SPEC C5 names; no retired place names', () => {
+      for (const l of lines) {
+        expect(l).not.toMatch(/Interact|YS link card|Intakes|Roster/);
+        expect(l.split('Advanced › Setup › YS link').join('#'), l).not.toContain('›');
+      }
+      expect(extractFn(html, '_ikListPage')).toContain('>Refresh</button>');
     });
 
     it('no entry names a file', () => {
@@ -134,20 +142,20 @@ describe('error-log-text', () => {
 
     it('ELVANTO_FORM_CHANGED and UNCLEAR_FIX read as in SPEC Y6', () => {
       expect(TEXT.ELVANTO_FORM_CHANGED![2]).toBe('Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.');
-      expect(html).toContain("s.busy ? 'Checking…' : 'Check forms'");
+      expect(extractFn(html, '_setupElvCardHtml')).toContain("s.busy ? 'Checking…' : 'Check forms'");
       const fix = textFor('link', 'unclear', 'checkIn', null).line2;
-      expect(fix).toBe("Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link (or the console's Interact > Unclear saves).");
+      expect(fix).toBe('Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the console page it came from.');
       expect(textFor('link', 'lease-lost', 'checkIn', null).line2).toBe(fix);
       expect(linkStatus).toContain(',true)">Landed</button>');
       expect(linkStatus).toContain(',false)">Not landed</button>');
     });
 
     it('engineer-only steps end "Tell the person who set up the console."', () => {
-      const ENGINEER = /in Vercel|Vercel (runtime )?logs|Supabase|Google Cloud|console's log|mapping|bug/;
+      const ENGINEER = /Vercel|Supabase|Google Cloud|console's log|mapping|bug/;
       const l2 = [...Object.values(all).map((e) => e[2]), lines[lines.length - 2]!, lines[lines.length - 1]!];
       for (const l of l2) if (ENGINEER.test(l)) expect(l, l).toMatch(/ Tell the person who set up the console\.$/);
       for (const c of ['INTERNAL_ERROR', 'INTERNAL', 'LINK_OFF', 'PUSH_OFF', 'SETUP_INCOMPLETE', 'note-unreadable', 'recon-failed',
-        'console-cannot-read', 'unknown', 'bad-answer', 'JS', 'HTTP_403']) expect(all[c]![2], c).toMatch(/ Tell the person who set up the console\.$/);
+        'console-cannot-read', 'unknown', 'bad-answer', 'JS', 'HTTP_403', 'NETWORK']) expect(all[c]![2], c).toMatch(/ Tell the person who set up the console\.$/);
     });
   });
 });

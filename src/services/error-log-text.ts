@@ -19,7 +19,7 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link (or the console's Interact > Unclear saves).";
+const UNCLEAR_FIX = 'Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the console page it came from.';
 // Y6a: steps only the person who built the setup can do end with this.
 const TELL = ' Tell the person who set up the console.';
 
@@ -45,10 +45,10 @@ export const TEXT: Record<string, Entry> = {
   // 6.2 Elvanto link sweeps/results and reconcile
   unclear: ['now', '{type} sent but Elvanto never confirmed it', UNCLEAR_FIX],
   'lease-lost': ['now', '{type}: the console stopped mid-send, result unknown', UNCLEAR_FIX],
-  'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (its YS link card).'],
+  'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (Advanced › Setup › YS link in the console).'],
   'note-unreadable': ['later', 'A queued note could not be decrypted', `FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel must match the key it was saved with.${TELL}`],
   'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', `Press Refresh in More > New youth & consent. If it stays, the Vercel encryption keys need checking.${TELL}`],
-  'pending-24h': ['now', ['1 {type} action has waited over 24 hours', '{n} {type} actions have waited over 24 hours'], 'Start the console on the PC and check its YS link card says Running.'],
+  'pending-24h': ['now', ['1 {type} action has waited over 24 hours', '{n} {type} actions have waited over 24 hours'], 'Start the console on the PC and check Advanced › Setup › YS link in the console says Running.'],
   'recon-checkins': ['now', ['1 app check-in is missing from Elvanto attendance', '{n} app check-ins are missing from Elvanto attendance'], 'Tap Who?, then tick each person in Elvanto for that Friday.'],
   'recon-unmatched': ['later', ['1 roster student has no student record in YS', '{n} roster students have no student record in YS'], 'Tap Who?; fix the name in Elvanto or match them in Admin > Elvanto link > Matching. New youth clear after the next import.'],
   'recon-lifegroups': ['now', ["1 lifegroup report from the app doesn't match Elvanto", "{n} lifegroup reports from the app don't match Elvanto"], "Tap Who?, open that group's report in Elvanto and fix the attendance."],
@@ -56,14 +56,14 @@ export const TEXT: Record<string, Entry> = {
   'recon-members': ['now', ["1 group member change from the app isn't in Elvanto", "{n} group member changes from the app aren't in Elvanto"], 'Tap Who?, then add or remove each person in that Elvanto group.'],
   'recon-failed': ['later', 'The {route} check failed to run', `The error is under "reconcile" in Vercel logs at that time.${TELL}`],
   // 6.3 Link refusal reasons (code = reason, route = action type)
-  locked: ['later', "{type} isn't switched on in the console", "Turn that type on in the console's YS link card, or in Admin > Youth Setup > Modules & Import."],
+  locked: ['later', "{type} isn't switched on in the console", "Turn that type on in the console's Advanced › Setup › YS link, or in Admin > Youth Setup > Modules & Import."],
   // Incident 18 Oct: 41 refusals were one cause (rooms not read yet, normal before a service's first check-in); counted, so they fold into one line.
   'no-room': ['later', ['1 {type} refused: no room found', '{n} {type}s refused: no room found'],
     "Many at once: rooms not read yet; re-tap later. One: their Demographics match no room."],
   'person-unknown': ['later', '{type} was for someone no longer in Elvanto', 'Nothing to fix if they were archived; the next roster push drops them.'],
   'group-unknown': ['later', '{type} was for a group no longer in Elvanto', 'Nothing to fix if the group was closed; the next groups push drops it.'],
   'form-unknown': ['later', 'A consent fix pointed at the wrong form', "Check that person's newest approved consent form in Elvanto."],
-  'console-cannot-read': ['later', "The console couldn't read the Elvanto page for {type}", `Run that action in the console's Interact screen to see which Elvanto page it could not read.${TELL}`],
+  'console-cannot-read': ['later', "The console couldn't read the Elvanto page for {type}", `Run that action again in the console to see which Elvanto page it could not read.${TELL}`],
   unknown: ['later', 'The console refused {type} for an unknown reason', `The console's log on the PC at that time has the reason.${TELL}`],
   'not-landed': ['now', "{type} didn't save in Elvanto", 'Do it in Elvanto by hand; the leader was told to as well.'],
   'report-exists': ['fyi', 'A report for that date already existed', `${LEADER_TOLD} edit it.`],
@@ -89,13 +89,13 @@ export const TEXT: Record<string, Entry> = {
 
 // 6.5 App (client) rows and the two fallbacks.
 export const CLIENT: Record<string, Entry> = {
-  NETWORK: ['fyi', 'Phones lost signal while loading', 'Nothing to do unless everyone hits it at once; then check Vercel status.'],
+  NETWORK: ['fyi', 'Phones lost signal while loading', `Nothing to do unless everyone hits it at once; then Vercel may be down.${TELL}`],
   JS: ['later', 'A screen crashed in a browser ({route})', `The app has a bug at that line.${TELL}`],
   HTTP_401: ['fyi', 'A login had expired', 'Nothing to do.'],
   HTTP_403: ['fyi', "Someone tried something their role can't do", `Nothing to do, unless a role should have access.${TELL}`],
   OTHER: ['fyi', 'A phone request was refused ({route})', 'Nothing to do if rare.'],
 };
-const FALLBACK_SERVER: Entry = ['later', 'An error with no description yet ({code})', `The app has no words for {code} yet.${TELL}`];
+const FALLBACK_SERVER: Entry = ['later', 'An error with no description yet ({code})', `The app has no words for this error yet.${TELL}`];
 const FALLBACK_LINK: Entry = ['later', 'The console refused {type} ({code})', `Admin > Elvanto link shows the console's own words.${TELL}`];
 
 const lc = (s: string) => s.toLowerCase().replace('elvanto link action', 'Elvanto link action'); // proper noun mid-sentence
