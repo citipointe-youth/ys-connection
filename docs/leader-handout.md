@@ -26,7 +26,7 @@ Your admin gives you a username and a password. The leaders of your group share 
 1. Type your username and your password.
 2. Select **Sign In**.
 
-If your password fails, ask your admin. Do not try many times.
+If your password fails, ask your admin. Do not try many times. Your admin's phone number: ____________
 
 ## 4. "Who are you?"
 
@@ -43,9 +43,10 @@ The phone remembers your name. Each leader uses their own phone.
 ## 6. Lifegroup report
 
 1. Select **More** > **Lifegroup report**.
-2. Find your group. Select **Report**.
-3. Under **Who was there**, mark who came.
-4. Select **Send**.
+2. Select your group.
+3. Select **Submit report**. If the week already has a report, select **Add report**.
+4. Under **Who was there**, mark who came.
+5. Select **Send**.
 
 If you do not see **Lifegroup report**, your login does not send reports. Ask your admin.
 
@@ -58,7 +59,3 @@ If a line says to do it in Elvanto, tell your admin.
 ## 8. Change your password
 
 Select **More** > **Change password**. The login is shared, so ask your admin first. Then tell the other leaders the new password.
-
-## 9. Help
-
-If your password fails, ask your admin.

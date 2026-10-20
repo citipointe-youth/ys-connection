@@ -178,7 +178,7 @@ You can stop here. Your app works.
 4. You must change these. A settings file from another location brings that location's names.
    - In the card **Branding**, set **Ministry name**, **App name** and **Logo**.
    - In the card **Terminology**, set **Group-name prefixes to strip** to the prefixes of your group names.
-   - In the card **Structure & Roles**, check **Time zone** and **Consent closes at**.
+   - In the card **Structure & Roles**, check **Time zone** and **Consent closes at**. **Time zone** must be the time zone of your Elvanto account.
 5. Select **Save Youth Setup** at the bottom of the page. Select **Save** in the box.
 6. Select **Apply account layout for Complex** or **Apply account layout for Simple**. The button name ends with your preset.
 7. Read the list of accounts. Type `APPLY`. Select **Apply**.
@@ -194,7 +194,9 @@ Expected result: the accounts list shows the new logins.
 The app icon on a phone Home Screen comes from your fork. It shows the Brisbane icon until you change it.
 
 1. Open your fork on GitHub.
-2. Replace the four files in `public/icons/` with your own icon. Keep the same file names. Keep each PNG at the same size.
+2. In `public/icons/`, replace `icon-180.png`, `icon-192.png`, `icon-512.png` and `icon.svg` with your own icon. Keep the same names and sizes.
+
+If you cannot make an SVG file, ask the developer.
 3. Commit the change on GitHub.
 
 Expected result: Vercel deploys it by itself. The app name and colours come from **Youth Setup**.
@@ -207,11 +209,11 @@ The app sends new people to Elvanto with two public Elvanto forms: a student for
 2. Paste the public link of each form in **Student form link** and **Parent form link**.
 3. Fill in **Location to tick**, **New People flow name starts with**, **Parent Consent flow name starts with** and **Default state**.
 4. Select **Check forms**.
-5. Read each line. If a line says a row was not found, type its id in the box under that line.
-6. Select **Check forms** again until every row is found.
+5. Read each line. A line "Not found" has two fixes. Change the question in Elvanto so it matches, then select **Check forms** again. Or type its id in the box under the line.
+6. A line "This form asks something the app doesn't fill" names a question the app does not send. Remove it from the Elvanto form, or make it not required. Then select **Check forms** again.
 7. Select **Save Youth Setup**. Select **Save** in the box.
 
-WARNING: Keep **New person** set to **Off** until **Check forms** finds every row.
+WARNING: Keep **New person** set to **Off** until each "Not found" line is fixed or has an id, and no line says the form asks something the app doesn't fill.
 
 ## 8. Elvanto link (15 min)
 
@@ -221,18 +223,22 @@ The Elvanto link connects the app to the console on the location PC. The console
 2. In Vercel, open **Settings** > **Environment Variables**. Select **Add**.
 3. Type `LINK_SYNC_TOKEN` as the name. Paste the value. Keep **Production** ticked. Select **Save**.
 4. Open **Deployments**. Select the three dots on the top row. Select **Redeploy**.
-5. Paste the same value in the YS link settings of the console. The console guide shows where.
-6. In the app, open **Admin** > **Elvanto link**.
+5. On the location PC, open the console. Open **Sync** > **Advanced** > **Setup**.
+6. On the row **YS link token**, select **Set**. Paste the same value. Save it.
+7. On the row **YS link**, select **Turn on**.
+8. In the app, open **Admin** > **Elvanto link**.
 
 Expected result: within 2 minutes, the **Console** row says **Online**.
 
-7. Open **Admin** > **Youth Setup**. Find the card **Modules & Import**.
-8. Set **New person**, **Check-in**, **Lifegroup report** and **Flow steps** to **On** or **Admin only**.
-9. Set **New youth & consent (Elvanto)** to **On**.
-10. Select **Save Youth Setup**. Select **Save** in the box.
-11. Open **Admin** > **Elvanto link**. Find **Matching**.
-12. Open each tab: **Unmatched**, **Several possible** and **Set by hand**.
-13. Pair each Elvanto student with the correct YS student. Select **Match**, or select **Not in YS**.
+9. Open **Admin** > **Youth Setup**. Find the card **Modules & Import**.
+10. Set **New person**, **Check-in**, **Lifegroup report** and **Flow steps** to **On** or **Admin only**.
+11. Set **New youth & consent (Elvanto)** to **On**.
+12. Select **Save Youth Setup**. Select **Save** in the box.
+13. Open **Admin** > **Elvanto link**. Find **Matching**.
+14. Open the tabs **Unmatched** and **Several possible**.
+15. Pair each Elvanto student with the correct YS student. Select **Match**, or select **Not in YS**.
+
+The tab **Set by hand** shows what you did. Use **Clear** or **Undo** there to change it.
 
 WARNING: Do not contact is not fully active until Matching is done. Until then the app shows a banner about it.
 
@@ -251,7 +257,9 @@ Expected result: the newest deployment in Vercel shows **Ready**.
 
 The build also updates the database. It never deletes your data.
 
-WARNING: All locations use one codebase. Your settings are in **Youth Setup**, not in the code. Never change code in your fork. The only files you change are the icon files (section 6). Get every other change with **Sync fork** only.
+WARNING: All locations use one codebase. Your settings are in **Youth Setup**, not in the code. Never change code in your fork. The icon files (section 6) are pictures, not code. They are the only files your fork changes. Get every other change with **Sync fork** only.
+
+After your icon change, GitHub says your fork is ahead and behind. If **Sync fork** asks you to discard your commits, select **Discard commits**. Then do section 6 again.
 
 [Screenshot: 12 github-sync-fork — the Sync fork button]
 
@@ -274,6 +282,8 @@ Technical: make a pair with `npx web-push generate-vapid-keys`.
 4. Open **Deployments**. Select **Redeploy** on the top row.
 
 Expected result: when **Notices** is **On** in **Modules & Import**, **More** > **Notices** shows the button **Turn on alerts**.
+
+NOTE: Notices go only to admin, director and quad logins. Simple Ministry has no quad logins.
 
 ## 12. Troubleshooting (as needed)
 

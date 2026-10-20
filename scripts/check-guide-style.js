@@ -3,7 +3,7 @@
 // Ignores fenced code blocks, inline `code`, **bold** UI names, [Screenshot: …] lines and "Technical:" lines.
 const fs = require('fs');
 const files = process.argv.slice(2).length ? process.argv.slice(2)
-  : ['docs/DEPLOYING.md', 'docs/GOOGLE-SETUP.md', 'scripts/google-setup.sh'];
+  : ['docs/DEPLOYING.md', 'docs/GOOGLE-SETUP.md', 'docs/leader-handout.md', 'scripts/google-setup.sh'];
 const BANNED = ['simply', 'just', 'easily', 'etc', 'should', 'may', 'click', 'press', 'tap', 'hit', 'enter', 'choose', 'pick'];
 // e.g. / i.e. end in a dot, so they need their own alternative (no trailing \b after a dot).
 const banned = new RegExp(String.raw`\b(${BANNED.join('|')})\b|\b(e\.g\.|i\.e\.)`, 'i');
