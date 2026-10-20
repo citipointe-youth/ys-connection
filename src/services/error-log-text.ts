@@ -19,7 +19,7 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
 };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
-const UNCLEAR_FIX = 'Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the console page it came from.';
+const UNCLEAR_FIX = 'Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or use Unclear saves on the Services, Lifegroups or Flows page.';
 // Y6a: steps only the person who built the setup can do end with this.
 const TELL = ' Tell the person who set up the console.';
 
@@ -48,7 +48,7 @@ export const TEXT: Record<string, Entry> = {
   'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (Advanced › Setup › YS link in the console).'],
   'note-unreadable': ['later', 'A queued note could not be decrypted', `FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel must match the key it was saved with.${TELL}`],
   'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', `Press Refresh in More > New youth & consent. If it stays, the Vercel encryption keys need checking.${TELL}`],
-  'pending-24h': ['now', ['1 {type} action has waited over 24 hours', '{n} {type} actions have waited over 24 hours'], 'Start the console on the PC and check Advanced › Setup › YS link in the console says Running.'],
+  'pending-24h': ['now', ['1 {type} action has waited over 24 hours', '{n} {type} actions have waited over 24 hours'], 'Start the console on the PC and check Advanced › Setup › YS link in the console shows a recent "Checked YS Connection" time.'],
   'recon-checkins': ['now', ['1 app check-in is missing from Elvanto attendance', '{n} app check-ins are missing from Elvanto attendance'], 'Tap Who?, then tick each person in Elvanto for that Friday.'],
   'recon-unmatched': ['later', ['1 roster student has no student record in YS', '{n} roster students have no student record in YS'], 'Tap Who?; fix the name in Elvanto or match them in Admin > Elvanto link > Matching. New youth clear after the next import.'],
   'recon-lifegroups': ['now', ["1 lifegroup report from the app doesn't match Elvanto", "{n} lifegroup reports from the app don't match Elvanto"], "Tap Who?, open that group's report in Elvanto and fix the attendance."],
