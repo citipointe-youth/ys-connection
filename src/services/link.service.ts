@@ -28,6 +28,8 @@ import {
 } from '../core/errors/link-errors';
 import { makeLeaderService } from './leader.service';
 import { dncFullyOn } from './dnc';
+import { makeStudentService } from './student.service';
+import { gradeRange } from '../core/ministry-config';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
@@ -38,7 +40,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
@@ -160,7 +162,17 @@ export interface ConsentLookupView { id: string; kind: ConsentLookupKind; status
 export interface MatchCandidate { studentId: string; name: string; grade: number | null; dob: string | null }
 /** A roster row the admin may need to act on (APP-40: no unused fields, so fewer minors' details on the wire). */
 export interface MatchRow { personId: string; name: string; grade: number | null; kind: LinkRosterRow['kind'];
-  active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[] }
+  active: boolean; studentId: string | null; match: Match; candidates: MatchCandidate[];
+  /** L3 (2026-10-21), `none` rows only: a same-name YS student exists. later = free and the gender fits (pairs at the next
+   *  roster push or import); gender = genderFits refuses every free one; held = another roster row holds it. */
+  why?: 'later' | 'gender' | 'held';
+  /** L3 r2, `none` rows only: the Elvanto-fed YS screens that show this person (they are not a YS student). */
+  seenIn?: ('flow' | 'lifegroup')[];
+  /** L3 r3: Create (and Create all) may make a YS student for this row. */
+  create?: true;
+  /** L3 r4: why a no-candidate Unmatched row has no Create: no male/female gender, or no usable grade or name. */
+  noCreate?: 'noGender' | 'badData' }
+type CreateBlock = 'notUnmatched' | 'candidate' | 'sameNameInYs' | 'sameNameTwice' | 'noGender' | 'badData';
 /** T5: a group member as this login may see them: studentId only when that student is in its scope (canAccessStudent). */
 export interface MemberView { personId: string; name: string; leader: boolean; grade: number | null; studentId: string | null }
 /** T6: a member change of the last 3 days (not cancelled), newest first. name = the roster's (an add is not a member yet). */
@@ -184,6 +196,7 @@ export interface LinkService {
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
   rosterForMatching(actor: Actor, q: unknown): Promise<{ rows: MatchRow[] }>;
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
+  createStudents(actor: Actor, body: unknown): Promise<{ created: number; skipped: Record<string, number> }>;
   /** CY-A1: the admin says whether an unclear row landed in Elvanto (the console's own `resolved` transition). */
   resolveUnclear(actor: Actor, id: string, body: unknown): Promise<{ ok: true; status: 'sent' | 'refused' }>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
@@ -338,6 +351,62 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    * any of those screens is usable (its own mode, then link:use), else 404. 'any' = any link screen, and the admin
    * always (its page reads status and actions, and cancels through the batch).
    */
+  /** The Matching rows (rosterForMatching) with their roster row; `twice` = Elvanto has this folded name on another active student row. */
+  async function matchRows(structure: { gradeMin: number; gradeMax: number }, only?: Match) {
+      const [roster, students, flows, groups] = await Promise.all([d.link.roster(), d.students.findAll(), d.link.flows(), d.link.groups()]);
+      // L3 r2: a person not in YS Students still shows in YS through the Elvanto mirror (Flows, Lifegroups).
+      const inFlow = new Set(flows.map((f) => f.personId)), inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.personId)));
+      const seenOf = (r: LinkRosterRow) => { const x = [inFlow.has(r.personId) && 'flow', inGroup.has(r.personId) && 'lifegroup'].filter(Boolean) as ('flow' | 'lifegroup')[]; return r.match === 'none' && x.length ? x : undefined; };
+      // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
+      // admin can release it (APP-11). Candidates only for none/ambiguous, from one index of folded names.
+      const rows = roster.filter((r) => ((r.active && r.kind === 'student' && r.match !== 'auto') || (!r.active && r.studentId))
+        && (!only || r.match === only));
+      // Candidates: same surname (matchFold), whose first name starts like the person's either way or whose grade is
+      // within 1, and not already held by an active roster person.
+      const heldBy = new Set(roster.filter((r) => r.active && r.studentId).map((r) => r.studentId!));
+      const bySurname = new Map<string, typeof students>();
+      if (rows.some((r) => r.match === 'none' || r.match === 'ambiguous')) {
+        for (const s of students) { const k = matchFold(s.lastName); bySurname.set(k, [...(bySurname.get(k) ?? []), s]); }
+      }
+      const candidatesOf = (r: LinkRosterRow): MatchCandidate[] => {
+        if (r.match !== 'none' && r.match !== 'ambiguous') return [];
+        const f = matchFold(r.firstName);
+        return (bySurname.get(matchFold(r.lastName)) ?? [])
+          .filter((s) => !heldBy.has(s.id) && (f.startsWith(matchFold(s.firstName)) || matchFold(s.firstName).startsWith(f)
+            || (r.grade != null && s.grade != null && Math.abs(s.grade - r.grade) <= 1)))
+          .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
+      };
+      // L3: why a `none` row with a same-name YS student is still unpaired (the same tests autoMatch applies).
+      const holderOf = new Map(roster.filter((r) => r.studentId).map((r) => [r.studentId!, r.personId]));
+      const whyOf = (r: LinkRosterRow): MatchRow['why'] => {
+        if (r.match !== 'none') return undefined;
+        const k = `${matchFold(r.firstName)}|${matchFold(r.lastName)}`;
+        const same = (bySurname.get(matchFold(r.lastName)) ?? []).filter((s) => `${matchFold(s.firstName)}|${matchFold(s.lastName)}` === k);
+        const free = same.filter((s) => (holderOf.get(s.id) ?? r.personId) === r.personId);
+        if (!same.length) return undefined;
+        if (free.some((s) => genderFits(r.gender, s.gender))) return 'later';
+        return free.length ? 'gender' : 'held';
+      };
+      const keyOf = (r: LinkRosterRow) => `${matchFold(r.firstName)}|${matchFold(r.lastName)}`;
+      const keyCount = new Map<string, number>();
+      for (const r of roster) if (r.active && r.kind === 'student') keyCount.set(keyOf(r), (keyCount.get(keyOf(r)) ?? 0) + 1);
+      const grades = new Set(gradeRange(structure));
+      return rows.map((r) => {
+        const candidates = candidatesOf(r), why = whyOf(r), seenIn = seenOf(r);
+        // L3 r4: the ONE Create eligibility rule, for the list (create / noCreate) and for createStudents.
+        const block: CreateBlock | null = !r.active || r.match !== 'none' || r.studentId ? 'notUnmatched' : candidates.length ? 'candidate'
+          : why ? 'sameNameInYs' : (keyCount.get(keyOf(r)) ?? 0) > 1 ? 'sameNameTwice'
+          : r.gender !== 'male' && r.gender !== 'female' ? 'noGender' // operator ruling: never created as 'other'
+          : !r.firstName.trim() || !r.lastName.trim() || r.grade == null || !grades.has(r.grade) ? 'badData' : null;
+        const noCreate = block === 'noGender' || block === 'badData' ? block : undefined;
+        const row: MatchRow = { personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
+          studentId: r.studentId, match: r.match, candidates, ...(why ? { why } : {}), ...(seenIn ? { seenIn } : {}),
+          ...(block === null ? { create: true as const } : {}), ...(noCreate ? { noCreate } : {}) };
+        return { r, row, block };
+      });
+  }
+
+
   async function gate(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await access(actor, need);
     await sweepIfDue();
@@ -1168,30 +1237,39 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     },
 
     async rosterForMatching(actor, q) {
-      await gate(actor, 'admin');
+      const st = (await gate(actor, 'admin')).ministryConfig.structure;
       const f = z.object({ match: z.enum(MATCHES).optional() }).parse(q ?? {});
-      const [roster, students] = await Promise.all([d.link.roster(), d.students.findAll()]);
-      // Active students that still need a match (never `auto`), plus any inactive row still holding a student, so the
-      // admin can release it (APP-11). Candidates only for none/ambiguous, from one index of folded names.
-      const rows = roster.filter((r) => ((r.active && r.kind === 'student' && r.match !== 'auto') || (!r.active && r.studentId))
-        && (!f.match || r.match === f.match));
-      // Candidates: same surname (matchFold), whose first name starts like the person's either way or whose grade is
-      // within 1, and not already held by an active roster person.
-      const heldBy = new Set(roster.filter((r) => r.active && r.studentId).map((r) => r.studentId!));
-      const bySurname = new Map<string, typeof students>();
-      if (rows.some((r) => r.match === 'none' || r.match === 'ambiguous')) {
-        for (const s of students) { const k = matchFold(s.lastName); bySurname.set(k, [...(bySurname.get(k) ?? []), s]); }
+      return { rows: (await matchRows(st, f.match)).map((x) => x.row) };
+    },
+
+    /** L3 r3 (operator 2026-10-21): a YS student for each Unmatched row with nothing to pair with (no candidate, no
+     *  same-name YS student, a name Elvanto has once), made by the student create service and linked as a manual Match.
+     *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest.
+   *  ponytail: no lock; one admin's re-tap is guarded (SPA in-flight flag, batches of 10, the re-read below), but two admins
+   *  in the same second could each create one (the roster-student unique index stops only a double link). Advisory lock if it bites. */
+    async createStudents(actor, body) {
+      const st = (await gate(actor, 'admin')).ministryConfig.structure;
+      // L3 r4: at most 25 ids a call (the SPA sends 10), so a call ends well inside the 20 s route limit.
+      const b = z.object({ personIds: z.array(Uuid).min(1).max(25) }).parse(body ?? {});
+      const ids = [...new Set(b.personIds)];
+      const students = makeStudentService(d.students, d.settings);
+      const skipped: Record<string, number> = {};
+      const skip = (k: string) => { skipped[k] = (skipped[k] ?? 0) + 1; };
+      let created = 0;
+      for (const id of ids) {
+        // Re-read right before each create: a row another call (or this one) has just linked is no longer eligible.
+        const x = (await matchRows(st)).find((m) => m.r.personId === id);
+        const block = x ? x.block : 'notUnmatched';
+        if (block || !x) { skip(block ?? 'notUnmatched'); continue; }
+        let s;
+        try {
+          s = await students.create(actor, { firstName: x.r.firstName, lastName: x.r.lastName, gender: x.r.gender as 'male' | 'female',
+            grade: x.r.grade, dataSource: 'Elvanto link' }); // never a birthday: the roster has none
+        } catch (e) { if (isDbError(e)) throw e; skip('badData'); continue; }
+        await d.link.setMatches([{ personId: id, studentId: s.id, match: 'manual' }]); // the same record a manual Match writes
+        created++;
       }
-      const candidatesOf = (r: LinkRosterRow): MatchCandidate[] => {
-        if (r.match !== 'none' && r.match !== 'ambiguous') return [];
-        const f = matchFold(r.firstName);
-        return (bySurname.get(matchFold(r.lastName)) ?? [])
-          .filter((s) => !heldBy.has(s.id) && (f.startsWith(matchFold(s.firstName)) || matchFold(s.firstName).startsWith(f)
-            || (r.grade != null && s.grade != null && Math.abs(s.grade - r.grade) <= 1)))
-          .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
-      };
-      return { rows: rows.map((r) => ({ personId: r.personId, name: fullName(r), grade: r.grade, kind: r.kind, active: r.active,
-        studentId: r.studentId, match: r.match, candidates: candidatesOf(r) })) };
+      return { created, skipped };
     },
 
     async setMatch(actor, personId, body) {

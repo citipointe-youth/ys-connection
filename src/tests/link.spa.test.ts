@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFfGet',
@@ -2013,13 +2013,102 @@ describe('F4.2 admin page', () => {
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Elvanto: Olivia AC');
     expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
-    expect(out).toContain('No YS student with this surname.');
+    expect(out).toContain('Not a YS student yet.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';
     const m = strip(h.fns._lkAdmMatchHtml());
     expect(m.indexOf('Matched by hand')).toBeLessThan(m.indexOf('Hand Made'));
     expect(m.indexOf('Marked Not in YS')).toBeLessThan(m.indexOf('Not Ours'));
     expect(m.indexOf('Hand Made')).toBeLessThan(m.indexOf('Marked Not in YS'));
+  });
+  it('round 2026-10-21 (L3): an Unmatched row with a same-name YS student says why, per row', () => {
+    const h = makeEnv({ role: 'admin' });
+    const cand = [{ studentId: P(431), name: 'Sam Same', grade: 9, dob: null }];
+    h.get().LINK.adm.roster = [
+      { personId: P(430), name: 'Sam Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'gender' },
+      { personId: P(432), name: 'Dup Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [], why: 'held' },
+      { personId: P(433), name: 'New Same', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: cand, why: 'later' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('In YS: Sam Same');
+    expect(out).toContain('Same name in YS, but the genders differ. Check the gender, then Match.');
+    expect(out).toContain('Same name in YS, already matched to another Elvanto profile (likely a duplicate).');
+    expect(out).toContain('Same name in YS. It pairs by itself at the next update, or tap Match.');
+    expect(out).not.toContain('Not a YS student yet.'); // the same-name rows say why instead
+  });
+  it('round 2026-10-21 (L3 r2): an Unmatched row with no YS student says it is in YS only from Elvanto', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(440), name: 'Flo Only', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [], seenIn: ['flow', 'lifegroup'] },
+      { personId: P(441), name: 'Nowhere Else', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [] },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('Not a YS student yet. YS shows them from Elvanto, in Flows and Lifegroups.');
+    expect(out.split('Not a YS student yet.').length - 1).toBe(2);
+  });
+  it('round 2026-10-21 (L3 r3): Create all / Create on the no-candidate rows, after a confirm with the count', async () => {
+    const h = makeEnv({ role: 'admin', post: () => Promise.resolve({ created: 1, skipped: { sameNameTwice: 1 } }) });
+    h.get().LINK.adm.roster = [
+      { personId: P(450), name: 'Make Me', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true },
+      { personId: P(451), name: 'Has One', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [{ studentId: P(452), name: 'Has One', grade: 9, dob: null }] },
+    ];
+    const out = h.fns._lkAdmMatchHtml();
+    expect(out).toContain('_lkAdmCreate(null)');
+    expect(strip(out)).toContain('Create all (1)');
+    expect(out).toContain(`_lkAdmCreate('${P(450)}')`);
+    expect(out).not.toContain(`_lkAdmCreate('${P(451)}')`);
+    h.answers.push(false);
+    await h.fns._lkAdmCreate(null);
+    expect(h.calls.asks[0]).toContain('Create 1 YS student and link them to Elvanto?');
+    expect(h.calls.posts).toHaveLength(0); // Cancel: nothing sent
+    h.answers.push(true);
+    await h.fns._lkAdmCreate(`${P(450)}`);
+    expect(h.calls.posts[0]).toMatchObject({ p: '/link/admin/create-students', b: { personIds: [P(450)] } });
+    expect(h.calls.toasts.pop()).toBe('Created and linked 1. 1 skipped: same name twice in Elvanto.');
+  });
+  it('round 2026-10-21 (L3 r4): Create all sends batches of 10, sums them, stops on an error, and ignores a second tap', async () => {
+    let n = 0, release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const h = makeEnv({ role: 'admin', post: async (_p: string, b: any) => {
+      n++; if (n === 1) await gate; if (n === 3) throw new Error('Server busy');
+      return { created: b.personIds.length, skipped: {} }; } });
+    h.get().LINK.adm.roster = Array.from({ length: 25 }, (_, i) =>
+      ({ personId: P(500 + i), name: 'N ' + i, grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true }));
+    h.answers.push(true);
+    const first = h.fns._lkAdmCreate(null);
+    await vi.waitFor(() => expect(h.calls.posts).toHaveLength(1));
+    expect(h.get().LINK.adm.creating).toBe(true);
+    expect(h.fns._lkAdmMatchHtml()).toContain('disabled'); // buttons off while it runs
+    await h.fns._lkAdmCreate(null);                      // a second tap: nothing asked, nothing sent
+    expect(h.calls.asks).toHaveLength(1);
+    release();
+    await first;
+    expect(h.calls.posts.map((x: any) => x.b.personIds.length)).toEqual([10, 10, 5].slice(0, 3));
+    expect(h.calls.toasts.pop()).toBe('Created and linked 20. Server busy');
+    expect(h.get().LINK.adm.creating).toBe(false);
+  });
+  it('round 2026-10-21 (L3 r4): a row with no gender or no grade says why there is no Create', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(530), name: 'No Gen', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'noGender' },
+      { personId: P(531), name: 'No Grade', grade: null, kind: 'student', match: 'none', studentId: null, candidates: [], noCreate: 'badData' },
+    ];
+    const out = strip(h.fns._lkAdmMatchHtml());
+    expect(out).toContain('No gender in Elvanto. Set it there, or use Match.');
+    expect(out).toContain('No grade or name in Elvanto. Set it there, or use Match.');
+    expect(out).not.toContain('Create all');
+  });
+  it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
+    const h = makeEnv({ role: 'admin' });
+    h.get().LINK.adm.roster = [
+      { personId: P(420), name: 'Kay Bee', grade: 12, kind: 'student', match: 'none', studentId: null, candidates: [] },
+      { personId: P(421), name: 'Two Same', grade: 9, kind: 'student', match: 'ambiguous', studentId: null, candidates: [] },
+    ];
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('In Elvanto, but not paired with a YS student.');
+    h.get().LINK.adm.mf = 'ambiguous';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('More than one person has this name. Pick the right one.');
+    h.get().LINK.adm.mf = 'manual';
+    expect(strip(h.fns._lkAdmMatchHtml())).toContain('Pairs you set by hand');
   });
 });
 

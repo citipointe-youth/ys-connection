@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { dncFullyOn } from '../services/dnc';
+import { loadFns } from './helpers/extract-fn';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
@@ -1201,10 +1202,82 @@ describe('D6 admin: matching, log', () => {
     expect(all.map((x) => x.personId).sort()).toEqual([P_BEN, P_EVE1, P_EVE2, P_TOM].sort()); // no auto, leader or other
     expect(all.some((x) => x.match === 'auto')).toBe(false);
     for (const x of all) {
-      expect(Object.keys(x).sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
+      expect(Object.keys(x).filter((k) => !['why', 'seenIn', 'create', 'noCreate'].includes(k)).sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
       for (const c of x.candidates) expect(Object.keys(c).sort()).toEqual(['dob', 'grade', 'name', 'studentId']);
     }
     expect(all.find((x) => x.personId === P_TOM)!.candidates).toEqual([]); // manual: no candidates computed
+  });
+
+  it('round 2026-10-21 (L3): an Unmatched row with a same-name YS student says why (later / gender / held)', async () => {
+    const why = async (id: string) => (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows.find((x) => x.personId === id)!.why;
+    expect(await why(P_BEN)).toBe('later');       // free, gender fits: pairs at the next roster push or import
+    expect(await why(P_EVE1)).toBeUndefined();    // no YS student of that name
+    await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'female' } as never);
+    expect(await why(P_BEN)).toBe('gender');      // genderFits refuses it
+    await h.students.save({ ...(await h.students.findById(S_BEN))!, gender: 'male' } as never);
+    await h.link.setMatches([{ personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
+    expect(await why(P_BEN)).toBe('held');        // another roster row (a duplicate profile) holds it
+  });
+
+  it('round 2026-10-21 (L3 r2): an Unmatched row says where YS shows them from Elvanto (flow / lifegroup)', async () => {
+    const rows = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows;
+    expect(rows.find((x) => x.personId === P_EVE1)!.seenIn).toEqual(['lifegroup']);
+    expect(rows.find((x) => x.personId === P_BEN)!.seenIn).toEqual(['flow']);
+    expect(rows.find((x) => x.personId === P_EVE2)!.seenIn).toBeUndefined();
+  });
+
+  it('round 2026-10-21 (L3 r3): createStudents makes + links a YS student for each no-candidate Unmatched row, once', async () => {
+    const P_NIA = u(120);
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_NIA, firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const before = (await h.students.findAll()).length;
+    // P_BEN has a candidate; P_EVE1/P_EVE2 share one name in Elvanto (a likely duplicate): both skipped.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA, P_BEN, P_EVE1, P_EVE2] })).toEqual({ created: 1, skipped: { candidate: 1, sameNameTwice: 2 } });
+    const r = (await h.link.roster()).find((x) => x.personId === P_NIA)!;
+    expect(r).toMatchObject({ match: 'manual' });
+    const s = (await h.students.findById(r.studentId!))!;
+    expect(s).toMatchObject({ firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, dateOfBirth: null,
+      svcAttended: 0, grpAttended: 0, prevSvcAttended: 0, prevGrpAttended: 0 }); // never attended: off Connect + Health
+    // Student Connect (renderConnectView ownScope) and Health (renderAtRisk) both keep only _hasAttended students.
+    expect(loadFns(['_hasAttended'])._hasAttended(s)).toBe(false);
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // Idempotent: a second tap creates nothing, never a duplicate.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA, P_BEN, P_EVE1, P_EVE2] })).toEqual({ created: 0, skipped: { notUnmatched: 1, candidate: 1, sameNameTwice: 2 } });
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // One row: only that row; a row that is already linked is skipped.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA] })).toEqual({ created: 0, skipped: { notUnmatched: 1 } });
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_BEN] })).toEqual({ created: 0, skipped: { candidate: 1 } });
+    await expect(h.svc.createStudents(DIRECTOR, { personIds: [P_NIA] })).rejects.toThrow();
+    await expect(h.svc.createStudents(ADMIN, {})).rejects.toThrow(); // ids are required (the SPA sends batches)
+    // Check-in still finds them (the roster lists them, as before).
+    expect((await h.svc.checkin(ADMIN, ST)).people!.some((p) => p.personId === P_NIA)).toBe(true);
+  });
+
+  it('round 2026-10-21 (L3 r4): repeated ids create once; no gender / no grade / blank name are not eligible', async () => {
+    const [P_A, P_NOG, P_NOGR, P_NOLAST] = [u(121), u(122), u(123), u(124)];
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_A, firstName: 'Ann', lastName: 'Once', gender: 'female', grade: 8, kind: 'student' },
+      { personId: P_NOG, firstName: 'Gee', lastName: 'Blank', gender: null, grade: 8, kind: 'student' },
+      { personId: P_NOGR, firstName: 'Gra', lastName: 'Deless', gender: 'male', grade: null, kind: 'student' },
+      { personId: P_NOLAST, firstName: 'Solo', lastName: '', gender: 'male', grade: 9, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const rows = (await h.svc.rosterForMatching(ADMIN, { match: 'none' })).rows;
+    const row = (id: string) => rows.find((x) => x.personId === id)!;
+    expect(row(P_A).create).toBe(true);
+    expect(row(P_NOG)).toMatchObject({ noCreate: 'noGender' });
+    expect(row(P_NOG).create).toBeUndefined();
+    expect(row(P_NOGR)).toMatchObject({ noCreate: 'badData' });
+    expect(row(P_NOLAST)).toMatchObject({ noCreate: 'badData' });
+    const before = (await h.students.findAll()).length;
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_A, P_A] })).toEqual({ created: 1, skipped: {} });
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NOG, P_NOGR, P_NOLAST] }))
+      .toEqual({ created: 0, skipped: { noGender: 1, badData: 2 } });
+    expect((await h.students.findAll()).length).toBe(before + 1); // never created as 'other', never a duplicate
   });
 
   it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {
