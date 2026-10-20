@@ -5,13 +5,13 @@ import type { AppSettings } from '../core/entities/settings';
 import type { Actor, User } from '../core/entities/user';
 import { QUAD_LABELS, quadLabelFor, type UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
-import { mergeMinistryConfig } from '../core/ministry-config';
+import { mergeMinistryConfig, MinistryConfigSchema, gradeRange } from '../core/ministry-config';
 import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { AppError, BadRequestError } from '../core/errors/app-error';
 import { googleRoutingEnabled } from './routing/google-routing-provider';
-import { elvantoReady } from './elvanto-forms';
+import { elvantoReady, checkForms, formUrl, type FormCheck, type FormKind } from './elvanto-forms';
 
 // The optional roles a ministry can switch off in Setup (Admin always exists
 // and isn't toggleable — see ministry-config.ts). User.role values match these
@@ -35,12 +35,20 @@ const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
 const SIMPLE_NEEDS_MSG = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
 const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 
+// P11: Check forms runs on the Youth Setup draft (not yet saved), validated by the same allow-list fields before any fetch.
+const ELV = MinistryConfigSchema.shape.elvanto.removeDefault();
+const ElvantoCheckSchema = ELV.pick({ baseUrl: true, studentFormId: true, parentFormId: true })
+  .extend({ location: ELV.shape.location.removeDefault().optional() });
+const FORM_GET_MS = 8_000; // as new-youth
+
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
 export type SettingsUpdateResult = AppSettings & { renamedQuads?: number };
 
 export interface SettingsService {
   get(): Promise<AppSettings>;
   update(actor: Actor, input: unknown): Promise<SettingsUpdateResult>;
+  /** Check forms: reads both public forms of the draft links and maps every key by label. Returned, never saved. */
+  elvantoCheck(actor: Actor, input: unknown): Promise<FormCheck>;
 }
 
 export function makeSettingsService(
@@ -67,6 +75,31 @@ export function makeSettingsService(
   return {
     async get() {
       return repo.getSettings();
+    },
+
+    async elvantoCheck(actor, input) {
+      assertCan(actor, 'admin:manage');
+      const d = ElvantoCheckSchema.safeParse(input);
+      if (!d.success || !d.data.baseUrl || !d.data.studentFormId || !d.data.parentFormId) {
+        throw new BadRequestError("Paste each form's public Elvanto link.");
+      }
+      const cfg = (await repo.getSettings()).ministryConfig;
+      const e = { ...cfg.elvanto, ...d.data };
+      const get = async (kind: FormKind) => {
+        try {
+          const r = await fetch(formUrl(e, kind), {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; YS-Connection)' }, redirect: 'manual', signal: AbortSignal.timeout(FORM_GET_MS),
+          });
+          if (r.status !== 200) throw new Error(`status ${r.status}`);
+          return await r.text();
+        } catch {
+          throw new AppError('ELVANTO_UNREACHABLE', `Can't open the ${kind} form. Check the link.`, 502);
+        }
+      };
+      const [s, p] = await Promise.allSettled([get('student'), get('parent')]);
+      if (s.status === 'rejected') throw s.reason;
+      if (p.status === 'rejected') throw p.reason;
+      return checkForms(s.value, p.value, e.location, gradeRange(cfg.structure));
     },
 
     async update(actor, input) {

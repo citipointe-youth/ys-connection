@@ -1,8 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { MinistryConfigSchema, MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildContainer, type Services } from '../container';
+import { buildRoutes } from '../api/http/router';
+import { MinistryConfigSchema, MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig, gradeRange } from '../core/ministry-config';
 import { ELVANTO_0040_SQL as sql, brisbaneElvanto, brisbaneElvantoJson } from './helpers/brisbane-elvanto';
 import { loadIndexHtml } from './helpers/extract-fn';
-import { studentBody, parentBody, elvantoReady, formUrl, LABELS } from '../services/elvanto-forms';
+import { studentBody, parentBody, elvantoReady, formUrl, LABELS, readFormFields, checkForms } from '../services/elvanto-forms';
 import golden from './fixtures/elvanto-bodies-brisbane.json';
 
 // The ids the old elvanto-forms.ts constants held (deleted in Y1b), kept here so the per-id check survives.
@@ -108,5 +112,120 @@ describe('0040 site elvanto', () => {
     // eslint-disable-next-line no-new-func
     const client = new Function(`${block}\nreturn MINISTRY_CONFIG_DEFAULTS_CLIENT;`)();
     expect(client.elvanto).toEqual(MINISTRY_CONFIG_DEFAULTS.elvanto);
+  });
+});
+
+// Y1c: Check forms. Tests never call live Elvanto: fetch is stubbed with the two fixtures.
+const FIX = (f: string) => readFileSync(join(__dirname, 'fixtures', `elvanto-${f}-form.html`), 'utf8');
+const STUDENT = FIX('student'), PARENT = FIX('parent');
+
+describe('readFormFields', () => {
+  it('reads each question: label, input name, option labels', () => {
+    const f = readFormFields(STUDENT);
+    expect(f.find((q) => q.label === 'Name of Host filling out form')).toEqual({
+      label: 'Name of Host filling out form', name: brisbaneElvanto().fields.host, options: [] });
+    expect(f.find((q) => q.label.startsWith('Are you intending'))!.options).toEqual([
+      { label: 'I would like to regularly attend', value: 'a6004ba1-0199-4f77-b833-0fd99ab22d1f' },
+      { label: 'I am just visiting', value: '37fd21c5-3862-451e-91a0-24affbe1447b' }]);
+    expect(f.find((q) => q.label === 'Medical Conditions')!.options.map((o) => o.label)).toEqual([...LABELS.conditions]);
+    expect(f.some((q) => q.name.startsWith('multi_select_filter_'))).toBe(false);
+    expect(readFormFields(PARENT).map((q) => q.label)).toContain('Parent First Name');
+  });
+  it('both fixtures map every key in the Brisbane block', () => {
+    const r = checkForms(STUDENT, PARENT, 'Brisbane', [7, 8, 9, 10, 11, 12]);
+    expect(r.fields).toEqual(brisbaneElvanto().fields);
+    expect(r.options).toEqual(brisbaneElvanto().options);
+    expect(r).toMatchObject({ ok: true, n: 39, missing: [], extra: [] });
+  });
+  it('a location label with regex characters matches literally, and entities decode', () => {
+    const html = STUDENT.replace('>Redcliffe</label>', '>St. Mark&#039;s (North)</label>');
+    expect(checkForms(html, PARENT, "St. Mark's (North)", [7]).options.location).toBe('6c3e1500-6b5f-11e2-9eb8-3170a1d64e04');
+  });
+});
+
+describe('POST /settings/elvanto-check', () => {
+  const B = brisbaneElvanto();
+  const DRAFT = { baseUrl: B.baseUrl, studentFormId: B.studentFormId, parentFormId: B.parentFormId, location: 'Brisbane' };
+  const act = (role: string) => ({ id: 'a-test', role, displayName: 'T', grade: null, quad: null }) as any;
+  let services: Services;
+  let fetchStub: ReturnType<typeof vi.fn>;
+  const stub = (student: string | number = STUDENT, parent: string | number = PARENT) => {
+    fetchStub = vi.fn(async (url: string) => {
+      const page = url.endsWith(B.studentFormId) ? student : url.endsWith(B.parentFormId) ? parent : 404;
+      return typeof page === 'number' ? new Response('', { status: page }) : new Response(page, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchStub);
+  };
+  const check = (body: unknown, role = 'admin') =>
+    buildRoutes(services).find((r) => r.method === 'POST' && r.path === '/settings/elvanto-check')!
+      .handler({ ctx: act(role), params: {}, query: {}, body } as any) as Promise<any>;
+  beforeAll(async () => { ({ services } = await buildContainer()); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('Brisbane: "All <n> found." with n = the keys checked, and nothing is saved', async () => {
+    stub();
+    const before = (await services.settings.get()).ministryConfig.elvanto;
+    const cfg = (await services.settings.get()).ministryConfig;
+    const n = 11 + 7 + LABELS.allergies.length + LABELS.conditions.length + gradeRange(cfg.structure).length;
+    const r = await check(DRAFT);
+    expect(r).toMatchObject({ ok: true, n, missing: [], extra: [], lines: [`All ${n} found.`] });
+    expect(r.fields).toEqual(B.fields);
+    expect(r.options).toEqual(B.options);
+    expect((await services.settings.get()).ministryConfig.elvanto).toEqual(before);
+  });
+  it('a missing label is named', async () => {
+    stub(STUDENT.replace('>Name of Host filling out form <', '>Host name<'));
+    const r = await check(DRAFT);
+    expect(r.ok).toBe(false);
+    expect(r.missing).toEqual(['Name of Host filling out form']);
+    expect(r.fields.host).toBeUndefined();
+    expect(r.lines).toContain('Not found: Name of Host filling out form. Make the question match, or type its id.');
+  });
+  it('an extra question is named', async () => {
+    const extra = '<div class="form-group"><label class="control-label">Favourite colour</label>'
+      + '<input type="text" name="submissions[0][forms_custom_field][11111111-2222-3333-4444-555555555555]" value=""></div>';
+    stub(STUDENT, PARENT.replace('<label class="control-label">Parent Email Address', `${extra}<label class="control-label">Parent Email Address`));
+    const r = await check(DRAFT);
+    expect(r).toMatchObject({ ok: false, missing: [], extra: ['Favourite colour'] });
+    expect(r.lines).toContain("This form asks something the app doesn't fill: Favourite colour.");
+  });
+  it.each([
+    [500, PARENT, "Can't open the student form. Check the link."],
+    [302, PARENT, "Can't open the student form. Check the link."],
+    [STUDENT, 404, "Can't open the parent form. Check the link."],
+  ])('an unreachable form is named (%#)', async (s, p, msg) => {
+    stub(s, p);
+    await expect(check(DRAFT)).rejects.toMatchObject({ message: msg, statusCode: 502 });
+  });
+  it('a fetch that throws is unreachable too', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNRESET'); }));
+    await expect(check(DRAFT)).rejects.toMatchObject({ message: "Can't open the student form. Check the link." });
+  });
+  it("fetches both draft links with redirect: 'manual' and an 8 s abort", async () => {
+    stub();
+    const t = vi.spyOn(AbortSignal, 'timeout');
+    await check(DRAFT);
+    expect(fetchStub.mock.calls.map((c) => c[0]).sort()).toEqual([formUrl(B, 'parent'), formUrl(B, 'student')].sort());
+    for (const [, init] of fetchStub.mock.calls) {
+      expect(init.redirect).toBe('manual');
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    }
+    expect(t.mock.calls).toEqual([[8000], [8000]]);
+  });
+  it.each(['https://evil.com', 'http://citipointe.elvanto.com.au', 'https://citipointe.elvanto.com.au.evil.com', 'https://169.254.169.254', ''])(
+    'a baseUrl outside the allow-list (%s) is never fetched', async (baseUrl) => {
+      stub();
+      await expect(check({ ...DRAFT, baseUrl })).rejects.toMatchObject({ statusCode: 400 });
+      expect(fetchStub).not.toHaveBeenCalled();
+    });
+  it('a form id that is not a uuid is never fetched', async () => {
+    stub();
+    await expect(check({ ...DRAFT, studentFormId: '../admin' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+  it('a non-admin gets 403 and nothing is fetched', async () => {
+    stub();
+    await expect(check(DRAFT, 'leader')).rejects.toMatchObject({ statusCode: 403 });
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 });

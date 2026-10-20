@@ -81,6 +81,7 @@ export function buildRoutes(services: Services): Route[] {
     // ----- Settings -----
     { method: 'GET',   path: '/settings', auth: false, handler: (r) => settings.get(r) },
     { method: 'PATCH', path: '/settings', auth: true,  handler: (r) => settings.update(r) },
+    { method: 'POST',  path: '/settings/elvanto-check', auth: true, handler: (r) => settings.elvantoCheck(r) },
 
     // ----- New youth forms (submits Citipointe's public Elvanto connect forms) -----
     { method: 'POST', path: '/intake/new-youth', auth: true, handler: (r) => newYouth.send(r) },

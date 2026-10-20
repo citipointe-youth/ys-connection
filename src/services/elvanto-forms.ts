@@ -46,6 +46,86 @@ export const LABELS = {
   conditions: ['ADHD', 'Autism/Aspergers', 'Diabetes Type 1', 'Epilepsy'],
 } as const;
 
+// P16: each key's Elvanto question label (and option label), read from the two public forms. Labels are code
+// constants, the same across the tenant (decision 8); Check forms maps them to this location's ids.
+const Q = {
+  host: 'Name of Host filling out form', givenBy: 'This information is given by the',
+  attending: 'Are you intending on regularly attending Youth Society or are you just visiting?',
+  school: 'What school do you attend?', allergies: 'Allergies', conditions: 'Medical Conditions',
+  medicalNotes: 'Medical Comments (other allergies and instructions)', parentName: 'Youth Parent Full Name',
+  parentPhone: 'Youth Parent Phone Number', withParent: 'Young person is present with a parent/guardian',
+  contactedParent: 'Young person has contacted parent',
+} as const satisfies Record<(typeof FIELD_KEYS)[number], string>;
+export const FIELD_LABELS = {
+  fields: Q,
+  // option key -> [question label, option label]; 'location' takes its option label from the location's setting.
+  options: {
+    givenByChild: [Q.givenBy, 'Child'], attendRegular: [Q.attending, 'I would like to regularly attend'],
+    withParentNo: [Q.withParent, 'No'], contactedYes: [Q.contactedParent, 'Yes'],
+    demoYouth: ['Demographics', 'Youth'], demoAdults: ['Demographics', 'Adults'],
+    ...Object.fromEntries([6, 7, 8, 9, 10, 11, 12].map((g) => [`grade${g}`, ['School Grade', String(g)]])),
+    ...Object.fromEntries(LABELS.allergies.map((l) => [`allergy:${l}`, [Q.allergies, l]])),
+    ...Object.fromEntries(LABELS.conditions.map((l) => [`condition:${l}`, [Q.conditions, l]])),
+  } as Record<string, readonly [string, string]>,
+  location: 'Citipointe Location',
+};
+
+export interface FormField { label: string; name: string; options: { label: string; value: string }[] }
+
+const text = (s: string) => s.replace(/&#0*39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const attr = (tag: string, a: string) => new RegExp(`\\b${a}="([^"]*)"`).exec(tag)?.[1];
+
+/** Each labelled question on a public form: its label, its input name and its options (markup as the fixtures). */
+export function readFormFields(html: string): FormField[] {
+  return html.split('<label class="control-label">').slice(1).map((chunk) => {
+    const label = text(chunk.slice(0, chunk.indexOf('<')));
+    const name = [...chunk.matchAll(/\bname="([^"]+)"/g)].map((m) => m[1]!).find((n) => !n.startsWith('multi_select_filter_')) ?? '';
+    const options: FormField['options'] = [];
+    for (const m of chunk.matchAll(/<(option|input)\b([^>]*)>([^<]*)/g)) {
+      const value = attr(m[2]!, 'value');
+      if (value && (m[1] === 'option' || attr(m[2]!, 'name') === name)) options.push({ label: text(m[3]!), value });
+    }
+    return { label, name, options };
+  });
+}
+
+export interface FormCheck {
+  ok: boolean; n: number; fields: Record<string, string>; options: Record<string, string>;
+  missing: string[]; extra: string[]; lines: string[];
+}
+
+/** Check forms: map every key by label on both forms. `grades` are the ones this location sends (they must be found);
+ *  other grades are mapped when present. The result is returned, never saved. */
+export function checkForms(studentHtml: string, parentHtml: string, location: string, grades: number[]): FormCheck {
+  const qs = [...readFormFields(studentHtml), ...readFormFields(parentHtml)];
+  const q = (label: string) => qs.find((f) => f.label === label);
+  const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [];
+  let n = 0;
+  for (const [k, label] of Object.entries(FIELD_LABELS.fields)) {
+    n++;
+    const f = q(label);
+    if (f?.name) fields[k] = f.name; else missing.push(label);
+  }
+  const opts: [string, readonly [string, string]][] = [...Object.entries(FIELD_LABELS.options), ['location', [FIELD_LABELS.location, location]]];
+  for (const [k, [ql, ol]] of opts) {
+    const need = !/^grade\d+$/.test(k) || grades.includes(Number(k.slice(5)));
+    if (need) n++;
+    const v = ol && q(ql)?.options.find((o) => o.label === ol)?.value;
+    if (v) options[k] = v; else if (need) missing.push(ol ? `${ql}: ${ol}` : ql);
+  }
+  // A labelled question neither body posts (a new required one would make every send fail, as shapeProblems says).
+  const e = { fields, options } as ElvantoConfig;
+  const y = { allergies: [], conditions: [] } as unknown as NewYouth;
+  const posted = new Set([...studentBody(y, '', e).keys(), ...parentBody(y, '', e).keys(), fields.allergies, fields.conditions]);
+  const extra = [...new Set(qs.filter((f) => f.name && !posted.has(f.name)).map((f) => f.label))];
+  const lines = [
+    ...(missing.length ? missing.map((m) => `Not found: ${m}. Make the question match, or type its id.`) : [`All ${n} found.`]),
+    ...extra.map((l) => `This form asks something the app doesn't fill: ${l}.`),
+  ];
+  return { ok: !missing.length && !extra.length, n, fields, options, missing, extra, lines };
+}
+
 /** True when every key the body builders read is set (grade6 only when "Include Grade 6" is on). */
 export function elvantoReady(cfg: Pick<MinistryConfig, 'elvanto' | 'structure'>): boolean {
   const e = cfg.elvanto;

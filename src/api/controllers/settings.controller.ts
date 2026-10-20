@@ -11,5 +11,9 @@ export function makeSettingsController(deps: { settings: SettingsService; setup?
     async update(req: AuthedRequest) {
       return deps.settings.update(req.ctx, req.body);
     },
+
+    async elvantoCheck(req: AuthedRequest) {
+      return deps.settings.elvantoCheck(req.ctx, req.body);
+    },
   };
 }
