@@ -185,7 +185,7 @@ describe('F1.1 _lkStatusText (contract §5.3 / §5.4 word for word)', () => {
       'service-not-offered': "Elvanto doesn't offer that service for this date. Pick another, or do it in Elvanto.",
       'did-not-meet-conflict': 'Untick everyone, or untick Group did not meet.',
       'step-moved': 'This step changed in Elvanto. Do it there.',
-      'assignee-needed': 'This step changed in Elvanto. Do it there.',
+      'assignee-needed': 'Elvanto needs someone assigned to this step. Do it in Elvanto.',
       'ambiguous-first-timer': 'Two new people have this name. Check in on the kiosk.',
       'too-old': 'Too late to send. Do it in Elvanto.',
       'not-landed': "It didn't save. Do it in Elvanto.",

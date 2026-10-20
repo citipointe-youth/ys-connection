@@ -27,6 +27,7 @@ import {
   ConsentFlowUnknown,
 } from '../core/errors/link-errors';
 import { makeLeaderService } from './leader.service';
+import { dncFullyOn } from './dnc';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
@@ -108,6 +109,8 @@ export interface LinkStatus {
   mirrors: Record<MirrorKind, { takenAt: string | null; ageSeconds: number | null }>;
   /** T1: the newest console's LINK_REV (null = no console yet) and this app's; the admin page warns when lower. */
   consoleLinkRev: number | null; appLinkRev: number;
+  /** Y6c (admin/director only): false = DNC is not fully on yet (roster never pushed, or active students unmatched). */
+  dncReady?: boolean;
 }
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
 export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
@@ -844,9 +847,12 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
   return {
     async status(actor) {
-      await gate(actor, 'any');
+      const settings = await gate(actor, 'any');
       const t = clock().getTime();
-      const [consoles, mirrors] = await Promise.all([d.link.listConsoles(), d.link.mirrorState()]);
+      // Y6c: the DNC state is for admin/director only, and only once a link screen is on (one roster read, in parallel).
+      const mods = settings.ministryConfig.modules;
+      const boss = isAdminRole(actor) && FEATURES.some((f) => (mods[f] ?? mods.newYouthForms) !== 'off');
+      const [consoles, mirrors, roster] = await Promise.all([d.link.listConsoles(), d.link.mirrorState(), boss ? d.link.roster() : null]);
       const n = newest(consoles);
       const console = n
         ? { lastSeenAt: n.lastSeenAt, online: t - Date.parse(n.lastSeenAt) <= (2 * n.pollSeconds + 60) * 1000,
@@ -858,7 +864,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const at = takenAt(mirrors, k);
         return [k, { takenAt: at, ageSeconds: at ? Math.round((t - Date.parse(at)) / 1000) : null }];
       })) as LinkStatus['mirrors'];
-      return { console, mirrors: m, consoleLinkRev: n?.linkRev ?? null, appLinkRev: LINK_REV };
+      return { console, mirrors: m, consoleLinkRev: n?.linkRev ?? null, appLinkRev: LINK_REV,
+        ...(roster ? { dncReady: dncFullyOn(m.roster.takenAt !== null, roster) } : {}) };
     },
 
     async checkin(actor, serviceTimeId) {

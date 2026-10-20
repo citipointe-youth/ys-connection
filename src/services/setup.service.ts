@@ -33,6 +33,14 @@ export function codeMatches(input: string, expected: string): boolean {
 }
 const normOrigin = (s: string) => s.trim().replace(/\/+$/, '').toLowerCase();
 
+// A read that gives up after 3 s (like probeDb), so the Database fix row always comes back.
+function within3s<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 3000); })])
+    .finally(() => clearTimeout(timer));
+}
+const LINK_TOKEN_FIX = 'In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as in the console (Advanced › Setup › YS link). Then redeploy.';
+
 export function makeSetupService(deps: {
   users: IUserRepository;
   auth: AuthService;
@@ -99,8 +107,14 @@ export function makeSetupService(deps: {
       // Elvanto link (spec §10.1): never the value. readLinkSyncToken is the one rule (APP-39).
       const linkSet = readLinkSyncToken(env) !== undefined;
       const linkBlank = (env['LINK_SYNC_TOKEN'] ?? '').trim() === '';
-      checks.push({ id: 'link', state: 'optional',
-        label: `Elvanto link token: ${linkSet ? 'set' : linkBlank ? 'not set' : 'too short (32+ characters)'}` });
+      const linkLabel = `Elvanto link token: ${linkSet ? 'set' : linkBlank ? 'not set' : 'too short (32+ characters)'}`;
+      // Y6c: New person, Check-in and Flows cannot work without the token, so with one on the row is ok or fix.
+      // Not known (no settings source, DB down or slow): optional, as before.
+      const mods = dbOk && deps.settings
+        ? await within3s(deps.settings.getSettings()).then((s) => s.ministryConfig.modules, () => undefined) : undefined;
+      const linkNeeded = !!mods && [mods.newYouthForms, mods.checkin, mods.flows].some((m) => m !== 'off');
+      checks.push(!linkNeeded ? { id: 'link', state: 'optional', label: linkLabel }
+        : linkSet ? ok('link', linkLabel) : fix('link', linkLabel, LINK_TOKEN_FIX));
       // Y2a: step-0 Complete refuses while this is unknown. Not on the first-admin page (no flows yet; it would block the create).
       // Skipped with the DB down; its reads are bounded (3 s, like probeDb) so the Database fix row always comes back.
       if (!needs && dbOk && deps.settings && deps.flows) {
@@ -110,9 +124,7 @@ export function makeSetupService(deps: {
           const mc = s.ministryConfig;
           return peopleFlowName(f.map((x) => x.flowName), brisbaneToday(new Date(), mc.structure.timeZone), mc.elvanto?.peopleFlowPrefix ?? '');
         };
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const name = await Promise.race([read(), new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 3000); })])
-          .catch(() => undefined).finally(() => clearTimeout(timer));
+        const name = await within3s(read()).catch(() => undefined);
         if (name === undefined) checks.push(fix('peopleFlow', 'New People flow', 'The app could not read the flows. Select Check again.'));
         else checks.push(name ? ok('peopleFlow', `New People flow: ${name}`) : fix('peopleFlow', 'New People flow',
           'In Youth Setup, check the New People flow name. It must match Elvanto, and the console must be sending flows.'));

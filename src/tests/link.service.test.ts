@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
+import { dncFullyOn } from '../services/dnc';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
@@ -1248,6 +1249,36 @@ describe('D6 admin: matching, log', () => {
 });
 
 // =====================================================================================================================
+describe('Y6c status dncReady (admin and director only)', () => {
+  it('false while active students are unmatched, true once each is matched or marked Not in YS; leaders never get it', async () => {
+    const h = await setup();
+    expect((await h.svc.status(ADMIN)).dncReady).toBe(false); // Ben and both Eves are unmatched
+    expect((await h.svc.status(DIRECTOR)).dncReady).toBe(false);
+    expect(await h.svc.status(GRADE)).not.toHaveProperty('dncReady');
+    await h.link.setMatches([{ personId: P_BEN, studentId: S_BEN, match: 'manual' }, { personId: P_EVE1, studentId: null, match: 'ignored' },
+      { personId: P_EVE2, studentId: null, match: 'ignored' }]);
+    expect((await h.svc.status(ADMIN)).dncReady).toBe(true);
+    expect((await h.svc.status(DIRECTOR)).dncReady).toBe(true);
+  });
+  it('fix round: not sent while every link screen is off (a site that does not use the link yet), and no roster read', async () => {
+    const h = await setup('off');
+    const read = vi.spyOn(h.link, 'roster');
+    expect(await h.svc.status(ADMIN)).not.toHaveProperty('dncReady');
+    expect(read).not.toHaveBeenCalled();
+    const one = await setup({ flows: 'admin' });
+    expect((await one.svc.status(ADMIN)).dncReady).toBe(false);
+  });
+  it('dncFullyOn: never pushed = not on; inactive, leader and other rows do not count', () => {
+    const row = (o: object) => ({ active: true, kind: 'student' as const, match: 'auto' as const, ...o });
+    expect(dncFullyOn(false, [])).toBe(false);
+    expect(dncFullyOn(true, [])).toBe(true);
+    expect(dncFullyOn(true, [row({}), row({ match: 'manual' }), row({ match: 'ignored' })])).toBe(true);
+    expect(dncFullyOn(true, [row({ match: 'none' })])).toBe(false);
+    expect(dncFullyOn(true, [row({ match: 'ambiguous' })])).toBe(false);
+    expect(dncFullyOn(true, [row({ match: 'none', active: false }), row({ match: 'none', kind: 'leader' }), row({ match: 'none', kind: 'other' })])).toBe(true);
+  });
+});
+
 describe('UX batch 2026-10-12 (lane Y1)', () => {
   const META = (takenAt = '2026-10-16T08:30:00.000Z') => ({ takenAt, consoleId: CONSOLE });
 

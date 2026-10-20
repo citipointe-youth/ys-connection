@@ -2,6 +2,7 @@
 // console-offline banner, run from the REAL page source (extract-and-evaluate).
 import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { ACTION_TYPES } from '../core/link-contract';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
@@ -245,5 +246,115 @@ describe('R4/R6 step 0: waiting for consent, then Complete records consent not r
     const d = loadFns(['_lkFlowDue', '_lkConsentWait', '_lkDay', 'fmtDay'], 'function esc(v) { return String(v); }');
     expect(d._lkFlowDue(S0({ consentFriday: '2099-01-02' }), '2026-10-15')).toBe('<span>Waiting (consent Fri 2 Jan 2099)</span>');
     expect(d._lkFlowDue(S0({ consentFriday: '2020-01-03' }), '2026-10-15')).toContain('Overdue');
+  });
+});
+
+// ── Y6c (multisite SPEC Y6): the DNC banner on Flow steps and Home, the "Assigned to" hint, the assignee-needed line
+// and the unclear list's intake / consent verbs. Own loads, so the lane B fixtures above are untouched.
+const Y6_HTML = loadIndexHtml();
+const DNC = "Do not contact isn't fully on yet. Finish Matching in Admin > Elvanto link.";
+const y6strip = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const LK_CONSTS = Y6_HTML.match(/^const LK_DOOR_TYPES = .*$/m)![0] + '\n' + Y6_HTML.match(/^const LK_FLOW_TYPES = .*$/m)![0];
+const banner = (role: string) => loadFns(['_lkBanner', '_lkBoss', '_lkDncText', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
+    var S = { user: { id: 'u', role: ${JSON.stringify(role)} }, settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' } } } };
+    var LINK = { status: null };
+    const LK_OFFLINE_MS = 15 * 60000;
+    ${LK_CONSTS}
+    const icS = () => '';
+    const esc = (v) => String(v == null ? '' : v);
+  `, ['_lkBanner', 'LK_DOOR_TYPES', 'LK_FLOW_TYPES']);
+const st = (dncReady?: boolean) => ({ console: { online: true, lastSeenAt: new Date().toISOString(), consoles: 1 }, mirrors: {},
+  ...(dncReady === undefined ? {} : { dncReady }) });
+
+describe('Y6c DNC banner on Flow steps', () => {
+  it('admin and director see it when DNC is not fully on', () => {
+    for (const role of ['admin', 'director']) {
+      const b = banner(role);
+      expect(y6strip(b._lkBanner(b.LK_FLOW_TYPES, st(false)))).toContain(DNC);
+      expect(y6strip(b._lkBanner(['completeStep'], st(false)))).toContain(DNC);
+    }
+  });
+  it('hidden when fully matched, when the server does not say (older reply), and for every other login', () => {
+    const a = banner('admin');
+    expect(a._lkBanner(a.LK_FLOW_TYPES, st(true))).not.toContain('Do not contact');
+    expect(a._lkBanner(a.LK_FLOW_TYPES, st())).not.toContain('Do not contact');
+    for (const role of ['leader', 'grade', 'quad']) {
+      const b = banner(role);
+      expect(b._lkBanner(['completeStep'], st(false))).not.toContain('Do not contact');
+    }
+  });
+  it('only on Flow steps: not on Check-in, Lifegroups or the admin page', () => {
+    const b = banner('admin');
+    expect(b._lkBanner(b.LK_DOOR_TYPES, st(false))).not.toContain('Do not contact');
+    expect(b._lkBanner(['submitReport', 'editReport'], st(false))).not.toContain('Do not contact');
+    expect(b._lkBanner([], st(false))).not.toContain('Do not contact');
+  });
+  it('the Flow steps list itself (with the Y2b New People banner) is unchanged by it', () => {
+    reset({ role: 'admin' });
+    L.status = st(false);
+    expect(f._lkFlowsHtml()).not.toContain('Do not contact');
+  });
+});
+
+describe('Y6c DNC line on Home (Needs attention)', () => {
+  const lines = (role: string, dncReady?: boolean) => {
+    const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
+    return h._attnLines(h._attnCounts({ uid: 'u', role, st: st(dncReady) }, Date.now())).map((l: [string, string]) => l);
+  };
+  it('admin (opens Admin > Elvanto link) and director (plain text) see it when DNC is not fully on', () => {
+    expect(lines('admin', false)).toContainEqual([DNC, "go('link-admin')"]);
+    expect(lines('director', false)).toContainEqual([DNC, '']);
+  });
+  it('hidden when fully matched or unknown', () => {
+    expect(lines('admin', true)).toEqual([]);
+    expect(lines('director')).toEqual([]);
+  });
+  it('the words name no console (leader-friction rule)', () => { expect(DNC).not.toMatch(/console/i); });
+  it('fix round: a System check fix row reads as one plain sentence (no second colon)', () => {
+    const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
+    const setup = { checks: [{ id: 'link', label: 'Elvanto link token: not set', state: 'fix' }, { id: 'appOrigin', label: 'APP_ORIGIN', state: 'fix' }] };
+    expect(h._attnLines(h._attnCounts({ uid: 'u', role: 'admin', setup }, Date.now())).map((l: string[]) => l[0]))
+      .toEqual(['System check: Elvanto link token needs fixing.', 'System check: APP_ORIGIN needs fixing.']);
+  });
+  it('fix round: Home makes one /link/status read a minute (Needs attention and the offline line share it)', async () => {
+    const calls: string[] = [];
+    (globalThis as any).__y6 = calls;
+    const h = loadFns(['_attnLoad', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
+      var S = { user: { id: 'u', role: 'admin' }, page: 'home', settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' }, modules: {} } } };
+      var LINK = { status: null, statusAt: 0, flowsAt: 0 };
+      let _attn = null, _attnBusy = null;
+      const LK_OFFLINE_MS = 15 * 60000;
+      const API = { fresh: async (p) => { globalThis.__y6.push(p); return p === '/link/status' ? { console: { online: true }, dncReady: false } : null; } };
+      const _linkOn = () => true, _ikModuleOn = () => false, _attnPaint = () => {}, getMyLeaderId = () => null;
+      const icS = () => '', esc = (v) => String(v);
+      const document = { getElementById: () => null };
+    `, ['_attnLoad', '_lkHomeFlows', 'LINK']);
+    const p = h._attnLoad(); await h._lkHomeFlows(); await p;
+    expect(calls.filter((c) => c === '/link/status')).toEqual(['/link/status']);
+    expect(h.LINK.status).toMatchObject({ dncReady: false });
+    await h._attnLoad(); await h._lkHomeFlows();
+    expect(calls.filter((c) => c === '/link/status').length).toBe(1);
+  });
+});
+
+describe('Y6c Flow step wording', () => {
+  it('the "Assigned to" select has the hint under it', () => {
+    const src = extractFn(Y6_HTML, '_lkStepHtml');
+    const i = src.indexOf('id="lk-assign"');
+    expect(i).toBeGreaterThan(0);
+    expect(src.slice(i)).toMatch(/<\/select>[^]*?Saved in this app only\. Elvanto isn't changed\./);
+  });
+  it('assignee-needed says what to do', () => {
+    expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe('Elvanto needs someone assigned to this step. Do it in Elvanto.');
+  });
+});
+
+describe('Y6c _lkVerb', () => {
+  it('names every intake and consent type in words', () => {
+    const v = loadFns(['_lkVerb']);
+    const types = ACTION_TYPES.filter((t) => /^(intake|consent)/.test(t));
+    expect(types.length).toBe(7);
+    for (const t of types) expect(v._lkVerb(t)).toMatch(/^[A-Z][a-z]+ [a-z]+$/);
+    expect(v._lkVerb('checkIn')).toBe('Check in'); // the old ones unchanged
   });
 });
