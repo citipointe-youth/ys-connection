@@ -174,7 +174,7 @@ function navWorld(page: string) {
     var _nyRaw = () => env.raw, nyReset = () => { env.resets++; env.raw = {}; };
     var _lkGroup = () => ({ groupId: 'g1' }), _lkGroupsBack = () => navBack();
     var _lkAsk = (text, yes, no, title) => { env.asks.push(title || text); return Promise.resolve(env.answer); };
-    ${fns(['_navSnap', '_navSame', 'navPush', 'navBack', '_navPop', '_lkRfBack'])}
+    ${fns(['_navSnap', '_navSame', 'navPush', 'navBack', '_navPop', '_lkRfBack', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop'])}
     return { S, NAV, LINK, navPush, navBack, _navPop };`);
   const w: any = { ...f(env), env };
   // The browser: each history.back() later fires one popstate (= _navPop). Runs until quiet; caps to catch a loop.

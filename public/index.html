@@ -2584,7 +2584,8 @@ function openMore() {
   const rows = moreItems().map(m => {
     const here = S.page === m.id;
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
-  }).join('');
+  }).join('') // Y5: every role can change its own password here (junior leaders have no Setup page)
+    + `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>`;
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -2937,6 +2938,11 @@ async function doLogout() {
 // MUST_CHANGE_PASSWORD 403 (see express-adapter.ts). Reuses the same
 // /accounts/me/password endpoint as the Connect Setup "Change Your Password"
 // modal (submitChangeOwnPassword), just as a blocking full page instead of a modal.
+// Y5 (SPEC #5): grade and quad logins are shared by a team, so a new password signs everyone on it out.
+function _sharedPwWarn() {
+  const r = S.user && S.user.role;
+  return r === 'grade' || r === 'quad' ? '<div class="alert al-warn">Everyone using this login is signed out. They need the new password.</div>' : '';
+}
 function renderMustChangePassword() {
   _shellReady = false;
   Cache.clear();
@@ -2944,6 +2950,7 @@ function renderMustChangePassword() {
     <div class="login-pg">
       <div class="login-card">
         <div class="login-logo"><div class="login-badge">${brandMark(42, '#fff')}</div><h1>Set a New Password</h1><p>This account's password must be changed before continuing</p></div>
+        ${_sharedPwWarn()}
         <div id="mcperr"></div>
         <form id="mcpform">
           <input type="hidden" name="username" autocomplete="username" value="${esc((S.user && S.user.email) || '')}">
@@ -8200,6 +8207,7 @@ function copyText(text) {
 function showChangeOwnPassword() {
   modal(`
     <div class="mo-title">Change Your Password</div>
+    ${_sharedPwWarn()}
     <div id="cpwerr"></div>
     <form id="cpwform">
       <input type="hidden" name="username" autocomplete="username" value="${esc((S.user && S.user.email) || '')}">
@@ -10080,7 +10088,7 @@ function _lkStatusText(row, lastSeen) {
       // _ikChip wording); otherwise say since when.
       : row.createdAt && Date.now() - Date.parse(row.createdAt) > LK_OFFLINE_MS
         ? (typeof LINK !== 'undefined' && LINK.status && LINK.status.console && LINK.status.console.online ? 'Queued behind other saves.' : "Console hasn't picked this up yet (since " + _lkSeen(row.createdAt) + ').')
-      : 'Waiting for the console.' + (lastSeen ? ' Console last seen ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
+      : 'Waiting for Elvanto.' + (lastSeen ? ' Elvanto last reached ' + lastSeen : _lkOutsideWindow() ? ' Usually under a minute.' : ''); // GAP-3: a pending row makes the console claim in 10 s
     case 'claimed': return 'Sending to Elvanto…';
     case 'sent': if (row.type === 'removeFromFlowStep') return row.reason === 'already' ? 'Not in this step any more.' : 'Removed from the step in Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
@@ -10382,6 +10390,7 @@ function _lkPill() {
 function _lkBoot() {
   if (LINK.booted || !S.user) return;
   LINK.booted = true;
+  LINK.uid = S.user.id; // Y5: whose report draft _lkSoftReset keeps (S.user is often gone by then)
   // Other logins' queues older than 3 days would be refused too-old anyway: drop them (B13 / APP-33).
   try {
     const old = [];
@@ -10437,7 +10446,22 @@ function _lkClear(k) {
   k = k || _lkKey();
   try { localStorage.removeItem(k); } catch (e) {}
   delete LINK.mem[k];
+  LINK.rf = null; // Y5: logout drops the report draft too (k is 'ysc.lkq.' + login id)
+  try { localStorage.removeItem(_lkDraftKey(k.slice(8))); } catch (e) {}
   _lkSoftReset();
+}
+// Y5: one half-typed new report per login survives a sign-out (expiry): ysc.lkDraft.<login id> = { gid, rf }.
+// Restored on the next open of that group; cleared on send, Discard and logout. Every access in try/catch.
+function _lkDraftKey(uid) { return 'ysc.lkDraft.' + (uid || ''); }
+function _lkDraftGet(uid) {
+  try {
+    const d = JSON.parse(localStorage.getItem(_lkDraftKey(uid)) || 'null');
+    return d && d.gid && d.rf && d.rf.mode === 'submit' && typeof d.rf.date === 'string' && d.rf.ticks && typeof d.rf.ticks === 'object' ? d : null;
+  } catch (e) { return null; }
+}
+function _lkDraftDrop(uid, gid) {
+  const d = _lkDraftGet(uid);
+  if (d && d.gid === gid) { try { localStorage.removeItem(_lkDraftKey(uid)); } catch (e) {} }
 }
 // Session gone (expired, logout) or the login swapped (preview): forget the lists in memory; each login's queue
 // stays under its own key (the memory-only copy too).
@@ -10446,6 +10470,10 @@ function _lkSoftReset() {
   if (LINK.tick) clearInterval(LINK.tick);
   if (LINK.toastT) clearTimeout(LINK.toastT);
   if (LINK.ik) { clearTimeout(LINK.ik.debT); clearTimeout(LINK.ik.poll); } // T4: the intake answers live in memory only
+  const f = LINK.rf; // Y5: a typed-in new report is kept for its own login
+  if (LINK.uid && LINK.gid && f && f.mode === 'submit' && f.dirty) {
+    try { localStorage.setItem(_lkDraftKey(LINK.uid), JSON.stringify({ gid: LINK.gid, rf: Object.assign({}, f, { err: '' }) })); } catch (e) {}
+  }
   // RV-I-m8: the intake queue's in-flight ids/families, flush lock and memory-only copy survive too (no double flush, no lost queue).
   const keep ={ mem: LINK.mem, memOnly: LINK.memOnly, memWarned: LINK.memWarned, ikStop: LINK.ikStop,
     ikFly: LINK.ikFly, ikFam: LINK.ikFam, ikFlushing: LINK.ikFlushing, ikMem: LINK.ikMem, ikMemOnly: LINK.ikMemOnly };
@@ -10971,7 +10999,7 @@ function _lkIamListHtml(q, ls) {
     .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
   return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
-    : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found.'}</p>`;
+    : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found. Ask your admin to add leaders.'}</p>`;
 }
 function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
 function _lkIamRetry() { LINK.iamPick = undefined; _lkIamFilter(LINK.iamQ || ''); }
@@ -11053,7 +11081,7 @@ function _lkGroupAct(g) {
 function _lkGroupsHtml() {
   const gs = LINK.groups;
   if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : progBar('Loading');
-  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.</p>';
+  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login. Ask your admin.</p>';
   const grades = [...new Set(gs.map((g) => g.grade).filter((x) => x != null))].sort((a, b) => a - b);
   let sel = 'all';
   try { sel = localStorage.getItem('yap_lk_grade') || 'all'; } catch (e) {}
@@ -11201,7 +11229,13 @@ async function renderLinkGroups() {
   _lkPaintGroups();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (S.page === 'link-groups' && LINK.rf) _lkPaintGroups(); }, () => {});
 }
-function _lkOpenGroup(id) { navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null; _lkPaintGroups(); }
+function _lkOpenGroup(id) {
+  navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null;
+  // Y5: a report kept at a sign-out opens again, unless this session already holds a draft for that date.
+  const d = _lkDraftGet(S.user && S.user.id), key = d && id + '|' + d.rf.date;
+  if (d && d.gid === id && !(LINK.rfd && LINK.rfd[key])) { (LINK.rfd || (LINK.rfd = {}))[key] = d.rf; _lkFormOpen('submit', d.rf.date); return; }
+  _lkPaintGroups();
+}
 function _lkGroupsBack() { navBack(); }
 // "I am" is required before a report (decision 11): no "I am" yet: the picker opens first.
 function _lkNewReport(date) { if (!getMyLeaderId()) { _lkIamPick(() => _lkNewReport(date)); return; } _lkFormOpen('submit', date); }
@@ -11278,6 +11312,7 @@ async function _lkRfBack() {
   const f = LINK.rf, g = _lkGroup();
   if (f && f.dirty && !(await _lkAsk('The ticks and note on this report are not sent.', 'Discard report', 'Keep editing', 'Discard report?'))) return;
   if (f && g && LINK.rfd && LINK.rfd[g.groupId + '|' + f.date] === f) delete LINK.rfd[g.groupId + '|' + f.date];
+  if (f && g && f.dirty) _lkDraftDrop(S.user && S.user.id, g.groupId);
   _lkGroupsBack();
 }
 // Send = into the shared phone queue. The raw note goes as typed: the console composes the leader line.
@@ -11299,6 +11334,7 @@ function _lkReportSend() {
   const note = String(f.note || '').trim() ? f.note : null;
   if (LINK.gres) delete LINK.gres[g.groupId];
   if (LINK.rfd) delete LINK.rfd[g.groupId + '|' + f.date];
+  _lkDraftDrop(S.user && S.user.id, g.groupId);
   LINK.rf = null;
   _lkPush({ kind: 'action', id: _lkUuid(), type: f.mode === 'edit' ? 'editReport' : 'submitReport', payload, note, leaderId: lid }, true);
   _lkPaintGroups();
