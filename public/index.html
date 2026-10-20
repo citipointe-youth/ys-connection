@@ -10238,6 +10238,7 @@ function _lkStatusText(row, lastSeen) {
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return "They aren't in a room in Elvanto. Check them out in Elvanto.";
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
+      if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
       // Rev 6: personNote ships LOCKED, so a remove WITH a note is refused before anything is sent.
       if (row.reason === 'locked' && row.type === 'removeFromFlowStep') return "Not sent: a remove with a note isn't switched on yet. Remove again without a note, or do it in Elvanto.";
       return R[row.reason] || row.message || R.unknown;
@@ -11777,9 +11778,11 @@ function _lkFlowVisible() {
   return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), _juniorMin()) : rows;
 }
 // I7 (R2-G4): admin-only tiles "New Students" / "Parent text" (the Parent Consent flow's first step), shown when both flows are pushed.
+// Y2b: the two flow names come from this location's settings (Youth Setup, ministryConfig.elvanto); a blank one matches nothing.
 function _lkFlowKind(r) {
-  const n = String((r && r.flowName) || '');
-  return /^Brisbane - Youth - New People/.test(n) ? 'people' : /^Brisbane - Youth - Parent Consent/.test(n) ? 'parent' : '';
+  const n = String((r && r.flowName) || ''), e = ((S.settings && S.settings.ministryConfig) || {}).elvanto || {};
+  const pp = String(e.peopleFlowPrefix || ''), pc = String(e.consentFlowPrefix || '');
+  return pp.trim() && n.startsWith(pp) ? 'people' : pc.trim() && n.startsWith(pc) ? 'parent' : '';
 }
 // The first Elvanto step (lowest stepOrder) of that kind's flow, from the pushed steps and rows.
 function _lkFirstStep(k) {
@@ -11903,6 +11906,12 @@ function _lkFlowsHtml() {
   const steps = !k ? LINK.fSteps : (LINK.fSteps || []).filter((x) => _lkFlowKind(x) === k && (!first || (x.flowId === first.flowId && x.stepId === first.stepId)));
   LINK.fstep = {};
   let top = tiles ? _lkTilesHtml() : '';
+  if (S.user && S.user.role === 'admin') { // Y2b: the server's test for this year's New People flow (link-rules peopleFlowName:
+    // prefix + a year, any case). None = every step-0 Complete is refused (CONSENT_FLOW_UNKNOWN), so the admin is told why.
+    const pf = String((((S.settings && S.settings.ministryConfig) || {}).elvanto || {}).peopleFlowPrefix || '');
+    const re = pf.trim() ? new RegExp('^' + pf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' (\\d{4})\\b', 'i') : null;
+    if (!re || !rs.some((r) => re.test(String(r.flowName || '').trim()))) top += `<div class="lk-alert warn">${icS('info')}<div>${esc("This year's New People flow wasn't found, so step 0 can't be completed. In Admin > Youth Setup > Elvanto for this location, check the New People flow name. It must match the flow in Elvanto.")}</div></div>`;
+  }
   if (boss) {
     const n = _lkSelIds(shown, LINK.fsel).length;
     top += (k === 'parent' ? '' : _lkFfHtml(_lkFfGet())) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
