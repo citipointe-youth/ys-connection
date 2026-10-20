@@ -12,15 +12,20 @@ export const LINK_CONTRACT_VERSION = 1;
 // console lost (its 15 s timeout while the app committed the lease) never strands rows for the 600 s lease.
 // Rev 13 (Service Visits): a flows row may carry serviceVisits; MIN_CONSOLE_REV stays 12 so a rev-12 console still works.
 // Rev 14 (multi-location): claim reply may carry site
+// Rev 15 (L7, 2026-10-21): the recheck type: the admin asks the console to re-run an unclear save's own read/confirm check
+// (read only, never a write). Optional capability: an older console never lists it, so it is never leased one.
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
-export const LINK_REV = 14;
+export const LINK_REV = 15;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
-  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'] as const;
+  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck'] as const;
+/** Rev 15 (L7): the unclear saves the console can re-check (read only). Not the intake chains, lookups or console-local links. */
+export const RECHECK_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
+  'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix'] as const;
 /** The Consents screen's lookups: rev 6 forms + mismatches, L6 unlinked (0031), rev 8 other (0033). */
 export const CONSENT_LOOKUP_KINDS = ['forms', 'mismatches', 'unlinked', 'other'] as const;
 export type ConsentLookupKind = (typeof CONSENT_LOOKUP_KINDS)[number];
@@ -125,6 +130,10 @@ export const PAYLOAD_SCHEMAS = {
   consentFix: z.object({ personId: Uuid, subId: Uuid }).strict(),
   // Run 2026-10-15b (L6), console-local (no Elvanto write): link an unlinked consent form to a person (personId), or undo it (null).
   consentLink: z.object({ subId: Uuid, personId: Uuid.nullable() }).strict(),
+  // Rev 15 (L7): re-check one unclear row (ref) by its own type, payload and sent-log key; the claim's note is the ref row's.
+  // The console answers already (saved), refused not-landed (not saved) or refused another reason (still unclear), and
+  // `resolved` on the ref row itself when it knows.
+  recheck: z.object({ ref: Uuid, type: z.enum(RECHECK_TYPES), payload: z.record(z.unknown()), sentLogKey: StepKey.nullable() }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -138,7 +147,8 @@ export const ClaimRequest = z.object({
     // X19: the intake types, sent only when the app's linkRev >= 4 (an older app 400s on unknown keys).
     intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
     // Rev 6: sent only when the app's linkRev >= 6.
-    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional() }).strict(),
+    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional(),
+    recheck: Cap.optional() }).strict(), // rev 15 (L7)
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,

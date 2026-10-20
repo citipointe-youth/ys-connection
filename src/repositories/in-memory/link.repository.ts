@@ -142,7 +142,9 @@ export class InMemoryLinkRepository implements ILinkRepository {
         leaseUntil: new Date(now + a.leaseSeconds * 1000).toISOString(), attempts: row.attempts + (live ? 0 : 1), updatedAt: nowIso });
       let note: string | null = null;
       try {
-        note = row.note === null ? null : this.decrypt(row.note, row.id);
+        // L7: a recheck row carries its ref row's note (that row's own AAD), so the console compares what it first sent.
+        const src = row.type === 'recheck' ? this.outbox.get(String((row.payload as { ref?: unknown }).ref))?.row ?? null : row;
+        note = src?.note == null ? null : this.decrypt(src.note, src.id);
       } catch {
         Object.assign(row, { status: 'refused', reason: 'note-unreadable', leaseOwner: null, leaseUntil: null, resultAt: nowIso });
         out.push({ row: { ...clone(row), note: null }, reclaimed, noteUnreadable: true });

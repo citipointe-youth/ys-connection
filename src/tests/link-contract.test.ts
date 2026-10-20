@@ -90,6 +90,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-flows-rev13.json': C.PUSH_SCHEMAS.flows,
   // Rev 14 (multi-location X1, 2026-10-20)
   'claim-response-rev14.json': C.ClaimResponse,
+  // Rev 15 (L7 recheck, 2026-10-21)
+  'claim-response-rev15.json': C.ClaimResponse,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -98,7 +100,7 @@ describe('link contract: every fixture parses with its schema', () => {
 
   it('claim-response (+ claim-response-rev4, X19) has one row per action type; each payload parses with its type schema', () => {
     const rows = [...C.ClaimResponse.parse(load('claim-response.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev4.json')).rows,
-      ...C.ClaimResponse.parse(load('claim-response-rev6.json')).rows];
+      ...C.ClaimResponse.parse(load('claim-response-rev6.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev15.json')).rows];
     expect(rows.map((r) => r.type).sort()).toEqual([...C.ACTION_TYPES].sort());
     for (const r of rows) (C.PAYLOAD_SCHEMAS[r.type] as z.ZodTypeAny).parse(r.payload);
   });
@@ -180,7 +182,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(14); // 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(15); // 2026-10-21 L7: rev 15 = recheck type; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -335,14 +337,14 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   it('0021: the type check lists every ACTION_TYPE; RLS on every table it creates; additive', () => {
     const sql = readFileSync(MIG, 'utf8');
     const check = sql.slice(sql.indexOf('add constraint link_outbox_type_check'), sql.indexOf('));') + 2);
-    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink'];
+    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck'];
     expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => !REV6.includes(t)).sort());
     const sql27 = readFileSync(join(ROOT, 'supabase', 'migrations', '0027_link_rev6.sql'), 'utf8');
     const at27 = sql27.indexOf('add constraint link_outbox_type_check'), check27 = sql27.slice(at27, sql27.indexOf('));', at27) + 2);
-    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'consentLink').sort()); // 0027: every type then
+    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'consentLink' && t !== 'recheck').sort()); // 0027: every type then
     const sql31 = readFileSync(join(ROOT, 'supabase', 'migrations', '0031_link_consent_link.sql'), 'utf8');
     const at31 = sql31.indexOf('add constraint link_outbox_type_check'), check31 = sql31.slice(at31, sql31.indexOf('));', at31) + 2);
-    expect([...check31.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort()); // 0031: every type
+    expect([...check31.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'recheck').sort()); // 0031: every type then
     expect(sql31).toMatch(/kind in \('forms','mismatches','unlinked'\)/);
     expect(sql31).not.toMatch(/\b(drop table|rename|alter column)\b/i);
     expect(sql27).toMatch(/alter table link_consent_lookup enable row level security/);
@@ -433,11 +435,32 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     expect(C.ClaimResponse.parse(load('claim-response-rev14.json')).site).toEqual({ timeZone: 'Australia/Brisbane', serviceDay: 5,
       consentCutoff: '09:00', peopleFlowPrefix: 'Brisbane - Youth - New People', consentFlowPrefix: 'Brisbane - Youth - Parent Consent' });
     expect(C.ClaimResponse.parse(load('claim-response-rev9.json')).site).toBeUndefined(); // an older reply still parses
-    expect(C.LINK_REV).toBe(14);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     for (const [k, v] of [['serviceDay', 7], ['serviceDay', 1.5], ['consentCutoff', '9:00'], ['timeZone', 5], ['peopleFlowPrefix', null]] as const) {
       const bad = clone(load('claim-response-rev14.json')); bad.site[k] = v; rejects(C.ClaimResponse, bad);
     }
+  });
+  it('rev 15 (L7): the recheck type names an unclear row, its own type, payload and sent-log key; optional capability', () => {
+    const row = C.ClaimResponse.parse(load('claim-response-rev15.json')).rows[0]!;
+    expect(row.type).toBe('recheck');
+    const p = C.PAYLOAD_SCHEMAS.recheck.parse(row.payload);
+    (C.PAYLOAD_SCHEMAS[p.type] as z.ZodTypeAny).parse(p.payload); // the ref row's own payload, by its own type
+    expect(C.LINK_REV).toBe(15);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck'];
+    expect([...C.RECHECK_TYPES].sort()).toEqual(C.ACTION_TYPES.filter((t) => !not.includes(t)).sort());
+    const req = load('claim-request.json');
+    expect(C.ClaimRequest.parse({ ...req, capabilities: { ...req.capabilities, recheck: 'live' } }).capabilities.recheck).toBe('live');
+    expect(C.ClaimRequest.parse(req).capabilities.recheck).toBeUndefined(); // an older console sends none
+    for (const bad of [{ type: 'intakeSave' }, { type: 'recheck' }, { ref: 'X' }, { extra: 1 }, { sentLogKey: '' }]) {
+      rejects(C.PAYLOAD_SCHEMAS.recheck, { ...row.payload, ...bad });
+    }
+  });
+  it('0041: widens only the outbox type check, adding recheck (every other type kept)', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0041_link_recheck.sql'), 'utf8');
+    const at = sql.indexOf('add constraint link_outbox_type_check'), check = sql.slice(at, sql.indexOf('));', at) + 2);
+    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort());
+    expect(sql).not.toMatch(/\b(drop table|rename|alter column|delete|truncate)\b/i);
   });
   it('0039: adds only link_flow_people.service_visits, additive', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0039_link_flow_service_visits.sql'), 'utf8');

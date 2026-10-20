@@ -221,7 +221,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
         const reclaimed = p.status === 'claimed';
         let note: string | null = null;
         try {
-          note = r.note == null ? null : this.decrypt(r.note as string, r.id as string);
+          // L7: a recheck row carries its ref row's note (decrypted with that row's own AAD; still kept while it is unclear).
+          const src = r.type === 'recheck'
+            ? (await tx`select id, note from link_outbox where id = ${String((r.payload as { ref?: unknown } | null)?.ref)}`)[0] ?? null : r;
+          note = src?.note == null ? null : this.decrypt(src.note as string, src.id as string);
         } catch {
           const [u] = await tx`
             update link_outbox set status = 'refused', reason = 'note-unreadable', lease_owner = null, lease_until = null,

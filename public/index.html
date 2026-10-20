@@ -3250,8 +3250,9 @@ function _attnLines(a) {
   const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
   if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')"]);
   if (a.unsent) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
-  if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save. Check it in Elvanto' : a.unclear + ' unclear saves. Check them in Elvanto')
-    + (adm ? (a.unclear === 1 ? ', then mark it' : ', then mark them') + ' in Admin > Elvanto link.' : '.'), link]);
+  if (a.unclear) L.push([adm ? (a.unclear === 1 ? '1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.' // L7
+    : a.unclear + ' unclear saves. Tap Check again on each in Admin > Elvanto link, or check them in Elvanto and mark them there.')
+    : a.unclear === 1 ? '1 unclear save. Check it in Elvanto.' : a.unclear + ' unclear saves. Check them in Elvanto.', link]);
   if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
     + (adm ? ' See Admin > Elvanto link.' : ''), link]);
   if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
@@ -12359,7 +12360,7 @@ function _lkAdmStatusHtml() {
     <div class="lk-sec">Today</div>${LINK.adm.aErr ? `<p class="lk-sub">${esc(LINK.adm.aErr)}</p>` : !LINK.adm.acts ? progBar('Loading')
       : Object.keys(counts).length ? Object.keys(counts).map((k) => `<div class="lk-kv"><span>${esc(_lkWord('status', k))}</span><b>${counts[k]}</b></div>`).join('') : '<p class="lk-sub">No actions today.</p>'}
     ${unclear.map((a) => `<div class="lk-alert warn">${icS('info')}<div><b>${esc(_lkVerb(a.type))}</b> · ${esc(a.name || 'Unknown person')} · by ${esc(a.leaderName || a.login || '')}<br>${esc(a.detail || 'No detail.')}
-      <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div></div></div>`).join('')}
+      <div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',true)">Landed</button><button type="button" class="btn btn-secondary btn-sm" onclick="_lkAdmUnclearOpen('${esc(a.id)}',false)">Not landed</button></div>${_lkRcHtml(a.id, caps)}</div></div>`).join('')}
     ${waiting.length ? `<div class="lk-sec">First-timers waiting over 1 hour</div>${waiting.map((a) => `<div class="lk-kv"><span>${esc(a.name || 'Unknown person')} · ${esc(_lkTime(a.createdAt))}</span><b>${esc(_lkStatusText(a))}</b></div>`).join('')}` : ''}`;
 }
 // Matching: Unmatched / Several possible / Set by hand. Elvanto person in bold; YS candidates with grade and birth date.
@@ -12414,6 +12415,35 @@ function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
     <div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+}
+// L7 (LINK_REV 15): Check again on an unclear save. The console re-runs that save's own check in Elvanto (read only, never a
+// write) and the line says Saved / Not saved / Still unclear. Keyed by the unclear row's id; shown only while the console takes it.
+const _LK_RC = {};
+function _lkRcHtml(id, caps) {
+  const r = _LK_RC[id];
+  if (!r && !(caps && caps.recheck === 'live')) return '';
+  const busy = !!r && r.state === 'checking', again = !r || busy || r.state === 'unclear';
+  return `<div class="lk-mt" id="lk-rc-${esc(id)}">`
+    + (again ? `<button type="button" class="btn btn-secondary btn-sm"${busy ? ' disabled' : ''} onclick="_lkRecheck('${esc(id)}')">${busy ? 'Checking…' : 'Check again'}</button>` : '')
+    + (r ? `<div class="lk-st ${r.state === 'saved' ? 'ok' : busy ? 'wait' : 'bad'}" role="status">${esc(r.text)}</div>` : '') + '</div>';
+}
+async function _lkRecheck(id) {
+  const draw = () => { const el = document.getElementById('lk-rc-' + id); if (el) el.outerHTML = _lkRcHtml(id, { recheck: 'live' }); };
+  _LK_RC[id] = { state: 'checking', text: 'Sent to the console.' };
+  draw();
+  let rid;
+  try { rid = (await API.post('/link/admin/unclear/' + encodeURIComponent(id) + '/recheck', {})).id; } catch (e) {
+    _LK_RC[id] = { state: 'unclear', text: e.message || 'Could not ask the console.' };
+    return draw();
+  }
+  for (let i = 0; i < 60; i++) { // about 3 minutes
+    let s = null;
+    try { s = await API.fresh('/link/admin/recheck/' + encodeURIComponent(rid)); } catch (e) { s = null; }
+    if (s && s.state) { _LK_RC[id] = { state: s.state, text: s.text }; draw(); if (s.state !== 'checking') return; }
+    await new Promise((ok) => setTimeout(ok, 3000));
+  }
+  _LK_RC[id] = { state: 'unclear', text: 'The console has not answered yet. It may be busy. Tap Check again later.' };
+  draw();
 }
 // CY-A1: the admin looked in Elvanto and says whether an unclear row landed. Landed = Saved; Not landed = refused,
 // so the same action can be sent again. Either way the row stops blocking (POST /link/admin/unclear/:id).
@@ -14032,7 +14062,7 @@ function _ikLkResHtml(kind, x, st) {
     return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(m.name)}</div>${pill}</div>`
       + `<div class="lk-d">${esc(m.submitted ? 'Newest form sent ' + _lkDay(m.submitted) : 'Newest form: date unknown')}</div>`
       + _ikMisLines(m).map((l) => `<div class="ik-mis"><b>${esc(l[0])}</b><div class="ik-mis2"><div><i>Form</i>${_ikMisVal(l[1])}</div><div><i>Profile</i>${_ikMisVal(l[2])}</div></div></div>`).join('')
-      + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '')
+      + (ft ? `<div class="lk-st ${ft[0]}" role="status">${esc(ft[1])}</div>` : '') + (fx && fx.status === 'unclear' ? _lkRcHtml(fx.id, caps) : '') // L7
       + (done || m.linked || noFix ? (!done && m.linked ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : '')
         : `<div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
       + '</div>';

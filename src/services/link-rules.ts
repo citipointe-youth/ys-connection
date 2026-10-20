@@ -145,6 +145,7 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'consentLookup': return `cl:${p.ref}`;
     case 'consentFix': return `cf:${p.personId}`;
     case 'consentLink': return `cn:${p.subId}`; // one open link / unlink per form
+    case 'recheck': return `rc:${p.ref}`; // rev 15 (L7): one open re-check per unclear row
   }
 }
 

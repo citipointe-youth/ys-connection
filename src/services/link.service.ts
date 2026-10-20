@@ -17,7 +17,7 @@ import type {
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
 import { MATCHES } from '../core/link-types';
-import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, Uuid, isDnc } from '../core/link-contract';
+import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, RECHECK_TYPES, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -186,10 +186,20 @@ export interface LinkService {
   setMatch(actor: Actor, personId: string, body: unknown): Promise<{ personId: string; studentId: string | null; match: Match }>;
   /** CY-A1: the admin says whether an unclear row landed in Elvanto (the console's own `resolved` transition). */
   resolveUnclear(actor: Actor, id: string, body: unknown): Promise<{ ok: true; status: 'sent' | 'refused' }>;
+  /** L7 (rev 15): ask the console to re-check an unclear row in Elvanto (read only). The open re-check's id if one is queued. */
+  recheckUnclear(actor: Actor, id: string): Promise<{ id: string }>;
+  /** L7: what one re-check found, in plain words (admin only). */
+  recheckState(actor: Actor, id: string): Promise<RecheckView>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
   /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
   consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
 }
+
+/** L7: checking = the console has not answered yet; saved / not-saved resolve the unclear row; unclear = it stays unclear. */
+export interface RecheckView { id: string; ref: string; state: 'checking' | 'saved' | 'not-saved' | 'unclear'; text: string }
+export const RECHECK_TEXT = { checking: 'Checking Elvanto…', saved: 'Saved in Elvanto.',
+  'not-saved': 'Not saved in Elvanto. Send it again from the app if it is still needed.',
+  unclear: (why: string) => `Still unclear: ${why} Check it in Elvanto, then tap Landed or Not landed.` } as const;
 
 export interface LinkServiceDeps {
   link: ILinkRepository; settings: ISettingsRepository; students: IStudentRepository; leaders: ILeaderRepository;
@@ -511,6 +521,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     };
     // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is); X19: intake = admin + module
     // Rev 6: the Consents screen's two types = intake's gate; removeFromFlowStep = the flows screen + admin/director.
+    if (it.type === 'recheck') throw new BadRequestError('Use Check again in Admin > Elvanto link.'); // L7: admin route only
     const intake = isIntakeType(it.type);
     const consentType = isConsentType(it.type);
     if (intake || consentType) intakeGate(c.actor, c.settings);
@@ -938,7 +949,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // B17: and every first-timer, for the "waiting over 1 hour" list (the name is the payload's own).
         for (const r of rows) if (r.status === 'unclear' || r.type === 'firstTimerCheckIn') names.set(r.id, (await targetOf(c, r)).name);
       }
-      return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
+      return rows.filter((r) => r.type !== 'recheck').map((r) => ({ id: r.id, type: r.type, status: r.status, reason: r.reason, // L7: a re-check shows on its own row
         ...(c.admin ? { detail: r.detail } : {}), createdAt: r.createdAt, resultAt: r.resultAt, leaderName: r.leaderName,
         login: logins.get(r.createdBy) ?? '', hasNote: r.hasNote === true, ...(names.has(r.id) ? { name: names.get(r.id) } : {}),
         ...(r.status === 'sent' && r.detail === NOTE_FAILED_DETAIL ? { note: 'failed' as const } : {}),
@@ -1228,6 +1239,42 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       await d.link.addLog([await logRow(c, { id: null, label: null }, { event: 'resolve', targetKind: 'action', targetId: id,
         targetName: null, outboxId: id, outcome: b.data.landed ? 'sent' : 'refused:not-landed' })]);
       return { ok: true, status };
+    },
+
+    /** L7 (rev 15): Check again. The row must be unclear and of a type the console can re-check; the newest console must list
+     *  recheck (an older one never gets one). The recheck row carries the row's own type, payload and sent-log key, and the
+     *  claim hands it the row's own note (repository claim), so the console compares what it first sent. Read only. */
+    async recheckUnclear(actor, id) {
+      const c = context(actor, await gate(actor, 'admin'));
+      const row = Uuid.safeParse(id).success ? await d.link.getAction(id) : null;
+      if (!row || row.type === 'recheck') throw new NotFoundError('This action is not on the server.');
+      if (row.status !== 'unclear') throw new ConflictError('This is no longer waiting for a check.');
+      if (!(RECHECK_TYPES as readonly string[]).includes(row.type)) throw new BadRequestError("The console can't check this kind of save. Check it in Elvanto.");
+      const con = newest(await c.consoles());
+      if (!con || (con.capabilities.recheck ?? 'off') === 'off') throw new LinkUnavailable();
+      const payload = PAYLOAD_SCHEMAS.recheck.parse({ ref: row.id, type: row.type, payload: row.payload, sentLogKey: row.sentLogKey });
+      try {
+        const r = await d.link.insertAction({ id: randomUUID(), type: 'recheck', payload, note: null, dedupeKey: dedupeKey('recheck', payload),
+          serviceDate: row.serviceDate, studentId: null, personId: row.personId, createdBy: c.actor.id, leaderId: row.leaderId, leaderName: row.leaderName });
+        return { id: r.id };
+      } catch (e) {
+        if (e instanceof LinkOpenDuplicate) return { id: String(e.extra?.existingId) };
+        throw e;
+      }
+    },
+
+    async recheckState(actor, id) {
+      await gate(actor, 'admin');
+      const r = Uuid.safeParse(id).success ? await d.link.getAction(id) : null;
+      if (!r || r.type !== 'recheck') throw new NotFoundError('That check is not known.');
+      const ref = String((r.payload as { ref?: unknown }).ref);
+      const out = (state: RecheckView['state'], text: string): RecheckView => ({ id: r.id, ref, state, text });
+      if (r.status === 'sent') return out('saved', RECHECK_TEXT.saved);
+      if (r.status === 'refused' && r.reason === 'not-landed') return out('not-saved', RECHECK_TEXT['not-saved']);
+      if (r.status === 'refused' || r.status === 'cancelled' || r.status === 'unclear') {
+        return out('unclear', RECHECK_TEXT.unclear(r.detail || "The console couldn't tell."));
+      }
+      return out('checking', RECHECK_TEXT.checking);
     },
 
     async log(actor, q) {

@@ -5,7 +5,7 @@ import type { z } from 'zod';
 import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
-import type { ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
+import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
 import type { ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
@@ -91,6 +91,13 @@ export function makeSyncService(d: SyncDeps) {
         for (const c of claimed) if (c.noteUnreadable) add('note-unreadable', c.row.type);
         await Promise.all([...groups.values()].map((g) => d.errorLog!.record({ category: 'link', ...g, role: 'console' })));
       }
+      // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
+      // Rev 6: a removal with no note stays null (the console posts a note only when there is one). L7: a recheck row's note
+      // is its ref row's (the repository claim), attributed by that row's own type, so the console compares what it first got.
+      const noteFor = (row: (typeof ok)[number]['row']) => {
+        const t = row.type === 'recheck' ? (row.payload as { type: ActionType }).type : row.type;
+        return ATTRIBUTED_TYPES.includes(t) && (t !== 'removeFromFlowStep' || row.note) ? attributedNote(row.leaderName, row.note) : row.note;
+      };
       const logins = new Map<string, string>();
       for (const id of new Set(ok.map((c) => c.row.createdBy))) {
         logins.set(id, (await d.users.findById(id))?.email ?? '');
@@ -104,8 +111,7 @@ export function makeSyncService(d: SyncDeps) {
           payload: row.payload,
           // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
           // Rev 6: a removal with no note stays null (the console posts a note only when there is one).
-          note: ATTRIBUTED_TYPES.includes(row.type) && (row.type !== 'removeFromFlowStep' || row.note)
-            ? attributedNote(row.leaderName, row.note) : row.note,
+          note: noteFor(row),
         })),
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
         ...(d.intake ? { intake: await d.intake.hint(settings, capabilities) } : {}), // X19: the intake hint
@@ -134,6 +140,7 @@ export function makeSyncService(d: SyncDeps) {
         const rows = await Promise.all(hits.map((it) => d.link.getAction(it.id)));
         const groups = new Map<string, { code: string; route: string; count: number }>();
         hits.forEach((it, i) => {
+          if (rows[i]?.type === 'recheck') return; // L7: a re-check's answer shows on its own row, never as an Error log line
           const code = it.outcome === 'refused' ? it.reason : 'unclear', route = rows[i]?.type ?? 'unknown';
           const g = groups.get(`${route}|${code}`) ?? { code, route, count: 0 };
           g.count++; groups.set(`${route}|${code}`, g);
