@@ -354,6 +354,22 @@ describe('sync: intake hint, pushes, results', () => {
     reply = await h.sync.claim(CLAIM4({ max: 0 }));
     expect(reply.intake!.hurry).toBe(true);
   });
+  it('L8 (2026-10-21): a consentLookup made in the last 5 min keeps hurry on, also after its own claim leased and answered it', async () => {
+    const h = await setup();
+    const C = (o: Record<string, unknown> = {}) => CLAIM4({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'live' }, ...o });
+    expect((await h.sync.claim(C())).intake!.hurry).toBe(false);
+    const id = nid();
+    expect((await one(h, act('consentLookup', { kind: 'forms', page: 1, ref: id }, null, id))).outcome).toBe('saved');
+    const r = await h.sync.claim(C());
+    expect(r.rows.map((x) => x.id)).toContain(id); // leased in this claim, so it is no longer pending
+    expect(r.intake!.hurry).toBe(true);
+    await h.sync.result({ contractVersion: 1, consoleId: C().consoleId, results: [{ id, outcome: 'planned' }] });
+    h.clock.now = new Date(NOW.getTime() + 4 * 60_000);
+    expect((await h.sync.claim(C())).intake!.hurry).toBe(true);
+    expect((await h.sync.claim(C({ capabilities: { ...CLAIM4().capabilities, consentLookup: 'off' } }))).intake!.hurry).toBe(false); // a console with lookups off is not hurried
+    h.clock.now = new Date(NOW.getTime() + 6 * 60_000);
+    expect((await h.sync.claim(C())).intake!.hurry).toBe(false);
+  });
   it('module Off: hint mode off, the Off save clears the intake tables, a push not stored, nothing leased by the intake switch alone', async () => {
     const h = await setup();
     const users = new InMemoryUserRepository(); const audit = new InMemoryAuditRepository();

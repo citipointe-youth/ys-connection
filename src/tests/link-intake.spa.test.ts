@@ -119,6 +119,18 @@ describe('module gating', () => {
     expect(on.calls.fresh).toContain('/link/intake?mode=intake&date=2026-10-09');
     expect(on.calls.apps.length).toBe(1);
   });
+  it('L8 (2026-10-21): a quiet Consents load that will warm the lists marks the view; later quiet loads do not', async () => {
+    const e = makeEnv({ fresh: () => ({ ...ST(), dates: [] }) });
+    e.fns._ik().tab = 'consent';
+    await e.fns._ikLoad(true);
+    expect(e.calls.fresh).toContain('/link/intake?mode=consent&view=1');
+    e.fns._ik().lkPre = Date.now(); e.calls.fresh.length = 0;
+    await e.fns._ikLoad(true);
+    expect(e.calls.fresh).toContain('/link/intake?mode=consent');
+    const i = makeEnv({ fresh: () => ({ ...ST(), dates: [] }) }); // Intakes never warms lookups: a quiet load stays quiet
+    await i.fns._ikLoad(true);
+    expect(i.calls.fresh).toContain('/link/intake?mode=intake');
+  });
   it('a console below link rev 4 shows the out-of-date banner instead of the lists, and never loads a date', async () => {
     const e = makeEnv({ fresh: () => ({ ...ST({ rev: 3 }), dates: [{ date: '2026-10-09', takenAt: iso(1000), counts: { needsYou: 0 } }] }) });
     await e.fns._ikLoad(false);

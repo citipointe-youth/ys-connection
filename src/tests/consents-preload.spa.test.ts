@@ -210,6 +210,26 @@ describe('N06 one tab warms per login', () => {
   });
 });
 
+describe('L8 (2026-10-21) the lookup poll is 2.5 s for the first 60 s of waiting, then 10 s', () => {
+  const delays = (since: number, st = 'waiting') => {
+    const t = { ms: [] as number[] };
+    const I: any = { lk: { forms: { kind: 'forms', id: ID(9), st, since, q: '', page: 1 } } };
+    new Function('__I', '__t', `
+      const S = { page: 'link-intake' };
+      const setTimeout = (cb, ms) => { __t.ms.push(ms); return 1; };
+      const clearTimeout = () => {};
+      const _ik = () => __I; const _ikDraw = () => {};
+      ${['_ikLk', '_ikLkPoll'].map((n) => extractFn(HTML, n)).join('\n')}
+      _ikLkPoll('forms');`)(I, t);
+    return t.ms[0];
+  };
+  it('waiting: 2.5 s at first, 10 s after a minute; working keeps 2.5 s', () => {
+    expect(delays(Date.now())).toBe(2500);
+    expect(delays(Date.now() - 50e3)).toBe(2500);
+    expect(delays(Date.now() - 61e3)).toBe(10000);
+    expect(delays(Date.now() - 61e3, 'working')).toBe(2500);
+  });
+});
 describe('N06 no lookup polls from a hidden tab', () => {
   const poller = () => {
     const t = { cbs: [] as Array<() => any>, gets: [] as string[], ls: [] as Array<() => void>, vis: 'visible' };

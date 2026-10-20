@@ -110,13 +110,13 @@ describe('F-42 Unlinked intro + tag', () => {
 });
 
 describe('L6-8 lookup poll schedule', () => {
-  it('10 s while waiting, 2.5 s once working, 5 s after a minute', async () => {
+  it('2.5 s while waiting (L8 2026-10-21: was 10 s; 10 s after a minute, consents-preload), 2.5 s once working, 5 s after a minute', async () => {
     let reply: any = { status: 'waiting' };
     const { fns, t } = env({ fresh: () => reply });
     const x = fns._ikLk('forms');
     Object.assign(x, { id: P(9), st: 'waiting', since: Date.now() });
     fns._ikLkPoll('forms');
-    expect(t.delays.at(-1)).toBe(10000);
+    expect(t.delays.at(-1)).toBe(2500);
     reply = { status: 'working' };
     await t.cbs.at(-1)!();
     expect(t.delays.at(-1)).toBe(2500);

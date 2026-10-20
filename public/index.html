@@ -13444,7 +13444,8 @@ function _ikConsentHtml(det, list, st) {
 async function _ikLoad(quiet) {
   const I = _ik(), gen = ++I.gen, mode = I.tab;
   try {
-    const r = await API.fresh('/link/intake?mode=' + mode + (quiet ? '' : '&view=1'), quiet); // B18: only a real page entry marks it viewed
+    // B18: only a real page entry marks it viewed. L8 (2026-10-21): so does a quiet Consents load that will warm the lookups (_ikLkWarm below).
+    const r = await API.fresh('/link/intake?mode=' + mode + (quiet && !(mode === 'consent' && !I.lkPre) ? '' : '&view=1'), quiet);
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: r && r.console, consoleLinkRev: r && r.consoleLinkRev, appLinkRev: r && r.appLinkRev };
     I.dates = (r && r.dates) || [];
@@ -13885,13 +13886,14 @@ function _ikLkApply(x, r, now) {
   x.st = s; x.reason = r.reason || null; x.prog = (s === 'working' && r.progress) || null; // S5
   return true;
 }
-// L6-8: 10 s while waiting for the console to claim, 2.5 s once working, 5 s after a minute of working.
+// L6-8: 2.5 s once working, 5 s after a minute of working. L8 (2026-10-21): waiting for the claim is 2.5 s for the first minute
+// (the console claims every 3 s after a lookup), then 10 s.
 // L2-3: a network blip (no status) is retried silently up to 3 times before the offline line shows.
 function _ikLkPoll(kind) {
   const I = _ik(), x = _ikLk(kind), id = x.id;
   if (x.poll) clearTimeout(x.poll);
   if (x.st !== 'working') x.workSince = 0; else if (!x.workSince) x.workSince = Date.now();
-  const ms = x.st !== 'working' ? 10000 : Date.now() - x.workSince > 60000 ? 5000 : 2500;
+  const ms = x.st !== 'working' ? (Date.now() - (x.since || 0) <= 60000 ? 2500 : 10000) : Date.now() - x.workSince > 60000 ? 5000 : 2500;
   x.poll = setTimeout(async () => {
     x.poll = null;
     if (_ik() !== I || x.id !== id || S.page !== 'link-intake') return;
