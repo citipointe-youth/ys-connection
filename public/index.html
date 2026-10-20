@@ -15020,18 +15020,13 @@ async function busSetPool() {
   try { await _busSend('PATCH', '/bus/run/pool', { availableLeaderIds: ids }); } catch (e) { toast(e.message); }
 }
 // "Edit pool" sheet — the standing willing-to-do-drop-homes flag per leader (BusLeaderView.inPool),
-// separate from tonight's availability ticked above (busSetPool/availablePoolLeaderIds). Also
-// where a leader's own preferred grades are set — same checkbox pattern busEditVehicle uses for
-// a vehicle's prefGrades (#ve-grades) — which the solver unions onto whichever car they end up in.
+// separate from tonight's availability ticked above (busSetPool/availablePoolLeaderIds).
+// B1 (2026-10-20): preferred grades were removed here and from the vehicle sheet.
 function busEditPoolSheet() {
   const v = BUS.view;
-  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
   const row = (l) => `<div class="cbx-row" style="display:block">
       <label style="display:flex;align-items:center;gap:10px"><input type="checkbox" ${l.inPool ? 'checked' : ''} onchange="busSetInPool('${l.id}',this.checked)">
-      ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label>
-      <div id="pg-${l.id}" style="padding-left:30px;font-size:12px;color:var(--ink-mid)">Prefers:
-        ${grades.map((g) => `<label style="display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0"><input type="checkbox" value="${g}" ${l.prefGrades.includes(g) ? 'checked' : ''} onchange="busSetLeaderGrades('${l.id}')" style="width:14px;height:14px"> ${esc(_gradeWord())} ${g}</label>`).join('')}
-      </div></div>`;
+      ${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</label></div>`;
   // Sort by name here (display-only) so ticking someone into the pool can't bump them
   // to the top of the list — whatever order the server returns leaders in, this list
   // stays alphabetical.
@@ -15041,14 +15036,6 @@ function busEditPoolSheet() {
 }
 async function busSetInPool(leaderId, inPool) {
   try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { inPool }); busEditPoolSheet(); } catch (e) { toast(e.message); }
-}
-async function busSetLeaderGrades(leaderId) {
-  const prefGrades = [...document.querySelectorAll('#pg-' + leaderId + ' input:checked')].map((i) => Number(i.value));
-  try { await _busSend('PATCH', '/bus/leader-prefs/' + leaderId, { prefGrades }); busEditPoolSheet(); } catch (e) { toast(e.message); }
-}
-// Compact "where pool leaders are listed" display (_busCarsHtml's pool list).
-function _busPrefGradesChip(l) {
-  return (l.prefGrades && l.prefGrades.length) ? `<span class="chip c-neutral">${l.prefGrades.map((g) => 'Y' + g).join(',')}</span>` : '';
 }
 function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, checked) {
   // R19-U9: one section on the spacing tokens: 8px select -> address, 16px to the next section.
@@ -15061,7 +15048,7 @@ function _busEndsAtField(prefix, endsAt, endsAddress, tonightOnly, endsPlaceId, 
     ${tonightOnly === undefined ? '' : `<label class="cbx-row"><input type="checkbox" id="${prefix}-tonight" ${checked ? 'checked' : ''}> Tonight only</label>`}</div>`;
 }
 function busEditVehicle(vehicleId) {
-  const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, prefGrades: [], endsAt: 'church', endsAddress: '', kind: 'car' };
+  const v = BUS.view, f = vehicleId ? v.fleet.find((x) => x.id === vehicleId) : { name: '', plate: '', seats: 8, endsAt: 'church', endsAddress: '', kind: 'car' };
   const rv = vehicleId ? v.vehicles.find((x) => x.vehicleId === vehicleId) : null;
   // Task 7: a run vehicle's endsAt/endsAddress can differ from the fleet default as tonight's
   // own override (busSaveVehicle's tonightOnly PATCH below) — pre-fill from THAT, not the fleet
@@ -15070,24 +15057,18 @@ function busEditVehicle(vehicleId) {
   const tonightOverride = !!(rv && (rv.endsAt !== f.endsAt || rv.endsAddress !== f.endsAddress));
   const endsAt = tonightOverride ? rv.endsAt : f.endsAt, endsAddress = tonightOverride ? rv.endsAddress : f.endsAddress;
   const endsPlaceId = tonightOverride ? rv.endsPlaceId : f.endsPlaceId;
-  const grades = (typeof _gradeList === 'function' ? _gradeList() : [7, 8, 9, 10, 11, 12]);
   modal(`<div class="mo-title">${vehicleId ? 'Edit vehicle' : 'Add vehicle'}</div>
     <div class="fg"><input class="fi" id="ve-name" placeholder="Name" value="${esc(f.name)}"></div>
     <div class="fg" style="display:flex;gap:8px"><div style="flex:1;min-width:0"><label class="fl" for="ve-seats">Seats</label>
       <input class="fi" id="ve-seats" type="number" min="1" max="60" value="${f.seats}"></div>
       <div style="flex:1;min-width:0"><label class="fl" for="ve-plate">Plate (optional)</label><input class="fi" id="ve-plate" value="${esc(f.plate || '')}"></div></div>
-    <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>
-    <div id="ve-grades-sec" ${f.kind === 'bus' ? 'hidden' : ''}><label class="fl">Preferred grades</label>
-    <div class="bus-checks" id="ve-grades">${grades.map((g) => `<label class="cbx-row"><input type="checkbox" value="${g}" ${f.prefGrades.includes(g) ? 'checked' : ''}> ${esc(_gradeWord())} ${g}</label>`).join('')}</div></div>
-    ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
+    <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>    ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 // Review E9: ticking Charter bus sets Ends at → Address and focuses the address, so the first Save works.
-// R19-U10: a bus is never solved, so Preferred grades hides while Bus is ticked (the ticks are kept).
 function _busVeBusTick(on) {
-  const gs = document.getElementById('ve-grades-sec'); if (gs) gs.hidden = !!on;
   const sel = document.getElementById('ve-ends'); if (!on || !sel) return;
   sel.value = 'address';
   const wrap = document.getElementById('ve-ends-wrap'); if (wrap) wrap.hidden = false;
@@ -15101,10 +15082,9 @@ async function busSaveVehicle(vehicleId) {
   if (kind === 'bus' && endsAt !== 'address') { toast('A bus needs its drop-off address'); return; }
   const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
-  const prefGrades = [...document.querySelectorAll('#ve-grades input:checked')].map((i) => Number(i.value));
   try {
     const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
-    const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), prefGrades, kind };
+    const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), kind };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
       tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId });
     await busRefresh();
@@ -15204,7 +15184,7 @@ function _busCarsHtml() {
 
   const poolLeaders = v.leaders.filter((l) => l.inPool).sort((a, b) => a.name.localeCompare(b.name));
   const poolRows = poolLeaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${v.availablePoolLeaderIds.includes(l.id) ? 'checked' : ''} onchange="busSetPool()">
-    <span class="cbx-main">${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)} ${_busPrefGradesChip(l)}</span></label>`).join('');
+    <span class="cbx-main">${l.gender === 'female' ? icS('genderF') : l.gender === 'male' ? icS('genderM') : ''} ${esc(l.name)}</span></label>`).join('');
 
   const ownCars = v.vehicles.filter((rv) => rv.ownerLeaderId);
   const ownCarRows = ownCars.map((rv) => {

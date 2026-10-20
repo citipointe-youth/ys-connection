@@ -112,7 +112,8 @@ const SaveVehicle = z.object({ id: z.string().optional(), name: z.string().trim(
 const UpdateRunVehicle = z.object({ running: z.boolean().optional(), leaderIds: z.array(z.string()).optional(), locked: z.boolean().optional(),
   endsAt: EndsFields.endsAt.optional(), endsAddress: z.string().max(200).nullable().optional(), endsPlaceId: z.string().max(300).nullable().optional() });
 const SetPool = z.object({ availableLeaderIds: z.array(z.string()) });
-// prefGrades matches the vehicle's own SaveVehicle.prefGrades shape above — plain ints, no
+// B1 (2026-10-20): prefGrades (here and on SaveVehicle) is still accepted and stored so an old
+// cached SPA never gets a 400, but the planner no longer reads it. Plain ints, no
 // min/max (the grade range itself is ministry-config-driven, not a fixed Zod bound).
 const LeaderPrefsIn = z.object({ inPool: z.boolean().optional(),
   prefGrades: z.array(z.number().int()).optional() });
@@ -682,9 +683,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** Builds the fleet solve for Generate / Fit in (and R3's "Try +N cars"). Reads only. */
   async function prepareFleet(c: MinistryConfig, run: BusRun, mode: 'all' | 'fit'): Promise<FleetPrep> {
     const b = c.busMinistry;
-    const [rvs, riders, all, fleet, prefs] = await Promise.all([bus.listRunVehicles(run.id), ridingOf(run.id), leaders.findAll(), bus.listVehicles(), bus.listLeaderPrefs()]);
+    const [rvs, riders, all] = await Promise.all([bus.listRunVehicles(run.id), ridingOf(run.id), leaders.findAll()]);
     const genderBy = new Map(all.map((l) => [l.id, genderOf(l.gender)]));
-    const prefGradesBy = new Map(prefs.map((p) => [p.id, p.prefGrades]));
     const known = (ids: string[]) => ids.filter((id) => genderBy.has(id));
     // I11: a locked car is left out of the solve like an own car — its riders, stop order and leaders stay as they are.
     const cars = rvs.filter((v) => v.running && v.vehicleId && !v.locked && !isBus(v));
@@ -711,14 +711,10 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const solvable = fleetRiders.filter((r) => r.snapPlaceId && !(mode === 'fit' && r.pinned && !r.runVehicleId));
     const fleetCars: FleetCar[] = cars.map((v) => {
       const ids = filled.get(v.id) ?? known(v.leaderIds);
-      // Task: a car's effective prefGrades is its vehicle's own ∪ the prefGrades of whichever
-      // leaders end up in it tonight (fixed + pool auto-fill — `ids` already reflects both).
-      const vehiclePrefGrades = fleet.find((f) => f.id === v.vehicleId)?.prefGrades ?? [];
-      const leaderPrefGrades = ids.flatMap((id) => prefGradesBy.get(id) ?? []);
+      // B1 (2026-10-20): preferred grades (vehicle or leader) no longer feed the solve.
       return { id: v.id,
         capacity: Math.max(0, capacityOf(v.seats, ids.length) - untouched.filter((r) => r.runVehicleId === v.id).length),
         eligibility: eligibilityOf(ids.map((id) => genderBy.get(id) ?? null)),
-        prefGrades: [...new Set([...vehiclePrefGrades, ...leaderPrefGrades])],
         endPlaceId: endPlaceOf(v.endsAt, v.endsPlaceId, b.churchPlaceId) };
     });
     const { problem, stopRiderIds } = buildFleetProblem(mode, fleetCars,
@@ -1044,7 +1040,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const v = parseIn(LeaderPrefsIn, input);
       if (!(await leaders.findById(leaderId))) throw new NotFoundError('Leader not found');
       const run = await ensureRun(ctx, c);
-      if (lockActive(run)) throw lockConflict(run); // I1: inPool/prefGrades feed the solve's auto-fill
+      if (lockActive(run)) throw lockConflict(run); // I1: inPool feeds the solve's auto-fill
       const p = (await bus.getLeaderPrefs(leaderId)) ?? { id: leaderId, inPool: false, ownCar: null, lastOwnRiderKeys: [], prefGrades: [] };
       await bus.saveLeaderPrefs({ ...p, ...(v.inPool !== undefined ? { inPool: v.inPool } : {}),
         ...(v.prefGrades !== undefined ? { prefGrades: v.prefGrades } : {}) });
