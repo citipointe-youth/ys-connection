@@ -54,7 +54,7 @@ describe('Y4 settings file', () => {
     expect(d.modules).not.toHaveProperty('flowHiddenStep');
     expect(d.modules.prayers).toBe(true); // a non-Elvanto module still loads
     expect(d.branding.appName).toBe('YS Connection');
-    expect(f.TOASTS.at(-1)).toBe('Settings loaded. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
+    expect(f.TOASTS.at(-1)).toBe('Settings loaded. Select Save Youth Setup. Elvanto screens stay off. Set up Elvanto for this location, then turn them on.');
   });
 });
 
@@ -65,6 +65,6 @@ describe('Y4 ship.sh project name', () => {
     expect(ls.length).toBeGreaterThan(0);
     for (const l of ls) { expect(l).not.toContain('ys-connection'); expect(l).toContain('$PROJ'); }
     expect(sh).toContain(".vercel/project.json");
-    expect(sh).toMatch(/projectName/);
+    expect(sh).toContain('p.projectName||p.name||');
   });
 });
