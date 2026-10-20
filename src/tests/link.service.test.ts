@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { dncFullyOn } from '../services/dnc';
+import { loadFns } from './helpers/extract-fn';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
@@ -1201,7 +1202,7 @@ describe('D6 admin: matching, log', () => {
     expect(all.map((x) => x.personId).sort()).toEqual([P_BEN, P_EVE1, P_EVE2, P_TOM].sort()); // no auto, leader or other
     expect(all.some((x) => x.match === 'auto')).toBe(false);
     for (const x of all) {
-      expect(Object.keys(x).filter((k) => k !== 'why' && k !== 'seenIn').sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
+      expect(Object.keys(x).filter((k) => k !== 'why' && k !== 'seenIn' && k !== 'create').sort()).toEqual(['active', 'candidates', 'grade', 'kind', 'match', 'name', 'personId', 'studentId']);
       for (const c of x.candidates) expect(Object.keys(c).sort()).toEqual(['dob', 'grade', 'name', 'studentId']);
     }
     expect(all.find((x) => x.personId === P_TOM)!.candidates).toEqual([]); // manual: no candidates computed
@@ -1223,6 +1224,35 @@ describe('D6 admin: matching, log', () => {
     expect(rows.find((x) => x.personId === P_EVE1)!.seenIn).toEqual(['lifegroup']);
     expect(rows.find((x) => x.personId === P_BEN)!.seenIn).toEqual(['flow']);
     expect(rows.find((x) => x.personId === P_EVE2)!.seenIn).toBeUndefined();
+  });
+
+  it('round 2026-10-21 (L3 r3): createStudents makes + links a YS student for each no-candidate Unmatched row, once', async () => {
+    const P_NIA = u(120);
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_NIA, firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const before = (await h.students.findAll()).length;
+    // P_BEN has a candidate; P_EVE1/P_EVE2 share one name in Elvanto (a likely duplicate): both skipped.
+    expect(await h.svc.createStudents(ADMIN, {})).toEqual({ created: 1, skipped: { candidate: 1, sameNameTwice: 2 } });
+    const r = (await h.link.roster()).find((x) => x.personId === P_NIA)!;
+    expect(r).toMatchObject({ match: 'manual' });
+    const s = (await h.students.findById(r.studentId!))!;
+    expect(s).toMatchObject({ firstName: 'Nia', lastName: 'New', gender: 'female', grade: 8, dateOfBirth: null,
+      svcAttended: 0, grpAttended: 0, prevSvcAttended: 0, prevGrpAttended: 0 }); // never attended: off Connect + Health
+    // Student Connect (renderConnectView ownScope) and Health (renderAtRisk) both keep only _hasAttended students.
+    expect(loadFns(['_hasAttended'])._hasAttended(s)).toBe(false);
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // Idempotent: a second tap creates nothing, never a duplicate.
+    expect(await h.svc.createStudents(ADMIN, {})).toEqual({ created: 0, skipped: { candidate: 1, sameNameTwice: 2 } });
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    // One row: only that row; a row that is already linked is skipped.
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA] })).toEqual({ created: 0, skipped: { notUnmatched: 1 } });
+    expect(await h.svc.createStudents(ADMIN, { personIds: [P_BEN] })).toEqual({ created: 0, skipped: { candidate: 1 } });
+    await expect(h.svc.createStudents(DIRECTOR, {})).rejects.toThrow();
+    // Check-in still finds them (the roster lists them, as before).
+    expect((await h.svc.checkin(ADMIN, ST)).people!.some((p) => p.personId === P_NIA)).toBe(true);
   });
 
   it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {

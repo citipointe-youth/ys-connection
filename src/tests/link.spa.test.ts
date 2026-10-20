@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFfGet',
@@ -2017,6 +2017,26 @@ describe('F4.2 admin page', () => {
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Not a YS student yet. YS shows them from Elvanto, in Flows and Lifegroups.');
     expect(out.split('Not a YS student yet.').length - 1).toBe(2);
+  });
+  it('round 2026-10-21 (L3 r3): Create all / Create on the no-candidate rows, after a confirm with the count', async () => {
+    const h = makeEnv({ role: 'admin', post: () => Promise.resolve({ created: 1, skipped: { sameNameTwice: 1 } }) });
+    h.get().LINK.adm.roster = [
+      { personId: P(450), name: 'Make Me', grade: 8, kind: 'student', match: 'none', studentId: null, candidates: [], create: true },
+      { personId: P(451), name: 'Has One', grade: 9, kind: 'student', match: 'none', studentId: null, candidates: [{ studentId: P(452), name: 'Has One', grade: 9, dob: null }] },
+    ];
+    const out = h.fns._lkAdmMatchHtml();
+    expect(out).toContain('_lkAdmCreate(null)');
+    expect(strip(out)).toContain('Create all (1)');
+    expect(out).toContain(`_lkAdmCreate('${P(450)}')`);
+    expect(out).not.toContain(`_lkAdmCreate('${P(451)}')`);
+    h.answers.push(false);
+    await h.fns._lkAdmCreate(null);
+    expect(h.calls.asks[0]).toContain('Create 1 YS student and link them to Elvanto?');
+    expect(h.calls.posts).toHaveLength(0); // Cancel: nothing sent
+    h.answers.push(true);
+    await h.fns._lkAdmCreate(`${P(450)}`);
+    expect(h.calls.posts[0]).toMatchObject({ p: '/link/admin/create-students', b: { personIds: [P(450)] } });
+    expect(h.calls.toasts.pop()).toBe('Created and linked 1. 1 skipped: same name twice in Elvanto.');
   });
   it('round 2026-10-21 (L3): each tab says why a person is listed (Unmatched = no YS student of that name yet)', () => {
     const h = makeEnv({ role: 'admin' });

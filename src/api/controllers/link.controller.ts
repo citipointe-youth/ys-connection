@@ -28,6 +28,7 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     assignFlow: (r: HttpRequest) => L.assignFlow(actor(r), r.body),
     roster: (r: HttpRequest) => L.rosterForMatching(actor(r), r.query),
     setMatch: (r: HttpRequest) => L.setMatch(actor(r), r.params['personId']!, r.body),
+    createStudents: (r: HttpRequest) => L.createStudents(actor(r), r.body),
     resolveUnclear: (r: HttpRequest) => L.resolveUnclear(actor(r), r.params['id']!, r.body), // CY-A1
     log: (r: HttpRequest) => L.log(actor(r), r.query),
   };
