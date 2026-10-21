@@ -5927,10 +5927,16 @@ function _revalidateImport() {
 // no fetching/caching/setApp. Shared by the standalone Import page (renderImport,
 // still reachable directly from nav for director/admin) and the embedded Import
 // tab inside Admin (renderAdminView) so the two never drift apart.
+// r22 B5: inside Admin the "Admin" header is already there, so skip this one. History comes newest first.
 function _importBodyHtml(history) {
   history = history || [];
+  const last = [['service','service'],['lifegroup','group']].map(([t, w]) => {
+    const h = history.find(x => x.type === t);
+    return h ? `<div class="li-sub">Last ${w} import: ${fmtDay(new Date(h.importedAt), true)} · ${h.rowCount} rows · ${h.status === 'ok' ? 'OK' : 'Failed'}</div>` : '';
+  }).join('');
   let body = `
-    <div class="ph"><div class="ph-title">Import Data</div><div class="ph-sub">Upload CSV files to update students and attendance</div></div>
+    ${S.page === 'admin' ? '' : '<div class="ph"><div class="ph-title">Import Data</div><div class="ph-sub">Upload CSV files to update students and attendance</div></div>'}
+    ${last ? `<div class="card">${last}</div>` : ''}
     <div class="card">
       <div class="card-title" style="margin-bottom:6px">Import Attendance ${helpTip(_lifegroupsOn() ? `Each import recalculates both service and ${L('smallGroup').toLowerCase()} term stats from scratch. If you only upload one type, re-upload the other afterwards too so both stay accurate.` : 'Each import recalculates service term stats from scratch.')}</div>
       <p style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">
@@ -5952,25 +5958,17 @@ function _importBodyHtml(history) {
     </div>`;
 
   if (history.length) {
-    const canClearAll = S.user && S.user.role === 'admin';
-    body += `<div class="sh" style="display:flex;align-items:center;justify-content:space-between">
-      <span>Import History</span>
-      ${canClearAll ? `<button class="btn btn-sm btn-ghost" style="color:var(--danger);font-size:12px" onclick="clearAllImportHistory()">Clear All</button>` : ''}
-    </div>`;
-    for (const h of history) {
-      const d = new Date(h.importedAt);
-      const dateStr = fmtDay(d, true);
-      body += `<div class="li" style="cursor:default" id="ih-${h.id}">
+    // r22 B5: no Clear All or per-row delete; the log is the console's duplicate check. Newest 6, the rest folded.
+    const row = h => `<div class="li" style="cursor:default" id="ih-${h.id}">
         <div class="li-body">
           <div class="li-title">${esc(h.filename)}</div>
-          <div class="li-sub">${dateStr} · ${h.rowCount} rows · ${h.studentsAdded} added, ${h.studentsUpdated} updated, ${h.sessionsAdded} sessions</div>
+          <div class="li-sub">${fmtDay(new Date(h.importedAt), true)} · ${h.rowCount} rows · ${h.studentsAdded} added, ${h.studentsUpdated} updated, ${h.sessionsAdded} sessions</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="chip ${h.status==='ok'?'c-success':'c-danger'}">${h.status}</span>
-          <button class="icon-btn" style="color:var(--ink-faint)" title="Delete" onclick="deleteImportEntry('${h.id}')">${icS('trash')}</button>
-        </div>
+        <span class="chip ${h.status==='ok'?'c-success':'c-danger'}">${h.status}</span>
       </div>`;
-    }
+    body += `<div class="sh">Import History</div>` + history.slice(0, 6).map(row).join('');
+    if (history.length > 6) body += `<div class="drop" id="ih-more"><div class="drop-head" style="cursor:pointer;padding:8px 0;font-size:13px;color:var(--accent-dark)" onclick="_drop('ih-more')"><span class="drop-chev">›</span> Show all (${history.length})</div>
+      <div class="drop-body">${history.slice(6).map(row).join('')}</div></div>`;
   }
   return body;
 }
@@ -5988,39 +5986,6 @@ async function renderImport() {
     if (S.page !== _pg) return;
   }
   setApp(shell(_importBodyHtml(history)));
-}
-
-function deleteImportEntry(id) {
-  modal(`<div class="mo-title">Remove Import?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">Remove this import from the history log? Attendance data is kept.</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="doDeleteImportEntry('${id}')">Confirm</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
-}
-
-async function doDeleteImportEntry(id) {
-  try {
-    await API.del(`/import/history/${id}`);
-    Cache.clear();
-    closeModal();
-    const el = document.getElementById(`ih-${id}`);
-    if (el) el.remove();
-  } catch (e) {
-    closeModal();
-    toast('Failed to delete: ' + (e.message || e));
-  }
-}
-
-function clearAllImportHistory() {
-  confirmType({
-    title: 'Clear Import History?', word: 'CLEAR', danger: false,
-    body: 'Removes the import history log only. Your students and attendance data are kept — to clear attendance use Admin → Clear Service/Group data.',
-    onConfirm: async () => {
-      try { await API.del('/import/history'); Cache.clear(); await renderImport(); }
-      catch (e) { alert('Failed to clear history: ' + (e.message || e)); }
-    },
-  });
 }
 
 // ── XLSX READER (lazy SheetJS) ────────────────────────────────
