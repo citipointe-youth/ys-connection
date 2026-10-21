@@ -94,11 +94,12 @@ function _navItemsBase() { return ${JSON.stringify(base(role))}; }`;
   };
   const ids = (xs: any[]) => xs.map((x) => x && x.id);
   // Y5 (controller ruling 2026-10-20): a junior leader has no Setup page, so its slot is always More (Change password).
-  it('slot rules hold for leader: the slot is always More', () => {
-    for (const o of [{ prayers: true, bus: true, ny: false }, { prayers: true, bus: false, ny: false }, { prayers: false, bus: true, ny: false },
-      { prayers: false, bus: false, ny: true }, { prayers: false, bus: false, ny: false }]) expect(ids(run('leader', o).navItems()), JSON.stringify(o)).toContain('more');
+  // r22 U1 (operator): a director's More always holds Import, so its slot is always More too.
+  it('slot rules hold for leader and director: the slot is always More', () => {
+    for (const r of ['leader', 'director']) for (const o of [{ prayers: true, bus: true, ny: false }, { prayers: true, bus: false, ny: false }, { prayers: false, bus: true, ny: false },
+      { prayers: false, bus: false, ny: true }, { prayers: false, bus: false, ny: false }]) expect(ids(run(r, o).navItems()), r + JSON.stringify(o)).toContain('more');
   });
-  for (const role of ['grade', 'quad', 'director', 'admin']) {
+  for (const role of ['grade', 'quad', 'admin']) {
     it(`slot rules hold for ${role}`, () => {
       expect(ids(run(role, { prayers: true, bus: true, ny: false }).navItems())).toContain('more');
       const alone = run(role, { prayers: true, bus: false, ny: false }).navItems();

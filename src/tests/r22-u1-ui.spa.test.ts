@@ -4,14 +4,14 @@ import { loadIndexHtml, extractFn, loadFns } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
 
-function trends(sessions: string[]) {
+function trends(sessions: string[], noTerm = false) {
   const prelude = `
     var S = { user: { role: 'admin' }, page: 'trends', settings: { ministryConfig: { modules: {} } } };
     let _trTab = 'svc'; var out = '';
     const TREND_PATHS = ['/students', '/overview', '/trends', '/lifegroups/stats'];
     var data = {
       '/students': [], '/overview': {},
-      '/trends': { terms: { current: { startDate: '2026-10-03', endDate: '2026-10-10' } },
+      '/trends': { terms: ${noTerm ? '{}' : "{ current: { startDate: '2026-10-03', endDate: '2026-10-10' } }"},
         ministry: { uniqueAttenders: 335, averageAttendance: 247, prevUniqueAttenders: 300, prevAverageAttendance: 206,
           peakAttendance: 264, recentTrend: 'stable',
           sessions: ${JSON.stringify(sessions)}.map((d, i) => ({ sessionDate: d, totalAttended: 230 + i, totalPresent: 240, isOutlier: false })) } },
@@ -41,6 +41,13 @@ describe('Trends (RV2 A)', () => {
     await t.renderTrends();
     expect(t.html()).toMatch(/Fri 9 Oct( 2026)? – Fri 16 Oct/);
     expect(t.html()).not.toContain('Sat 3 Oct');
+  });
+
+  it('no sessions and no term: the label says "this term" once', async () => {
+    const t = trends([], true);
+    await t.renderTrends();
+    expect(t.html()).toContain('Whole-ministry service attendance · this term</div>');
+    expect(t.html()).not.toContain('this term (this term)');
   });
 
   it('plain wording; the Stable badge only shows with 4+ services', async () => {
@@ -86,10 +93,14 @@ describe('Import tile (RV2 B)', () => {
     });
   }
 
-  it("director's More sheet has Import (only when More shows); admin's does not", () => {
+  it("director's More sheet always has Import, and a director always gets More; admin's has no Import", () => {
     expect(nav('director', { prayers: true, bus: true }).moreItems().find((x: any) => x.id === 'import'))
       .toMatchObject({ label: 'Import', open: "go('import')" });
-    expect(ids(nav('director', { prayers: true, bus: false }).moreItems())).toEqual(['prayers']);
+    expect(ids(nav('director', { prayers: true, bus: false }).moreItems())).toEqual(['prayers', 'import']);
+    expect(ids(nav('director', { prayers: false, bus: false }).moreItems())).toEqual(['import']);
+    for (const m of [{ prayers: false, bus: false }, { prayers: true, bus: false }, { prayers: false, bus: true }])
+      expect(nav('director', m).navItems().find((x: any) => x.id === 'more'), JSON.stringify(m)).toMatchObject({ action: 'openMore()' });
+    expect(nav('director', { prayers: false, bus: false }).navItems().filter((x: any) => x.id === 'import')).toHaveLength(1);
     expect(ids(nav('admin', { prayers: true, bus: true }).moreItems())).not.toContain('import');
   });
 

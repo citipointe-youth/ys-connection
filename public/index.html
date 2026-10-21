@@ -2609,16 +2609,16 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
-    // r22 U1: Import left Home, so a director (no Admin tab) reaches it from More. Added only when More already shows
-    // (2+ entries), so the nav slot rules never change; with one module the sidebar link stays the way in.
-    if (r === 'director' && xs.length >= 2) xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
+    // r22 U1 (operator): Import left Home, so a director (no Admin tab) always has it in More (_navSlots keeps More for a director).
+    if (r === 'director') xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
   }
   return xs;
 }
 // The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
 function _navSlots(u) {
   const more = moreItems();
-  const pw = ((u || S.user) || {}).role === 'leader'; // Y5: a junior leader has no Setup page, so More (with Change password) is always there
+  // Y5: a junior leader has no Setup page, so More (with Change password) is always there; r22 U1: a director's More always holds Import.
+  const pw = ['leader', 'director'].includes(((u || S.user) || {}).role);
   return _navItemsBase(u).map(it => {
     if (it.id !== 'prayers') return it;
     if (more.length >= 2 || pw) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
@@ -5690,7 +5690,7 @@ async function renderTrends() {
   const _curTerm = trends && trends.terms && trends.terms.current;
   const _termSess = ((trends && trends.ministry && trends.ministry.sessions) || []).filter(s => !s.isOutlier);
   const _termNote = _termSess.length ? `${fmtDay(_termSess[0].sessionDate)} – ${fmtDay(_termSess[_termSess.length - 1].sessionDate)}`
-    : _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : 'this term';
+    : _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : '';
 
   if (_trTab === 'svc') {
     // Ministry-wide overview — director/admin only. Grade logins go straight to
@@ -5702,7 +5702,7 @@ async function renderTrends() {
     if (['director', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
-      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}</div>`;
       body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
         (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
       body += '</div>';

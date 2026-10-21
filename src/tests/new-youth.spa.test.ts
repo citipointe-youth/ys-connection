@@ -347,7 +347,8 @@ describe('bottom nav order', () => {
   it('quad, director and admin keep their order', () => {
     // Junior/Senior (2026-10-14): the grade nav, with My Connections where Trends was.
     expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(ids(navFns(modeOf('off', 'grade')).bottomNavItems()));
-    expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'trends', 'leaders']);
+    // r22 U1 (operator): a director always gets More (it always holds Import).
+    expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'more', 'trends', 'leaders']);
     // 2026-10-14: Elvanto link moved to an Admin tab, so with every module off the admin's slot is plain Prayers again.
     expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);
   });
@@ -363,6 +364,7 @@ describe('the More menu (in the Prayers slot)', () => {
     for (const r of ROLES) {
       for (const mode of ['off', 'admin']) {
         if (r === 'admin') continue; // admin always has the Elvanto link entry: see the next test
+        if (r === 'director') continue; // r22 U1 (operator): a director always gets More (Import); r22-u1-ui.spa.test.ts
         if (r === 'leader') continue; // Y5 (controller ruling): a junior leader always gets More (Change password); leader-friction.spa.test.ts
         const n = navFns(modeOf(mode, r));
         expect(ids(n.moreItems()), `${mode}/${r}`).toEqual(['prayers']);
