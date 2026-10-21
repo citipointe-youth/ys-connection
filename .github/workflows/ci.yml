@@ -15,7 +15,7 @@ jobs:
     # Throwaway Postgres (2026-10-22, R1 H4): every migration and the real-DB repo suite run here. No secrets; never prod.
     services:
       postgres:
-        image: postgres:15
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
         ports: ['5432:5432']
