@@ -34,13 +34,26 @@ describe('Error log tab', () => {
   it('the old category filter, help table and Minimise are gone', () => {
     expect(html).not.toMatch(/const EL_CATS|const EL_HELP|function _elHelp|function elSetCat|>Minimise</);
   });
-  it('three groups in order with counts; FYI is a closed <details>; empty texts', () => {
-    const out = f._elBodyHtml([row({ id: 'f', tier: 'fyi' }), row({ id: 'n', tier: 'now' })], false, 0, '', false);
-    const iNow = out.indexOf('Act now (1)'), iLater = out.indexOf('Act later (0)'), iFyi = out.indexOf('FYI (1)');
+  it('groups in order with counts; FYI is a closed <details>; empty Act later and FYI are hidden', () => {
+    const out = f._elBodyHtml([row({ id: 'f', tier: 'fyi' }), row({ id: 'l', tier: 'later' }), row({ id: 'n', tier: 'now' })], false, 0, '', false);
+    const iNow = out.indexOf('Act now (1)'), iLater = out.indexOf('Act later (1)'), iFyi = out.indexOf('FYI (1)');
     expect(iNow).toBeGreaterThan(-1); expect(iLater).toBeGreaterThan(iNow); expect(iFyi).toBeGreaterThan(iLater);
     expect(out).toMatch(/<details class="el-grp" ontoggle="_elFyiOpen=this\.open"><summary class="el-h">FYI \(1\)<\/summary>/);
-    expect(out).toContain('Nothing here.');
-    expect(f._elBodyHtml([], false, 0, '', false)).toContain('Nothing to act on now.');
+    const one = f._elBodyHtml([row({ id: 'n', tier: 'now' })], false, 0, '', false);
+    expect(one).not.toMatch(/Act later|FYI \(0\)|Nothing here/);
+    const fyiOnly = f._elBodyHtml([row({ id: 'f', tier: 'fyi' })], false, 0, '', false);
+    expect(fyiOnly).toContain('Act now (0)'); expect(fyiOnly).toContain('Nothing to act on now.');
+  });
+  it('(r22 B6) a clean log is one line under the Error log heading', () => {
+    const out = f._elBodyHtml([], false, 0, '', false);
+    expect(out).toContain('Error log');
+    expect(out).toContain('No errors. All clear.');
+    expect(out).not.toMatch(/Act now|Act later|FYI|Show ignored|class="card"/);
+  });
+  it('(r22 B6) everything ignored and hidden: Show ignored (n), no all-clear line', () => {
+    const out = f._elBodyHtml([row({ ignored: true })], false, 0, '', false);
+    expect(out).toContain('Show ignored (1)');
+    expect(out).not.toContain('All clear');
   });
   it('fyi stays open: a repaint with fyiOpen keeps the FYI group open', () => {
     expect(f._elBodyHtml([row({ tier: 'fyi' })], false, 0, '', true)).toMatch(/<details class="el-grp" open ontoggle=/);
@@ -73,12 +86,13 @@ describe('Error log tab', () => {
     expect(f._elIsNew(row(), seen)).toBe(true);
     expect(f._elIsNew(row({ ignored: true }), seen)).toBe(false);
   });
-  it('header: Show ignored (n), Clear FYI only with FYI rows, Delete all only with rows; short privacy line', () => {
+  it('header: Show ignored (n) only when n > 0, Clear FYI only with FYI rows; no Delete all, no privacy line', () => {
     const out = f._elBodyHtml([row({ tier: 'fyi' }), row({ id: 'i', ignored: true })], false, 0, '', false);
-    expect(out).toContain('Show ignored (1)'); expect(out).toContain('Clear FYI'); expect(out).toContain('Delete all');
-    expect(out).toContain('No names or details are stored. Rows go after 90 days.');
-    expect(f._elBodyHtml([row()], false, 0, '', false)).not.toContain('Clear FYI');
-    expect(f._elBodyHtml([], false, 0, '', false)).not.toMatch(/Delete all|Clear FYI/);
+    expect(out).toContain('Show ignored (1)'); expect(out).toContain('Clear FYI');
+    expect(out).not.toMatch(/Delete all|el-delall|No names or details/);
+    const plain = f._elBodyHtml([row()], false, 0, '', false);
+    expect(plain).not.toMatch(/Clear FYI|Show ignored|class="card"/); // nothing left in the top card: no card
+    expect(html).not.toMatch(/function elDeleteAll|el-delall/);
   });
   it('escapes every server value', () => {
     const out = f._elBodyHtml([row({ line1: '<img src=x onerror=1>', line2: '<b>' })], false, 0, '', false);

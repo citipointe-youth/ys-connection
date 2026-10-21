@@ -6777,16 +6777,15 @@ function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const all = rows || [];
   const shown = _elVisible(all, showIgnored);
   const ignored = all.filter(r => r.ignored).length;
-  const head = `<div class="card" style="margin-bottom:10px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>
-        ${all.some(r => r.tier === 'fyi') ? '<button class="btn btn-secondary btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : ''}
-        ${all.length ? '<button class="btn btn-secondary btn-sm" id="el-delall" onclick="elDeleteAll()">Delete all</button>' : ''}
-      </div>
-      <div class="help-text" style="margin-top:8px">No names or details are stored. Rows go after 90 days.</div>
-    </div>`;
-  return head + EL_GROUPS.map(([tier, title, empty]) => {
+  // r22 L3 (B6): paints its own heading (it sits in Admin > Problems). A clean log is one line.
+  const top = '<div class="sh">Error log</div>';
+  if (!all.length) return top + '<div class="help-text">No errors. All clear.</div>';
+  const btns = (ignored ? `<button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>` : '')
+    + (all.some(r => r.tier === 'fyi') ? '<button class="btn btn-secondary btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : '');
+  const head = btns ? `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${btns}</div></div>` : '';
+  return top + head + EL_GROUPS.map(([tier, title, empty]) => {
     const list = shown.filter(r => (r.tier || 'later') === tier);
+    if (!list.length && tier !== 'now') return ''; // Act now (0) stays, so the admin knows nothing is urgent
     const inner = list.length ? list.map(r => _elRowHtml(r, seenAt, r.id === openId)).join('') : `<div class="help-text">${empty}</div>`;
     const h = `${title} (${list.length})`;
     return tier === 'fyi'
@@ -6864,15 +6863,6 @@ async function elClearFyi() {
   try { d = await API.del('/admin/errors?tier=fyi'); } catch (e) { toast(e.message); return; }
   _elRows = (_elRows || []).filter(x => x.tier !== 'fyi');
   toast('Cleared ' + ((d && d.deleted) || 0));
-  _elPaint();
-}
-async function elDeleteAll() {
-  const btn = document.getElementById('el-delall');
-  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Tap again to delete ' + _elVisible(_elRows, true).length + ' (' + (_elRows || []).filter(x => x.ignored).length + " ignored). This can't be undone."; return; }
-  let d;
-  try { d = await API.del('/admin/errors'); } catch (e) { toast(e.message); return; }
-  _elRows = [];
-  toast('Deleted ' + ((d && d.deleted) || 0));
   _elPaint();
 }
 
