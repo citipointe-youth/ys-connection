@@ -487,7 +487,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .cchart{display:flex;align-items:flex-end;gap:3px;height:92px;margin:8px 0}
 .ccol{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
 .ccol-val{font-size:10px;font-weight:700;color:var(--ink-mid);margin-bottom:2px;white-space:nowrap}
-.ccol-bar{width:100%;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
+.ccol-bar{width:100%;max-width:28px;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
 .ccol-bar.lo{background:var(--warn)}.ccol-bar.cr{background:var(--danger)}
 .ccol-lbl{font-size:10px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
 .tr-up{background:var(--success-light);color:#065f46;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
@@ -5513,7 +5513,7 @@ function colChart(sessions, maxH, opts) {
     const cls = opts && opts.neutral ? '' : s.pct >= 70 ? '' : s.pct < 40 ? 'cr' : 'lo';
     const click = opts && opts.click ? ` onclick="${opts.click(s)}" style="cursor:pointer"` : '';
     const val = (s.att != null) ? s.att : '';
-    return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
+    return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${s.lbl != null ? s.lbl : fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
 function trendBadge(dir) {
@@ -5682,8 +5682,11 @@ async function renderTrends() {
   </div>`;
 
   // Term label for the "this term" sub-heading (uses the trends term range).
+  // r22 U1: the first and last service dates (the chart's own list), not the week-start Saturdays the terms are kept in.
   const _curTerm = trends && trends.terms && trends.terms.current;
-  const _termNote = _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : 'this term';
+  const _termSess = ((trends && trends.ministry && trends.ministry.sessions) || []).filter(s => !s.isOutlier);
+  const _termNote = _termSess.length ? `${fmtDay(_termSess[0].sessionDate)} – ${fmtDay(_termSess[_termSess.length - 1].sessionDate)}`
+    : _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : 'this term';
 
   if (_trTab === 'svc') {
     // Ministry-wide overview — director/admin only. Grade logins go straight to
@@ -5697,7 +5700,7 @@ async function renderTrends() {
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
       body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
       body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
-        (mn.prevSeenAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevSeenAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
+        (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
       body += '</div>';
 
       // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
@@ -5706,12 +5709,13 @@ async function renderTrends() {
         if (valid.length) {
           const peak = Math.max(1, ...valid.map(s => s.totalAttended));
           const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
-          body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
-          body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance} · trend across this term</div>`;
+          // The server calls under 4 weeks 'stable' by default, so the badge waits for 4 (r22 U1).
+          body += `<div class="sh">Weekly Attendance ${valid.length >= 4 ? trendBadge(trends.ministry.recentTrend) : ''}</div><div class="card">`;
+          body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} ${esc(_serviceDayName())}${valid.length === 1 ? '' : 's'} this term · average ${trends.ministry.averageAttendance} · highest ${trends.ministry.peakAttendance}</div>`;
           body += colChart(chartSess, 56);
           body += '</div>';
         } else {
-          body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No valid services in the current term yet.</div></div>`;
+          body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No services this term yet.</div></div>`;
         }
       }
     }
@@ -5731,7 +5735,7 @@ async function renderTrends() {
         const peak = Math.max(1, ...gvalid.map(s => s.totalAttended));
         const cs = gvalid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
         body += `<div class="sh">Weekly Attendance</div><div class="card">`;
-        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${gvalid.length} valid services this term</div>`;
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${gvalid.length} ${esc(_serviceDayName())}${gvalid.length === 1 ? '' : 's'} this term</div>`;
         body += colChart(cs, 56);
         body += '</div>';
       }
@@ -5804,7 +5808,7 @@ async function renderTrends() {
         const gwk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
         if (gwk.length) {
           const gpeakW = Math.max(1, ...gwk.map(w => w.attended));
-          const gwkSess = gwk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / gpeakW * 100), att: w.attended, tot: w.attended }));
+          const gwkSess = gwk.map(w => ({ date: w.weekStart, lbl: _fridayLabel(w.weekStart), pct: Math.round(w.attended / gpeakW * 100), att: w.attended, tot: w.attended }));
           body += `<div class="sh">Weekly Attendance</div><div class="card">`;
           body += colChart(gwkSess, 56);
           body += '</div>';
@@ -5819,7 +5823,7 @@ async function renderTrends() {
         const wk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
         if (wk.length) {
           const peakW = Math.max(1, ...wk.map(w => w.attended));
-          const wkSess = wk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
+          const wkSess = wk.map(w => ({ date: w.weekStart, lbl: _fridayLabel(w.weekStart), pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
           body += `<div style="font-size:12px;color:var(--ink-mid);margin:12px 0 4px">Weekly attendance</div>`;
           body += colChart(wkSess, 56);
         }
