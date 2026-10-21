@@ -121,6 +121,22 @@ describe('T4 New Year Refresh with Prayers off', () => {
     f.wizHandleAllocationImportFile({ files: [{}] });
     expect(f._wiz).toEqual({ step5Done: true });
   });
+  it('(A4) the reset text lists everything it deletes; Connection Audit naming; plain intro', () => {
+    const h = load({ prayersOn: true, caOn: true, wiz: { step1Done: true, prayersExportDone: true, step2Done: true } }).renderNewYearWizard();
+    const list = 'all students, leaders, connections, attendance, prayers and the Connection Audit. It also deletes bus parent consents, saved bus addresses, My car settings for leaders and flow assignments.';
+    expect(h.split(list).length - 1).toBe(2); // the card and the type-RESET confirm
+    expect(h).toContain("word:'RESET'");
+    expect(h).not.toContain('Configuration Audit');
+    expect(h).toContain('Export Connection Audit Data');
+    expect(h).toContain('Re-import Connection Audit Data');
+    expect(h).toContain('Do these in order. Full Reset unlocks after the three exports.');
+    expect(h).toContain('Import Allocations & Prayers');
+  });
+  it('(A4) Prayers off: step 6 is "Import Allocations" only', () => {
+    const h = load({ prayersOn: false, caOn: true, wiz: {} }).renderNewYearWizard();
+    expect(h).not.toContain('Import Allocations & Prayers');
+    expect(h).not.toContain('prayers CSV');
+  });
 });
 
 describe('T5/T6/T7 All cars fetches its own list, only while the section is open', () => {

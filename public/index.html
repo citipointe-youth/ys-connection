@@ -6974,7 +6974,7 @@ function renderNewYearWizard() {
   const step6Satisfied = caOn ? _wiz.step6Done : true;
 
   let b = `<div class="card" style="margin-bottom:10px">
-    <div style="font-size:13px;color:var(--ink-mid)">Walks through the new-year data refresh in order — each step unlocks once the one before it is done.</div>
+    <div style="font-size:13px;color:var(--ink-mid)">Do these in order. Full Reset unlocks after the three exports.</div>
   </div>`;
 
   b += _wizStepCard(1, 'Export Allocations',
@@ -6989,22 +6989,24 @@ function renderNewYearWizard() {
     prayersOn ? `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>` : prayersSkippedCard,
     prayersSatisfied, false);
 
-  b += _wizStepCard(3, 'Export Configuration Audit Data',
+  b += _wizStepCard(3, 'Export Connection Audit Data',
     "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 4. You'll re-load it in step 7, once the roster is rebuilt.",
-    caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
+    caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Connection Audit Data</button>` : skippedCard,
     step2Satisfied, false);
 
-  b += _wizStepCard(4, 'Full Reset',
-    'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
-    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
+  // r22 L3 (A4): say plainly what the cascade takes too (no apostrophes: the text sits in a JS string in onclick).
+  const resetText = 'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. It also deletes bus parent consents, saved bus addresses, My car settings for leaders and flow assignments. Accounts are kept. This cannot be undone.';
+  b += _wizStepCard(4, 'Full Reset', resetText,
+    `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'${resetText}${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);
 
   b += _wizStepCard(5, "Re-import this year's attendance",
     'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 6 can match allocations back on.',
     '', false, false);
 
-  b += _wizStepCard(6, 'Import Allocations & Prayers',
-    "Re-import the allocations CSV from step 1 to restore every student–leader pairing, and the prayers CSV from step 2 to restore prayer history, onto the freshly imported roster.",
+  b += _wizStepCard(6, prayersOn ? 'Import Allocations & Prayers' : 'Import Allocations',
+    prayersOn ? "Re-import the allocations CSV from step 1 to restore every student–leader pairing, and the prayers CSV from step 2 to restore prayer history, onto the freshly imported roster."
+      : "Re-import the allocations CSV from step 1 to restore every student–leader pairing onto the freshly imported roster.",
     `<label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="wizHandleAllocationImportFile(this)">
     </label>
@@ -7015,9 +7017,9 @@ function renderNewYearWizard() {
     <div id="prayer-import-status" style="margin-top:8px"></div>` : ''}`,
     _wiz.step5Done, false);
 
-  b += _wizStepCard(7, 'Re-import Configuration Audit Data',
+  b += _wizStepCard(7, 'Re-import Connection Audit Data',
     "Re-load the Connection Audit backup from step 3 so past years are available again for comparison.",
-    caOn ? `<label class="btn btn-secondary btn-full" style="cursor:pointer">Re-import Configuration Audit Data
+    caOn ? `<label class="btn btn-secondary btn-full" style="cursor:pointer">Re-import Connection Audit Data
       <input type="file" accept=".json" style="display:none" onchange="wizHandleAuditImportFile(this)">
     </label>
     <div id="audit-import-status" style="margin-top:8px"></div>` : skippedCard,
