@@ -167,3 +167,36 @@ describe('L7: the console answer', () => {
     await expect(h.svc.recheckState(ADMIN, 'nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
+
+// F1 (round 2026-10-22): a check-in that landed and was later checked out is in no room, so the console answers not-landed.
+// Elvanto can't tell that from "never landed", so for a check-in the re-check counts as done: nothing to send again.
+describe('F1: Check again on a check-in found in no room', () => {
+  const ST = u(801), SVC = u(802), KID = u(803);
+  async function unclearCheckIn(h: Awaited<ReturnType<typeof setup>>, type: 'checkIn' | 'firstTimerCheckIn') {
+    const id = nid(), row = await h.link.getAction(h.a.id);
+    const payload = type === 'checkIn' ? { serviceTimeId: ST, serviceId: SVC, personId: KID }
+      : { serviceTimeId: ST, serviceId: SVC, firstName: 'Testy', lastName: 'Sample', grade: 8, gender: 'female' };
+    await h.link.insertAction({ id, type, payload, note: null, dedupeKey: `ci:${id}`, serviceDate: '2026-10-16', studentId: null,
+      personId: type === 'checkIn' ? KID : null, createdBy: ADMIN_ID, leaderId: null, leaderName: row!.leaderName });
+    await h.claim();
+    await h.result([{ id, outcome: 'unclear', sentLogKey: `checkIn:service:${ST}:${KID}` }]);
+    return id;
+  }
+  it.each(['checkIn', 'firstTimerCheckIn'] as const)('%s: not-landed -> counts as done (row Saved), no "Send it again"', async (type) => {
+    const h = await setup();
+    const ref = await unclearCheckIn(h, type);
+    const { id } = await h.svc.recheckUnclear(ADMIN, ref);
+    await h.claim();
+    await h.result([{ id: ref, outcome: 'resolved', landed: false }, { id, outcome: 'refused', reason: 'not-landed' }]);
+    expect(await h.link.getAction(ref)).toMatchObject({ status: 'sent' });
+    const s = await h.svc.recheckState(ADMIN, id);
+    expect(s).toMatchObject({ state: 'saved', text: 'Not in a room in Elvanto now. They may have been checked out, so nothing is sent. If they are still here, check them in at the door.' });
+    expect(s.text).not.toMatch(/again/i);
+  });
+  it('a check-in the console operator marked not landed (no re-check) stays Not landed', async () => {
+    const h = await setup();
+    const ref = await unclearCheckIn(h, 'checkIn');
+    await h.result([{ id: ref, outcome: 'resolved', landed: false }]);
+    expect(await h.link.getAction(ref)).toMatchObject({ status: 'refused', reason: 'not-landed' });
+  });
+});

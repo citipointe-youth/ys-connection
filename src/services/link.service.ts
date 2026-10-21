@@ -212,6 +212,8 @@ export interface LinkService {
 export interface RecheckView { id: string; ref: string; state: 'checking' | 'saved' | 'not-saved' | 'unclear'; text: string }
 export const RECHECK_TEXT = { checking: 'Checking Elvanto…', saved: 'Saved in Elvanto.',
   'not-saved': 'Not saved in Elvanto. Send it again from the app if it is still needed.',
+  // F1 (2026-10-22): a check-in in no room (see sync.service result): done, never "send it again".
+  noRoom: 'Not in a room in Elvanto now. They may have been checked out, so nothing is sent. If they are still here, check them in at the door.',
   unclear: (why: string) => `Still unclear: ${why} Check it in Elvanto, then tap Landed or Not landed.` } as const;
 
 export interface LinkServiceDeps {
@@ -1362,7 +1364,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const ref = String((r.payload as { ref?: unknown }).ref);
       const out = (state: RecheckView['state'], text: string): RecheckView => ({ id: r.id, ref, state, text });
       if (r.status === 'sent') return out('saved', RECHECK_TEXT.saved);
-      if (r.status === 'refused' && r.reason === 'not-landed') return out('not-saved', RECHECK_TEXT['not-saved']);
+      if (r.status === 'refused' && r.reason === 'not-landed') {
+        const t = (r.payload as { type?: unknown }).type;
+        return t === 'checkIn' || t === 'firstTimerCheckIn' ? out('saved', RECHECK_TEXT.noRoom) : out('not-saved', RECHECK_TEXT['not-saved']);
+      }
       if (r.status === 'refused' || r.status === 'cancelled' || r.status === 'unclear') {
         return out('unclear', RECHECK_TEXT.unclear(r.detail || "The console couldn't tell."));
       }

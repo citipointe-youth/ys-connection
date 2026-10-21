@@ -133,6 +133,15 @@ export function makeSyncService(d: SyncDeps) {
 
     async result(body: unknown): Promise<ResultReply> {
       const req = parseBody(ResultRequest, body);
+      // F1 (2026-10-22): a check-in a re-check found in no room counts as landed. Elvanto can't tell "never landed" from
+      // "checked out since", and checking in a child who has left is worse than a missed one (reconcile still finds a
+      // missed one in attendance; the door follows the room mirror). Only a re-check's verdict: an operator's own stays.
+      const rechecked = async (id: string) => {
+        const row = await d.link.getAction(id);
+        if (row?.type !== 'checkIn' && row?.type !== 'firstTimerCheckIn') return false;
+        return (await d.link.listActions({ types: ['recheck'], serviceDateFrom: row.serviceDate, serviceDateTo: row.serviceDate })).some((r) => (r.payload as { ref?: unknown }).ref === id && r.status !== 'cancelled');
+      };
+      req.results = await Promise.all(req.results.map(async (it) => (it.outcome === 'resolved' && !it.landed && await rechecked(it.id) ? { ...it, landed: true } : it)));
       const reply = await d.link.applyResults(req.consoleId, req.results, now());
       if (d.errorLog) {
         const applied = new Set(reply.applied);

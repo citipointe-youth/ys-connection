@@ -194,8 +194,13 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
     let src: OutboxRow | undefined; let type: ActionType; let payload: Record<string, unknown>;
     if (b.kind === 'checkin') {
       // review fix 5: a first-timer check-in (its person known once sent) goes again as a plain checkIn of that person.
-      src = (await d.link.listActions({ types: ['checkIn', 'firstTimerCheckIn'], statuses: ['sent'], personId: b.personId, serviceDateFrom: b.date, serviceDateTo: b.date }))
-        .filter((r) => (r.type === 'checkIn' || r.type === 'firstTimerCheckIn') && r.status === 'sent' && r.personId === b.personId && r.serviceDate === b.date).sort(byResult)[0];
+      const rows = await d.link.listActions({ types: ['checkIn', 'firstTimerCheckIn', 'checkOut'], personId: b.personId, serviceDateFrom: b.date, serviceDateTo: b.date });
+      src = rows.filter((r) => (r.type === 'checkIn' || r.type === 'firstTimerCheckIn') && r.status === 'sent' && r.personId === b.personId && r.serviceDate === b.date).sort(byResult)[0];
+      // F1 (2026-10-22): a check-out after it means the child left; sending the check-in again would check them back in.
+      if (src && rows.some((r) => r.type === 'checkOut' && r.status !== 'cancelled' && r.status !== 'refused' && r.personId === b.personId
+        && pay(r)['serviceTimeId'] === pay(src!)['serviceTimeId'] && r.createdAt > (src!.createdAt ?? ''))) {
+        throw new BadRequestError('They were checked out after this, so it is not sent again. Fix it in Elvanto if needed.');
+      }
       type = 'checkIn';
       payload = !src ? {} : src.type === 'checkIn' ? pay(src) : { serviceTimeId: pay(src)['serviceTimeId'], serviceId: pay(src)['serviceId'], personId: b.personId };
     } else if (b.kind === 'member') {
