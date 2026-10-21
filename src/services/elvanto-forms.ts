@@ -1,7 +1,7 @@
 // This location's youth connect forms (public, no login). The Elvanto field names and option ids live in
 // ministryConfig.elvanto (Youth Setup, filled by Check forms; Brisbane's came from migration 0040).
 // If the church edits a form, shapeProblems() refuses before anything is sent (new-youth.service.ts).
-import { gradeRange, type ElvantoConfig, type MinistryConfig } from '../core/ministry-config';
+import { gradeRange, DEFAULT_LOCATION_QUESTION, type ElvantoConfig, type MinistryConfig } from '../core/ministry-config';
 
 export type Outcome = 'sent' | 'failed' | 'unconfirmed' | 'skipped';
 
@@ -67,7 +67,7 @@ export const FIELD_LABELS = {
     ...Object.fromEntries(LABELS.allergies.map((l) => [`allergy:${l}`, [Q.allergies, l]])),
     ...Object.fromEntries(LABELS.conditions.map((l) => [`condition:${l}`, [Q.conditions, l]])),
   } as Record<string, readonly [string, string]>,
-  location: 'Citipointe Location',
+  location: DEFAULT_LOCATION_QUESTION, // the default; each location's own label is elvanto.locationQuestion (F7)
 };
 
 export interface FormField { label: string; name: string; options: { label: string; value: string }[] }
@@ -99,7 +99,8 @@ export interface FormCheck {
 
 /** Check forms: map every key by label on both forms. `grades` are the ones this location sends (they must be found);
  *  other grades are mapped when present. The result is returned, never saved. */
-export function checkForms(studentHtml: string, parentHtml: string, location: string, grades: number[]): FormCheck {
+export function checkForms(studentHtml: string, parentHtml: string, location: string, grades: number[],
+  locationQuestion: string = FIELD_LABELS.location): FormCheck {
   const qs = [...readFormFields(studentHtml), ...readFormFields(parentHtml)];
   const q = (label: string) => qs.find((f) => f.label === label);
   const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [], missingKeys: string[] = [];
@@ -109,7 +110,7 @@ export function checkForms(studentHtml: string, parentHtml: string, location: st
     const f = q(label);
     if (f?.name) fields[k] = f.name; else { missing.push(label); missingKeys.push(`fields.${k}`); }
   }
-  const opts: [string, readonly [string, string]][] = [...Object.entries(FIELD_LABELS.options), ['location', [FIELD_LABELS.location, location]]];
+  const opts: [string, readonly [string, string]][] = [...Object.entries(FIELD_LABELS.options), ['location', [locationQuestion, location]]];
   for (const [k, [ql, ol]] of opts) {
     const need = !/^grade\d+$/.test(k) || grades.includes(Number(k.slice(5)));
     if (need) n++;
