@@ -1,4 +1,4 @@
-// Round 2026-10-21 L2: "Forms with no person" where the parent typed several children ("Luke, Daniel & Claire Seo").
+// Round 2026-10-21 L2: "Forms with no person" where the parent typed several children ("Jamie, Riley & Morgan Sample").
 // Operator ruling: suggest, one tap. Split on , & and; first-only parts borrow the last part's surname; one exact match each
 // is a suggestion, none or 2+ is "pick"; one Link all tap posts one consentLink per suggested person. A one-name form is unchanged.
 import { describe, it, expect } from 'vitest';
@@ -11,8 +11,8 @@ const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const strip = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const ROSTER = [{ personId: P(1), name: 'Luke Seo' }, { personId: P(2), name: 'Claire Seo' }, { personId: P(3), name: 'Daniel Seo' }, { personId: P(4), name: 'Daniel Seo' },
-  { personId: P(5), name: 'Sam Smith' }, { personId: P(6), name: 'Jo Brown' }, { personId: P(7), name: 'Andrew Seo' }];
+const ROSTER = [{ personId: P(1), name: 'Jamie Sample' }, { personId: P(2), name: 'Morgan Sample' }, { personId: P(3), name: 'Riley Sample' }, { personId: P(4), name: 'Riley Sample' },
+  { personId: P(5), name: 'Sam Smith' }, { personId: P(6), name: 'Jo Brown' }, { personId: P(7), name: 'Andrew Sample' }];
 const ST = { console: { online: true, capabilities: { consentLink: 'live' } } };
 
 function env(rows: any[], roster: any = ROSTER) {
@@ -31,53 +31,53 @@ function env(rows: any[], roster: any = ROSTER) {
     return { ${FNS.join(', ')}, LINK };`)(t, I, rows, roster);
   return { fns, t, I };
 }
-const ROW = (o: any = {}) => ({ subId: P(90), name: 'Seo, Luke, Daniel & Claire', submitted: '2026-10-09', status: 'approved', consentDate: '09/10/2026',
-  contactOptOut: false, total: '', otherOptOuts: [], names: [], linked: null, formName: 'Luke, Daniel & Claire Seo', ...o });
+const ROW = (o: any = {}) => ({ subId: P(90), name: 'Sample, Jamie, Riley & Morgan', submitted: '2026-10-09', status: 'approved', consentDate: '09/10/2026',
+  contactOptOut: false, total: '', otherOptOuts: [], names: [], linked: null, formName: 'Jamie, Riley & Morgan Sample', ...o });
 
 describe('_ikClSplit: the name split (one pure function)', () => {
   const { fns } = env([]);
   const T: [string, string[] | null][] = [
-    ['Luke, Daniel & Claire Seo', ['Luke Seo', 'Daniel Seo', 'Claire Seo']],
-    ['Luke and Claire Seo', ['Luke Seo', 'Claire Seo']],
-    ['Luke & Claire Seo', ['Luke Seo', 'Claire Seo']],
-    ['Luke & Mary Jane Seo', ['Luke Jane Seo', 'Mary Jane Seo']], // a middle name: "Luke Jane Seo" matches nobody, so it goes to pick
-    ['Luke AND Claire Seo', ['Luke Seo', 'Claire Seo']],
-    ['Anne-Marie Seo', null],
+    ['Jamie, Riley & Morgan Sample', ['Jamie Sample', 'Riley Sample', 'Morgan Sample']],
+    ['Jamie and Morgan Sample', ['Jamie Sample', 'Morgan Sample']],
+    ['Jamie & Morgan Sample', ['Jamie Sample', 'Morgan Sample']],
+    ['Jamie & Mary Jane Sample', ['Jamie Jane Sample', 'Mary Jane Sample']], // a middle name: "Jamie Jane Sample" matches nobody, so it goes to pick
+    ['Jamie AND Morgan Sample', ['Jamie Sample', 'Morgan Sample']],
+    ['Anne-Marie Sample', null],
     ['Sam Smith & Jo Brown', ['Sam Smith', 'Jo Brown']],
-    ['Andrew Seo', null],
-    ['Alexandra Seo', null],
-    ['Andrew and Alexandra Seo', ['Andrew Seo', 'Alexandra Seo']],
-    ['  Luke ,   Daniel   &   Claire   Seo  ', ['Luke Seo', 'Daniel Seo', 'Claire Seo']],
-    ['Luke, Daniel, and Claire Seo', ['Luke Seo', 'Daniel Seo', 'Claire Seo']],
-    ['Luke,Daniel', ['Luke', 'Daniel']], // no surname anywhere: each stays one word, so each is "pick"
-    ['Luke Seo & Claire', ['Luke Seo', 'Claire']], // the last part has no surname to lend
-    ['', null], [null as any, null], ['Luke &', null],
+    ['Andrew Sample', null],
+    ['Alexandra Sample', null],
+    ['Andrew and Alexandra Sample', ['Andrew Sample', 'Alexandra Sample']],
+    ['  Jamie ,   Riley   &   Morgan   Sample  ', ['Jamie Sample', 'Riley Sample', 'Morgan Sample']],
+    ['Jamie, Riley, and Morgan Sample', ['Jamie Sample', 'Riley Sample', 'Morgan Sample']],
+    ['Jamie,Riley', ['Jamie', 'Riley']], // no surname anywhere: each stays one word, so each is "pick"
+    ['Jamie Sample & Morgan', ['Jamie Sample', 'Morgan']], // the last part has no surname to lend
+    ['', null], [null as any, null], ['Jamie &', null],
   ];
   for (const [inp, out] of T) it(JSON.stringify(inp), () => expect(fns._ikClSplit(inp)).toEqual(out));
-  it('every name comes back (the row shows 6 and says so)', () => expect(fns._ikClSplit('A, B, C, D, E, F, G Seo')).toHaveLength(7));
+  it('every name comes back (the row shows 6 and says so)', () => expect(fns._ikClSplit('A, B, C, D, E, F, G Sample')).toHaveLength(7));
 });
 
 describe('_ikClSuggest: exactly one match = a suggestion, else pick', () => {
   const { fns } = env([]);
   it('one, two and no matches; case, accents and spacing ignored', () => {
-    const s = fns._ikClSuggest(['luke  SEO', 'Daniel Seo', 'Claire Séo', 'Luke'], ROSTER);
+    const s = fns._ikClSuggest(['jamie  SAMPLE', 'Riley Sample', 'Morgan Sámple', 'Jamie'], ROSTER);
     expect(s.map((x: any) => [x.personId, x.n])).toEqual([[P(1), 1], [null, 2], [P(2), 1], [null, 0]]);
-    expect(s[0].who).toBe('Luke Seo');
+    expect(s[0].who).toBe('Jamie Sample');
   });
 });
 
 describe('a multi-name unlinked row', () => {
-  it('"Luke & Mary Jane Seo": the middle-name split matches nobody -> pick (never a wrong person)', () => {
+  it('"Jamie & Mary Jane Sample": the middle-name split matches nobody -> pick (never a wrong person)', () => {
     const { fns } = env([]);
-    const h = strip(fns._ikClRow(ROW({ formName: 'Luke & Mary Jane Seo' }), 0, '', ST));
-    expect(h).toContain('Luke Jane Seo: pick: nobody has this name');
+    const h = strip(fns._ikClRow(ROW({ formName: 'Jamie & Mary Jane Sample' }), 0, '', ST));
+    expect(h).toContain('Jamie Jane Sample: pick: nobody has this name');
     expect(h).not.toContain('Link all');
   });
   it('more than 6 names: the first 6 are shown and the operator is told to use Find person for the rest', () => {
     const { fns } = env([]);
-    const h = strip(fns._ikClRow(ROW({ formName: 'Luke, Ann, Bo, Cy, Di, Ed, Fay Seo' }), 0, '', ST));
-    expect(h).toContain('Ed Seo: pick');
-    expect(h).not.toContain('Fay Seo');
+    const h = strip(fns._ikClRow(ROW({ formName: 'Jamie, Ann, Bo, Cy, Di, Ed, Fay Sample' }), 0, '', ST));
+    expect(h).toContain('Ed Sample: pick');
+    expect(h).not.toContain('Fay Sample');
     expect(h).toContain('Showing the first 6 names; use Find person for the rest.');
     expect(strip(fns._ikClRow(ROW(), 0, '', ST))).not.toContain('Showing the first');
   });
@@ -86,34 +86,34 @@ describe('a multi-name unlinked row', () => {
     I.fixes['cn:' + P(90) + ':' + P(1)] = { id: 'a', status: 'pending', since: Date.now() };
     I.fixes['cn:' + P(90) + ':' + P(2)] = { id: 'b', status: 'refused', detail: 'Only the admin can do this.' };
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));
-    expect(h).toContain('Luke Seo: Waiting for the console.');
-    expect(h).toContain('Claire Seo: Not saved: Only the admin can do this.');
+    expect(h).toContain('Jamie Sample: Waiting for the console.');
+    expect(h).toContain('Morgan Sample: Not saved: Only the admin can do this.');
     expect(h).toContain('Link all'); // the refused one can be linked again
-    const one = ROW({ formName: 'Andrew Seo', name: 'Seo, Andrew' });
+    const one = ROW({ formName: 'Andrew Sample', name: 'Sample, Andrew' });
     const h1 = strip(fns._ikClRow(one, 0, '', ST));
     expect(h1).toContain('Waiting for the console.');
     expect(h1).not.toContain('Find person'); // open: no second link while one is on the way
   });
   it('fix round 2 (N2): a one-name form shows the NEWEST restored line, and never a stale refused link to another person beside the current link', () => {
     const { fns, I } = env([]);
-    const one = ROW({ formName: 'Andrew Seo', name: 'Seo, Andrew' });
+    const one = ROW({ formName: 'Andrew Sample', name: 'Sample, Andrew' });
     I.fixes['cn:' + P(90) + ':' + P(1)] = { id: 'a', status: 'refused', detail: 'Old try A.', createdAt: '2026-10-20T01:00:00Z' };
     I.fixes['cn:' + P(90) + ':' + P(7)] = { id: 'b', status: 'refused', detail: 'Newer try B.', createdAt: '2026-10-20T02:00:00Z' };
     expect(strip(fns._ikClRow(one, 0, '', ST))).toContain('Not saved: Newer try B.');
     expect(strip(fns._ikClRow(one, 0, '', ST))).not.toContain('Old try A.');
-    const linked = { ...one, linked: { personId: P(7), name: 'Andrew Seo' } };
+    const linked = { ...one, linked: { personId: P(7), name: 'Andrew Sample' } };
     I.fixes['cn:' + P(90) + ':' + P(7)] = { id: 'b', status: 'refused', detail: 'Newer try B.', createdAt: '2026-10-20T00:30:00Z' }; // now OLDER than A's
     const h = strip(fns._ikClRow(linked, 0, '', ST));
-    expect(h).toContain('Linked to Andrew Seo (not in Elvanto)');
+    expect(h).toContain('Linked to Andrew Sample (not in Elvanto)');
     expect(h).not.toContain('Old try A.'); // finished tries are stale next to the current link
     expect(h).not.toContain('Newer try B.');
   });
   it('shows each name found / pick, Link all (n), Find person; nothing is linked without a tap', () => {
     const { fns, t } = env([ROW()]);
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));
-    expect(h).toContain('Luke Seo: found Luke Seo');
-    expect(h).toContain('Daniel Seo: pick: 2 people have this name');
-    expect(h).toContain('Claire Seo: found Claire Seo');
+    expect(h).toContain('Jamie Sample: found Jamie Sample');
+    expect(h).toContain('Riley Sample: pick: 2 people have this name');
+    expect(h).toContain('Morgan Sample: found Morgan Sample');
     expect(h).toContain('Link all (2)');
     expect(h).toContain('Find person');
     expect(h).not.toContain('Unlink');
@@ -123,7 +123,7 @@ describe('a multi-name unlinked row', () => {
     const { fns, t, I } = env([ROW({ contactOptOut: true })]);
     fns._ikClAllOpen(0);
     expect(t.modal).toContain('Link this form to 2 people?');
-    expect(strip(t.modal)).toContain('Luke Seo &amp; Claire Seo are DO NOT CONTACT');
+    expect(strip(t.modal)).toContain('Jamie Sample &amp; Morgan Sample are DO NOT CONTACT');
     await fns._ikClAllGo();
     expect(t.posts).toHaveLength(1);
     expect(t.posts[0].map((x: any) => [x.type, x.payload])).toEqual([['consentLink', { subId: P(90), personId: P(1) }], ['consentLink', { subId: P(90), personId: P(2) }]]);
@@ -131,20 +131,20 @@ describe('a multi-name unlinked row', () => {
     I.fixes['cn:' + P(90) + ':' + P(1)].status = 'sent';
     I.fixes['cn:' + P(90) + ':' + P(2)].status = 'sent';
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));
-    expect(h).toContain('Luke Seo: linked');
-    expect(h).toContain('Linked to Luke Seo &amp; Claire Seo (not in Elvanto)');
+    expect(h).toContain('Jamie Sample: linked');
+    expect(h).toContain('Linked to Jamie Sample &amp; Morgan Sample (not in Elvanto)');
     expect(h).not.toContain('Link all');
-    expect(h).toContain('Find person'); // Daniel is still the operator's pick
+    expect(h).toContain('Find person'); // Riley is still the operator's pick
     expect(h).toContain('Unlink');
   });
   it("the console's own links (linkedIds) count; Link all offers only the rest", () => {
     const { fns } = env([]);
-    const h = strip(fns._ikClRow(ROW({ linked: { personId: P(1), name: 'Luke Seo' } }), 0, '', ST));
-    expect(h).toContain('Luke Seo: linked');
+    const h = strip(fns._ikClRow(ROW({ linked: { personId: P(1), name: 'Jamie Sample' } }), 0, '', ST));
+    expect(h).toContain('Jamie Sample: linked');
     expect(h).toContain('Link all (1)');
   });
   it('Find person on a multi-name form adds that person (per-person key); Unlink undoes them all', async () => {
-    const rows = [ROW({ linked: { personId: P(1), name: 'Luke Seo, Claire Seo' }, linkedIds: [P(1), P(2)] })];
+    const rows = [ROW({ linked: { personId: P(1), name: 'Jamie Sample, Morgan Sample' }, linkedIds: [P(1), P(2)] })];
     const { fns, t, I } = env(rows);
     I.clp = { i: 0, q: '', list: [ROSTER[2]] };
     fns._ikClPick(0);
@@ -152,7 +152,7 @@ describe('a multi-name unlinked row', () => {
     expect(t.posts[0][0].payload).toEqual({ subId: P(90), personId: P(3) });
     expect(I.fixes['cn:' + P(90) + ':' + P(3)].status).toBe('pending');
     fns._ikClUnlink(0);
-    expect(t.modal).toContain('Unlink this form from Luke Seo &amp; Claire Seo?');
+    expect(t.modal).toContain('Unlink this form from Jamie Sample &amp; Morgan Sample?');
     await fns._ikClGo();
     expect(t.posts[1][0].payload).toEqual({ subId: P(90), personId: null });
     expect(Object.keys(I.fixes)).toEqual(['cn:' + P(90)]); // this phone's per-person links are gone with the unlink
@@ -162,14 +162,14 @@ describe('a multi-name unlinked row', () => {
   it('before the person list loads: names say checking, no Link all; the list is asked for once', () => {
     const { fns, t } = env([], null);
     const h = strip(fns._ikClRow(ROW(), 0, '', ST));
-    expect(h).toContain('Luke Seo: checking…');
+    expect(h).toContain('Jamie Sample: checking…');
     expect(h).not.toContain('Link all');
     fns._ikClRow(ROW(), 0, '', ST);
     expect(t.fresh).toBe(1);
   });
   it('a one-name form (or an older console with no formName) is exactly as before', () => {
     const { fns } = env([]);
-    for (const r of [ROW({ formName: 'Andrew Seo', name: 'Seo, Andrew' }), ROW({ formName: undefined })]) {
+    for (const r of [ROW({ formName: 'Andrew Sample', name: 'Sample, Andrew' }), ROW({ formName: undefined })]) {
       const h = strip(fns._ikClRow(r, 0, '', ST));
       expect(h).not.toContain('Names on this form');
       expect(h).not.toContain('Link all');
@@ -181,9 +181,9 @@ describe('a multi-name unlinked row', () => {
 describe('L2 consent plan step: consentFix result line', () => {
   const f = new Function(`${['_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikResultLine'].map((n) => extractFn(HTML, n)).join('\n')}
     return { _ikResultLine };`)();
-  const d = { forms: { student: { values: { first: 'Luke', last: 'Seo' } }, parent: null } };
+  const d = { forms: { student: { values: { first: 'Jamie', last: 'Sample' } }, parent: null } };
   it('reads Copied ..., present tense Copy ...', () => {
-    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d)).toBe("Copied the consent form to Luke's profile");
-    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d, true)).toBe("Copy the consent form to Luke's profile");
+    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d)).toBe("Copied the consent form to Jamie's profile");
+    expect(f._ikResultLine({ action: 'consentFix', role: 'student' }, d, true)).toBe("Copy the consent form to Jamie's profile");
   });
 });

@@ -5,8 +5,8 @@ import { loadFns } from './helpers/extract-fn';
 describe('F-02(a) door: a double tap checks in one person and keeps the row in place', () => {
   const prelude = `
     let LINK = { svc: 'S', people: { S: { people: [
-      { personId: 'tom', name: 'Tom LEstrange', checkedIn: false },
-      { personId: 'ree', name: 'Ree LEstrange', checkedIn: false }] } }, q: { search: 'lestrange' }, refusals: {} };
+      { personId: 'tom', name: 'Tom LDummyton', checkedIn: false },
+      { personId: 'pat', name: 'Pat LDummyton', checkedIn: false }] } }, q: { search: 'ldummyton' }, refusals: {} };
     let Q = [];
     const pushed = [];
     function _lkSvc() { return { serviceTimeId: 'S', serviceId: 'SV' }; }
@@ -32,14 +32,14 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
     expect(f.state().Q.map((x: any) => x.payload.personId)).toEqual(['tom']);
   });
   it('the tapped row stays where it is in the match list (R2-G6: a search lists checked-in matches too) and is in Checked in', () => {
-    expect(f._lkLists().due.map((p: any) => p.personId)).toEqual(['tom', 'ree']);
+    expect(f._lkLists().due.map((p: any) => p.personId)).toEqual(['tom', 'pat']);
     f.setT(700);
     const l = f._lkLists();
-    expect(l.due.map((p: any) => p.personId)).toEqual(['tom', 'ree']);
+    expect(l.due.map((p: any) => p.personId)).toEqual(['tom', 'pat']);
     expect(l.done.map((p: any) => p.personId)).toEqual(['tom']);
   });
   it('another person can be tapped straight away', () => {
-    f._lkCheck('ree', 'checkIn');
+    f._lkCheck('pat', 'checkIn');
     expect(f.state().pushed.length).toBe(2);
   });
 });
@@ -47,7 +47,7 @@ describe('F-02(a) door: a double tap checks in one person and keeps the row in p
 describe('F-06 / F-34 nySend', () => {
   const prelude = `
     const full = { host: '', firstName: 'Tom', lastName: 'L', dob: '2010-01-01', gender: 'm', grade: 9, school: 'S', mobile: '0412345678',
-      parentFirst: 'Ree', parentLast: 'L', parentMobile: '0412345679' };
+      parentFirst: 'Pat', parentLast: 'L', parentMobile: '0412345679' };
     let NY = { sending: false }; let LINK = { ldrs: null }; const S = { page: 'new-youth', user: { id: 'u' } };
     const navigator = { onLine: true };
     const posts = [], toasts = [];

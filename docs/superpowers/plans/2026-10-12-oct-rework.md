@@ -577,7 +577,7 @@ the two routes to the Key API routes table.
 5. **Flip Simple logins for YS Brisbane when ready** (1–2 weeks, with the check-in release, on a weekday):
    first fill Bus settings → coordinators and check each can pick themselves in "I am…"; then turn it on
    and check: no Grade section in Accounts; toast "Renamed 4 quad logins"; badge "Senior Guys" after
-   reopening; on Senior Guys, picking Cody Cobb shows Year 10 in Health and still does on another phone;
+   reopening; on Senior Guys, picking Cody Codeman shows Year 10 in Health and still does on another phone;
    a quad login with no coordinator pick has no Assign tab; a coordinator pick does. Tell users to reopen
    the app; old grade logins stop within 12 h.
 6. **Turn Prayers off** (Youth Setup → Modules), using the export from step 1 (or export again first).

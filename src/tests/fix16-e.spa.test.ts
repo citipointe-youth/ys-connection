@@ -104,7 +104,7 @@ const grp = (over: any = {}) => ({ groupId: G(1), name: 'Yr 9 Girls', meets: 'Tu
 const setup = (leaderId: string | null = 'L1', over: any = {}, e: Partial<Env> = {}) => {
   const h = makeEnv({ leaderId, ...e });
   const L = h.get().LINK;
-  L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+  L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
   L.groups = [grp(over)]; L.gid = G(1);
   return h;
 };
@@ -114,7 +114,7 @@ describe('F-02(b) Add student picker: one add per tap', () => {
     const h = setup();
     const L = h.get().LINK;
     L.gm[G(1)] = { canEdit: true, members: [], changes: [] };
-    L.youth = [{ personId: P(70), name: 'Tom LEstrange', grade: 11 }, { personId: P(71), name: 'Tom Other', grade: 11 }];
+    L.youth = [{ personId: P(70), name: 'Tom LDummyton', grade: 11 }, { personId: P(71), name: 'Tom Other', grade: 11 }];
     L.yp = { gid: G(1), q: 'tom', grade: '' };
     h.calls.els['lk-yp-list'] = { innerHTML: '' };
     return h;
@@ -138,11 +138,11 @@ describe('F-02(b) Add student picker: one add per tap', () => {
     const h = pick();
     h.fns._lkYpAdd(P(70));
     const el = h.calls.els['lk-yp-list'];
-    expect(strip(el.innerHTML)).toContain('Tom LEstrangeAdding…');
+    expect(strip(el.innerHTML)).toContain('Tom LDummytonAdding…');
     expect(el.innerHTML).not.toContain(`_lkYpAdd('${P(70)}')`);
-    expect(el.innerHTML.indexOf('Tom LEstrange')).toBeLessThan(el.innerHTML.indexOf('Tom Other'));
+    expect(el.innerHTML.indexOf('Tom LDummyton')).toBeLessThan(el.innerHTML.indexOf('Tom Other'));
     vi.advanceTimersByTime(650);
-    expect(el.innerHTML).not.toContain('Tom LEstrange');
+    expect(el.innerHTML).not.toContain('Tom LDummyton');
     expect(el.innerHTML).toContain('Tom Other');
   });
 });
@@ -271,8 +271,8 @@ describe('F-25 report form: default service, a draft per group and date, Discard
 });
 
 describe('F-38 member remove: Cancel remove while it can be cancelled, Add back once sent', () => {
-  const view = (status: string) => ({ groupId: G(1), canEdit: true, members: [{ personId: P(70), name: 'Tom LEstrange', leader: false, grade: 11, studentId: null }],
-    changes: [{ id: 'x1', type: 'removeGroupMember', personId: P(70), name: 'Tom LEstrange', status, reason: null }] });
+  const view = (status: string) => ({ groupId: G(1), canEdit: true, members: [{ personId: P(70), name: 'Tom LDummyton', leader: false, grade: 11, studentId: null }],
+    changes: [{ id: 'x1', type: 'removeGroupMember', personId: P(70), name: 'Tom LDummyton', status, reason: null }] });
   const label = (status: string) => {
     const h = setup();
     const L = h.get().LINK;
@@ -291,7 +291,7 @@ describe('F-38 member remove: Cancel remove while it can be cancelled, Add back 
     const h = setup();
     const L = h.get().LINK;
     L.gm[G(1)] = { ...view('sent'), changes: [] }; L.gmOpen[G(1)] = true;
-    h.fns._lkQSet([{ kind: 'action', id: 'q1', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(70) }, _n: 'Tom LEstrange' }]);
+    h.fns._lkQSet([{ kind: 'action', id: 'q1', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(70) }, _n: 'Tom LDummyton' }]);
     expect(h.fns._lkMembersHtml(L.groups[0])).toMatch(/_lkMemKeep\([^)]*\)">Cancel remove</);
   });
 });

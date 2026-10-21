@@ -104,7 +104,7 @@ const grp = (over: any = {}) => ({ groupId: G(1), name: 'Yr 9 Girls', meets: 'Tu
 const setup = (leaderId: string | null = 'L1', over: any = {}, e: Partial<Env> = {}) => {
   const h = makeEnv({ leaderId, ...e });
   const L = h.get().LINK;
-  L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+  L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
   L.groups = [grp(over)]; L.gid = G(1);
   return h;
 };
@@ -147,7 +147,7 @@ describe('B05 an add the console already sent is a member: the button says Remov
     const h = setup();
     const L = h.get().LINK;
     L.gmOpen[G(1)] = true;
-    L.gm[G(1)] = { canEdit: true, members: [], changes: [{ id: 'c1', type: 'addGroupMember', personId: P(70), name: 'Tom LEstrange', status, reason: null }] };
+    L.gm[G(1)] = { canEdit: true, members: [], changes: [{ id: 'c1', type: 'addGroupMember', personId: P(70), name: 'Tom LDummyton', status, reason: null }] };
     return h;
   };
   it('sent add -> "Remove" button and a Remove question', async () => {
@@ -157,14 +157,14 @@ describe('B05 an add the console already sent is a member: the button says Remov
     expect(html).not.toContain('>Cancel</button>');
     h.answers.push(false);
     await h.fns._lkMemRemove(G(1), P(70));
-    expect(h.calls.asks[0]).toMatch(/^Remove Tom LEstrange from .* in Elvanto\? \| Remove \| Keep$/);
+    expect(h.calls.asks[0]).toMatch(/^Remove Tom LDummyton from .* in Elvanto\? \| Remove \| Keep$/);
   });
   it('pending add -> still "Cancel" / "Stop adding"', async () => {
     const h = mem('pending');
     expect(h.fns._lkMembersHtml(h.get().LINK.groups[0])).toMatch(/_lkMemRemove\([^)]*\)">Cancel<\/button>/);
     h.answers.push(false);
     await h.fns._lkMemRemove(G(1), P(70));
-    expect(h.calls.asks[0]).toMatch(/^Stop adding Tom LEstrange/);
+    expect(h.calls.asks[0]).toMatch(/^Stop adding Tom LDummyton/);
   });
 });
 
@@ -276,7 +276,7 @@ describe('B24 Add student picker ignores taps for 400 ms after the list repaints
     const h = setup();
     const L = h.get().LINK;
     L.gm[G(1)] = { canEdit: true, members: [], changes: [] };
-    L.youth = [{ personId: P(70), name: 'Tom LEstrange', grade: 11 }, { personId: P(71), name: 'Tom Other', grade: 11 }];
+    L.youth = [{ personId: P(70), name: 'Tom LDummyton', grade: 11 }, { personId: P(71), name: 'Tom Other', grade: 11 }];
     L.yp = { gid: G(1), q: 'tom', grade: '' };
     h.calls.els['lk-yp-list'] = { innerHTML: '' };
     return h;

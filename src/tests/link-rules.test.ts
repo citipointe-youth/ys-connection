@@ -242,17 +242,17 @@ const stu = (id: string, firstName: string, lastName: string, gender: 'male' | '
 
 describe('genderFixes (operator 2026-10-14)', () => {
   it("Elvanto's male/female wins only when folded first + last + grade agree; never blank, never an equal write", () => {
-    const st = [stu('s1', 'Olivia', 'Antonucci Cook', 'other'), stu('s2', 'Ben', 'Lee', 'other', 10), stu('s3', 'Amy', 'Ng', 'female')];
+    const st = [stu('s1', 'Olivia', 'Faux Cook', 'other'), stu('s2', 'Ben', 'Lee', 'other', 10), stu('s3', 'Amy', 'Ng', 'female')];
     const m = (n: number, sid: string, g: 'male' | 'female' | null, first: string, last: string, over: Partial<LinkRosterRow> = {}) =>
       ros(n, first, last, g, { studentId: sid, match: 'manual', ...over });
     const fix = (r: LinkRosterRow[], c = []) => genderFixes(r, st, c).map((x) => [x.student.id, x.gender]);
-    expect(fix([m(1, 's1', 'female', 'Olivia', 'Antonucci-Cook')])).toEqual([['s1', 'female']]); // fold, grade 9 = 9
+    expect(fix([m(1, 's1', 'female', 'Olivia', 'Faux-Cook')])).toEqual([['s1', 'female']]); // fold, grade 9 = 9
     expect(fix([m(2, 's2', 'male', 'Ben', 'Lee')])).toEqual([]);                                  // grade 9 vs 10
-    expect(fix([m(1, 's1', null, 'Olivia', 'Antonucci-Cook')])).toEqual([]);                      // Elvanto blank
+    expect(fix([m(1, 's1', null, 'Olivia', 'Faux-Cook')])).toEqual([]);                      // Elvanto blank
     expect(fix([m(3, 's3', 'female', 'Amy', 'Ng')])).toEqual([]);                                 // already equal
-    expect(fix([m(1, 's1', 'female', 'Olivia', 'Antonucci-Cook', { match: 'ignored' })])).toEqual([]);
+    expect(fix([m(1, 's1', 'female', 'Olivia', 'Faux-Cook', { match: 'ignored' })])).toEqual([]);
     // an auto match made in the same push counts
-    expect(genderFixes([ros(1, 'Olivia', 'Antonucci Cook', 'female')], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
+    expect(genderFixes([ros(1, 'Olivia', 'Faux Cook', 'female')], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
       .map((x) => x.gender)).toEqual(['female']);
   });
 });
@@ -302,16 +302,16 @@ describe('autoMatch (contract 6)', () => {
     expect(autoMatch([ros(1, 'Alex', 'Sample', 'female')], [stu('s1', 'Alex', 'Sample', 'male')])).toEqual([]);
   });
   it('2026-10-14 Olivia: YS gender other (unknown) still auto-matches a female Elvanto row', () => {
-    expect(autoMatch([ros(1, 'Olivia', 'Antonucci-Cook', 'female', { grade: 7 })], [stu('s1', 'Olivia', 'Antonucci-Cook', 'other', 7)]))
+    expect(autoMatch([ros(1, 'Olivia', 'Faux-Cook', 'female', { grade: 7 })], [stu('s1', 'Olivia', 'Faux-Cook', 'other', 7)]))
       .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }]);
   });
   it('blank Elvanto gender still auto-matches', () => {
     expect(autoMatch([ros(1, 'Alex', 'Sample', null)], [stu('s1', 'Alex', 'Sample', 'male')]))
       .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }]);
   });
-  it('hyphen, space, apostrophe and accent folding: Antonucci Cook = Antonucci-Cook, OBrien = O’Brien', () => {
-    expect(autoMatch([ros(1, 'Olivia', 'Antonucci Cook', 'female'), ros(2, 'Zoë', 'OBrien', 'female')],
-      [stu('s1', 'Olivia', 'Antonucci-Cook', 'female'), stu('s2', 'Zoe', 'O’Brien', 'female')]))
+  it('hyphen, space, apostrophe and accent folding: Faux Cook = Faux-Cook, OBrien = O’Brien', () => {
+    expect(autoMatch([ros(1, 'Olivia', 'Faux Cook', 'female'), ros(2, 'Zoë', 'OBrien', 'female')],
+      [stu('s1', 'Olivia', 'Faux-Cook', 'female'), stu('s2', 'Zoe', 'O’Brien', 'female')]))
       .toEqual([{ personId: U(1), studentId: 's1', match: 'auto' }, { personId: U(2), studentId: 's2', match: 'auto' }]);
   });
   it('surname alone never auto-matches', () => {

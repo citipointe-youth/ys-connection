@@ -106,8 +106,8 @@ describe('Consents Other: rows', () => {
     expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe('Every student on step 0 has a week.');
     x.resQ = 'zed';
     expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe('Nobody on step 0 without a week matches &quot;zed&quot;. Students in a week above, or whose form is approved, are not listed here.'); // esc() encodes the quotes
-    I.findMiss = 'Kuyi Alway'; x.resQ = 'Kuyi Alway'; // from step 0's Consents button: names the student
-    expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe("Kuyi Alway isn&#39;t on a consent list. Their form may already be approved.");
+    I.findMiss = 'Kit Notlisted'; x.resQ = 'Kit Notlisted'; // from step 0's Consents button: names the student
+    expect(strip(fns._ikLkResHtml('other', x, ST()))).toBe("Kit Notlisted isn&#39;t on a consent list. Their form may already be approved.");
   });
   it('a first Other scan waits 15 minutes before giving up (like Mismatches)', () => {
     const { fns } = env(), now = Date.now();

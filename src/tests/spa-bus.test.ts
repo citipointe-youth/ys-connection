@@ -1693,7 +1693,7 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
   });
   const sheetPrelude = (tripDate: string, myCar: string) => `
     const BUS = { tripDate: '${tripDate}', ocDraft: null, myCar: ${myCar},
-      view: { run: { serviceDate: '2026-10-16' }, leaders: [{ id: 'L1', name: 'Tom Strange' }],
+      view: { run: { serviceDate: '2026-10-16' }, leaders: [{ id: 'L1', name: 'Tom Dummyton' }],
         riders: [{ id: 'fr1', name: 'Friday Rider', address: '2 B St, Carina', runVehicleId: null }] } };
     let __html = ''; function modal(h) { __html = h; }
     function esc(s) { return String(s == null ? '' : s); } function fmtDay(d) { return 'DAY ' + d; } function icS() { return ''; }

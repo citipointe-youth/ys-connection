@@ -170,9 +170,9 @@ describe('Leader Service — setViewGrades (quad grade filter)', async () => {
     await s.updateGrades(ADMIN, l.id, [8, 9]);
     const cur = (await repo.findById(l.id))!;
     const { viewGrades: _drop, ...imported } = cur;
-    await repo.saveMany([{ ...imported, fullName: 'Cody Cobb' }]);
+    await repo.saveMany([{ ...imported, fullName: 'Cody Codeman' }]);
     const after = (await repo.findById(l.id))!;
-    expect(after.fullName).toBe('Cody Cobb');
+    expect(after.fullName).toBe('Cody Codeman');
     expect(after.viewGrades).toEqual([9]);
   });
 });

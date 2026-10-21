@@ -13254,7 +13254,7 @@ function _ikFieldLabel(k) {
 
 // ── Save, one step, the parent text, a consent save: each its own confirm sheet, each its own outbox row. ──
 // F-14: the Save approves each form onto its linked profile and the form wins, so name each name field that changes
-// ("Surname: Strange [arrow] LEstrange"; the arrow is the SVG icon). [label, was, now] each. Only while this Save approves
+// ("Surname: Dummyton [arrow] LDummyton"; the arrow is the SVG icon). [label, was, now] each. Only while this Save approves
 // that form onto the profile (a todo 'approve' step): an already approved form or a new profile changes no name.
 function _ikNameChanges(d) {
   const out = [], F = (d && d.forms) || {}, P = (d && d.profiles) || {}, todo = _ikTodo(d);
@@ -14060,8 +14060,8 @@ function _ikFormChip(f) {
 // "No consent at all from Fri 3 Oct 2026" under a form with a TOTAL non-consent date.
 function _ikFormLines(f) { const t = String((f && f.total) || ''); return t ? ['No consent at all from ' + _ikDmy(t)] : []; }
 function _ikFormRowEnd(f) { const c = _ikFormChip(f); return c ? `<span class="lk-tag ${c[1]}">${esc(c[0])}</span>` : ''; }
-// R1: an Elvanto submission name, First Last: "Lin, Clarissa" -> "Clarissa Lin"; siblings "Geissa, Giovanni, Geissa, Vincent" ->
-// "Giovanni & Vincent Geissa" (one surname collapses); shouty or all-lower names tidied (tidyName). Anything else as it came.
+// R1: an Elvanto submission name, First Last: "Fakely, Clara" -> "Clara Fakely"; siblings "Sample, Jo, Sample, Bo" ->
+// "Jo & Bo Sample" (one surname collapses); shouty or all-lower names tidied (tidyName). Anything else as it came.
 function _ikAnd(xs) { return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' & ' + xs[xs.length - 1]; }
 function _ikFormName(n) {
   const s = String(n || '').trim(), p = s.split(',').map((x) => tidyName(x.trim()));
@@ -14308,7 +14308,7 @@ function _ikClRow(f, i, grey, st) {
     + (multi ? _ikClMultiLines(multi, st) : '')
     + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + '</div>';
 }
-// ── L2 (round 2026-10-21): a form naming several children ("Luke, Daniel & Claire Seo") ──
+// ── L2 (round 2026-10-21): a form naming several children ("Jamie, Riley & Morgan Sample") ──
 // Operator ruling: suggest, one tap. The form's typed student name (formName, LINK_REV 15) splits on "," "&" "and" (whole word,
 // any case). A part of one word borrows the surname of the last part; a part with its own surname keeps it. -> the full names,
 // or null for one name (that form works exactly as before). All names come back; _ikClMulti shows the first 6 (ponytail: one Link all = one /link/batch of 20) and says so.

@@ -48,38 +48,38 @@ const strip = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").r
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ST = (o: any = {}) => ({ console: { online: o.online ?? true, lastSeenAt: o.lastSeenAt ?? new Date().toISOString(), capabilities: {} }, consoleLinkRev: o.rev ?? 6 });
 const step = (o: any) => ({ key: 'k', action: 'approve', role: 'student', text: 'Approve against the profile', state: 'todo', alone: false, locked: false, sms: null, alts: [], ...o });
-const form = (sub: string, o: any = {}) => ({ subId: sub, status: 'pending', when: 'Fri 2 Oct 7:42pm', values: { first: 'Tom', last: 'LEstrange', mobile: '0412345678', gender: 'Male' },
+const form = (sub: string, o: any = {}) => ({ subId: sub, status: 'pending', when: 'Fri 2 Oct 7:42pm', values: { first: 'Tom', last: 'LDummyton', mobile: '0412345678', gender: 'Male' },
   edits: {}, caps: {}, editable: [], issues: [], ...o });
-const DETAIL = (o: any = {}) => ({ key: P(1), status: 'ready', title: 'Tom LEstrange', holds: [], fromApp: false, siblings: [],
+const DETAIL = (o: any = {}) => ({ key: P(1), status: 'ready', title: 'Tom LDummyton', holds: [], fromApp: false, siblings: [],
   match: { kind: 'exact', parentSub: P(2), options: [] },
-  forms: { student: form(P(1)), parent: form(P(2), { values: { first: 'Ree', last: 'LEstrange', mobile: '0412999111', gender: 'Female' } }) },
-  verdicts: [], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: { id: P(6), name: 'Ree Strange', archived: false } },
+  forms: { student: form(P(1)), parent: form(P(2), { values: { first: 'Pat', last: 'LDummyton', mobile: '0412999111', gender: 'Female' } }) },
+  verdicts: [], profiles: { student: { id: P(5), name: 'Tom Dummyton', archived: false }, parent: { id: P(6), name: 'Pat Dummyton', archived: false } },
   grade: null, gender: null, age: null, steps: [step({ key: 'approve:student:' + P(1) }), step({ key: 'approve:parent:' + P(2), role: 'parent' })], extras: [], kept: [], dropped: [], links: [], ...o });
-const DET = (d: any = DETAIL()) => ({ row: { key: P(1), status: 'ready', title: 'Tom LEstrange' }, detail: d, unreadable: false, actions: [] });
+const DET = (d: any = DETAIL()) => ({ row: { key: P(1), status: 'ready', title: 'Tom LDummyton' }, detail: d, unreadable: false, actions: [] });
 const LIST = (o: any = {}) => ({ date: '2026-10-09', takenAt: new Date().toISOString(), stale: false, cut: false, rows: [], ...o });
 
 describe('F-14 Save sheet names each name field that changes', () => {
-  it('a profile renamed by the form shows "Surname: Strange [arrow] LEstrange" for each person', () => {
+  it('a profile renamed by the form shows "Surname: Dummyton [arrow] LDummyton" for each person', () => {
     const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
     I.det = DET(); I.list = LIST(); I.head = ST();
     f._ikSaveOpen();
     const h = calls.modals[0]!;
-    expect(h).toContain('Surname: Strange <svg data-ic="arrr"></svg> LEstrange');
-    expect(h).toContain('Parent surname: Strange <svg data-ic="arrr"></svg> LEstrange');
+    expect(h).toContain('Surname: Dummyton <svg data-ic="arrr"></svg> LDummyton');
+    expect(h).toContain('Parent surname: Dummyton <svg data-ic="arrr"></svg> LDummyton');
   });
   it('review r1: no line when the form is already approved (no approve step left), e.g. Tom re-save', () => {
     const { f } = env();
     const done = DETAIL({ steps: [step({ key: 'approve:student:' + P(1), state: 'done' }), step({ key: 'approve:parent:' + P(2), role: 'parent', state: 'done' })] });
     expect(f._ikNameChanges(done, {})).toEqual([]);
     const parentOnly = DETAIL({ steps: [step({ key: 'approve:parent:' + P(2), role: 'parent' })] });
-    expect(f._ikNameChanges(parentOnly, {})).toEqual([['Parent surname', 'Strange', 'LEstrange']]);
+    expect(f._ikNameChanges(parentOnly, {})).toEqual([['Parent surname', 'Dummyton', 'LDummyton']]);
   });
   it('no line when the names already agree, or when the person gets a new profile', () => {
     const { f } = env();
-    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Tom LEstrange', archived: false }, parent: null } }), {})).toEqual([]);
-    const d = DETAIL({ steps: [step({ key: 'approveNew:student:' + P(1), action: 'approveNew' })], profiles: { student: { id: P(5), name: 'Tom Strange', archived: false }, parent: null } });
+    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Tom LDummyton', archived: false }, parent: null } }), {})).toEqual([]);
+    const d = DETAIL({ steps: [step({ key: 'approveNew:student:' + P(1), action: 'approveNew' })], profiles: { student: { id: P(5), name: 'Tom Dummyton', archived: false }, parent: null } });
     expect(f._ikNameChanges(d, {})).toEqual([]);
-    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LEstrange', archived: false }, parent: null } }), {})).toEqual([['First name', 'Thomas', 'Tom']]);
+    expect(f._ikNameChanges(DETAIL({ profiles: { student: { id: P(5), name: 'Thomas LDummyton', archived: false }, parent: null } }), {})).toEqual([['First name', 'Thomas', 'Tom']]);
   });
 });
 
@@ -108,7 +108,7 @@ describe('F-15 Save result lines are plain and counted', () => {
 describe('F-17 the late-text hold is one plain sentence, shown once', () => {
   it('says when the parent was texted and which week it missed; the Save reason does not repeat it', () => {
     const { f, I } = env({ tab: 'consent', date: '2026-10-09' });
-    const d = { key: P(1), status: 'needs-you', title: 'Tom LEstrange', holds: [{ role: 'student', text: 'Parent texted late (09/10/2026)? Check in Elvanto' }],
+    const d = { key: P(1), status: 'needs-you', title: 'Tom LDummyton', holds: [{ role: 'student', text: 'Parent texted late (09/10/2026)? Check in Elvanto' }],
       outcome: '', consent: null, consentNote: '', textedOn: null, profiles: { student: null }, steps: [], links: [] };
     const want = 'Parent texted Fri 9 Oct, too late for the Fri 2 Oct week. Look in Elvanto before saving.';
     expect(f._ikHoldLines(d)).toEqual([want]);
@@ -167,8 +167,8 @@ describe('F-41 the Keep as is button stays short (fits at 360 px)', () => {
   it('the button says only "Keep as is"; the explanation is a line below it', () => {
     const { f } = env();
     const iss = { key: 'parentPhone', msg: 'Forms disagree', suggest: '', advisory: false, keep: { field: 'parentPhone', value: '0412999111' } };
-    const d = DETAIL({ forms: { student: form(P(1), { values: { first: 'Tom', last: 'LEstrange', mobile: '0412345678', gender: 'Male', parentPhone: '0412000000' }, issues: [iss] }),
-      parent: form(P(2), { values: { first: 'Ree', last: 'LEstrange', mobile: '0412999111', gender: 'Female' } }) } });
+    const d = DETAIL({ forms: { student: form(P(1), { values: { first: 'Tom', last: 'LDummyton', mobile: '0412345678', gender: 'Male', parentPhone: '0412000000' }, issues: [iss] }),
+      parent: form(P(2), { values: { first: 'Pat', last: 'LDummyton', mobile: '0412999111', gender: 'Female' } }) } });
     const h = f._ikCompareHtml(d, { keeps: {} });
     const btn = /<button[^>]*_ikKeep[^>]*>([^<]*)<\/button>/.exec(h)!;
     expect(btn[1]).toBe('Keep as is');

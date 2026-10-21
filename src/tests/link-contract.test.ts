@@ -466,7 +466,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
   });
   it('rev 15 (L2): an unlinked row may carry formName and linkedIds (2-10 uuids); both optional; MIN_CONSOLE_REV stays 12', () => {
     const p = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-unlinked-rev15.json')) as any;
-    expect(p.rows.map((r: any) => r.formName)).toEqual(['Luke, Daniel & Claire Seo', 'Casey Test']);
+    expect(p.rows.map((r: any) => r.formName)).toEqual(['Jamie, Riley & Morgan Sample', 'Casey Test']);
     expect(p.rows[1].linkedIds).toHaveLength(2);
     const old = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-unlinked.json')) as any; // an older push still parses
     expect(old.rows.every((r: any) => r.formName === undefined && r.linkedIds === undefined)).toBe(true);
