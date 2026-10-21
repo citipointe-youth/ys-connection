@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadFns } from './helpers/extract-fn';
+import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 // Round 2026-10-22 lane L4 (Youth Setup). Fictional data only.
 describe('A1 the Save confirm names what will be switched off', () => {
@@ -43,5 +43,59 @@ describe('A1 the Save confirm names what will be switched off', () => {
   it('New youth & consent off warns that the plans are deleted', () => {
     const h = confirm({ modules: { intakeAdmin: 'on' } }, { modules: { intakeAdmin: 'off' } });
     expect(h).toContain('This turns New youth &amp; consent off. Its stored plans are deleted.');
+  });
+});
+
+describe('B8-B12 and B9 Youth Setup layout', () => {
+  const html = loadIndexHtml();
+  const body = extractFn(html, '_youthSetupBody');
+  const structure = body.slice(body.indexOf("_setupCard('structure'"), body.indexOf("_setupCard('branding'"));
+  it('the card titles are unchanged (error-log paths use them); Review is gone', () => {
+    expect([...body.matchAll(/_setupCard\('(\w+)', '([^']+)'/g)].map((m) => m[2])).toEqual(
+      ['Structure & Roles', 'Branding', 'Terminology', 'Modules & Import', 'Elvanto for this location', 'Use this setup at another location']);
+  });
+  it('B8: no Review card and no JSON dump of the draft', () => {
+    expect(body).not.toContain("_setupCard('review'");
+    expect(body).not.toContain('JSON.stringify(cfg');
+  });
+  it('B10: Apply account layout is drawn only when the accounts do not match, as one warn alert', () => {
+    expect(body).not.toContain('already aligned');
+    expect(body).not.toContain('SAVED Cohort');
+    expect(body).toMatch(/aligned \? '' : `<div class="alert al-warn"[^`]*Accounts don't match the saved layout\.[^`]*previewCohortLayout\(/);
+  });
+  it('B11: preview shows the draft logo; Reset to defaults is gone', () => {
+    expect(html).not.toContain('Reset to defaults');
+    expect(html).not.toContain('_setupResetBranding');
+    expect(body).not.toContain('only shows up here after you save');
+    expect(body).toMatch(/bv\('logoImage'\) \? `<img src="\$\{esc\(bv\('logoImage'\)\)\}"[^`]*` : brandMark\(24, '#fff'\)/);
+  });
+  it('B12: Date order, Leader name tag, Export guides and the deploy-guide button are off the screen', () => {
+    for (const s of ['import.dateOrder', 'import.leaderTag', 'modules.exportGuides', 'Open the deploy guide', 'DEPLOYING.md', 'follow the deploy guide']) expect(body).not.toContain(s);
+    const elv = extractFn(html, '_setupElvCardHtml');
+    expect(elv).toContain("text('state', 'State for new addresses (e.g. QLD)')");
+    expect(elv).not.toContain('Default state');
+    expect(elv).toContain("text('locationQuestion', 'Location question on the form')");
+  });
+  it('B12: the Admin only selects are untouched', () => {
+    expect(extractFn(html, '_setupElvantoModulesHtml')).toContain("[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']]");
+    expect(body).toContain('${_setupElvantoModulesHtml(md)}');
+  });
+  it('B9: presets are a "Start from" row inside Structure & Roles, with sub-headings', () => {
+    expect(body).not.toContain('Pre-set Configurations');
+    expect(structure).toContain('Start from');
+    expect(structure).toContain('pickMinistryPreset(');
+    const iRoles = structure.indexOf('>Roles</div>'), iSvc = structure.indexOf('>Service and attendance</div>');
+    expect(iRoles).toBeGreaterThan(0);
+    expect(iSvc).toBeGreaterThan(iRoles);
+    expect(structure.indexOf('Service day')).toBeGreaterThan(iSvc);
+    expect(structure.indexOf('Min attendance')).toBeGreaterThan(iSvc);
+    expect(structure).not.toContain('>Attendance</div>');
+    expect(structure).toContain('Admin is always on. Turning a role off switches off its logins when you save.');
+  });
+  it('B9: each preset has one short line, and no developer talk is left', () => {
+    const info = new Function(/const MINISTRY_PRESETS_INFO = (\[[\s\S]*?\n\]);/.exec(html)![1]!.replace(/^/, 'return '))();
+    expect(info.map((p: { id: string }) => p.id)).toEqual(['large-graded-au', 'simple']);
+    for (const p of info) expect(p.desc.length).toBeLessThan(80);
+    for (const s of ['unchanged — the default', '(the current setup)']) expect(html).not.toContain(s);
   });
 });

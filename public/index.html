@@ -7116,8 +7116,8 @@ function wizHandleAllocationImportFile(input) {
 // accounts entirely. See design doc §5.1a / CLAUDE.md.
 // 'small-flat'/'micro' were merged into one 'simple' preset 2026-07-11.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
-  { id: 'simple', title: 'Simple Ministry', desc: 'Admin + Grade accounts only — no Director, no quads or grade/quad cohorting. The intended layout is 6 grade accounts (boys/girls per 2-grade bracket); use "Apply account layout" below once you’ve saved this to create/deactivate accounts to match. Connection Audit off, Lifegroups on.' },
+  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'A login per grade, plus 4 quad logins.' },
+  { id: 'simple', title: 'Simple Ministry', desc: '6 logins, 2-3 grades each. No quads or Director.' },
 ];
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
@@ -7601,43 +7601,40 @@ function _youthSetupBody(settings, users) {
   // since both look like null.
   const logoMode = bv('logoImage') ? 'image' : (_logoModeOverride || 'default');
 
-  let b = `<div class="card" style="margin-bottom:10px">
-    <div class="sh" style="margin-top:0">Pre-set Configurations</div>
-    <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+  // 2026-10-22 (B9): the presets are a "Start from" row at the top of Structure & Roles (ruling D3 keeps them).
+  let b = _setupCard('structure', 'Structure & Roles', `
+    <div class="fg"><label class="fl">Start from</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${MINISTRY_PRESETS_INFO.map(p => (p.id === 'simple' && simpleOn)
         ? `<button class="btn btn-secondary" style="flex:1;min-width:150px" disabled title="${SIMPLE_LOCK_TIP}">${esc(p.title)}</button>`
         : `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
-    </div>
-    ${simpleOn ? `<div class="help-text" style="margin-bottom:8px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}
-    ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
-  </div>`;
-
-  b += _setupCard('structure', 'Structure & Roles', `
-    <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only ever sees its own students. Changing this also switches Director/Quad on or off below to match.')}</label>
+      </div>
+      ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-top:4px"><strong>${esc(p.title.split(' ')[0])}:</strong> ${esc(p.desc)}</div>`).join('')}
+      ${simpleOn ? `<div class="help-text" style="margin-top:4px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}</div>
+    <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only sees its own students. Changing this also turns Director and Quad on or off below.')}</label>
       <select class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
         <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
         <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
-    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders (the current setup). Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
+    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders. Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. This changes how the app works out term start/end dates and the Home screen\'s "Not Seen Last…" reminders — it\'s a real date setting, not just wording (see "Service night wording" in Terminology below for that).')}</label>
+    <div class="sh" style="margin:16px 0 8px">Roles</div>
+    <div class="help-text" style="margin-bottom:8px">Admin is always on. Turning a role off switches off its logins when you save.</div>
+    ${adminRoleRow}
+    ${roleToggleRows}
+    ${simpleToggleRow}
+    <div class="sh" style="margin:16px 0 8px">Service and attendance</div>
+    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. The app uses it to work out terms and the Home screen\'s "Not Seen Last…" reminders.')}</label>
       <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
     <div class="fg"><label class="fl">Time zone ${helpTip('Where this location is, e.g. Australia/Brisbane. Every date and time in the app uses it.')}</label>
       <input class="fi" list="setup-tz" value="${esc(st.timeZone != null ? st.timeZone : dst.timeZone)}" onchange="_setupSet('structure.timeZone', this.value.trim())">
       <datalist id="setup-tz">${['Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin', 'Australia/Hobart', 'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney'].map((z) => `<option value="${z}">`).join('')}</datalist></div>
     <div class="fg"><label class="fl">Consent closes at ${helpTip('The time on the service day when parents can no longer reply to the consent text, e.g. 09:00.')}</label>
       <input class="fi" type="time" value="${esc(st.consentCutoff != null ? st.consentCutoff : dst.consentCutoff)}" onchange="_setupSet('structure.consentCutoff', this.value)"></div>
-    <div class="sh" style="margin:16px 0 8px">Roles</div>
-    <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
-    ${adminRoleRow}
-    ${roleToggleRows}
-    ${simpleToggleRow}
-    <div class="sh" style="margin:16px 0 8px">Attendance</div>
     <div class="form-row">
       <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
         <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">

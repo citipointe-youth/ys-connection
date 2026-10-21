@@ -173,7 +173,7 @@ You can stop here. Your app works.
 ## 5. Set up your ministry (10 min)
 
 1. Open **Admin** > **Youth Setup**.
-2. Under **Pre-set Configurations**, select **Complex Ministry** or **Simple Ministry**.
+2. Open the card **Structure & Roles**. At **Start from**, select **Complex Ministry** or **Simple Ministry**.
 3. If you have a settings file from another location, find the card **Use this setup at another location**. Select **Load settings file**. Select the file.
 4. You must change these. A settings file from another location brings that location's names.
    - In the card **Branding**, set **Ministry name**, **App name** and **Logo**.
