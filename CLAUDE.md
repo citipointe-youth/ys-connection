@@ -394,6 +394,7 @@ No emoji or Unicode symbol characters anywhere in the SPA — everything is SVG,
 
 Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other locations run their own fork + Supabase + Vercel + Google project; guides are `docs/DEPLOYING.md` and `docs/GOOGLE-SETUP.md` (ASD-STE100; `node scripts/check-guide-style.js` checks them).
 - **Setup**: no `SESSION_SECRET`/admin no longer kills the app. `GET /setup/status` drives a first-run checklist in the SPA (Generate + Copy for `SESSION_SECRET`, `FIELD_ENCRYPTION_KEY`, `SETUP_CODE`), then `POST /setup/admin` creates the user `admin`. Admin has a **System check** tab with the same checklist.
+  2026-10-22 (r22 L5): System check paints a loading bar, its own "System check" heading, and "Could not load. Try again." when `/setup/status` is 401/403 (status and error both null); `_setupChecklistHtml(st, {fold:true})` (System check only, not first-run `renderSetup`) shows fix rows first and folds the rest under "Show all checks". Tests `r22-l5-a7-*`, `r22-l5-b7-*`.
 - **403 text changed**: "The setup code is wrong. In Vercel, open Settings > Environment Variables. Copy SETUP_CODE again." (generated values live only in browser memory).
 - **Google**: `GOOGLE_SA_JSON` (+ `GOOGLE_MAPS_API_KEY`); Bus settings has **Test Google connection** (`POST /bus/google-check`, 5 rows). `scripts/google-setup.sh` runs in Cloud Shell; the guide pastes it pinned to a commit SHA (`COMMIT_SHA` placeholder until pushed).
 - **`/health`** reports `db` and `schema {current, expected}`.
@@ -433,6 +434,7 @@ A host types a new student and one parent into the **New person** screen (intern
 - **No personal data is stored or logged.** Validation errors name the field only (fixed `LABELS` strings), never the value. Names are tidied to match Project 11.1's `capName`, so 11.1 does not offer a capital fix on a form this app sent. Phones go out as bare `04XXXXXXXX`.
 - **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.
 - **Unsent new people:** a failed/unconfirmed send stores only the unsent forms, encrypted (`newperson_unsent`, 14-day purge); Admin tab retry: an unconfirmed row needs `{confirm:true}`, else 409 `UNSENT_CHECK_ELVANTO`. Without `FIELD_ENCRYPTION_KEY` nothing is stored (error log `UNSENT_SAVE_FAILED`). Repeat sends are idempotent by `requestId` (`newperson_requests`, 0032).
+  2026-10-22 (r22 L5 A9): rows say "added by <leader>"; Delete's second tap is "Delete for good?"; a form-changed row says "Retry works after the form fix. Ask <leader> for their details, or enter them in Elvanto by hand." `_usPaint` paints its own heading, and nothing when empty unless `_adminTab==='unsent'` (Problems tab). Elvanto link Activity log (A6): `_lkEvents` has a word for every server `LOG_EVENTS` value (raw codes gone, filter lists them all); the Status card keeps its six mode rows. Tests `r22-l5-a9-*`, `r22-l5-a6-*`.
 
 ### Elvanto link
 

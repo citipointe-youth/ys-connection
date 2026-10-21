@@ -2813,7 +2813,7 @@ function _genBase64Key() {
   return btoa(String.fromCharCode(...b));
 }
 function _setupChecklistHtml(st, opts) {
-  const rows = st.checks.map((c) => {
+  const row = (c) => {
     const icon = c.state === 'ok' ? icS('check') : c.state === 'optional' ? icS('info') : icS('alert');
     const gen = c.state === 'fix' && c.generate && opts.generate
       ? (SETUP.generated[c.id]
@@ -2823,8 +2823,11 @@ function _setupChecklistHtml(st, opts) {
     const fix = c.fix ? `<div class="help-text">${esc(c.fix).replace(/\n/g, '<br>')}</div>` : '';
     const link = c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener">Open GOOGLE-SETUP.md</a>` : '';
     return `<div class="li setup-row setup-${esc(c.state)}"><div style="flex:1"><div><b>${icon} ${esc(c.label)}</b></div>${fix}${gen}${link}</div></div>`;
-  }).join('');
-  return `<div class="card">${rows}</div>`;
+  };
+  if (!opts.fold) return `<div class="card">${st.checks.map(row).join('')}</div>`;
+  // r22 B7 (System check only): fix rows first, the ok and optional rows folded away.
+  const fixes = st.checks.filter((c) => c.state === 'fix'), rest = st.checks.filter((c) => c.state !== 'fix');
+  return `<div class="card">${fixes.map(row).join('')}${rest.length ? `<details><summary style="cursor:pointer;padding:8px 0;font-weight:700">${fixes.length ? 'Show all checks' : 'Nothing to fix. Show all checks'}</summary>${rest.map(row).join('')}</details>` : ''}</div>`;
 }
 async function _loadSetupStatus() {
   try { SETUP.status = await API.fresh('/setup/status'); SETUP.error = null; SETUP.hint = null; return 'ok'; }
@@ -2871,7 +2874,7 @@ function setupGenerate(id) {
   if (!gen) return;
   SETUP.generated[id] = gen();
   const sys = document.getElementById('sys-check');
-  if (sys && SETUP.status) sys.innerHTML = _setupChecklistHtml(SETUP.status, { generate: true }) + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+  if (sys && SETUP.status) sys.innerHTML = '<div class="lk-sec">System check</div>' + _setupChecklistHtml(SETUP.status, { generate: true, fold: true }) + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
   else renderSetup();
 }
 async function submitCreateAdmin() {
@@ -2896,10 +2899,12 @@ async function submitCreateAdmin() {
 async function renderSystemCheck() {
   const el = document.getElementById('sys-check');
   if (!el) return;
+  el.innerHTML = progBar('Loading');
   await _loadSetupStatus();
-  el.innerHTML = SETUP.error ? `<div class="alert al-warn">${esc(SETUP.error)}</div>`
-    : `${_setupChecklistHtml(SETUP.status, { generate: true })}
-       <button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+  // A 401/403 leaves status and error both null (r22 A7): never pass null to the checklist.
+  el.innerHTML = '<div class="lk-sec">System check</div>' + (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true, fold: true })
+    : `<div class="alert al-warn">${esc(SETUP.error || 'Could not load. Try again.')}</div>`)
+    + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
 }
 /* ── END SETUP MODULE ── */
 
@@ -6849,9 +6854,10 @@ function _usRowHtml(r) {
   const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : 'parent form').join(' + ');
   return `<div class="li rc">
     <div class="rc-top"><div class="lk-nm">${esc(r.name || 'Unreadable saved form')}${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div></div>
-    <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · host ' + esc(r.host) : ''}</div>
+    <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · added by ' + esc(r.host) : ''}</div>
     <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
     ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
+    ${r.reason === 'form-changed' ? `<div class="help-text">Retry works after the form fix. Ask ${r.host ? esc(r.host) : 'the leader who added them'} for their details, or enter them in Elvanto by hand.</div>` : ''}
     <div class="rc-foot">
       ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
         : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
@@ -6862,8 +6868,11 @@ function _usRowHtml(r) {
 const _usBusy = new Set();
 function _usPaint() {
   const el = document.getElementById('unsent-list');
-  if (el && _usRows) el.innerHTML = `<div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted.</div>`
-    + (_usRows.length ? _usRows.map(_usRowHtml).join('') : '<div class="help-text">Nothing waiting to resend.</div>');
+  if (!el || !_usRows) return;
+  // r22: inside Problems an empty list paints nothing; the old Unsent tab still says so.
+  if (!_usRows.length) { el.innerHTML = _adminTab === 'unsent' ? '<div class="help-text">Nothing waiting to resend.</div>' : ''; return; }
+  el.innerHTML = `<div class="lk-sec">Unsent new people</div><div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted. Deleting loses their details.</div>`
+    + _usRows.map(_usRowHtml).join('');
 }
 async function _usLoad() {
   try { _usRows = (await API.fresh('/admin/unsent')).rows || []; }
@@ -6885,7 +6894,7 @@ async function usRetry(id) {
 // Two-tap confirm, like the Error log.
 async function usDelete(id) {
   const btn = document.getElementById('us-del-' + id);
-  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; return; }
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete for good?'; return; }
   try { await API.del('/admin/unsent/' + encodeURIComponent(id)); } catch (e) { toast(e.message); return; }
   _usRows = (_usRows || []).filter(x => x.id !== id);
   _usPaint();
@@ -12276,9 +12285,14 @@ function _lkLastFriday(ymd) {
   return _lkAddDays(ymd, -back);
 }
 function _lkAt(iso) { return fmtDay(iso, true); }
+// APP-63 (r22 A6): a word for every server LOG_EVENTS value (every action type plus identity/cancel/undo/resolve).
 function _lkEvents() {
-  return { identity: 'Identity', checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in',
-  submitReport: 'Lifegroup report', editReport: 'Report edit', completeStep: 'Flow step', cancel: 'Cancel', undo: 'Undo' };
+  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again',
+    checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
+    removeFromFlowStep: 'Remove from flow step' };
+  ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',
+    'consentSave', 'consentLookup', 'consentFix', 'consentLink'].forEach((k) => { ev[k] = _lkVerb(k); });
+  return ev;
 }
 // "Cody -> Sam (iPhone · Safari)": the arrow is the SVG icon; every value escaped.
 function _lkLogWho(r) {
@@ -12345,7 +12359,8 @@ function _lkAdmStatusHtml() {
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};
-  Object.keys(_lkEvents()).filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], _lkWord('mode', caps[k])]));
+  // r22 A6: the same six mode rows as before; the longer log word list must not lengthen this card.
+  ['checkIn', 'checkOut', 'firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep'].filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], _lkWord('mode', caps[k])]));
   Object.keys(st.mirrors || {}).forEach((k) => { const m = st.mirrors[k]; kv.push([_lkWord('list', k), m && m.ageSeconds != null ? Math.round(m.ageSeconds / 60) + ' min old' : 'None yet']); });
   const acts = LINK.adm.acts || [];
   const counts = {};
