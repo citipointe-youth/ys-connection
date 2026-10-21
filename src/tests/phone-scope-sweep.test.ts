@@ -64,7 +64,7 @@ describe('F4 phone sweep: a scoped login never gets an out-of-scope or DNC phone
   beforeAll(async () => {
     process.env['LINK_SYNC_TOKEN'] = TOKEN;
     c = await buildContainer();
-    await seedDemoData(c.repos);
+    const seedPw = (await seedDemoData(c.repos))!; // F5: the seed password is random, returned once
     const s = await c.repos.settings.getSettings();
     await c.repos.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
       modules: { ...s.ministryConfig.modules, newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on',
@@ -110,7 +110,7 @@ describe('F4 phone sweep: a scoped login never gets an out-of-scope or DNC phone
 
     for (const u of ['admin', ...LOGINS.map((l) => l.name)]) {
       const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: u, password: 'demo1234' }) });
+        body: JSON.stringify({ email: u, password: seedPw }) });
       tokens[u] = ((await r.json()) as { token: string }).token;
     }
   }, 60_000);
