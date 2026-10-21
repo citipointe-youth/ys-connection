@@ -107,7 +107,7 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(release).toBeLessThan(m.indexOf('set student_id = ${c.studentId}'));
   });
   it('F1: claimCreate inserts on conflict do nothing (the person id is the key); 0042 is additive, a new table with RLS on', () => {
-    expect(flat(method('claimCreate'))).toContain('on conflict (person_id) do nothing returning person_id');
+    expect(flat(method('claimCreate'))).toContain("on conflict (person_id) do update set created_at = now() where link_created_students.student_id is null and link_created_students.created_at < now() - interval '5 minutes' returning person_id");
     expect(flat(method('settleCreate'))).toContain('and student_id is null'); // a release never drops a finished claim
     const m = readFileSync(join(ROOT, 'supabase', 'migrations', '0042_link_created_students.sql'), 'utf8');
     expect(m).not.toMatch(/(drop|rename|alter column|unique index)/i);

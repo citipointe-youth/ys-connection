@@ -22,7 +22,7 @@ function swHarness(st: { sending?: boolean; modal?: string; page?: string; ny?: 
       visibilityState: st.vis || 'visible',
       getElementById: (id: string) => (id === 'modal-root' ? { innerHTML: st.modal || '' } : null),
       querySelectorAll: () => st.fields || [],
-      createElement: () => ({}),
+      createElement: () => ({ dataset: {} }),
       body: { appendChild: (el: any) => appended.push(el) },
     },
   };
@@ -63,6 +63,29 @@ describe('F-07 SW update reload deferral', () => {
     expect(h.appended.length).toBe(1);
     expect(h.appended[0].textContent).toBe('Update ready. Tap to reload');
     h.appended[0].onclick();
+    if (!h.reloads.length) { // F1 review: unsaved typing asks first; a second tap reloads
+      expect(h.appended[0].textContent).toBe('You have unsaved changes. Reload anyway?');
+      h.appended[0].onclick();
+    }
+    expect(h.reloads.length).toBe(1);
+  });
+  it('F1 review: with unsaved typing the banner asks first; without it one tap reloads', () => {
+    const st: any = { page: 'link-groups', rf: { dirty: true } };
+    const h = swHarness(st);
+    h.fns._swOnUpdate();
+    h.appended[0].onclick();
+    expect(h.reloads.length).toBe(0);
+    expect(h.appended[0].textContent).toBe('You have unsaved changes. Reload anyway?');
+    h.appended[0].onclick();
+    expect(h.reloads.length).toBe(1);
+    const q = swHarness({ queue: [{ id: 'x' }] });
+    q.fns._swOnUpdate();
+    q.appended[0].onclick();
+    expect(q.reloads.length).toBe(1);
+  });
+  it('F1 review: an empty pick list is not a change', () => {
+    const h = swHarness({ page: 'x', fields: [{ tagName: 'SELECT', type: 'select-one', selectedIndex: -1, options: [] }] });
+    h.fns._swOnUpdate();
     expect(h.reloads.length).toBe(1);
   });
   it('F1: fields as the screen drew them, a search box, or a report with no changes do not hold the reload', () => {

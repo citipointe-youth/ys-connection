@@ -16395,7 +16395,7 @@ function _swTyped() {
   for (const el of document.querySelectorAll('input, textarea, select')) {
     if (el.type === 'search' || el.type === 'hidden' || (el.closest && el.closest('.sbar'))) continue;
     if (el.type === 'checkbox' || el.type === 'radio') { if (el.checked !== el.defaultChecked) return true; }
-    else if (el.tagName === 'SELECT') { if (el.selectedIndex !== Math.max(0, [...el.options].findIndex((o) => o.defaultSelected))) return true; }
+    else if (el.tagName === 'SELECT') { if (el.options.length && el.selectedIndex !== Math.max(0, [...el.options].findIndex((o) => o.defaultSelected))) return true; }
     else if (el.value !== el.defaultValue) return true;
   }
   return false;
@@ -16420,7 +16420,14 @@ function _swOnUpdate() {
   if (_swWaiting) return;
   _swWaiting = true;
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'sw-upd'; b.textContent = 'Update ready. Tap to reload'; b.onclick = _swReload;
+  b.type = 'button'; b.className = 'sw-upd'; b.textContent = 'Update ready. Tap to reload';
+  // F1 review: unsaved typing asks first (in the banner itself, so an open sheet is never replaced); a second tap reloads.
+  b.onclick = () => {
+    let typed = true; try { typed = _swTyped(); } catch (e) {}
+    if (!typed || b.dataset.armed === '1') { _swReload(); return; }
+    b.dataset.armed = '1'; b.textContent = 'You have unsaved changes. Reload anyway?';
+    setTimeout(() => { b.dataset.armed = ''; b.textContent = 'Update ready. Tap to reload'; }, 6000);
+  };
   document.body.appendChild(b);
 }
 function _swOnHidden() { if (_swWaiting && document.visibilityState === 'hidden' && _swIdle()) _swReload(); }

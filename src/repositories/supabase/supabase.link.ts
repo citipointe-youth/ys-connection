@@ -439,7 +439,11 @@ export class SupabaseLinkRepository implements ILinkRepository {
   }
 
   async claimCreate(personId: string): Promise<boolean> {
-    const r = await this.sql`insert into link_created_students (person_id) values (${personId}) on conflict (person_id) do nothing returning person_id`;
+    // F1 review: a claim with no student after 5 minutes (a create that died mid-way) can be taken again.
+    const r = await this.sql`insert into link_created_students (person_id) values (${personId})
+      on conflict (person_id) do update set created_at = now()
+      where link_created_students.student_id is null and link_created_students.created_at < now() - interval '5 minutes'
+      returning person_id`;
     return r.length === 1;
   }
 
