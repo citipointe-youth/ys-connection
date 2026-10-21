@@ -78,4 +78,8 @@ describe('Y4 ship.sh project name', () => {
     expect(sh).toContain(".vercel/project.json");
     expect(sh).toContain('p.projectName||p.name||');
   });
+  it('the live block says Vercel auto-promotes (2026-10-22), no hand-updated pending line', () => {
+    expect(sh).toContain('- promote: auto (Vercel promotes every master build)');
+    expect(sh).not.toContain('promote: pending');
+  });
 });
