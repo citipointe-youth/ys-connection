@@ -7726,10 +7726,6 @@ function _youthSetupBody(settings, users) {
 
   b += _setupCard('elvanto', 'Elvanto for this location', _setupElvCardHtml(cfg));
 
-  b += _setupCard('review', 'Review', `
-    <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
-    <div class="help-text" style="margin:6px 0">Some changes (app name, nav, available roles) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>`);
-
   b += _setupCard('share', 'Use this setup at another location', `
     <div class="help-text" style="margin-bottom:8px">To start a new location, follow the deploy guide. To copy these settings to that location, select <b>Download settings file</b>. At the new location, select <b>Load settings file</b>. Then select <b>Save Youth Setup</b>.</div>
     <a class="btn btn-secondary btn-full" href="https://github.com/citipointe-youth/ys-connection/blob/master/docs/DEPLOYING.md" target="_blank" rel="noopener">Open the deploy guide</a>
