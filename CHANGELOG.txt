@@ -4,10 +4,147 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+DEPLOY DOCS MATCH AUTO-PROMOTE  (2026-10-22, not yet live)
+-------------------------------------------------------------------------------
+- Docs only. Vercel puts every master push live by itself (since 20 Oct), so
+  DEPLOY.md, CLAUDE.md and the ship script no longer talk about a manual
+  promote. A push to master is a release: check the clock first.
+
+-------------------------------------------------------------------------------
+RELEASE WINDOW, RE-CHECK AND MULTI-NAME FORMS  (ysc-v138, 2026-10-21)
+-------------------------------------------------------------------------------
+- Admin: an unclear Elvanto save has "Check again". The console looks again
+  and the row then reads Landed, Not landed or Still unclear. Needs the
+  console updated (link rev 15, migration 0041).
+- Consents: one unlinked form that names several students suggests each
+  person, with one tap to Link all. A form the console linked now counts as
+  consent, with Fix on linked mismatches.
+- Shipping rule: no ships Friday 17:30-20:00 or Sunday 10:00-12:00 (site
+  time). Any other time is fine.
+
+-------------------------------------------------------------------------------
+ROUND 21: MATCHING, NEXT STEP, FASTER LOOKUPS  (ysc-v137, 2026-10-21)
+-------------------------------------------------------------------------------
+- Elvanto link matching: each tab says why a person is listed. "Create" (or
+  "Create all") makes and links a YS student when nobody fits, in batches of
+  10.
+- Flow steps: admins and directors pick who gets the next step. Leaders see
+  when someone still needs to be assigned.
+- Reconcile "Who?" sheet has Send again for check-ins, reports and member
+  changes.
+- Consent lookups answer faster.
+- Phones: Setup cards fit more students, Accounts rows are compact, and the
+  More and Check-in menus behave.
+
+-------------------------------------------------------------------------------
+MULTI-LOCATION  (ysc-v135 to v136, 2026-10-20 to 21)
+-------------------------------------------------------------------------------
+- Each location keeps its own Elvanto settings, forms, flow names, time zone,
+  youth night and consent cut-off (migration 0040 fills in Brisbane once).
+- Home shows "Needs attention" to admins and directors.
+- A DO NOT CONTACT banner and an "Assigned to" hint on link screens.
+- Every role can change their own password. Shared logins are never forced to.
+- Bus: "preferred grades" are gone from bus setup and the planner.
+- The console learns the location's details when it connects (link rev 14).
+- New docs: DEPLOYING.md for a new location, and a leader handout.
+
+-------------------------------------------------------------------------------
+SERVICE VISITS  (ysc-v134, 2026-10-20)
+-------------------------------------------------------------------------------
+- Flow people carry a Service Visits count from Elvanto. Needs the console
+  updated (link rev 13, migration 0039).
+
+-------------------------------------------------------------------------------
+ROUND 19: TIDY-UP AND SAFETY FIXES  (ysc-v132 to v133, 2026-10-19)
+-------------------------------------------------------------------------------
+- Admin can settle an unclear Elvanto save (Landed / Not landed) on any date.
+- Completing a flow step checks DO NOT CONTACT the same way the screen shows.
+- The consent step follows this year's New People flow, not a fixed year.
+- Bus: a My-car-only leader can change only their own car. Finished nights
+  are read-only for most logins.
+- A preset keeps your modules, Bus and branding, and asks first.
+- A console older than link rev 12 is refused. Practice-mode leftovers and a
+  lot of unused code are gone.
+- Roster push no longer fails when two students swap rows.
+- Bus: the "Trip logging" tab is called "My car" again.
+
+-------------------------------------------------------------------------------
+BUS TRIPS, CHARTER BUS, CHECK-IN ROOMS  (ysc-v130 to v131, 2026-10-18)
+-------------------------------------------------------------------------------
+- Bus: log a trip on any day in your own car, with optional addresses. Past
+  trips and the export mark logged trips.
+- Bus: a car can be a Charter bus. Riders can choose a bus drop-off,
+  remembered each week (migration 0038).
+- Bus: many tidy-ups (bigger tap targets, clearer chips and labels, the same
+  phone margins as the rest of the app).
+- Check-in: a refusal because the service has no room is final and says so in
+  plain words.
+
+-------------------------------------------------------------------------------
+CONSENTS ROUND AND BACKLOG  (ysc-v126 to v129, 2026-10-17 to 18)
+-------------------------------------------------------------------------------
+- Consents: step 0 shows "consent not received". The consent Friday follows
+  the date the parent was texted. "Mark not received" works on Other.
+- Consents: every Tidy up list loads on entry and keeps your answers across
+  reloads.
+- One shared look: spacing, row cards, one search bar, one date style.
+- From the installed iPhone app, Elvanto links open only in the browser.
+- Check-in: the services list reloads, past services ask first, Sunday is the
+  default.
+- A password change must use a new password.
+
+-------------------------------------------------------------------------------
+ERROR LOG REWORK AND RECONCILE  (ysc-v124 to v125, 2026-10-17)
+-------------------------------------------------------------------------------
+- Error log: three groups, two plain lines per entry, the same cause folded
+  into one, FYI items collapsed (migration 0035).
+- Reconcile: after each import the app checks its numbers against Elvanto and
+  lists differences. "Who?" shows the names (migration 0036).
+
+-------------------------------------------------------------------------------
+ACCESS, DOOR CHECK-IN, UI BATCH  (ysc-v119 to v123, 2026-10-17)
+-------------------------------------------------------------------------------
+- Access: leaders only see leaders, students and addresses in their own scope.
+  A password reset signs old sessions out. Security headers on every page.
+- Lifegroup reports: every new report defaults to "No service".
+- Door check-in: a tap turns to "In Elvanto" within about 5 seconds. The list
+  shows when it was last updated.
+- Bus: per-car Lock (migration 0034) and Car setup totals.
+- Flow steps: New Students and Parent text tiles, Send parent text, up to 50
+  at a time.
+- Consents filters are a simple drop-down.
+- Every push now runs the checks and tests on GitHub.
+- Small wording, spacing and screen reader fixes.
+
+-------------------------------------------------------------------------------
+FIX ROUNDS AFTER THE PHONE TEST  (ysc-v113 to v118, 2026-10-16)
+-------------------------------------------------------------------------------
+- About 60 fixes from the phone test: plain wording, 44 px tap targets, no
+  double taps, Back asks before you lose a half-filled form or report.
+- Saves made on a phone are kept and sent again with the same id if the
+  network drops, so nothing is sent twice (migration 0032).
+- A tap on a menu opens that section's first screen.
+- Consents: an "Other (no date)" option (migration 0033).
+- New student category step reads "Moved to New People".
+
+-------------------------------------------------------------------------------
+DO NOT CONTACT, CONSENTS, NOTICES, PROGRESS  (ysc-v108 to v112, 2026-10-15)
+-------------------------------------------------------------------------------
+- DO NOT CONTACT shows on the person. Flow steps get filters, bulk Complete
+  and Remove from step.
+- Consents has sub-menus (Last Friday, All consent forms, Mismatches), Save all
+  ready, and an Unlinked tab to link a form to the right person.
+- Notices: admins and directors can send a notice to the quad logins, with
+  phone alerts (off by default; migrations 0028, 0029).
+- Progress bars while the console works. Back goes back inside the app.
+- Bus: Fixed leaders removed. Every Bus login can see Car setup.
+- Junior/senior grade buttons on Home; the consent cut-off is 9am Friday.
+- Shipping is one command (scripts/ship.sh).
+
+-------------------------------------------------------------------------------
 UX BATCH: LIFEGROUPS, NEW QUAD LOGINS, FORM APPROVE, UNSENT PEOPLE  (2026-10-14)
 -------------------------------------------------------------------------------
-Pushed, not yet live. The operator promotes it (checklist in CLAUDE.md,
-"UX batch 2026-10-14b").
+Now live (by ysc-v108, 2026-10-15).
 - Lifegroups: filter by grade (remembered on the device), girls' groups pink
   and boys' groups blue, the tile shows the attendance. "Add report" sits under
   the week's reports and lets you pick the date; a second report on the same
@@ -29,8 +166,7 @@ Pushed, not yet live. The operator promotes it (checklist in CLAUDE.md,
 -------------------------------------------------------------------------------
 UX BATCH: ERROR LOG, LIFEGROUP MEMBERS, INTAKE, FORM GUARDS  (2026-10-13)
 -------------------------------------------------------------------------------
-Built and tested, not yet live. The operator promotes it (see the checklist in
-CLAUDE.md, "2026-10-13 UX batch").
+Now live (by ysc-v108, 2026-10-15).
 - Settings tabs: on a phone the admin tab strip is a drop-down list.
 - New person form: mobile numbers are checked (04 and 10 digits), names that
   are all lower or all capitals are tidied, a 4-digit postcode is needed, and a

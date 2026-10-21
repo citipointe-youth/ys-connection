@@ -18,7 +18,7 @@ WARNING: The Supabase Free plan has no backups. It also pauses your project afte
 
 NOTE: The Vercel Hobby plan is for non-commercial use. Check which Vercel plan fits your church before step 3.
 
-Developer contact: DEVELOPER_CONTACT
+Developer contact: Contact your church's youth admin.
 
 ### Glossary
 
