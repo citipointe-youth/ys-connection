@@ -6985,7 +6985,7 @@ function renderNewYearWizard() {
     step2Satisfied, false);
 
   // r22 L3 (A4): say plainly what the cascade takes too (no apostrophes: the text sits in a JS string in onclick).
-  const resetText = 'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. It also deletes bus parent consents, saved bus addresses, My car settings for leaders and flow assignments. Accounts are kept. This cannot be undone.';
+  const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes bus parent consents and saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their consents and addresses. Accounts are kept. This cannot be undone.';
   b += _wizStepCard(4, 'Full Reset', resetText,
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'${resetText}${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);
