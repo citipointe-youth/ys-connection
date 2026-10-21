@@ -12,6 +12,15 @@ jobs:
   gate-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Throwaway Postgres (2026-10-22, R1 H4): every migration and the real-DB repo suite run here. No secrets; never prod.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,4 +30,13 @@ jobs:
       - run: npm ci
       - run: node scripts/check-spa-syntax.js
       - run: npm run typecheck
+      - name: migrations (all, on an empty database; the second run must apply nothing)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: |
+          npx tsx scripts/migrate.ts --force
+          npx tsx scripts/migrate.ts --force | tee migrate2.log
+          grep -q '(0 new)' migrate2.log
       - run: npm test
+        env:
+          LINK_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
