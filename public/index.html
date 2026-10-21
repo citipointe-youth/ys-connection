@@ -2807,7 +2807,7 @@ function _genBase64Key() {
   return btoa(String.fromCharCode(...b));
 }
 function _setupChecklistHtml(st, opts) {
-  const rows = st.checks.map((c) => {
+  const row = (c) => {
     const icon = c.state === 'ok' ? icS('check') : c.state === 'optional' ? icS('info') : icS('alert');
     const gen = c.state === 'fix' && c.generate && opts.generate
       ? (SETUP.generated[c.id]
@@ -2817,8 +2817,11 @@ function _setupChecklistHtml(st, opts) {
     const fix = c.fix ? `<div class="help-text">${esc(c.fix).replace(/\n/g, '<br>')}</div>` : '';
     const link = c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener">Open GOOGLE-SETUP.md</a>` : '';
     return `<div class="li setup-row setup-${esc(c.state)}"><div style="flex:1"><div><b>${icon} ${esc(c.label)}</b></div>${fix}${gen}${link}</div></div>`;
-  }).join('');
-  return `<div class="card">${rows}</div>`;
+  };
+  if (!opts.fold) return `<div class="card">${st.checks.map(row).join('')}</div>`;
+  // r22 B7 (System check only): fix rows first, the ok and optional rows folded away.
+  const fixes = st.checks.filter((c) => c.state === 'fix'), rest = st.checks.filter((c) => c.state !== 'fix');
+  return `<div class="card">${fixes.map(row).join('')}${rest.length ? `<details><summary style="cursor:pointer;padding:8px 0;font-weight:700">${fixes.length ? 'Show all checks' : 'Nothing to fix. Show all checks'}</summary>${rest.map(row).join('')}</details>` : ''}</div>`;
 }
 async function _loadSetupStatus() {
   try { SETUP.status = await API.fresh('/setup/status'); SETUP.error = null; SETUP.hint = null; return 'ok'; }
@@ -2865,7 +2868,7 @@ function setupGenerate(id) {
   if (!gen) return;
   SETUP.generated[id] = gen();
   const sys = document.getElementById('sys-check');
-  if (sys && SETUP.status) sys.innerHTML = _setupChecklistHtml(SETUP.status, { generate: true }) + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+  if (sys && SETUP.status) sys.innerHTML = '<div class="lk-sec">System check</div>' + _setupChecklistHtml(SETUP.status, { generate: true, fold: true }) + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
   else renderSetup();
 }
 async function submitCreateAdmin() {
@@ -2893,7 +2896,7 @@ async function renderSystemCheck() {
   el.innerHTML = progBar('Loading');
   await _loadSetupStatus();
   // A 401/403 leaves status and error both null (r22 A7): never pass null to the checklist.
-  el.innerHTML = (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true })
+  el.innerHTML = '<div class="lk-sec">System check</div>' + (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true, fold: true })
     : `<div class="alert al-warn">${esc(SETUP.error || 'Could not load. Try again.')}</div>`)
     + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
 }
