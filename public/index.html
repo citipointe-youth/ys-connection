@@ -3248,9 +3248,6 @@ function _attnCounts(r, now) {
     errors: rows(r.errs).filter((e) => !e.ignored && e.tier === 'now').length,
     unsent: rows(r.unsent).length,
     unclear: (Array.isArray(r.unclear) ? r.unclear : acts.filter((a) => a.status === 'unclear')).length,
-    // YSREL2: Check again only when every unclear row can be re-checked and the console lists recheck live.
-    recheck: !!(c && c.capabilities && c.capabilities.recheck === 'live')
-      && (Array.isArray(r.unclear) ? r.unclear : acts.filter((a) => a.status === 'unclear')).every((a) => _lkRcType(a && a.type)),
     waiting: acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
       && now - Date.parse(a.createdAt) > 36e5).length,
     offlineAt: c && c.lastSeenAt && !c.online ? c.lastSeenAt : null,
@@ -3266,15 +3263,14 @@ function _attnLines(a) {
   const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
   if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')"]);
   if (a.unsent) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
-  if (a.unclear) L.push([adm && a.recheck ? (a.unclear === 1 ? '1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.' // L7
-    : a.unclear + ' unclear saves. Tap Check again on each in Admin > Elvanto link, or check them in Elvanto and mark them there.')
-    : (a.unclear === 1 ? '1 unclear save. Check it in Elvanto' : a.unclear + ' unclear saves. Check them in Elvanto')
-      + (adm ? (a.unclear === 1 ? ', then mark it' : ', then mark them') + ' in Admin > Elvanto link.' : '.'), link]);
+  // 2026-10-22 B3: short; the Elvanto link page explains Check again and marking.
+  if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save.' : a.unclear + ' unclear saves.')
+    + (adm ? ' See Admin > Elvanto link.' : a.unclear === 1 ? ' Check it in Elvanto.' : ' Check them in Elvanto.'), link]);
   if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
     + (adm ? ' See Admin > Elvanto link.' : ''), link]);
   if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
   if (a.dnc) L.push([_lkDncText(), link]);
-  a.fix.forEach((x) => L.push(['System check: ' + x + ' needs fixing.', "switchAdminTab('system')"]));
+  if (a.fix.length) L.push(['System check: ' + (a.fix.length === 1 ? a.fix[0] + ' needs fixing.' : a.fix.length + ' things need fixing.'), "switchAdminTab('system')"]);
   if (a.needsYou) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
   return L;
 }

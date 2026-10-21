@@ -313,8 +313,12 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
   it('fix round: a System check fix row reads as one plain sentence (no second colon)', () => {
     const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
     const setup = { checks: [{ id: 'link', label: 'Elvanto link token: not set', state: 'fix' }, { id: 'appOrigin', label: 'APP_ORIGIN', state: 'fix' }] };
+    const one = { checks: [setup.checks[0]] };
+    expect(h._attnLines(h._attnCounts({ uid: 'u', role: 'admin', setup: one }, Date.now())).map((l: string[]) => l[0]))
+      .toEqual(['System check: Elvanto link token needs fixing.']);
+    // 2026-10-22 (RV1 B3): two or more fixes fold into one line.
     expect(h._attnLines(h._attnCounts({ uid: 'u', role: 'admin', setup }, Date.now())).map((l: string[]) => l[0]))
-      .toEqual(['System check: Elvanto link token needs fixing.', 'System check: APP_ORIGIN needs fixing.']);
+      .toEqual(['System check: 2 things need fixing.']);
   });
   it('fix round: Home makes one /link/status read a minute (Needs attention and the offline line share it)', async () => {
     const calls: string[] = [];
