@@ -102,7 +102,7 @@ describe('Check forms puts its result into the draft', () => {
       lines: ['Not found: Name of Host filling out form. Make the question match, or type its id.'] });
     await f._setupElvCheck();
     const { d, s, calls } = f.state();
-    expect(calls).toEqual([['/settings/elvanto-check', { baseUrl: 'https://your-org.elvanto.com.au', studentFormId: ID, parentFormId: PID, location: 'North' }]]);
+    expect(calls).toEqual([['/settings/elvanto-check', { baseUrl: 'https://your-org.elvanto.com.au', studentFormId: ID, parentFormId: PID, location: 'North', locationQuestion: '' }]]);
     expect(d.elvanto.fields).toEqual({ host: 'old-host', school: 'new-school' });
     expect(d.elvanto.options).toEqual({ location: 'old-loc' });
     expect(d.elvanto.checkedAt).toBe('2026-10-09');

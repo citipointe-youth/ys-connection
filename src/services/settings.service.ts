@@ -38,7 +38,7 @@ const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 // P11: Check forms runs on the Youth Setup draft (not yet saved), validated by the same allow-list fields before any fetch.
 const ELV = MinistryConfigSchema.shape.elvanto.removeDefault();
 const ElvantoCheckSchema = ELV.pick({ baseUrl: true, studentFormId: true, parentFormId: true })
-  .extend({ location: ELV.shape.location.removeDefault().optional() });
+  .extend({ location: ELV.shape.location.removeDefault().optional(), locationQuestion: ELV.shape.locationQuestion.removeDefault().optional() });
 const FORM_GET_MS = 8_000; // as new-youth
 
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
@@ -84,7 +84,7 @@ export function makeSettingsService(
         throw new BadRequestError("Paste each form's public link in Youth Setup, Elvanto for this location.");
       }
       const cfg = (await repo.getSettings()).ministryConfig;
-      const e = { ...cfg.elvanto, ...d.data };
+      const e = { ...cfg.elvanto, ...d.data, locationQuestion: d.data.locationQuestion || cfg.elvanto.locationQuestion };
       const get = async (kind: FormKind) => {
         try {
           const r = await fetch(formUrl(e, kind), {
@@ -99,7 +99,7 @@ export function makeSettingsService(
       const [s, p] = await Promise.allSettled([get('student'), get('parent')]);
       if (s.status === 'rejected') throw s.reason;
       if (p.status === 'rejected') throw p.reason;
-      return checkForms(s.value, p.value, e.location, gradeRange(cfg.structure));
+      return checkForms(s.value, p.value, e.location, gradeRange(cfg.structure), e.locationQuestion);
     },
 
     async update(actor, input) {

@@ -45,7 +45,12 @@ describe('0040 site elvanto', () => {
   });
   it('the Brisbane block parses through the schema unchanged', () => {
     const cfg = parseMinistryConfig({ elvanto: brisbaneElvanto() });
-    expect(cfg.elvanto).toEqual(brisbaneElvanto());
+    // 2026-10-22 F7: plus the location question label, which Brisbane gets from the default (pinned).
+    expect(cfg.elvanto).toEqual({ ...brisbaneElvanto(), locationQuestion: 'Citipointe Location' });
+  });
+  it('F7: a fresh install defaults the location question to the shared tenant label, and can set its own', () => {
+    expect(MINISTRY_CONFIG_DEFAULTS.elvanto.locationQuestion).toBe('Citipointe Location');
+    expect(parseMinistryConfig({ elvanto: { locationQuestion: 'Campus' } }).elvanto.locationQuestion).toBe('Campus');
   });
   it('the Brisbane block holds today\'s values', () => {
     const b = brisbaneElvanto();
@@ -61,9 +66,9 @@ describe('0040 site elvanto', () => {
     for (const [l, id] of Object.entries(ALLERGIES)) expect(b.options[`allergy:${l}`]).toBe(id);
     for (const [l, id] of Object.entries(CONDITIONS)) expect(b.options[`condition:${l}`]).toBe(id);
   });
-  it('defaults are blank', () => {
+  it('defaults are blank (write targets; the location question is a read label, F7)', () => {
     const e = parseMinistryConfig({}).elvanto;
-    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' });
+    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' });
   });
   it.each(['http://x.elvanto.com.au', 'https://evil.com', 'https://a.elvanto.com.au/', 'https://a.elvanto.com.au.evil.com', 'https://169.254.169.254'])('baseUrl %s refused', (u) => {
     expect(() => parseMinistryConfig({ elvanto: { baseUrl: u } })).toThrow();
@@ -137,6 +142,11 @@ describe('readFormFields', () => {
     expect(r.options).toEqual(brisbaneElvanto().options);
     expect(r).toMatchObject({ ok: true, n: 39, missing: [], extra: [] });
   });
+  it('F7: the location question label is a setting (another church names it differently)', () => {
+    const ren = (h: string) => h.replace('>Citipointe Location <', '>Which campus? <');
+    expect(checkForms(ren(STUDENT), ren(PARENT), 'Brisbane', [7], 'Which campus?').options.location).toBe(brisbaneElvanto().options.location);
+    expect(checkForms(ren(STUDENT), ren(PARENT), 'Brisbane', [7]).missing).toEqual(['Citipointe Location, option Brisbane']);
+  });
   it('a location label with regex characters matches literally, and entities decode', () => {
     const html = STUDENT.replace('>Redcliffe</label>', '>St. Mark&#039;s (North)</label>');
     expect(checkForms(html, PARENT, "St. Mark's (North)", [7]).options.location).toBe('6c3e1500-6b5f-11e2-9eb8-3170a1d64e04');
@@ -181,6 +191,12 @@ describe('POST /settings/elvanto-check', () => {
     expect(r.fields).toEqual(B.fields);
     expect(r.options).toEqual(B.options);
     expect((await services.settings.get()).ministryConfig.elvanto).toEqual(before);
+  });
+  it('F7: the draft location question is used; a blank one uses the saved setting', async () => {
+    const ren = (h: string) => h.replace('>Citipointe Location <', '>Which campus? <');
+    stub(ren(STUDENT), ren(PARENT));
+    expect((await check({ ...DRAFT, locationQuestion: 'Which campus?' })).options.location).toBe(B.options.location);
+    expect((await check({ ...DRAFT, locationQuestion: '' })).missingKeys).toEqual(['options.location']);
   });
   it('a missing label is named', async () => {
     stub(STUDENT.replace('>Name of Host filling out form <', '>Host name<'));

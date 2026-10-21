@@ -35,6 +35,8 @@ const unShadow = (v: unknown) => (v === 'shadow' ? 'admin' : v);
 const moduleMode = z.preprocess(unShadow, MODE);
 const uuidOrEmpty = z.union([z.literal(''), z.string().uuid()]);
 
+export const DEFAULT_LOCATION_QUESTION = 'Citipointe Location';
+
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
   preset: z.enum(MINISTRY_PRESETS).default('large-graded-au'),
@@ -190,6 +192,9 @@ export const MinistryConfigSchema = z.object({
       studentFormId: uuidOrEmpty.default(''),
       parentFormId: uuidOrEmpty.default(''),
       location: z.string().max(60).default(''), // Location option LABEL on both forms, e.g. "Brisbane"
+      // 2026-10-22 F7: the location QUESTION label Check forms looks for. A read label, not a write target, so it
+      // defaults to the shared Citipointe tenant's wording (Brisbane relies on it); a wrong one only reads "Not found".
+      locationQuestion: z.string().max(120).default(DEFAULT_LOCATION_QUESTION),
       peopleFlowPrefix: z.string().max(120).default(''), // "Brisbane - Youth - New People"
       consentFlowPrefix: z.string().max(120).default(''), // "Brisbane - Youth - Parent Consent"
       state: z.string().max(10).default(''), // New person default State
