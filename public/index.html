@@ -384,10 +384,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .admin-tabs{flex-wrap:wrap} /* every Admin tab visible, none cut mid-word */
 @media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
 
-/* Destructive section */
-.destructive-section{border:2px solid var(--danger);border-radius:var(--radius-sm);padding:14px;margin-top:10px}
-.destructive-header{color:#991b1b;font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-
 /* Preview banner */
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
 .preview-banner .btn{background:rgba(0,0,0,.15);color:#1a1200;border:none;padding:4px 10px;font-size:11px}
@@ -6604,22 +6600,6 @@ async function renderAdminView(settings, users, history) {
         <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
       </label>
       <div id="prayer-import-status" style="margin-top:8px"></div>
-    </div>`;
-    // Change 12: Visual separation of destructive actions
-    body += `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-      <div class="destructive-section">
-        <div class="destructive-header">Destructive Actions ${helpTip('Clear Service/Group Data only deletes attendance - students, leaders and connections stay. Full Reset also deletes students, leaders and connections (accounts are always kept).')}</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div>
-            <button class="btn btn-secondary btn-full" onclick="confirmType({title:'Clear Service & Group Data?',word:'CLEAR',danger:false,body:'This deletes all service and lifegroup attendance. Students (grade, age, phone), their connections and leaders are kept.',onConfirm:()=>adminAction('/admin/clear-service-group','✓ Service/group data cleared',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Clear Service/Group Data</button>
-            <div class="help-text" style="margin-top:4px">Clears all service + lifegroup attendance; keeps students, connections, leaders &amp; accounts</div>
-          </div>
-          <div>
-            <button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:()=>adminAction('/admin/reset','✓ Full reset complete',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Full Reset</button>
-            <div class="help-text" style="margin-top:4px">Clears students, leaders, connections &amp; all data (keeps accounts)</div>
-          </div>
-        </div>
-      </div>
     </div>`;
   }
 
