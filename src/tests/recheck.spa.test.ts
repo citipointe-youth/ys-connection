@@ -73,21 +73,12 @@ describe('L7 SPA: Check again', () => {
     expect(mk('not-saved')).not.toContain('_lkAdmUnclearOpen(');
     expect(mk('unclear')).toContain('_lkAdmUnclearOpen(');
   });
-  it('Home: the admin line points at Check again', async () => {
+  it('2026-10-22 B3: the Home admin line is short and points at the link page, which explains Check again', async () => {
     const { _attnLines } = loadFns(['_attnLines'], '');
-    const l = _attnLines({ role: 'admin', unclear: 1, recheck: true, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
-    expect(l[0]).toBe('1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.');
-    const o = _attnLines({ role: 'admin', unclear: 2, recheck: false, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
-    expect(o[0]).toBe('2 unclear saves. Check them in Elvanto, then mark them in Admin > Elvanto link.');
-  });
-  it('YSREL2 fix: Home says Check again only when every unclear row can be re-checked and the console lists recheck live', () => {
-    const { _attnCounts } = loadFns(['_attnCounts'], '');
-    const rc = (types: string[], recheck?: string) => _attnCounts({ unclear: types.map((type) => ({ type, status: 'unclear' })),
-      st: { console: { capabilities: recheck ? { recheck } : {} } } }, Date.now()).recheck;
-    expect(rc(['checkIn', 'consentFix'], 'live')).toBe(true);
-    expect(rc(['checkIn', 'intakeSave'], 'live')).toBe(false);
-    expect(rc(['checkIn'], 'off')).toBe(false);
-    expect(rc(['checkIn'])).toBe(false);
+    const l = _attnLines({ role: 'admin', unclear: 1, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
+    expect(l[0]).toBe('1 unclear save. See Admin > Elvanto link.');
+    const o = _attnLines({ role: 'admin', unclear: 2, errors: 0, unsent: 0, waiting: 0, fix: [] }).map((x: string[]) => x[0]);
+    expect(o[0]).toBe('2 unclear saves. See Admin > Elvanto link.');
   });
   it('YSREL2 fix: no Check again button on an unclear row the console cannot re-check', () => {
     const { _lkAdmStatusHtml } = loadFns(['_lkAdmStatusHtml'], `

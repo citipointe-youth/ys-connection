@@ -380,13 +380,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .tbbar::-webkit-scrollbar{display:none}
 .tbbtn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;color:var(--ink-mid);background:var(--paper-card);border:1.5px solid var(--paper-dark);cursor:pointer}
 .tbbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.admin-tabsel{display:none;width:100%;margin-bottom:16px}
 .admin-tabs{flex-wrap:wrap} /* every Admin tab visible, none cut mid-word */
-@media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
-
-/* Destructive section */
-.destructive-section{border:2px solid var(--danger);border-radius:var(--radius-sm);padding:14px;margin-top:10px}
-.destructive-header{color:#991b1b;font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.tbbar.admin-tabs{-webkit-mask-image:none;mask-image:none} /* 2026-10-22: pills on every width, wrapped, so no scroll fade */
 
 /* Preview banner */
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
@@ -3263,9 +3258,6 @@ function _attnCounts(r, now) {
     errors: rows(r.errs).filter((e) => !e.ignored && e.tier === 'now').length,
     unsent: rows(r.unsent).length,
     unclear: (Array.isArray(r.unclear) ? r.unclear : acts.filter((a) => a.status === 'unclear')).length,
-    // YSREL2: Check again only when every unclear row can be re-checked and the console lists recheck live.
-    recheck: !!(c && c.capabilities && c.capabilities.recheck === 'live')
-      && (Array.isArray(r.unclear) ? r.unclear : acts.filter((a) => a.status === 'unclear')).every((a) => _lkRcType(a && a.type)),
     waiting: acts.filter((a) => a.type === 'firstTimerCheckIn' && (a.status === 'pending' || a.status === 'claimed')
       && now - Date.parse(a.createdAt) > 36e5).length,
     offlineAt: c && c.lastSeenAt && !c.online ? c.lastSeenAt : null,
@@ -3281,15 +3273,14 @@ function _attnLines(a) {
   const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
   if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')"]);
   if (a.unsent) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
-  if (a.unclear) L.push([adm && a.recheck ? (a.unclear === 1 ? '1 unclear save. Tap Check again in Admin > Elvanto link, or check it in Elvanto and mark it there.' // L7
-    : a.unclear + ' unclear saves. Tap Check again on each in Admin > Elvanto link, or check them in Elvanto and mark them there.')
-    : (a.unclear === 1 ? '1 unclear save. Check it in Elvanto' : a.unclear + ' unclear saves. Check them in Elvanto')
-      + (adm ? (a.unclear === 1 ? ', then mark it' : ', then mark them') + ' in Admin > Elvanto link.' : '.'), link]);
+  // 2026-10-22 B3: short; the Elvanto link page explains Check again and marking.
+  if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save.' : a.unclear + ' unclear saves.')
+    + (adm ? ' See Admin > Elvanto link.' : a.unclear === 1 ? ' Check it in Elvanto.' : ' Check them in Elvanto.'), link]);
   if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
     + (adm ? ' See Admin > Elvanto link.' : ''), link]);
   if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
   if (a.dnc) L.push([_lkDncText(), link]);
-  a.fix.forEach((x) => L.push(['System check: ' + x + ' needs fixing.', "switchAdminTab('system')"]));
+  if (a.fix.length) L.push(['System check: ' + (a.fix.length === 1 ? a.fix[0] + ' needs fixing.' : a.fix.length + ' things need fixing.'), "switchAdminTab('system')"]);
   if (a.needsYou) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
   return L;
 }
@@ -3299,7 +3290,7 @@ function _attnHtml(a) {
   return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
     + L.map(([t, on]) => on ? `<div role="button" tabindex="0" onclick="${on}" style="padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="padding:5px 0">${esc(t)}</div>`).join('') + '</div>';
 }
-function _attnBadges(a) { return a ? { errors: a.errors, unsent: a.unsent, system: a.fix.length, link: a.unclear + a.waiting } : {}; }
+function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
 function _attnSlot(role) { return role === 'admin' || role === 'director' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
 // ponytail: one reload a minute per login (up to 7 small reads, admin/director only); a shared /batch section if it ever bites.
 let _attnBusy = null; // the read in flight: a second call meanwhile (stale paint + revalidate, Home then Admin) waits for it
@@ -3329,12 +3320,8 @@ async function _attnLoad(force) {
 function _attnPaint() {
   const el = document.getElementById('home-attn');
   if (el) el.innerHTML = _attnHtml(_attnMine());
-  const t = document.querySelector('.admin-tabs'), s = document.querySelector('.admin-tabsel');
-  if (!t || !s) return;
-  const w = document.createElement('div');
-  w.innerHTML = _adminTabsHtml(S.page === 'link-admin' ? 'link' : _adminTab);
-  const [nt, ns] = w.children;
-  t.replaceWith(nt); s.replaceWith(ns);
+  const t = document.querySelector('.admin-tabs');
+  if (t) t.outerHTML = _adminTabsHtml(S.page === 'link-admin' ? 'link' : _adminTab);
 }
 async function _renderHomeInner(stale, fromCache) {
   const qu = S.user; // the login; `u` below is who Home is drawn for
@@ -6473,12 +6460,15 @@ async function renderAdmin() {
   renderAdminView(settings, users, history);
 }
 
-// T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
-const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['unsent','Unsent new people'],['link','Elvanto link']];
+// 2026-10-22 (RV1 B1): 6 tabs, pills on every width (they wrap to 2 rows on a phone); add new admin tabs here only.
+const ADMIN_TABS = [['link','Elvanto link'],['problems','Problems'],['import','Import'],['accounts','Accounts'],['youthsetup','Youth Setup'],['newyear','New Year']];
+// Old tab ids still open (Home links, error-log text): each lights the tab that holds it now. loginActivity stays a sub-view.
+const ADMIN_TAB_HOME = { errors:'problems', unsent:'problems', system:'problems', loginActivity:'accounts', data:'newyear' };
+let _adminScroll = null; // the Problems section an old id asked for; renderAdminView scrolls to it once
 function _adminTabsHtml(cur) {
   const b = typeof _attnBadges === 'function' ? _attnBadges(_attnMine()) : {}; // Y6b: the Home "Needs attention" counts
-  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>
-    <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}${b[id] ? ' (' + Number(b[id]) + ')' : ''}</option>`).join('')}</select>`;
+  cur = ADMIN_TAB_HOME[cur] || cur;
+  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>`;
 }
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
@@ -6496,6 +6486,9 @@ async function renderAdminView(settings, users, history) {
   }
 
   if (_adminTab === 'accounts') {
+    // 2026-10-22 (RV1 B1): Login activity is a sub-view of Accounts, opened from this row.
+    const laNow = Date.now(), laNever = _laFilterUsers(users, 'never', laNow).length, laQuiet = _laFilterUsers(users, 'quiet', laNow).length;
+    body += `<button class="btn btn-secondary btn-full" style="justify-content:space-between;white-space:normal;text-align:left;margin-bottom:10px" onclick="switchAdminTab('loginActivity')"><span>Login activity: ${laNever} never logged in · ${laQuiet} quiet 30+ days</span><span aria-hidden="true">›</span></button>`;
     body += `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
       <button class="btn btn-primary btn-sm" onclick="showAddUser()">+ Add Account</button>
     </div>`;
@@ -6531,7 +6524,6 @@ async function renderAdminView(settings, users, history) {
       body += `<div class="role-group">
         <div class="role-group-header">${roleLabels[role] || role} (${group.length})</div>`;
       for (const u of group) {
-        const rl = u.role==='grade'?gradeBadgeLabel(u):u.role==='quad'?quadLabel(u.quad):_roleLabel(u.role);
         // The account named "Admin" is protected: it can always be edited (except
         // renamed — see showEditUser), but never deactivated or deleted, regardless
         // of how many other admin accounts exist.
@@ -6563,56 +6555,20 @@ async function renderAdminView(settings, users, history) {
     body += _loginActivityBodyHtml(users);
   }
 
-  if (_adminTab === 'data') {
-    body += `<div class="card">
-      <div class="sh" style="margin-top:0">Connection Allocations</div>
-      <div class="help-text" style="margin-bottom:10px">Export every student–leader allocation as a CSV (one leader per row, grouped by student), edit it, then re-import. Import matches students and leaders by name and reports anything it can't match. Students missing from the file are left untouched.</div>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportAllocationsCSV()">Export Allocations</button>
-      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alloc-auto-leaders"> <span>Auto-create leaders that don't match an existing leader ${helpTip('A leader name in the file with no matching Leader record is normally reported as unmatched and skipped. With this on, a new Leader is created for it instead — grade(s)/gender taken from whichever students in the file are matched to that name.')}</span></label>
-      <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
-        <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handleAllocationImportFile(this)">
-      </label>
-      <div id="alloc-import-status" style="margin-top:8px"></div>
-    </div>`;
-    if (_prayersOn()) body += `<div class="card">
-      <div class="sh" style="margin-top:0">Prayers</div>
-      <div class="help-text" style="margin-bottom:10px">Export every prayer request as a CSV (one row per prayer), edit it, then re-import. Import matches students by name and reports anything it can't match.</div>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportPrayersCSV()">Export Prayers</button>
-      <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Prayers
-        <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
-      </label>
-      <div id="prayer-import-status" style="margin-top:8px"></div>
-    </div>`;
-    // Change 12: Visual separation of destructive actions
-    body += `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-      <div class="destructive-section">
-        <div class="destructive-header">Destructive Actions ${helpTip('Clear Service/Group Data only deletes attendance - students, leaders and connections stay. Full Reset also deletes students, leaders and connections (accounts are always kept).')}</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div>
-            <button class="btn btn-secondary btn-full" onclick="confirmType({title:'Clear Service & Group Data?',word:'CLEAR',danger:false,body:'This deletes all service and lifegroup attendance. Students (grade, age, phone), their connections and leaders are kept.',onConfirm:()=>adminAction('/admin/clear-service-group','✓ Service/group data cleared',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Clear Service/Group Data</button>
-            <div class="help-text" style="margin-top:4px">Clears all service + lifegroup attendance; keeps students, connections, leaders &amp; accounts</div>
-          </div>
-          <div>
-            <button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections and attendance. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:()=>adminAction('/admin/reset','✓ Full reset complete',{force:true,confirmWipe:CONFIRM_WIPE_STRING})})">Full Reset</button>
-            <div class="help-text" style="margin-top:4px">Clears students, leaders, connections &amp; all data (keeps accounts)</div>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-
   if (_adminTab === 'newyear') {
     body += renderNewYearWizard();
   }
 
-  if (_adminTab === 'system') body += '<div id="sys-check"></div>';
-  if (_adminTab === 'errors') body += '<div id="err-log">' + progBar('Loading') + '</div>';
-  if (_adminTab === 'unsent') body += '<div id="unsent-list">' + progBar('Loading') + '</div>';
+  // 2026-10-22 (RV1 B1): Problems stacks the three exception queues. Each loader paints its own heading, or nothing.
+  if (_adminTab === 'problems') body += '<div id="unsent-list"></div><div id="err-log">' + progBar('Loading') + '</div><div id="sys-check"></div>';
 
   setApp(shell(body));
-  if (_adminTab === 'system') renderSystemCheck();
-  if (_adminTab === 'errors') _elLoad();
-  if (_adminTab === 'unsent') _usLoad();
+  if (_adminTab === 'problems') {
+    _usLoad(); _elLoad(); renderSystemCheck();
+    const el = _adminScroll && document.getElementById(_adminScroll);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+  _adminScroll = null;
   _attnLoad();
 }
 
@@ -8139,9 +8095,10 @@ let _adminData = { settings: {}, users: [], history: [] };
 async function switchAdminTab(tab) {
   // 2026-10-14: Elvanto link is its own page (link-admin), reached from this tab list; any other tab from there goes back to Admin.
   if (tab === 'link') { go('link-admin'); return; }
-  _adminTab = tab;
+  // 2026-10-22 (RV1 B1): an old id opens the tab that holds it (errors/unsent/system also scroll to their section).
+  _adminScroll = { errors:'err-log', unsent:'unsent-list', system:'sys-check' }[tab] || null;
+  _adminTab = tab === 'loginActivity' ? tab : ADMIN_TAB_HOME[tab] || tab;
   if (S.page !== 'admin') { go('admin'); return; }
-  if (tab === 'newyear') _wizReset();
   // Re-entering Youth Setup always starts from the server's current state, not
   // whatever was left over from an earlier visit this session.
   if (tab === 'youthsetup') { _setupFlowSteps = undefined; _setupDraft = null; _setupServiceMinAttendance = null; _setupTermGapDays = null; _setupOpen = {}; }
@@ -8158,14 +8115,6 @@ async function switchAdminTab(tab) {
 // Mirrors the server's admin.service.ts CONFIRM_WIPE_STRING — required by the
 // wipe guard on POST /admin/reset and /admin/clear-service-group.
 const CONFIRM_WIPE_STRING = 'I understand this cannot be undone';
-
-async function adminAction(path, msg, body) {
-  try {
-    await API.post(path, body || {}); Cache.clear(); toast(msg);
-    if ((path === '/admin/reset' || path === '/admin/clear-service-group') && window.CA) CA.reset(); /*CA-HOOK*/
-    go('home');
-  } catch (e) { toast(e.message); }
-}
 
 // Account modals
 // Change 6: auto-suggest email (and, for grade accounts, display name) on
@@ -8221,7 +8170,7 @@ async function showAddUser() {
     <div class="mo-title">Add Account</div>
     <div id="uerr"></div>
     <div class="fg"><label class="fl">Display Name</label><input class="fi" id="u-name" placeholder="Grade 9"></div>
-    <div class="fg"><label class="fl">Username ${helpTip('Free-form login name. For a grade login, set the Gender scope field below rather than relying on a g/b suffix — a login spanning several grades cannot encode its gender in the old grade7g pattern.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
+    <div class="fg"><label class="fl">Username ${helpTip('The name used to log in. For a grade login, also set Gender scope below.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
     <div class="fg"><label class="fl">Password</label><input class="fi" id="u-pw" type="password" placeholder="Min 8 chars"></div>
     <div class="fg"><label class="fl">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">${_accRoleOptions('')}</select>

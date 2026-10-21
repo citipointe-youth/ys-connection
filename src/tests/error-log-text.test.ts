@@ -101,7 +101,10 @@ describe('error-log-text', () => {
     const html = loadIndexHtml();
     const grab = (src: string, re: RegExp) => [...src.matchAll(re)].map((m) => m[1]!.trim());
     const nav = grab(extractFn(html, '_navItemsBase') + extractFn(html, '_navSlots'), /label:'([^']+)'/g);
-    const adminTabs = grab(/const ADMIN_TABS = (.*);/.exec(html)![1]!, /\['\w+','([^']+)'\]/g);
+    // 2026-10-22 (RV1 B1): Error log, Unsent new people and System check are sections of Problems now; their old
+    // ids still open them (ADMIN_TAB_HOME), so "Admin > Error log" etc. still land on the right place.
+    const problemSecs = ['Error log', 'Unsent new people', 'System check'];
+    const adminTabs = [...grab(/const ADMIN_TABS = (.*);/.exec(html)![1]!, /\['\w+','([^']+)'\]/g), ...problemSecs];
     const more = grab(extractFn(html, 'moreItems'), /label:'([^']+)'/g);
     const cards = grab(html, /_setupCard\('\w+', '([^']+)'/g);
     const linkStatus = extractFn(html, '_lkAdmStatusHtml');
@@ -111,7 +114,8 @@ describe('error-log-text', () => {
 
     it('the label arrays are the SPA nav: Admin and More are nav slots; Youth Setup and Elvanto link are Admin tabs', () => {
       expect(nav).toEqual(expect.arrayContaining(['Admin', 'More']));
-      expect(adminTabs).toEqual(expect.arrayContaining(['Youth Setup', 'Elvanto link', 'Unsent new people']));
+      expect(adminTabs).toEqual(expect.arrayContaining(['Youth Setup', 'Elvanto link', 'Problems']));
+      expect(html).toContain("const ADMIN_TAB_HOME = { errors:'problems', unsent:'problems', system:'problems',");
       for (const p of ['More > New youth & consent', 'Admin > Elvanto link > Matching', 'Admin > Unsent new people',
         'Admin > Youth Setup > Elvanto for this location']) {
         expect(PATHS, p).toContain(p);

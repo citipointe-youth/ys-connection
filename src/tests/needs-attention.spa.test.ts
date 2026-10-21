@@ -5,7 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, loadFns, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const ADMIN_TABS = HTML.match(/^const ADMIN_TABS = .*$/m)![0];
+const ADMIN_TABS = [/^const ADMIN_TABS = .*$/m, /^const ADMIN_TAB_HOME = .*$/m].map((re) => HTML.match(re)![0]).join(';');
 // 2026-10-20 20:00 in Brisbane (UTC+10); the console was last seen at 7:40 pm.
 const NOW = Date.parse('2026-10-20T10:00:00.000Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -75,11 +75,10 @@ describe('Y6b Home "Needs attention"', () => {
     expect(texts(f)).toEqual([
       '3 problems in the error log.',
       "2 new people weren't sent.",
-      '1 unclear save. Check it in Elvanto, then mark it in Admin > Elvanto link.', // no recheck capability: no Check again
+      '1 unclear save. See Admin > Elvanto link.', // 2026-10-22 B3: the link page explains Check again
       '2 first-timers have waited over 1 hour for Elvanto. See Admin > Elvanto link.',
       'The console is offline since 7:40 pm.',
-      'System check: New People flow needs fixing.',
-      'System check: APP_ORIGIN needs fixing.',
+      'System check: 2 things need fixing.', // 2026-10-22 B3: one line, the detail is on the page
       '2 families need you in More > New youth & consent.',
     ]);
     const h = f._attnHtml(f.attn);
@@ -95,6 +94,7 @@ describe('Y6b Home "Needs attention"', () => {
     const r = broken();
     r['/admin/errors'].rows = [{ id: 'n1', tier: 'now' }];
     r['/admin/unsent'].rows = [{ id: 'u1' }];
+    r['/setup/status'].checks.pop(); // one System check fix (New People flow)
     r['/link/actions?status=unclear'] = [{ id: 'x1', status: 'unclear' }, { id: 'x2', status: 'unclear' }];
     r['/link/actions?serviceDate=2026-10-20'] = [{ id: 'f1', type: 'firstTimerCheckIn', status: 'pending', createdAt: ago(2 * 36e5) }];
     r['/link/intake?mode=intake'].dates = [{ date: '2026-10-09', counts: { needsYou: 1 } }];
@@ -103,7 +103,8 @@ describe('Y6b Home "Needs attention"', () => {
     const t = texts(f);
     expect(t).toContain('1 problem in the error log.');
     expect(t).toContain("1 new person wasn't sent.");
-    expect(t).toContain('2 unclear saves. Check them in Elvanto, then mark them in Admin > Elvanto link.'); // no recheck capability
+    expect(t).toContain('2 unclear saves. See Admin > Elvanto link.');
+    expect(t).toContain('System check: New People flow needs fixing.'); // one fix keeps its name
     expect(t).toContain('1 first-timer has waited over 1 hour for Elvanto. See Admin > Elvanto link.');
     expect(t).toContain('1 family needs you in More > New youth & consent.');
   });
@@ -201,17 +202,14 @@ describe('Y6b Home "Needs attention"', () => {
 });
 
 describe('Y6b Admin tab badges use the same counts', () => {
-  it('Error log, Unsent new people, System check and Elvanto link carry the card counts', async () => {
+  it('Problems (errors + unsent + System check fixes) and Elvanto link carry the card counts', async () => {
     at();
     const { f } = run('admin', broken());
     await f._attnLoad(true);
-    expect(f._attnBadges(f.attn)).toEqual({ errors: 3, unsent: 2, system: 2, link: 3 });
+    expect(f._attnBadges(f.attn)).toEqual({ problems: 7, link: 3 }); // 2026-10-22 B1: one Problems badge
     const h = f._adminTabsHtml('import');
-    expect(h).toContain(`switchAdminTab('errors')">Error log <span class="pill warn">3</span>`);
-    expect(h).toContain(`switchAdminTab('unsent')">Unsent new people <span class="pill warn">2</span>`);
-    expect(h).toContain(`switchAdminTab('system')">System check <span class="pill warn">2</span>`);
+    expect(h).toContain(`switchAdminTab('problems')">Problems <span class="pill warn">7</span>`);
     expect(h).toContain(`switchAdminTab('link')">Elvanto link <span class="pill warn">3</span>`);
-    expect(h).toContain('<option value="errors">Error log (3)</option>');
     expect(h).toContain(`<button class="tbbtn " onclick="switchAdminTab('accounts')">Accounts</button>`);
   });
   it('healthy: no badge anywhere, the tab list is unchanged', async () => {
