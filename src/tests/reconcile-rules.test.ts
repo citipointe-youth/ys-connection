@@ -113,6 +113,22 @@ describe('check 4 group members', () => {
   });
 });
 
+import { autoMatch } from '../services/link-rules';
+describe('F4 2026-10-22: a student with no grade (the console now sends kind student) is checked like any student', () => {
+  const ng = ros(7, { grade: null, studentId: null, match: 'none', firstName: 'Testy', lastName: 'Nograde' });
+  it('is name-matched to a YS student', () => {
+    expect(autoMatch([ng], [{ id: 's7', firstName: 'Testy', lastName: 'Nograde', gender: 'other', grade: 9 }]))
+      .toEqual([{ personId: P(7), studentId: 's7', match: 'auto' }]);
+  });
+  it('counts in unmatched until matched, then in check-ins, lifegroups and members', () => {
+    expect(checkUnmatched([ng]).items).toEqual([P(7)]);
+    const m = { ...ng, studentId: 's7', match: 'auto' as const };
+    expect(checkCheckins({ sessions: [{ id: 'ss1', sessionDate: '2026-10-23' }], attendance: [], roster: [m], rows: [ci(7, '2026-10-23')] }).count).toBe(1);
+    expect(checkLifegroups({ ...base, roster: [m], actions: [rep({ attendees: [P(7)] })], attendance: [] }).items[0]?.personIds).toEqual([P(7)]);
+    expect(checkMembers({ ...mbase, roster: [m], roll: [], actions: [mem('add', 7)] }).count).toBe(1);
+  });
+});
+
 import { ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
 describe('reconcile contract', () => {
   it('request is the leaders base shape; response round-trips', () => {

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { InMemoryErrorLogRepository } from '../repositories/in-memory/error-log.repository';
+import { SupabaseErrorLogRepository } from '../repositories/supabase/supabase.error-log';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import { makeErrorLogService, normaliseRoute, CLIENT_REPORT_MAX } from '../services/error-log.service';
@@ -65,6 +66,24 @@ describe('InMemoryErrorLogRepository', () => {
     expect((await r.list())[0]).toMatchObject({ id: 'a', route: 'GET /a', count: 6, lastSeen: at(3) });
     await r.record(entry({ id: 'c', foldKey: 'SERVICE_UNAVAILABLE|503', at: at(40) })); // 37 min after the last one
     expect((await r.list()).map((x) => x.id).sort()).toEqual(['a', 'c']);
+  });
+  it('F4 2026-10-22: a new occurrence never joins an ignored row; it starts a fresh row that shows again', async () => {
+    const r = new InMemoryErrorLogRepository();
+    const at = (m: number) => new Date(Date.parse('2026-10-16T10:36:00Z') + m * 60_000).toISOString();
+    await r.record(entry({ id: 'a', foldKey: 'SERVICE_UNAVAILABLE|503', route: 'GET /a', at: at(0) }));
+    await r.setFlags('a', { ignored: true });
+    await r.record(entry({ id: 'b', foldKey: 'SERVICE_UNAVAILABLE|503', route: 'GET /b', at: at(3) }));
+    await r.record(entry({ id: 'c', foldKey: 'SERVICE_UNAVAILABLE|503', route: 'GET /c', at: at(5) }));
+    const rows = await r.list();
+    expect(rows.find((x) => x.id === 'a')).toMatchObject({ count: 1, ignored: true });
+    expect(rows.find((x) => x.id === 'b')).toMatchObject({ count: 2, ignored: false, route: 'GET /b' });
+    expect(rows.find((x) => x.id === 'c')).toBeUndefined();
+  });
+  it('F4 2026-10-22: the Supabase fold skips ignored rows', async () => {
+    const q: string[] = [];
+    const sql = ((s: TemplateStringsArray) => { q.push(s.join('?')); return Promise.resolve([]); }) as any;
+    await new SupabaseErrorLogRepository(sql).record(entry({ id: 'a', foldKey: 'X|503' }));
+    expect(q[0]).toMatch(/where fold_key = \?\s+and not ignored/);
   });
   it('setCount 0 deletes the row; setCount n stores n', async () => {
     const r = new InMemoryErrorLogRepository();
