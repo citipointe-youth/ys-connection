@@ -20,7 +20,8 @@ export type ErrorLogEntry = Pick<ErrorLogRow, 'id' | 'category' | 'code' | 'rout
 export interface IErrorLogRepository {
   /**
    * setCount 0: delete row `id`. setCount n: upsert row `id` with count n (last_seen moves only when the count changes).
-   * No setCount and a foldKey: add n to the newest row with that fold_key seen within FOLD_WINDOW_MS of `at`, else insert `id`.
+   * No setCount and a foldKey: add n to the newest row with that fold_key seen within FOLD_WINDOW_MS of `at`
+   * and not ignored (F4 2026-10-22: an ignored row never hides a new occurrence), else insert `id`.
    * No setCount and no foldKey: upsert by id adding n (rows from before 0035).
    */
   record(e: ErrorLogEntry, setCount?: number): Promise<void>;

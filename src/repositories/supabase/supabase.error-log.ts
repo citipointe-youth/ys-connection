@@ -20,7 +20,7 @@ export class SupabaseErrorLogRepository implements IErrorLogRepository {
       const hit = await this.sql`
         update error_log set count = count + ${n}::int, last_seen = greatest(last_seen, ${e.at}::timestamptz),
           last_role = coalesce(${e.role}::text, last_role)
-        where id = (select id from error_log where fold_key = ${e.foldKey}
+        where id = (select id from error_log where fold_key = ${e.foldKey} and not ignored
                       and last_seen > ${e.at}::timestamptz - ${FOLD_WINDOW_MS}::int * interval '1 millisecond'
                     order by last_seen desc limit 1)
         returning id`;

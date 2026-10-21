@@ -11,7 +11,7 @@ export class InMemoryErrorLogRepository implements IErrorLogRepository {
       const cut = Date.parse(e.at) - FOLD_WINDOW_MS;
       let hit: ErrorLogRow | undefined;
       for (const r of this.rows.values()) {
-        if (r.foldKey === e.foldKey && Date.parse(r.lastSeen) > cut && (!hit || r.lastSeen > hit.lastSeen)) hit = r;
+        if (r.foldKey === e.foldKey && !r.ignored && Date.parse(r.lastSeen) > cut && (!hit || r.lastSeen > hit.lastSeen)) hit = r;
       }
       if (hit) {
         hit.count += e.n ?? 1;
