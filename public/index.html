@@ -7739,16 +7739,13 @@ function _youthSetupBody(settings, users) {
   // "Apply account layout" (bug 8) — a separate, explicit, typed-confirm
   // action that reconciles Accounts with whatever cohort model/grade range is
   // actually SAVED (never an unsaved draft — matching savedCohort/savedGrade*
-  // above), independent of the Save button. Always visible (2026-07-12 follow-
-  // up) — greyed out via the client-side plan mirror below when Accounts
-  // already match, rather than only appearing while switching models; a
-  // grade-6-toggle change with the SAME cohort model still needs this to
-  // pick up new/changed bracket accounts.
+  // above), independent of the Save button. 2026-10-22 (B10): drawn only when
+  // the client-side plan mirror below says Accounts don't match; nothing otherwise.
   const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
   const aligned = !alignPlan.toCreate.length && !alignPlan.toDeactivate.length;
   const targetLabel = savedCohort === 'none' ? 'Simple' : 'Complex';
-  b += `<button class="btn btn-secondary btn-full" style="margin-top:8px" ${aligned?'disabled':''} onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}${aligned?' (already aligned)':''}</button>
-    <div class="help-text" style="margin-top:4px;margin-bottom:4px">Creates/deactivates grade &amp; quad accounts to match the SAVED Cohort model/grade range above — separate from Save (save first if you just changed either), and only touches Accounts, never students, leaders or connections.</div>`;
+  b += aligned ? '' : `<div class="alert al-warn" style="margin-top:8px">Accounts don't match the saved layout. Creates or switches off grade and quad logins to match the saved setup. Save first.
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}</button></div>`;
 
   return b;
 }
