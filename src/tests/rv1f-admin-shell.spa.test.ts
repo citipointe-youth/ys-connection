@@ -28,3 +28,15 @@ describe('B4: Accounts tidy', () => {
     expect(extractFn(HTML, 'renderAdminView')).not.toContain('const rl =');
   });
 });
+
+describe('B2: the Data tab body is gone; the wizard keeps its import/export helpers', () => {
+  it('no Data block, no adminAction; the helpers the wizard calls stay', () => {
+    const v = extractFn(HTML, 'renderAdminView');
+    expect(v).not.toContain("_adminTab === 'data'");
+    expect(v).not.toContain('alloc-auto-leaders');
+    expect(HTML).not.toMatch(/function adminAction\(/);
+    for (const fn of ['exportAllocationsCSV', 'processAllocationImport', 'exportPrayersCSV', 'handlePrayerImportFile']) {
+      expect(HTML, fn).toContain(`function ${fn}(`);
+    }
+  });
+});

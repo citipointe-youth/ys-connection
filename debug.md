@@ -397,7 +397,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
 ### Allocation import
 
 - **"Auto-create leaders that don't match an existing leader" checkbox does nothing / creates the
-  wrong grade or gender**: the checkbox (`#alloc-auto-leaders`, Admin → Data tab) is read at
+  wrong grade or gender**: the checkbox (`#alloc-auto-leaders`, removed with the Admin Data tab 2026-10-22, so it is now always off) was read at
   upload time in `processAllocationImport()` and sent as `autoCreateLeaders` on
   `POST /connections/allocations/import` — confirm it's actually checked (default OFF) and the
   request body has it. Server-side, `deriveLeadersToCreate()` (`connection-allocations.ts`) only

@@ -6576,28 +6576,6 @@ async function renderAdminView(settings, users, history) {
     body += _loginActivityBodyHtml(users);
   }
 
-  if (_adminTab === 'data') {
-    body += `<div class="card">
-      <div class="sh" style="margin-top:0">Connection Allocations</div>
-      <div class="help-text" style="margin-bottom:10px">Export every student–leader allocation as a CSV (one leader per row, grouped by student), edit it, then re-import. Import matches students and leaders by name and reports anything it can't match. Students missing from the file are left untouched.</div>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportAllocationsCSV()">Export Allocations</button>
-      <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alloc-auto-leaders"> <span>Auto-create leaders that don't match an existing leader ${helpTip('A leader name in the file with no matching Leader record is normally reported as unmatched and skipped. With this on, a new Leader is created for it instead — grade(s)/gender taken from whichever students in the file are matched to that name.')}</span></label>
-      <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Allocations
-        <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handleAllocationImportFile(this)">
-      </label>
-      <div id="alloc-import-status" style="margin-top:8px"></div>
-    </div>`;
-    if (_prayersOn()) body += `<div class="card">
-      <div class="sh" style="margin-top:0">Prayers</div>
-      <div class="help-text" style="margin-bottom:10px">Export every prayer request as a CSV (one row per prayer), edit it, then re-import. Import matches students by name and reports anything it can't match.</div>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportPrayersCSV()">Export Prayers</button>
-      <label class="btn btn-secondary btn-full" style="cursor:pointer">Import Prayers
-        <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
-      </label>
-      <div id="prayer-import-status" style="margin-top:8px"></div>
-    </div>`;
-  }
-
   if (_adminTab === 'newyear') {
     body += renderNewYearWizard();
   }
@@ -8180,14 +8158,6 @@ async function switchAdminTab(tab) {
 // Mirrors the server's admin.service.ts CONFIRM_WIPE_STRING — required by the
 // wipe guard on POST /admin/reset and /admin/clear-service-group.
 const CONFIRM_WIPE_STRING = 'I understand this cannot be undone';
-
-async function adminAction(path, msg, body) {
-  try {
-    await API.post(path, body || {}); Cache.clear(); toast(msg);
-    if ((path === '/admin/reset' || path === '/admin/clear-service-group') && window.CA) CA.reset(); /*CA-HOOK*/
-    go('home');
-  } catch (e) { toast(e.message); }
-}
 
 // Account modals
 // Change 6: auto-suggest email (and, for grade accounts, display name) on
