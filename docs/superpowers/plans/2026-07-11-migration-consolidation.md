@@ -633,7 +633,7 @@ Old text (`CLAUDE.md` lines 187-211):
 | `b1012@youth.ministry` | quad | Boys Yr 10–12 |
 | `grade7@youth.ministry` … `grade12@youth.ministry` | grade | one per grade (the in-code seed has one account per grade) |
 
-Local `PERSISTENCE=memory` dev/demo mode: password `demo1234` for all of the above,
+Local `PERSISTENCE=memory` dev/demo mode: password `<demo password>` for all of the above,
 same as before. **Supabase/production accounts are different:** every account
 inserted by `002_seed_admin.sql` / `005_seed_users.sql` (and any account matching
 one of the emails above, post-rename) is flagged `must_change_password = true` by
@@ -661,7 +661,7 @@ New text:
 | `b1012` | quad | Boys Yr 10–12 |
 | `grade7` … `grade12` | grade | one per grade (the in-code seed has one account per grade) |
 
-Local `PERSISTENCE=memory` dev/demo mode: password `demo1234` for all of the above,
+Local `PERSISTENCE=memory` dev/demo mode: password `<demo password>` for all of the above,
 same as before. **Supabase/production accounts are different:** every account
 inserted by `0003_seed_accounts.sql` (`supabase/migrations/` — the pre-2026-07
 history of this seed data, back when it used fake `@youth.ministry` emails, lives

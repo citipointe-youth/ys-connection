@@ -241,7 +241,7 @@ PERSISTENCE=memory PORT=4325 npm run start
 ```
 
 In the browser at `http://localhost:4325`:
-1. Log in as `grade9g@youth.ministry` / `demo1234`.
+1. Log in as `grade9g@youth.ministry` / `<demo password>`.
 2. On **Home**, confirm an **Upcoming Birthdays** tile appears in the Quick Actions grid (and in the desktop side nav), and is NOT in the bottom nav.
 3. Tap it → the **Upcoming Birthdays** screen renders. With the seed data (no birthdays loaded) it shows the empty state "No birthdays in the next 2 months." (A populated list requires imported DOB data; the date/window math is already proven by Task 1's node check.)
 4. Confirm no console errors.

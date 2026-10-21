@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InMemoryUserRepository, InMemorySettingsRepository } from '../repositories/in-memory/in-memory.repositories';
-import { makeSetupService, codeMatches } from '../services/setup.service';
+import { makeSetupService, codeMatches, LEGACY_SEED_PASSWORD } from '../services/setup.service';
 import type { AuthService } from '../services/auth.service';
 import { LATEST_MIGRATION } from '../core/schema-version';
 
@@ -302,4 +302,36 @@ describe('status: New People flow row (Y2a)', () => {
     expect((await row('', [], { needs: true })).peopleFlow).toBeUndefined();
     expect((await row('', [], { flows: false })).peopleFlow).toBeUndefined();
   });
+});
+
+describe('status: Default passwords row (F5 2026-10-22)', () => {
+  const admin = { id: 'a', role: 'admin' } as any;
+  const user = async (users: InMemoryUserRepository, email: string, pw: string, mustChangePassword: boolean, status: 'active' | 'inactive' = 'active') => {
+    const { hashPassword } = await import('../utils/crypto');
+    await users.save({ id: 'u-' + email, displayName: 'Name ' + email, email, role: 'grade', grade: 7, quad: null, status,
+      passwordHash: await hashPassword(pw), mustChangePassword, createdAt: '', updatedAt: '' } as never);
+  };
+  it('lists every flagged account still on the old seeded password, by name and username, never a password or hash', async () => {
+    const { s, users } = svc();
+    await s.createFirstAdmin({ code: good.SETUP_CODE, displayName: 'A', password: 'longenough' });
+    await user(users, 'grade7', LEGACY_SEED_PASSWORD, true);
+    await user(users, 'grade8', 'changed-by-admin', true); // admin reset it: the flag stays, the password is not the default
+    await user(users, 'grade9', LEGACY_SEED_PASSWORD, true, 'inactive');
+    await user(users, 'grade10', LEGACY_SEED_PASSWORD, false); // not a seeded account
+    const r = await s.status(admin, 'https://church.vercel.app');
+    const row = byId(r.checks, 'defaultPasswords');
+    expect(row).toEqual({ id: 'defaultPasswords', label: 'Default passwords', state: 'fix',
+      fix: 'These accounts still use the old default password: Name grade7 (grade7), Name grade9 (grade9, inactive). In Admin > Accounts, tap the key button on each one and set a new password.' });
+    expect(JSON.stringify(r)).not.toContain(LEGACY_SEED_PASSWORD);
+    expect(JSON.stringify(r)).not.toContain('$2');
+  }, 20_000);
+  it('ok when none is left; not on the first-admin page; not with the DB down', async () => {
+    const { s, users } = svc();
+    await s.createFirstAdmin({ code: good.SETUP_CODE, displayName: 'A', password: 'longenough' });
+    await user(users, 'grade8', 'changed-by-admin', true);
+    expect(byId((await s.status(admin, 'https://church.vercel.app')).checks, 'defaultPasswords')).toEqual({ id: 'defaultPasswords', label: 'Default passwords', state: 'ok' });
+    expect(byId((await svc().s.status(null, 'x')).checks, 'defaultPasswords')).toBeUndefined();
+    const down = svc(good, { users, probeDb: async () => false });
+    expect(byId((await down.s.status(admin, 'x')).checks, 'defaultPasswords')).toBeUndefined();
+  }, 20_000);
 });

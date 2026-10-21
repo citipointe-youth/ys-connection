@@ -169,7 +169,7 @@ export function canWithConfig(actor: Actor, action: Action, cfg: Pick<MinistryCo
 3. If that leaves nothing, show the whole bracket.
 
 **YS Brisbane setup (decisions 2 and 14).** Nothing is copied. A leader with no saved filter defaults to
-`leader.grades`. For example, Cody Cobb has `grades: [10]`, so on Senior Guys he sees Year 10 the first time.
+`leader.grades`. For example, Cody Codeman has `grades: [10]`, so on Senior Guys he sees Year 10 the first time.
 
 **Saving:** `PATCH /leaders/:id/view-grades` with `{ grades: number[] | null }`.
 - `null` means "back to my grades". The grades must be inside `gradeRange(structure)` and, for a quad caller,
@@ -501,7 +501,7 @@ comes last.
      - Accounts has no Grade section;
      - the save toast says "Renamed 4 quad logins";
      - the badge reads "Senior Guys" after the app is reopened;
-     - on Senior Guys, picking Cody Cobb shows Year 10 in Health;
+     - on Senior Guys, picking Cody Codeman shows Year 10 in Health;
      - after logging in on another phone and picking Cody, it is still Year 10;
      - a quad login with no coordinator pick has no Assign tab;
      - a coordinator pick still gets Assign.

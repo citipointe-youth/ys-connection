@@ -798,7 +798,7 @@ and the temp filename `stripped.js` → `spa-stripped.js`.
 ### Task 8: Manual pass, docs, final commit
 
 - [ ] **Step 1: Manual browser pass** — `npm run dev`, open http://localhost:4300:
-  1. `director@youth.ministry` / `demo1234` → Connection Audit tile in Quick Actions → all 6 screens + hub; numbers reflect the real seeded backend data.
+  1. `director@youth.ministry` / `<demo password>` → Connection Audit tile in Quick Actions → all 6 screens + hub; numbers reflect the real seeded backend data.
   2. Data tab: replace one CSV (3 rows, `Name,Date`, one made-up name) → toast counts, chip green, made-up name dashed in People.
   3. Funnel → per-quad expand; Lifegroups → filters + cohort modal (Close visible); People → search/filters/person sheet/quad export.
   4. Build presentation → 9-slide deck, S notes, currency footnote.

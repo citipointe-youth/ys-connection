@@ -1209,7 +1209,7 @@ describe('F2 lifegroup report', () => {
   const setup = (leaderId: string | null = 'L1', over: any = {}, post?: Env['post']) => {
     const h = makeEnv({ leaderId, post });
     const L = h.get().LINK;
-    L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
+    L.today = '2026-10-16'; L.services = RSVC; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Codeman</b>', active: true }];
     L.groups = [grp(over)]; L.gid = G(1);
     return h;
   };
@@ -1236,7 +1236,7 @@ describe('F2 lifegroup report', () => {
   });
   it('2026-10-14: who came is a collapsed <details>; two reports on one day both show, with Sent by and a warning', () => {
     const lr = grp().lastReport;
-    const dup = { ...lr, reportId: G(8), attendees: [P(61)], guests: 0, by: 'Cody <b>Cobb</b>' };
+    const dup = { ...lr, reportId: G(8), attendees: [P(61)], guests: 0, by: 'Cody <b>Codeman</b>' };
     const h = setup('L1', { history: [lr, dup] });
     const g = h.get().LINK.groups[0];
     const one = h.fns._lkReportHtml(g, lr);
@@ -1247,7 +1247,7 @@ describe('F2 lifegroup report', () => {
     expect(body).toContain('2 reports were sent for the same day');
     expect(body).toContain(`_lkEditReport('${G(9)}')`);
     expect(body).toContain(`_lkEditReport('${G(8)}')`);
-    expect(strip(body)).toContain('Sent byCody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(strip(body)).toContain('Sent byCody &lt;b&gt;Codeman&lt;/b&gt;');
     expect(strip(h.fns._lkWeekBodyHtml(setup().get().LINK.groups[0], w))).not.toContain('same day');
   });
   it('Edit is shown only when editable, else "Edit this report in Elvanto."', () => {
@@ -1337,7 +1337,7 @@ describe('F2 lifegroup report', () => {
     expect(h.get().LINK.rf).toBeNull();
     expect(h.calls.modals).toHaveLength(1);
     expect(h.calls.modals[0]).toContain('Who are you?');
-    expect(h.calls.modals[0]).toContain('Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    expect(h.calls.modals[0]).toContain('Cody &lt;b&gt;Codeman&lt;/b&gt;');
     expect(h.get().LINK.iamThen).toBeTypeOf('function');
     h.fns._lkEditReport(G(9));
     expect(h.calls.modals).toHaveLength(2);
@@ -1515,7 +1515,7 @@ describe('F3 flow steps', () => {
   const setup = (leaderId: string | null = 'L1', rows: any[] = ROWS(), post?: Env['post']) => {
     const h = makeEnv({ leaderId, post });
     const L = h.get().LINK;
-    L.today = '2026-10-16'; L.flows = rows; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Cobb</b>', active: true }];
+    L.today = '2026-10-16'; L.flows = rows; L.ldrs = [{ id: 'L1', fullName: 'Cody <b>Codeman</b>', active: true }];
     return h;
   };
   it('rows are grouped by flow, then step (step order)', () => {
@@ -1541,18 +1541,18 @@ describe('F3 flow steps', () => {
     expect(visit.split('drop-body')[0]).not.toContain('lk-od');
   });
   it('T5: an open step stays open across a refresh (LINK.fOpen), and the row shows chip and assignee', () => {
-    const h = setup('L1', [row(1, { grade: 9, gender: 'female', assignedLeaderName: 'Cody <b>Cobb</b>', mobile: '0412345678' })]);
+    const h = setup('L1', [row(1, { grade: 9, gender: 'female', assignedLeaderName: 'Cody <b>Codeman</b>', mobile: '0412345678' })]);
     const L = h.get().LINK;
     const id = 'lks-' + F(100) + '-' + F(200);
     L.fOpen[id] = true;
     const out = h.fns._lkFlowsHtml();
     expect(out).toContain(`class="drop open" id="${id}"`);
     expect(out).toContain('<span class="chip c-girl">Y9</span>');
-    expect(out).toContain('Cody &lt;b&gt;Cobb&lt;/b&gt;');
-    expect(out).not.toContain('<b>Cobb');
+    expect(out).toContain('Cody &lt;b&gt;Codeman&lt;/b&gt;');
+    expect(out).not.toContain('<b>Codeman');
   });
   it('T5: tapping a row opens the detail sheet with a text link, Assign and Complete', () => {
-    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Cobb</b>' })]);
+    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Codeman</b>' })]);
     expect(h.fns._lkFlowsHtml()).toContain(`onclick="_lkOpenStep('${F(1)}')"`);
     h.fns._lkOpenStep(F(1));
     const sheet = h.calls.modals[0]!;
@@ -1560,7 +1560,7 @@ describe('F3 flow steps', () => {
     expect(sheet).toContain('body=Hey%20Sam%20');
     expect(strip(sheet)).toContain('Text Sam · 0412 345 678');
     expect(sheet).toContain('onchange="_lkAssign(this.value)"');
-    expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Cobb&lt;/b&gt;</option>');
+    expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
     expect(sheet).toContain('_lkStepSend()');
     expect(sheet).not.toContain('Elvanto will show');
     const par = setup('L1', [row(1, { name: 'Sam Lee', mobile: '0412345678', mobileIsParent: true })]);
@@ -1573,18 +1573,18 @@ describe('F3 flow steps', () => {
   });
   it('T6: Assign posts flowId, personId and leaderId (null = unassign) and updates every row of that person in the flow', async () => {
     const h = setup('L1', [row(1, { name: 'Sam' }), row(1, { rowId: F(11), stepId: F(201), name: 'Sam' })]);
-    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
     h.fns._lkOpenStep(F(1));
     await h.fns._lkAssign('L1');
     expect(h.calls.posts[0]).toMatchObject({ p: '/link/flows/assign', b: { flowId: F(100), personId: P(1), leaderId: 'L1' } });
-    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderName)).toEqual(['Cody Cobb', 'Cody Cobb']);
+    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderName)).toEqual(['Cody Codeman', 'Cody Codeman']);
     await h.fns._lkAssign('');
     expect(h.calls.posts[1].b.leaderId).toBeNull();
     expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderId)).toEqual([null, null]);
   });
   it('T6: a failed assign toasts and changes nothing', async () => {
     const h = setup('L1', [row(1)], () => Promise.reject(new Error('nope')));
-    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Cobb', active: true }];
+    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
     h.fns._lkOpenStep(F(1));
     const L = h.get().LINK;
     // assign uses API.post, which the harness routes to the env post stub only for /link/batch; stub a rejecting one
@@ -1688,12 +1688,12 @@ describe('F3 flow steps', () => {
   it('r21 L6b (T4): Complete offers who gets the next step (matched leaders, admin/director only); the pick goes as payload.assignTo', () => {
     const h = makeEnv({ role: 'admin', leaderId: 'L1' });
     h.get().LINK.today = '2026-10-16'; h.get().LINK.flows = ROWS(); h.get().LINK.ldrs = [];
-    h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Cobb</b>' }];
+    h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Codeman</b>' }];
     h.fns._lkOpenStep(F(2));
     const sheet = h.calls.modals[0]!;
     expect(strip(sheet)).toContain('Next step goes to');
     expect(sheet).toContain(`<option value="">Elvanto's usual pick</option>`);
-    expect(sheet).toContain(`<option value="${P(70)}">Cody &lt;b&gt;Cobb&lt;/b&gt;</option>`);
+    expect(sheet).toContain(`<option value="${P(70)}">Cody &lt;b&gt;Codeman&lt;/b&gt;</option>`);
     expect(sheet).toContain('onchange="LINK.fs.assignTo=this.value"');
     h.get().LINK.fs.assignTo = P(70);
     h.fns._lkStepSend();
@@ -2005,15 +2005,15 @@ describe('F4.2 admin page', () => {
   it('2026-10-14 clarity: sides labelled, born, no-surname text, Several possible, Set by hand split', () => {
     const h = makeEnv({ role: 'admin' });
     h.get().LINK.adm.roster = [
-      { personId: P(410), name: 'Olivia AC', grade: 7, kind: 'student', match: 'none', studentId: null,
-        candidates: [{ studentId: P(411), name: 'Olivia AC', grade: 7, dob: '2013-12-15' }] },
+      { personId: P(410), name: 'Olivia FS', grade: 7, kind: 'student', match: 'none', studentId: null,
+        candidates: [{ studentId: P(411), name: 'Olivia FS', grade: 7, dob: '2013-12-15' }] },
       { personId: P(412), name: 'Nobody Here', grade: 7, kind: 'student', match: 'none', studentId: null, candidates: [] },
       { personId: P(413), name: 'Hand Made', grade: 8, kind: 'student', match: 'manual', studentId: P(414), candidates: [] },
       { personId: P(415), name: 'Not Ours', grade: 8, kind: 'student', match: 'ignored', studentId: null, candidates: [] },
     ];
     const out = strip(h.fns._lkAdmMatchHtml());
-    expect(out).toContain('Elvanto: Olivia AC');
-    expect(out).toContain('In YS: Olivia AC · Yr 7 · born 2013-12-15');
+    expect(out).toContain('Elvanto: Olivia FS');
+    expect(out).toContain('In YS: Olivia FS · Yr 7 · born 2013-12-15');
     expect(out).toContain('Not a YS student yet.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';

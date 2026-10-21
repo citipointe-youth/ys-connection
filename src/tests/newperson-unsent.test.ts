@@ -180,12 +180,12 @@ describe('Unsent routes (memory, seeded)', () => {
 
   beforeAll(async () => {
     const { repos, services } = await buildContainer();
-    await seedDemoData(repos);
+    await seedDemoData(repos, 'test-only-pass');
     server = createApp(buildRoutes(services), services.auth, services.health, services.errorLog).listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     for (const u of ['admin', 'grade7']) {
       const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: u, password: 'demo1234' }) });
+        body: JSON.stringify({ email: u, password: 'test-only-pass' }) });
       tokens[u] = ((await r.json()) as any).token;
     }
   });

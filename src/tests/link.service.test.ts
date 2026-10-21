@@ -91,14 +91,14 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
   await students.save(student(S_AMY, 'Amy', 'Adams', 'female', 9) as never);
   await students.save(student(S_BEN, 'Ben', 'Brown', 'male', 9) as never);
   await students.save(student(S_TOM, 'Tom', 'Ten', 'male', 10) as never);
-  for (const l of [leader(L_CODY, 'Cody  Cobb', 'male'), leader(L_DANA, 'Dana Day', 'female'), leader(L_EVE, 'Eve Evans', 'female'),
+  for (const l of [leader(L_CODY, 'Cody  Codeman', 'male'), leader(L_DANA, 'Dana Day', 'female'), leader(L_EVE, 'Eve Evans', 'female'),
     leader(L_FAY, 'Fay Fox', 'female', false)]) await leaders.save(l as never);
 
   const meta = (takenAt: string) => ({ takenAt, consoleId: CONSOLE });
   const person = (personId: string, firstName: string, lastName: string, gender: 'male' | 'female' | null, grade: number | null,
     kind: 'student' | 'leader' | 'other') => ({ personId, firstName, lastName, gender, grade, kind });
   const roster = [person(P_AMY, 'Amy', 'Adams', 'female', 9, 'student'), person(P_BEN, 'Ben', 'Brown', 'male', 9, 'student'),
-    person(P_CODY, 'Cody', 'Cobb', 'male', null, 'leader'), person(P_EVE1, 'Eve', 'Evans', 'female', 10, 'student'),
+    person(P_CODY, 'Cody', 'Codeman', 'male', null, 'leader'), person(P_EVE1, 'Eve', 'Evans', 'female', 10, 'student'),
     person(P_EVE2, 'Eve', 'Evans', 'female', 10, 'student'), person(P_TOM, 'Tom', 'Ten', 'male', 10, 'student'),
     person(P_PAT, 'Pat', 'Parent', 'female', null, 'other')];
   await link.replaceMirror('roster', [...roster, person(P_OLD, 'Old', 'Person', 'male', 9, 'student')], meta('2026-10-16T07:00:00.000Z'));
@@ -202,12 +202,12 @@ describe('D1 the switch (every public method)', () => {
   const everyone = [ADMIN, DIRECTOR, QUAD, GRADE, LEADER];
 
   // T9: the admin page (status, listActions, cancel via batch, the admin routes) works for the admin in every module state.
-  const adminAlways = new Set(['status', 'listActions', 'enqueue', 'cancel', 'undo', 'batch']);
+  const adminNotlisteds = new Set(['status', 'listActions', 'enqueue', 'cancel', 'undo', 'batch']);
 
   it('off: 404 MODULE_DISABLED for every role; the admin keeps its page (T9); admin routes 403 for the rest', async () => {
     const h = await setup('off');
     for (const [name, f] of use) for (const a of everyone) {
-      const want = a === ADMIN && adminAlways.has(name) ? 'ok' : 'MODULE_DISABLED';
+      const want = a === ADMIN && adminNotlisteds.has(name) ? 'ok' : 'MODULE_DISABLED';
       expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${want}`);
     }
     for (const [name, f] of adm) for (const a of everyone) {
@@ -311,7 +311,7 @@ describe('D1 checkin read', () => {
   it('one service: active student + leader rows, sorted, name/grade/leader only', async () => {
     const h = await setup();
     const r = await h.svc.checkin(GRADE, ST);
-    expect(r.people!.map((p) => p.name)).toEqual(['Amy Adams', 'Ben Brown', 'Cody Cobb', 'Eve Evans', 'Eve Evans', 'Tom Ten']);
+    expect(r.people!.map((p) => p.name)).toEqual(['Amy Adams', 'Ben Brown', 'Cody Codeman', 'Eve Evans', 'Eve Evans', 'Tom Ten']);
     for (const p of r.people!) {
       expect(Object.keys(p).sort()).toEqual(['action', 'checkedIn', 'grade', 'leader', 'mine', 'name', 'personId']);
     }
@@ -333,7 +333,7 @@ describe('D1 checkin read', () => {
   it('leaders: active app leaders A–Z, matched to the roster by name', async () => {
     const h = await setup();
     const r = await h.svc.checkin(QUAD, ST);
-    expect(r.leaders!.map((l) => l.name)).toEqual(['Cody  Cobb', 'Dana Day', 'Eve Evans']); // Fay is inactive
+    expect(r.leaders!.map((l) => l.name)).toEqual(['Cody  Codeman', 'Dana Day', 'Eve Evans']); // Fay is inactive
     for (const l of r.leaders!) {
       expect(Object.keys(l).sort()).toEqual(['action', 'checkedIn', 'leaderId', 'mine', 'name', 'personId']);
     }
@@ -361,10 +361,10 @@ describe('B11 / T-34 leader mapping and person kind (APP-10, APP-31, APP-55)', (
   });
   it('APP-55: two active app leaders that fold to the same name are both Not linked', async () => {
     const h = await setup();
-    await h.leaders.save(leader(u(306), 'cody cobb', 'male') as never);
+    await h.leaders.save(leader(u(306), 'cody codeman', 'male') as never);
     const r = await h.svc.checkin(QUAD, ST);
-    expect(r.leaders!.filter((l) => l.name.toLowerCase().replace(/\s+/g, ' ') === 'cody cobb').map((l) => l.personId)).toEqual([null, null]);
-    await h.leaders.save(leader(u(306), 'cody cobb', 'male', false) as never); // an inactive namesake does not count
+    expect(r.leaders!.filter((l) => l.name.toLowerCase().replace(/\s+/g, ' ') === 'cody codeman').map((l) => l.personId)).toEqual([null, null]);
+    await h.leaders.save(leader(u(306), 'cody codeman', 'male', false) as never); // an inactive namesake does not count
     expect((await h.svc.checkin(QUAD, ST)).leaders!.find((l) => l.leaderId === L_CODY)!.personId).toBe(P_CODY);
   });
   it('APP-31: a check-in for an other-kind person is refused; a check-out is allowed', async () => {
@@ -505,7 +505,7 @@ describe('D2 enqueue', () => {
     const h = await setup();
     const it1 = checkIn(P_AMY, { leaderId: L_DANA });
     await enq(h.svc, LEADER, it1, DEV);
-    expect(await h.link.getAction(it1.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
+    expect(await h.link.getAction(it1.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Codeman' });
     const it2 = checkIn(P_BEN, { leaderId: L_DANA });
     await enq(h.svc, GRADE, it2, DEV);
     expect(await h.link.getAction(it2.id)).toMatchObject({ leaderId: L_DANA, leaderName: 'Dana Day' });
@@ -539,7 +539,7 @@ describe('D2 enqueue', () => {
     await enq(h.svc, LEADER, a, DEV);
     expect((await cancel(h.svc, LEADER, a.id, L_DANA, DEV)).outcome).toBe('cancelled');
     const log = await h.link.listLog({ from: T0, to: '2026-11-01T00:00:00.000Z', event: 'cancel', limit: 5 });
-    expect(log[0]).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
+    expect(log[0]).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Codeman' });
   });
 
   it('checkOut after a pending check-in → cancelled (B4); after a sent check-in → saved; with no check-in → 400', async () => {
@@ -1059,7 +1059,7 @@ describe('D4 batch and the action log', () => {
     expect(rows[4]).toMatchObject({ targetKind: 'flowRow', targetId: FR1, targetName: 'Amy Adams' });
     expect(rows[5]).toMatchObject({ targetKind: 'group', targetId: G9F, targetName: 'Grade 9 Girls' });
     expect(rows[7]).toMatchObject({ targetKind: 'action', targetId: rep.id });
-    expect(rows[8]).toMatchObject({ prevLeaderId: L_CODY, prevLeaderName: 'Cody  Cobb', leaderId: L_DANA, leaderName: 'Dana Day' });
+    expect(rows[8]).toMatchObject({ prevLeaderId: L_CODY, prevLeaderName: 'Cody  Codeman', leaderId: L_DANA, leaderName: 'Dana Day' });
     expect(JSON.stringify(rows)).not.toContain('SECRET NOTE');
     expect(JSON.stringify(rows)).not.toContain('0400000000');
   });
@@ -1409,7 +1409,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
         { personId: P_LEAD, roomId: LROOM, firstName: 'Lee', lastName: 'Avery' },
         { personId: P_ANON, roomId: ROOM }] }], META('2026-10-16T08:59:00.000Z'));
     const people = (await h.svc.checkin(GRADE, ST)).people!;
-    expect(people.map((p) => p.name)).toEqual(['Amy Adams', 'Lee Avery', 'Ben Brown', 'Cody Cobb', 'Eve Evans', 'Eve Evans', 'Tom Ten', 'Zed Zulu']);
+    expect(people.map((p) => p.name)).toEqual(['Amy Adams', 'Lee Avery', 'Ben Brown', 'Cody Codeman', 'Eve Evans', 'Eve Evans', 'Tom Ten', 'Zed Zulu']);
     expect(people.find((p) => p.personId === P_NEW)).toEqual({ personId: P_NEW, name: 'Zed Zulu', grade: null, leader: false,
       checkedIn: true, action: null, mine: false, noRoster: true });
     expect(people.find((p) => p.personId === P_LEAD)!.leader).toBe(true);
@@ -1426,12 +1426,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('r21 L6b (T4): the flows view lists who can get the next step: active app leaders matched to one Elvanto person', async () => {
     const h = await setup();
-    expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]); // Dana: no match, Eve: two, Fay: inactive
+    expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Codeman' }]); // Dana: no match, Eve: two, Fay: inactive
   });
 
   it('r21 fix (review #4): only admin/director get the assignees list', async () => {
     const h = await setup();
-    expect((await h.svc.flows(DIRECTOR)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Cobb' }]);
+    expect((await h.svc.flows(DIRECTOR)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Codeman' }]);
     for (const a of [GRADE, LEADER]) expect((await h.svc.flows(a)).assignees).toBeUndefined();
   });
 
@@ -1683,7 +1683,7 @@ describe('F1 (review 2026-10-16): "I am" is limited to leaders in scope', () => 
     expect(await cancel(h.svc, GRADE, a.id, L_CODY, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
     const d = checkIn(P_BEN, { leaderId: L_CODY });
     await enq(h.svc, DIRECTOR, d, DEV);
-    expect(await h.link.getAction(d.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Cobb' });
+    expect(await h.link.getAction(d.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Codeman' });
   });
   it('a junior leader login still resolves to its bound leader whatever id it sends', async () => {
     const h = await setup();

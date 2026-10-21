@@ -465,14 +465,14 @@ describe('the host is the "I am" leader (ledger 22)', () => {
   it('no "Your name (host)" input and no ysc.nyHost; the form shows "Host: <leader>" with a Change control', () => {
     expect(html).not.toContain('Your name (host)');
     expect(html).not.toContain('ysc.nyHost');
-    const t = harness(async () => ({}), 'Cody <b>Cobb</b>');
+    const t = harness(async () => ({}), 'Cody <b>Codeman</b>');
     t.h.renderNewYouth();
     expect(t.last()).toContain('id="ny-hostc"');
     expect(t.last()).not.toContain('id="ny-host"');
     const host = new Function('S', 'esc', 'getMyLeaderId', '_lkMyName', `${extractFn(html, '_nyHost')}; ${extractFn(html, '_nyHostHtml')}; return _nyHostHtml;`);
     const esc = (s: any) => String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const out = host({ user: { role: 'grade' } }, esc, () => 'L1', () => 'Cody <b>Cobb</b>')();
-    expect(out).toContain('Host: Cody &lt;b&gt;Cobb&lt;/b&gt;');
+    const out = host({ user: { role: 'grade' } }, esc, () => 'L1', () => 'Cody <b>Codeman</b>')();
+    expect(out).toContain('Host: Cody &lt;b&gt;Codeman&lt;/b&gt;');
     expect(out).toContain('_nyPickHost()');
     expect(out).toContain('>Change<');
     const none = host({ user: { role: 'grade' } }, esc, () => null, () => '')();
@@ -491,10 +491,10 @@ describe('the host is the "I am" leader (ledger 22)', () => {
     await t.h.nySend({ preventDefault() {} });
     expect(posts).toHaveLength(0);
     expect(picks).toHaveLength(1);
-    const k = harness(async (_p, b) => { posts.push(b); return { student: 'sent', parent: 'sent', dryRun: false }; }, 'Cody Cobb');
+    const k = harness(async (_p, b) => { posts.push(b); return { student: 'sent', parent: 'sent', dryRun: false }; }, 'Cody Codeman');
     await k.h.nySend({ preventDefault() {} });
     expect(posts).toHaveLength(1);
-    expect(posts[0].host).toBe('Cody Cobb');
+    expect(posts[0].host).toBe('Cody Codeman');
     expect(extractFn(html, '_nyRead')).toContain('host: _nyHost()');
   });
 });

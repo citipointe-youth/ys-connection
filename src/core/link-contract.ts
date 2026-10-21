@@ -295,7 +295,7 @@ export const ConsentMismatchRow = z.object({ subId: Uuid, personId: Uuid, name: 
 // Run 2026-10-15b (L6): a consent form with no person in Elvanto, or one the console linked (linked = that person).
 export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend({ names: z.array(Cut(80)).max(4),
   linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable(),
-  // Rev 15 (L2): formName = the form's own first + last name fields ("Luke, Daniel & Claire Seo"); linkedIds = every linked
+  // Rev 15 (L2): formName = the form's own first + last name fields ("Jamie, Riley & Morgan Sample"); linkedIds = every linked
   // person when the console linked 2+ (linked then names the first and linked.name lists them all).
   formName: Cut(120).optional(), linkedIds: z.array(Uuid).min(2).max(10).optional() }).strict();
 // Rev 8 (Consents Other): a step-0 student in no pushed consent week. date = the earliest sign a parent was texted (Parent Consent

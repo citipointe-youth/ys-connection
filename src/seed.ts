@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { hashPassword } from './utils/crypto';
 import { generateId } from './utils/id';
 import type { Repositories } from './container';
@@ -6,11 +7,12 @@ import type { Student } from './core/entities/student';
 import type { AtRiskStatus } from './core/types/enums';
 import type { Leader } from './core/entities/leader';
 
-export async function seedDemoData(repos: Repositories): Promise<void> {
+// F5 (2026-10-22): no fixed, known password. A random one unless a test passes its own; returned once (null = already seeded).
+export async function seedDemoData(repos: Repositories, password = randomBytes(12).toString('base64url')): Promise<string | null> {
   const existing = await repos.users.findAll();
-  if (existing.length > 0) return; // Already seeded
+  if (existing.length > 0) return null; // Already seeded
 
-  const pw = await hashPassword('demo1234');
+  const pw = await hashPassword(password);
   const now = new Date().toISOString();
 
   const users: User[] = [
@@ -150,4 +152,5 @@ export async function seedDemoData(repos: Repositories): Promise<void> {
     };
     await repos.students.save(student);
   }
+  return password;
 }

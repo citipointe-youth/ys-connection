@@ -37,12 +37,12 @@ const PRELUDE = `
 const f = loadFns(NAMES, PRELUDE, [...NAMES, 'set', 'calls', 'LINK']);
 const L = f.LINK;
 const R = (o: any) => ({ rowId: 'r1', flowId: 'F1', flowName: 'New People', stepId: 'S1', stepName: 'Step 0', stepOrder: 0, personId: 'p1',
-  name: 'LEstrange, Thomas', due: null, grade: 9, gender: 'male', mobile: '0455100000', consent: 'ok', dnc: false, consentStep: false, openAction: null, ...o });
+  name: 'LDummyton, Thomas', due: null, grade: 9, gender: 'male', mobile: '0455100000', consent: 'ok', dnc: false, consentStep: false, openAction: null, ...o });
 const reset = () => { f.set({ role: 'admin', calls: [] }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, ff: undefined, flowGone: undefined, fProg: null }); };
 
 describe('F-23 the flow Text link greets by first name ("Last, First" names)', () => {
   it('takes the part after the comma', () => {
-    expect(f._lkFirstName('LEstrange, Thomas')).toBe('Thomas');
+    expect(f._lkFirstName('LDummyton, Thomas')).toBe('Thomas');
     expect(f._lkFirstName('Sam Smith')).toBe('Sam');
     expect(f._lkFirstName('')).toBe('');
   });

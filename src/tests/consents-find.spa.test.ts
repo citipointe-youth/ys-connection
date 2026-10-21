@@ -75,13 +75,13 @@ describe('I6 step 0 Consents button', () => {
     expect(t.opened).toEqual([]);
   });
   it('R5/R7 (consents run 2026-10-17): the step 0 name "Last, First" is searched and shown First Last, and remembered for the miss line', async () => {
-    const { fns, t, I } = env({ personId: null, name: 'Alway, Kuyi' });
+    const { fns, t, I } = env({ personId: null, name: 'Notlisted, Kit' });
     fns._lkStepConsents();
     fns.__load([P(9)], DATES);
     await flush();
-    expect(fns._ikLk('other').q).toBe('Kuyi Alway');
-    expect(I.findMiss).toBe('Kuyi Alway');
-    expect(t.posts[0]).toMatchObject({ note: 'Kuyi Alway' });
+    expect(fns._ikLk('other').q).toBe('Kit Notlisted');
+    expect(I.findMiss).toBe('Kit Notlisted');
+    expect(t.posts[0]).toMatchObject({ note: 'Kit Notlisted' });
   });
   it('(c2) no person id: straight to Other, no extra GETs', async () => {
     const { fns, t, I } = env({ personId: null });

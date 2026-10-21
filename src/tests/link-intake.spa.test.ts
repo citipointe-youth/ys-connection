@@ -674,11 +674,11 @@ describe('form rows (R2 b; consents run 2026-10-17 R1: one chip in words, no ico
   });
   it('names read First Last: Last, First pairs split, one surname collapses, shouty caps tidied', () => {
     const f = makeEnv().fns;
-    expect(f._ikFormName('Lin, Clarissa')).toBe('Clarissa Lin');
-    expect(f._ikFormName('Geissa, Giovanni, Geissa, Vincent')).toBe('Giovanni & Vincent Geissa');
+    expect(f._ikFormName('Fakely, Clara')).toBe('Clara Fakely');
+    expect(f._ikFormName('Sample, Jo, Sample, Bo')).toBe('Jo & Bo Sample');
     expect(f._ikFormName('Ng, Al, Ng, Bo, Ng, Cy')).toBe('Al, Bo & Cy Ng');
     expect(f._ikFormName('Ng, Al, Tran, Bo')).toBe('Al Ng & Bo Tran');
-    expect(f._ikFormName('HUICHUN LEE')).toBe('Huichun Lee');
+    expect(f._ikFormName('QUINN FAKENAME')).toBe('Quinn Fakename');
     expect(f._ikFormName('Yun-ting (Tinna) Sun')).toBe('Yun-ting (Tinna) Sun');
     expect(f._ikFormName('a, b, c')).toBe('A, B, C'); // odd parts: as it came (tidied)
   });
@@ -857,11 +857,11 @@ describe('Unlinked consent forms (L6)', () => {
     const { e } = env();
     const x = e.fns._ikLk('unlinked');
     x.res.rows[0].name = HOSTILE;
-    x.res.rows[1].names = ['HUICHUN LEE'];
+    x.res.rows[1].names = ['QUINN FAKENAME'];
     const h = e.fns._ikLkResHtml('unlinked', x, ST7());
     expect(h).not.toContain(HOSTILE);
     expect(strip(h)).toContain('Parent: Pat Sample');
-    expect(strip(h)).toContain('Parent: Huichun Lee'); // shouty caps tidied
+    expect(strip(h)).toContain('Parent: Quinn Fakename'); // shouty caps tidied
     expect(strip(h)).not.toContain('Also on the form');
     expect(strip(h)).not.toContain('Other opt-outs');
     expect(strip(h)).toContain('Filled in ');

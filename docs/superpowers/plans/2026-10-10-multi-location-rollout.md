@@ -1328,7 +1328,7 @@ Add `setup` (and `probeDb`, `schemaVersion` as `health` helpers, or a ready-made
   }, 30_000);
 ```
 
-`src/app.ts`: `createApp(routes, container.services.auth, container.services.health)`. Also guard the seed — **addition beyond the spec, approved at plan time; owner to confirm at hand-off**: `if (env.PERSISTENCE === 'memory' && process.env['VERCEL_ENV'] !== 'production') await seedDemoData(...)`. Without it, a new location that forgets `PERSISTENCE` gets a public `admin`/`demo1234` login and no setup screen; with it, the app has zero users, `needsAdmin` is true, and the checklist's `persistence` row shows the fix. Add a route test: with `VERCEL_ENV=production` and memory mode, `createAppInstance()` creates no users.
+`src/app.ts`: `createApp(routes, container.services.auth, container.services.health)`. Also guard the seed — **addition beyond the spec, approved at plan time; owner to confirm at hand-off**: `if (env.PERSISTENCE === 'memory' && process.env['VERCEL_ENV'] !== 'production') await seedDemoData(...)`. Without it, a new location that forgets `PERSISTENCE` gets a public `admin`/`<demo password>` login and no setup screen; with it, the app has zero users, `needsAdmin` is true, and the checklist's `persistence` row shows the fix. Add a route test: with `VERCEL_ENV=production` and memory mode, `createAppInstance()` creates no users.
 
 `src/api/controllers/setup.controller.ts`:
 

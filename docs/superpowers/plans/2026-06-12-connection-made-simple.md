@@ -2460,7 +2460,7 @@ vercel deploy --prod --yes
 ```
 Set env vars in Vercel: `PERSISTENCE=supabase`, `DATABASE_URL` (transaction pooler URL, port 6543).
 
-## Seed accounts (memory mode, password: `demo1234`)
+## Seed accounts (memory mode, password: `<demo password>`)
 
 | Email | Role |
 |-------|------|

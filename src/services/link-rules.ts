@@ -300,8 +300,8 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; grade?: number | null; }
 export interface MatchChange { personId: string; studentId: string | null; match: Match; }
 
-/** Matching only (not dedupe): the X8 fold with spaces, hyphens, apostrophes and dots dropped, so "Antonucci Cook",
- *  "Antonucci-Cook" and "AntonucciCook" agree. First and last stay separate; a surname alone never matches. */
+/** Matching only (not dedupe): the X8 fold with spaces, hyphens, apostrophes and dots dropped, so "Faux Cook",
+ *  "Faux-Cook" and "FauxCook" agree. First and last stay separate; a surname alone never matches. */
 export const matchFold = (s: string) => nameFold(s).replace(/[\s'.-]/g, '');
 const nameKey = (first: string, last: string) => `${matchFold(first)}|${matchFold(last)}`;
 /** Gender only blocks a match when both sides say male/female and differ; blank, null or YS 'other' is unknown. */

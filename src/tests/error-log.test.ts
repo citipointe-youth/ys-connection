@@ -432,7 +432,7 @@ describe('Error log routes (memory, seeded)', () => {
 
   beforeAll(async () => {
     const { repos, services } = await buildContainer();
-    await seedDemoData(repos);
+    await seedDemoData(repos, 'test-only-pass');
     // A route that crashes, to prove the adapter logs a 5xx (code + route + role, never the message).
     const routes = [...buildRoutes(services), { method: 'GET' as const, path: '/admin/boom', auth: true,
       handler: async () => { throw new Error('secret Sam Smith 0412345678'); } }];
@@ -440,7 +440,7 @@ describe('Error log routes (memory, seeded)', () => {
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     for (const u of ['admin', 'grade7']) {
       const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: u, password: 'demo1234' }) });
+        body: JSON.stringify({ email: u, password: 'test-only-pass' }) });
       tokens[u] = (await j(r)).token;
     }
   });

@@ -29,7 +29,7 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
    - grade filter for Junior/Senior logins, **saved against the self-identified leader on the server** (follows them across
      phones and logins), default = that leader's grade(s);
    - quad role loses `bus:coordinate` while the switch is on.
-   - **One-time YS Brisbane migration:** pre-set each grade-scoped leader's filter to their grade (e.g. Cody Cobb, Yr 10
+   - **One-time YS Brisbane migration:** pre-set each grade-scoped leader's filter to their grade (e.g. Cody Codeman, Yr 10
      leader → sees Year 10 on first login to the new account).
    - New installs default to Simple logins; existing installs unchanged until an admin flips it.
 3. **Bus coordinators** = admin + director + self-identified leaders in `busMinistry.coordinatorLeaderIds` (as coded today).
@@ -37,7 +37,7 @@ Step 0 came from `Downloads\elvanto-link-contract.bundle` (not OneDrive as the p
 5. **Prayers off:** new `modules.prayers` on/off switch (default on). Operator exports with the existing admin CSV export,
    then switches it off. Data kept.
 6. **Attribution:** everything goes to Elvanto on the operator's admin account, so flow steps (tick and note) and lifegroup
-   reports carry the self-identified leader: `Self identified leader: Cody Cobb — <note>` (name only if no note).
+   reports carry the self-identified leader: `Self identified leader: Cody Codeman — <note>` (name only if no note).
    Not added to check-ins.
 7. **Door check-in screen:** spec writer proposes a one-shot HTML mockup, modelled on the camp platform's Day 1 check-in
    (`OneDrive\Claude Programs\Project 9 - Camp Platform\youth-camp-platform-masterv2`, CLAUDE.md "Daily check-in";

@@ -129,18 +129,18 @@ describe('sync.service claim', () => {
         const id = `d0000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
         const p = { ...byType[t].payload, ...(t === 'completeStep' ? { rowId: `e0000000-0000-4000-8000-${String(n).padStart(12, '0')}` }
           : { date: `2026-10-${String(n).padStart(2, '0')}` }) };
-        await link.insertAction({ ...rowFromFixture({ ...byType[t], id, payload: p, note }), leaderName: 'Cody Cobb' });
+        await link.insertAction({ ...rowFromFixture({ ...byType[t], id, payload: p, note }), leaderName: 'Cody Codeman' });
         ids[`${t}:${note ? 'note' : 'none'}`] = id;
       }
     }
     const ci = rowFromFixture(byType.checkIn);
-    await link.insertAction({ ...ci, leaderName: 'Cody Cobb' });
+    await link.insertAction({ ...ci, leaderName: 'Cody Codeman' });
     const reply = await svc.claim({ ...claimReq, max: 20 });
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     const note = (id: string) => reply.rows.find((r) => r.id === id)!.note;
     for (const t of ['submitReport', 'editReport', 'completeStep']) {
-      expect(note(ids[`${t}:note`]!)).toBe('Self identified leader: Cody Cobb — Called, left a message.');
-      expect(note(ids[`${t}:none`]!)).toBe('Self identified leader: Cody Cobb');
+      expect(note(ids[`${t}:note`]!)).toBe('Self identified leader: Cody Codeman — Called, left a message.');
+      expect(note(ids[`${t}:none`]!)).toBe('Self identified leader: Cody Codeman');
     }
     expect(note(ci.id)).toBeNull();
     // The stored note stays the leader's own words.

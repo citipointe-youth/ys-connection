@@ -9,7 +9,7 @@ Plan Task V1, run against branch `feat/elvanto-link-app` at `5a4d222`. Nothing t
   `ELVANTO_FORMS_LIVE` was not set. The server ran in the background and was stopped at the end. Port 4320 was confirmed closed after the stop.
 - Token: `node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"`. It was kept in a scratchpad file only and is not in this document.
 - Fixtures: a node script copied the four `push-*.json`, `claim-request.json` and `result-request.json` to the scratchpad. In the copies, `takenAt` is now, and service 1 has `ymd` = today (Brisbane) and `startsAt` = today 18:30 Brisbane. Afterwards `git status --porcelain src/tests/fixtures` printed nothing.
-- Curl helpers (`$B` = `http://localhost:4320`, `$LT` = sync token, `$AT` = the admin session token from `POST /auth/login` with `admin`/`demo1234`):
+- Curl helpers (`$B` = `http://localhost:4320`, `$LT` = sync token, `$AT` = the admin session token from `POST /auth/login` with `admin`/`<demo password>`):
   ```sh
   j(){ curl -s -w '  [HTTP %{http_code}]\n' "$@"; }
   sync(){ j -X POST "$B$1" -H "Authorization: Bearer $LT" -H 'Content-Type: application/json' --data-binary "@$2"; }

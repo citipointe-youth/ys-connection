@@ -46,7 +46,7 @@ Default port: **4300**. Set `PORT=xxxx` to override.
 
 **This table describes `PERSISTENCE=memory` only.** `0003_seed_accounts.sql` is now an empty comment (2026-10-10): a new Supabase database has no accounts and the first `admin` is created on the setup screen with `SETUP_CODE` (see Modules → Setup and other locations).
 
-Local `PERSISTENCE=memory` dev/demo mode: password `demo1234` for all of the above. Databases that ran the old `0003` seed have every seeded account flagged `must_change_password = true` (see "Forced password change" under Security notes).
+Local `PERSISTENCE=memory` dev/demo mode: one random password for all of the above, printed once in the server log at start (F5 2026-10-22: no fixed seed password). Databases that ran the old `0003` seed have every seeded account flagged `must_change_password = true` (see "Forced password change" under Security notes). 2026-10-22 (F5): accounts still on that old seeded password show as a System check fix row ("Default passwords", names + usernames only) and so in Home > Needs attention; the check runs on the server (bcrypt compare of flagged accounts only, cached per hash); no forced change at sign-in (operator ruling).
 
 **Username convention:** grade logins use **`g` (girls) / `b` (boys)** suffixes — e.g. `grade7g`, `grade7b` (NOT `…f` / `…m`, an earlier naming scheme). Usernames are **editable** in admin → Accounts → Edit (`account.service.update` accepts `email` with a uniqueness check — the field is internally still named `email`, it's just not treated as one anywhere in the app), so the actual logins can be renamed to this scheme.
 
@@ -521,6 +521,7 @@ The old push feature was removed 2026-07-11 (archived to `../Archive/push-notifi
 
 - The script CSP is the `<meta>` in `index.html` only: this repo sets **no CSP response header** with script rules (the `vercel.json` shell header carries `frame-ancestors 'none'` only), so the inline scripts of `install.html` / `save-password.html` are unaffected.
 - New person: **No personal data is stored or logged.** The error log never stores names, phones or values. Logs, commits and fixtures carry ids only.
+- 2026-10-22 (F5): real people's names were removed from tests, fixtures, docs and comments (git history still holds them). Use obviously fictional names only (Sample, Dummyton, Codeman, ...); never a name from the live roster or a transcript.
 
 ## Phone field encryption at rest
 

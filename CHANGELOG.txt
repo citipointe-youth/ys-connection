@@ -367,7 +367,7 @@ PHASE 8: LIFEGROUP STATS & TRENDS  (2026-06-13)
 PHASE 9: ROLE-BASED ACCESS CONTROL (RBAC) & GENDER SCOPING  (2026-06-13 to 2026-06-14)
 -------------------------------------------------------------------------------
 - Pre-seeded all ministry accounts via migration 005: director, 4 quad accounts,
-  and 12 grade accounts (Yr 7-12 girls/boys), all with default password demo1234
+  and 12 grade accounts (Yr 7-12 girls/boys), all with default password <demo password>
 - Account emails are now editable (admin Edit Account modal includes Email field;
   service enforces uniqueness)
 - g/b grade email convention: grade7g = girls, grade7b = boys (login screen
