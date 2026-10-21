@@ -42,3 +42,36 @@ describe('Import screen contract (console Friday import)', () => {
     expect(html).toContain("else if (p==='import') await renderImport();");
   });
 });
+
+// r22 B5: the Import tab is a quiet "did Friday work?" screen.
+const rec = (i: number, over: Record<string, unknown> = {}) => ({ id: 'r' + i, type: 'service', filename: `file-${i}.csv`, rowCount: 100 + i,
+  studentsAdded: 1, studentsUpdated: 2, sessionsAdded: 3, status: 'ok', importedAt: `2026-10-${String(20 - i).padStart(2, '0')}T10:00:00Z`, ...over });
+
+describe('Import tab tidy (B5)', () => {
+  it('inside Admin there is no second page header; the standalone page keeps it', () => {
+    expect(loadImportBody({ role: 'admin' }, 'admin')([])).not.toContain('ph-title');
+    expect(loadImportBody({ role: 'director' }, 'import')([])).toContain('ph-title');
+  });
+  it('no Clear All and no per-row delete', () => {
+    const out = loadImportBody({ role: 'admin' }, 'admin')([rec(1)]);
+    expect(out).not.toMatch(/Clear All|trash|deleteImportEntry|clearAllImportHistory/);
+    expect(html).not.toMatch(/function (deleteImportEntry|doDeleteImportEntry|clearAllImportHistory)\(/);
+  });
+  it('history shows the newest 6 rows, the rest behind "Show all (10)"', () => {
+    const out = loadImportBody()(Array.from({ length: 10 }, (_, i) => rec(i)));
+    const fold = out.indexOf('Show all (10)');
+    expect(fold).toBeGreaterThan(-1);
+    for (let i = 0; i < 6; i++) expect(out.indexOf(`file-${i}.csv`)).toBeLessThan(fold);
+    for (let i = 6; i < 10; i++) expect(out.indexOf(`file-${i}.csv`)).toBeGreaterThan(fold);
+    expect(out).toContain("_drop('ih-more')");
+    expect(loadImportBody()(Array.from({ length: 6 }, (_, i) => rec(i)))).not.toContain('Show all');
+  });
+  it('a last-import line for each kind, from the newest row of that kind', () => {
+    const out = loadImportBody()([rec(1, { type: 'lifegroup', status: 'error' }), rec(2), rec(3)]);
+    expect(out).toContain('Last service import: 2026-10-18 · 102 rows · OK');
+    expect(out).toContain('Last group import: 2026-10-19 · 101 rows · Failed');
+    expect(out.indexOf('Last service import')).toBeLessThan(out.indexOf('id="csv-file"'));
+    expect(loadImportBody()([rec(2)])).not.toContain('Last group import');
+    expect(loadImportBody()([])).not.toContain('Last ');
+  });
+});
