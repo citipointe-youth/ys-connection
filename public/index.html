@@ -6041,8 +6041,6 @@ async function exportAllocationsCSV() {
   } catch (e) { toast('Export failed: ' + e.message); return false; }
 }
 
-function handleAllocationImportFile(input) { const f = input.files[0]; if (f) processAllocationImport(f); }
-
 function processAllocationImport(file, onDone) {
   const statusEl = document.getElementById('alloc-import-status');
   const isExcel = /\.xlsx?$/i.test(file.name);
