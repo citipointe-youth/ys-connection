@@ -36,6 +36,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
   private mirror = new Map<MirrorKind, MirrorStateRow>();
   private steps: LinkFlowStep[] | null = null;
   private log: LinkLogRow[] = [];
+  private created = new Map<string, { studentId: string | null; at: number }>(); // F1: link_created_students
   private decrypt: (note: string, id: string) => string;
   private clock: () => Date;
 
@@ -176,6 +177,17 @@ export class InMemoryLinkRepository implements ILinkRepository {
   }
 
   /** Per item, in order: applyOutcome on the stored row, then write it. No await between read and write, so no guard needed. */
+  async claimCreate(personId: string): Promise<boolean> {
+    const c = this.created.get(personId), now = this.nowMs();
+    if (c && (c.studentId || now - c.at <= 5 * 60_000)) return false; // F1 review: a student-less claim is stuck 5 minutes at most
+    this.created.set(personId, { studentId: null, at: now });
+    return true;
+  }
+  async settleCreate(personId: string, studentId: string | null): Promise<void> {
+    const c = this.created.get(personId);
+    if (studentId) { if (c) c.studentId = studentId; } else if (c && !c.studentId) this.created.delete(personId);
+  }
+
   async applyResults(consoleId: string, items: ResultItem[], now: Date): Promise<ResultReply> {
     const reply: ResultReply = { applied: [], ignored: [] };
     for (const item of items) {

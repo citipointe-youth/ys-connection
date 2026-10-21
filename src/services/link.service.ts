@@ -212,6 +212,8 @@ export interface LinkService {
 export interface RecheckView { id: string; ref: string; state: 'checking' | 'saved' | 'not-saved' | 'unclear'; text: string }
 export const RECHECK_TEXT = { checking: 'Checking Elvanto…', saved: 'Saved in Elvanto.',
   'not-saved': 'Not saved in Elvanto. Send it again from the app if it is still needed.',
+  // F1 (2026-10-22): a check-in in no room (see sync.service result): done, never "send it again".
+  noRoom: 'Not in a room in Elvanto now. They may have been checked out, so nothing is sent. If they are still here, check them in at the door.',
   unclear: (why: string) => `Still unclear: ${why} Check it in Elvanto, then tap Landed or Not landed.` } as const;
 
 export interface LinkServiceDeps {
@@ -1258,8 +1260,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     /** L3 r3 (operator 2026-10-21): a YS student for each Unmatched row with nothing to pair with (no candidate, no
      *  same-name YS student, a name Elvanto has once), made by the student create service and linked as a manual Match.
      *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest.
-   *  ponytail: no lock; one admin's re-tap is guarded (SPA in-flight flag, batches of 10, the re-read below), but two admins
-   *  in the same second could each create one (the roster-student unique index stops only a double link). Advisory lock if it bites. */
+   *  F1 (2026-10-22): two admins at once: the create claim (link_created_students, keyed on the person id) lets one make it;
+   *  the other is skipped as notUnmatched (it is linked a moment later). */
     async createStudents(actor, body) {
       const st = (await gate(actor, 'admin')).ministryConfig.structure;
       // L3 r4: at most 25 ids a call (the SPA sends 10), so a call ends well inside the 20 s route limit.
@@ -1274,11 +1276,13 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const x = (await matchRows(st)).find((m) => m.r.personId === id);
         const block = x ? x.block : 'notUnmatched';
         if (block || !x) { skip(block ?? 'notUnmatched'); continue; }
+        if (!(await d.link.claimCreate(id))) { skip('notUnmatched'); continue; } // F1: another create has it
         let s;
         try {
           s = await students.create(actor, { firstName: x.r.firstName, lastName: x.r.lastName, gender: x.r.gender as 'male' | 'female',
             grade: x.r.grade, dataSource: 'Elvanto link' }); // never a birthday: the roster has none
-        } catch (e) { if (isDbError(e)) throw e; skip('badData'); continue; }
+        } catch (e) { await d.link.settleCreate(id, null); if (isDbError(e)) throw e; skip('badData'); continue; }
+        await d.link.settleCreate(id, s.id);
         await d.link.setMatches([{ personId: id, studentId: s.id, match: 'manual' }]); // the same record a manual Match writes
         created++;
       }
@@ -1362,7 +1366,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const ref = String((r.payload as { ref?: unknown }).ref);
       const out = (state: RecheckView['state'], text: string): RecheckView => ({ id: r.id, ref, state, text });
       if (r.status === 'sent') return out('saved', RECHECK_TEXT.saved);
-      if (r.status === 'refused' && r.reason === 'not-landed') return out('not-saved', RECHECK_TEXT['not-saved']);
+      if (r.status === 'refused' && r.reason === 'not-landed') {
+        const t = (r.payload as { type?: unknown }).type;
+        return t === 'checkIn' || t === 'firstTimerCheckIn' ? out('saved', RECHECK_TEXT.noRoom) : out('not-saved', RECHECK_TEXT['not-saved']);
+      }
       if (r.status === 'refused' || r.status === 'cancelled' || r.status === 'unclear') {
         return out('unclear', RECHECK_TEXT.unclear(r.detail || "The console couldn't tell."));
       }

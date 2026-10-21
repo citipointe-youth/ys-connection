@@ -218,6 +218,18 @@ describe('reconcile.resend', () => {
     expect(await h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).toEqual({ ok: true, type: 'checkIn' });
     expect((await h.queued())[0]).toMatchObject({ type: 'checkIn', payload: { serviceTimeId: ST, serviceId: SVC, personId: P(1) } });
   });
+  it('F1: a check-in followed by a check-out is never sent again (it would check in a child who has left)', async () => {
+    const h = await setup();
+    const IN = { ...CHECK, createdAt: '2026-10-20T08:00:00.000Z' } as OutboxRow;
+    const OUT = sent({ type: 'checkOut', serviceDate: DAY, createdAt: '2026-10-20T10:00:00.000Z', payload: { serviceTimeId: ST, personId: P(1) } });
+    h.link.listActions = async () => [OUT, IN] as OutboxRow[];
+    await expect(h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).rejects.toMatchObject({ statusCode: 400,
+      message: 'They were checked out after this, so it is not sent again. Fix it in Elvanto if needed.' });
+    expect(await h.queued()).toEqual([]);
+    // a check-out BEFORE the check-in (an earlier visit) does not block it
+    h.link.listActions = async () => [IN, { ...OUT, createdAt: '2026-10-20T07:00:00.000Z' }] as OutboxRow[];
+    expect(await h.svc.resend(ADMIN, { kind: 'checkin', personId: P(1), date: DAY })).toEqual({ ok: true, type: 'checkIn' });
+  });
   it('a member change: the same type again', async () => {
     const h = await setup();
     expect(await h.svc.resend(ADMIN, { kind: 'member', groupId: G, personId: P(1), op: 'add' })).toEqual({ ok: true, type: 'addGroupMember' });

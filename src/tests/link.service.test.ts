@@ -1280,6 +1280,41 @@ describe('D6 admin: matching, log', () => {
     expect((await h.students.findAll()).length).toBe(before + 1); // never created as 'other', never a duplicate
   });
 
+  it('F1 (round 2026-10-22): two admins pressing Create at the same moment make ONE student (the create claim)', async () => {
+    const P_TWIN = u(125);
+    const now = await h.link.roster();
+    await h.link.replaceMirror('roster', [...now.filter((r) => r.active).map((r) => ({ personId: r.personId, firstName: r.firstName,
+      lastName: r.lastName, gender: r.gender, grade: r.grade, kind: r.kind })),
+      { personId: P_TWIN, firstName: 'Tess', lastName: 'Twice', gender: 'female', grade: 8, kind: 'student' }],
+      { takenAt: '2026-10-16T09:30:00.000Z', consoleId: CONSOLE });
+    const before = (await h.students.findAll()).length;
+    const [a, b] = await Promise.all([h.svc.createStudents(ADMIN, { personIds: [P_TWIN] }), h.svc.createStudents(ADMIN, { personIds: [P_TWIN] })]);
+    expect(a.created + b.created).toBe(1);
+    expect((await h.students.findAll()).length).toBe(before + 1);
+    expect((await h.link.roster()).find((x) => x.personId === P_TWIN)).toMatchObject({ match: 'manual' });
+  });
+  it('F1: a create that fails releases its claim, so a later Create can still make the student', async () => {
+    const P_LATE = u(126);
+    expect(await h.link.claimCreate(P_LATE)).toBe(true);
+    expect(await h.link.claimCreate(P_LATE)).toBe(false); // the person id is the key: a second claim is a no-op
+    await h.link.settleCreate(P_LATE, null);
+    expect(await h.link.claimCreate(P_LATE)).toBe(true);
+  });
+  it('F1 review: a claim with no student is stuck only 5 minutes (a create that died mid-way), a finished one never', async () => {
+    let t = Date.parse('2026-10-23T09:00:00.000Z');
+    const repo = new InMemoryLinkRepository({ now: () => new Date(t) });
+    const [A, B] = [u(127), u(128)];
+    expect(await repo.claimCreate(A)).toBe(true);
+    expect(await repo.claimCreate(B)).toBe(true);
+    await repo.settleCreate(B, u(129));
+    t += 4 * 60_000;
+    expect(await repo.claimCreate(A)).toBe(false); // still being made
+    t += 2 * 60_000;
+    expect(await repo.claimCreate(A)).toBe(true); // over 5 minutes with no student: taken again
+    expect(await repo.claimCreate(A)).toBe(false); // and that new claim is fresh
+    expect(await repo.claimCreate(B)).toBe(false); // a made student holds its claim for good
+  });
+
   it('A6 / APP-11 B: an inactive holder is listed and released by setMatch', async () => {
     // P_OLD (inactive) holds S_BEN by hand; the new profile P_BEN must still be matchable.
     await h.link.setMatches([{ personId: P_OLD, studentId: S_BEN, match: 'manual' }]);
