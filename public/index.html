@@ -7099,7 +7099,7 @@ function wizHandleAuditImportFile(input) {
 
 function wizHandleAllocationImportFile(input) {
   const f = input.files[0];
-  if (f) processAllocationImport(f, () => { _wiz.step4Done = true; renderWizard(); });
+  if (f) processAllocationImport(f, () => { _wiz.step5Done = true; renderWizard(); });
 }
 
 // ── Youth Setup (Admin tab) ──

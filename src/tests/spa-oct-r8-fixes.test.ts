@@ -100,6 +100,12 @@ describe('T4 New Year Refresh with Prayers off', () => {
     expect(load({ prayersOn: true, caOn: false, wiz: WIZ }).renderNewYearWizard()).not.toContain('wizStep3Confirmed');
     expect(load({ prayersOn: true, caOn: false, wiz: { ...WIZ, prayersExportDone: true } }).renderNewYearWizard()).toContain('wizStep3Confirmed');
   });
+  it('(A2) the allocation import ticks step 6 (step5Done)', () => {
+    const f = loadFns(['wizHandleAllocationImportFile'], `let _wiz = {}; function renderWizard() {}
+      function processAllocationImport(f, cb) { cb(); }`, ['wizHandleAllocationImportFile', 'get _wiz() { return _wiz; }']);
+    f.wizHandleAllocationImportFile({ files: [{}] });
+    expect(f._wiz).toEqual({ step5Done: true });
+  });
 });
 
 describe('T5/T6/T7 All cars fetches its own list, only while the section is open', () => {
