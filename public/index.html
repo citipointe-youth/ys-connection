@@ -12319,9 +12319,14 @@ function _lkLastFriday(ymd) {
   return _lkAddDays(ymd, -back);
 }
 function _lkAt(iso) { return fmtDay(iso, true); }
+// APP-63 (r22 A6): a word for every server LOG_EVENTS value (every action type plus identity/cancel/undo/resolve).
 function _lkEvents() {
-  return { identity: 'Identity', checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in',
-  submitReport: 'Lifegroup report', editReport: 'Report edit', completeStep: 'Flow step', cancel: 'Cancel', undo: 'Undo' };
+  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again',
+    checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
+    removeFromFlowStep: 'Remove from flow step' };
+  ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',
+    'consentSave', 'consentLookup', 'consentFix', 'consentLink'].forEach((k) => { ev[k] = _lkVerb(k); });
+  return ev;
 }
 // "Cody -> Sam (iPhone · Safari)": the arrow is the SVG icon; every value escaped.
 function _lkLogWho(r) {
@@ -12388,7 +12393,8 @@ function _lkAdmStatusHtml() {
   const kv = [['Console', !c || !c.lastSeenAt ? 'Not seen yet' : (c.online ? 'Online' : 'Offline') + ', last seen ' + _lkAt(c.lastSeenAt)],
     ['Consoles running', String((c && c.consoles) || 0)], ['Window', c && c.inWindow ? 'In the service window' : 'Outside the window']];
   const caps = (c && c.capabilities) || {};
-  Object.keys(_lkEvents()).filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], _lkWord('mode', caps[k])]));
+  // r22 A6: the same six mode rows as before; the longer log word list must not lengthen this card.
+  ['checkIn', 'checkOut', 'firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep'].filter((k) => k in caps).forEach((k) => kv.push([_lkEvents()[k], _lkWord('mode', caps[k])]));
   Object.keys(st.mirrors || {}).forEach((k) => { const m = st.mirrors[k]; kv.push([_lkWord('list', k), m && m.ageSeconds != null ? Math.round(m.ageSeconds / 60) + ' min old' : 'None yet']); });
   const acts = LINK.adm.acts || [];
   const counts = {};
