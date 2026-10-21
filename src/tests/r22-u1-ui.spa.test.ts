@@ -98,3 +98,75 @@ describe('Import tile (RV2 B)', () => {
     expect(html).toContain('<div id="drop-zone"');
   });
 });
+
+describe('My Connections restyle (RV2 C)', () => {
+  const ms = (picked: string | null) => loadFns(
+    ['renderMyStudents', 'tLvF', '_smsTemplateBoxHtml', 'termRow', 'dncChip', 'riskChip'],
+    `var S = { user: { role: 'admin' }, page: 'my-students' }; var out = ''; var gets = [];
+     let _msLeader = ${JSON.stringify(picked)}; let _lvF = { year: new Set(), gender: new Set() };
+     const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students'];
+     var data = { '/leaders?pick=1': [{ id: 'l1', fullName: 'Lee <Fictional>', grades: [9], gender: 'male', smsTemplate: 'Hi' }], '/students': [] };
+     var Cache = { get: (p) => data[p], getStale: (p) => data[p] };
+     var API = { get: (p) => { gets.push(p); return Promise.resolve(p === '/prayers'
+       ? [{ student: { id: 's1' }, text: 'Exams <soon>', status: 'open' }]
+       : { students: [{ id: 's1', firstName: 'Zed', fullName: 'Zed <b>Fictional</b>', grade: 9, gender: 'male', dateOfBirth: null,
+           mobile: '0400000000', parentPhone: '0400000001', svcAttended: 1, svcTotal: 2, prevSvcAttended: 0, prevSvcTotal: 0, grpTotal: 0, prevGrpTotal: 0, atRiskStatus: null }] }); } };
+     function _revalidateMyStudents() {} function setApp(h) { out = h; } function shell(x) { return x; }
+     function esc(x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+     function icS(k) { return '<i>' + k + '</i>'; } function icN(k) { return '<i>' + k + '</i>'; } function icEmpty() { return ''; }
+     function helpTip() { return ''; } function L(k) { return k; } function _gradeList() { return [7, 8, 9]; } function quadGrades() { return []; }
+     function getMyLeaderId() { return null; } function _prayersOn() { return true; } function fmtBday() { return ''; }
+     function phoneLink(n, f, parent) { return '<a>' + n + (parent ? ' parent' : '') + '</a>'; }
+     function html() { return out; } function lvF() { return _lvF; } function renderMyStudentsSpy() {}`,
+    ['renderMyStudents', 'tLvF', 'html', 'gets', 'lvF']);
+
+  it('the header is My Connections; the sub line only before a leader is picked', async () => {
+    const a = ms(null); await a.renderMyStudents();
+    expect(a.html()).toContain('My Connections');
+    expect(a.html()).not.toContain('My Students');
+    expect(a.html()).toContain('Select a leader to view their students');
+    const b = ms('l1'); await b.renderMyStudents();
+    expect(b.html()).not.toContain('Select a leader to view their students');
+  });
+
+  it('filters are Health-style .fc chips with Grade:/Gender: labels and All', async () => {
+    const a = ms(null); await a.renderMyStudents();
+    const h = a.html();
+    expect(h).toContain('class="filter-row"');
+    expect(h).toContain('Grade:');
+    expect(h).toContain('Gender:');
+    expect(h).toContain(`class="fc on" aria-pressed="true" onclick="tLvF('year',null)">All</button>`);
+    expect(h).toContain(`onclick="tLvF('year','9')">9</button>`);
+    expect(h).not.toContain('class="chip c-');
+  });
+
+  it('All clears a filter', () => {
+    const a = ms(null);
+    a.tLvF('year', '9'); expect([...a.lvF().year]).toEqual([9]);
+    a.tLvF('year', null); expect(a.lvF().year.size).toBe(0);
+  });
+
+  it('rows are Health cards: name opens the profile, Gr line, both phones, prayers; template box below the list, collapsed', async () => {
+    const a = ms('l1'); await a.renderMyStudents();
+    const h = a.html();
+    expect(h).toContain('Students (1)');
+    expect(h).toContain('class="li rc ar-rc"');
+    expect(h).toContain(`class="lk-nm rc-go" onclick="showStudentDetail('s1')"`);
+    expect(h).toContain('Zed &lt;b&gt;Fictional&lt;/b&gt;');
+    expect(h).not.toContain('<b>Fictional</b>');
+    expect(h).toContain('Gr 9 · male');
+    expect(h).toMatch(/class="rc-foot"[\s\S]*0400000000[\s\S]*0400000001 parent/);
+    expect(h).toContain('Exams &lt;soon&gt;');
+    expect(h).toContain(`openPrayerModal('s1')`);
+    const tpl = h.indexOf('ms-sms-tpl');
+    expect(tpl).toBeGreaterThan(h.indexOf('showStudentDetail'));
+    expect(h).toMatch(/<div class="drop" id="ms-tpl-drop"[\s\S]*Message template[\s\S]*ms-sms-tpl/);
+  });
+
+  it('the summary and prayers load together', async () => {
+    const src = extractFn(html, 'renderMyStudents');
+    expect(src).toMatch(/Promise\.all\(\[\s*API\.get\(`\/connections\/leader\/\$\{_msLeader\}\/summary`\)/);
+    const a = ms('l1'); await a.renderMyStudents();
+    expect(a.gets).toEqual(['/connections/leader/l1/summary', '/prayers']);
+  });
+});

@@ -4399,7 +4399,8 @@ let _lvF = { year: new Set(), gender: new Set() }; // My Students filters (narro
 function tLvF(type, val) {
   const set = type === 'year' ? _lvF.year : _lvF.gender;
   const v = type === 'year' ? Number(val) : val;
-  set.has(v) ? set.delete(v) : set.add(v);
+  if (val == null) set.clear(); // r22 U1: the All chip
+  else set.has(v) ? set.delete(v) : set.add(v);
   renderMyStudents();
 }
 // Next on/after-`today` occurrence of a birthday (month+day; birth year ignored).
@@ -4574,26 +4575,25 @@ async function renderMyStudents() {
   const bdayOf = {};
   for (const s of allStudents) bdayOf[s.id] = s.dateOfBirth;
 
-  let body = `<div class="ph"><div class="ph-title">My Students</div><div class="ph-sub">Select a leader to view their students</div></div>`;
+  // r22 U1 (RV2 C): the nav word and Health's header; the "Select a leader" sub only until a leader is picked.
+  const _msHead = (sub) => `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('users')} My Connections</div>${sub ? '<div class="ph-sub">Select a leader to view their students</div>' : ''}</div>`;
 
   if (!leaders.length) {
-    body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders first</div></div>`;
-    setApp(shell(body));
+    setApp(shell(_msHead(true) + `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders first</div></div>`));
     return;
   }
 
-  // Year + gender filter chips that narrow the leader dropdown — scoped to the
-  // login: grade → none; quad → its year bracket (no gender); director/admin →
-  // all years + gender.
+  // Grade + gender filters that narrow the leader dropdown, as Health's .fc chips — scoped to the
+  // login: grade → none; quad → its year bracket (no gender); director/admin → all years + gender.
   const mu = S.user;
   const myYears = mu.role === 'quad' ? quadGrades(mu.quad)
     : ['director','admin'].includes(mu.role) ? _gradeList() : [];
   const showG = ['director','admin'].includes(mu.role);
-  const yearChips = myYears.map(g =>
-    `<button class="chip ${_lvF.year.has(g) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('year','${g}')">Yr ${g}</button>`).join('');
-  const genderChips = showG ? [['female', '♀ Girls'], ['male', '♂ Guys']].map(([v, lbl]) =>
-    `<button class="chip ${_lvF.gender.has(v) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('gender','${v}')">${lbl}</button>`).join('') : '';
-  if (myYears.length || showG) body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${yearChips}${genderChips}</div>`;
+  const _fc = (on, click, lbl) => `<button class="fc ${on ? 'on' : ''}" aria-pressed="${on}" onclick="${click}">${lbl}</button>`;
+  const _fl = (w) => `<span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${w}</span>`;
+  let filters = '';
+  if (myYears.length) filters += `<div class="filter-row">${_fl('Grade:')}${myYears.map(g => _fc(_lvF.year.has(g), `tLvF('year','${g}')`, g)).join('')}${_fc(!_lvF.year.size, "tLvF('year',null)", 'All')}</div>`;
+  if (showG) filters += `<div class="filter-row">${_fl('Gender:')}${['female', 'male'].map(v => _fc(_lvF.gender.has(v), `tLvF('gender','${v}')`, v.charAt(0).toUpperCase() + v.slice(1))).join('')}${_fc(!_lvF.gender.size, "tLvF('gender',null)", 'All')}</div>`;
 
   let visLeaders = leaders;
   if (_lvF.year.size) visLeaders = visLeaders.filter(l => (l.grades || []).length === 0 || l.grades.some(g => _lvF.year.has(g)));
@@ -4603,43 +4603,35 @@ async function renderMyStudents() {
   if (!_msLeader) { const mine = getMyLeaderId(); if (mine && leaders.some(l => l.id === mine)) _msLeader = mine; }
   if (_msLeader && !visLeaders.some(l => l.id === _msLeader)) _msLeader = null;
 
+  let body = _msHead(!_msLeader) + filters;
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
   const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
   body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">I am…</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
-    let summary;
-    try { summary = await API.get(`/connections/leader/${_msLeader}/summary`); } catch {}
+    // The summary and the prayers load together (r22 U1). Prayers are best-effort: a failed fetch just means no prayer lines.
+    const [summary, prayers] = await Promise.all([
+      API.get(`/connections/leader/${_msLeader}/summary`).catch(() => null),
+      _prayersOn() ? API.get('/prayers').catch(() => []) : [],
+    ]);
+    if (S.page !== _pg) return;
     const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-
-    // Same custom-message editor as Home's Follow Up section, surfaced here too
-    // so a leader browsing My Students doesn't have to go back to Home to edit it.
-    const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
-    if (msLeaderObj) body += _smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl');
-
-    // Best-effort — a per-student prayer summary + quick-add is a nice-to-have,
-    // not core to the screen, so a failed fetch just means no summary line shows.
-    let prayers = [];
-    if (_prayersOn()) try { prayers = await API.get('/prayers'); } catch {}
     const prayersByStudent = {};
-    for (const p of prayers) {
+    for (const p of prayers || []) {
       if (!p.student) continue;
       (prayersByStudent[p.student.id] ||= []).push(p);
     }
 
-    body += `<div class="sh">My Students (${students.length})</div>`;
+    body += `<div class="sh">Students (${students.length})</div>`;
     if (!students.length) {
       body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students connected yet.</div>';
     } else {
+      // Health's row card (_arSectionsHtml): the name opens the profile; both phones stay (leaders call parents).
+      let cards = '';
       for (const s of students) {
-        // Prefer the birthday carried on the summary row; fall back to the scoped
-        // /students lookup for any older cached payload.
+        // Prefer the birthday carried on the summary row; fall back to the scoped /students lookup.
         const bd = fmtBday(s.dateOfBirth ?? bdayOf[s.id]);
-        // Not-archived prayers, newest first (list() already sorts that way) — a
-        // compact one-line-each feed so a leader can scan requests while reading
-        // down the student list, not just a count. Capped so one heavily-prayed-for
-        // student doesn't push the rest of the row list down (mirrors Connect
-        // Setup's capped student preview).
+        // Not-archived prayers, newest first, capped at 3 so one student doesn't push the rest down.
         const sp = (prayersByStudent[s.id] || []).filter(p => p.status !== 'archived');
         const spShown = sp.slice(0, 3);
         const spMore = sp.length - spShown.length;
@@ -4651,23 +4643,29 @@ async function renderMyStudents() {
               </div>`).join('')}
               ${spMore > 0 ? `<div style="font-size:11px;color:var(--ink-faint);padding-left:11px">+${spMore} more</div>` : ''}
             </div>` : '';
-        body += `<div class="li" style="align-items:flex-start">
-          <div class="li-body">
-            <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(s.fullName)}</span>${dncChip(s)}
-              <span style="font-size:11px;color:var(--ink-mid)">Yr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</span>${riskChip(s.atRiskStatus)}
-            </div>
-            ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
-            ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : ''}</div>` : ''}
-            ${prayerSummary}
-          </div>
-          <div class="li-right">
-            ${_prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : ''}
-          </div>
+        const pills = dncChip(s) + riskChip(s.atRiskStatus);
+        const phones = (s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : '')
+          + (s.mobile && s.parentPhone ? ' · ' : '')
+          + (s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : '');
+        const pray = _prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : '';
+        cards += `<div class="li rc ar-rc">
+          <div class="rc-top"><button type="button" class="lk-nm rc-go" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.fullName)}">${esc(s.fullName)}</button>${pills ? `<span class="rc-pills">${pills}</span>` : ''}${icS('chevr')}</div>
+          <div class="li-sub">Gr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</div>
+          ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
+          ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
+          ${prayerSummary}
+          ${(phones || pray) ? `<div class="rc-foot">${phones ? `<div class="lk-d">${phones}</div>` : ''}${pray}</div>` : ''}
         </div>`;
       }
+      body += `<div class="ar-grid">${cards}</div>`;
     }
+
+    // The same message editor as Home's Follow Up, below the list and collapsed (r22 U1), so a leader reaches students first.
+    const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
+    if (msLeaderObj) body += `<div class="drop" id="ms-tpl-drop" style="margin-top:12px">
+      <button type="button" class="drop-head btn btn-ghost btn-sm" onclick="_drop('ms-tpl-drop')"><span class="drop-chev">›</span> Message template</button>
+      <div class="drop-body" style="margin-top:6px">${_smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl')}</div>
+    </div>`;
   }
 
   setApp(shell(body));
