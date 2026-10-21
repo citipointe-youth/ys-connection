@@ -52,6 +52,10 @@ describe('0040 site elvanto', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.elvanto.locationQuestion).toBe('Citipointe Location');
     expect(parseMinistryConfig({ elvanto: { locationQuestion: 'Campus' } }).elvanto.locationQuestion).toBe('Campus');
   });
+  it('F7: a blank location question (saved or stored) reads as the default', () => {
+    for (const v of ['', '   ']) expect(parseMinistryConfig({ elvanto: { locationQuestion: v } }).elvanto.locationQuestion).toBe('Citipointe Location');
+    expect(mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { elvanto: { locationQuestion: '' } }).elvanto.locationQuestion).toBe('Citipointe Location');
+  });
   it('the Brisbane block holds today\'s values', () => {
     const b = brisbaneElvanto();
     expect(b.baseUrl).toBe('https://citipointe.elvanto.com.au');
