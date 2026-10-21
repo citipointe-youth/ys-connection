@@ -41,6 +41,25 @@ describe('Import screen contract (console Friday import)', () => {
     }
     expect(html).toContain("else if (p==='import') await renderImport();");
   });
+  it('the nav the shell renders labels the Import link exactly "Import" (the console clicks by that text)', () => {
+    const names = ['navItems', '_navSlots', 'moreItems', '_navItemsBase'];
+    for (const role of ['admin', 'director']) {
+      const navItems = new Function(`const S = { user: { role: '${role}' }, settings: {} };
+        const _prayersOn = () => true, _busOn = () => true, _nyOn = () => true, _linkOn = () => true, L = (k) => k;
+        ${names.map((n) => extractFn(html, n)).join('\n')}
+        return navItems;`)();
+      const it = navItems().find((i: { id: string }) => i.id === 'import');
+      expect(it && it.label).toBe('Import');
+    }
+  });
+  it('both uploads write .al-ok / .al-err alerts into #import-status', () => {
+    expect(extractFn(html, '_setImportStatus')).toContain("getElementById('import-status')");
+    for (const fn of ['uploadServiceImport', 'uploadGroupImport']) {
+      const src = extractFn(html, fn);
+      expect(src).toContain('_setImportStatus(`<div class="alert al-ok"');
+      expect(src).toContain('_setImportStatus(`<div class="alert al-err">Import failed: ');
+    }
+  });
 });
 
 // r22 B5: the Import tab is a quiet "did Friday work?" screen.
