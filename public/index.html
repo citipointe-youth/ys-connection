@@ -2890,10 +2890,12 @@ async function submitCreateAdmin() {
 async function renderSystemCheck() {
   const el = document.getElementById('sys-check');
   if (!el) return;
+  el.innerHTML = progBar('Loading');
   await _loadSetupStatus();
-  el.innerHTML = SETUP.error ? `<div class="alert al-warn">${esc(SETUP.error)}</div>`
-    : `${_setupChecklistHtml(SETUP.status, { generate: true })}
-       <button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+  // A 401/403 leaves status and error both null (r22 A7): never pass null to the checklist.
+  el.innerHTML = (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true })
+    : `<div class="alert al-warn">${esc(SETUP.error || 'Could not load. Try again.')}</div>`)
+    + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
 }
 /* ── END SETUP MODULE ── */
 
