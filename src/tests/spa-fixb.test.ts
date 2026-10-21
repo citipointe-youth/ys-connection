@@ -82,16 +82,12 @@ describe('I8 (R2-G4): no parent-text card on the family review', () => {
     expect(h).not.toContain('now?');
   });
 });
-describe('R15 delete-all arm text', () => {
-  it('names N and M ignored; ignore toasts', async () => {
-    const btn: any = { dataset: {}, textContent: '' };
-    (globalThis as any).__c = { btn, toasts: [] as string[] };
-    const f = loadFns(['elDeleteAll', 'elFlag'], `
-      const document = { getElementById: () => __c.btn }; let _elCat = ''; const toast = (m) => __c.toasts.push(m); const _elPaint = () => {};
-      let _elRows = [{ id: 'a', ignored: true }, { id: 'b' }, { id: 'c' }];
-      const _elVisible = (rows) => rows; const API = { patch: async () => ({}) };`);
-    await f.elDeleteAll();
-    expect(btn.textContent).toBe("Tap again to delete 3 (1 ignored). This can't be undone.");
+describe('R15 ignore toast', () => {
+  it('ignore toasts (Delete all is gone, r22 B6)', async () => {
+    (globalThis as any).__c = { toasts: [] as string[] };
+    const f = loadFns(['elFlag'], `
+      const toast = (m) => __c.toasts.push(m); const _elPaint = () => {};
+      let _elRows = [{ id: 'b' }]; const API = { patch: async () => ({}) };`);
     await f.elFlag('b', { ignored: true });
     expect(C().toasts).toContain('Ignored. Use Show ignored to undo.');
   });

@@ -100,6 +100,43 @@ describe('T4 New Year Refresh with Prayers off', () => {
     expect(load({ prayersOn: true, caOn: false, wiz: WIZ }).renderNewYearWizard()).not.toContain('wizStep3Confirmed');
     expect(load({ prayersOn: true, caOn: false, wiz: { ...WIZ, prayersExportDone: true } }).renderNewYearWizard()).toContain('wizStep3Confirmed');
   });
+  // r22 L3 (A3): only Full Reset is gated. A fresh run (a reload, or back from Import) never strands the admin.
+  it('a fresh run: every step but Full Reset is open; there is no "I\'ve re-imported" tick', () => {
+    const h = load({ prayersOn: true, caOn: true, wiz: {} }).renderNewYearWizard();
+    for (const fn of ['wizStep1()', 'wizStepPrayersExport()', 'wizStep2()', 'wizHandleAllocationImportFile', 'handlePrayerImportFile', 'wizHandleAuditImportFile']) expect(h).toContain(fn);
+    expect(h).not.toContain('wizStep3Confirmed');
+    expect(h).not.toContain('wizStep4Ack');
+    expect(loadIndexHtml()).not.toMatch(/function wizStep4Ack|step4Ack/);
+  });
+  it('Full Reset still needs all three exports, step 1 included', () => {
+    const done = { step1Done: true, prayersExportDone: true, step2Done: true };
+    expect(load({ prayersOn: true, caOn: true, wiz: done }).renderNewYearWizard()).toContain('wizStep3Confirmed');
+    for (const k of Object.keys(done)) {
+      expect(load({ prayersOn: true, caOn: true, wiz: { ...done, [k]: false } }).renderNewYearWizard()).not.toContain('wizStep3Confirmed');
+    }
+  });
+  it('(A2) the allocation import ticks step 6 (step5Done)', () => {
+    const f = loadFns(['wizHandleAllocationImportFile'], `let _wiz = {}; function renderWizard() {}
+      function processAllocationImport(f, cb) { cb(); }`, ['wizHandleAllocationImportFile', 'get _wiz() { return _wiz; }']);
+    f.wizHandleAllocationImportFile({ files: [{}] });
+    expect(f._wiz).toEqual({ step5Done: true });
+  });
+  it('(A4) the reset text lists everything it deletes; Connection Audit naming; plain intro', () => {
+    const h = load({ prayersOn: true, caOn: true, wiz: { step1Done: true, prayersExportDone: true, step2Done: true } }).renderNewYearWizard();
+    const list = 'all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes bus parent consents and saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their consents and addresses.';
+    expect(h.split(list).length - 1).toBe(2); // the card and the type-RESET confirm
+    expect(h).toContain("word:'RESET'");
+    expect(h).not.toContain('Configuration Audit');
+    expect(h).toContain('Export Connection Audit Data');
+    expect(h).toContain('Re-import Connection Audit Data');
+    expect(h).toContain('Do these in order. Full Reset unlocks after the three exports.');
+    expect(h).toContain('Import Allocations & Prayers');
+  });
+  it('(A4) Prayers off: step 6 is "Import Allocations" only', () => {
+    const h = load({ prayersOn: false, caOn: true, wiz: {} }).renderNewYearWizard();
+    expect(h).not.toContain('Import Allocations & Prayers');
+    expect(h).not.toContain('prayers CSV');
+  });
 });
 
 describe('T5/T6/T7 All cars fetches its own list, only while the section is open', () => {
