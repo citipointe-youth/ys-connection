@@ -209,7 +209,7 @@ The app sends new people to Elvanto with two public Elvanto forms: a student for
 
 1. Open **Admin** > **Youth Setup**. Find the card **Elvanto for this location**.
 2. Paste the public link of each form in **Student form link** and **Parent form link**.
-3. Fill in **Location to tick**, **New People flow name starts with**, **Parent Consent flow name starts with** and **Default state**.
+3. Fill in **Location to tick**, **New People flow name starts with**, **Parent Consent flow name starts with** and **State for new addresses (e.g. QLD)**.
 4. Select **Check forms**.
 5. Read each line. A line "Not found" has two fixes. Change the question in Elvanto so it matches, then select **Check forms** again. Or type its id in the box under the line.
 6. A line "This form asks something the app doesn't fill" names a question the app does not send. Remove it from the Elvanto form, or make it not required. Then select **Check forms** again.

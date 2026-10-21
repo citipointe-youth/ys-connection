@@ -7591,11 +7591,9 @@ function _youthSetupBody(settings, users) {
   const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
   const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
   const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
-  const im = cfg.import || {}, dim = MINISTRY_CONFIG_DEFAULTS_CLIENT.import;
   const bv = (k) => br[k] != null ? br[k] : dbr[k];
   const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
   const mv = (k) => md[k] != null ? md[k] : dmd[k];
-  const iv = (k) => im[k] != null ? im[k] : dim[k];
   // Falls back to _logoModeOverride (set the instant a mode button is clicked)
   // so picking "Upload image" before any content exists doesn't snap the
   // picker back to "Default mark" on the next re-render — bv() alone can't
@@ -7706,24 +7704,13 @@ function _youthSetupBody(settings, users) {
       <select class="fs" id="setup-notices" onchange="_setupSet('modules.notices', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${(md && md.notices === 'on' ? 'on' : 'off') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     ${_setupElvantoModulesHtml(md)}
     ${_setupFlowHiddenHtml(md)}
-    ${_setupIntakeHtml(md)}
-    <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
-      <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
-        ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
-      </select></div>
-    <div class="fg"><label class="fl">Date order ${helpTip('How to read a date like 03/04/2026 when it\'s not obvious which number is the day and which is the month. (If one number is over 12, the app can already tell.)')}</label>
-      <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
-        ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
-      </select></div>
-    <div class="fg"><label class="fl">Leader name tag ${helpTip('When importing a lifegroup file, a name written like "John Smith (leader)" marks that person as a leader. This sets the word used in the brackets.')}</label>
-      <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>`);
+    ${_setupIntakeHtml(md)}`);
 
   b += _setupCard('elvanto', 'Elvanto for this location', _setupElvCardHtml(cfg));
 
   b += _setupCard('share', 'Use this setup at another location', `
-    <div class="help-text" style="margin-bottom:8px">To start a new location, follow the deploy guide. To copy these settings to that location, select <b>Download settings file</b>. At the new location, select <b>Load settings file</b>. Then select <b>Save Youth Setup</b>.</div>
-    <a class="btn btn-secondary btn-full" href="https://github.com/citipointe-youth/ys-connection/blob/master/docs/DEPLOYING.md" target="_blank" rel="noopener">Open the deploy guide</a>
-    <div style="display:flex;gap:8px;margin-top:8px">
+    <div class="help-text" style="margin-bottom:8px">To copy these settings to another location, select <b>Download settings file</b>. At the new location, select <b>Load settings file</b>. Then select <b>Save Youth Setup</b>.</div>
+    <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="exportSettingsFile()">Download settings file</button>
       <label class="btn btn-secondary" style="flex:1;text-align:center">Load settings file<input type="file" accept=".json,application/json" hidden onchange="loadSettingsFile(this)"></label>
     </div>`);
@@ -8067,7 +8054,7 @@ function _setupElvCardHtml(cfg) {
     ${link('student', 'Student form link')}${link('parent', 'Parent form link')}
     ${s.err ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.err)}</div>` : ''}
     ${text('locationQuestion', 'Location question on the form')}${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
-    ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'Default state')}
+    ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'State for new addresses (e.g. QLD)')}
     <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
     ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l, i) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>` + _setupElvIdHtml(e, s, i)).join('')}</div>` : ''}`;
 }
