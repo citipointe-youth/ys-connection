@@ -19,3 +19,12 @@ describe('A5: the ungated Full Reset and Clear Service/Group Data are gone from 
     expect(HTML).toContain("API.post('/admin/reset'"); // the New Year wizard's step 4
   });
 });
+
+describe('B4: Accounts tidy', () => {
+  it('the Username tip is plain; no dead rl in the Accounts loop', () => {
+    const add = extractFn(HTML, 'showAddUser');
+    expect(add).toContain('The name used to log in. For a grade login, also set Gender scope below.');
+    expect(add).not.toContain('grade7g');
+    expect(extractFn(HTML, 'renderAdminView')).not.toContain('const rl =');
+  });
+});
