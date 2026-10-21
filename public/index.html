@@ -2609,6 +2609,9 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
+    // r22 U1: Import left Home, so a director (no Admin tab) reaches it from More. Added only when More already shows
+    // (2+ entries), so the nav slot rules never change; with one module the sidebar link stays the way in.
+    if (r === 'director' && xs.length >= 2) xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
   }
   return xs;
 }
@@ -2713,6 +2716,9 @@ function _navItemsBase(u = S.user) {
 }
 function bottomNavItems() { return _navSlots().slice(0, 5).filter(Boolean); }
 function quickActionItems(u) { return _navSlots(u).slice(5).filter(Boolean); }
+// Home tiles: the quick actions minus Trends (a hero pill for grade/admin/quad) and Import (r22 U1: a weekly job; the
+// sidebar link, the route and Admin > Import stay, and the console's Friday import clicks that sidebar link).
+function _homeTiles(u) { return quickActionItems(u).filter(x => !(['grade', 'admin', 'quad'].includes(u.role) && x.id === 'trends') && x.id !== 'import'); }
 
 // shell() is kept for compatibility — the persistent shell is set up by _initShell().
 // All setApp(shell(x)) calls now just update <main id="page-main"> with x.
@@ -3449,7 +3455,7 @@ async function _renderHomeInner(stale, fromCache) {
     // ── Quick action tiles ABOVE the breakdown ──
     // Grade: Trends now lives in the hero banner (opposite Prev term), so drop it
     // here — leaving just Birthdays, which then gets the full-width single column.
-    const qa = quickActionItems(u).filter(x => !(['grade', 'admin', 'quad'].includes(u.role) && x.id === 'trends'));
+    const qa = _homeTiles(u);
     if (qa.length) {
       body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {

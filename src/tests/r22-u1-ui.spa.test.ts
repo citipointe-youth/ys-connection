@@ -67,3 +67,34 @@ describe('Trends (RV2 A)', () => {
     expect(html).toMatch(/\.ccol\{[^}]*align-items:center/);
   });
 });
+
+describe('Import tile (RV2 B)', () => {
+  const nav = (role: string, mods: { prayers: boolean; bus: boolean }) => loadFns(
+    ['moreItems', '_navSlots', '_navItemsBase', 'navItems', 'quickActionItems', '_homeTiles'],
+    `var S = { user: { role: '${role}' }, settings: { ministryConfig: { modules: {} } } };
+     function L(k) { return k; } function _prayersOn() { return ${mods.prayers}; } function _busOn() { return ${mods.bus}; }
+     function _nyOn() { return false; } function _linkOn() { return false; }`,
+    ['moreItems', 'navItems', '_homeTiles']);
+  const ids = (xs: any[]) => xs.map((x) => x.id);
+
+  for (const role of ['admin', 'director']) {
+    it(`${role}: no Import tile on Home, but navItems (the sidebar the console clicks) keeps Import`, () => {
+      const n = nav(role, { prayers: true, bus: true });
+      expect(ids(n._homeTiles({ role }))).not.toContain('import');
+      expect(ids(n._homeTiles({ role }))).toContain('students');
+      expect(n.navItems().find((x: any) => x.id === 'import')).toMatchObject({ id: 'import', label: 'Import' });
+    });
+  }
+
+  it("director's More sheet has Import (only when More shows); admin's does not", () => {
+    expect(nav('director', { prayers: true, bus: true }).moreItems().find((x: any) => x.id === 'import'))
+      .toMatchObject({ label: 'Import', open: "go('import')" });
+    expect(ids(nav('director', { prayers: true, bus: false }).moreItems())).toEqual(['prayers']);
+    expect(ids(nav('admin', { prayers: true, bus: true }).moreItems())).not.toContain('import');
+  });
+
+  it('the import route and the drop-zone ids are unchanged', () => {
+    expect(html).toContain("else if (p==='import') await renderImport();");
+    expect(html).toContain('<div id="drop-zone"');
+  });
+});

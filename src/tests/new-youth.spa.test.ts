@@ -306,7 +306,8 @@ const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('
 ) as NavFns;
 const ids = (xs: any[]) => xs.map((i) => i.id);
 // The Elvanto link entries share this switch (link.spa.test.ts covers them); these tests look at the rest.
-const noLink = (xs: string[]) => xs.filter((id) => !id.startsWith('link-'));
+// r22 U1: a director's More also ends with Import (r22-u1-ui.spa.test.ts pins it); these tests are about the modules.
+const noLink = (xs: string[]) => xs.filter((id) => !id.startsWith('link-') && id !== 'import');
 const ROLES = ['leader', 'grade', 'quad', 'director', 'admin'];
 
 describe('_nyOn: who sees the New person screen', () => {
@@ -391,7 +392,7 @@ describe('the More menu (in the Prayers slot)', () => {
   it('admin: New person is in More for the admin only', () => {
     expect(noLink(ids(navFns(modeOf('admin', 'admin')).moreItems()))).toEqual(['prayers', 'new-youth']);
     expect(noLink(ids(navFns(modeOf('admin', 'admin', true)).moreItems()))).toEqual(['prayers', 'bus', 'new-youth']);
-    for (const r of ['leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf('admin', r, true)).moreItems()), r).toEqual(['prayers', 'bus']);
+    for (const r of ['leader', 'grade', 'quad', 'director']) expect(noLink(ids(navFns(modeOf('admin', r, true)).moreItems())), r).toEqual(['prayers', 'bus']);
   });
   it('on: New person is in More for every role', () => {
     for (const r of ROLES) expect(noLink(ids(navFns(modeOf('on', r)).moreItems())), r).toEqual(['prayers', 'new-youth']);

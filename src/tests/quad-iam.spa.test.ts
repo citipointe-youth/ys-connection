@@ -66,7 +66,7 @@ describe('Junior/Senior Home grade buttons', () => {
   it('Home renders from the view user and puts the bar under the hero', () => {
     const body = extractFn(html, '_renderHomeInner');
     expect(body).toContain('const u = _homeViewUser(qu, _hg)');
-    expect(body).toContain('quickActionItems(u)');
+    expect(body).toContain('_homeTiles(u)'); // r22 U1: quickActionItems(u) minus Trends and Import
     expect(body.indexOf('_homeGradeBar(_hg)')).toBeLessThan(body.indexOf('_busHomeTile()'));
   });
 });
