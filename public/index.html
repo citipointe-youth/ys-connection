@@ -6888,9 +6888,10 @@ function _usRowHtml(r) {
   const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : 'parent form').join(' + ');
   return `<div class="li rc">
     <div class="rc-top"><div class="lk-nm">${esc(r.name || 'Unreadable saved form')}${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div></div>
-    <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · host ' + esc(r.host) : ''}</div>
+    <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · added by ' + esc(r.host) : ''}</div>
     <div class="la-meta">Saved ${esc(_laFmtBrisbane(r.createdAt))}${r.updatedAt !== r.createdAt ? ' · last try ' + esc(_laRelTime(r.updatedAt)) : ''}</div>
     ${r.reason === 'unconfirmed' ? '<div class="alert al-warn">This may already be in Elvanto: check before retrying.</div>' : ''}
+    ${r.reason === 'form-changed' ? `<div class="help-text">Retry works after the form fix. Ask ${r.host ? esc(r.host) : 'the leader who added them'} for their details, or enter them in Elvanto by hand.</div>` : ''}
     <div class="rc-foot">
       ${r.name ? (_usBusy.has(r.id) ? `<button class="btn btn-primary btn-sm" id="us-retry-${id}" disabled>Sending...</button>`
         : `<button class="btn btn-primary btn-sm" id="us-retry-${id}" onclick="usRetry('${id}')">Retry</button>`) : ''}
@@ -6901,8 +6902,11 @@ function _usRowHtml(r) {
 const _usBusy = new Set();
 function _usPaint() {
   const el = document.getElementById('unsent-list');
-  if (el && _usRows) el.innerHTML = `<div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted.</div>`
-    + (_usRows.length ? _usRows.map(_usRowHtml).join('') : '<div class="help-text">Nothing waiting to resend.</div>');
+  if (!el || !_usRows) return;
+  // r22: inside Problems an empty list paints nothing; the old Unsent tab still says so.
+  if (!_usRows.length) { el.innerHTML = _adminTab === 'unsent' ? '<div class="help-text">Nothing waiting to resend.</div>' : ''; return; }
+  el.innerHTML = `<div class="lk-sec">Unsent new people</div><div class="help-text" style="margin-bottom:10px">New person forms that did not reach Elvanto. Kept encrypted for 14 days, then deleted. Deleting loses their details.</div>`
+    + _usRows.map(_usRowHtml).join('');
 }
 async function _usLoad() {
   try { _usRows = (await API.fresh('/admin/unsent')).rows || []; }
@@ -6924,7 +6928,7 @@ async function usRetry(id) {
 // Two-tap confirm, like the Error log.
 async function usDelete(id) {
   const btn = document.getElementById('us-del-' + id);
-  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete?'; return; }
+  if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete for good?'; return; }
   try { await API.del('/admin/unsent/' + encodeURIComponent(id)); } catch (e) { toast(e.message); return; }
   _usRows = (_usRows || []).filter(x => x.id !== id);
   _usPaint();
