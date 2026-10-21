@@ -606,7 +606,7 @@ while the server runs**: `npm run dev` is `tsx watch`, and a restart wipes the m
 3. Unauthenticated: `curl -s localhost:4300/link/status` and `curl -s -X POST localhost:4300/sync/claim` → JSON 401.
    A lower-cased token → 401. `-H "Authorization: Bearer $LT" -d '{"contractVersion":2,…}'` → 409 `expected: 1`;
    no version → 400.
-4. Log in: `POST /auth/login` `{"email":"admin","password":"demo1234"}` → session token `$ST`. `GET /link/status` →
+4. Log in: `POST /auth/login` `{"email":"admin","password":"<demo password>"}` → session token `$ST`. `GET /link/status` →
    404 `MODULE_DISABLED` (Off). `PATCH /settings` `{"ministryConfig":{"modules":{"newYouthForms":"shadow"}}}` →
    `GET /link/status` 200. Log in as `director` → `/link/status` 404 in Shadow.
 5. Scratch copies: a small node script copies the four `push-*.json` and `result-request.json` into

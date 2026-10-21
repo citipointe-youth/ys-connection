@@ -5,7 +5,7 @@ import type { Actor, User, SafeUser } from '../core/entities/user';
 import { type AuthService, sessionSecretConfigured, toSafeUser } from './auth.service';
 import { CreateUserSchema } from './account.service';
 import { can } from './access-control';
-import { hashPassword } from '../utils/crypto';
+import { hashPassword, verifyPassword } from '../utils/crypto';
 import { generateId } from '../utils/id';
 import { isEncryptionKeyValid } from '../utils/field-crypto';
 import { LATEST_MIGRATION } from '../core/schema-version';
@@ -38,6 +38,17 @@ function within3s<T>(p: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p, new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 3000); })])
     .finally(() => clearTimeout(timer));
+}
+// F5 (2026-10-22): the password the old seed gave every account. Operator ruling: no forced change at sign-in;
+// the admin sees which accounts still use it (System check + Needs attention) and resets them by hand.
+// Only flagged accounts (the seeded ones) are checked, on the server; the answer per hash is cached, as bcrypt is slow.
+export const LEGACY_SEED_PASSWORD = 'demo1234';
+const seedPwCache = new Map<string, Promise<boolean>>();
+async function onSeedPassword(u: User): Promise<boolean> {
+  if (!u.mustChangePassword || !u.passwordHash) return false;
+  let p = seedPwCache.get(u.passwordHash);
+  if (!p) { p = verifyPassword(LEGACY_SEED_PASSWORD, u.passwordHash).catch(() => false); seedPwCache.set(u.passwordHash, p); }
+  return p;
 }
 const LINK_TOKEN_FIX = 'In Vercel, add LINK_SYNC_TOKEN (Production), 32+ characters, the same value as in the console (Advanced › Setup › YS link). Then redeploy.';
 
@@ -102,6 +113,14 @@ export function makeSetupService(deps: {
       if (needs) {
         checks.push(norm(env['SETUP_CODE'] ?? '').length >= 16 ? ok('setupCode', 'SETUP_CODE') :
           fix('setupCode', 'SETUP_CODE', 'Select Generate. Select Copy. In Vercel, add the value as SETUP_CODE. Then redeploy.', 'setupCode'));
+      }
+      if (!needs && dbOk) {
+        const all = await within3s(users.findAll()).catch(() => null);
+        const hits = (await Promise.all((all ?? []).map(async (u) => ((await onSeedPassword(u)) ? u : null)))).filter((u): u is User => !!u);
+        if (all) checks.push(!hits.length ? ok('defaultPasswords', 'Default passwords') : fix('defaultPasswords', 'Default passwords',
+          'These accounts still use the old default password: '
+          + hits.map((u) => `${u.displayName} (${u.email}${u.status === 'active' ? '' : ', inactive'})`).join(', ')
+          + '. In Admin > Accounts, tap the key button on each one and set a new password.'));
       }
       checks.push({ id: 'google', label: googleStatusText(googleConfigStatus(env as NodeJS.ProcessEnv)), state: 'optional', link: GUIDE_GOOGLE });
       // Elvanto link (spec §10.1): never the value. readLinkSyncToken is the one rule (APP-39).

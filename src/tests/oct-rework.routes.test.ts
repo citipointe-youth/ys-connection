@@ -17,13 +17,13 @@ describe('oct rework routes (memory mode, seeded)', () => {
   const tokens: Record<string, string> = {};
 
   const login = async (u: string) => {
-    const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: u, password: 'demo1234' }) });
+    const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: u, password: 'test-only-pass' }) });
     return (await j(r)).token as string;
   };
 
   beforeAll(async () => {
     const { repos, services } = await buildContainer();
-    await seedDemoData(repos);
+    await seedDemoData(repos, 'test-only-pass');
     const cur = await repos.settings.getSettings();
     await repos.settings.updateSettings({
       ministryConfig: { ...cur.ministryConfig, modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...cur.ministryConfig.modules, newYouthForms: 'admin', busMinistry: true } },

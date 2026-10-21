@@ -1013,7 +1013,7 @@ Expected: no errors.
 Run (in one shell): `PERSISTENCE=memory npm run dev`
 Then in another shell, log in to get a token and POST a minimal audit:
 ```bash
-TOKEN=$(curl -s localhost:4300/auth/login -H 'Content-Type: application/json' -d '{"email":"director@youth.ministry","password":"demo1234"}' | node -e 'process.stdin.on("data",d=>console.log(JSON.parse(d).token))')
+TOKEN=$(curl -s localhost:4300/auth/login -H 'Content-Type: application/json' -d '{"email":"director@youth.ministry","password":"<demo password>"}' | node -e 'process.stdin.on("data",d=>console.log(JSON.parse(d).token))')
 curl -s localhost:4300/audits -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"service":{"rows":[{"first_name":"Ava","last_name":"Okafor","gender":"female","grade":9,"2026-02-06":"Y","2026-02-13":"Y","2026-04-24":"Y"}]},"group":{"groups":[]},"team":[],"connect":[],"decision":[],"flows":[]}'
 curl -s localhost:4300/audits -H "Authorization: Bearer $TOKEN"
@@ -1031,7 +1031,7 @@ git commit -m "feat: /audits routes + controller"
 
 ## Phase 3 — Frontend (CA module)
 
-> All edits stay inside the `/* ── CA MODULE START ── */ … /* ── CA MODULE END ── */` block in `public/index.html` (≈ lines 3796–4712) and its `/*CA-HOOK*/` lines, preserving the module-removal contract. The SPA has no test framework — verify each task manually in the browser (`PERSISTENCE=memory npm run dev`, log in as `director@youth.ministry` / `demo1234`).
+> All edits stay inside the `/* ── CA MODULE START ── */ … /* ── CA MODULE END ── */` block in `public/index.html` (≈ lines 3796–4712) and its `/*CA-HOOK*/` lines, preserving the module-removal contract. The SPA has no test framework — verify each task manually in the browser (`PERSISTENCE=memory npm run dev`, log in as `director@youth.ministry` / `<demo password>`).
 
 ### Task 10: Add an audit API client + year/term state to the CA module
 

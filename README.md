@@ -24,7 +24,7 @@ npm run test         # vitest
 
 Default persistence is in-memory with seed data (`PERSISTENCE=memory`) — no
 database needed for local development. Seed accounts (local demo only,
-`PERSISTENCE=memory`; password `demo1234`):
+`PERSISTENCE=memory`; one random password for all, printed once in the server log at start):
 
 | Username | Role |
 |-------|------|

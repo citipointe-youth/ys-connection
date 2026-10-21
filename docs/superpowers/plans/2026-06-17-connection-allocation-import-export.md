@@ -896,7 +896,7 @@ Expected: no errors (the SPA is plain JS; this confirms nothing in `src/` broke)
 
 Run: `npm run dev` (starts on http://localhost:4300 with `PERSISTENCE=memory` seed data — confirm the dev script sets memory mode; if not, prefix `PERSISTENCE=memory`).
 Then in the browser:
-1. Log in as `admin@youth.ministry` / `demo1234`.
+1. Log in as `admin@youth.ministry` / `<demo password>`.
 2. Admin → **Data** tab → **Export Allocations**. Confirm `allocations.csv` downloads with header `First Name,Last Name,Grade,Gender,Leader`, rows grouped by student and sorted female→male, grade ascending; unconnected students appear with a blank Leader cell.
 3. Edit the CSV: add a valid leader name to a blank-leader student, change one leader to a deliberate misspelling, delete a leader row from a student who has two.
 4. **Import Allocations** → pick the edited file. Confirm the status line shows added/removed/unchanged and the modal lists the misspelled leader under "Unmatched leaders" and that student under "removals skipped".

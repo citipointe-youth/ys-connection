@@ -611,7 +611,7 @@ outbox mid-test):
 $env:PERSISTENCE='memory'; $env:LINK_SYNC_TOKEN='<32+ random chars>'; $env:PORT='4300'; npm run start
 ```
 
-1. Log in as `admin` / `demo1234`. Youth Setup → Elvanto features → **Shadow mode**.
+1. Log in as `admin` / `<demo password>`. Youth Setup → Elvanto features → **Shadow mode**.
 2. Point the console at `http://localhost:4300` with the same token; all types `shadow`.
 3. Check: `/link/status` shows the console; the four mirrors arrive; matching lists roster people (seed students are
    fake, so most are unmatched: expected); a check-in, a check-out of that check-in, a report, a flow tick and a

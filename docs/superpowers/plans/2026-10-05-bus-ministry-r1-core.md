@@ -2034,7 +2034,7 @@ async function busSaveSettings() {
 
 - [ ] **Step 9: CSS** — add to the main `<style>`: `.bus-tile`, `.bt-ic`, `.bt-label`, `.bt-count`, `.bus-head`, `.bus-head-act`, `.bus-sub`, `.bus-last`, `.bus-sec`, `.bus-foot`, `.bus-hits`, `.car-pill` (`background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c);` + `.chip` sizing), `.bus-danger{color:var(--danger)}`, `.radio-row`, `.cbx-row`, `.bus-gender{display:flex;gap:8px}` — copy values from the mockup's `<style>`. Tap targets: `.btn-icon{min-width:44px;min-height:44px}` only inside `.pg` bus screens if the global rule differs. Landscape: under the existing `@media (max-height:500px)` rule add `.bus-tile{padding-block:4px}`.
 
-- [ ] **Step 10: Verify** — `node scripts/check-spa-syntax.js && npm run typecheck && npx vitest run`. Then `npm run dev`, log in as `admin` (`demo1234`), enable the module in Youth Setup, open Bus Ministry, add Jess with a new address, add a New Person, remove someone. Check at 375px wide, landscape phone and ≥768px.
+- [ ] **Step 10: Verify** — `node scripts/check-spa-syntax.js && npm run typecheck && npx vitest run`. Then `npm run dev`, log in as `admin` (`<demo password>`), enable the module in Youth Setup, open Bus Ministry, add Jess with a new address, add a New Person, remove someone. Check at 375px wide, landscape phone and ≥768px.
 
 - [ ] **Step 11: Commit** — `git commit -am "feat(bus): SPA shell, Home tile, roster, New Person, settings"`
 

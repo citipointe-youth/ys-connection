@@ -14,7 +14,7 @@
 - **RBAC lives in one file** (`src/services/access-control.ts`); reuse `assertCan(actor, permission)`. Never scatter role checks. The follow-up endpoint uses the existing `leader:read` permission (same as `leaderSummary`).
 - **Extensionless imports**, **strict TS** (`strict` + `noUncheckedIndexedAccess` + `noImplicitOverride`).
 - **Tests:** Vitest, files under `src/tests/**/*.test.ts`. Run with `npm run test`. Typecheck with `npm run typecheck`.
-- **Local dev** runs with seed data only when `PERSISTENCE=memory`: `npm run dev` → http://localhost:4300. Seed accounts use password `demo1234` (e.g. `grade9g@youth.ministry`, `admin@youth.ministry`).
+- **Local dev** runs with seed data only when `PERSISTENCE=memory`: `npm run dev` → http://localhost:4300. Seed accounts use password `<demo password>` (e.g. `grade9g@youth.ministry`, `admin@youth.ministry`).
 - **SPA escaping:** every user-supplied string interpolated into `innerHTML` MUST be wrapped in the global `esc()` helper.
 - **Service worker:** the new route is mounted under `/connections/...`, already matched by `API_RE` in `public/sw.js`. Do **not** add a new top-level API prefix without also adding it to `API_RE` and bumping `CACHE` (`cms-v4`).
 - **Follow-up qualification rules (verbatim from spec):**
@@ -547,7 +547,7 @@ PERSISTENCE=memory npm run dev
 In a second terminal (token from a login; replace LEADER_ID with one from `GET /leaders`):
 
 ```bash
-TOKEN=$(curl -s -X POST localhost:4300/auth/login -H 'content-type: application/json' -d '{"email":"admin@youth.ministry","password":"demo1234"}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
+TOKEN=$(curl -s -X POST localhost:4300/auth/login -H 'content-type: application/json' -d '{"email":"admin@youth.ministry","password":"<demo password>"}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
 LEADER_ID=$(curl -s localhost:4300/leaders -H "authorization: Bearer $TOKEN" | sed -E 's/.*"id":"([^"]+)".*/\1/')
 curl -s "localhost:4300/connections/leader/$LEADER_ID/followup" -H "authorization: Bearer $TOKEN"
 ```
@@ -621,7 +621,7 @@ Replace the `onchange` handler so the choice is remembered per device:
 Run: `npm run typecheck`
 Expected: no errors (HTML is not typechecked, but this confirms the build is unbroken).
 
-Run: `PERSISTENCE=memory npm run dev`, log in as `grade9g@youth.ministry` / `demo1234`, open **My Students**, pick a leader. Reload the page and reopen **My Students** — the same leader should be pre-selected. Confirm via DevTools that `localStorage` has `yap_leader_id`.
+Run: `PERSISTENCE=memory npm run dev`, log in as `grade9g@youth.ministry` / `<demo password>`, open **My Students**, pick a leader. Reload the page and reopen **My Students** — the same leader should be pre-selected. Confirm via DevTools that `localStorage` has `yap_leader_id`.
 
 - [ ] **Step 5: Commit**
 
@@ -735,7 +735,7 @@ Expected: no errors.
 
 - [ ] **Step 4: Manually verify on the running app**
 
-Run: `PERSISTENCE=memory npm run dev`. Log in as `grade9g@youth.ministry` / `demo1234`. On **Home**, below Quick Actions you should see "This week's follow-up". If `localStorage` has no `yap_leader_id`, the self-identify picker appears; choosing a leader shows three lists. Verify:
+Run: `PERSISTENCE=memory npm run dev`. Log in as `grade9g@youth.ministry` / `<demo password>`. On **Home**, below Quick Actions you should see "This week's follow-up". If `localStorage` has no `yap_leader_id`, the self-identify picker appears; choosing a leader shows three lists. Verify:
 - Birthdays list shows only students with a birthday in the current Mon–Sun week.
 - "Not seen at Friday" / "Not seen at Lifegroup" show eligible students (use Student Search to cross-check attendance), with NO declining/at-risk chip.
 - "Not you?" clears the identity and returns to the picker.
@@ -988,7 +988,7 @@ function clearAllImportHistory() {
 Run: `npm run typecheck`
 Expected: no errors.
 
-Run the app as `admin@youth.ministry` / `demo1234` → **Admin → Data**. Each of the three actions now opens a typed-confirmation modal; the confirm button is disabled until the exact word (`RESET` / `CLEAR`) is typed (case-insensitive). Cancel closes without acting. (Confirm "Clear Service/Group Data" works end-to-end on the in-memory seed.)
+Run the app as `admin@youth.ministry` / `<demo password>` → **Admin → Data**. Each of the three actions now opens a typed-confirmation modal; the confirm button is disabled until the exact word (`RESET` / `CLEAR`) is typed (case-insensitive). Cancel closes without acting. (Confirm "Clear Service/Group Data" works end-to-end on the in-memory seed.)
 
 - [ ] **Step 5: Commit**
 
@@ -1103,7 +1103,7 @@ async function doDelLeader(id, name) {
 Run: `npm run typecheck`
 Expected: no errors.
 
-Run the app as `grade9g@youth.ministry` / `demo1234` → **Leaders & Connect**. The leader card now shows only the Edit (✎) action — no trash icon. Open Edit on a leader with connected students: the "Remove leader" button at the bottom opens a confirm naming the student count ("… and 3 students disconnected"). Confirm → the leader disappears and an Undo toast appears; tapping Undo restores the leader and re-connects the students.
+Run the app as `grade9g@youth.ministry` / `<demo password>` → **Leaders & Connect**. The leader card now shows only the Edit (✎) action — no trash icon. Open Edit on a leader with connected students: the "Remove leader" button at the bottom opens a confirm naming the student count ("… and 3 students disconnected"). Confirm → the leader disappears and an Undo toast appears; tapping Undo restores the leader and re-connects the students.
 
 - [ ] **Step 5: Commit**
 
@@ -1264,7 +1264,7 @@ Delete the now-orphaned `processImport` (`public/index.html:3192`), `handleGroup
 Run: `npm run typecheck`
 Expected: no errors.
 
-Run the app as `admin@youth.ministry` / `demo1234` → **Import**. There is now one drop zone. Dropping a Service export opens a "Service import — confirm" preview (rows / new students / grades); dropping a Group export opens a "Group import — confirm" preview (groups / members). Cancel aborts without uploading. Confirm uploads as before; the service success message includes the re-import tip. A non-attendance CSV shows the "couldn't recognise" error.
+Run the app as `admin@youth.ministry` / `<demo password>` → **Import**. There is now one drop zone. Dropping a Service export opens a "Service import — confirm" preview (rows / new students / grades); dropping a Group export opens a "Group import — confirm" preview (groups / members). Cancel aborts without uploading. Confirm uploads as before; the service success message includes the re-import tip. A non-attendance CSV shows the "couldn't recognise" error.
 
 > If you don't have real exports handy: a minimal Group CSV is a header row `Name,08/06/2026` then a group-name row `Yr 9 Girls,` then a member row `"Smith, Ann",Y`. A minimal Service CSV is `First Name,Last Name,School Grade,2026-06-12` then `Ann,Smith,9,Y`.
 

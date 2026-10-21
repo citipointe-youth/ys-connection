@@ -9,9 +9,11 @@ export async function createAppInstance(): Promise<Express> {
   const container = await buildContainer();
 
   // Never seed the public demo logins on a production deployment that forgot PERSISTENCE:
-  // it would expose admin/demo1234. With no users, the setup screen takes over instead.
+  // it would expose the demo logins. With no users, the setup screen takes over instead.
   if (env.PERSISTENCE === 'memory' && process.env['VERCEL_ENV'] !== 'production') {
-    await seedDemoData(container.repos);
+    const pw = await seedDemoData(container.repos);
+    // F5: the random demo password, shown once in the server log (local dev only).
+    if (pw) console.log(`Demo logins (admin, director, grade7, ...): password ${pw}`);
   }
 
   const routes = buildRoutes(container.services);
