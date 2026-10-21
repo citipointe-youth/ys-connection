@@ -8189,7 +8189,6 @@ async function switchAdminTab(tab) {
   if (tab === 'link') { go('link-admin'); return; }
   _adminTab = tab;
   if (S.page !== 'admin') { go('admin'); return; }
-  if (tab === 'newyear') _wizReset();
   // Re-entering Youth Setup always starts from the server's current state, not
   // whatever was left over from an earlier visit this session.
   if (tab === 'youthsetup') { _setupFlowSteps = undefined; _setupDraft = null; _setupServiceMinAttendance = null; _setupTermGapDays = null; _setupOpen = {}; }
