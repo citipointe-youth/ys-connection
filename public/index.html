@@ -7133,7 +7133,7 @@ let _setupOpen = {};
 function _setupToggle(id) { _setupOpen[id] = !_setupOpen[id]; _setupRerender(); }
 function _setupRerender() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 // headerActionHtml (optional) renders in the same row as the title, right-
-// aligned — e.g. Branding's "Reset to defaults" button. Its own onclick must
+// aligned. Its own onclick must
 // call event.stopPropagation() or the click also bubbles into the header's
 // own onclick and toggles the card open/closed.
 function _setupCard(id, title, bodyHtml, headerActionHtml) {
@@ -7164,11 +7164,6 @@ function _setupSetSmallGroup(val) {
   if (!_setupDraft.labels) _setupDraft.labels = {};
   _setupDraft.labels.smallGroup = val;
   _setupDraft.labels.smallGroupPlural = _pluralize(val);
-  _setupRerender();
-}
-function _setupResetBranding() {
-  if (!_setupDraft) _setupDraft = {};
-  _setupDraft.branding = JSON.parse(JSON.stringify(MINISTRY_CONFIG_DEFAULTS_CLIENT.branding));
   _setupRerender();
 }
 
@@ -7680,15 +7675,14 @@ function _youthSetupBody(settings, users) {
           <span class="help-text" style="margin:0">Cropped logo saved — choose a file above to replace it.</span>
         </div>` : `<div class="help-text" style="margin-top:6px">Choose a file to open the crop tool.</div>`}
       </div>` : ''}
-    <div class="fg"><label class="fl">Preview ${helpTip('Updates live as you change colours and names above. A custom logo only shows up here after you save.')}</label>
+    <div class="fg"><label class="fl">Preview ${helpTip('Updates live as you change colours, names and the logo above.')}</label>
       <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
-        <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
+        <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${bv('logoImage') ? `<img src="${esc(bv('logoImage'))}" alt="" style="width:40px;height:40px;object-fit:cover">` : brandMark(24, '#fff')}</div>
         <div style="color:#fff;min-width:0">
           <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
           <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
         </div>
-      </div></div>`,
-    `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_setupResetBranding()">Reset to defaults</button>`);
+      </div></div>`);
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
