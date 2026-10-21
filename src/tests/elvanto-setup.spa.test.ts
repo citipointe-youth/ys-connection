@@ -209,7 +209,7 @@ describe('the card copy', () => {
   it('the card and its fields', () => {
     const body = extractFn(src, '_setupElvCardHtml');
     for (const s of ['Student form link', 'Parent form link', 'Location to tick', 'New People flow name starts with',
-      'Parent Consent flow name starts with', 'Default state', 'Check forms',
+      'Parent Consent flow name starts with', 'State for new addresses (e.g. QLD)', 'Check forms',
       'New person sends these two Elvanto forms. Paste each form\'s public link.']) expect(body).toContain(s);
     expect(extractFn(src, '_youthSetupBody')).toContain("_setupCard('elvanto', 'Elvanto for this location', _setupElvCardHtml(cfg))");
   });

@@ -7084,8 +7084,8 @@ function wizHandleAllocationImportFile(input) {
 // accounts entirely. See design doc §5.1a / CLAUDE.md.
 // 'small-flat'/'micro' were merged into one 'simple' preset 2026-07-11.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'Grades 7-12 + gender-split quads, Connection Audit + Lifegroups on. This is the current app, unchanged — the default. A grade account can cover several grades at once (e.g. one broad "senior" login for grades 10-12) — that\'s an account-creation choice, not a separate role.' },
-  { id: 'simple', title: 'Simple Ministry', desc: 'Admin + Grade accounts only — no Director, no quads or grade/quad cohorting. The intended layout is 6 grade accounts (boys/girls per 2-grade bracket); use "Apply account layout" below once you’ve saved this to create/deactivate accounts to match. Connection Audit off, Lifegroups on.' },
+  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'A login per grade, plus 4 quad logins.' },
+  { id: 'simple', title: 'Simple Ministry', desc: '6 logins, 2-3 grades each. No quads or Director.' },
 ];
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
@@ -7101,7 +7101,7 @@ let _setupOpen = {};
 function _setupToggle(id) { _setupOpen[id] = !_setupOpen[id]; _setupRerender(); }
 function _setupRerender() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 // headerActionHtml (optional) renders in the same row as the title, right-
-// aligned — e.g. Branding's "Reset to defaults" button. Its own onclick must
+// aligned. Its own onclick must
 // call event.stopPropagation() or the click also bubbles into the header's
 // own onclick and toggles the card open/closed.
 function _setupCard(id, title, bodyHtml, headerActionHtml) {
@@ -7132,11 +7132,6 @@ function _setupSetSmallGroup(val) {
   if (!_setupDraft.labels) _setupDraft.labels = {};
   _setupDraft.labels.smallGroup = val;
   _setupDraft.labels.smallGroupPlural = _pluralize(val);
-  _setupRerender();
-}
-function _setupResetBranding() {
-  if (!_setupDraft) _setupDraft = {};
-  _setupDraft.branding = JSON.parse(JSON.stringify(MINISTRY_CONFIG_DEFAULTS_CLIENT.branding));
   _setupRerender();
 }
 
@@ -7564,11 +7559,9 @@ function _youthSetupBody(settings, users) {
   const br = cfg.branding || {}, dbr = MINISTRY_CONFIG_DEFAULTS_CLIENT.branding;
   const lb = cfg.labels || {}, dlb = MINISTRY_CONFIG_DEFAULTS_CLIENT.labels;
   const md = cfg.modules || {}, dmd = MINISTRY_CONFIG_DEFAULTS_CLIENT.modules;
-  const im = cfg.import || {}, dim = MINISTRY_CONFIG_DEFAULTS_CLIENT.import;
   const bv = (k) => br[k] != null ? br[k] : dbr[k];
   const lv = (k) => lb[k] != null ? lb[k] : dlb[k];
   const mv = (k) => md[k] != null ? md[k] : dmd[k];
-  const iv = (k) => im[k] != null ? im[k] : dim[k];
   // Falls back to _logoModeOverride (set the instant a mode button is clicked)
   // so picking "Upload image" before any content exists doesn't snap the
   // picker back to "Default mark" on the next re-render — bv() alone can't
@@ -7576,43 +7569,40 @@ function _youthSetupBody(settings, users) {
   // since both look like null.
   const logoMode = bv('logoImage') ? 'image' : (_logoModeOverride || 'default');
 
-  let b = `<div class="card" style="margin-bottom:10px">
-    <div class="sh" style="margin-top:0">Pre-set Configurations</div>
-    <div class="help-text" style="margin-bottom:8px">Pick the shape closest to your ministry — everything below is still fully editable either way.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+  // 2026-10-22 (B9): the presets are a "Start from" row at the top of Structure & Roles (ruling D3 keeps them).
+  let b = _setupCard('structure', 'Structure & Roles', `
+    <div class="fg"><label class="fl">Start from</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${MINISTRY_PRESETS_INFO.map(p => (p.id === 'simple' && simpleOn)
         ? `<button class="btn btn-secondary" style="flex:1;min-width:150px" disabled title="${SIMPLE_LOCK_TIP}">${esc(p.title)}</button>`
         : `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
-    </div>
-    ${simpleOn ? `<div class="help-text" style="margin-bottom:8px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}
-    ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-bottom:4px"><strong>${esc(p.title)}:</strong> ${esc(p.desc)}</div>`).join('')}
-  </div>`;
-
-  b += _setupCard('structure', 'Structure & Roles', `
-    <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only ever sees its own students. Changing this also switches Director/Quad on or off below to match.')}</label>
+      </div>
+      ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-top:4px"><strong>${esc(p.title.split(' ')[0])}:</strong> ${esc(p.desc)}</div>`).join('')}
+      ${simpleOn ? `<div class="help-text" style="margin-top:4px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}</div>
+    <div class="fg"><label class="fl">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only sees its own students. Changing this also turns Director and Quad on or off below.')}</label>
       <select class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
         <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
         <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
       </select></div>
     ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
-    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders (the current setup). Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
+    <div class="fg"><label class="fl">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders. Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
       </select></div>
-    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. This changes how the app works out term start/end dates and the Home screen\'s "Not Seen Last…" reminders — it\'s a real date setting, not just wording (see "Service night wording" in Terminology below for that).')}</label>
+    <div class="sh" style="margin:16px 0 8px">Roles</div>
+    <div class="help-text" style="margin-bottom:8px">Admin is always on. Turning a role off switches off its logins when you save.</div>
+    ${adminRoleRow}
+    ${roleToggleRows}
+    ${simpleToggleRow}
+    <div class="sh" style="margin:16px 0 8px">Service and attendance</div>
+    <div class="fg"><label class="fl">Service day ${helpTip('The night your main service runs, e.g. Friday. The app uses it to work out terms and the Home screen\'s "Not Seen Last…" reminders.')}</label>
       <select class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
     <div class="fg"><label class="fl">Time zone ${helpTip('Where this location is, e.g. Australia/Brisbane. Every date and time in the app uses it.')}</label>
       <input class="fi" list="setup-tz" value="${esc(st.timeZone != null ? st.timeZone : dst.timeZone)}" onchange="_setupSet('structure.timeZone', this.value.trim())">
       <datalist id="setup-tz">${['Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin', 'Australia/Hobart', 'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney'].map((z) => `<option value="${z}">`).join('')}</datalist></div>
     <div class="fg"><label class="fl">Consent closes at ${helpTip('The time on the service day when parents can no longer reply to the consent text, e.g. 09:00.')}</label>
       <input class="fi" type="time" value="${esc(st.consentCutoff != null ? st.consentCutoff : dst.consentCutoff)}" onchange="_setupSet('structure.consentCutoff', this.value)"></div>
-    <div class="sh" style="margin:16px 0 8px">Roles</div>
-    <div class="help-text" style="margin-bottom:8px">Role names are fixed. Admin is always available for every ministry — choose which of the others this ministry uses. Turning a role off here deactivates every currently-active account of that role (Accounts screen) — turning it back on does not reactivate them automatically.</div>
-    ${adminRoleRow}
-    ${roleToggleRows}
-    ${simpleToggleRow}
-    <div class="sh" style="margin:16px 0 8px">Attendance</div>
     <div class="form-row">
       <div class="fg"><label class="fl">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
         <input class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
@@ -7648,15 +7638,14 @@ function _youthSetupBody(settings, users) {
           <span class="help-text" style="margin:0">Cropped logo saved — choose a file above to replace it.</span>
         </div>` : `<div class="help-text" style="margin-top:6px">Choose a file to open the crop tool.</div>`}
       </div>` : ''}
-    <div class="fg"><label class="fl">Preview ${helpTip('Updates live as you change colours and names above. A custom logo only shows up here after you save.')}</label>
+    <div class="fg"><label class="fl">Preview ${helpTip('Updates live as you change colours, names and the logo above.')}</label>
       <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(150deg,${esc(bv('accent'))},${esc(bv('navy'))})">
-        <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">${brandMark(24, '#fff')}</div>
+        <div style="width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${bv('logoImage') ? `<img src="${esc(bv('logoImage'))}" alt="" style="width:40px;height:40px;object-fit:cover">` : brandMark(24, '#fff')}</div>
         <div style="color:#fff;min-width:0">
           <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('appName'))}</div>
           <div style="font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bv('ministryName'))}</div>
         </div>
-      </div></div>`,
-    `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_setupResetBranding()">Reset to defaults</button>`);
+      </div></div>`);
 
   b += _setupCard('terminology', 'Terminology', `
     <div class="help-text" style="margin-bottom:8px">Rename the words the app uses to match your ministry.</div>
@@ -7680,28 +7669,13 @@ function _youthSetupBody(settings, users) {
       <select class="fs" id="setup-notices" onchange="_setupSet('modules.notices', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${(md && md.notices === 'on' ? 'on' : 'off') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     ${_setupElvantoModulesHtml(md)}
     ${_setupFlowHiddenHtml(md)}
-    ${_setupIntakeHtml(md)}
-    <div class="fg"><label class="fl">Export guides ${helpTip('Step-by-step, in-app guides for exporting the right files from Elvanto. Hide these if your church uses different software.')}</label>
-      <select class="fs" onchange="_setupSet('modules.exportGuides', this.value)">
-        ${[['elvanto','Show Elvanto guides'],['hidden','Hidden']].map(([v,l])=>`<option value="${v}" ${mv('exportGuides')===v?'selected':''}>${l}</option>`).join('')}
-      </select></div>
-    <div class="fg"><label class="fl">Date order ${helpTip('How to read a date like 03/04/2026 when it\'s not obvious which number is the day and which is the month. (If one number is over 12, the app can already tell.)')}</label>
-      <select class="fs" onchange="_setupSet('import.dateOrder', this.value)">
-        ${[['DMY','Day/Month/Year'],['MDY','Month/Day/Year']].map(([v,l])=>`<option value="${v}" ${iv('dateOrder')===v?'selected':''}>${l}</option>`).join('')}
-      </select></div>
-    <div class="fg"><label class="fl">Leader name tag ${helpTip('When importing a lifegroup file, a name written like "John Smith (leader)" marks that person as a leader. This sets the word used in the brackets.')}</label>
-      <input class="fi" value="${esc(iv('leaderTag'))}" onchange="_setupSet('import.leaderTag', this.value)"></div>`);
+    ${_setupIntakeHtml(md)}`);
 
   b += _setupCard('elvanto', 'Elvanto for this location', _setupElvCardHtml(cfg));
 
-  b += _setupCard('review', 'Review', `
-    <pre style="font-size:11px;background:var(--paper-dark);padding:10px;border-radius:8px;overflow-x:auto;max-height:220px">${esc(JSON.stringify(cfg, null, 2))}</pre>
-    <div class="help-text" style="margin:6px 0">Some changes (app name, nav, available roles) only appear everywhere after you log out and back in; stats can lag up to a minute.</div>`);
-
   b += _setupCard('share', 'Use this setup at another location', `
-    <div class="help-text" style="margin-bottom:8px">To start a new location, follow the deploy guide. To copy these settings to that location, select <b>Download settings file</b>. At the new location, select <b>Load settings file</b>. Then select <b>Save Youth Setup</b>.</div>
-    <a class="btn btn-secondary btn-full" href="https://github.com/citipointe-youth/ys-connection/blob/master/docs/DEPLOYING.md" target="_blank" rel="noopener">Open the deploy guide</a>
-    <div style="display:flex;gap:8px;margin-top:8px">
+    <div class="help-text" style="margin-bottom:8px">To copy these settings to another location, select <b>Download settings file</b>. At the new location, select <b>Load settings file</b>. Then select <b>Save Youth Setup</b>.</div>
+    <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="exportSettingsFile()">Download settings file</button>
       <label class="btn btn-secondary" style="flex:1;text-align:center">Load settings file<input type="file" accept=".json,application/json" hidden onchange="loadSettingsFile(this)"></label>
     </div>`);
@@ -7711,16 +7685,13 @@ function _youthSetupBody(settings, users) {
   // "Apply account layout" (bug 8) — a separate, explicit, typed-confirm
   // action that reconciles Accounts with whatever cohort model/grade range is
   // actually SAVED (never an unsaved draft — matching savedCohort/savedGrade*
-  // above), independent of the Save button. Always visible (2026-07-12 follow-
-  // up) — greyed out via the client-side plan mirror below when Accounts
-  // already match, rather than only appearing while switching models; a
-  // grade-6-toggle change with the SAME cohort model still needs this to
-  // pick up new/changed bracket accounts.
+  // above), independent of the Save button. 2026-10-22 (B10): drawn only when
+  // the client-side plan mirror below says Accounts don't match; nothing otherwise.
   const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
   const aligned = !alignPlan.toCreate.length && !alignPlan.toDeactivate.length;
   const targetLabel = savedCohort === 'none' ? 'Simple' : 'Complex';
-  b += `<button class="btn btn-secondary btn-full" style="margin-top:8px" ${aligned?'disabled':''} onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}${aligned?' (already aligned)':''}</button>
-    <div class="help-text" style="margin-top:4px;margin-bottom:4px">Creates/deactivates grade &amp; quad accounts to match the SAVED Cohort model/grade range above — separate from Save (save first if you just changed either), and only touches Accounts, never students, leaders or connections.</div>`;
+  b += aligned ? '' : `<div class="alert al-warn" style="margin-top:8px">Accounts don't match the saved layout. Creates or switches off grade and quad logins to match the saved setup. Save first.
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}</button></div>`;
 
   return b;
 }
@@ -7850,9 +7821,15 @@ function _setupRiskyDiff(saved, draft) {
   const s = saved || {}, d = draft || {};
   const simple = (c) => !!(c.logins && c.logins.simple);
   const prayers = (c) => !(c.modules && c.modules.prayers === false);
+  // 2026-10-22 (A1): a role going on -> off deactivates its logins on Save; a missing value is the default (Leader off).
+  const role = (c, k) => { const v = c.roles && c.roles.enabled && c.roles.enabled[k]; return v != null ? !!v : k !== 'leader'; };
+  const intake = (c) => !!(c.modules && c.modules.intakeAdmin === 'on');
   const out = [];
   if (simple(s) !== simple(d)) out.push('logins.simple');
   if (prayers(s) !== prayers(d)) out.push('modules.prayers');
+  // Junior/Senior on retires the grade logins itself (they come back), so Grade is not also flagged.
+  for (const k of ['director', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k) && !(k === 'grade' && simple(d))) out.push('roles.' + k);
+  if (intake(s) && !intake(d)) out.push('modules.intakeAdmin');
   return out;
 }
 function confirmSaveMinistrySetup() {
@@ -7875,6 +7852,13 @@ function confirmSaveMinistrySetup() {
     const on = !(draft.modules && draft.modules.prayers === false);
     risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Prayers ${on ? 'on' : 'off'} for everyone.</div>`;
   }
+  const red = (t) => `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">${t}</div>`;
+  const offs = diff.filter((k) => k.startsWith('roles.')).map((k) => {
+    const r = k.slice(6), n = (_adminData.users || []).filter((u) => u.role === r && u.status === 'active').length;
+    return n ? `${n} ${r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
+  }).filter(Boolean);
+  if (offs.length) risky += red(`This switches off ${offs.length > 1 ? offs.slice(0, -1).join(', ') + ' and ' + offs[offs.length - 1] : offs[0]}. Turning the role back on does not switch them back on.`);
+  if (diff.includes('modules.intakeAdmin')) risky += red('This turns New youth &amp; consent off. Its stored plans are deleted and its pending jobs are cancelled.');
   modal(`<div class="mo-title">Save Youth Setup?</div>
     ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
@@ -8036,7 +8020,7 @@ function _setupElvCardHtml(cfg) {
     ${link('student', 'Student form link')}${link('parent', 'Parent form link')}
     ${s.err ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.err)}</div>` : ''}
     ${text('locationQuestion', 'Location question on the form')}${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
-    ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'Default state')}
+    ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'State for new addresses (e.g. QLD)')}
     <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
     ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l, i) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>` + _setupElvIdHtml(e, s, i)).join('')}</div>` : ''}`;
 }
