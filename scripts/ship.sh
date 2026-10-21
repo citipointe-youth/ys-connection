@@ -36,7 +36,6 @@ else echo "FAIL tests (log $LOG):"; { grep -E 'FAIL|AssertionError|Error:' "$LOG
 MIG=$(ls supabase/migrations | tail -1 | cut -c1-4)
 SW=$(grep -oE "ysc-v[0-9]+" public/sw.js | head -1)
 PEND=$(git branch --no-merged "$SHA" --format='%(refname:short)' | tr '\n' ' ')
-LASTP=$(grep -oE 'last promoted: .*$' DEPLOY.md | head -1 | tr -d '\r' || true)   # hand-written after each promote; carried forward
 NOW=$(date '+%Y-%m-%d %H:%M %Z')
 # Rewrite the live block (between the markers); the rest of DEPLOY.md is hand-written.
 BLOCK="<!-- live -->
@@ -44,7 +43,7 @@ BLOCK="<!-- live -->
 - last ship: $NOW
 - migration: $MIG
 - SW version: $SW
-- promote: pending (Vercel) — update this line by hand once promoted; ${LASTP:-last promoted: unknown}
+- promote: auto (Vercel promotes every master build); check /health after the build
 - pending branches: ${PEND:-none}
 <!-- /live -->"
 if [ -n "$DRY" ]; then echo "dry: rewrite DEPLOY.md live block (mig $MIG, $SW), commit on $BR"
@@ -57,8 +56,8 @@ run git push -q origin "$SHA:refs/heads/master"
 run git fetch -q origin master:master 2>/dev/null || true   # ff local master unless it is checked out somewhere
 
 if ! command -v vercel >/dev/null || ! vercel whoami >/dev/null 2>&1; then
-  echo "${DRY:+dry: }pushed ${SHA:0:7} to master; vercel CLI unavailable: promote via Vercel (MCP)"; exit 0; fi
-[ -n "$DRY" ] && { echo "dry: wait for vercel deployment of $SHA, then promote only with --promote"; exit 0; }
+  echo "${DRY:+dry: }pushed ${SHA:0:7} to master; vercel CLI unavailable: Vercel auto-promotes; check the build log and /health"; exit 0; fi
+[ -n "$DRY" ] && { echo "dry: wait for vercel deployment of $SHA, auto-promoted by Vercel"; exit 0; }
 # ponytail: untested here (no CLI on the build box); polls ~3 min for the git deployment to appear.
 URL=
 # The Vercel project name of this location (a fork links its own project); Brisbane has none checked in, so ys-connection.
@@ -67,4 +66,4 @@ for _ in $(seq 36); do URL=$(vercel ls "$PROJ" -m githubCommitSha="$SHA" 2>/dev/
 [ -n "$URL" ] || { echo "pushed ${SHA:0:7}; no Vercel deployment seen yet: check Vercel"; exit 1; }
 vercel inspect "$URL" --wait --timeout 10m >/dev/null 2>&1 || { echo "FAIL: Vercel build failed: $URL"; exit 1; }
 if [ -n "$PROMOTE" ]; then vercel promote "$URL" --yes >/dev/null && echo "promoted: $URL"
-else echo "built, awaiting promote: $URL"; fi
+else echo "built (Vercel auto-promotes master): $URL"; fi

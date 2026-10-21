@@ -1,16 +1,19 @@
 # DEPLOY — YS Connection
 
 Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-script syntax, `npm run typecheck`, and a `public/sw.js` `CACHE` bump whenever anything else under `public/` changed), tests, rewrites the live block below, fast-forwards `master`, pushes, and reports the Vercel build. `--dry-run` runs the gates and prints the rest; `--promote` promotes via the vercel CLI. The same gates + tests run on GitHub Actions (`.github/workflows/ci.yml`) on every push.
-Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`), but **production changes only when the owner promotes** the build in Vercel.
+Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`). **Vercel auto-promotes every `master` build to production** (since 2026-10-20), so a push to `master` is a release: there is no manual promote step and no chance to read `/health` first. Check the clock before you push (no ships Fri 17:30-20:00 or Sun 10:00-12:00). After the build, read `Database up to date — …` in the build log and `/health` `schema.current`.
+Rollback = Vercel dashboard > Deployments > the previous good build > Instant Rollback (migrations are additive, nothing to undo). While rolled back, Vercel stops auto-promoting; promote the fixed build by hand to turn it back on.
 
 <!-- live -->
 - master sha: 88833eb (r21/restart-window-ys)
 - last ship: 2026-10-21 09:48 EAST
 - migration: 0041
 - SW version: ysc-v138
-- promote: pending (Vercel) — update this line by hand once promoted; last promoted: feed087 (ysc-v130, 2026-10-18 ~14:55)
+- promote: auto (Vercel promotes every master build); last checked live: ysc-v138, schema 0041 (2026-10-22, /sw.js + /health)
 - pending branches: chore/ship ux17/bus 
 <!-- /live -->
+
+_The rel19/svc notes below predate auto-promote (2026-10-20): read "before the owner promotes" as "after the build"._
 
 **rel19/ys (BUS-1 Trip logging + BUS-2 Charter bus, SW `ysc-v130`) carries migration `0038_bus_charter.sql`** (additive: `kind` on `bus_vehicles` + `bus_run_vehicles`, `vehicle_id` on `bus_addresses`). Apply it the repo's way at ship: the Vercel build's `scripts/migrate.ts` applies it; read `Database up to date — … (1 new)` in the build log and `/health` `schema.current` = `0038` before the owner promotes (never via the Supabase MCP).
 
