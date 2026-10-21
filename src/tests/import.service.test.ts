@@ -433,6 +433,25 @@ describe('Import Service', () => {
       expect(students.find((s) => s.firstName === 'Bob')).toBeDefined();
     });
 
+    // r22 U1 (P4): two same-name profiles merge into one student; a later N row must never wipe an earlier Y.
+    for (const order of [['Y', 'N'], ['N', 'Y']] as const) {
+      it(`a name collision OR-merges attendance (${order.join(' then ')})`, async () => {
+        const r = makeRepos();
+        await initRepos(r);
+        const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
+        await svc.importServiceCsv(ADMIN, [
+          { first_name: 'Zed', last_name: 'Fictional', gender: 'male', grade: 9, '2025-02-07': order[0] },
+          { first_name: 'Zed', last_name: 'Fictional', gender: 'male', '2025-02-07': order[1] },
+        ], 'dupe.csv');
+        const [stu] = await r.students.findAll();
+        const att = await r.attendance.findAll();
+        expect(att.filter((a) => a.studentId === stu!.id).map((a) => a.attended)).toEqual([true]);
+        const [sess] = await r.sessions.findAll();
+        expect(sess!.totalAttendance).toBe(1);
+        expect(stu!.svcAttended).toBe(1);
+      });
+    }
+
     it('a clean import reports empty skippedRows/nameCollisions', async () => {
       const r = makeRepos();
       await initRepos(r);

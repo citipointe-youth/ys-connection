@@ -425,7 +425,9 @@ export function makeImportService(
           const val = (rawRow as Record<string, unknown>)[origKey];
           const attended = val === true || val === 'true' || val === '1' ||
             String(val).toLowerCase() === 'yes' || String(val) === 'Y';
-          attendanceMap.set(`${studentId}:${sessionId}`, { studentId, sessionId, attended });
+          // r22 U1: same-name rows merge into one student (nameCollisions); OR the marks so a later N never wipes a Y.
+          const key = `${studentId}:${sessionId}`;
+          attendanceMap.set(key, { studentId, sessionId, attended: attended || !!attendanceMap.get(key)?.attended });
         }
 
         studentsToSaveMap.set(studentId, baseStudent);

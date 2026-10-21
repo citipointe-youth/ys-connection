@@ -208,7 +208,9 @@ describe('controller ruling: a junior leader always has the More button', () => 
     }
   });
   it('the other roles keep their nav (Setup has Reset Password): plain Prayers tab with only Prayers', () => {
-    for (const r of ['grade', 'quad', 'director', 'admin']) expect(nav(r, {}).n.navItems().map((i: any) => i.id), r).not.toContain('more');
+    for (const r of ['grade', 'quad', 'admin']) expect(nav(r, {}).n.navItems().map((i: any) => i.id), r).not.toContain('more');
+    // r22 U1 (operator): a director always gets More, which always holds Import.
+    expect(nav('director', {}).n.navItems().map((i: any) => i.id)).toContain('more');
   });
 });
 

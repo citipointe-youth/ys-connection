@@ -487,7 +487,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .cchart{display:flex;align-items:flex-end;gap:3px;height:92px;margin:8px 0}
 .ccol{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
 .ccol-val{font-size:10px;font-weight:700;color:var(--ink-mid);margin-bottom:2px;white-space:nowrap}
-.ccol-bar{width:100%;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
+.ccol-bar{width:100%;max-width:28px;border-radius:3px 3px 0 0;min-height:4px;background:var(--accent)}
 .ccol-bar.lo{background:var(--warn)}.ccol-bar.cr{background:var(--danger)}
 .ccol-lbl{font-size:10px;color:var(--ink-faint);margin-top:3px;white-space:nowrap}
 .tr-up{background:var(--success-light);color:#065f46;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
@@ -2609,13 +2609,16 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
+    // r22 U1 (operator): Import left Home, so a director (no Admin tab) always has it in More (_navSlots keeps More for a director).
+    if (r === 'director') xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
   }
   return xs;
 }
 // The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
 function _navSlots(u) {
   const more = moreItems();
-  const pw = ((u || S.user) || {}).role === 'leader'; // Y5: a junior leader has no Setup page, so More (with Change password) is always there
+  // Y5: a junior leader has no Setup page, so More (with Change password) is always there; r22 U1: a director's More always holds Import.
+  const pw = ['leader', 'director'].includes(((u || S.user) || {}).role);
   return _navItemsBase(u).map(it => {
     if (it.id !== 'prayers') return it;
     if (more.length >= 2 || pw) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
@@ -2713,6 +2716,9 @@ function _navItemsBase(u = S.user) {
 }
 function bottomNavItems() { return _navSlots().slice(0, 5).filter(Boolean); }
 function quickActionItems(u) { return _navSlots(u).slice(5).filter(Boolean); }
+// Home tiles: the quick actions minus Trends (a hero pill for grade/admin/quad) and Import (r22 U1: a weekly job; the
+// sidebar link, the route and Admin > Import stay, and the console's Friday import clicks that sidebar link).
+function _homeTiles(u) { return quickActionItems(u).filter(x => !(['grade', 'admin', 'quad'].includes(u.role) && x.id === 'trends') && x.id !== 'import'); }
 
 // shell() is kept for compatibility — the persistent shell is set up by _initShell().
 // All setApp(shell(x)) calls now just update <main id="page-main"> with x.
@@ -3449,7 +3455,7 @@ async function _renderHomeInner(stale, fromCache) {
     // ── Quick action tiles ABOVE the breakdown ──
     // Grade: Trends now lives in the hero banner (opposite Prev term), so drop it
     // here — leaving just Birthdays, which then gets the full-width single column.
-    const qa = quickActionItems(u).filter(x => !(['grade', 'admin', 'quad'].includes(u.role) && x.id === 'trends'));
+    const qa = _homeTiles(u);
     if (qa.length) {
       body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
       for (const x of qa) {
@@ -4393,7 +4399,8 @@ let _lvF = { year: new Set(), gender: new Set() }; // My Students filters (narro
 function tLvF(type, val) {
   const set = type === 'year' ? _lvF.year : _lvF.gender;
   const v = type === 'year' ? Number(val) : val;
-  set.has(v) ? set.delete(v) : set.add(v);
+  if (val == null) set.clear(); // r22 U1: the All chip
+  else set.has(v) ? set.delete(v) : set.add(v);
   renderMyStudents();
 }
 // Next on/after-`today` occurrence of a birthday (month+day; birth year ignored).
@@ -4568,26 +4575,25 @@ async function renderMyStudents() {
   const bdayOf = {};
   for (const s of allStudents) bdayOf[s.id] = s.dateOfBirth;
 
-  let body = `<div class="ph"><div class="ph-title">My Students</div><div class="ph-sub">Select a leader to view their students</div></div>`;
+  // r22 U1 (RV2 C): the nav word and Health's header; the "Select a leader" sub only until a leader is picked.
+  const _msHead = (sub) => `<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('users')} My Connections</div>${sub ? '<div class="ph-sub">Select a leader to view their students</div>' : ''}</div>`;
 
   if (!leaders.length) {
-    body += `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders first</div></div>`;
-    setApp(shell(body));
+    setApp(shell(_msHead(true) + `<div class="empty">${icEmpty('users')}<div class="empty-title">No leaders yet</div><div class="empty-sub">Add leaders first</div></div>`));
     return;
   }
 
-  // Year + gender filter chips that narrow the leader dropdown — scoped to the
-  // login: grade → none; quad → its year bracket (no gender); director/admin →
-  // all years + gender.
+  // Grade + gender filters that narrow the leader dropdown, as Health's .fc chips — scoped to the
+  // login: grade → none; quad → its year bracket (no gender); director/admin → all years + gender.
   const mu = S.user;
   const myYears = mu.role === 'quad' ? quadGrades(mu.quad)
     : ['director','admin'].includes(mu.role) ? _gradeList() : [];
   const showG = ['director','admin'].includes(mu.role);
-  const yearChips = myYears.map(g =>
-    `<button class="chip ${_lvF.year.has(g) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('year','${g}')">Yr ${g}</button>`).join('');
-  const genderChips = showG ? [['female', '♀ Girls'], ['male', '♂ Guys']].map(([v, lbl]) =>
-    `<button class="chip ${_lvF.gender.has(v) ? 'c-accent' : 'c-neutral'}" style="cursor:pointer;border:none" onclick="tLvF('gender','${v}')">${lbl}</button>`).join('') : '';
-  if (myYears.length || showG) body += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${yearChips}${genderChips}</div>`;
+  const _fc = (on, click, lbl) => `<button class="fc ${on ? 'on' : ''}" aria-pressed="${on}" onclick="${click}">${lbl}</button>`;
+  const _fl = (w) => `<span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${w}</span>`;
+  let filters = '';
+  if (myYears.length) filters += `<div class="filter-row">${_fl('Grade:')}${myYears.map(g => _fc(_lvF.year.has(g), `tLvF('year','${g}')`, g)).join('')}${_fc(!_lvF.year.size, "tLvF('year',null)", 'All')}</div>`;
+  if (showG) filters += `<div class="filter-row">${_fl('Gender:')}${['female', 'male'].map(v => _fc(_lvF.gender.has(v), `tLvF('gender','${v}')`, v.charAt(0).toUpperCase() + v.slice(1))).join('')}${_fc(!_lvF.gender.size, "tLvF('gender',null)", 'All')}</div>`;
 
   let visLeaders = leaders;
   if (_lvF.year.size) visLeaders = visLeaders.filter(l => (l.grades || []).length === 0 || l.grades.some(g => _lvF.year.has(g)));
@@ -4597,43 +4603,35 @@ async function renderMyStudents() {
   if (!_msLeader) { const mine = getMyLeaderId(); if (mine && leaders.some(l => l.id === mine)) _msLeader = mine; }
   if (_msLeader && !visLeaders.some(l => l.id === _msLeader)) _msLeader = null;
 
+  let body = _msHead(!_msLeader) + filters;
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
   const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
   body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">I am…</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
-    let summary;
-    try { summary = await API.get(`/connections/leader/${_msLeader}/summary`); } catch {}
+    // The summary and the prayers load together (r22 U1). Prayers are best-effort: a failed fetch just means no prayer lines.
+    const [summary, prayers] = await Promise.all([
+      API.get(`/connections/leader/${_msLeader}/summary`).catch(() => null),
+      _prayersOn() ? API.get('/prayers').catch(() => []) : [],
+    ]);
+    if (S.page !== _pg) return;
     const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-
-    // Same custom-message editor as Home's Follow Up section, surfaced here too
-    // so a leader browsing My Students doesn't have to go back to Home to edit it.
-    const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
-    if (msLeaderObj) body += _smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl');
-
-    // Best-effort — a per-student prayer summary + quick-add is a nice-to-have,
-    // not core to the screen, so a failed fetch just means no summary line shows.
-    let prayers = [];
-    if (_prayersOn()) try { prayers = await API.get('/prayers'); } catch {}
     const prayersByStudent = {};
-    for (const p of prayers) {
+    for (const p of prayers || []) {
       if (!p.student) continue;
       (prayersByStudent[p.student.id] ||= []).push(p);
     }
 
-    body += `<div class="sh">My Students (${students.length})</div>`;
+    body += `<div class="sh">Students (${students.length})</div>`;
     if (!students.length) {
       body += '<div style="color:var(--ink-faint);font-size:13px;padding:12px 0">No students connected yet.</div>';
     } else {
+      // Health's row card (_arSectionsHtml): the name opens the profile; both phones stay (leaders call parents).
+      let cards = '';
       for (const s of students) {
-        // Prefer the birthday carried on the summary row; fall back to the scoped
-        // /students lookup for any older cached payload.
+        // Prefer the birthday carried on the summary row; fall back to the scoped /students lookup.
         const bd = fmtBday(s.dateOfBirth ?? bdayOf[s.id]);
-        // Not-archived prayers, newest first (list() already sorts that way) — a
-        // compact one-line-each feed so a leader can scan requests while reading
-        // down the student list, not just a count. Capped so one heavily-prayed-for
-        // student doesn't push the rest of the row list down (mirrors Connect
-        // Setup's capped student preview).
+        // Not-archived prayers, newest first, capped at 3 so one student doesn't push the rest down.
         const sp = (prayersByStudent[s.id] || []).filter(p => p.status !== 'archived');
         const spShown = sp.slice(0, 3);
         const spMore = sp.length - spShown.length;
@@ -4645,23 +4643,29 @@ async function renderMyStudents() {
               </div>`).join('')}
               ${spMore > 0 ? `<div style="font-size:11px;color:var(--ink-faint);padding-left:11px">+${spMore} more</div>` : ''}
             </div>` : '';
-        body += `<div class="li" style="align-items:flex-start">
-          <div class="li-body">
-            <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
-              <span class="li-title">${esc(s.fullName)}</span>${dncChip(s)}
-              <span style="font-size:11px;color:var(--ink-mid)">Yr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</span>${riskChip(s.atRiskStatus)}
-            </div>
-            ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
-            ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
-            ${(s.mobile || s.parentPhone) ? `<div style="font-size:12px;margin-top:4px;color:var(--ink-mid)">${s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : ''}${s.mobile && s.parentPhone ? ' · ' : ''}${s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : ''}</div>` : ''}
-            ${prayerSummary}
-          </div>
-          <div class="li-right">
-            ${_prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : ''}
-          </div>
+        const pills = dncChip(s) + riskChip(s.atRiskStatus);
+        const phones = (s.mobile ? `<span style="font-weight:600">Mobile:</span> ${phoneLink(s.mobile, s.firstName)}` : '')
+          + (s.mobile && s.parentPhone ? ' · ' : '')
+          + (s.parentPhone ? `<span style="font-weight:600">Parent:</span> ${phoneLink(s.parentPhone, s.firstName, true)}` : '');
+        const pray = _prayersOn() ? `<button class="btn btn-ghost btn-sm" onclick="openPrayerModal('${s.id}')" title="Add prayer for ${esc(s.fullName)}" aria-label="Add prayer for ${esc(s.fullName)}">${icS('pray')}</button>` : '';
+        cards += `<div class="li rc ar-rc">
+          <div class="rc-top"><button type="button" class="lk-nm rc-go" onclick="showStudentDetail('${s.id}')" title="View profile" aria-label="View profile for ${esc(s.fullName)}">${esc(s.fullName)}</button>${pills ? `<span class="rc-pills">${pills}</span>` : ''}${icS('chevr')}</div>
+          <div class="li-sub">Gr ${s.grade || '—'} · ${s.gender}${bd ? ' · ' + bd : ''}</div>
+          ${termRow(L('service'), s.svcAttended, s.svcTotal, s.prevSvcAttended, s.prevSvcTotal)}
+          ${(s.grpTotal>0||s.prevGrpTotal>0)?termRow(L('smallGroup'), s.grpAttended, s.grpTotal, s.prevGrpAttended, s.prevGrpTotal):''}
+          ${prayerSummary}
+          ${(phones || pray) ? `<div class="rc-foot">${phones ? `<div class="lk-d">${phones}</div>` : ''}${pray}</div>` : ''}
         </div>`;
       }
+      body += `<div class="ar-grid">${cards}</div>`;
     }
+
+    // The same message editor as Home's Follow Up, below the list and collapsed (r22 U1), so a leader reaches students first.
+    const msLeaderObj = visLeaders.find(l => l.id === _msLeader);
+    if (msLeaderObj) body += `<div class="drop" id="ms-tpl-drop" style="margin-top:12px">
+      <button type="button" class="drop-head btn btn-ghost btn-sm" onclick="_drop('ms-tpl-drop')"><span class="drop-chev">›</span> Message template</button>
+      <div class="drop-body" style="margin-top:6px">${_smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl')}</div>
+    </div>`;
   }
 
   setApp(shell(body));
@@ -5513,7 +5517,7 @@ function colChart(sessions, maxH, opts) {
     const cls = opts && opts.neutral ? '' : s.pct >= 70 ? '' : s.pct < 40 ? 'cr' : 'lo';
     const click = opts && opts.click ? ` onclick="${opts.click(s)}" style="cursor:pointer"` : '';
     const val = (s.att != null) ? s.att : '';
-    return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${fmtDM(s.date||'')}</div></div>`;
+    return `<div class="ccol"${click}><div class="ccol-val">${val}</div><div class="ccol-bar ${cls}" style="height:${h}px"></div><div class="ccol-lbl">${s.lbl != null ? s.lbl : fmtDM(s.date||'')}</div></div>`;
   }).join('') + '</div>';
 }
 function trendBadge(dir) {
@@ -5682,8 +5686,11 @@ async function renderTrends() {
   </div>`;
 
   // Term label for the "this term" sub-heading (uses the trends term range).
+  // r22 U1: the first and last service dates (the chart's own list), not the week-start Saturdays the terms are kept in.
   const _curTerm = trends && trends.terms && trends.terms.current;
-  const _termNote = _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : 'this term';
+  const _termSess = ((trends && trends.ministry && trends.ministry.sessions) || []).filter(s => !s.isOutlier);
+  const _termNote = _termSess.length ? `${fmtDay(_termSess[0].sessionDate)} – ${fmtDay(_termSess[_termSess.length - 1].sessionDate)}`
+    : _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : '';
 
   if (_trTab === 'svc') {
     // Ministry-wide overview — director/admin only. Grade logins go straight to
@@ -5695,9 +5702,9 @@ async function renderTrends() {
     if (['director', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
-      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term (${_termNote})</div>`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}</div>`;
       body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
-        (mn.prevSeenAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevSeenAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
+        (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
       body += '</div>';
 
       // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
@@ -5706,12 +5713,13 @@ async function renderTrends() {
         if (valid.length) {
           const peak = Math.max(1, ...valid.map(s => s.totalAttended));
           const chartSess = valid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
-          body += `<div class="sh">Weekly Attendance ${trendBadge(trends.ministry.recentTrend)}</div><div class="card">`;
-          body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} valid services · avg ${trends.ministry.averageAttendance} · peak ${trends.ministry.peakAttendance} · trend across this term</div>`;
+          // The server calls under 4 weeks 'stable' by default, so the badge waits for 4 (r22 U1).
+          body += `<div class="sh">Weekly Attendance ${valid.length >= 4 ? trendBadge(trends.ministry.recentTrend) : ''}</div><div class="card">`;
+          body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${valid.length} ${esc(_serviceDayName())}${valid.length === 1 ? '' : 's'} this term · average ${trends.ministry.averageAttendance} · highest ${trends.ministry.peakAttendance}</div>`;
           body += colChart(chartSess, 56);
           body += '</div>';
         } else {
-          body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No valid services in the current term yet.</div></div>`;
+          body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:13px;color:var(--ink-faint)">No services this term yet.</div></div>`;
         }
       }
     }
@@ -5731,7 +5739,7 @@ async function renderTrends() {
         const peak = Math.max(1, ...gvalid.map(s => s.totalAttended));
         const cs = gvalid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
         body += `<div class="sh">Weekly Attendance</div><div class="card">`;
-        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${gvalid.length} valid services this term</div>`;
+        body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${gvalid.length} ${esc(_serviceDayName())}${gvalid.length === 1 ? '' : 's'} this term</div>`;
         body += colChart(cs, 56);
         body += '</div>';
       }
@@ -5804,7 +5812,7 @@ async function renderTrends() {
         const gwk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
         if (gwk.length) {
           const gpeakW = Math.max(1, ...gwk.map(w => w.attended));
-          const gwkSess = gwk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / gpeakW * 100), att: w.attended, tot: w.attended }));
+          const gwkSess = gwk.map(w => ({ date: w.weekStart, lbl: _fridayLabel(w.weekStart), pct: Math.round(w.attended / gpeakW * 100), att: w.attended, tot: w.attended }));
           body += `<div class="sh">Weekly Attendance</div><div class="card">`;
           body += colChart(gwkSess, 56);
           body += '</div>';
@@ -5819,7 +5827,7 @@ async function renderTrends() {
         const wk = (lgStats.overall.weekly || []).filter(w => w.attended != null);
         if (wk.length) {
           const peakW = Math.max(1, ...wk.map(w => w.attended));
-          const wkSess = wk.map(w => ({ date: w.weekStart, pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
+          const wkSess = wk.map(w => ({ date: w.weekStart, lbl: _fridayLabel(w.weekStart), pct: Math.round(w.attended / peakW * 100), att: w.attended, tot: w.attended }));
           body += `<div style="font-size:12px;color:var(--ink-mid);margin:12px 0 4px">Weekly attendance</div>`;
           body += colChart(wkSess, 56);
         }

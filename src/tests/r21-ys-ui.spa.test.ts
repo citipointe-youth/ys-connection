@@ -106,7 +106,11 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
       [{ prayers: false, flows: 'on' }, 'link-flows', "go('link-flows')"],
       [{ prayers: false, newYouthForms: 'on', checkin: 'off', lifegroupReport: 'off', flows: 'off' }, 'new-youth', 'nyOpen()'],
     ];
-    for (const r of ['grade', 'quad', 'director']) {
+    for (const [modules, id] of cases) { // r22 U1 (operator): a director always gets More, holding the screen and Import
+      expect(ids(nav('director', modules).n.moreItems())).toEqual([id, 'import']);
+      expect(ids(nav('director', modules).n.bottomNavItems())).toContain('more');
+    }
+    for (const r of ['grade', 'quad']) {
       for (const [modules, id, click] of cases) {
         const n = nav(r, modules).n;
         expect(ids(n.moreItems()), r + id).toEqual([id]);
