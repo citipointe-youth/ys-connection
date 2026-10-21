@@ -8,24 +8,25 @@ const html = loadIndexHtml();
 const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
 
 // ── F-07: a new SW build reloads the page only when nothing is mid-task ──
-function swHarness(st: { sending?: boolean; modal?: string; page?: string; ny?: Record<string, string>; ik?: any; queue?: any[]; vis?: string }) {
+function swHarness(st: { sending?: boolean; modal?: string; page?: string; ny?: Record<string, string>; ik?: any; queue?: any[]; vis?: string; rf?: any; rfd?: any; fields?: any[] }) {
   const reloads: number[] = [];
   const appended: any[] = [];
   const env = {
     NY: { sending: !!st.sending },
     S: { page: st.page || 'home', user: { id: 'u1' } },
-    LINK: { ik: st.ik || null },
+    LINK: { ik: st.ik || null, rf: st.rf || null, rfd: st.rfd },
     _nyRaw: () => { if ((st as any).nyThrows) throw new Error('boom'); return st.ny || {}; },
     _lkQGet: () => st.queue || [],
     location: { reload: () => reloads.push(1) },
     document: {
       visibilityState: st.vis || 'visible',
       getElementById: (id: string) => (id === 'modal-root' ? { innerHTML: st.modal || '' } : null),
+      querySelectorAll: () => st.fields || [],
       createElement: () => ({}),
       body: { appendChild: (el: any) => appended.push(el) },
     },
   };
-  const names = ['_swIdle', '_swReload', '_swOnUpdate', '_swOnHidden'];
+  const names = ['_swTyped', '_swIdle', '_swReload', '_swOnUpdate', '_swOnHidden'];
   const fns = new Function(...Object.keys(env),
     `let _swReloading = false, _swWaiting = false;\n${names.map((n) => extractFn(html, n)).join('\n')}\nreturn { ${names.join(', ')} };`,
   )(...Object.values(env));
@@ -48,6 +49,12 @@ describe('F-07 SW update reload deferral', () => {
     ['taps still in the link queue', { queue: [{ id: 'x' }] }],
     ['an unsent intake answer, detail closed, on another page', { page: 'home', ik: { resend: { k: true } } }],
     ['a check that throws (fail safe)', { page: 'new-youth', ny: null, nyThrows: true }],
+    // F1 (round 2026-10-22, CY-E2): a half-typed form on ANY screen, not only New person
+    ['a half-ticked lifegroup report (its ticks redraw, so only LINK.rf knows)', { page: 'link-groups', rf: { dirty: true } }],
+    ['a kept lifegroup report draft with changes, on another page', { page: 'home', rfd: { 'g|2026-10-23': { dirty: true } } }],
+    ['a typed note', { page: 'bus', fields: [{ tagName: 'TEXTAREA', type: 'textarea', value: 'Mum, 7:10pm', defaultValue: '' }] }],
+    ['a ticked box', { page: 'x', fields: [{ tagName: 'INPUT', type: 'checkbox', checked: true, defaultChecked: false }] }],
+    ['a changed pick list', { page: 'x', fields: [{ tagName: 'SELECT', type: 'select-one', selectedIndex: 2, options: [{ defaultSelected: false }, { defaultSelected: true }, { defaultSelected: false }] }] }],
   ])('does not reload with %s: shows one "Update ready" banner instead', (_n, st) => {
     const h = swHarness(st as any);
     h.fns._swOnUpdate();
@@ -56,6 +63,18 @@ describe('F-07 SW update reload deferral', () => {
     expect(h.appended.length).toBe(1);
     expect(h.appended[0].textContent).toBe('Update ready. Tap to reload');
     h.appended[0].onclick();
+    expect(h.reloads.length).toBe(1);
+  });
+  it('F1: fields as the screen drew them, a search box, or a report with no changes do not hold the reload', () => {
+    const h = swHarness({ page: 'link-groups', rf: { dirty: false }, rfd: { k: { dirty: false } }, fields: [
+      { tagName: 'INPUT', type: 'text', value: 'Ava', defaultValue: 'Ava' },
+      { tagName: 'INPUT', type: 'search', value: 'typed', defaultValue: '' },
+      { tagName: 'INPUT', type: 'text', value: 'typed', defaultValue: '', closest: (q: string) => (q === '.sbar' ? {} : null) },
+      { tagName: 'INPUT', type: 'hidden', value: 'x', defaultValue: '' },
+      { tagName: 'INPUT', type: 'radio', checked: true, defaultChecked: true },
+      { tagName: 'SELECT', type: 'select-one', selectedIndex: 0, options: [{ defaultSelected: false }, { defaultSelected: false }] },
+    ] });
+    h.fns._swOnUpdate();
     expect(h.reloads.length).toBe(1);
   });
   it('reloads on the next hide once idle, not while still busy', () => {
