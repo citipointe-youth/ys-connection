@@ -28,8 +28,9 @@ const row = (over: Record<string, unknown> = {}) => ({ id: 'abc123', category: '
 
 describe('Error log tab', () => {
   const f = load();
-  it('the tab is in the admin tab list', () => {
-    expect(html).toMatch(/const ADMIN_TABS = \[[^;]*\['errors','Error log'\]/);
+  it('the Error log is a section of the Problems tab; the old id still opens it', () => {
+    expect(html).toMatch(/const ADMIN_TABS = \[[^;]*\['problems','Problems'\]/);
+    expect(html).toMatch(/const ADMIN_TAB_HOME = \{[^}]*errors:'problems'/);
   });
   it('the old category filter, help table and Minimise are gone', () => {
     expect(html).not.toMatch(/const EL_CATS|const EL_HELP|function _elHelp|function elSetCat|>Minimise</);

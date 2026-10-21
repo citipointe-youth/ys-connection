@@ -5,7 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadIndexHtml, loadFns, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const ADMIN_TABS = HTML.match(/^const ADMIN_TABS = .*$/m)![0];
+const ADMIN_TABS = [/^const ADMIN_TABS = .*$/m, /^const ADMIN_TAB_HOME = .*$/m].map((re) => HTML.match(re)![0]).join(';');
 // 2026-10-20 20:00 in Brisbane (UTC+10); the console was last seen at 7:40 pm.
 const NOW = Date.parse('2026-10-20T10:00:00.000Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -202,17 +202,14 @@ describe('Y6b Home "Needs attention"', () => {
 });
 
 describe('Y6b Admin tab badges use the same counts', () => {
-  it('Error log, Unsent new people, System check and Elvanto link carry the card counts', async () => {
+  it('Problems (errors + unsent + System check fixes) and Elvanto link carry the card counts', async () => {
     at();
     const { f } = run('admin', broken());
     await f._attnLoad(true);
-    expect(f._attnBadges(f.attn)).toEqual({ errors: 3, unsent: 2, system: 2, link: 3 });
+    expect(f._attnBadges(f.attn)).toEqual({ problems: 7, link: 3 }); // 2026-10-22 B1: one Problems badge
     const h = f._adminTabsHtml('import');
-    expect(h).toContain(`switchAdminTab('errors')">Error log <span class="pill warn">3</span>`);
-    expect(h).toContain(`switchAdminTab('unsent')">Unsent new people <span class="pill warn">2</span>`);
-    expect(h).toContain(`switchAdminTab('system')">System check <span class="pill warn">2</span>`);
+    expect(h).toContain(`switchAdminTab('problems')">Problems <span class="pill warn">7</span>`);
     expect(h).toContain(`switchAdminTab('link')">Elvanto link <span class="pill warn">3</span>`);
-    expect(h).toContain('<option value="errors">Error log (3)</option>');
     expect(h).toContain(`<button class="tbbtn " onclick="switchAdminTab('accounts')">Accounts</button>`);
   });
   it('healthy: no badge anywhere, the tab list is unchanged', async () => {

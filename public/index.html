@@ -380,9 +380,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .tbbar::-webkit-scrollbar{display:none}
 .tbbtn{flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;color:var(--ink-mid);background:var(--paper-card);border:1.5px solid var(--paper-dark);cursor:pointer}
 .tbbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.admin-tabsel{display:none;width:100%;margin-bottom:16px}
 .admin-tabs{flex-wrap:wrap} /* every Admin tab visible, none cut mid-word */
-@media(max-width:767px){.admin-tabs{display:none}.admin-tabsel{display:block}}
+.tbbar.admin-tabs{-webkit-mask-image:none;mask-image:none} /* 2026-10-22: pills on every width, wrapped, so no scroll fade */
 
 /* Preview banner */
 .preview-banner{background:var(--warn);color:#1a1200;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:700;margin-bottom:8px}
@@ -3280,7 +3279,7 @@ function _attnHtml(a) {
   return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
     + L.map(([t, on]) => on ? `<div role="button" tabindex="0" onclick="${on}" style="padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="padding:5px 0">${esc(t)}</div>`).join('') + '</div>';
 }
-function _attnBadges(a) { return a ? { errors: a.errors, unsent: a.unsent, system: a.fix.length, link: a.unclear + a.waiting } : {}; }
+function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
 function _attnSlot(role) { return role === 'admin' || role === 'director' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
 // ponytail: one reload a minute per login (up to 7 small reads, admin/director only); a shared /batch section if it ever bites.
 let _attnBusy = null; // the read in flight: a second call meanwhile (stale paint + revalidate, Home then Admin) waits for it
@@ -3310,12 +3309,8 @@ async function _attnLoad(force) {
 function _attnPaint() {
   const el = document.getElementById('home-attn');
   if (el) el.innerHTML = _attnHtml(_attnMine());
-  const t = document.querySelector('.admin-tabs'), s = document.querySelector('.admin-tabsel');
-  if (!t || !s) return;
-  const w = document.createElement('div');
-  w.innerHTML = _adminTabsHtml(S.page === 'link-admin' ? 'link' : _adminTab);
-  const [nt, ns] = w.children;
-  t.replaceWith(nt); s.replaceWith(ns);
+  const t = document.querySelector('.admin-tabs');
+  if (t) t.outerHTML = _adminTabsHtml(S.page === 'link-admin' ? 'link' : _adminTab);
 }
 async function _renderHomeInner(stale, fromCache) {
   const qu = S.user; // the login; `u` below is who Home is drawn for
@@ -6487,12 +6482,15 @@ async function renderAdmin() {
   renderAdminView(settings, users, history);
 }
 
-// T1: one tab list feeds both the pill strip (desktop) and the <select> (under 768px); add new admin tabs here only.
-const ADMIN_TABS = [['import','Import'],['accounts','Accounts'],['loginActivity','Login Activity'],['data','Data'],['newyear','New Year Refresh'],['youthsetup','Youth Setup'],['system','System check'],['errors','Error log'],['unsent','Unsent new people'],['link','Elvanto link']];
+// 2026-10-22 (RV1 B1): 6 tabs, pills on every width (they wrap to 2 rows on a phone); add new admin tabs here only.
+const ADMIN_TABS = [['link','Elvanto link'],['problems','Problems'],['import','Import'],['accounts','Accounts'],['youthsetup','Youth Setup'],['newyear','New Year']];
+// Old tab ids still open (Home links, error-log text): each lights the tab that holds it now. loginActivity stays a sub-view.
+const ADMIN_TAB_HOME = { errors:'problems', unsent:'problems', system:'problems', loginActivity:'accounts', data:'newyear' };
+let _adminScroll = null; // the Problems section an old id asked for; renderAdminView scrolls to it once
 function _adminTabsHtml(cur) {
   const b = typeof _attnBadges === 'function' ? _attnBadges(_attnMine()) : {}; // Y6b: the Home "Needs attention" counts
-  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>
-    <select class="fs admin-tabsel" aria-label="Admin section" onchange="switchAdminTab(this.value)">${ADMIN_TABS.map(([id, label]) => `<option value="${id}"${cur === id ? ' selected' : ''}>${esc(label)}${b[id] ? ' (' + Number(b[id]) + ')' : ''}</option>`).join('')}</select>`;
+  cur = ADMIN_TAB_HOME[cur] || cur;
+  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>`;
 }
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
@@ -6510,6 +6508,9 @@ async function renderAdminView(settings, users, history) {
   }
 
   if (_adminTab === 'accounts') {
+    // 2026-10-22 (RV1 B1): Login activity is a sub-view of Accounts, opened from this row.
+    const laNow = Date.now(), laNever = _laFilterUsers(users, 'never', laNow).length, laQuiet = _laFilterUsers(users, 'quiet', laNow).length;
+    body += `<button class="btn btn-secondary btn-full" style="justify-content:space-between;white-space:normal;text-align:left;margin-bottom:10px" onclick="switchAdminTab('loginActivity')"><span>Login activity: ${laNever} never logged in · ${laQuiet} quiet 30+ days</span><span aria-hidden="true">›</span></button>`;
     body += `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
       <button class="btn btn-primary btn-sm" onclick="showAddUser()">+ Add Account</button>
     </div>`;
@@ -6580,14 +6581,16 @@ async function renderAdminView(settings, users, history) {
     body += renderNewYearWizard();
   }
 
-  if (_adminTab === 'system') body += '<div id="sys-check"></div>';
-  if (_adminTab === 'errors') body += '<div id="err-log">' + progBar('Loading') + '</div>';
-  if (_adminTab === 'unsent') body += '<div id="unsent-list">' + progBar('Loading') + '</div>';
+  // 2026-10-22 (RV1 B1): Problems stacks the three exception queues. Each loader paints its own heading, or nothing.
+  if (_adminTab === 'problems') body += '<div id="unsent-list"></div><div id="err-log">' + progBar('Loading') + '</div><div id="sys-check"></div>';
 
   setApp(shell(body));
-  if (_adminTab === 'system') renderSystemCheck();
-  if (_adminTab === 'errors') _elLoad();
-  if (_adminTab === 'unsent') _usLoad();
+  if (_adminTab === 'problems') {
+    _usLoad(); _elLoad(); renderSystemCheck();
+    const el = _adminScroll && document.getElementById(_adminScroll);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+  _adminScroll = null;
   _attnLoad();
 }
 
@@ -8140,7 +8143,9 @@ let _adminData = { settings: {}, users: [], history: [] };
 async function switchAdminTab(tab) {
   // 2026-10-14: Elvanto link is its own page (link-admin), reached from this tab list; any other tab from there goes back to Admin.
   if (tab === 'link') { go('link-admin'); return; }
-  _adminTab = tab;
+  // 2026-10-22 (RV1 B1): an old id opens the tab that holds it (errors/unsent/system also scroll to their section).
+  _adminScroll = { errors:'err-log', unsent:'unsent-list', system:'sys-check' }[tab] || null;
+  _adminTab = tab === 'loginActivity' ? tab : ADMIN_TAB_HOME[tab] || tab;
   if (S.page !== 'admin') { go('admin'); return; }
   // Re-entering Youth Setup always starts from the server's current state, not
   // whatever was left over from an earlier visit this session.
