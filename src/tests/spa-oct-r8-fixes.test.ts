@@ -100,6 +100,21 @@ describe('T4 New Year Refresh with Prayers off', () => {
     expect(load({ prayersOn: true, caOn: false, wiz: WIZ }).renderNewYearWizard()).not.toContain('wizStep3Confirmed');
     expect(load({ prayersOn: true, caOn: false, wiz: { ...WIZ, prayersExportDone: true } }).renderNewYearWizard()).toContain('wizStep3Confirmed');
   });
+  // r22 L3 (A3): only Full Reset is gated. A fresh run (a reload, or back from Import) never strands the admin.
+  it('a fresh run: every step but Full Reset is open; there is no "I\'ve re-imported" tick', () => {
+    const h = load({ prayersOn: true, caOn: true, wiz: {} }).renderNewYearWizard();
+    for (const fn of ['wizStep1()', 'wizStepPrayersExport()', 'wizStep2()', 'wizHandleAllocationImportFile', 'handlePrayerImportFile', 'wizHandleAuditImportFile']) expect(h).toContain(fn);
+    expect(h).not.toContain('wizStep3Confirmed');
+    expect(h).not.toContain('wizStep4Ack');
+    expect(loadIndexHtml()).not.toMatch(/function wizStep4Ack|step4Ack/);
+  });
+  it('Full Reset still needs all three exports, step 1 included', () => {
+    const done = { step1Done: true, prayersExportDone: true, step2Done: true };
+    expect(load({ prayersOn: true, caOn: true, wiz: done }).renderNewYearWizard()).toContain('wizStep3Confirmed');
+    for (const k of Object.keys(done)) {
+      expect(load({ prayersOn: true, caOn: true, wiz: { ...done, [k]: false } }).renderNewYearWizard()).not.toContain('wizStep3Confirmed');
+    }
+  });
   it('(A2) the allocation import ticks step 6 (step5Done)', () => {
     const f = loadFns(['wizHandleAllocationImportFile'], `let _wiz = {}; function renderWizard() {}
       function processAllocationImport(f, cb) { cb(); }`, ['wizHandleAllocationImportFile', 'get _wiz() { return _wiz; }']);

@@ -6939,11 +6939,13 @@ async function usDelete(id) {
 // one order that actually works, since Full Reset (step 3) deletes the leaders
 // that step 5's allocation import needs to match against, and re-importing the
 // lifegroup CSV (step 4) is what recreates them.
+// r22 L3: only Full Reset is gated (behind the three exports). Every other step is
+// always open, so a reload or a trip to Import mid-run never strands the admin.
 // State is deliberately in-memory only (session-based) — re-opening this tab
 // always starts a fresh run; there's no reliable way to know from the server
 // whether a past export was actually saved somewhere by the admin.
-let _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false };
-function _wizReset() { _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step4Ack: false, step5Done: false, step6Done: false }; }
+let _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step5Done: false, step6Done: false };
+function _wizReset() { _wiz = { step1Done: false, prayersExportDone: false, prayersDeleteOk: false, step2Done: false, step3Done: false, step5Done: false, step6Done: false }; }
 function renderWizard() { renderAdminView(_adminData.settings, _adminData.users, _adminData.history); }
 
 function _wizStepCard(n, title, desc, bodyHtml, done, locked) {
@@ -6985,24 +6987,21 @@ function renderNewYearWizard() {
   b += _wizStepCard(2, 'Export Prayers',
     "Downloads a CSV of every prayer request (you'll re-import it in step 6, alongside allocations).",
     prayersOn ? `<button class="btn btn-secondary btn-full" onclick="wizStepPrayersExport()">Export Prayers</button>` : prayersSkippedCard,
-    prayersSatisfied, !_wiz.step1Done);
+    prayersSatisfied, false);
 
   b += _wizStepCard(3, 'Export Configuration Audit Data',
     "Downloads a full backup of every saved Connection Audit year, so it survives the Full Reset in step 4. You'll re-load it in step 7, once the roster is rebuilt.",
     caOn ? `<button class="btn btn-secondary btn-full" onclick="wizStep2()">Export Configuration Audit Data</button>` : skippedCard,
-    step2Satisfied, !prayersSatisfied);
+    step2Satisfied, false);
 
   b += _wizStepCard(4, 'Full Reset',
     'Permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.',
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'This permanently deletes all students, leaders, connections, attendance, prayers and the Connection Audit. Accounts are kept. This cannot be undone.${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
-    _wiz.step3Done, !step2Satisfied || !prayersSatisfied);
+    _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);
 
   b += _wizStepCard(5, "Re-import this year's attendance",
     'Go to the Import screen and upload the new Service and Group attendance exports. This also recreates any leader tagged "(leader)" in the group export — needed before step 6 can match allocations back on.',
-    _wiz.step4Ack
-      ? `<div class="alert al-ok" style="display:flex;align-items:center;gap:6px">${icS('check')} Confirmed</div>`
-      : `<button class="btn btn-secondary btn-full" onclick="wizStep4Ack()">I've re-imported this year's attendance</button>`,
-    _wiz.step4Ack, !_wiz.step3Done);
+    '', false, false);
 
   b += _wizStepCard(6, 'Import Allocations & Prayers',
     "Re-import the allocations CSV from step 1 to restore every student–leader pairing, and the prayers CSV from step 2 to restore prayer history, onto the freshly imported roster.",
@@ -7014,7 +7013,7 @@ function renderNewYearWizard() {
       <input type="file" accept=".csv,.xlsx" style="display:none" onchange="handlePrayerImportFile(this)">
     </label>
     <div id="prayer-import-status" style="margin-top:8px"></div>` : ''}`,
-    _wiz.step5Done, !_wiz.step4Ack);
+    _wiz.step5Done, false);
 
   b += _wizStepCard(7, 'Re-import Configuration Audit Data',
     "Re-load the Connection Audit backup from step 3 so past years are available again for comparison.",
@@ -7022,7 +7021,7 @@ function renderNewYearWizard() {
       <input type="file" accept=".json" style="display:none" onchange="wizHandleAuditImportFile(this)">
     </label>
     <div id="audit-import-status" style="margin-top:8px"></div>` : skippedCard,
-    step6Satisfied, !_wiz.step5Done);
+    step6Satisfied, false);
 
   return b;
 }
@@ -7065,11 +7064,6 @@ async function wizStep3Confirmed() {
     _wiz.step3Done = true;
     renderWizard();
   } catch (e) { toast(e.message); }
-}
-
-function wizStep4Ack() {
-  _wiz.step4Ack = true;
-  renderWizard();
 }
 
 function wizHandleAuditImportFile(input) {
