@@ -67,7 +67,8 @@ function _setupSet(p, v) { globalThis.__k.push('set ' + p + '=' + v); } function
   it('the Modules card has the toggle; My Connections and the profile hide prayer controls', () => {
     const html = loadIndexHtml();
     expect(html).toContain('_setupPrayersToggle(this)');
-    expect(html).toMatch(/if \(_prayersOn\(\)\) try \{ prayers = await API\.get\('\/prayers'\)/);
+    expect(html).toContain("_prayersOn() ? API.get('/prayers').catch(() => []) : []"); // r22 U1: My Connections fetches it beside the summary
+    expect(html).toContain("const pray = _prayersOn() ? `<button class=\"btn btn-ghost btn-sm\" onclick=\"openPrayerModal");
     expect(html).toMatch(/\$\{_prayersOn\(\) \? `<button class="btn btn-secondary btn-sm" onclick="openPrayerModal/);
   });
   it('New Year Refresh counts Prayers as done and skipped when off', () => {
