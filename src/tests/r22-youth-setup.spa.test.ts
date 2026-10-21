@@ -11,6 +11,11 @@ describe('A1 the Save confirm names what will be switched off', () => {
     expect(_setupRiskyDiff({}, { logins: { simple: true }, roles: { enabled: { leader: false } } })).toEqual(['logins.simple']);
     expect(_setupRiskyDiff({ roles: { enabled: { leader: true } } }, { roles: { enabled: { leader: false } } })).toEqual(['roles.leader']);
   });
+  it('Grade off is not flagged when the draft turns Junior/Senior on (that line says they come back)', () => {
+    expect(_setupRiskyDiff({}, { logins: { simple: true }, roles: { enabled: { grade: false } } })).toEqual(['logins.simple']);
+    expect(_setupRiskyDiff({ logins: { simple: true } }, { logins: { simple: true }, roles: { enabled: { grade: false } } })).toEqual([]);
+    expect(_setupRiskyDiff({}, { roles: { enabled: { grade: false } } })).toEqual(['roles.grade']);
+  });
   it('a role turned on, or unchanged, adds nothing', () => {
     expect(_setupRiskyDiff({ roles: { enabled: { quad: false } } }, { roles: { enabled: { quad: true } } })).toEqual([]);
     expect(_setupRiskyDiff({ roles: { enabled: { quad: false } } }, { roles: { enabled: { quad: false } } })).toEqual([]);
@@ -42,7 +47,7 @@ describe('A1 the Save confirm names what will be switched off', () => {
   });
   it('New youth & consent off warns that the plans are deleted', () => {
     const h = confirm({ modules: { intakeAdmin: 'on' } }, { modules: { intakeAdmin: 'off' } });
-    expect(h).toContain('This turns New youth &amp; consent off. Its stored plans are deleted.');
+    expect(h).toContain('This turns New youth &amp; consent off. Its stored plans are deleted and its pending jobs are cancelled.');
   });
 });
 

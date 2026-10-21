@@ -7859,7 +7859,8 @@ function _setupRiskyDiff(saved, draft) {
   const out = [];
   if (simple(s) !== simple(d)) out.push('logins.simple');
   if (prayers(s) !== prayers(d)) out.push('modules.prayers');
-  for (const k of ['director', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k)) out.push('roles.' + k);
+  // Junior/Senior on retires the grade logins itself (they come back), so Grade is not also flagged.
+  for (const k of ['director', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k) && !(k === 'grade' && simple(d))) out.push('roles.' + k);
   if (intake(s) && !intake(d)) out.push('modules.intakeAdmin');
   return out;
 }
@@ -7889,7 +7890,7 @@ function confirmSaveMinistrySetup() {
     return n ? `${n} ${r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
   }).filter(Boolean);
   if (offs.length) risky += red(`This switches off ${offs.length > 1 ? offs.slice(0, -1).join(', ') + ' and ' + offs[offs.length - 1] : offs[0]}. Turning the role back on does not switch them back on.`);
-  if (diff.includes('modules.intakeAdmin')) risky += red('This turns New youth &amp; consent off. Its stored plans are deleted.');
+  if (diff.includes('modules.intakeAdmin')) risky += red('This turns New youth &amp; consent off. Its stored plans are deleted and its pending jobs are cancelled.');
   modal(`<div class="mo-title">Save Youth Setup?</div>
     ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
