@@ -394,6 +394,7 @@ Spec `docs/superpowers/specs/2026-10-10-multi-location-rollout-design.md`. Other
 - **`/health`** reports `db` and `schema {current, expected}`.
 - **Settings file**: Youth Setup "Use this setup at another location" (Download/Load settings file) replaces the old in-app deploy-guide card.
   2026-10-21 (R4a): `_dropLocationKeys` also drops `modules.intakeAdmin` (New youth & consent), so a file never changes it; System check's link-token row is `fix` when any of New person, Check-in, Flows, Lifegroup report or New youth & consent is on. DEPLOYING §5 step 8 points to `docs/leader-handout.md` (fill its blanks).
+- **2026-10-22 (A1, Youth Setup Save):** `_setupRiskyDiff` also flags `roles.<role>` going on to off and `modules.intakeAdmin` going on to off; the Save confirm adds red lines naming the active logins that switch off (counts from `_adminData.users`) and that the stored intake plans are deleted. Warning only; `_setupPatch`/`saveMinistrySetup` unchanged.
 - `/setup` is in `router.ts`, the `vercel.json` regex and `sw.js` `API_RE`.
 
 ### New person (Elvanto connect forms)

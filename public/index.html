@@ -7882,9 +7882,14 @@ function _setupRiskyDiff(saved, draft) {
   const s = saved || {}, d = draft || {};
   const simple = (c) => !!(c.logins && c.logins.simple);
   const prayers = (c) => !(c.modules && c.modules.prayers === false);
+  // 2026-10-22 (A1): a role going on -> off deactivates its logins on Save; a missing value is the default (Leader off).
+  const role = (c, k) => { const v = c.roles && c.roles.enabled && c.roles.enabled[k]; return v != null ? !!v : k !== 'leader'; };
+  const intake = (c) => !!(c.modules && c.modules.intakeAdmin === 'on');
   const out = [];
   if (simple(s) !== simple(d)) out.push('logins.simple');
   if (prayers(s) !== prayers(d)) out.push('modules.prayers');
+  for (const k of ['director', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k)) out.push('roles.' + k);
+  if (intake(s) && !intake(d)) out.push('modules.intakeAdmin');
   return out;
 }
 function confirmSaveMinistrySetup() {
@@ -7907,6 +7912,13 @@ function confirmSaveMinistrySetup() {
     const on = !(draft.modules && draft.modules.prayers === false);
     risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Prayers ${on ? 'on' : 'off'} for everyone.</div>`;
   }
+  const red = (t) => `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">${t}</div>`;
+  const offs = diff.filter((k) => k.startsWith('roles.')).map((k) => {
+    const r = k.slice(6), n = (_adminData.users || []).filter((u) => u.role === r && u.status === 'active').length;
+    return n ? `${n} ${r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
+  }).filter(Boolean);
+  if (offs.length) risky += red(`This switches off ${offs.length > 1 ? offs.slice(0, -1).join(', ') + ' and ' + offs[offs.length - 1] : offs[0]}. Turning the role back on does not switch them back on.`);
+  if (diff.includes('modules.intakeAdmin')) risky += red('This turns New youth &amp; consent off. Its stored plans are deleted.');
   modal(`<div class="mo-title">Save Youth Setup?</div>
     ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
