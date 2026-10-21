@@ -1260,8 +1260,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     /** L3 r3 (operator 2026-10-21): a YS student for each Unmatched row with nothing to pair with (no candidate, no
      *  same-name YS student, a name Elvanto has once), made by the student create service and linked as a manual Match.
      *  Idempotent: a linked row is no longer `none`. Per row, so one bad row never blocks the rest.
-   *  ponytail: no lock; one admin's re-tap is guarded (SPA in-flight flag, batches of 10, the re-read below), but two admins
-   *  in the same second could each create one (the roster-student unique index stops only a double link). Advisory lock if it bites. */
+   *  F1 (2026-10-22): two admins at once: the create claim (link_created_students, keyed on the person id) lets one make it;
+   *  the other is skipped as notUnmatched (it is linked a moment later). */
     async createStudents(actor, body) {
       const st = (await gate(actor, 'admin')).ministryConfig.structure;
       // L3 r4: at most 25 ids a call (the SPA sends 10), so a call ends well inside the 20 s route limit.
@@ -1276,11 +1276,13 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const x = (await matchRows(st)).find((m) => m.r.personId === id);
         const block = x ? x.block : 'notUnmatched';
         if (block || !x) { skip(block ?? 'notUnmatched'); continue; }
+        if (!(await d.link.claimCreate(id))) { skip('notUnmatched'); continue; } // F1: another create has it
         let s;
         try {
           s = await students.create(actor, { firstName: x.r.firstName, lastName: x.r.lastName, gender: x.r.gender as 'male' | 'female',
             grade: x.r.grade, dataSource: 'Elvanto link' }); // never a birthday: the roster has none
-        } catch (e) { if (isDbError(e)) throw e; skip('badData'); continue; }
+        } catch (e) { await d.link.settleCreate(id, null); if (isDbError(e)) throw e; skip('badData'); continue; }
+        await d.link.settleCreate(id, s.id);
         await d.link.setMatches([{ personId: id, studentId: s.id, match: 'manual' }]); // the same record a manual Match writes
         created++;
       }

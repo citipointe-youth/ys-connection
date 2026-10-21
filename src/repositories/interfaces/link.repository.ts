@@ -58,6 +58,11 @@ export interface ILinkRepository {
   /** T12: the last flows push's step list; null when that push carried none. */
   flowSteps(): Promise<LinkFlowStep[] | null>;
   setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void>;
+  /** F1 (2026-10-22): Create's claim on an Elvanto person (link_created_students, the person id is the key). true = this caller
+   *  makes the student; false = someone already did (or is), so a second create is a no-op. */
+  claimCreate(personId: string): Promise<boolean>;
+  /** F1: the student the claim made, or null to release the claim (the create failed). */
+  settleCreate(personId: string, studentId: string | null): Promise<void>;
   /** T6: every flow assignment. */
   flowAssignments(): Promise<LinkFlowAssign[]>;
   /** T6: upsert by (flowId, personId); leaderId null deletes it. */

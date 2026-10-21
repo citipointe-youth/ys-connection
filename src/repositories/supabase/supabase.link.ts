@@ -438,6 +438,16 @@ export class SupabaseLinkRepository implements ILinkRepository {
     });
   }
 
+  async claimCreate(personId: string): Promise<boolean> {
+    const r = await this.sql`insert into link_created_students (person_id) values (${personId}) on conflict (person_id) do nothing returning person_id`;
+    return r.length === 1;
+  }
+
+  async settleCreate(personId: string, studentId: string | null): Promise<void> {
+    if (studentId) await this.sql`update link_created_students set student_id = ${studentId} where person_id = ${personId}`;
+    else await this.sql`delete from link_created_students where person_id = ${personId} and student_id is null`;
+  }
+
   async addLog(rows: LinkLogRow[]): Promise<void> {
     for (const b of chunk(rows)) {
       await this.sql`insert into link_log ${this.sql(b.map((l) => ({ id: l.id, at: l.at, user_id: l.userId,
