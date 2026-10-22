@@ -1,4 +1,4 @@
-// Review 2026-10-15b (S3/S6): back restores intake tabs, dates and consent sub-tabs; back with a sheet open closes the sheet;
+// Review 2026-10-15b (S3/S6): back on the intake page (one hub screen since the consent hub, 2026-10-23); back with a sheet open closes the sheet;
 // Save answers leaves the form only when the answer was saved.
 import { describe, it, expect } from 'vitest';
 import { extractFn, loadFns, loadIndexHtml } from './helpers/extract-fn';
@@ -21,7 +21,7 @@ function navWorld() {
     const document = { querySelector: () => (env.modalOpen ? {} : null) };
     const localStorage = { setItem() {} };
     function closeModal() { env.modalOpen = false; env.calls.push('closeModal'); }
-    function _ikLeave() {} function _ikDraw() { env.calls.push('draw'); } function _ikLoad() { env.calls.push('load'); }
+    function _ikLeave() {} function _ikDraw() { env.calls.push('draw'); } function _ikLoad() { env.calls.push('load'); } function _hubLoad() { env.calls.push('hubLoad'); }
     function render() { env.calls.push('render'); } function _lkPaintGroups() {}
   `;
   env.calls = calls;
@@ -31,24 +31,20 @@ function navWorld() {
   return { env, ...fns(env) };
 }
 
-describe('S3 back: intake tab, date and consent sub-tab come back', () => {
-  it('Consents tab then back -> Intakes tab with its date', () => {
+describe('S3 back on the consent hub: one screen, only an open family matters', () => {
+  it('a family then back -> the hub, reloaded quietly', () => {
     const w = navWorld();
-    w.navPush(); // what _ikTab does before switching
-    Object.assign(w.env.LINK.ik, { tab: 'consent', date: '2026-10-16', csub: 'forms' });
+    w.navPush(); // what _hubOpen does
+    w.env.LINK.ik.key = 'k1';
     w._navPop();
-    expect(w.env.LINK.ik.tab).toBe('intake');
-    expect(w.env.LINK.ik.date).toBe('2026-10-09');
-    expect(w.env.LINK.ik.csub).toBe('last');
-    expect(w.env.calls).toContain('load');
+    expect(w.env.LINK.ik.key).toBeNull();
+    expect(w.env.calls).toContain('hubLoad');
+    expect(w.env.calls).not.toContain('load');
   });
-  it('another date then back -> the first date, same tab', () => {
+  it('no snapshot carries a tab, date or sub-tab any more', () => {
     const w = navWorld();
     w.navPush();
-    w.env.LINK.ik.date = '2026-10-02';
-    w._navPop();
-    expect(w.env.LINK.ik.date).toBe('2026-10-09');
-    expect(w.env.LINK.ik.tab).toBe('intake');
+    expect(w.NAV.stack[0]).toMatchObject({ t: null, d: null, c: null });
   });
 });
 
@@ -104,15 +100,5 @@ describe('consent hub T9 fix I1: back from a family page forgets the hub family'
     expect(w.env.LINK.ik.key).toBeNull();
     expect(w.env.LINK.ik.hubFam).toBeNull();
     expect(w.env.LINK.ik.hubKid).toBe(0);
-  });
-  it('_ikOpen (an old list row, or step 0 Consents via _ikFind) clears the hub family', () => {
-    const I: any = { list: { rows: [{ key: 'k2' }] }, hubFam: { title: 'Ava Sample', kids: [{}] }, hubKid: 1 };
-    (globalThis as any).__hubI = I;
-    const { _ikOpen } = loadFns(['_ikOpen'], `const _ik = () => globalThis.__hubI; const navPush = () => {}; const _ikDraw = () => {};
-      const _ikLoadRow = () => Promise.resolve(); const _ikSchedule = () => {}; const window = { scrollTo() {} };`);
-    _ikOpen(0);
-    expect(I.key).toBe('k2');
-    expect(I.hubFam).toBeNull();
-    expect(I.hubKid).toBe(0);
   });
 });

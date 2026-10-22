@@ -5,8 +5,7 @@ import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const SRC = loadIndexHtml();
 const LK_FF_SRC = SRC.match(/^const LK_FF = .*;/m)![0];
-const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick',
-  '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
+const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkHubOwned', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
   '_lkFlowBucket', '_lkFfGet'];
 const PRELUDE = `
   ${LK_FF_SRC}
@@ -18,6 +17,7 @@ const PRELUDE = `
   var document = { visibilityState: 'visible' };
   const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep'];
   function _lkQGet() { return QUEUE.slice(); }
+  function _ikModuleOn() { return false; } // consent hub (Task 11): module off, Flow steps as before
   function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
   function _lkCapOff() { return false; }
   function _juniorMin() { return 7; }

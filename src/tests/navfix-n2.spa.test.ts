@@ -321,26 +321,6 @@ describe('D6 intake wording: a pending row over 15 min says the console has not 
   });
 });
 
-describe('C-B10 Refresh: one ask at a time, mode read before the await', () => {
-  it('double tap -> one POST; a tab switch mid-ask keeps the asked mode', async () => {
-    const posts: any[] = [];
-    let release: () => void = () => {};
-    const f = new Function('posts', 'rel', `
-      const I0 = { tab: 'intake', date: '2026-10-09', dates: [], ref: null };
-      function _ik() { return I0; }
-      const API = { post: (p, b) => { posts.push(b); return new Promise((r) => { rel.set(() => r({ asked: true })); }); } };
-      const toast = () => {}, _ikDraw = () => {}, _ikLoad = () => {}, _lkLastFriday = () => '2026-10-09';
-      ${extractFn(HTML, '_ikRefresh')}
-      return { _ikRefresh, I: I0 };`)(posts, { set: (fn: () => void) => { release = fn; } });
-    const p = f._ikRefresh();
-    f._ikRefresh();
-    expect(posts.length).toBe(1);
-    f.I.tab = 'consent';
-    release(); await p;
-    expect(f.I.ref.mode).toBe('intake');
-  });
-});
-
 describe('C-B11 late toasts name the family when another one is open', () => {
   const refuse = (b: any) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', message: 'No.' }] });
   it('sheet Save refused after the user opened another family -> "<title>: No."; still on it -> "No."', async () => {

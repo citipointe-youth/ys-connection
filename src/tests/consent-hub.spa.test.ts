@@ -213,3 +213,17 @@ describe('bulk buttons', () => {
     expect(B._hubBulkHtml('consent', M)).toBe('');
   });
 });
+describe('one way in: Flow steps', () => {
+  const mk = (page: string, on: boolean) => loadFns(['_lkHubOwned'], `const S = { page: '${page}' }; const _ikModuleOn = () => ${on};
+    const _lkFirstStep = (k) => (k === 'parent' ? { flowId: 'pf', stepId: 'p1' } : null);`, ['_lkHubOwned']);
+  it('step 0 and Parent Consent step 1 are the hub\'s on Flow steps; the hub itself and other flows are not', () => {
+    const F2 = mk('link-flows', true);
+    expect(F2._lkHubOwned({ consentStep: true })).toBe(true);
+    expect(F2._lkHubOwned({ flowId: 'pf', stepId: 'p1' })).toBe(true);
+    expect(F2._lkHubOwned({ flowId: 'other', stepId: 'x' })).toBe(false);
+    expect(mk('link-intake', true)._lkHubOwned({ consentStep: true })).toBe(false); // the hub's own Remove / Mark consent use the sheet
+  });
+  it('without New youth & consent (module off) step 0 stays completable on Flow steps', () => {
+    expect(mk('link-flows', false)._lkHubOwned({ consentStep: true })).toBe(false);
+  });
+});

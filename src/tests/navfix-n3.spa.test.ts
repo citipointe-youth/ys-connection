@@ -44,43 +44,6 @@ function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: an
 }
 const GUARD = ['_navSnap', '_navSame', '_here', '_still'];
 
-describe('C-B4 Save all opens its sheet only where it started', () => {
-  const names = [...GUARD, '_ikSaveAllOpen'];
-  const stubs = `const _ikReadyRows = (l) => l.rows; const _ikSaveAllItems = (dets) => ({ items: dets.map((d) => ({ key: d.row.key, title: d.row.title, outcome: '', payload: {} })), skipped: [] });
-    const _ikSaveAllGroups = () => ''; const _ikD26 = () => '';`;
-  function run(change?: (fns: any) => void) {
-    const t: any = { modals: [] as string[], draws: 0 };
-    const I: any = { tab: 'consent', date: '2026-10-16', key: null, csub: 'last', list: { rows: [{ key: P(1), title: 'Ava' }] }, saBusy: false, saErr: {} };
-    let fns: any;
-    fns = new Function('__t', '__I', '__chg', `
-      const S = { page: 'link-intake' }; const NAV = { stack: [] }; const LINK = { gid: null, rf: null, ik: __I };
-      const document = { querySelector: () => null };
-      const _ik = () => LINK.ik; const _ikSt = () => null; const esc = (s) => String(s); const toast = () => {};
-      const _ikDraw = () => { __t.draws++; }; const modal = (h) => __t.modals.push(h);
-      const API = { fresh: () => Promise.resolve().then(() => { __chg(); return { row: { key: '${P(1)}', title: 'Ava' }, detail: {} }; }) };
-      ${stubs}
-      ${src(names)}
-      return { _ikSaveAllOpen, S, NAV, LINK };`)(t, I, () => change && change(fns));
-    return { fns, t, I };
-  }
-  it('still on the list -> the confirm sheet opens', async () => {
-    const { fns, t } = run();
-    await fns._ikSaveAllOpen();
-    expect(t.modals.length).toBe(1);
-  });
-  it('went Home while the rows were read -> no sheet, busy cleared', async () => {
-    const { fns, t, I } = run((f) => { f.S.page = 'home'; });
-    await fns._ikSaveAllOpen();
-    expect(t.modals.length).toBe(0);
-    expect(I.saBusy).toBe(false);
-  });
-  it('opened a family while the rows were read -> no sheet', async () => {
-    const { fns, t } = run((f) => { f.LINK.ik.key = P(9); });
-    await fns._ikSaveAllOpen();
-    expect(t.modals.length).toBe(0);
-  });
-});
-
 describe('S-3 Save all sends chunks of 20 and says when a chunk will go again by itself', () => {
   const items = (n: number) => Array.from({ length: n }, (_, i) => ({ key: P(i + 1), title: 'Kid ' + i, outcome: '', payload: { row: P(i + 1) } }));
   it('45 items -> 3 POSTs of 20, 20, 5', async () => {
@@ -221,16 +184,8 @@ describe('S-1 consent fix / link lines come back after the app was closed (_ikFi
     expect(b.I.fixes).toEqual({});
     expect(b.t.draws).toBe(0);
   });
-  it('opening Mismatches or Unlinked asks once; Forms does not', async () => {
-    const stubs = `const _ikLkGate = () => ''; const _ikClCap = () => true; const _ikFixBanner = () => ''; const _ikLkStatusHtml = () => ''; const _ikLkResHtml = () => '';
-      const icS = () => '';`;
-    const { fns, t } = env(['_ikLk', '_ikLkBusy', '_ikLkPage', '_ikFixRestore', '_ikFixPoll'], { fresh: () => [], extra: stubs });
-    fns._ikLkPage('forms', null);
-    expect(t.fresh.length).toBe(0);
-    fns._ikLkPage('mismatches', null);
-    fns._ikLkPage('unlinked', null);
-    await Promise.resolve(); await Promise.resolve();
-    expect(t.fresh).toEqual(['/link/actions?type=consentFix', '/link/actions?type=consentLink']);
+  it('consent hub: every hub load asks (the old Tidy up screens did); the function itself asks once per intake state', () => {
+    expect(extractFn(loadIndexHtml(), '_hubLoad')).toContain('_ikFixRestore();');
   });
 });
 

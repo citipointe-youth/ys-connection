@@ -8,8 +8,8 @@ const HTML = loadIndexHtml();
 const BNE = 'Australia/Brisbane', SYD = 'Australia/Sydney';
 const IK_HOLD = HTML.match(/^const IK_HOLD = \{[\s\S]*?\n\};/m)![0];
 const NAMES = [...SITE_TIME_FNS, 'esc', 'progBar', 'fmtDay', '_lkDay', '_lkAddDays', '_lkTime', '_lkLastFriday', '_lkStepBlock',
-  '_lkConsentWait', '_lkNotReceivedText', '_lkFlowDue', '_ikHoldText', '_ikNames', '_ikNm', '_ikVal', '_ikPoss', '_ikRowsHtml',
-  '_ikNrRowHtml', '_ikNrState', '_ikNrOk', '_ikConsentHelp', '_ikD26', '_ikNrAllHtml', '_loginActivityBodyHtml'];
+  '_lkConsentWait', '_lkNotReceivedText', '_lkFlowDue', '_ikHoldText', '_ikNames', '_ikNm', '_ikVal', '_ikPoss',
+  '_ikConsentHelp', '_ikD26', '_loginActivityBodyHtml']; // consent hub: the old list and Other rows are gone
 // structure = undefined: settings not loaded yet (the defaults apply).
 function spa(structure?: Record<string, unknown>) {
   (globalThis as any).__y3b = structure;
@@ -32,14 +32,10 @@ const BEFORE = {
   notRec: 'No consent reply by Fri 3 Jan 2020 9am. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.',
   late: 'The consent form came in after Friday 9 am, so it counts for next week.',
   wait: "Parents can still reply until Friday 9 am, so consent isn't assumed yet. Check again after 9 am.",
-  empty: '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at 9am Friday.</div>',
-  nrOk: '<div class="lk-d">No reply by Fri 3 Jan 2020, 9am</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm" onclick="_ikNrOpen(0)">Mark not received</button></div>',
-  nrWait: '<div class="lk-d">Waiting (consent Fri 2 Jan 2099)</div>',
   due: '<span>Waiting (consent Fri 2 Jan 2099)</span>',
   // Fix round 1: the consent help, the D26 line, Mark all and the Login Activity card.
   help: "<details class=\"lk-done\" ontoggle=\"_ik().helpOpen = this.open\"><summary>How consent is decided <i></summary><div class=\"card lk-d\"><p class=\"ik-line\">For students whose first form was the Friday before, the parent&#39;s reply is form 3 of your youth forms.</p><p class=\"ik-line\">A reply in the window (that Friday 00:00 to this Friday 9:00, Brisbane) with the opt-out &quot;Contact with my child&quot; ticked, or anything in the total answer, is No contact: approve the form and remove the student from New People step 0.</p><p class=\"ik-line\">A reply without the opt-out is Contact allowed: approve the form and complete step 0.</p><p class=\"ik-line\">No reply is assume consent only with dated proof the parent was texted about this student: mark consent not received and complete step 0.</p><p class=\"ik-line\">A late, unmatched, unsure or double reply needs you.</p></div></details>",
   d26: "Assume consent only where the parent was texted before the Monday after the intake Friday, and no unmatched form came in.",
-  nrAll: "<div class=\"strip\"><span class=\"lk-d\">2 on this page had no reply by their consent Friday.</span><button type=\"button\" class=\"btn btn-primary btn-sm\" onclick=\"_ikNrOpen(-1)\">Mark all 2</button></div>",
   la: "<div class=\"card\" style=\"margin-bottom:10px\">\n      <div style=\"font-size:13px;font-weight:600;margin-bottom:8px\">0 of 0 accounts never logged in · 0 quiet for 30+ days</div>\n      <div style=\"display:flex;gap:6px;flex-wrap:wrap\"><button class=\"btn btn-sm btn-primary\" onclick=\"setLaMode('all')\">All</button><button class=\"btn btn-sm btn-secondary\" onclick=\"setLaMode('never')\">Never logged in</button><button class=\"btn btn-sm btn-secondary\" onclick=\"setLaMode('quiet')\">Quiet 30+ days</button></div>\n      <div class=\"help-text\" style=\"margin-top:8px\">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are Brisbane time.</div>\n    </div><div class=\"help-text\">No accounts yet.</div>",
 };
 const WAIT = 'Waiting for replies until Friday 9 am';
@@ -51,13 +47,9 @@ function lines(f: Record<string, any>) {
     notRec: f._lkNotReceivedText({ consentFriday: '2020-01-03' }),
     late: f._ikHoldText({ text: 'Late consent form', role: 'student' }, {}),
     wait: f._ikHoldText({ text: WAIT, role: 'student' }, {}),
-    empty: f._ikRowsHtml({ rows: [] }, {}, false),
-    nrOk: f._ikNrRowHtml({ rowId: 'r', consentFriday: '2020-01-03', notReceivedOk: true, flowId: 'f', stepId: 's' }, 0, false),
-    nrWait: f._ikNrRowHtml({ rowId: 'r', consentFriday: '2099-01-02', notReceivedOk: false }, 0, false),
     due: f._lkFlowDue({ consentStep: true, consentFriday: '2099-01-02' }, '2026-10-20'),
     help: f._ikConsentHelp(),
     d26: f._ikD26(),
-    nrAll: f._ikNrAllHtml([{ rowId: 'a', notReceivedOk: true, flowId: 'f', stepId: 's' }, { rowId: 'b', notReceivedOk: true, flowId: 'f', stepId: 's' }], false),
     la: f._loginActivityBodyHtml([]),
   };
 }
@@ -108,14 +100,10 @@ describe('Y3b SPA site time', () => {
     expect(f._lkStepBlock({ consentStep: true, consent: null, consentFriday: '2099-01-03' }))
       .toBe('Waiting for the consent reply. Complete opens after Sat 3 Jan 2099 7:30pm.');
     expect(f._ikHoldText({ text: 'Late consent form' }, {})).toBe('The consent form came in after Saturday 7:30 pm, so it counts for next week.');
-    expect(f._ikRowsHtml({ rows: [] }, {}, false)).toContain('Everyone else is added at 7:30pm Saturday.');
-    expect(f._ikNrRowHtml({ rowId: 'r', consentFriday: '2020-01-04', notReceivedOk: true, flowId: 'f', stepId: 's' }, 0, false))
-      .toContain('No reply by Sat 4 Jan 2020, 7:30pm');
     expect(f._siteInstant('2026-10-17', '19:30')).toBe(Date.parse('2026-10-17T19:30:00+11:00'));
     const l = lines(f);
     expect(l.help).toContain('A reply in the window (that Saturday 00:00 to this Saturday 19:30, Sydney) with');
     expect(l.d26).toBe('Assume consent only where the parent was texted before the Monday after the intake Saturday, and no unmatched form came in.');
-    expect(l.nrAll).toContain('2 on this page had no reply by their consent Saturday.');
     expect(l.la).toContain('Times are Sydney time.');
     expect(spa({ timeZone: 'Australia/Lord_Howe', consentCutoff: '08:05' })._ikConsentHelp()).toContain('(that Friday 00:00 to this Friday 8:05, Lord Howe)');
   });

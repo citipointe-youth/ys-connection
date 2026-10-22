@@ -771,7 +771,6 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-svc{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lk-svc-t{font-weight:700;font-size:16px}
 .lk-mb{margin-bottom:10px}
-.lk-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.lk-tiles .btn{min-height:44px}.lk-tiles .btn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-light);color:var(--accent-dark)}
 .lk-filters{display:flex;gap:8px;margin-bottom:10px}
 .lk-filters .fs{flex:0 0 132px}
 .lk-filters.wrap{flex-wrap:wrap}.lk-filters.wrap .fi{min-width:0;flex:1 1 140px}
@@ -887,7 +886,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-stl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-8px 0 10px}
 .ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:32px}
 .ik-chg-dnc{color:#b91c1c;font-weight:700}.ik-ict{font-size:11px;font-weight:700;color:#b91c1c}
-.ik-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0}
 /* UI standard (E): a Mismatches field as two columns, Form | Profile; an empty side reads "blank" in muted italics. */
 .ik-mis{font-size:13px;margin-top:var(--s2)}.ik-mis b{display:block;font-weight:600;margin-bottom:2px}
 .ik-mis2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);max-width:560px}.ik-mis2>div{min-width:0;overflow-wrap:anywhere}
@@ -895,9 +893,6 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-blank{color:var(--ink-faint);font-style:italic}
 .ik-cnt{margin-bottom:var(--s3)}
 /* Consent sub-pages: the screen name is the title, "New youth & consent" its eyebrow. */
-.ik-ph:has(+#ik-page .ik-tt) h1{font-family:var(--font);font-size:var(--t-label);color:var(--ink-mid);text-transform:uppercase;letter-spacing:.04em;margin-bottom:var(--s1)}
-.ik-ph:has(+#ik-page .ik-tt){margin-bottom:0}
-.ik-tt{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2;margin-bottom:var(--s4)}
 /* UI standard (A): one row-card. .rc-top = name + one pill top-right; .lk-d meta lines; .rc-foot = actions, right-aligned;
    two buttons share the row and stack full width when they don't fit. A row that opens something (Profile) is one link
    (.rc-go) stretched over the card, with a chevron; the footer sits above it so its buttons still take their own taps. */
@@ -1510,7 +1505,7 @@ function _navLanding(page) {
   if (page === 'link-groups' && !(LINK.rf && LINK.rf.dirty && LINK.rf.mode === 'edit')) { LINK.gid = null; LINK.rf = null; }
   if (page === 'link-intake' && LINK.ik) {
     _ikLeave();
-    Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, date: null, list: null, saErr: {}, csub: 'last', doneOpen: false });
+    Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, date: null, list: null, saErr: {}, hubQ: '', hubFam: null });
   }
   if (page === 'bus') { BUS.tab = 'roster'; BUS.carsOpen = false; } // BUS-1: Students (Car setup for a junior leader via _busPickTab)
 }
@@ -1518,9 +1513,9 @@ function _navLanding(page) {
 // history entry; the header arrow, Android back and iPhone swipe-back all pop the same stack.
 const NAV = { stack: [] };
 function _navSnap() {
-  const p = S.page, I = p === 'link-intake' ? LINK.ik : null; // intake: its tab, date and consent sub-tab come back too
+  const p = S.page, I = p === 'link-intake' ? LINK.ik : null; // intake: one hub screen, only an open family (i) matters
   return { p, g: p === 'link-groups' && LINK.gid ? (LINK.rf ? 2 : 1) : 0, gid: p === 'link-groups' ? LINK.gid : null, i: I && I.key ? 1 : 0,
-    t: I ? I.tab : null, d: I ? I.date : null, c: I ? I.csub : null };
+    t: null, d: null, c: null };
 }
 function _navSame(a, b) { return a.p === b.p && a.g === b.g && a.gid === b.gid && a.i === b.i && a.t === b.t && a.d === b.d && a.c === b.c; }
 function navPush() {
@@ -1565,13 +1560,7 @@ function _navPop() {
   if (s.p === 'link-intake' && LINK.ik) {
     const I = LINK.ik;
     if (I.key && !s.i) { _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null; I.hubFam = null; I.hubKid = 0; }
-    if (s.t && s.t !== I.tab) { // the tab as _ikTab sets it, then the date it showed (kept by _ikLoad when still listed)
-      _ikLeave();
-      try { localStorage.setItem('ysc.intakeTab', s.t); } catch (e) {}
-      Object.assign(I, { tab: s.t, dates: null, date: s.d, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
-    } else if (s.d && s.d !== I.date) { I.date = s.d; I.list = null; I.key = null; I.det = null; I.saErr = {}; }
-    if (s.c && s.c !== I.csub) I.csub = s.c;
-    if (same) { _ikDraw(); _ikLoad(true); return; }
+    if (same) { _ikDraw(); _hubLoad(true); return; }
   }
   render();
 }
@@ -11895,8 +11884,7 @@ function _lkFfHtml(on) {
 }
 // The rows this login sees on the screen (filters only for admin/director).
 function _lkFlowVisible() {
-  const k = _lkTilesOn() ? LINK.fFlow : '';
-  if (k === 'parent') { const f = _lkFirstStep('parent'); return (LINK.flows || []).filter((r) => f && r.flowId === f.flowId && r.stepId === f.stepId); }
+  const k = '';
   const rows = k ? (LINK.flows || []).filter((r) => _lkFlowKind(r) === k) : (LINK.flows || []);
   return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), _juniorMin()) : rows;
 }
@@ -11915,20 +11903,13 @@ function _lkFirstStep(k) {
   });
   return best && { flowId: best.flowId, stepId: best.stepId, stepOrder: best.stepOrder || 0 };
 }
-function _lkTilesOn() {
-  if (!(S.user && S.user.role === 'admin')) return false;
-  const all = (LINK.fSteps || []).concat(LINK.flows || []);
-  return all.some((x) => _lkFlowKind(x) === 'people') && all.some((x) => _lkFlowKind(x) === 'parent');
-}
-function _lkFlowPick(k) {
-  LINK.fFlow = LINK.fFlow === k ? '' : k;
-  LINK.fsel = {};
-  _lkFlowsDraw();
-}
-function _lkTilesHtml() {
-  const n = (k) => { const f = _lkFirstStep(k); return f ? (LINK.flows || []).filter((r) => r.flowId === f.flowId && r.stepId === f.stepId).length : 0; };
-  return `<div class="lk-tiles" role="group" aria-label="Flows">${[['people', 'New Students'], ['parent', 'Parent text']].map(([k, l]) =>
-    `<button type="button" class="btn btn-secondary" aria-pressed="${LINK.fFlow === k}" onclick="_lkFlowPick('${k}')">${l} · ${n(k)}</button>`).join('')}</div>`;
+// Consent hub (2026-10-23): one way in. With New youth & consent on, New People step 0 and Parent Consent step 1 are done in the hub;
+// here they are read-only with a link to it. From the hub itself (its Remove, Mark consent) the same sheet stays live.
+function _lkHubOwned(r) {
+  if (!r || S.page === 'link-intake' || !_ikModuleOn()) return false;
+  if (r.consentStep) return true;
+  const f = _lkFirstStep('parent');
+  return !!f && r.flowId === f.flowId && r.stepId === f.stepId;
 }
 // Why Complete is blocked ('' = not blocked). DO NOT CONTACT = Remove only; the New People consent step needs the consent
 // check first (the server has the final word: CONSENT_CHECK_FIRST also covers a not-done consent row we can't see).
@@ -11968,7 +11949,7 @@ function _lkFlowsDraw() { const fl = document.getElementById('lk-flist'); if (fl
 // One shared note, one completeStep item per person, all through the phone queue (the console works them one at a time;
 // each row shows its own Waiting / In Elvanto / refusal line).
 function _lkBulkOpen() {
-  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length, par = _lkTilesOn() && LINK.fFlow === 'parent';
+  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
   if (!n) return;
   if (n > 50) { toast('Up to 50 at a time. Untick some first.'); return; } // I7: one /link/batch holds at most 50
   if (!getMyLeaderId()) { _lkIamPick(_lkBulkOpen); return; }
@@ -11979,14 +11960,14 @@ function _lkBulkOpen() {
     + (nm.length > 5 ? `<details><summary class="lk-sub">${nm.length - 5} more</summary><p class="lk-sub">${nm.slice(5).join(', ')}</p></details>` : '');
   const nr = ids.filter((id) => _lkNotReceived(_lkFlowRow(id))).length; // R4: what Complete records for them
   const nrLine = nr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(nr + (nr === 1 ? ' of these has' : ' of these have') + ' no consent reply: Complete marks "Consent not received" (dated today) on their Elvanto profile first.')}</div></div>` : '';
-  modal(`<div class="mo-title">${par ? `Send parent text to ${n} famil${n === 1 ? 'y' : 'ies'}?` : `Complete ${n} step${n === 1 ? '' : 's'}`}</div>${who}${par ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : ''}${nrLine}<p class="lk-sub">The same note goes on each person.</p>
+  modal(`<div class="mo-title">Complete ${n} step${n === 1 ? '' : 's'}</div>${who}${nrLine}<p class="lk-sub">The same note goes on each person.</p>
     <div class="fg"><label class="fl" for="lk-fb-note">Note</label><textarea id="lk-fb-note" class="fi" rows="3" maxlength="1800" oninput="if(LINK.fb)LINK.fb.note=this.value"></textarea></div>
     <label class="lk-chk"><input type="checkbox" onchange="if(LINK.fb)LINK.fb.priv=this.checked"> Keep note private</label>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="_lkBulkSend()">${icS('check')} ${par ? 'Send' : 'Complete'} ${n}</button></div>`, () => { LINK.fb = null; });
+      <button type="button" class="btn btn-primary" onclick="_lkBulkSend()">${icS('check')} Complete ${n}</button></div>`, () => { LINK.fb = null; });
 }
 function _lkBulkSend() {
-  const f = LINK.fb, lid = getMyLeaderId(), ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), par = _lkTilesOn() && LINK.fFlow === 'parent';
+  const f = LINK.fb, lid = getMyLeaderId(), ids = _lkSelIds(_lkFlowVisible(), LINK.fsel);
   if (!f || !lid || !ids.length || ids.length > 50) return;
   const note = String(f.note || '').trim() ? String(f.note).slice(0, 1800) : null, priv = !!f.priv;
   LINK.fsel = {};
@@ -11999,7 +11980,7 @@ function _lkBulkSend() {
       payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: priv },
       note, leaderId: lid, _f: r.rowId }, i === ids.length - 1);
   });
-  toast(par ? ids.length + ' parent text' + (ids.length === 1 ? '' : 's') + ' queued' : ids.length + ' queued to complete', 2500);
+  toast(ids.length + ' queued to complete', 2500);
 }
 function _lkFlowDue(r, today) {
   if (_lkConsentWait(r)) return `<span>${esc('Waiting (consent ' + _lkDay(r.consentFriday) + ')')}</span>`; // R6
@@ -12025,10 +12006,9 @@ function _lkFlowsHtml() {
   const fp = LINK.fProg, bar = fp ? progBar(fp.stage || 'Reading flow steps', fp.done, fp.total) : ''; // S5: the console is updating these
   if (!rs.length && !(LINK.fSteps || []).length) return bar || '<p class="lk-hint">No flow steps for this login.</p>';
   const today = _lkToday(), boss = _lkBoss(), shown = _lkFlowVisible();
-  const tiles = _lkTilesOn(), k = tiles ? LINK.fFlow : '', first = k === 'parent' ? _lkFirstStep('parent') : null;
-  const steps = !k ? LINK.fSteps : (LINK.fSteps || []).filter((x) => _lkFlowKind(x) === k && (!first || (x.flowId === first.flowId && x.stepId === first.stepId)));
+  const steps = LINK.fSteps;
   LINK.fstep = {};
-  let top = tiles ? _lkTilesHtml() : '';
+  let top = '';
   if (S.user && S.user.role === 'admin') { // Y2b: the server's test for this year's New People flow (link-rules peopleFlowName:
     // prefix + a year, any case). None = every step-0 Complete is refused (CONSENT_FLOW_UNKNOWN), so the admin is told why.
     const pf = String((((S.settings && S.settings.ministryConfig) || {}).elvanto || {}).peopleFlowPrefix || '');
@@ -12037,12 +12017,12 @@ function _lkFlowsHtml() {
   }
   if (boss) {
     const n = _lkSelIds(shown, LINK.fsel).length;
-    top += (k === 'parent' ? '' : _lkFfHtml(_lkFfGet())) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} ${k === 'parent' ? `Send parent text (${n})` : `Complete ${n}`}</button></div>` : '');
+    top += _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button></div>` : '');
   }
   return bar + top + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
     const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, '');
-    const open = (k === 'parent' ? !(LINK.fOpen && LINK.fOpen[id] === false) : !!(LINK.fOpen && LINK.fOpen[id])) && s.rows.length > 0; // parent view opens by default
+    const open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
     LINK.fstep[id] = tk;
     const all = tk.length > 0 && tk.every((x) => LINK.fsel && LINK.fsel[x]);
@@ -12086,11 +12066,11 @@ async function _lkHomeFlows() {
 // The detail sheet for one person on one step: text them, assign a leader, complete the step.
 // "I am" is only needed to complete (decision 11): without it, Complete opens the picker first.
 function _lkCanComplete(r) {
-  return !_lkCapOff('completeStep') && !_lkStepBlock(r) && _lkFlowFree(r);
+  return !_lkHubOwned(r) && !_lkCapOff('completeStep') && !_lkStepBlock(r) && _lkFlowFree(r);
 }
 // Remove from step (rev 6): admin/director, while the console lists the type and nothing is open for the row.
 function _lkCanRemove(r) {
-  return _lkBoss() && !_lkMemOff('removeFromFlowStep') && _lkFlowFree(r);
+  return !_lkHubOwned(r) && _lkBoss() && !_lkMemOff('removeFromFlowStep') && _lkFlowFree(r);
 }
 function _lkOpenStep(id) {
   const r = _lkFlowRow(id);
@@ -12099,21 +12079,14 @@ function _lkOpenStep(id) {
   modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`, () => { LINK.fs = null; });
   if (!LINK.ldrs) _lkLoadLeaders().then(() => { if (LINK.fs) _lkStepDraw(); });
 }
-// I6 (R2-G3): the step 0 "Consents" button opens this student on the Consents tab: their sheet when they are in a pushed
-// consent week, else "Other" with the name filled in and searched (_ikFind, run once from _ikAfterLoad).
+// Consent hub: the step-0 / Parent Consent sheet opens the hub, searched for this student (a parent's row opens it unsearched).
 function _lkStepConsents() {
   const r = LINK.fs && _lkFlowRow(LINK.fs.rowId);
   if (!r) return;
-  const find = { personId: r.personId || null, name: String(r.name || '') };
-  const I = _ik();
-  if (I.tab !== 'consent') { // _ikTab's reset without its navPush (go() pushes one)
-    _ikLeave();
-    try { localStorage.setItem('ysc.intakeTab', 'consent'); } catch (e) {}
-    Object.assign(I, { tab: 'consent', dates: null, date: null, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
-  }
-  I.find = find;
+  const q = r.consentStep ? _ikFormName(r.name) : '';
   closeModal();
   go('link-intake');
+  const I = _ik(); I.hubQ = q; _ikDraw();
 }
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
@@ -12122,8 +12095,9 @@ function _lkStepHtml() {
   if (f.rm) return _lkRemoveHtml(r);
   const text = r.dnc ? dncBanner(r) + (r.mobile ? `<p class="lk-sub">Number (admin only): ${esc(fmtPhone(r.mobile))}</p>` : '')
     : href ? `<a class="btn btn-secondary btn-full lk-mb" href="${esc(href)}">Text ${r.mobileIsParent ? 'Parent' : esc(_lkFirstName(r.name))} · ${esc(fmtPhone(r.mobile))}</a>` : '<p class="lk-sub">No mobile number for this person.</p>';
-  const why = _lkStepBlock(r), blocked = r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
-    : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>${_ikModuleOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkStepConsents()">Consents</button>` : ''}` : '';
+  const hub = _lkHubOwned(r) ? '<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkStepConsents()">Open in New youth &amp; consent ' + icS('chevr') + '</button>' : '';
+  const why = _lkStepBlock(r), blocked = hub ? '' : r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
+    : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>` : '';
   let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
   if (r.personId) {
     const ls = (LINK.ldrs || []).filter((l) => l && (l.active !== false || l.id === r.assignedLeaderId)).sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
@@ -12142,7 +12116,7 @@ function _lkStepHtml() {
       ${LINK.fAssignees.map((a) => `<option value="${esc(a.personId)}"${a.personId === f.assignTo ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : '') : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
-    ${text}${blocked}${assign}${done}${rm}`;
+    ${text}${hub}${blocked}${assign}${done}${rm}`;
 }
 // The remove confirm (in the same sheet): an optional note goes to the person's Elvanto notes.
 function _lkRemoveHtml(r) {
@@ -12600,15 +12574,13 @@ async function renderLinkAdmin() {
 // admin login only, module intakeAdmin (a plain Off / On switch, R3). The console plans and writes Elvanto; this page
 // shows its pushed plan and sends the admin's answers and saves. Intake items never go through the phone queue (an
 // answer's note holds names and phones): they are posted straight to /link/batch and kept in memory only (LINK.ik,
-// dropped by _lkSoftReset at logout or a login swap). localStorage holds the selected tab only (ysc.intakeTab).
+// dropped by _lkSoftReset at logout or a login swap). One hub screen (consent hub 2026-10-23): no tabs.
 // Keys, ids and step keys never go into an onclick: handlers take an index into the loaded list or detail.
 function _ikFresh() {
-  let tab = 'intake';
-  try { if (localStorage.getItem('ysc.intakeTab') === 'consent') tab = 'consent'; } catch (e) {}
-  return { tab, head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
-    ans: {}, keepMem: {}, resend: {}, debT: null, busy: 0, busyKey: {}, poll: null, ref: null, doneOpen: false, pick: null, fix: null,
+  return { tab: 'intake', head: null, dates: null, date: null, list: null, err: null, key: null, det: null, detErr: null, gen: 0,
+    ans: {}, keepMem: {}, resend: {}, debT: null, busy: 0, busyKey: {}, poll: null, pick: null, fix: null,
     sheet: null, pendingDraw: false, helpOpen: false,
-    csub: 'last', lk: {}, lkPre: 0, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {},
+    lk: {}, lkPre: 0, fixes: {}, fixPick: null, fixPoll: null, sa: null, saBusy: false, saErr: {},
     hub: null, hubQ: '', hubAsk: 0, hubOpen: {}, hubShown: null, hubFam: null, hubKid: 0 };
 }
 function _ik() { if (!LINK.ik) LINK.ik = _ikFresh(); return LINK.ik; }
@@ -13334,79 +13306,15 @@ function _ikDraw() {
 function _ikFocusOut() { setTimeout(() => { if (_ik().pendingDraw) _ikDraw(); }, 0); }
 function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
-  if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>`;
+  if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>`;
   if (!I.dates) return progBar('Loading');
   if (!_intakeOn(st)) {
     const w = _ikOldConsole(st);
     return `<div class="lk-alert warn">${icS('info')}<div>${esc(w)}</div></div>`
-      + (/select Try again\.$/.test(w) ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLoad(false)">Try again</button>' : '');
+      + (/select Try again\.$/.test(w) ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>' : '');
   }
   return I.key ? _ikFamilyPage() : _hubPage();
 }
-function _ikListPage() {
-  const I = _ik(), st = _ikSt(), L = I.list && I.list.date === I.date ? I.list : null, consent = I.tab === 'consent';
-  const tabs = `<div class="tbbar">${[['intake', 'New youth'], ['consent', 'Consents']].map(([m, l]) => `<button type="button" class="tbbtn ${I.tab === m ? 'on' : ''}" onclick="_ikTab('${m}')">${l}</button>`).join('')}</div>`;
-  // R1 (consents run 2026-10-17): a Tidy up tool is its own screen (its title, Back returns to the plan); no Show dropdown.
-  if (consent && I.csub !== 'last') return `<h2 class="ik-tt">${esc(_ikTidyTitle(I.csub))}</h2>${_ikLkPage(I.csub, st)}`;
-  const dates = consent ? _ikWeekHtml(I) : I.dates.length
-    ? `<div class="tbbar">${I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">${esc(_lkDay(x.date))}${x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : ''}</button>`).join('')}</div>`
-    : '<div class="lk-hint">No dates yet. Press Refresh to ask the console.</div>';
-  // R1: one status line, "Checked 5:20 pm · Refresh" (a Refresh ask in flight shows its bar instead).
-  const checked = L && L.takenAt ? `<span class="lk-d${L.stale ? ' ik-grey' : ''}">Checked ${esc(_lkSeen(L.takenAt))}${L.stale ? ' · old' : ''} ·</span>` : '';
-  const status = I.ref ? _ikRefBar(I.ref, st) : `<div class="ik-stl">${checked}<button type="button" class="ik-lnk" onclick="_ikRefresh()">Refresh</button></div>`;
-  return `<div class="lk-svc lk-mb">${tabs}</div>${dates}${status}${_ikBanner(st, L, I.tab)}`
-    + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
-    + `<div id="ik-rows">${I.date ? _ikRowsHtml(L, st, I.doneOpen) : ''}</div>`
-    + (consent ? _ikTidyHtml() + _ikConsentHelp() : '');
-}
-// R1: the occasional consent tools, below the plan. A count shows only when this session already loaded that list.
-function _ikTidyList() { return [['unlinked', 'Forms with no person'], ['mismatches', 'Profiles that differ from form'], ['other', 'On step 0, not in a week'], ['forms', 'Find any consent form']]; }
-function _ikTidyTitle(k) { const t = _ikTidyList().find((x) => x[0] === k); return t ? t[1] : 'Consents'; }
-function _ikTidyHtml() {
-  const lk = _ik().lk || {};
-  return '<div class="lk-sec">Tidy up</div>' + _ikTidyList().map(([k, l]) => {
-    const x = lk[k], n = x && x.res && !x.resQ && x.res.total != null ? Number(x.res.total) : null;
-    return `<div class="li lk-row" role="button" tabindex="0" onclick="_ikConsentSub('${k}')"><div class="lk-grow"><div class="lk-nm">${esc(l)}</div></div>`
-      + (n != null ? `<span class="lk-tag">${n}</span>` : '') + icS('chevr') + '</div>';
-  }).join('');
-}
-// S5: a Refresh ask in four steps: Sent, Console picked up (it claimed after the ask), Reading Elvanto (its progress post),
-// Done (the list's newer takenAt clears I.ref with "Checked just now.").
-function _ikRefBar(ref, st) {
-  const c = st && st.console, p = c && c.progress && c.progress['intake:' + ref.mode + ':' + ref.date];
-  if (p) return progBar(p.stage || 'Reading Elvanto', 3, 4);
-  return c && c.lastSeenAt && Date.parse(c.lastSeenAt) >= ref.since - 5000 ? progBar('Console picked up', 2, 4) : progBar('Sent, waiting for the console', 1, 4);
-}
-// The list in three sections (§7.1): NEEDS YOU, READY, DONE (collapsed). Greyed while the plan is stale.
-function _ikRowsHtml(list, st, open) {
-  if (!list) return _ik().err ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_ik().err = null; _ikDraw(); _ikLoad(false)">Try again</button>' : progBar('Loading'); // F-19
-  const rows = list.rows || [];
-  if (!rows.length) return _ik().tab === 'consent' // T6/T14: a consent date lists first forms from 7 days before; repliers show early
-    ? '<div class="lk-hint">Parents who reply show here straight away. Everyone else is added at ' + _cutoffWords() + ' ' + _serviceDayName() + '.</div>'
-    : '<div class="lk-hint">No families for this date.</div>';
-  const grey = list.stale ? ' ik-grey' : '', I = _ik(), consent = I.tab === 'consent';
-  const one = (r) => {
-    const i = rows.indexOf(r), c = _ikChip(r, st, rows), tag = consent ? _ikConsentTag(r) : null, se = I.saErr && I.saErr[r.key];
-    const pills = (r.fromApp ? '<span class="lk-tag">From app</span>' : '')
-      + (tag ? `<span class="lk-tag ${tag[1]}">${esc(tag[0])}</span>` : !consent && r.outcome ? `<span class="lk-tag">${esc(r.outcome)}</span>` : '') + (c ? `<span class="lk-tag ik-${c.tone}">${esc(c.label)}</span>` : '');
-    return `<div class="li lk-row rc${grey}" role="button" tabindex="0" onclick="_ikOpen(${i})"><div class="rc-top"><div class="lk-nm">${esc(r.title)}</div>`
-      + (pills ? `<span class="rc-pills">${pills}</span>` : '') + icS('chevr') + '</div>'
-      + (r.reason ? `<div class="lk-d">${esc(r.reason)}</div>` : '') + (c ? `<div class="lk-st ${c.tone}">${esc(c.line)}</div>` : '')
-      + (se ? `<div class="lk-st bad">${esc(se)}</div>` : '') + '</div>';
-  };
-  const of = (s) => rows.filter((r) => r.status === s);
-  const sec = (label, xs) => xs.length ? `<div class="lk-sec">${label} (${xs.length})</div>` + xs.map(one).join('') : '';
-  const done = of('done');
-  const ready = _ikReadyRows(list), off = list.stale || !list.takenAt || I.saBusy;
-  // R1: consent Ready is sorted by outcome (Do not contact, Contact OK, No form) and its line says what is in the group.
-  const rd = consent ? _ikByOutcome(of('ready')) : of('ready');
-  const what = consent ? _ikOutcomeLine(rd) : "Saves every ready family. You'll confirm once.";
-  const all = ready.length ? `<div class="strip"><span class="lk-d">${esc(I.saBusy ? 'Checking each one…' : list.stale || !list.takenAt ? 'Refresh first.' : what)}</span>`
-    + `<button type="button" class="btn btn-primary btn-sm"${off ? ' disabled' : ''} onclick="_ikSaveAllOpen()">${esc(consent ? 'Save all ' + ready.length : 'Save ' + ready.length + ' to Elvanto')}</button></div>` : '';
-  return sec('Needs you', of('needs-you')) + (rd.length ? `<div class="lk-sec">${consent ? 'Ready to save' : 'Ready'} (${rd.length})</div>` + all + rd.map(one).join('') : all)
-    + (done.length ? `<details class="lk-done"${open ? ' open' : ''} ontoggle="_ikDoneToggle(this.open)"><summary>Done (${done.length}) ${icS('chevd')}</summary>${done.map(one).join('')}</details>` : '');
-}
-function _ikDoneToggle(open) { _ik().doneOpen = !!open; }
 function _ikConsentHelp() {
   return `<details class="lk-done"${_ik().helpOpen ? ' open' : ''} ontoggle="_ik().helpOpen = this.open"><summary>How consent is decided ${icS('chevd')}</summary><div class="card lk-d">`
     + [`For students whose first form was the Friday before, the parent's reply is form 3 of your youth forms.`,
@@ -13550,7 +13458,7 @@ function _ikFamilyHtml(det, list, st, a) {
     // One primary (Save to Elvanto, then Text parent); the Elvanto one-offs, Keep as is and Save answers under More.
     + `<div class="card">${_hubNextHtml(det, list, st)}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + _hubMoreHtml(det, list, st, keeps)
-    + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`; // I8 (R2-G4): the parent text is sent from Flow steps
+    + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`; // the parent text is sent from the hub (consent hub 2026-10-23)
 }
 // The consent outcome (§7.4): the form's date and outcome, Save to Elvanto (consentSave), the steps.
 function _ikConsentHtml(det, list, st) {
@@ -13690,6 +13598,7 @@ async function _hubLoad(quiet) {
     if (I.hubAsk && asked.some(Boolean) && asked.every((k) => !k || Date.parse(k.takenAt) >= I.hubAsk)) { I.hubAsk = 0; toast('Checked just now.'); }
     if (I.hubAsk && Date.now() - I.hubAsk > 180e3) { I.hubAsk = 0; toast("The console hasn't answered yet. Try again later."); }
     I.err = null;
+    _ikFixRestore(); // S-1: once per intake state (the old Tidy up screens ran it)
     if (!_hubSnapApply(snap) && (!quiet || !I.lkPre)) _ikLkWarm(_ikSt()); // ponytail: an older console warms page 1 only (25 forms); rev 19 has them all
   } catch (e) { if (_ik() === I && I.gen === gen) I.err = e.message || 'Could not load New youth & consent.'; }
   if (_ik() !== I || I.gen !== gen) return;
@@ -13919,49 +13828,19 @@ async function _ikLoadRow(quiet) {
 }
 function _ikAfterLoad() {
   const I = _ik();
-  if (I.ref) {
-    const L = I.list && I.list.date === I.ref.date ? I.list : null;
-    if (I.ref.mode !== I.tab) I.ref = null;
-    else if (L && L.takenAt && (!I.ref.prev || Date.parse(L.takenAt) > Date.parse(I.ref.prev))) { I.ref = null; toast('Checked just now.'); }
-    else if (Date.now() - I.ref.since > 120000) { I.ref = null; toast("The console hasn't answered yet. Try again later."); }
-  }
   _ikQFlush(); // C-B9: kept saves and answers go again with their own ids
   const det = I.det, key = det && det.row && det.row.key;
   // A fresh send only for an answer the server answered without saving (duplicate, error); a kept one is the flush's.
   // RV-I-m6: only a CLAIMED answer blocks it; a pending one is superseded by the server (S-4), so a parked change never sticks.
   // Legacy A10 (F2): an UNCLEAR (lease-lost) row also holds the open-row slot, so it blocks too (else a POST + toast every 5 s).
   if (key && I.resend[key] && !(I.busyKey && I.busyKey[key]) && !(det.actions || []).some((a) => a && a.type === 'intakeAnswer' && (a.status === 'claimed' || a.status === 'unclear')) && !_ikQFind('intakeAnswer', key, I.date)) { delete I.resend[key]; _ikAnswerSend(false); }
-  if (I.find && I.tab === 'consent') { const f = I.find; I.find = null; _ikFind(f); } // I6: once, so a refresh never jumps
 }
-// I6: look for the student in the pushed consent weeks (this one, then at most 2 more GETs); open their sheet, else "Other".
-async function _ikFind(f) {
-  const I = _ik(), at = (l) => ((l && l.rows) || []).findIndex((r) => r && r.key === f.personId);
-  const gone = () => _ik() !== I || S.page !== 'link-intake' || I.tab !== 'consent';
-  if (f.personId) {
-    let i = at(I.list);
-    if (i < 0) {
-      for (const x of (I.dates || []).filter((d) => d.date !== I.date).slice(0, 2)) {
-        let l = null;
-        try { l = await API.fresh('/link/intake?mode=consent&date=' + encodeURIComponent(x.date), true); } catch (e) {}
-        if (gone()) return;
-        if (at(l) >= 0) { I.date = x.date; I.list = l; i = at(l); break; }
-      }
-    }
-    if (i >= 0) { I.csub = 'last'; _ikOpen(i); return; }
-  }
-  I.csub = 'other';
-  const x = _ikLk('other'), st = _ikSt();
-  x.q = _ikFormName(f.name).slice(0, 60); // R5: First Last (the console matches either order)
-  I.findMiss = x.q; // R7
-  if (x.q && !_ikLkGate(st)) _ikLkGo('other', 1, x.q);
-  else _ikDraw();
-}
-// Every 5 s while something of mine is Pending (4 s while a Refresh is waiting); otherwise the 60 s link tick reloads.
+// Every 5 s while something of mine is Pending; otherwise the 60 s link tick reloads.
 function _ikSchedule() {
   const I = _ik();
   if (I.poll) { clearTimeout(I.poll); I.poll = null; }
   if (S.page !== 'link-intake') return;
-  const busy = !!I.ref || (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
+  const busy = (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
     || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key);
   // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
   // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
@@ -13969,36 +13848,11 @@ function _ikSchedule() {
     I.poll = null;
     if (_ik() !== I || S.page !== 'link-intake') return;
     if (document.visibilityState === 'hidden') _ikSchedule(); else if (I.key && !String(I.key).startsWith('flow:')) _ikLoad(true); else _hubLoad(true);
-  }, I.ref ? 4000 : 5000); // S5: a Refresh ask's bar moves every 4 s
+  }, 5000);
   for (const k of IK_LK_KINDS) { const x = I.lk && I.lk[k]; if (x && (x.st === 'waiting' || x.st === 'working') && !x.poll) _ikLkPoll(k); }
   if (!I.fixPoll) _ikFixPoll();
 }
 function _ikLeave() { const I = _ik(); if (I.debT) _ikAnswerSend(false); }
-function _ikTab(m) {
-  const I = _ik();
-  if ((m !== 'intake' && m !== 'consent') || I.tab === m) return;
-  navPush();
-  _ikLeave();
-  try { localStorage.setItem('ysc.intakeTab', m); } catch (e) {}
-  Object.assign(I, { tab: m, dates: null, date: null, list: null, key: null, det: null, detErr: null, err: null, ref: null, pick: null, doneOpen: false, saErr: {} });
-  _ikDraw(); _ikLoad(false);
-}
-function _ikPickDate(i) {
-  const I = _ik(), x = I.dates && I.dates[i];
-  if (!x || (x.date === I.date && I.list)) return; // F-19: the same date again retries a failed load
-  if (x.date !== I.date) navPush();
-  I.date = x.date; I.list = null; I.key = null; I.det = null; I.saErr = {}; I.err = null; // a fresh load shows Loading, not the old error
-  _ikDraw(); _ikLoad(false);
-}
-function _ikOpen(i) {
-  const I = _ik(), r = I.list && (I.list.rows || [])[i];
-  if (!r) return;
-  navPush();
-  I.key = r.key; I.det = null; I.detErr = null; I.pick = null; I.hubFam = null; I.hubKid = 0; // not a hub family: no stale strip
-  _ikDraw();
-  try { window.scrollTo(0, 0); } catch (e) {}
-  _ikLoadRow(false).then(() => { _ikDraw(); _ikSchedule(); });
-}
 // S6: keep the answers on the console (intakeAnswer, no Elvanto write), close the form; the list row then says "Answers saved".
 async function _ikAnswersSave() {
   const I = _ik(), det = I.det, key = det && det.row && det.row.key;
@@ -14010,66 +13864,6 @@ async function _ikAnswersSave() {
   if (!ok) return; // not saved: the toast already said why; stay on the form
   toast(title ? 'Answers noted for ' + title : 'Answers noted'); // I9b: no Elvanto write, so not "saved"
   if (_still(h)) navBack(); // C-B1: a late reply never pops whatever screen the user moved to
-}
-async function _ikRefresh() {
-  const I = _ik();
-  const date = I.date || _lkLastFriday(_siteDay(Date.now()));
-  if (!date || I.ref || I.refBusy) return; // C-B10: one ask at a time (a double tap sent two)
-  const mode = I.tab; // C-B10: the mode asked for, not whatever tab is showing when the reply lands
-  I.refBusy = true;
-  try {
-    const r = await API.post('/link/intake/refresh', { mode, date });
-    if (_ik() !== I) return;
-    const was = (I.dates || []).find((x) => x.date === date);
-    I.ref = { mode, date, since: Date.now(), prev: (was && was.takenAt) || null };
-    if (!I.date) I.date = date;
-    if (r && r.asked === false) toast('Asked a moment ago. Waiting for the console.');
-  } catch (e) { if (_ik() === I) toast(e.message || 'Could not ask the console.'); return; }
-  finally { I.refBusy = false; }
-  _ikDraw(); _ikLoad(true);
-}
-// ── R2 Consents (run 2026-10-15; consents run 2026-10-17 R1): the consent plan + Save all ready, and below it the Tidy up tools,
-// each its own screen (I.csub; Back returns to the plan): Forms with no person, Profiles that differ from form and Find any
-// consent form (a consentLookup read through the outbox, polled at GET /link/consents/lookup), On step 0, not in a week.
-// R8 Save all: one confirm queues N saves in one /link/batch call; the console runs them one at a time; each row's chip shows
-// its own status. Handlers take indexes, never ids or names.
-function _ikConsentSub(k) {
-  const I = _ik();
-  if (!['last', 'forms', 'unlinked', 'mismatches', 'other'].includes(k) || I.csub === k) return;
-  navPush();
-  I.csub = k;
-  _ikDraw();
-  try { window.scrollTo(0, 0); } catch (e) {}
-  if (k === 'last') _ikLoad(true);
-}
-// The Friday a consent date's students first came (consent date D lists first forms from D-7).
-function _ikPrevWeek(ymd) {
-  const t = Date.parse(String(ymd) + 'T00:00:00Z');
-  return isFinite(t) ? new Date(t - 7 * 864e5).toISOString().slice(0, 10) : String(ymd || '');
-}
-// R1: one control for the week: up to 3 chips named by cohort ("New people from" Fri 16 Oct), the intake tab's chip markup.
-function _ikWeekHtml(I) {
-  if (!I.dates.length) return '<div class="lk-hint">No weeks yet. Tap Refresh to ask the console.</div>';
-  return '<div class="lk-d">New people from</div><div class="tbbar">' + I.dates.map((x, i) => `<button type="button" class="tbbtn ${x.date === I.date ? 'on' : ''}" onclick="_ikPickDate(${i})">`
-    + esc(_lkDay(_ikPrevWeek(x.date)) + (x.counts && x.counts.needsYou ? ' · ' + Number(x.counts.needsYou) : '')) + '</button>').join('') + '</div>';
-}
-// UI review H2: ONE tag says both "form back?" and the outcome; DO NOT CONTACT is red (R1). [label, tone] or null.
-function _ikConsentTag(r) {
-  const o = r && r.outcome;
-  if (o === 'Contact allowed') return ['Contact OK', 'ik-ok'];
-  if (o === 'No contact') return ['Do not contact', 'ik-bad'];
-  if (o === 'No reply: assume consent') return ['No form · assume OK', 'ik-prac'];
-  if (r && r.status === 'needs-you' && /form/i.test(r.reason || '')) return ['Check form', 'ik-wait'];
-  return null;
-}
-// R1: Ready in outcome order (Do not contact, Contact OK, No form), names A-Z inside each; the summary line counts the same.
-function _ikOutcomes() { return [['No contact', 'do not contact'], ['Contact allowed', 'contact OK'], ['No reply: assume consent', 'no form']]; }
-function _ikByOutcome(rows) {
-  const O = _ikOutcomes(), at = (r) => { const i = O.findIndex((o) => o[0] === (r && r.outcome)); return i < 0 ? O.length : i; };
-  return (rows || []).slice().sort((a, b) => at(a) - at(b) || String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }));
-}
-function _ikOutcomeLine(rows) {
-  return _ikOutcomes().map(([o, l]) => [(rows || []).filter((r) => r && r.outcome === o).length, l]).filter(([n]) => n).map(([n, l]) => n + ' ' + l).join(' · ');
 }
 // Ready rows Save all may take: nothing of theirs open, and no save already sent / unclear / practice.
 function _ikReadyRows(list) {
@@ -14091,29 +13885,6 @@ function _ikSaveAllItems(dets, date, type, list, st) {
       payload: type === 'consentSave' ? { date, row: row.key, confirmed: keys } : { date, row: row.key, confirmed: keys, one: false } });
   }
   return { items, skipped };
-}
-async function _ikSaveAllOpen() {
-  const I = _ik(), rows = _ikReadyRows(I.list), date = I.date, mode = I.tab, type = mode === 'consent' ? 'consentSave' : 'intakeSave';
-  if (!rows.length || I.saBusy || !date) return;
-  I.saBusy = true; _ikDraw();
-  const h = _here(); // C-B4: the sheet opens only if the user is still on this list
-  const dets = await Promise.all(rows.map((r) => API.fresh('/link/intake/row?mode=' + mode + '&date=' + encodeURIComponent(date) + '&key=' + encodeURIComponent(r.key), true)
-    .catch(() => ({ row: { key: r.key, title: r.title }, detail: null }))));
-  if (_ik() !== I) return;
-  I.saBusy = false;
-  if (!_still(h) || I.tab !== mode || I.date !== date) { _ikDraw(); return; }
-  const x = _ikSaveAllItems(dets, date, type, I.list, _ikSt()), n = x.items.length, consent = type === 'consentSave';
-  _ikDraw();
-  if (!n) { toast('Nothing to save yet. Open each one to see why.'); return; }
-  I.sa = { type, date, items: x.items };
-  const foot = 'The console saves them one at a time.'
-    + (x.skipped.length ? ' Not included (open them to see why): ' + x.skipped.join(', ') + '.' : '');
-  modal(`<div class="mo-title">${esc(consent ? `Save ${n} student${n === 1 ? '' : 's'} to Elvanto?` : `Save ${n} famil${n === 1 ? 'y' : 'ies'} to Elvanto?`)}</div>`
-    + (consent ? _ikSaveAllGroups(x.items)
-      : x.items.map((it) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(it.title)}</span>${it.outcome ? `<span class="lk-tag">${esc(it.outcome)}</span>` : ''}</div>`).join(''))
-    + (consent && x.items.some((it) => it.outcome === 'No reply: assume consent') ? `<div class="ik-line">${esc(_ikD26())}</div>` : '')
-    + `<p class="lk-sub lk-mt">${esc(foot)}</p>`
-    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSaveAllGo()">${esc('Save ' + n)}</button></div>`);
 }
 // UI review M3: one line per outcome saying what each save does in Elvanto, then the names (folded past 5).
 function _ikSaveAllGroups(items) {
@@ -14189,13 +13960,6 @@ function _ikLkReason(r) {
     cancelled: 'This lookup was cancelled. Search again.',
     unreadable: "Couldn't read the answer. Search again." })[r] || "The console couldn't do this lookup. Try again later.";
 }
-function _ikLkSearch(kind) {
-  let q = '';
-  try { const el = document.getElementById('ik-q-' + kind); q = el ? el.value : ''; } catch (e) {}
-  _ikLkGo(kind, 1, q);
-}
-function _ikLkKey(kind, e) { if (e && e.key === 'Enter') { e.preventDefault(); try { e.target.blur(); } catch (er) {} _ikLkSearch(kind); } }
-function _ikLkTurn(kind, d) { const x = _ikLk(kind); if (x.res) _ikLkGo(kind, (Number(x.res.page) || 1) + d, x.resQ); }
 // ux-run-2026-10-18 (operator P1/P2/P4): entering New youth & consent (Consents tab) warms every Tidy up list in the background
 // (consentLookup is a READ: the console never writes Elvanto for it), so a tap shows it ready with its "checked" time.
 // P4 hybrid: the last full page-1 answer of each list is kept as its server ID only (never a name; the server keeps answers 24 h)
@@ -14304,12 +14068,6 @@ function _ikLkErr(x, e) {
   else if (e.status === 404) { x.st = 'failed'; x.msg = 'That lookup has expired. Search again.'; }
   else { x.st = 'failed'; x.msg = e.message || 'Something went wrong. Search again.'; }
 }
-// "Check again": a queued request is polled again; one that never reached the server is sent again.
-function _ikLkAgain(kind) {
-  const x = _ikLk(kind);
-  if (x.queued && x.id) { x.st = 'waiting'; x.msg = null; x.since = Date.now(); _ikDraw(); _ikLkPoll(kind); }
-  else return _ikLkGo(kind, x.page, x.q, x.st === 'offline' ? x.id : null, x.st === 'offline' ? x.after : null); // the POST may have landed: same id = replay, not a second scan
-}
 // Apply one poll reply; true = keep polling. A first mismatches scan is slow, so it waits longer before giving up.
 function _ikLkApply(x, r, now) {
   const s = r && r.status;
@@ -14351,11 +14109,6 @@ function _ikLkPoll(kind) {
     }
     _ikDraw();
   }, ms);
-}
-function _ikLkPages(r) {
-  const page = Number(r && r.page) || 1, size = Number(r && r.pageSize) || 25, n = ((r && r.rows) || []).length;
-  const pages = r && r.total != null ? Math.max(1, Math.ceil(r.total / size)) : null;
-  return { page, pages, prev: page > 1, next: pages ? page < pages : n >= size };
 }
 // R1 (UX cuts 4, 5): one status chip in words on a consent-form row: no icons, no legend, no other opt-outs (they never change
 // DO NOT CONTACT). A pending form is never "Consent given"; its meta line says Pending. [label, tone] or null.
@@ -14412,63 +14165,6 @@ function _ikDncLine(dnc, name) {
   return dnc === 'on' ? 'This turns DO NOT CONTACT on: after this, ' + name + ' is DO NOT CONTACT and leaders lose their number.'
     : dnc === 'off' ? 'This turns DO NOT CONTACT off: after this, leaders CAN contact ' + name + '.' : '';
 }
-function _ikLkStatusHtml(kind, x, st) {
-  const note = (t) => (t ? `<div class="lk-d lk-mb">${esc(t)}</div>` : ''), p = x.prog; // S5: a bar, real numbers once the console posts them
-  if (x.st === 'asking') return progBar('Sending your search');
-  if (x.st === 'waiting') return progBar('Waiting for the console to pick this up') + note(x.reason === 'console-busy' ? "The console is busy with the service. Lists open again after the service."
-    : x.reason ? "The console couldn't read Elvanto just now. It tries again in a few minutes." : _ikSeenLine(st).trim());
-  if (x.st === 'working') return progBar(p ? p.stage : 'The console is reading Elvanto', p && p.done, p && p.total) + note(kind === 'mismatches' || kind === 'other' ? 'A first check can take a few minutes.' : '');
-  if (x.st === 'timeout' || x.st === 'offline' || x.st === 'failed') {
-    const again = x.st === 'failed' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLkGo('${kind}', ${Number(x.page) || 1}, _ikLk('${kind}').q)">Search again</button>`
-      : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikLkAgain('${kind}')">Ask again</button>`;
-    return `<div class="lk-alert warn" role="alert">${icS('info')}<div>${esc(x.msg || '')}${_ikSeenLine(st) ? `<div class="lk-d">${esc(_ikSeenLine(st).trim())}</div>` : ''}</div></div><div class="lk-acts lk-mb">${again}</div>`;
-  }
-  return '';
-}
-function _ikFixBanner(st) {
-  const caps = (st && st.console && st.console.capabilities) || {}, cap = caps.consentFix;
-  const t = !cap || cap === 'off' ? "Make profile match form isn't on this console yet. Change the profile in Elvanto."
-    : '';
-  return t ? `<div class="lk-alert practice">${icS('info')}<div>${esc(t)}</div></div>` : '';
-}
-function _ikLkPage(kind, st) {
-  const x = _ikLk(kind), forms = kind === 'forms' || kind === 'unlinked', gate = _ikLkGate(st)
-    || (kind === 'unlinked' && !_ikClCap(st) ? 'The console needs an update before it can list unlinked forms. Ask whoever runs the console.' : '');
-  // R1 (UX cut 6): no intro sentence; the screen title names the tool.
-  if (gate) return `<div class="lk-alert warn">${icS('info')}<div>${esc(gate)}</div></div>`;
-  if (kind !== 'forms' && typeof _ikFixRestore === 'function') _ikFixRestore(); // S-1: once per intake state
-  const busy = _ikLkBusy(x);
-  const search = `<div class="sbar"><input id="ik-q-${kind}" type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(x.q)}" onkeydown="_ikLkKey('${kind}', event)">`
-    + `<button type="button" class="btn btn-secondary"${busy ? ' disabled' : ''} onclick="_ikLkSearch('${kind}')">Search</button></div>`;
-  const load = !x.res && x.st === 'idle' ? `<button type="button" class="btn btn-primary btn-full lk-mt" onclick="_ikLkSearch('${kind}')">${kind === 'other' ? 'Load students' : kind === 'unlinked' ? 'Load unlinked forms' : forms ? 'Load forms' : 'Find mismatches'}</button>`
-    + `<div class="lk-hint">${esc(kind === 'other' ? 'Nothing loaded yet. Step 0 loads from Elvanto in the background; tap Load students to ask now. A first check can take a few minutes.' : forms ? 'Nothing loaded yet. The forms load from Elvanto in the background; tap Load to ask now. It can take a minute.' : 'Nothing checked yet. The console compares each newest form with the profile in the background; tap Find mismatches to ask now. A first check can take a few minutes.')}</div>` : '';
-  return (forms || kind === 'other' ? '' : _ikFixBanner(st)) + search + load + _ikLkStatusHtml(kind, x, st) + (x.res ? _ikLkResHtml(kind, x, st) : '');
-}
-function _ikLkResHtml(kind, x, st) {
-  const r = x.res, rows = r.rows || [], pg = _ikLkPages(r), busy = _ikLkBusy(x), forms = kind === 'forms' || kind === 'unlinked', q = x.resQ;
-  if (!rows.length) {
-    if (pg.page > 1) return `<div class="lk-hint">No more on page ${pg.page}.</div><div class="lk-acts"><button type="button" class="btn btn-secondary btn-sm"${busy ? ' disabled' : ''} onclick="_ikLkTurn('${kind}', -1)">Prev</button></div>`;
-    return `<div class="lk-hint">${esc(kind === 'other' ? (q ? _ikOtherMiss(q) : 'Every student on step 0 has a week.') : kind === 'unlinked' ? (q ? 'No unlinked forms match "' + q + '".' : 'Every returned consent form is linked to a person.') : forms ? (q ? 'No consent forms match "' + q + '".' : 'There are no consent forms in Elvanto yet.')
-      : (q ? 'No mismatches for "' + q + '".' : 'Every profile matches its newest consent form. Nothing to fix.'))}</div>`;
-  }
-  const noun = forms ? (r.total === 1 ? 'form' : 'forms') : kind === 'other' ? (r.total === 1 ? 'student' : 'students') : (r.total === 1 ? 'person' : 'people');
-  const head = `<div class="lk-d ik-cnt">${esc((r.total != null ? r.total + ' ' + noun : '') + (q ? (r.total != null ? ' matching "' : 'Matching "') + q + '"' : '') + (r.takenAt ? (r.total != null || q ? ' · ' : '') + 'checked ' + _lkSeen(r.takenAt) : ''))}</div>`;
-  const pager = pg.prev || pg.next ? `<div class="ik-pager"><button type="button" class="btn btn-secondary btn-sm"${pg.prev && !busy ? '' : ' disabled'} onclick="_ikLkTurn('${kind}', -1)">Prev</button>`
-    + `<span class="lk-d">${esc('Page ' + pg.page + (pg.pages ? ' of ' + pg.pages : ''))}</span>`
-    + `<button type="button" class="btn btn-secondary btn-sm"${pg.next && !busy ? '' : ' disabled'} onclick="_ikLkTurn('${kind}', 1)">Next</button></div>` : '';
-  const grey = busy ? ' ik-grey' : '';
-  if (forms) {
-    const unl = kind === 'unlinked';
-    const one = (f) => {
-      const meta = (f.submitted ? 'Filled in ' + _lkDay(f.submitted) : 'Date unknown') + (f.status === 'pending' ? ' · Pending' : '') + (f.personId ? '' : ' · no profile linked');
-      return `<div class="li lk-row rc${grey}"><div class="rc-top"><div class="lk-nm">${esc(_ikFormName(f.name))}</div>${_ikFormRowEnd(f)}</div><div class="lk-d">${esc(meta)}</div>`
-        + _ikFormLines(f).map((t) => `<div class="ik-ict">${esc(t)}</div>`).join('') + '</div>';
-    };
-    return head + (unl ? rows.map((f, i) => _ikClRow(f, i, grey, st)) : rows.map(one)).join('') + pager;
-  }
-  if (kind === 'other') return head + _ikNrAllHtml(rows, busy) + rows.map((o, i) => _ikOtherRow(o, grey, i)).join('') + pager;
-  return head + rows.map((m, i) => _ikMisRow(m, i, grey, st)).join('') + pager;
-}
 
 // One Mismatches row (the hub's Needs action and Tidy up share it).
 function _ikMisRow(m, i, grey, st) {
@@ -14485,91 +14181,6 @@ function _ikMisRow(m, i, grey, st) {
     + (done || oldLink || noFix ? (!done && oldLink ? '<div class="lk-d">Linked on the console; fix in Elvanto.</div>' : '')
       : `<div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"${open ? ' disabled' : ''} onclick="_ikFixOpen(${i})">Make profile match form</button></div>`)
     + '</div>';
-}
-// Consents "Other (no date)" (2026-10-16, rev 8): one step-0 student in no pushed consent week. R9 (consents run 2026-10-17): past
-// their consent Friday with no reply (notReceivedOk, the server's verdict: the same as Complete on step 0) the row offers
-// "Mark not received"; before it, "Waiting (consent Fri ...)" and no button; DO NOT CONTACT rows never get one (R4).
-// UI standard (A, C): the whole card opens the Elvanto profile (one stretched link + chevron), not a Profile button.
-function _ikOtherRow(o, grey, i) {
-  const when = o.date ? 'Parent texted ~' + (fmtDay(o.date) || o.date) + ' (' + o.source + ')' : 'No date found: ' + (o.why || 'no record');
-  const nm = esc(_ikFormName(o.name)), ok = /^https:\/\/\S+$/.test(String(o.link || ''));
-  const name = ok ? '<a class="lk-nm rc-go" aria-label="' + nm + ', open profile in Elvanto" href="' + esc(o.link) + '" target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)">' + nm + '</a>' : '<div class="lk-nm">' + nm + '</div>';
-  const pill = o.dnc ? '<span class="lk-tag ik-bad">Do not contact</span>' : '';
-  return '<div class="li lk-row rc' + grey + '"><div class="rc-top">' + name + pill + (ok ? icS('chevr') : '') + '</div><div class="lk-d">' + esc(when) + '</div>' + _ikNrRowHtml(o, i, !!grey) + '</div>';
-}
-// R9: Mark not received = the R4 path: a step-0 completeStep the server marks notReceived, so the console marks "Consent not
-// received" (dated today) on the profile, then completes step 0. One confirm for one row or for every markable row on this page
-// (the Save all pattern: one /link/batch, 20 a call; the console runs them one at a time; each row shows its own result).
-// I.nr[rowId] = { sent, msg } (this phone's answer). Handlers take indexes, never ids or names.
-function _ikNrState(o) { const nr = _ik().nr; return (nr && o && nr[o.rowId]) || null; }
-function _ikNrOk(o) { const s = _ikNrState(o); return !!(o && o.notReceivedOk && !o.dnc && o.flowId && o.stepId && !o.marking && !(s && s.sent)); }
-function _ikNrRowHtml(o, i, busy) {
-  const s = _ikNrState(o);
-  if (o.dnc) return ''; // the Do not contact pill sits top-right (_ikOtherRow)
-  if (o.marking || (s && s.sent)) return '<div class="lk-st wait" role="status">' + esc((s && s.msg) || 'Marking consent not received. The console does it next.') + '</div>';
-  const err = s && s.msg ? '<div class="lk-st bad" role="status">' + esc(s.msg) + '</div>' : '';
-  if (_ikNrOk(o)) return err + '<div class="lk-d">' + esc('No reply by ' + fmtDay(new Date(_siteInstant(o.consentFriday, _consentCutoff())), true)) + '</div><div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(' + Number(i) + ')">Mark not received</button></div>';
-  if (o.consentFriday && Date.now() < _siteInstant(o.consentFriday, _consentCutoff())) return err + '<div class="lk-d">' + esc('Waiting (consent ' + _lkDay(o.consentFriday) + ')') + '</div>';
-  return err;
-}
-function _ikNrAllHtml(rows, busy) {
-  const n = (rows || []).filter(_ikNrOk).length;
-  return n > 1 ? '<div class="strip"><span class="lk-d">' + esc(n + ' on this page had no reply by their consent ' + _serviceDayName() + '.') + '</span><button type="button" class="btn btn-primary btn-sm"' + (busy ? ' disabled' : '') + ' onclick="_ikNrOpen(-1)">' + esc('Mark all ' + n) + '</button></div>' : '';
-}
-// i = a row index on this page, or -1 = every markable row on it.
-function _ikNrOpen(i) {
-  const I = _ik(), x = _ikLk('other'), rows = (x.res && x.res.rows) || [];
-  const pick = (i < 0 ? rows : [rows[i]]).filter(_ikNrOk);
-  if (!pick.length || _ikLkBusy(x)) return;
-  if (!getMyLeaderId()) { _lkIamPick(() => _ikNrOpen(i)); return; } // the Complete is signed by "I am", as on Flow steps
-  I.nrAsk = pick.map((o) => o.rowId);
-  const n = pick.length, names = esc(pick.map((o) => _ikFormName(o.name)).join(', '));
-  modal(`<div class="mo-title">${esc(n === 1 ? 'Mark ' + _ikFormName(pick[0].name) + ' consent not received?' : 'Mark ' + n + ' students consent not received?')}</div>`
-    + (n > 1 ? (n > 5 ? `<details><summary class="lk-d">Show names</summary><div class="lk-d">${names}</div></details>` : `<div class="lk-d">${names}</div>`) : '')
-    + `<div class="ik-line">${esc((n === 1 ? 'This marks' : 'For each, this marks') + ' "Consent not received" (dated today) on their Elvanto profile, then completes New People step 0.')}</div>`
-    + `<p class="lk-sub lk-mt">${esc(n === 1 ? 'The console does it next.' : 'The console does them one at a time.')}</p>`
-    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikNrGo()">${esc('Mark ' + n)}</button></div>`,
-    () => { I.nrAsk = null; });
-}
-async function _ikNrGo() {
-  const I = _ik(), want = I.nrAsk || [], x = _ikLk('other'), lid = getMyLeaderId();
-  I.nrAsk = null;
-  closeModal();
-  const rows = ((x.res && x.res.rows) || []).filter((o) => want.includes(o.rowId) && _ikNrOk(o));
-  if (!rows.length || !lid) return;
-  if (!I.nr) I.nr = {};
-  const all = rows.map((o) => ({ o, id: _lkUuid() }));
-  let ok = 0;
-  for (let k = 0; k < all.length; k += 20) { // S-3: 20 a call, as Save all
-    const part = all.slice(k, k + 20);
-    let res;
-    try {
-      res = await _ikPost(part.map((p) => ({ kind: 'action', id: p.id, type: 'completeStep',
-        payload: { rowId: p.o.rowId, flowId: p.o.flowId, stepId: p.o.stepId, personId: p.o.personId || null, notePrivate: false }, note: null, leaderId: lid })));
-    } catch (e) {
-      if (_ik() !== I) return;
-      // No answer or a 5xx: _ikPost keeps the chunk on the phone and resends it with the same ids (never twice).
-      const kept = !e || !e.status || e.status >= 500;
-      part.forEach((p) => { I.nr[p.o.rowId] = kept ? { sent: true, msg: 'Not sent yet. It goes again by itself.' } : { sent: false, msg: (e && e.message) || 'Not marked. Try again.' }; });
-      continue;
-    }
-    if (_ik() !== I) return;
-    for (const p of part) {
-      const r = _ikOutcome(res, p.id);
-      if (r && (r.outcome === 'saved' || r.outcome === 'replay' || r.outcome === 'duplicate')) { ok++; I.nr[p.o.rowId] = { sent: true, msg: null }; }
-      else I.nr[p.o.rowId] = { sent: false, msg: (r && r.message) || 'Not marked. Try again.' };
-    }
-  }
-  if (_ik() !== I) return;
-  toast(ok ? 'Marking ' + ok + '. The console works through them one at a time.' : 'Nothing was marked. See each row.');
-  _ikDraw();
-}
-// R7: an Other search that finds nobody. Other leaves out anyone in a pushed consent week or with an approved form, so the
-// search did not fail: say where the student is. From step 0's Consents button (I.findMiss) it names the student.
-function _ikOtherMiss(q) {
-  const m = _ik().findMiss;
-  return m && m === q ? m + " isn't on a consent list. Their form may already be approved."
-    : 'Nobody on step 0 without a week matches "' + q + '". Students in a week above, or whose form is approved, are not listed here.';
 }
 
 // ── Unlinked consent forms (run 2026-10-15b, L6) ──

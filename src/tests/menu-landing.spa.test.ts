@@ -29,16 +29,16 @@ const intake = (o: any = {}) => ({ tab: 'consent', dates: [{ date: '2026-10-16' 
   pick: null, csub: 'forms', doneOpen: true, saErr: {}, ans: { fam1: { a: 1 } }, busy: 0, ...o });
 
 describe('menu tap opens the landing screen', () => {
-  it('New youth & consent: a family left open -> the list, consent sub-tab back to Last, tab and answers kept', () => {
+  it('New youth & consent: a family left open -> the hub, search and hub family cleared, answers kept', () => {
     const w = world('home');
     w.env.LINK.ik = intake();
     w.go('link-intake');
     const I = w.env.LINK.ik;
     expect(I.key).toBeNull();
     expect(I.det).toBeNull();
-    expect(I.csub).toBe('last');
+    expect(I.hubQ).toBe('');
+    expect(I.hubFam).toBeNull();
     expect(I.date).toBeNull(); // _ikLoad picks the first date again
-    expect(I.tab).toBe('consent');
     expect(I.ans).toEqual({ fam1: { a: 1 } });
     expect(w.env.calls).toContain('ikLeave'); // a typed answer still goes
   });

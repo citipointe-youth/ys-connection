@@ -4,12 +4,13 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 import { ACTION_TYPES } from '../core/link-contract';
 
-const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
+const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete', '_lkHubOwned',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
-  '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkFlowTypes',
+  '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkFlowTypes',
   '_lkMemOff', '_lkCanRemove'];
 const PRELUDE = `
-  var STORE = {}, THROW = false, ROLE = 'admin', QUEUE = [];
+  var STORE = {}, THROW = false, ROLE = 'admin', QUEUE = [], HUB = false;
+  function _ikModuleOn() { return HUB; } // consent hub (Task 11): off here, so these cases pin DNC and the consent gate themselves
   var localStorage = { getItem: (k) => { if (THROW) throw new Error('blocked'); return STORE[k] == null ? null : STORE[k]; },
     setItem: (k, v) => { if (THROW) throw new Error('blocked'); STORE[k] = String(v); } };
   var S = { get user() { return { role: ROLE }; } };
@@ -30,14 +31,14 @@ const PRELUDE = `
   function _busGradeChip(g) { return g ? '<chip>' : ''; }
   function icS(k) { return '<i:' + k + '>'; }
   function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-  function set(o) { if ('role' in o) ROLE = o.role; if ('queue' in o) QUEUE = o.queue; if ('throw' in o) THROW = o.throw; if ('store' in o) STORE = o.store; }
+  function set(o) { if ('role' in o) ROLE = o.role; if ('queue' in o) QUEUE = o.queue; if ('throw' in o) THROW = o.throw; if ('store' in o) STORE = o.store; if ('hub' in o) HUB = o.hub; }
 `;
 const f = loadFns(NAMES, PRELUDE, [...NAMES, 'set', 'LINK']);
 const L = f.LINK;
 let n = 0;
 const R = (o: any) => ({ rowId: o.rowId ?? 'r' + (++n), flowId: 'F1', flowName: 'New People', stepId: 'S1', stepName: 'Step 1', stepOrder: 2,
   personId: 'p' + n, name: 'Zed ' + n, due: null, grade: 8, gender: 'male', mobile: '0412345678', consent: 'ok', dnc: false, consentStep: false, ...o });
-const reset = (o: any = {}) => { f.set({ role: 'admin', queue: [], throw: false, store: {}, ...o }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, status: null, ff: undefined }); };
+const reset = (o: any = {}) => { f.set({ role: 'admin', queue: [], throw: false, store: {}, hub: false, ...o }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, status: null, ff: undefined }); };
 
 describe('R4 filter buckets: junior Y7-9 (+Y6 with Include Grade 6), senior Y10-12, unknown always shows', () => {
   it('buckets by grade and gender', () => {
@@ -360,5 +361,20 @@ describe('Y6c _lkVerb', () => {
     expect(types.length).toBe(7);
     for (const t of types) expect(v._lkVerb(t)).toMatch(/^[A-Z][a-z]+ [a-z]+$/);
     expect(v._lkVerb('checkIn')).toBe('Check in'); // the old ones unchanged
+  });
+});
+
+describe('consent hub (Task 11): with New youth & consent on, step 0 is read-only on Flow steps', () => {
+  it('a step-0 row: no Complete, no Remove, no tick; another step is unchanged', () => {
+    reset({ hub: true });
+    const s0 = R({ consentStep: true, consent: 'ok' }), s1 = R({ stepId: 'S2' });
+    L.flows = [s0, s1];
+    expect(f._lkCanComplete(s0)).toBe(false);
+    expect(f._lkCanRemove(s0)).toBe(false);
+    expect(f._lkTickable(s0)).toBe(false);
+    expect(f._lkCanComplete(s1)).toBe(true);
+    expect(f._lkCanRemove(s1)).toBe(true);
+    reset({ hub: false });
+    expect(f._lkCanComplete(s0)).toBe(true); // module off: unchanged
   });
 });

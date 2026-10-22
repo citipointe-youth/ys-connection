@@ -7,7 +7,7 @@ const IK = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkAt', '_lkSeen',
   '_ikOpenOf', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
   '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml',
-  '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikPageHtml', '_ikPickDate', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn'];
+  '_ikPageHtml', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');
 const extra = (src: string) => (src.match(/^function (_ik[A-Za-z0-9]+)\(/gm) || []).map((s) => s.slice(9, -1));
@@ -120,36 +120,6 @@ describe('F-17 the late-text hold is one plain sentence, shown once', () => {
   });
 });
 
-describe('F-19 a failed date load offers Try again, never an endless Loading', () => {
-  it('an error with no list renders Try again, not the Loading bar', () => {
-    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
-    I.dates = [{ date: '2026-10-09', counts: {} }]; I.head = ST(); I.err = "Can't reach the server"; I.list = null;
-    const h = f._ikListPage();
-    expect(h).toContain('Try again');
-    expect(h).not.toContain('Loading');
-  });
-  it('re-tapping the same date after a failure loads it again', () => {
-    const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
-    I.dates = [{ date: '2026-10-09' }]; I.list = null;
-    f._ikPickDate(0);
-    expect(calls.loads).toBe(1);
-  });
-});
-
-describe('F-24(b) one name: New youth & consent', () => {
-  it('the tab is "New youth" and the page title is "New youth & consent"', async () => {
-    const { f, I } = env({ tab: 'intake', date: null });
-    I.dates = []; I.head = ST();
-    const h = f._ikListPage();
-    expect(h).toContain('>New youth<');
-    expect(h).not.toContain('Intakes');
-    const { extractFn } = await import('./helpers/extract-fn');
-    const r = extractFn(HTML, 'renderLinkIntake');
-    expect(r).toContain('New youth &amp; consent');
-    expect(r).not.toContain('Form Approve');
-  });
-});
-
 describe('F-32(a) console messages', () => {
   it('the out-of-date console line points at New youth on the console PC, not a missing tab', () => {
     const { f } = env();
@@ -174,21 +144,6 @@ describe('F-41 the Keep as is button stays short (fits at 360 px)', () => {
     const btn = /<button[^>]*_ikKeep[^>]*>([^<]*)<\/button>/.exec(h)!;
     expect(btn[1]).toBe('Keep as is');
     expect(h).toContain(`<div class="ik-line">The text goes to the parent form's mobile.</div>`);
-  });
-});
-
-describe('F-46(b) plain words: no "stale", no "Plan"', () => {
-  it('an old plan says "Over 2 hours old. Tap Refresh." everywhere, and the list says "old"', () => {
-    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
-    const old = LIST({ stale: true, takenAt: new Date(Date.now() - 3 * 36e5).toISOString() });
-    const want = 'Over 2 hours old. Tap Refresh.';
-    expect(f._ikSaveBlock(DET(), old, ST())).toBe(want);
-    expect(f._ikTextBlock(DET(), old, ST())).toBe(want);
-    expect(strip(f._ikBanner(ST(), old, 'intake'))).toContain(want);
-    I.dates = [{ date: '2026-10-09' }]; I.head = ST(); I.list = old;
-    const t = strip(f._ikListPage());
-    expect(t).toMatch(/Checked .* · old/);
-    expect(t).not.toMatch(/stale|Plan /);
   });
 });
 
@@ -220,16 +175,6 @@ describe('GAP-2 a pending intake row polls every 5 s, and keeps polling after th
     calls.vis = 'visible';
     calls.cbs.shift()!();
     expect(calls.loads).toBe(1);
-  });
-});
-
-describe('review r1: picking a date clears the old error', () => {
-  it('after a failed load, another date shows Loading, not the stale error / Try again', () => {
-    const { f, I } = env({ tab: 'intake', date: '2026-10-09' });
-    I.dates = [{ date: '2026-10-09' }, { date: '2026-10-02' }]; I.head = ST(); I.err = "Can't reach the server"; I.list = null;
-    f._ikPickDate(1);
-    expect(I.err).toBe(null);
-    expect(f._ikListPage()).not.toContain('Try again');
   });
 });
 

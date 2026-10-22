@@ -246,7 +246,7 @@ describe('Y5 leader wording', () => {
   const LEADER_FNS = ['renderLeaderHome', 'renderHome', 'renderMyStudents', 'renderAtRisk', 'renderPrayers', 'renderUpcomingBirthdays',
     'renderBus', 'renderNewYouth', 'renderConnect', 'renderConnectView', 'renderLink', 'renderLinkCheckin', 'renderLinkGroups', 'renderLinkFlows',
     '_lkListHtml', '_lkDoneRowsHtml', '_lkRowHtml', '_lkPickHtml', '_lkLeadersHtml', '_lkIamListHtml', '_lkGroupsHtml', '_lkReportHtml',
-    '_lkWeekBodyHtml', '_lkGroupHtml', '_lkFormHtml', '_lkMembersHtml', '_lkFfHtml', '_lkTilesHtml', '_lkFlowRowHtml', '_lkFlowsHtml',
+    '_lkWeekBodyHtml', '_lkGroupHtml', '_lkFormHtml', '_lkMembersHtml', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml',
     '_lkHomeFlowsHtml', '_lkStepHtml', '_lkRemoveHtml', '_lkOfflineHtml', '_lkStatusText', '_lkStatusHtml', 'showChangeOwnPassword',
     'renderMustChangePassword', 'openMore', 'moreItems'];
   it('rule: no leader-page string contains "console"', () => {

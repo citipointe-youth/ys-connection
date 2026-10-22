@@ -1,17 +1,17 @@
-// I7 (R2-G4): admin-only Flow steps tiles "New Students" / "Parent text", the "Send parent text" labels and the bulk cap of 50.
+// I7 (R2-G4) Flow steps; consent hub (2026-10-23, Task 11): the tiles are gone, step 0 and Parent Consent step 1 are read-only
+// here with New youth & consent on (_lkHubOwned); the bulk cap of 50 stays.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
-  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkTilesOn', '_lkTilesHtml', '_lkFlowPick',
-  '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
+  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkHubOwned', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
   '_lkTextHref', '_lkSmsHref', '_lkFirstName'];
 const PRELUDE = `
   var ROLE = 'admin', MODALS = [], TOASTS = [], PUSHED = [];
   var localStorage = { getItem: () => null, setItem: () => {} };
   var S = { get user() { return { role: ROLE }; }, page: 'link-flows',
     settings: { ministryConfig: { elvanto: { peopleFlowPrefix: 'Brisbane - Youth - New People', consentFlowPrefix: 'Brisbane - Youth - Parent Consent' } } } };
-  var LINK = { flows: [], fSteps: [], fres: {}, fsel: {}, fOpen: {}, status: null, fFlow: '', ldrs: [] };
+  var LINK = { flows: [], fSteps: [], fres: {}, fsel: {}, fOpen: {}, status: null, ldrs: [] };
   const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep'];
   const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
   const document = { getElementById: () => null };
@@ -41,7 +41,7 @@ const PAR = (o: any = {}) => R({ flowId: 'F2', flowName: PARENT, stepId: 'P1', s
 
 function load(role = 'admin', parents = 3) {
   f.set({ role });
-  Object.assign(L, { fres: {}, fsel: {}, fOpen: {}, fFlow: '', ff: undefined });
+  Object.assign(L, { fres: {}, fsel: {}, fOpen: {}, ff: undefined });
   L.flows = [R({ rowId: 'a' }), R({ rowId: 'b', stepId: 'S2', stepName: 'Follow up', stepOrder: 3 }),
     ...Array.from({ length: parents }, (_, i) => PAR({ rowId: 'pp' + i })), PAR({ rowId: 'p2nd', stepId: 'P2', stepName: 'Chase', stepOrder: 2 })];
   L.fSteps = [{ flowId: 'F1', flowName: PEOPLE, stepId: 'S1', stepName: 'Welcome', stepOrder: 2 }, { flowId: 'F1', flowName: PEOPLE, stepId: 'S2', stepName: 'Follow up', stepOrder: 3 },
@@ -49,59 +49,38 @@ function load(role = 'admin', parents = 3) {
 }
 const strip = (h: string) => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 
-describe('I7 Flow steps tiles', () => {
+// Consent hub (2026-10-23, Task 11): the tiles are gone. With New youth & consent on, New People step 0 and the Parent Consent
+// flow's first step are read-only on Flow steps (no Complete, Remove or tick) and their sheet links to the hub.
+describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s', () => {
   beforeEach(() => load());
-  it('admin with both flows: 2 tiles with first-step counts', () => {
-    const h = f._lkFlowsHtml();
-    expect(h).toContain('class="lk-tiles"');
-    expect(strip(h)).toContain('New Students · 1');
-    expect(strip(h)).toContain('Parent text · 3');
-    expect(h).toContain(`onclick="_lkFlowPick('people')"`);
-    expect(h).toContain(`onclick="_lkFlowPick('parent')"`);
-  });
-  it("_lkFlowPick('parent'): only the Parent Consent flow's first step, open, no Jr/Sr chips", () => {
-    f._lkFlowPick('parent');
-    const h = f._lkFlowsHtml();
-    expect(h).toContain('aria-pressed="true" onclick="_lkFlowPick(\'parent\')"');
-    expect(strip(h)).toContain('Text parent · 3');
-    expect(h).not.toContain('Chase');
-    expect(h).not.toContain('Welcome');
-    expect(h).not.toContain('Junior Guys');
-    expect(h).toMatch(/<div class="drop open" id="lks-F2-P1">/);
-    // the user closed it: stays closed
-    L.fOpen['lks-F2-P1'] = false;
-    expect(f._lkFlowsHtml()).toMatch(/<div class="drop" id="lks-F2-P1">/);
-    f._lkFlowPick('parent'); // tap again = all flows
-    expect(L.fFlow).toBe('');
-  });
-  it("'people': only New People steps", () => {
-    L.fsel = { a: true };
-    f._lkFlowPick('people');
-    expect(L.fsel).toEqual({});
-    const h = f._lkFlowsHtml();
-    expect(h).toContain('Welcome');
-    expect(h).toContain('Follow up');
-    expect(h).not.toContain('Text parent');
+  it('admin: no "New Students ·" / "Parent text ·" tile buttons; every flow and step listed', () => {
+    const h = f._lkFlowsHtml(), s = strip(h);
+    expect(h).not.toContain('lk-tiles');
+    expect(h).not.toContain('_lkFlowPick');
+    expect(s).not.toContain('New Students ·');
+    expect(s).not.toContain('Parent text ·');
+    for (const step of ['Welcome', 'Follow up', 'Text parent', 'Chase']) expect(h).toContain(step);
     expect(h).toContain('Junior Guys');
   });
-  it('director, and admin with only one flow: no tiles, every flow listed', () => {
-    load('director');
-    expect(f._lkFlowsHtml()).not.toContain('lk-tiles');
-    L.fFlow = 'parent'; // a stale pick does nothing without tiles
-    expect(f._lkFlowsHtml()).toContain('Welcome');
-    load('admin');
-    L.flows = L.flows.filter((r: any) => r.flowName === PEOPLE);
-    L.fSteps = L.fSteps.filter((r: any) => r.flowName === PEOPLE);
-    expect(f._lkFlowsHtml()).not.toContain('lk-tiles');
+  it('module on, on link-flows: a step-0 row cannot be completed, removed or ticked; its sheet links to the hub', () => {
+    const s0 = R({ rowId: 's0', consentStep: true, stepOrder: 1 });
+    L.flows.push(s0);
+    expect(f._lkCanComplete(s0)).toBe(false);
+    expect(f._lkCanRemove(s0)).toBe(false);
+    expect(f._lkTickable(s0)).toBe(false);
+    L.fs = { rowId: 's0', note: '', priv: false };
+    expect(f._lkStepHtml()).toContain('onclick="_lkStepConsents()">Open in New youth &amp; consent');
+    expect(f._lkStepBtns()).not.toContain('_lkStepSend');
   });
-  it('a parent-row sheet: "Send parent text" and the can\'t-be-recalled line', () => {
+  it('module on: a Parent Consent step-1 row is read-only too; its second step and New People steps are unchanged', () => {
+    const p0 = L.flows.find((r: any) => r.rowId === 'pp0'), p2 = L.flows.find((r: any) => r.rowId === 'p2nd'), a = L.flows.find((r: any) => r.rowId === 'a');
+    expect(f._lkCanComplete(p0)).toBe(false);
+    expect(f._lkCanRemove(p0)).toBe(false);
+    expect(f._lkCanComplete(p2)).toBe(true);
+    expect(f._lkCanComplete(a)).toBe(true);
     L.fs = { rowId: 'pp0', note: '', priv: false };
-    expect(f._lkStepBtns()).toContain('Send parent text');
-    expect(f._lkStepHtml()).toContain('It can&#39;t be recalled'.replace('&#39;', "'"));
-    L.fs = { rowId: 'a', note: '', priv: false };
-    expect(f._lkStepBtns()).toContain('Complete');
+    expect(f._lkStepHtml()).toContain('Open in New youth &amp; consent');
     expect(f._lkStepBtns()).not.toContain('Send parent text');
-    expect(f._lkStepHtml()).not.toContain('recalled');
   });
   it('Service Visits line: shown for a number (including 0), hidden for null or missing', () => {
     const sheet = (extra: any) => { L.flows = [...L.flows.filter((r: any) => r.rowId !== 'sv'), { ...L.flows.find((r: any) => r.rowId === 'a'), rowId: 'sv', ...extra }]; L.fs = { rowId: 'sv', note: '', priv: false }; return f._lkStepHtml(); };
@@ -110,41 +89,32 @@ describe('I7 Flow steps tiles', () => {
     expect(sheet({ serviceVisits: null })).not.toContain('Service Visits');
     expect(sheet({ serviceVisits: undefined })).not.toContain('Service Visits');
   });
-  it('bulk in parent view: "Send parent text to 3 families?", Send 3, toast "3 parent texts queued"', () => {
-    f._lkFlowPick('parent');
-    L.fsel = { pp0: true, pp1: true, pp2: true };
-    expect(f._lkFlowsHtml()).toContain('Send parent text (3)');
-    f._lkBulkOpen();
-    const m = f.out().MODALS[0];
-    expect(m).toContain('Send parent text to 3 families?');
-    expect(m).toContain("It can't be recalled.");
-    expect(m).toContain('<i:check> Send 3');
-    f._lkBulkSend();
-    expect(f.out().PUSHED.length).toBe(3);
-    expect(f.out().TOASTS).toEqual(['3 parent texts queued']);
-  });
-  it('51 ticked: no sheet, toast "Up to 50 at a time. Untick some first." (generic path too)', () => {
-    load('admin', 51);
-    f._lkFlowPick('parent');
-    L.fsel = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['pp' + i, true]));
+  it('51 ticked: no sheet, toast "Up to 50 at a time. Untick some first."', () => {
+    L.flows = Array.from({ length: 51 }, (_, i) => R({ rowId: 'c' + i }));
+    L.fsel = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['c' + i, true]));
     f._lkBulkOpen();
     expect(f.out().MODALS).toEqual([]);
     expect(f.out().TOASTS).toEqual(['Up to 50 at a time. Untick some first.']);
-    f._lkFlowPick('parent'); // off: the generic Complete path has the same cap
-    L.fsel = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['pp' + i, true]));
+  });
+  it('bulk Complete: one sheet, Complete N, toast "N queued to complete"', () => {
+    L.fsel = { a: true, b: true };
     f._lkBulkOpen();
-    expect(f.out().MODALS).toEqual([]);
+    expect(f.out().MODALS[0]).toContain('Complete 2 steps');
+    expect(f.out().MODALS[0]).not.toContain('parent text');
+    f._lkBulkSend();
+    expect(f.out().PUSHED.length).toBe(2);
+    expect(f.out().TOASTS).toEqual(['2 queued to complete']);
   });
   it('onclicks hold no id or name', () => {
-    const src = ['_lkTilesHtml', '_lkFlowPick', '_lkBulkOpen'].map((x) => extractFn(loadIndexHtml(), x)).join('\n');
+    const src = ['_lkBulkOpen', '_lkStepHtml'].map((x) => extractFn(loadIndexHtml(), x)).join('\n');
     const handlers = [...src.matchAll(/onclick="([^"]*)"/g)].map((m) => m[1]);
     expect(handlers.length).toBeGreaterThan(0);
     for (const h of handlers) expect(h).not.toMatch(/rowId|personId|name/);
   });
 });
 
-// Y2b: the tiles follow this location's two flow names (Youth Setup); an admin sees a banner while the New People flow is unknown.
-describe('Y2b Flow steps tiles from config', () => {
+// Y2b: the flow kinds follow this location's two flow names (Youth Setup); an admin sees a banner while the New People flow is unknown.
+describe('Y2b Flow step kinds from config', () => {
   const E = f.S.settings.ministryConfig.elvanto;
   const BRIS = { peopleFlowPrefix: E.peopleFlowPrefix, consentFlowPrefix: E.consentFlowPrefix };
   const BANNER = "This year's New People flow wasn't found, so step 0 can't be completed. In Admin > Youth Setup > Elvanto for this location, check the New People flow name. It must match the flow in Elvanto.";
@@ -163,7 +133,7 @@ describe('Y2b Flow steps tiles from config', () => {
     expect(f._lkFlowKind({ flowName: 'brisbane - youth - new people' })).toBe(''); // case-sensitive, as before
     expect(f._lkFlowKind(null)).toBe('');
   });
-  it('other prefixes: the kinds and tiles follow them, Brisbane names no longer match', () => {
+  it('other prefixes: the kinds follow them, Brisbane names no longer match', () => {
     Object.assign(E, { peopleFlowPrefix: "St. Mark's (North) - New People", consentFlowPrefix: 'Logan - Parent Consent' });
     expect(f._lkFlowKind({ flowName: PEOPLE })).toBe('');
     expect(f._lkFlowKind({ flowName: PARENT })).toBe('');
@@ -171,24 +141,21 @@ describe('Y2b Flow steps tiles from config', () => {
     expect(f._lkFlowKind({ flowName: "St Marks (North) - New People 2026" })).toBe('');
     expect(f._lkFlowKind({ flowName: 'Logan - Parent Consent 2026' })).toBe('parent');
     named("St. Mark's (North) - New People 2026", 'Logan - Parent Consent 2026');
-    const h = strip(f._lkFlowsHtml());
-    expect(h).toContain('New Students · 1');
-    expect(h).toContain('Parent text · 3');
-    expect(h).not.toContain("This year's New People flow");
+    expect(strip(f._lkFlowsHtml())).not.toContain("This year's New People flow");
+    expect(f._lkCanComplete(L.flows.find((r: any) => r.rowId === 'pp0'))).toBe(false); // the Parent Consent first step follows the prefix
   });
-  it('blank prefixes: no kinds, no tiles, every flow listed', () => {
+  it('blank prefixes: no kinds, every flow listed', () => {
     Object.assign(E, { peopleFlowPrefix: '', consentFlowPrefix: '  ' });
     expect(f._lkFlowKind({ flowName: PEOPLE })).toBe('');
     expect(f._lkFlowKind({ flowName: PARENT })).toBe('');
     const h = f._lkFlowsHtml();
-    expect(h).not.toContain('lk-tiles');
     expect(h).toContain('Welcome');
     expect(h).toContain('Text parent');
   });
-  it('an absent elvanto block (settings not loaded) reads as blank: no tiles', () => {
+  it('an absent elvanto block (settings not loaded) reads as blank', () => {
     const keep = f.S.settings;
     f.S.settings = null;
-    try { expect(f._lkFlowKind({ flowName: PEOPLE })).toBe(''); expect(f._lkFlowsHtml()).not.toContain('lk-tiles'); } finally { f.S.settings = keep; }
+    try { expect(f._lkFlowKind({ flowName: PEOPLE })).toBe(''); expect(f._lkFlowsHtml()).toContain('Welcome'); } finally { f.S.settings = keep; }
   });
   it('unknown New People flow: the admin sees the banner, a director and a leader do not', () => {
     const banner = (role: string) => { f.set({ role }); return f._lkFlowsHtml().includes(BANNER.replace(/>/g, '&gt;')); };

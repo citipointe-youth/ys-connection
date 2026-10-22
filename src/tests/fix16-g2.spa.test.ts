@@ -2,8 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
-const FNS = ['esc', '_ikConsentSub', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', '_ikLkStatusHtml',
-  '_ikLkPage', '_ikLkResHtml', '_ikMisRow', '_ikLkPages', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixBanner', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss',
+const FNS = ['esc', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', 
+  '_ikMisRow', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', 
   '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
@@ -35,86 +35,11 @@ function env(o: { fresh?: () => any } = {}) {
 const ST = (caps: Record<string, string> = {}) => ({ consoleLinkRev: 7, console: { capabilities: { consentLookup: 'live', consentFix: 'live', consentLink: 'live', ...caps } } });
 
 // Consents run 2026-10-17 (R1): F-48(a) is gone with the Show dropdown: the week is the chips, a Tidy up tool is its own screen.
-describe('R1 Tidy up screens replace the Show dropdown (F-48(a) retired)', () => {
-  it('a tool opens from the plan; "week" or an unknown key is ignored; back to the plan reloads it', () => {
-    const { fns, t, I } = env();
-    fns._ikConsentSub('week'); // the old fake option: ignored
-    expect(I.csub).toBe('last');
-    fns._ikConsentSub('forms');
-    expect(I.csub).toBe('forms');
-    fns._ikConsentSub('last');
-    expect(I.csub).toBe('last');
-    expect(t.loads).toBe(1);
-    expect(t.picked).toEqual([]); // the week stays as it was
-  });
-});
-
-describe('F-08 console busy', () => {
-  it('a console-busy retry renders the busy line', () => {
-    const { fns } = env(), now = Date.now();
-    const x: any = { kind: 'forms', since: now };
-    fns._ikLkApply(x, { status: 'waiting', reason: 'console-busy' }, now);
-    expect(strip(fns._ikLkStatusHtml('forms', x, ST()))).toContain('The console is busy with the service. Lists open again after the service.');
-  });
-});
-
-describe('F-18 messages name the button on screen', () => {
-  it('offline and timeouts say "tap Ask again", never "Check again"', () => {
-    const { fns } = env(), now = Date.now();
-    const x: any = { kind: 'forms' };
-    fns._ikLkErr(x, new Error('Load failed'));
-    expect(x.msg).toBe('No internet. Reconnect, then tap Ask again.');
-    expect(strip(fns._ikLkStatusHtml('forms', x, ST()))).toContain('Ask again');
-    const w: any = { kind: 'forms', since: now };
-    fns._ikLkApply(w, { status: 'working' }, now + 6 * 60000);
-    expect(w.msg).toBe('Still reading the forms. Tap Ask again in a minute.');
-    const v: any = { kind: 'forms', since: now };
-    fns._ikLkApply(v, { status: 'waiting' }, now + 6 * 60000);
-    expect(v.msg).not.toMatch(/Check again/);
-    expect(v.msg).toMatch(/Ask again/);
-  });
-});
-
 describe('F-32(b) no doubled prefix', () => {
   it('a refused detail that already says Not sent/Not saved is shown as is', () => {
     const { fns } = env();
     expect(fns._ikClText({ status: 'refused', detail: 'Not sent: the console was busy.' })).toEqual(['bad', 'Not sent: the console was busy.']);
     expect(fns._ikClText({ status: 'refused', detail: 'Only the admin can do this.' })).toEqual(['bad', 'Not saved: Only the admin can do this.']);
-  });
-});
-
-describe('F-36 linked mismatch rows', () => {
-  it('a console-linked row has no Fix button and says to fix it in Elvanto', () => {
-    const { fns } = env();
-    const x = fns._ikLk('mismatches');
-    const row = (n: number, o: any = {}) => ({ personId: P(n), name: 'Tom Test', submitted: '2026-10-09', diffs: ['consent date'], form: { consentDate: '09/10/2026' }, profile: {}, ...o });
-    Object.assign(x, { st: 'ready', res: { rows: [row(1, { linked: true }), row(2)], page: 1, pageSize: 25, total: 2 } });
-    const h = fns._ikLkResHtml('mismatches', x, ST());
-    expect(h.match(/_ikFixOpen\(/g)).toHaveLength(1);
-    expect(h).toContain('_ikFixOpen(1)');
-    expect(strip(h)).toContain('Linked on the console; fix in Elvanto.');
-  });
-  it('L2 (2026-10-21): a rev 15 console copies a console-linked form too, so the linked row gets the Fix button', () => {
-    const { fns } = env();
-    const x = fns._ikLk('mismatches');
-    const row = (n: number, o: any = {}) => ({ personId: P(n), name: 'Tom Test', submitted: '2026-10-09', diffs: ['consent date'], form: { consentDate: '09/10/2026' }, profile: {}, ...o });
-    Object.assign(x, { st: 'ready', res: { rows: [row(1, { linked: true }), row(2)], page: 1, pageSize: 25, total: 2 } });
-    const h = fns._ikLkResHtml('mismatches', x, { ...ST(), consoleLinkRev: 15 });
-    expect(h.match(/_ikFixOpen\(/g)).toHaveLength(2);
-    expect(strip(h)).not.toContain('fix in Elvanto');
-  });
-});
-
-describe('F-42 Unlinked intro + tag', () => {
-  it('no intro sentence (R1: the screen title says it); the tag says not in Elvanto and may wrap', () => {
-    const { fns } = env();
-    expect(fns._ikLkPage('unlinked', ST())).not.toContain('<p class="lk-d lk-mb">');
-    expect(strip(fns._ikLkPage('unlinked', ST()))).not.toContain('Elvanto is not changed');
-    const f = { subId: P(1), name: 'Riley', submitted: '2026-10-09', linked: { personId: P(2), name: 'Riley Sample' } };
-    const h = fns._ikClRow(f, 0, '', ST());
-    expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
-    expect(h).not.toContain('console only');
-    expect(h).toMatch(/class="lk-st ok">Linked to/); // UI standard A: a status line that wraps, not a tag
   });
 });
 

@@ -257,7 +257,7 @@ describe('Y6b "Console out of date" branches on the intake page', () => {
     expect(f._intakeOn(ST(13, half))).toBe(false);
     expect(f._ikPageHtml()).toContain(want);
     // Right after the module is switched On the stored capabilities are still the stripped ones: Try again reloads.
-    expect(f._ikPageHtml()).toContain('onclick="_ikLoad(false)">Try again</button>');
+    expect(f._ikPageHtml()).toContain('onclick="_hubLoad(false)">Try again</button>');
     expect(f._ikSaveBlock(DET, LIST, ST(13, half))).toBe(want);
     expect(f._ikTextBlock(DET, LIST, ST(13, half))).toBe(want);
   });

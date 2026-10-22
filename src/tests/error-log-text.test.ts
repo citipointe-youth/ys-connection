@@ -137,7 +137,7 @@ describe('error-log-text', () => {
         expect(l).not.toMatch(/Interact|YS link card|Intakes|Roster/);
         expect(l.split('Advanced › Setup › YS link').join('#'), l).not.toContain('›');
       }
-      expect(extractFn(html, '_ikListPage')).toContain('>Refresh</button>');
+      expect(extractFn(html, '_hubPage')).toContain('onclick="_hubRefresh()"'); // consent hub: the one Refresh
     });
 
     it('no entry names a file', () => {

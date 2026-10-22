@@ -109,9 +109,8 @@ describe('I4 _extOpen', () => {
     }
     expect(mk('Mozilla/5.0 (Linux; Android 14)', true)._extOpen(ev(), 'javascript:alert(1)')).toBe(true);
   });
-  it('both Elvanto link sites use it, with no id or name in the handler', () => {
+  it('the Elvanto link site uses it, with no id or name in the handler (consent hub: the Other row is gone)', () => {
     const src = loadIndexHtml();
     expect(extractFn(src, '_ikCompareHtml')).toContain('target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)"');
-    expect(extractFn(src, '_ikOtherRow')).toContain('target="_blank" rel="noopener" onclick="return _extOpen(event,this.href)"');
   });
 });

@@ -10,17 +10,17 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
-  '_ikListPage', '_ikTidyHtml', '_ikTidyTitle', '_ikTidyList', '_ikRowsHtml', '_ikByOutcome', '_ikOutcomes', '_ikOutcomeLine', '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
+  '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
   '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
-  '_ikSchedule', '_ikTab', '_ikOpen', '_ikLeave',
+  '_ikSchedule', '_ikLeave',
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
-  '_ikConsentSub', '_ikPrevWeek', '_ikWeekHtml', '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllOpen', '_ikSaveAllGo',
-  '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkSearch', '_ikLkKey', '_ikLkTurn', '_ikLkGo', '_ikLkErr', '_ikLkAgain',
-  '_ikLkApply', '_ikLkPoll', '_ikLkPages', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikOtherMiss', '_ikMisLines', '_ikMisVal', '_ikLkStatusHtml', '_ikFixBanner',
-  '_ikLkPage', '_ikLkResHtml', '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
+  '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllGo',
+  '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkGo', '_ikLkErr', 
+  '_ikLkApply', '_ikLkPoll', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikMisLines', '_ikMisVal', 
+  '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
   // integration review fixes (run 2026-10-15)
-  '_ikConsentTag', '_ikSaveAllGroups', '_ikDmy', 'fmtDay', '_ikFixChanges', '_ikDncLine',
+  '_ikSaveAllGroups', '_ikDmy', 'fmtDay', '_ikFixChanges', '_ikDncLine',
   // L6 Unlinked consent forms (run 2026-10-15b)
   '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
@@ -145,10 +145,12 @@ describe('module gating', () => {
     // and the Save reason says the same
     expect(e.fns._ikSaveBlock(DET(), LIST(), ST({ rev: 3 }))).toBe('Console out of date: use New youth on the console PC');
   });
-  it('the tab is remembered per device; logout drops the intake state', () => {
-    const storage = new Map([['ysc.intakeTab', 'consent']]);
+  it('consent hub (Task 11): no tab is stored or read; logout drops the intake state', () => {
+    const storage = new Map([['ysc.intakeTab', 'consent']]); // left by an older build: ignored
     const e = makeEnv({ storage });
-    expect(e.fns._ik().tab).toBe('consent');
+    expect(e.fns._ik().tab).toBe('intake');
+    expect(e.fns._ik()).toMatchObject({ hub: null, hubQ: '', hubAsk: 0, hubOpen: {}, hubShown: null, hubFam: null, hubKid: 0 });
+    expect(e.fns._ik()).not.toHaveProperty('csub');
     e.fns._ik().ans[P(1)] = { fixes: { [P(1)]: { last: 'Nguyen' } } };
     e.fns._lkSoftReset();
     expect(e.get().LINK.ik).toBe(null);
@@ -167,24 +169,6 @@ describe('chips per action status (§7.5)', () => {
   it('claimed reads Saving, never Pending (consent-pending fix 1)', () => {
     expect(chip(act({ status: 'claimed' }))).toEqual({ label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' });
     expect(chip(act({ type: 'consentSave', status: 'claimed', createdAt: iso(40 * 60_000) }))).toEqual({ label: 'Saving', tone: 'wait', line: 'Sending to Elvanto…' });
-  });
-  it('pending > 15 min: online says queued behind the open saves ahead; offline keeps the old line', () => {
-    const f = makeEnv().fns, old = iso(30 * 60_000);
-    const mine = act({ id: P(91), type: 'consentSave', createdAt: old });
-    const rows = [LROW(1, { actions: [act({ type: 'consentSave', status: 'claimed', createdAt: iso(40 * 60_000) })] }),
-      LROW(2, { actions: [act({ type: 'consentSave', createdAt: iso(35 * 60_000) })] }),
-      LROW(3, { actions: [mine] }),
-      LROW(4, { actions: [act({ type: 'consentSave', createdAt: iso(20 * 60_000) })] }), // behind, not ahead
-      LROW(5, { actions: [act({ type: 'consentSave', status: 'sent', createdAt: iso(50 * 60_000) })] })]; // done, not open
-    expect(f._ikChip(rows[2], ST(), rows)).toEqual({ label: 'Pending', tone: 'wait', line: 'Queued behind 2 saves' });
-    expect(f._ikChip(rows[1], ST(), rows).line).toBe('Queued behind 1 save');
-    expect(f._ikChip(rows[2], ST()).line).toBe('Queued behind other saves'); // no list: n unknown
-    expect(f._ikChip(rows[0], ST(), rows).label).toBe('Saving');
-    expect(f._ikChip(rows[2], ST({ online: false }), rows).line).toMatch(/^Console hasn't picked this up yet \(since /);
-    expect(f._ikRowsHtml(LIST({ rows }), ST(), false)).toContain('Queued behind 2 saves');
-    expect(f._ikFixText({ status: 'pending', createdAt: old }, ST())).toEqual(['wait', 'Queued behind other saves.']);
-    expect(f._ikClText({ status: 'pending', createdAt: old }, ST())).toEqual(['wait', 'Queued behind other saves.']);
-    expect(f._ikClText({ status: 'pending', createdAt: old }, ST({ online: false }))[1]).toMatch(/^Console hasn't picked this up yet/);
   });
   it('I9b (R2-G7): a sent answer reads Noted, never Saved; the older Save behind it shows', () => {
     const e = makeEnv();
@@ -205,14 +189,6 @@ describe('chips per action status (§7.5)', () => {
     expect(chip(act({ status: 'refused', reason: 'chain-not-done' })).line).toBe('Finish saving the family before the parent text.');
     expect(chip(act({ status: 'shadowed' }))).toBeNull();
     expect(chip(act({ status: 'cancelled' }))).toBe(null);
-  });
-  it('the list row shows the chip label and its line, escaped', () => {
-    const h = makeEnv().fns._ikRowsHtml(LIST({ rows: [{ key: P(1), status: 'ready', title: 'Mia', reason: 'Mum: Jo', fromApp: true, hasText: false,
-      actions: [act({ status: 'refused', detail: HOSTILE })] }] }), ST(), false);
-    expect(h).toContain('From app');
-    expect(h).toContain('Refused');
-    expect(h).not.toContain(HOSTILE);
-    expect(h).toContain('&lt;img');
   });
 });
 
@@ -285,39 +261,9 @@ describe('banner lines and stale greying', () => {
     expect(b(ST(), LIST({ cut: true }))).toContain('Some forms were cut off: every family needs a look');
     expect(b(ST(), LIST({ inputs: { from: 'console', at: iso(60_000) } }))).not.toContain('Answers last changed'); // dropped 2026-10-14
   });
-  it('a stale list is greyed; a fresh one is not', () => {
-    const rows = [{ key: P(1), status: 'needs-you', title: 'Ava', reason: 'Check the match', fromApp: false, hasText: false, actions: [] }];
-    const e = makeEnv();
-    expect(e.fns._ikRowsHtml(LIST({ stale: true, rows }), ST(), false)).toContain('ik-grey');
-    expect(e.fns._ikRowsHtml(LIST({ rows }), ST(), false)).not.toContain('ik-grey');
-    expect(strip(e.fns._ikRowsHtml(LIST({ rows }), ST(), false))).toContain('Needs you (1)');
-  });
-  it('T6/T14: an empty Consents date says repliers show early; Intakes keeps its wording', () => {
-    const e = makeEnv();
-    expect(e.fns._ikRowsHtml(LIST({ rows: [] }), ST(), false)).toContain('No families for this date.');
-    e.fns._ik().tab = 'consent';
-    expect(e.fns._ikRowsHtml(LIST({ rows: [] }), ST(), false)).toContain('Parents who reply show here straight away. Everyone else is added at 9am Friday.');
-  });
 });
 
 describe('escaping (§11)', () => {
-  it('a hostile title, hold, value, step text and name render inert', () => {
-    const e = makeEnv();
-    const d = DETAIL({ title: HOSTILE, holds: [{ role: 'pair', text: HOSTILE }],
-      forms: { student: form(P(1), { values: { first: HOSTILE, last: 'x', mobile: '1', gender: 'F' }, issues: [{ key: 'first', msg: HOSTILE, suggest: HOSTILE, advisory: false, keep: null }] }), parent: null },
-      verdicts: [{ role: 'student', subId: P(1), verdict: 'unsure', chosen: null, options: ['same', 'new', P(7)], linked: { name: HOSTILE, age: 15, archived: false },
-        candidates: [{ id: P(7), name: HOSTILE, age: 14, archived: true, verdict: 'unsure', diff: [{ label: HOSTILE, a: HOSTILE, b: '1' }] }], diff: [] }],
-      steps: [step({ text: HOSTILE }), { ...TEXT, sms: { name: HOSTILE, last3: '111' } }] });
-    const det = DET({ row: { key: P(1), status: 'needs-you', title: HOSTILE }, actions: [act({ status: 'sent', stop: { code: 'sms', text: HOSTILE }, steps: [] })] }, d);
-    const h = e.fns._ikFamilyHtml(det, LIST(), ST(), e.fns._ikSeed(d));
-    expect(h).not.toContain(HOSTILE);
-    expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;');
-    const rows = e.fns._ikRowsHtml(LIST({ rows: [{ key: P(1), status: 'ready', title: HOSTILE, reason: HOSTILE, fromApp: false, hasText: false, actions: [] }] }), ST(), false);
-    expect(rows).not.toContain(HOSTILE);
-    // ids and step keys never reach an onclick: only indexes do
-    expect(h).not.toContain(P(1) + "'");
-    expect(h).not.toContain('complete:parent:');
-  });
   it('an error message is escaped on the page', async () => {
     const e = makeEnv({ fresh: () => { throw new Error(HOSTILE); } });
     await e.fns._ikLoad(false);
@@ -545,13 +491,6 @@ const ST6 = (caps: Record<string, string> = {}) => ST({ rev: 6, caps: { intakeSa
 const LROW = (n: number, o: any = {}) => ({ key: P(n), status: 'ready', title: 'Kid ' + n, reason: '', outcome: 'Contact allowed', fromApp: false, hasText: false, actions: [], ...o });
 
 describe('consents sub-menus (R2)', () => {
-  it('R1: Ready is sorted Do not contact, Contact OK, No form; the line counts each', () => {
-    const f = makeEnv().fns;
-    const rows = [LROW(1, { title: 'Zed', outcome: 'Contact allowed' }), LROW(2, { title: 'Amy', outcome: 'No reply: assume consent' }),
-      LROW(3, { title: 'Bo', outcome: 'No contact' }), LROW(4, { title: 'Al', outcome: 'Contact allowed' })];
-    expect(f._ikByOutcome(rows).map((r: any) => r.title)).toEqual(['Bo', 'Al', 'Zed', 'Amy']);
-    expect(f._ikOutcomeLine(rows)).toBe('1 do not contact · 2 contact OK · 1 no form');
-  });
   it('a console without the lookup says so instead of a search box', () => {
     const e = makeEnv();
     expect(e.fns._ikLkGate(ST6({ consentLookup: 'off' }))).toMatch(/needs an update/);
@@ -566,35 +505,6 @@ describe('lookup request shaping, polling, pagination (R2 b/c)', () => {
     expect(f._ikLkItem('mismatches', 1, '', P(8)).note).toBe(null);
     expect(f._ikLkItem('forms', 1, 'x'.repeat(80), P(7)).note).toHaveLength(60);
   });
-  it('_ikLkGo posts one consentLookup and waits; Next asks for page + 1 with the same search', async () => {
-    const e = makeEnv({ post: (_p, b) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }) });
-    await e.fns._ikLkGo('forms', 1, ' Ava ');
-    const x = e.fns._ikLk('forms');
-    expect(x.st).toBe('waiting');
-    const item = e.calls.posts[0].b.items[0];
-    expect(item.type).toBe('consentLookup');
-    expect(item.payload).toEqual({ kind: 'forms', page: 1, ref: item.id });
-    expect(item.note).toBe('Ava');
-    clearTimeout(x.poll);
-    expect(e.fns._ikLkApply(x, { status: 'ready', kind: 'forms', page: 1, pageSize: 25, total: 60, rows: [] }, Date.now())).toBe(false);
-    await e.fns._ikLkTurn('forms', 1);
-    const next = e.calls.posts[1].b.items[0];
-    expect(next.payload.page).toBe(2);
-    expect(next.note).toBe('Ava');
-    clearTimeout(e.fns._ikLk('forms').poll);
-  });
-  it('a refused queue shows the server message; no network = offline with Check again; 404 = expired', async () => {
-    const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'LINK_UNAVAILABLE', message: 'Do this in Elvanto for now.' }] }) });
-    await e.fns._ikLkGo('forms', 1, '');
-    expect(e.fns._ikLk('forms').st).toBe('failed');
-    expect(e.fns._ikLk('forms').msg).toBe('Do this in Elvanto for now.');
-    const x: any = { kind: 'forms' };
-    e.fns._ikLkErr(x, new Error('Load failed'));
-    expect(x.st).toBe('offline');
-    expect(strip(e.fns._ikLkStatusHtml('forms', x, ST6()))).toContain('Ask again');
-    e.fns._ikLkErr(x, Object.assign(new Error('nf'), { status: 404 }));
-    expect(x.msg).toMatch(/expired/);
-  });
   it('apply: waiting/working keep polling; failed maps the reason; too long = timeout (mismatches waits longer)', () => {
     const f = makeEnv().fns, now = Date.now();
     const x: any = { kind: 'forms', since: now, q: 'a' };
@@ -607,14 +517,6 @@ describe('lookup request shaping, polling, pagination (R2 b/c)', () => {
     const y: any = { kind: 'forms', since: now };
     f._ikLkApply(y, { status: 'failed', reason: 'too-old' }, now);
     expect(y.msg).toMatch(/within an hour/);
-  });
-  it('pages: total known = page x of y; unknown total = Next while a full page came back', () => {
-    const f = makeEnv().fns;
-    expect(f._ikLkPages({ page: 1, pageSize: 25, total: 51, rows: [] })).toEqual({ page: 1, pages: 3, prev: false, next: true });
-    expect(f._ikLkPages({ page: 3, pageSize: 25, total: 51, rows: [] })).toEqual({ page: 3, pages: 3, prev: true, next: false });
-    expect(f._ikLkPages({ page: 2, pageSize: 25, total: null, rows: new Array(25).fill({}) }).next).toBe(true);
-    expect(f._ikLkPages({ page: 2, pageSize: 25, total: null, rows: [{}] }).next).toBe(false);
-    expect(f._ikLkPages({ page: 1, pageSize: 25, total: 0, rows: [] }).pages).toBe(1);
   });
 });
 
@@ -639,56 +541,6 @@ describe('form rows (R2 b; consents run 2026-10-17 R1: one chip in words, no ico
     expect(f._ikFormName('Yun-ting (Tinna) Sun')).toBe('Yun-ting (Tinna) Sun');
     expect(f._ikFormName('a, b, c')).toBe('A, B, C'); // odd parts: as it came (tidied)
   });
-  it('rows escape names, show no legend, icons or other opt-outs', () => {
-    const e = makeEnv(), x = e.fns._ikLk('forms');
-    Object.assign(x, { st: 'ready', resQ: '', res: { status: 'ready', page: 1, pageSize: 25, total: 1, takenAt: null, rows: [row({ name: HOSTILE, otherOptOuts: [HOSTILE], contactOptOut: true })] } });
-    const h = e.fns._ikLkResHtml('forms', x, ST6());
-    expect(h).not.toContain('<img');
-    expect(h).not.toContain('ik-legend');
-    expect(h).not.toContain('ik-ic');
-    expect(strip(h)).not.toContain('Other opt-outs');
-    expect(strip(h)).toContain('Filled in ');
-    expect(strip(h)).toContain('Do not contact');
-  });
-  it('empty results say why', () => {
-    const e = makeEnv(), x = e.fns._ikLk('mismatches');
-    Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 0, rows: [] } });
-    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6()))).toContain('Every profile matches its newest consent form');
-    x.resQ = 'zed';
-    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6()))).toContain('No mismatches for &quot;zed&quot;');
-  });
-});
-
-describe('mismatches + Make profile match form (R2 c, LOCKED)', () => {
-  const mis = { subId: P(3), personId: P(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date', 'opt-outs'],
-    form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };
-  it('lines show form vs profile; a console without the writer is said plainly', () => {
-    const f = makeEnv().fns;
-    expect(f._ikMisLines(mis).map((l: string[]) => l.map((x) => x.replace(/ 2026$/, '')))).toEqual([['Consent date', 'Fri 9 Oct', 'blank'], ['Opt-outs', 'Contact with my child', 'blank']]);
-    expect(strip(f._ikFixBanner(ST6({ consentFix: 'off' })))).toContain("isn't on this console yet");
-    expect(f._ikFixText({ status: 'refused', reason: 'locked' }, ST6())).toEqual(['bad', 'Not sent. Waiting for first live approval in the console.']);
-    expect(f._ikFixText({ status: 'sent', reason: 'already' }, ST6())[1]).toMatch(/Already matched/);
-  });
-  it('the fix queues one consentFix {personId, subId} after one confirm', async () => {
-    const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved' }] }) });
-    const x = e.fns._ikLk('mismatches');
-    Object.assign(x, { st: 'ready', resQ: '', res: { page: 1, pageSize: 25, total: 1, rows: [mis] } });
-    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' }))).not.toContain('_ikFixOpen(0)'); // M5: off = "Do in Elvanto"
-    expect(strip(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'off' })))).toContain('Do in Elvanto');
-    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live' }))).toContain('_ikFixOpen(0)');
-    e.fns._ik().fixes[mis.personId] = { id: P(77), status: 'unclear' }; // L7: an unclear fix offers Check again (rev 15 console only)
-    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live', recheck: 'live' }))).toContain(`_lkRecheck('${P(77)}')`);
-    expect(e.fns._ikLkResHtml('mismatches', x, ST6({ consentFix: 'live' }))).not.toContain('_lkRecheck(');
-    delete e.fns._ik().fixes[mis.personId];
-    e.fns._ikFixOpen(0);
-    expect(strip(e.calls.modals[0]!)).toContain("Change Ava Nguyen's profile to match the form?");
-    await e.fns._ikFixGo();
-    const it1 = e.calls.posts[0].b.items[0];
-    expect(it1.type).toBe('consentFix');
-    expect(it1.payload).toEqual({ personId: P(4), subId: P(3) });
-    expect(e.fns._ik().fixes[P(4)].status).toBe('pending');
-    clearTimeout(e.fns._ik().fixPoll);
-  });
 });
 
 describe('Save all ready (R8)', () => {
@@ -709,24 +561,6 @@ describe('Save all ready (R8)', () => {
     expect(x.items[0].payload).toEqual({ date: '2026-10-09', row: P(1), confirmed: ['approve:parent:' + P(2), 'category:parent:' + P(2)], one: false });
     expect(x.skipped).toEqual(['Ben', 'Cy']);
     expect(f._ikSaveAllItems([ok], '2026-10-16', 'consentSave', LIST(), ST()).items[0].payload).not.toHaveProperty('one');
-  });
-  it('one confirm, then N saves in one batch; refused rows get their own status line', async () => {
-    const e = makeEnv({
-      fresh: (p) => (p.startsWith('/link/intake/row') ? DET({ row: { key: p.includes(P(1)) ? P(1) : P(5), status: 'ready', title: p.includes(P(1)) ? 'Ava' : 'Eve' } }) : LIST()),
-      post: (_p, b) => ({ results: b.items.map((i: any, n: number) => (n === 0 ? { id: i.id, kind: 'action', outcome: 'saved' }
-        : { id: i.id, kind: 'action', outcome: 'refused', message: 'This plan changed. Refresh and check again.' })) }),
-    });
-    const I = e.fns._ik();
-    Object.assign(I, { head: ST(), tab: 'intake', date: '2026-10-09', dates: [{ date: '2026-10-09' }], list: LIST({ rows: [LROW(1), LROW(5)] }) });
-    await e.fns._ikSaveAllOpen();
-    expect(e.calls.modals.length).toBe(1);
-    expect(strip(e.calls.modals[0]!)).toContain('Save 2 families to Elvanto?');
-    expect(e.calls.posts.length).toBe(0);
-    await e.fns._ikSaveAllGo();
-    expect(e.calls.posts.length).toBe(1);
-    expect(e.calls.posts[0].b.items.map((i: any) => i.type)).toEqual(['intakeSave', 'intakeSave']);
-    expect(I.saErr[P(5)]).toBe('This plan changed. Refresh and check again.');
-    expect(I.saErr[P(1)]).toBeUndefined();
   });
 });
 
@@ -751,19 +585,6 @@ describe('integration review fixes (run 2026-10-15)', () => {
     expect(e.fns._ikFixText({ status: 'unclear' }, ST6(), 'Ava')[1]).toBe("Elvanto may not have saved this change. Look at Ava's profile in Elvanto.");
     expect(e.fns._ikFixText({ status: 'refused', reason: 'weird' }, ST6())[1]).toBe("The console couldn't do this. Do it in Elvanto.");
   });
-  it('UI H2: No contact is a red tag, never green (R1 copy: no "Form back:" prefix)', () => {
-    const f = makeEnv().fns;
-    expect(f._ikConsentTag({ outcome: 'No contact' })).toEqual(['Do not contact', 'ik-bad']);
-    expect(f._ikConsentTag({ outcome: 'Contact allowed' })).toEqual(['Contact OK', 'ik-ok']);
-    expect(f._ikConsentTag({ outcome: 'No reply: assume consent' })).toEqual(['No form · assume OK', 'ik-prac']);
-    expect(f._ikConsentTag({ status: 'needs-you', reason: 'Unmatched consent form' })).toEqual(['Check form', 'ik-wait']);
-  });
-  it('UI H1: Enter in the search box blurs it before the redraw', () => {
-    const e = makeEnv();
-    let blurred = false;
-    e.fns._ikLkKey('forms', { key: 'Enter', preventDefault() {}, target: { blur() { blurred = true; } } });
-    expect(blurred).toBe(true);
-  });
   it('UI M3/M4: the bulk confirm says what each outcome does and drops the old D26 wording', () => {
     const f = makeEnv().fns;
     const h = strip(f._ikSaveAllGroups([{ title: 'A', outcome: 'No contact' }, { title: 'B', outcome: 'Contact allowed' }]));
@@ -771,25 +592,6 @@ describe('integration review fixes (run 2026-10-15)', () => {
     expect(h).toContain('Contact allowed (1): approve the form, then complete New People step 0');
     expect(f._ikD26()).not.toMatch(/Provisional/);
     expect(f._ikD26()).toMatch(/Monday/);
-  });
-  it('resilience M6: Ask again after a network error resends the same request id', async () => {
-    const ids: string[] = [];
-    const e = makeEnv({ post: (_p, b) => { ids.push(b.items[0].id); if (ids.length === 1) throw new Error('Load failed'); return { results: [{ id: b.items[0].id, kind: 'action', outcome: 'replay' }] }; } });
-    await e.fns._ikLkGo('forms', 1, '');
-    expect(e.fns._ikLk('forms').st).toBe('offline');
-    await e.fns._ikLkAgain('forms');
-    expect(ids[1]).toBe(ids[0]);
-    expect(e.fns._ikLk('forms').st).toBe('waiting');
-    clearTimeout(e.fns._ikLk('forms').poll);
-  });
-  it('resilience M3/M5: an unreadable answer is an error, a retry says why', () => {
-    const f = makeEnv().fns, now = Date.now();
-    const x: any = { kind: 'mismatches', since: now };
-    f._ikLkApply(x, { status: 'failed', reason: 'unreadable' }, now);
-    expect(x.msg).toBe("Couldn't read the answer. Search again.");
-    const y: any = { kind: 'forms', since: now };
-    f._ikLkApply(y, { status: 'waiting', reason: 'console-busy' }, now);
-    expect(strip(f._ikLkStatusHtml('forms', y, ST6()))).toContain('busy with the service');
   });
 });
 
@@ -804,30 +606,6 @@ describe('Unlinked consent forms (L6)', () => {
     e.get().LINK.st = ST7();
     return { e, I };
   };
-  it('the sub-menu is there and loads nothing until asked', () => {
-    const e = makeEnv({ storage: new Map([['ysc.intakeTab', 'consent']]) });
-    e.fns._ikConsentSub('unlinked');
-    expect(e.fns._ik().csub).toBe('unlinked');
-    expect(e.calls.posts.length).toBe(0);
-  });
-  it('rows show names, Parent:, one chip in words, and Find person or Unlink by link state; hostile text is escaped', () => {
-    const { e } = env();
-    const x = e.fns._ikLk('unlinked');
-    x.res.rows[0].name = HOSTILE;
-    x.res.rows[1].names = ['QUINN FAKENAME'];
-    const h = e.fns._ikLkResHtml('unlinked', x, ST7());
-    expect(h).not.toContain(HOSTILE);
-    expect(strip(h)).toContain('Parent: Pat Sample');
-    expect(strip(h)).toContain('Parent: Quinn Fakename'); // shouty caps tidied
-    expect(strip(h)).not.toContain('Also on the form');
-    expect(strip(h)).not.toContain('Other opt-outs');
-    expect(strip(h)).toContain('Filled in ');
-    expect(strip(h)).toContain('Do not contact');
-    expect(strip(h)).toContain('Find person');
-    expect(strip(h)).toContain('Linked to Riley Sample (not in Elvanto)');
-    expect(strip(h)).toContain('Unlink');
-    expect(strip(e.fns._ikClRow(x.res.rows[0], 0, '', ST6()))).toContain('Console needs an update'); // no consentLink capability
-  });
   it('Find person searches the roster, pick -> confirm warns about DO NOT CONTACT, Link posts one consentLink', async () => {
     const { e } = env((_p: string, b: any) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }));
     await e.fns._ikClOpen(0);
