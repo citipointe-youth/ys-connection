@@ -9020,7 +9020,7 @@ function rFollow(){
   if(!AUDIT){caShell(emptyYear(),'ca-follow');return;}
   if(!(AUDIT.weekly||[]).length){caShell('<div class="card ca-empty">Follow-up lists start with data from the console.</div>','ca-follow');return;}
   const all=FU_LISTS.map(l=>[l,caFollowRows(AUDIT,l,QF)]);
-  const open=FOPEN||(all.find(x=>x[1].length)||all[0])[0];FOPEN='';
+  const open=FOPEN;FOPEN='';   // all collapsed unless a deliberate jump (follow(list)) names one
   let b=isPast()?'<div class="ca-cap">As at '+esc(fmtDay(AUDIT.dataEndDate))+'. These people may already have been followed up.</div>':'';
   for(const[l,rows]of all){
     b+='<details class="card ca-fu"'+(l===open?' open':'')+'><summary><b>'+esc(caLabel('list',l))+'</b> · '+rows.length+'<div class="ca-cap">'+esc(caLabel('hint',l))+'</div></summary>';

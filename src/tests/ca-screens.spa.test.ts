@@ -424,16 +424,23 @@ describe('Y10 screens', () => {
     expect(await caWorld(v1).show('ca-week')).toContain("Weekly numbers aren't available for 2026. See Term report.");
     expect(await caWorld(v1).show('ca-follow')).toContain('Follow-up lists start with data from the console.');
   });
-  it('Follow up: three <details>, the first non-empty open; Call/Text, parent wording, DNC, no phone', async () => {
+  it('Follow up: three <details>, all collapsed by default; Call/Text, parent wording, DNC, no phone', async () => {
     const html = await caWorld(audit26()).show('ca-follow');
     expect((html.match(/<details class="card ca-fu"/g) || []).length).toBe(3);
-    expect(html).toMatch(/<details class="card ca-fu" open><summary><b>Stopped coming<\/b> · 3/);
+    expect(html).not.toContain('<details class="card ca-fu" open');
     expect(html).toContain('href="tel:0400000001">Call parent</a>');
     expect(html).toContain('href="sms:0400000001">Text parent</a>');
     expect(html).toContain('Do not contact');
     expect(html).toContain('No phone on file');
     expect(html).toContain("<span class=\"chip c-neutral\">Parent's phone</span>");
     expect(html).toContain('Download list (CSV)');
+  });
+  it('Follow up: a jump from This week / What to do opens only that list', async () => {
+    const w = caWorld(audit26());
+    w.CA.follow('drifting');
+    const html = await w.show('ca-follow');
+    expect((html.match(/<details class="card ca-fu" open/g) || []).length).toBe(1);
+    expect(html).toMatch(/<details class="card ca-fu" open><summary><b>Stopped coming<\/b> · 3/);
   });
   it('Follow up CSV: the selected quad, or all quads with a Quad column; parent phones marked', async () => {
     const w = caWorld(audit26());
