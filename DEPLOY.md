@@ -9,10 +9,10 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 **Shipping bc18 (0044 is not additive):** the Vercel build applies 0044 (it drops `bus_consents`) while the old build is still live, so the old build's Bus screens fail until the new build is live (about 1-3 min). Ship only when nobody is on Bus (not Friday afternoon or evening; the blockouts alone are not enough). If the build fails after the build log shows the migration applied, run the recreate SQL above at once.
 
 <!-- live -->
-- master sha: 03a3814 (bus/past-riders)
-- last ship: 2026-10-23 01:57 EAST
+- master sha: 7d61ac5 (bus/consent-address)
+- last ship: 2026-10-23 02:27 EAST
 - migration: 0044
-- SW version: ysc-v144
+- SW version: ysc-v145
 - promote: auto (Vercel promotes every master build); check /health after the build
 - pending branches: chore/ship ux17/bus 
 <!-- /live -->
