@@ -735,8 +735,11 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .stop-arrows button:disabled{opacity:.3;cursor:default}
 /* R19-U13: 44px hit areas with no visual growth: the arrows' outer edges, and a centred 44px band on small links/chips. */
 .stop-arrows button::after{content:'';position:absolute;inset:-4px 0 0}.stop-arrows button+button::after{inset:0 0 -4px}
-.bus-hit{position:relative;display:inline-block}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
-.bus-differs{border:0;cursor:pointer;font-family:inherit;vertical-align:middle} /* compact "Consent address differs" chip-button */
+.bus-hit{position:relative}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+.bus-differs{border:0;cursor:pointer;font-family:inherit} /* "Consent address differs" chip-button */
+.bus-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.bus-chip{gap:4px;height:24px;padding:2px 8px;font-size:13px;font-weight:600;line-height:20px;border-radius:999px;box-sizing:border-box}
+.bus-chip .ic-s{width:14px;height:14px;flex:none}
 @media(pointer:coarse){.bus-pg .tbbar .tbbtn{min-height:44px}.bus-pg .bus-flt{min-height:44px}}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
@@ -9747,16 +9750,16 @@ function _busSuburb(address) {
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
 function _busConsentChip(r, tap) {
   const c = r && r.consent; if (!c || !c.year) return '';
-  if (c.current) return `<span class="pill ok">${icS('check')} ${esc('Consent ' + c.year)}</span>${_busPickupChip(c)}`;
+  if (c.current) return `<span class="pill ok bus-chip">${icS('check')}${esc('Consent ' + c.year)}</span>${_busPickupChip(c)}`;
   // R11: a warning, never a block. A coordinator's tap (tap=true, Students rows) opens the consent form.
   const go = tap && r.id ? ` role="button" onclick="event.stopPropagation();busConsentForm({riderId:'${esc(r.id)}'})"` : '';
-  return `<span class="chip c-warn"${go}>${icS('alert')} ${esc('No consent ' + c.year)}</span>`;
+  return `<span class="chip c-warn bus-chip"${go}>${icS('alert')}${esc('No consent ' + c.year)}</span>`;
 }
 // Operator 2026-10-23: who meets them at the bus spot. The server sends c.pickup to full-view logins only (R7), so a junior leader sees nothing.
 function _busPickupChip(c) {
   if (!c || !c.current || !c.pickup) return '';
-  if (c.pickup === 'dropHome') return ` <span class="chip c-warn" title="No pickup named, probably needs a drop home" aria-label="No pickup named, probably needs a drop home">Drop home</span>`;
-  return ` <span class="pill ok" title="${c.pickup === 'parent' ? 'Parent picks up at the bus spot' : 'Someone named picks up at the bus spot'}">Pickup</span>`;
+  if (c.pickup === 'dropHome') return `<span class="chip c-warn bus-chip" title="No pickup named, probably needs a drop home" aria-label="No pickup named, probably needs a drop home">${icS('home')}Drop home</span>`;
+  return `<span class="pill ok bus-chip" title="${c.pickup === 'parent' ? 'Parent picks up at the bus spot' : 'Someone named picks up at the bus spot'}">${icS('users')}Pickup</span>`;
 }
 function _busPickupLine(c) {
   const d = (c && c.details) || {};
@@ -9775,7 +9778,12 @@ function _busConsentDetailsHtml(c) {
 function _busConsentHintHtml(r) {
   const c = r && r.consent;
   // Operator 2026-10-23: a one-line chip (was a 44px button); .bus-hit keeps a 44px tap band with no visual growth.
-  return c && c.differs && c.details ? `<button type="button" class="chip c-warn bus-hit bus-differs" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
+  return c && c.differs && c.details ? `<button type="button" class="chip c-warn bus-chip bus-hit bus-differs" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')}Consent address differs</button>` : '';
+}
+// One chip row under the suburb: consent, pickup, then "Consent address differs". Empty (no wrapper) when there is nothing to show.
+function _busChipRow(r, tap, hint) {
+  const h = _busConsentChip(r, tap) + (hint ? _busConsentHintHtml(r) : '');
+  return h ? `<div class="bus-chips">${h}</div>` : '';
 }
 function _busConsentStatusHtml(st) {
   if (!st) return '';
@@ -14753,7 +14761,7 @@ function _busRosterHtml() {
       : `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span> `;
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busConsentChip(r, v.canCoordinate)} ${_busConsentHintHtml(r)} ${_busPinChip(r)}</div></div>
+        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busPinChip(r)}</div>${_busChipRow(r, v.canCoordinate, true)}</div>
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');
@@ -14775,7 +14783,7 @@ function _busPastHtml(locked) {
   if (!past.length) return '';
   const rows = past.map((p, i) => `<div class="route-row clickable" onclick="busAddPast(${i})">
       <div class="route-main"><div class="route-name">${esc(p.name)} ${_busGradeChip(esc(String(p.grade || '')), p.gender)}</div>
-      <div class="route-sub">${esc(p.suburb)} ${_busConsentChip(p)}</div></div>
+      <div class="route-sub">${esc(p.suburb)}</div>${_busChipRow(p)}</div>
       ${p.addressId ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete ${esc(p.name)}" onclick="event.stopPropagation();event.preventDefault();busDeletePastRider(this,${i})">${icS('trash')}</button>` : ''}
       <span style="color:var(--accent-dark);display:flex" aria-label="Add ${esc(p.name)}">${icS('plus')}</span></div>`).join('');
   return `<div class="card drop${BUS.pastOpen ? ' open' : ''}" style="margin-top:12px">
@@ -14840,7 +14848,7 @@ function _busHitsHtml() {
   const status = BUS.searching
     ? `<div class="li"><div class="spin" style="margin-right:8px"></div><div class="li-body"><div class="li-title">Searching…</div></div></div>`
     : BUS.searchErr ? `<div class="li"><div class="li-body"><div class="li-title">${esc(BUS.searchErr)}</div></div></div>` : '';
-  const rows = BUS.hits.map((h, i) => `<div class="li" onclick="busPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''} ${_busConsentChip(h)}</div></div>${icS('chevr')}</div>`).join('');
+  const rows = BUS.hits.map((h, i) => `<div class="li" onclick="busPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''}</div>${_busChipRow(h)}</div>${icS('chevr')}</div>`).join('');
   return `<div class="card bus-hits">${status}${rows}
     <div class="li" onclick="busNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.search.trim())}"</div></div></div></div>`;
 }
@@ -15696,7 +15704,7 @@ function _busRoutesHtml() {
   const unassigned = v.riders.filter((r) => !r.runVehicleId);
   const unRows = unassigned.map((r) => `<div class="route-row">
     <div class="route-main"><div class="route-name">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)} ${r.pinned ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+      <div class="route-sub">${esc(_busSuburb(r.address))} ${_busPinChip(r)}</div>${_busChipRow(r)}</div>
     ${ro ? '' : `${r.placeId ? '' : `<button class="btn btn-secondary btn-sm" onclick="busEditRider('${r.id}')">Fix address</button>`}
       <button class="btn btn-secondary btn-sm" onclick="busMoveSheet('${r.id}')">Move</button>`}
   </div>`).join('');
@@ -15717,7 +15725,7 @@ function _busRoutesHtml() {
     const rows = riders.map((r, i) => `<div class="route-row${ro ? '' : ' clickable'}"${ro ? '' : ` onclick="busMoveSheet('${r.id}')"`}>
       ${isBus ? '' : `<div class="stop-num">${i + 1}</div>`}
       <div class="route-main"><div class="route-name">${esc(r.name)} ${r.pinned && !isBus ? _busPinnedIcon() : ''}</div>
-      <div class="route-sub">${esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+      <div class="route-sub">${esc(_busWhere(r))} ${_busPinChip(r)}</div>${_busChipRow(r)}</div>
     </div>`).join('');
     // Route preview: reuses the same _busMapsLinks helper My car uses. Hidden for an empty car.
     const routeBtn = riders.length ? `<button class="btn-icon" aria-label="Route for ${esc(rv.name)}" onclick="event.stopPropagation();busOpenCarRoute('${rv.id}')">${icS('map')}</button>` : '';
@@ -15998,7 +16006,7 @@ function _busMyCarHtml() {
     const rows = mc.stops.map((s, i) => `<div class="route-row clickable" style="align-items:flex-start${s.droppedAt ? ';opacity:.55' : ''}" onclick="_busToggleStop(${i})">
       <div class="stop-num">${i + 1}</div>
       <div class="route-main"><div class="route-name">${esc(s.name)} ${s.pinned ? _busPinnedIcon() : ''} ${dncChip(s)}</div>
-      <div class="route-sub">${esc([s.grade ? `Y${s.grade}` : '', _busWhere(s)].filter(Boolean).join(' · '))} ${_busConsentChip(s)} ${_busPinChip(s, true)}</div>
+      <div class="route-sub">${esc([s.grade ? `Y${s.grade}` : '', _busWhere(s)].filter(Boolean).join(' · '))} ${_busPinChip(s, true)}</div>${_busChipRow(s)}
       <div class="stop-detail" id="stop-detail-${i}" style="display:none">${esc(s.address)}</div>
       <div class="mc-acts" onclick="event.stopPropagation()">
         <label class="cbx-row"><input type="checkbox" ${s.droppedAt ? 'checked' : ''} onchange="busToggleDropped('${s.id}', this.checked)"> Dropped off</label>

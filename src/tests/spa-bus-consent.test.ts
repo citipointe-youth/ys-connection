@@ -8,13 +8,13 @@ const PRE = "const esc = (s) => String(s == null ? '' : s).replace(/[&<>\"']/g, 
 
 describe('bus consent chip and details', () => {
   it('current = green "Consent 2026"; not current = warning "No consent 2026"; never a blocking class', () => {
-    const { _busConsentChip } = loadFns(['_busConsentChip', '_busPickupChip'], PRE);
+    const { _busConsentChip } = loadFns(['_busChipRow', '_busConsentChip', '_busConsentHintHtml', '_busPickupChip'], PRE);
     expect(_busConsentChip({ consent: { year: 2026, current: true } })).toMatch(/pill ok[^]*Consent 2026/);
     expect(_busConsentChip({ consent: { year: 2026, current: false } })).toMatch(/c-warn[^]*No consent 2026/);
     expect(_busConsentChip({})).toBe('');
   });
   it('a coordinator tap on No consent opens the form; no tap by default', () => {
-    const { _busConsentChip } = loadFns(['_busConsentChip', '_busPickupChip'], PRE);
+    const { _busConsentChip } = loadFns(['_busChipRow', '_busConsentChip', '_busConsentHintHtml', '_busPickupChip'], PRE);
     expect(_busConsentChip({ id: 'r1', consent: { year: 2026, current: false } }, true)).toContain("busConsentForm({riderId:'r1'})");
     expect(_busConsentChip({ id: 'r1', consent: { year: 2026, current: false } })).not.toContain('onclick');
   });
@@ -114,7 +114,7 @@ describe('consent form sheet (R2, R3, R6)', () => {
     expect(html).not.toMatch(/deletes bus parent consents/);
     expect(html).toContain('Bus consent forms and the record of who filed them are deleted too (Elvanto keeps the original forms).');
     expect(html).toContain('Bus consent forms count for one calendar year');
-    expect(readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8')).toMatch(/const CACHE = 'ysc-v145'/);
+    expect(readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8')).toMatch(/const CACHE = 'ysc-v146'/);
   });
 });
 
@@ -270,12 +270,12 @@ describe('pickup-by visibility', () => {
 });
 
 describe('pickup chip and profile line (operator 2026-10-23)', () => {
-  const chip = () => loadFns(['_busConsentChip', '_busPickupChip'], PRE)._busConsentChip;
+  const chip = () => loadFns(['_busChipRow', '_busConsentChip', '_busConsentHintHtml', '_busPickupChip'], PRE)._busConsentChip;
   it('parent and named = green Pickup; dropHome = orange Drop home with the aria-label; no chip without a current form or a pickup', () => {
     const c = chip();
-    for (const p of ['parent', 'named']) expect(c({ consent: { year: 2026, current: true, pickup: p } })).toMatch(/Consent 2026<\/span> <span class="pill ok"[^>]*>Pickup<\/span>/);
+    for (const p of ['parent', 'named']) expect(c({ consent: { year: 2026, current: true, pickup: p } })).toMatch(/Consent 2026<\/span><span class="pill ok bus-chip"[^>]*><i data-i="users"><\/i>Pickup<\/span>/);
     const dh = c({ consent: { year: 2026, current: true, pickup: 'dropHome' } });
-    expect(dh).toMatch(/<span class="chip c-warn"[^>]*aria-label="No pickup named, probably needs a drop home"[^>]*>Drop home<\/span>/);
+    expect(dh).toMatch(/<span class="chip c-warn bus-chip"[^>]*aria-label="No pickup named, probably needs a drop home"[^>]*><i data-i="home"><\/i>Drop home<\/span>/);
     expect(c({ consent: { year: 2026, current: false, pickup: 'parent' } })).not.toMatch(/Pickup|Drop home/);
     expect(c({ consent: { year: 2026, current: true } })).not.toMatch(/Pickup|Drop home/); // a junior leader view carries no pickup
   });
@@ -293,8 +293,29 @@ describe('compact differs chip (operator 2026-10-23)', () => {
   it('is a one-line chip button, not a btn-sm block, and keeps the stopPropagation tap to the picker with the consent row', () => {
     const { _busConsentHintHtml } = loadFns(['_busConsentHintHtml'], PRE);
     const h = _busConsentHintHtml({ id: 'r1', consent: { differs: true, details: { formId: 'f1' } } });
-    expect(h).toMatch(/^<button type="button" class="chip c-warn bus-hit bus-differs" onclick="event\.stopPropagation\(\);busEditRider\('r1', 'consent:f1'\)"/);
+    expect(h).toMatch(/^<button type="button" class="chip c-warn bus-chip bus-hit bus-differs" onclick="event\.stopPropagation\(\);busEditRider\('r1', 'consent:f1'\)"/);
     expect(h).not.toContain('btn-sm'); expect(h).toContain('Consent address differs');
     expect(loadIndexHtml()).toMatch(/\.bus-differs\{border:0;cursor:pointer;font-family:inherit/);
+  });
+});
+
+describe('bus chip row (operator 2026-10-23 spacing)', () => {
+  const load = () => loadFns(['_busChipRow', '_busConsentChip', '_busConsentHintHtml', '_busPickupChip'], PRE)._busChipRow;
+  it('puts consent, pickup, differs in one .bus-chips row, every chip sharing .bus-chip', () => {
+    const h = load()({ id: 'r1', consent: { year: 2026, current: true, pickup: 'parent', differs: true, details: { formId: 'f1' } } }, false, true);
+    expect(h).toMatch(/^<div class="bus-chips">/);
+    expect(h.split(' bus-chip').length - 1).toBe(3);
+    expect(h.indexOf('Consent 2026')).toBeLessThan(h.indexOf('Pickup'));
+    expect(h.indexOf('Pickup')).toBeLessThan(h.indexOf('Consent address differs'));
+  });
+  it('one chip for a junior leader; no wrapper at all with none', () => {
+    const f = load();
+    expect(f({ consent: { year: 2026, current: true } }, false, true).split(' bus-chip').length - 1).toBe(1);
+    expect(f({}, false, true)).toBe('');
+  });
+  it('CSS: flex-wrap row with 6px gap, shared 24px chip', () => {
+    const css = loadIndexHtml();
+    expect(css).toMatch(/\.bus-chips\{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px\}/);
+    expect(css).toMatch(/\.bus-chip\{gap:4px;height:24px;padding:2px 8px;font-size:13px/);
   });
 });
