@@ -276,7 +276,7 @@ export async function buildContainer(): Promise<Container> {
   const lifegroupStats = makeLifegroupStatsService(students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions, settings);
   // Bound after `reconcile` is built below; read at call time (same late binding as intake.off).
   let afterImport: (kind: 'service' | 'lifegroup') => Promise<void> = async () => {};
-  const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections, dnc);
+  const busSvc = makeBusService(bus, students, leaders, settings, routingFromEnv(), connections, dnc, { link }); // F4: newYouth wired in Task 10
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null,
     (kind) => afterImport(kind),
     async () => new Map((await link.groups()).map((g) => [g.name.trim().toLowerCase(), g.groupId])));

@@ -10,12 +10,15 @@ import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggesti
 import { decodePolyline, thinPolyline } from './routing/polyline';
 import { markerLabel, ROUTE_MAX_INTERMEDIATES } from './routing/google-requests';
 import type { IBusRepository, IStudentRepository, ILeaderRepository, ISettingsRepository, IConnectionRepository } from '../repositories/interfaces/entity-repositories';
+import type { ILinkRepository } from '../repositories/interfaces/link.repository';
+import { LinkOpenDuplicate, LinkUnavailable } from '../core/errors/link-errors';
+import { consentView, latestForm, sameAddress } from './bus-consent';
 import type { Actor } from '../core/entities/user';
 import { makeDnc, type Dnc } from './dnc';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusGenerateResult,
-  BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide, VehicleKind } from '../core/entities/bus';
+  BusConsentView, BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide, VehicleKind } from '../core/entities/bus';
 
 // tripDate (BUS-1): optional ?date= for the own-car / my-car endpoints (Trip logging); see tripRunIfAny.
 export interface BusCtx { actor: Actor; asLeaderId: string | null; localNow: string; tripDate?: string | null }
@@ -66,7 +69,20 @@ export interface BusService {
   extraCars(ctx: BusCtx, input: unknown): Promise<BusExtraCarsView>;
   analysisMap(ctx: BusCtx): Promise<MapImage>;
   pastRunMap(ctx: BusCtx, runId: string): Promise<MapImage>;
+  // Bus consent via the Elvanto form (spec 2026-10-22 §5.4/§5.6).
+  consentStatus(ctx: BusCtx): Promise<BusConsentStatus>;
+  consentCheck(ctx: BusCtx): Promise<{ id: string }>;
+  /** F6: riderId is resolved to the person on the server (a redacted junior view carries no studentId/guestId). */
+  consentPrefill(ctx: BusCtx, q: { riderId?: string; studentId?: string; guestId?: string }): Promise<Record<string, unknown>>;
 }
+
+export interface BusConsentStatus { year: number; lastChecked: string; lastNew: number; checking: boolean; canCheck: boolean;
+  unmatched: { name: string; submittedAt: string }[] | null }
+/** F4 (pre-flight): structural, so this lane needs no NewYouthService type; Task 10 wires the real one. */
+export type BusConsentSender = { sendBusConsent(actor: Actor, input: unknown): Promise<{ result: 'sent' | 'failed' | 'unconfirmed' | 'skipped';
+  dropoff: string | null; queued?: boolean; repeat?: boolean }> };
+export interface BusServiceExt { link?: Pick<ILinkRepository, 'insertAction' | 'listActions' | 'cancelPending' | 'listConsoles'>; newYouth?: BusConsentSender }
+type ConsentFn = (who: { studentId: string | null; guestId: string | null }, at?: Pick<BusRunRider, 'snapAddress' | 'runVehicleId'>) => BusConsentView;
 
 /** BUS-2: one mapper for the three saved-address lists. A bus row (vehicleId) reads as "Bus drop off" — never a street. */
 const addrOut = (a: BusAddress) => ({ id: a.id, label: a.label, suburb: a.vehicleId ? 'Bus drop off' : suburbOf(a.address),
@@ -227,7 +243,7 @@ function parseIn<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
 export function makeBusService(bus: IBusRepository, students: IStudentRepository,
   leaders: ILeaderRepository, settingsRepo: ISettingsRepository,
   routing: RoutingProvider = new FakeRoutingProvider(), connections?: IConnectionRepository,
-  dnc: Dnc = makeDnc()): BusService { // R1: optional; absent = nobody is DNC
+  dnc: Dnc = makeDnc(), ext: BusServiceExt = {}): BusService { // R1: optional; absent = nobody is DNC
 
   async function cfg(): Promise<MinistryConfig> { return (await settingsRepo.getSettings()).ministryConfig; }
 
@@ -375,11 +391,48 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     await bus.bumpRun(run.id, await whoLabel(ctx), nowIso());
   }
 
-  function riderView(r: BusRunRider): BusRiderView {
+  const CHECK_STALE_MS = 10 * 60_000; // Review Focus 5: a check nobody claimed for 10 min no longer holds the button
+  /** One consent loader per request: the forms, the year, who sees details, the DNC mark. `runId` lets a coordinator's
+   *  differs hint skip riders on a bus (their address is the bus drop-off, not home: pre-flight F16). */
+  async function consentCtx(ctx: BusCtx, c: MinistryConfig, runId?: string): Promise<ConsentFn> {
+    const full = !isRedactedLeader(ctx, c), coord = allowed(ctx, c, 'bus:coordinate');
+    const [forms, mark, rvs] = await Promise.all([bus.listConsentForms(), dnc.forActor(ctx.actor),
+      coord && runId ? bus.listRunVehicles(runId) : Promise.resolve([] as BusRunVehicle[])]);
+    const onBus = new Set(rvs.filter(isBus).map((v) => v.id));
+    const year = Number(ctx.localNow.slice(0, 4)); // R4: localNow is the phone's local time in the site zone
+    return (who, at) => {
+      const v = consentView(forms, who, year, full);
+      if (v.details) v.details = mark(v.details, who.studentId); // DNC: parentPhone -> null for a non-admin/director login
+      if (coord && v.details && at && !(at.runVehicleId && onBus.has(at.runVehicleId))) v.differs = !sameAddress(v.details.address, at.snapAddress);
+      return v;
+    };
+  }
+
+  /** Queue one busConsentCheck for the newest console (reuses a fresh open row; replaces a stale pending one). No role check. */
+  async function queueCheck(ctx: BusCtx): Promise<{ id: string }> {
+    if (!ext.link) throw new LinkUnavailable();
+    const con = (await ext.link.listConsoles()).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
+    if (!con || (con.capabilities.busConsentCheck ?? 'off') === 'off') throw new LinkUnavailable();
+    for (const r of await ext.link.listActions({ types: ['busConsentCheck'], statuses: ['pending', 'claimed'] })) {
+      if (Date.now() - Date.parse(r.createdAt) < CHECK_STALE_MS) return { id: r.id };
+      if (r.status === 'pending') await ext.link.cancelPending(r.id); // never claimed: an old or offline console
+    }
+    try {
+      const row = await ext.link.insertAction({ id: generateId(), type: 'busConsentCheck', payload: {}, note: null, dedupeKey: 'bcc',
+        serviceDate: ctx.localNow.slice(0, 10), studentId: null, personId: null, createdBy: ctx.actor.id,
+        leaderId: selfLeaderId(ctx), leaderName: await whoLabel(ctx) });
+      return { id: row.id };
+    } catch (e) {
+      if (e instanceof LinkOpenDuplicate) return { id: String(e.extra?.existingId) };
+      throw e;
+    }
+  }
+
+  function riderView(r: BusRunRider, cv?: ConsentFn): BusRiderView {
     return { id: r.id, studentId: r.studentId, guestId: r.guestId, addressId: r.addressId, runVehicleId: r.runVehicleId,
       stopOrder: r.stopOrder, pinned: r.pinned, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
       address: r.snapAddress, placeId: r.snapPlaceId,
-      consent: { year: 0, current: false }, // Task 5 fills it from the bus consent forms
+      consent: cv ? cv(r, r) : { year: 0, current: false },
       droppedAt: r.droppedAt, droppedBy: r.droppedBy };
   }
 
@@ -417,7 +470,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       prefGrades: prefBy.get(l.id)?.prefGrades ?? [] }));
     const seesPending = can(ctx.actor, 'bus:analysis');
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
-    const riderViews = riders.map((r) => riderView(r));
+    const cv = await consentCtx(ctx, c, run.id);
+    const riderViews = riders.map((r) => riderView(r, cv));
     const busIds = new Set(vehicles.filter(isBus).map((v) => v.id));
     if (riderViews.some((r) => r.runVehicleId && busIds.has(r.runVehicleId))) {
       const all = await bus.listAllAddresses();
@@ -890,14 +944,17 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           pool = pool.filter((s) => mine.has(s.id));
         } else pool = pool.filter((s) => canAccessStudent(ctx.actor, s.grade, s.gender, c.structure));
       }
+      const cv = await consentCtx(ctx, c);
       const addrsOf = async (who: { studentId: string } | { guestId: string }) =>
         full ? (await bus.listAddresses(who)).map(addrOut) : [];
       // Task 3 (owner): `street` is always the decrypted address's street part — a display
       // fallback for an address saved before the default-label fix, when `label` is still blank.
       const studentHits = await Promise.all(pool.slice(0, 15).map(async (s): Promise<BusSearchHit> => ({
-        kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender), addresses: await addrsOf({ studentId: s.id }) })));
+        kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender), addresses: await addrsOf({ studentId: s.id }),
+        consent: cv({ studentId: s.id, guestId: null }) })));
       const guestHits = await Promise.all((await bus.listGuests()).filter((g) => !g.linkedStudentId && nameMatches(q, g.firstName, g.lastName)).slice(0, 5)
-        .map(async (g): Promise<BusSearchHit> => ({ kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: await addrsOf({ guestId: g.id }) })));
+        .map(async (g): Promise<BusSearchHit> => ({ kind: 'guest', id: g.id, name: `${g.firstName} ${g.lastName}`, grade: g.grade, gender: g.gender, addresses: await addrsOf({ guestId: g.id }),
+          consent: cv({ studentId: null, guestId: g.id }) })));
       return [...studentHits, ...guestHits];
     },
     async addRider(ctx, input) {
@@ -907,7 +964,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rider = await placeRider(ctx, run, v);
       await touch(ctx, run);
-      return riderView(rider);
+      return riderView(rider, await consentCtx(ctx, c, rider.runId));
     },
     async updateRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -924,7 +981,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rv = saved.runVehicleId ? (await bus.listRunVehicles(run.id)).find((x) => x.id === saved.runVehicleId && x.running) : undefined;
       if (rv) await reorderCar(c, run, rv); // a new address can change the best stop order
       await touch(ctx, run);
-      return riderView(saved);
+      return riderView(saved, await consentCtx(ctx, c, saved.runId));
     },
     async removeRider(ctx, riderId) {
       const c = await gate(ctx, 'bus:roster');
@@ -1204,21 +1261,21 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         cur = await bus.saveRunRider({ ...r, ...(addr ? { addressId: addr.id, ...busPatch(r, addr, rvs, owned)! } : { addressId: null, ...NO_SEAT }) });
         if (ontoBus) {
           await bus.setUndo(run.id, null, null); await touch(ctx, run);
-          return { ...riderView(cur), reordered: true };
+          return { ...riderView(cur, await consentCtx(ctx, c, cur.runId)), reordered: true };
         }
       }
       if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
         const saved = await bus.saveRunRider({ ...r, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
         await touch(ctx, run);
-        return { ...riderView(saved), reordered: true };
+        return { ...riderView(saved, await consentCtx(ctx, c, saved.runId)), reordered: true };
       }
       if (v.runVehicleId === null) {
         // Owner 2026-10-06: Unassigned is never pinned — the next Generate / Fit in places them again.
         const saved = await bus.saveRunRider({ ...cur, runVehicleId: null, stopOrder: null, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
         await touch(ctx, run);
-        return { ...riderView(saved), reordered: true };
+        return { ...riderView(saved, await consentCtx(ctx, c, saved.runId)), reordered: true };
       }
       const rv = target;
       if (!rv) throw new NotFoundError('Car not found');
@@ -1235,7 +1292,44 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await bus.setUndo(run.id, null, null); // I2: see above
       await touch(ctx, run);
       const fresh = (await bus.getRunRider(saved.id)) ?? saved;
-      return { ...riderView(fresh), reordered };
+      return { ...riderView(fresh, await consentCtx(ctx, c, fresh.runId)), reordered };
+    },
+    async consentStatus(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      const coord = allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin';
+      const open = ext.link ? (await ext.link.listActions({ types: ['busConsentCheck'], statuses: ['pending', 'claimed'] }))
+        .filter((r) => Date.now() - Date.parse(r.createdAt) < CHECK_STALE_MS) : [];
+      const forms = coord ? await bus.listConsentForms() : [];
+      return { year: Number(ctx.localNow.slice(0, 4)), lastChecked: c.busMinistry.consentLastChecked, lastNew: c.busMinistry.consentLastNew,
+        checking: open.length > 0, canCheck: coord && !!ext.link,
+        unmatched: coord ? forms.filter((f) => !f.studentId && !f.guestId).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+          .map((f) => ({ name: `${f.first} ${f.last}`, submittedAt: f.submittedAt })) : null };
+    },
+    async consentCheck(ctx) {
+      const c = await gate(ctx, 'bus:use');
+      if (!(allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin')) throw new ForbiddenError('Only bus coordinators and admins can check for consent forms');
+      return queueCheck(ctx);
+    },
+    async consentPrefill(ctx, q) {
+      const c = await gate(ctx, 'bus:use');
+      let who = { studentId: q.studentId ?? null, guestId: q.studentId ? null : q.guestId ?? null };
+      if (q.riderId) { // F6
+        const r = await bus.getRunRider(q.riderId);
+        if (!r) throw new NotFoundError('Rider not found');
+        who = { studentId: r.studentId, guestId: r.studentId ? null : r.guestId };
+      }
+      const s = who.studentId ? await students.findById(who.studentId) : null, g = who.guestId ? await bus.getGuest(who.guestId) : null;
+      if (!s && !g) throw new NotFoundError('Person not found');
+      const sex = s ? s.gender : g!.gender;
+      const base = { first: s ? s.firstName : g!.firstName, last: s ? s.lastName : g!.lastName, grade: s ? s.grade : g!.grade,
+        gender: sex === 'female' ? 'f' : sex === 'male' ? 'm' : '', declaration: c.busMinistry.consentDeclaration };
+      if (isRedactedLeader(ctx, c)) return base; // R7: a junior leader files with app basics only, never a parent's details
+      const mark = await dnc.forActor(ctx.actor);
+      const f = latestForm(await bus.listConsentForms(), who);
+      const home = !f ? latestHome(await bus.listAddresses(who.studentId ? { studentId: who.studentId } : { guestId: who.guestId! })) : undefined;
+      return mark({ ...base, mobile: s ? s.mobile : g!.phone, parentPhone: s?.parentPhone ?? f?.data.parentPhone ?? null,
+        school: f?.data.school ?? '', parentName: f?.data.parentName ?? '', pickup: f?.data.pickup ?? null, pickupBy: f?.data.pickupBy ?? '',
+        address: f ? f.data.address : home ? { line1: streetOf(home.address), line2: '', postcode: '', city: suburbOf(home.address), state: '' } : null }, who.studentId);
     },
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
@@ -1247,7 +1341,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
-      return riderView(saved);
+      return riderView(saved, await consentCtx(ctx, c, saved.runId));
     },
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');
@@ -1261,12 +1355,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (vehicle) {
         const mine = (await ridingOf(run.id)).filter((r) => r.runVehicleId === vehicle.id)
           .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
-        const mark = await dnc.forActor(ctx.actor);
+        const [mark, cv] = await Promise.all([dnc.forActor(ctx.actor), consentCtx(ctx, c, run.id)]);
         for (const r of mine) {
           const mobile = r.studentId ? (await students.findById(r.studentId))?.mobile ?? null
             : r.guestId ? (await bus.getGuest(r.guestId))?.phone ?? null : null;
           // R1: a guest has no roster row, so studentId null = never DNC.
-          stops.push(mark({ ...riderView(r), mobile }, r.studentId));
+          stops.push(mark({ ...riderView(r, cv), mobile }, r.studentId));
         }
       }
       let ownCarDraft: MyCarView['ownCarDraft'] = null;
