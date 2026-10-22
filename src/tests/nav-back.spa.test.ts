@@ -94,3 +94,25 @@ describe('S6 Save answers', () => {
     expect(t.env.toasts).toContain('Answers noted');
   });
 });
+
+describe('consent hub T9 fix I1: back from a family page forgets the hub family', () => {
+  it('Back clears hubFam/hubKid with the key, so a later row opened another way shows no stale strip', () => {
+    const w = navWorld();
+    w.navPush(); // what _hubOpen does on the landing
+    Object.assign(w.env.LINK.ik, { key: 'k1', hubFam: { title: 'Ava Sample', kids: [{}, {}] }, hubKid: 1 });
+    w._navPop();
+    expect(w.env.LINK.ik.key).toBeNull();
+    expect(w.env.LINK.ik.hubFam).toBeNull();
+    expect(w.env.LINK.ik.hubKid).toBe(0);
+  });
+  it('_ikOpen (an old list row, or step 0 Consents via _ikFind) clears the hub family', () => {
+    const I: any = { list: { rows: [{ key: 'k2' }] }, hubFam: { title: 'Ava Sample', kids: [{}] }, hubKid: 1 };
+    (globalThis as any).__hubI = I;
+    const { _ikOpen } = loadFns(['_ikOpen'], `const _ik = () => globalThis.__hubI; const navPush = () => {}; const _ikDraw = () => {};
+      const _ikLoadRow = () => Promise.resolve(); const _ikSchedule = () => {}; const window = { scrollTo() {} };`);
+    _ikOpen(0);
+    expect(I.key).toBe('k2');
+    expect(I.hubFam).toBeNull();
+    expect(I.hubKid).toBe(0);
+  });
+});

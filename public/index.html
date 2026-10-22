@@ -1564,7 +1564,7 @@ function _navPop() {
   if (s.p === 'link-groups') { LINK.gid = s.gid || null; LINK.rf = null; if (same) { _lkPaintGroups(); return; } }
   if (s.p === 'link-intake' && LINK.ik) {
     const I = LINK.ik;
-    if (I.key && !s.i) { _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null; }
+    if (I.key && !s.i) { _ikLeave(); I.key = null; I.det = null; I.detErr = null; I.pick = null; I.hubFam = null; I.hubKid = 0; }
     if (s.t && s.t !== I.tab) { // the tab as _ikTab sets it, then the date it showed (kept by _ikLoad when still listed)
       _ikLeave();
       try { localStorage.setItem('ysc.intakeTab', s.t); } catch (e) {}
@@ -13943,7 +13943,7 @@ function _ikOpen(i) {
   const I = _ik(), r = I.list && (I.list.rows || [])[i];
   if (!r) return;
   navPush();
-  I.key = r.key; I.det = null; I.detErr = null; I.pick = null;
+  I.key = r.key; I.det = null; I.detErr = null; I.pick = null; I.hubFam = null; I.hubKid = 0; // not a hub family: no stale strip
   _ikDraw();
   try { window.scrollTo(0, 0); } catch (e) {}
   _ikLoadRow(false).then(() => { _ikDraw(); _ikSchedule(); });
