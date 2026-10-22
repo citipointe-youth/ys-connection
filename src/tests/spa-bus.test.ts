@@ -585,20 +585,20 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
 // Task 13: Generate (ours or another device's lock) must not hide the whole search UI —
 // only readOnly (a finished run) does. Remove stays hidden while a write would be blocked
 // (simplest call, and matches the prior pre-Task-13 behaviour for that one button).
-describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascending, then name', () => {
-  it('orders female before male (the app Girls/Boys order), grade up, unknown gender/grade last', () => {
+describe('operator 2026-10-23: _busRosterHtml sorts tonight riders by first name, then last name, any case', () => {
+  it('mixed case and a shared first name: by name only, gender and grade ignored', () => {
     const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
      function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
     const riders = [
-      { id: 'a', name: 'Zed', gender: 'male', grade: 7 }, { id: 'b', name: 'Amy', gender: 'female', grade: 11 },
-      { id: 'c', name: 'Bob', gender: 'male', grade: null }, { id: 'd', name: 'Cat', gender: 'female', grade: 8 },
-      { id: 'e', name: 'Al', gender: null, grade: 7 }, { id: 'f', name: 'Ben', gender: 'male', grade: 7 }];
+      { id: 'a', name: 'Zed Ng', gender: 'male', grade: 7 }, { id: 'b', name: 'amy Lee', gender: 'female', grade: 11 },
+      { id: 'c', name: 'Amy Kim', gender: 'male', grade: null }, { id: 'd', name: 'Cat Ode', gender: 'female', grade: 8 },
+      { id: 'e', name: 'Al Tran', gender: null, grade: 7 }, { id: 'f', name: 'ben Hall', gender: 'male', grade: 7 }];
     const prelude = `${stubs}
       const BUS = { search: '', generating: false, view: { run: { readOnly: false, lockBy: null, lockUntil: null }, riders: ${JSON.stringify(riders)}, vehicles: [] } };`;
     const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude, ['_busRosterHtml']);
     const ids = [..._busRosterHtml().matchAll(/busEditRider\('(\w)'\)/g)].map((m) => m[1]);
-    expect(ids).toEqual(['d', 'b', 'f', 'a', 'c', 'e']);
+    expect(ids).toEqual(['e', 'c', 'b', 'f', 'd', 'a']);
   });
 });
 
@@ -875,7 +875,7 @@ describe('Past riders (Tonight tab)', () => {
   const stubs = `function esc(s) { return String(s); }\nfunction icS(k) { return k; }`;
   const past = [{ studentId: 's1', guestId: null, addressId: 'a1', name: 'Jess Tran', grade: 9, suburb: 'Carina' }];
   it('renders collapsed by default with a count, and nothing when locked or empty', () => {
-    const load = (pastRiders: unknown[], open = false) => loadFns(['_busPastHtml'],
+    const load = (pastRiders: unknown[], open = false) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip'],
       `${stubs}\nconst BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: ${open} };`)._busPastHtml;
     const html = load(past)(false);
     expect(html).toContain('Past riders (1)');
@@ -884,6 +884,20 @@ describe('Past riders (Tonight tab)', () => {
     expect(load(past, true)(false)).toContain('class="card drop open"');
     expect(load(past)(true)).toBe('');
     expect(load([])(false)).toBe('');
+  });
+  it('operator 2026-10-23: a past row has the gender-coloured grade chip and the consent chip, escaped', () => {
+    const load = (pastRiders: unknown[]) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip'],
+      `function esc(s) { return String(s).replace(/</g, '&lt;'); }
+function icS(k) { return k; }
+const BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: true };`)._busPastHtml;
+    const h = load([{ ...past[0], gender: 'female', consent: { year: 2026, current: true } },
+      { studentId: 's2', guestId: null, addressId: 'a2', name: 'Sam <b>', grade: 8, gender: 'male', suburb: 'Carina', consent: { year: 2026, current: false } }])(false);
+    expect(h).toContain('<span class="chip c-girl">Y9</span>');
+    expect(h).toContain('<span class="chip c-boy">Y8</span>');
+    expect(h).toMatch(/pill ok[^<]*Consent 2026/);
+    expect(h).toMatch(/c-warn[^<]*No consent 2026/);
+    expect(h).not.toContain('onclick="event.stopPropagation();busConsentForm'); // no rider id on a past row: no tap
+    expect(h).toContain('Sam &lt;b>');
   });
   it('a tap opens a confirm sheet with last-used address first; Add posts the chosen address', async () => {
     const sent: unknown[] = [];

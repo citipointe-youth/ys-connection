@@ -14731,9 +14731,8 @@ function _busRosterHtml() {
       <option value="">All</option><option value="female"${fG === 'female' ? ' selected' : ''}>Girls</option><option value="male"${fG === 'male' ? ' selected' : ''}>Boys</option></select>
     <select class="fs bus-flt" aria-label="Filter by grade" onchange="BUS.fGrade=this.value;renderBus()">
       <option value="">Yr</option>${grades.map((g) => `<option value="${g}"${String(g) === fY ? ' selected' : ''}>Y${g}</option>`).join('')}</select>`;
-  // N01: girls then boys (the app's Girls/Boys order, e.g. Connection by Grade), grade up, then name; unknown last.
-  const gOrd = (r) => (r.gender === 'female' ? 0 : r.gender === 'male' ? 1 : 2), yOrd = (r) => (r.grade == null ? 99 : r.grade);
-  const rows = shown.slice().sort((a, b) => gOrd(a) - gOrd(b) || yOrd(a) - yOrd(b) || a.name.localeCompare(b.name)).map((r) => {
+  // Operator 2026-10-23 (replaces N01): by name, any case. The name is "First Last", so this is first name, then last name.
+  const rows = shown.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })).map((r) => {
     const car = placed(r);
     // R19-U14 #18/S12: the vehicle sits in the meta line (no centred side column); a bus is a neutral Bus chip,
     // never a car colour (a pink pill read as "girls car").
@@ -14762,8 +14761,8 @@ function _busPastHtml(locked) {
   const past = locked ? [] : (BUS.view.pastRiders || []);
   if (!past.length) return '';
   const rows = past.map((p, i) => `<div class="route-row clickable" onclick="busAddPast(${i})">
-      <div class="route-main"><div class="route-name">${esc(p.name)} ${p.grade ? `<span class="chip c-neutral">Y${p.grade}</span>` : ''}</div>
-      <div class="route-sub">${esc(p.suburb)}</div></div>
+      <div class="route-main"><div class="route-name">${esc(p.name)} ${_busGradeChip(esc(String(p.grade || '')), p.gender)}</div>
+      <div class="route-sub">${esc(p.suburb)} ${_busConsentChip(p)}</div></div>
       <button type="button" class="btn-icon bus-danger" aria-label="Delete ${esc(p.name)}" onclick="event.stopPropagation();event.preventDefault();busDeletePastRider(this,${i})">${icS('trash')}</button>
       <span style="color:var(--accent-dark);display:flex" aria-label="Add ${esc(p.name)}">${icS('plus')}</span></div>`).join('');
   return `<div class="card drop${BUS.pastOpen ? ' open' : ''}" style="margin-top:12px">

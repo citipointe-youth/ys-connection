@@ -524,7 +524,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
       fleet: fleet.filter((v) => !v.archived).map((v) => hideEnds(v)), canCoordinate,
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
-      pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders),
+      pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders, cv),
       onCarLeaders: await onCarLeaderList(run.id),
     };
   }
@@ -655,7 +655,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   // this uses the address's lastUsedAt instead: resolveAddress() already bumps it to "now"
   // every time that address is used to add/update a rider, so in practice it tracks the same
   // moment. Ties (never-ridden-again addresses created at the same time) break on name.
-  async function pastRidersList(ctx: BusCtx, c: MinistryConfig, riders: BusRunRider[]): Promise<BusPastRiderView[]> {
+  async function pastRidersList(ctx: BusCtx, c: MinistryConfig, riders: BusRunRider[], cv: ConsentFn): Promise<BusPastRiderView[]> {
     if (!allowed(ctx, c, 'bus:roster')) return [];
     const onRun = new Set(riders.map(riderKey));
     const [addresses, guests, allStudents] = await Promise.all([bus.listAllAddresses(), bus.listGuests(), students.findAll()]);
@@ -667,26 +667,27 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const cur = latest.get(key);
       if (!cur || a.lastUsedAt > cur.lastUsedAt) latest.set(key, a);
     }
-    const out: (BusPastRiderView & { lastUsedAt: string })[] = [];
+    const out: (Omit<BusPastRiderView, 'consent'> & { lastUsedAt: string; first: string; last: string })[] = [];
     for (const [key, addr] of latest) {
       if (onRun.has(key)) continue;
       if (addr.studentId) {
         const s = studentById.get(addr.studentId);
         if (!s) continue;
         out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
-          grade: s.grade, gender: genderOf(s.gender), suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt });
+          grade: s.grade, gender: genderOf(s.gender), suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt, first: s.firstName, last: s.lastName });
       } else if (addr.guestId) {
         const g = guestById.get(addr.guestId);
         if (!g) continue; // purged, or never existed
         out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
-          grade: g.grade, gender: g.gender, suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt });
+          grade: g.grade, gender: g.gender, suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt, first: g.firstName, last: g.lastName });
       }
     }
     out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
-    // N01: the most recent 50 are kept, then shown girls first, grade up, then name (same order as tonight's list).
-    const gOrd = (g: BusGender) => (g === 'female' ? 0 : g === 'male' ? 1 : 2);
-    return out.slice(0, PAST_RIDERS_CAP).map(({ lastUsedAt, ...rest }) => rest)
-      .sort((a, b) => gOrd(a.gender) - gOrd(b.gender) || (a.grade ?? 99) - (b.grade ?? 99) || a.name.localeCompare(b.name));
+    // Operator 2026-10-23 (replaces N01b): the most recent 50 are kept, then shown by first name, then last name, any case.
+    // The consent chip is the same per-request loader as tonight's riders (R7: no details for a junior leader).
+    const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
+    return out.slice(0, PAST_RIDERS_CAP).sort((a, b) => cmp(a.first, b.first) || cmp(a.last, b.last))
+      .map(({ lastUsedAt, first, last, ...rest }) => ({ ...rest, consent: cv(rest) }));
   }
 
   async function linkOne(guestId: string, studentId: string): Promise<void> {

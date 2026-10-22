@@ -93,6 +93,7 @@ export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool
 // without re-entering the address; only the suburb is ever shown here (spec I2's rule).
 export interface BusPastRiderView {
   studentId: ID | null; guestId: ID | null; addressId: ID; name: string; grade: number | null; gender: BusGender; suburb: string;
+  consent: BusConsentView; // same chip as tonight's riders; details only for a full-view login (R7)
 }
 export interface BusRunView {
   run: { id: ID; serviceDate: string; version: number; readOnly: boolean;
@@ -105,7 +106,7 @@ export interface BusRunView {
   fleet: BusVehicle[];
   canCoordinate: boolean;
   pendingNewPeople: number | null;   // null unless director/admin
-  pastRiders: BusPastRiderView[];    // [] unless bus:roster; capped ~50, most recent first
+  pastRiders: BusPastRiderView[];    // [] unless bus:roster; the most recent ~50, by first name then last name
   // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car
   // ownerLeaderId), names+ids only, unscoped by grade/quad — feeds the "who are you" picker so
   // it can offer a leader outside the login's own scope. Sorted by name.

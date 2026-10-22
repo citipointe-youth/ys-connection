@@ -71,6 +71,20 @@ describe('consent status on Bus views (R7, R11)', () => {
     expect(r.consent.current).toBe(true);
     expect(r.consent).not.toHaveProperty('differs');
   });
+  it('past riders carry the chip too; details only for a full-view login, none for a junior leader (R7)', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({})]);
+    const r = await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '9 Other Rd, Carina', placeId: 'fake:1' } });
+    const s2 = await t.svc.addRider(t.ctx('admin'), { studentId: 's2', newAddress: { label: 'Home', address: '8 Other Rd, Carina', placeId: 'fake:2' } });
+    await t.svc.removeRider(t.ctx('admin'), r.id); await t.svc.removeRider(t.ctx('admin'), s2.id);
+    const past = (await t.svc.getRun(t.ctx('admin'))).pastRiders;
+    expect(past.find((p) => p.studentId === 's1')!.consent).toMatchObject({ year: 2026, current: true, details: { parentName: 'Alex Tran' } });
+    expect(past.find((p) => p.studentId === 's2')!.consent).toEqual({ year: 2026, current: false });
+    expect(past.every((p) => !('differs' in p.consent))).toBe(true); // no rider address to compare on a past row
+    const junior = (await t.svc.getRun(juniorOf(t))).pastRiders; // a junior leader has no roster write, so no past list at all
+    expect(junior).toEqual([]);
+    expect(JSON.stringify(junior)).not.toContain('parentName');
+  });
   it('search hits carry the chip too (students not on the bus)', async () => {
     const t = await withLink();
     await t.bus.upsertConsentForms([form({})]);
