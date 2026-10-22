@@ -10,7 +10,7 @@ import { toView } from './error-log.service';
 import { LINK_CONTRACT_VERSION, PAYLOAD_SCHEMAS, ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
 import { BadRequestError } from '../core/errors';
 import { LinkUnavailable } from '../core/errors/link-errors';
-import type { ActionType, OutboxRow } from '../core/link-types';
+import type { ActionType, LinkRosterRow, OutboxRow } from '../core/link-types';
 import { nameKey } from './name-key';
 import { assertCan } from './access-control';
 import type { Actor } from '../core/entities/user';
@@ -30,6 +30,13 @@ export interface ReconcileDeps {
   serviceAttendance: Pick<IServiceAttendanceRepository, 'findBySession'>; imports: Pick<IImportRepository, 'findByType'>;
   settings: Pick<ISettingsRepository, 'getSettings'>; errorLog: Pick<ErrorLogService, 'record'>;
   errorRows: Pick<IErrorLogRepository, 'list'>; runs: IReconcileRunRepository; now?: () => Date; budgetMs?: number;
+  /** Spec 2026-10-22 §7: re-evaluates audit-feed-stale before the console reads the entries. A throw is swallowed. */
+  auditFeed?: () => Promise<void>;
+}
+/** personId -> "First Last", or "(no longer on the roster)". The Who? rule; the audit build names matched people with it. */
+export function rosterNameOf(roster: readonly Pick<LinkRosterRow, 'personId' | 'firstName' | 'lastName'>[]): (personId: string) => string {
+  const person = new Map(roster.map((r) => [r.personId, r]));
+  return (id) => { const p = person.get(id); return p ? `${p.firstName} ${p.lastName}`.trim() : '(no longer on the roster)'; };
 }
 export type ReconcileLatest = z.infer<typeof ReconcileLatestResponse>;
 /** Names for the admin Who? view. Resolved at read time only: error_log and reconcile_runs hold ids. */
@@ -139,15 +146,16 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
 
   async function latest(body: unknown): Promise<ReconcileLatest> {
     parseBody(ReconcileLatestRequest, body);
+    await d.auditFeed?.().catch(() => undefined);
     const [run, rows] = await Promise.all([d.runs.latest(), d.errorRows.list()]);
     const cut = now().getTime() - 7 * DAY_MS;
     const tierRank = { now: 0, later: 1 } as const;
-    // Reconcile rows are the latest run's state (0 deletes them), so they are kept whatever their age: a setCount row's last_seen
+    // Reconcile and audit rows (spec 2026-10-22 §7) are current state (0 deletes them), so they are kept whatever their age: a setCount row's last_seen
     // only moves when its count changes (Review Focus 1). Every other row must have been seen in the last 7 days.
     // Legacy A12 (recon C3): code/line1 are clipped to the contract limits so one oversized row never 500s the whole answer.
     // toView recomputes the tier and fills {n} (singular/plural) from the count; `counted` tells the console not to add (xN).
     const entries = rows.map((r) => toView(r))
-      .filter((r) => !r.ignored && (r.tier === 'now' || r.tier === 'later') && (r.category === 'reconcile' || Date.parse(r.lastSeen) >= cut))
+      .filter((r) => !r.ignored && (r.tier === 'now' || r.tier === 'later') && (r.category === 'reconcile' || r.category === 'audit' || Date.parse(r.lastSeen) >= cut))
       .map((r) => ({ tier: r.tier as 'now' | 'later', code: r.code.slice(0, 80), line1: r.line1.slice(0, 300), count: r.count, counted: r.counted, lastSeen: r.lastSeen }))
       .sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || b.lastSeen.localeCompare(a.lastSeen))
       .slice(0, 200);
@@ -162,7 +170,7 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
     if (!run) return empty;
     const [roster, lgs] = await Promise.all([d.link.roster(), d.lifegroups.findAll()]);
     const person = new Map(roster.map((r) => [r.personId, r]));
-    const nm = (id: string) => { const p = person.get(id); return p ? `${p.firstName} ${p.lastName}`.trim() : '(no longer on the roster)'; };
+    const nm = rosterNameOf(roster);
     const byGroup = new Map(lgs.filter((g) => g.elvantoGroupId).map((g) => [g.elvantoGroupId as string, g.fullName]));
     const byLg = new Map(lgs.map((g) => [g.id, g.fullName]));
     const grp = (id: string) => byGroup.get(id) ?? '(group not in the last import)';

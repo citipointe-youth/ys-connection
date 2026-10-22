@@ -73,6 +73,8 @@ export interface ErrorLogDeps {
   /** For the stale-pending sweep on the admin view. */
   link?: Pick<ILinkRepository, 'listActions'> & Partial<Pick<ILinkRepository, 'listConsoles'>>;
   now?: () => Date;
+  /** Spec 2026-10-22 §7: re-evaluates audit-feed-stale (setCount) before the admin view reads. */
+  auditFeed?: () => Promise<void>;
 }
 
 export function makeErrorLogService(d: ErrorLogDeps) {
@@ -155,6 +157,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
     async list(actor: Actor): Promise<{ rows: ErrorLogView[] }> {
       assertCan(actor, 'admin:manage');
       await d.repo.purgeBefore(new Date(now().getTime() - ERROR_LOG_KEEP_DAYS * DAY).toISOString());
+      try { await d.auditFeed?.(); } catch (e) { logger.warn('audit feed check failed', { err: e instanceof Error ? e.name : 'unknown' }); }
       try { await sweepStale(await d.repo.list()); } catch (e) { logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' }); }
       // Check again is offered only while the newest console lists recheck live (as the SPA's _lkRcHtml).
       let live = false;

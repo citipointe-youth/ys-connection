@@ -17,6 +17,9 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
   removeFromFlowStep: 'Flow step removal', intakeAnswer: 'Intake answer', intakeSave: 'Intake save', intakeText: 'Intake text',
   consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link', recheck: 'Re-check',
 };
+// Spec 2026-10-22 §6.1: the audit source codes as the screens name them (a stored row never carries display text).
+const AUDIT_ROUTE_NAMES: Record<string, string> = { service: 'Youth service', group: 'Lifegroups', team: 'Student team',
+  connect: 'Connect forms', decision: 'Decision forms' };
 const CONSENT_RAISE = new Set(['consentSave', 'consentFix', 'consentLink']);
 const LEADER_TOLD = 'Nothing to do; the leader was told to';
 const UNCLEAR_FIX = "Check it in Elvanto, then tap Landed or Not landed in Admin > Elvanto link, or on the console's Services, Lifegroups or Flows page.";
@@ -87,6 +90,13 @@ export const TEXT: Record<string, Entry> = {
   'saved-before': ['fyi', 'An intake answer was already saved', 'Nothing to do.'],
   'chain-not-done': ['fyi', 'An intake step ran before the one before it finished', 'Nothing to do; the chain retries.'],
   'bad-answer': ['fyi', "An intake answer didn't fit the Elvanto field", `Nothing to do if rare. If it repeats, the console's answer mapping needs fixing.${TELL}`],
+  // 6.4 Connection Audit (spec 2026-10-22 §7; category audit, setCount). Route = the source code, shown by its screen name.
+  'audit-source-failed': ['now', "Connection Audit: {route} didn't update",
+    "The audit is using the last copy that worked. Tap Who? for details. If it happens again next Friday, check the console's Friday log."],
+  'audit-feed-stale': ['now', "Connection Audit hasn't updated for over a week",
+    "On the console PC, check Friday's run finished and the console is up to date (link rev 16 or later)."],
+  'audit-rows-skipped': ['later', ['Connection Audit: 1 entry from {route} was left out', 'Connection Audit: {n} entries from {route} were left out'],
+    'Tap Who? to see which and why. Fix them in Elvanto; this clears after the next Friday update.'],
 };
 
 // 6.5 App (client) rows and the two fallbacks.
@@ -127,7 +137,7 @@ export function textFor(category: string, code: string, route: string, status: n
   const fill = (s: string) => s.replace(/\{(\w+)\}/g, (m, k: string, off: number) =>
     k === 'type' ? (off ? (type === 'Elvanto link action' && s.slice(0, off).endsWith('refused ') ? 'an ' : '') + lc(type) : type)
       : k === 'a_type' ? (off ? lc(aType) : aType.replace(/ (\S)/, (_x, c: string) => ' ' + (type === 'Elvanto link action' ? c : c.toLowerCase())))
-        : k === 'route' ? route : k === 'n' ? String(count) : k === 'code' ? code : m);
+        : k === 'route' ? (category === 'audit' ? own(AUDIT_ROUTE_NAMES, route) ?? route : route) : k === 'n' ? String(count) : k === 'code' ? code : m);
   const fix = e[2] === UNCLEAR_FIX && recheckLive && (RECHECK_TYPES as readonly string[]).includes(route) ? RECHECK_FIX : e[2];
   return { tier, line1: fill(l1), line2: fill(fix), counted };
 }

@@ -166,4 +166,36 @@ describe('error-log-text', () => {
         'console-cannot-read', 'unknown', 'bad-answer', 'JS', 'HTTP_403', 'NETWORK']) expect(all[c]![2], c).toMatch(/ Tell the person who set up the console\.$/);
     });
   });
+
+  describe('Connection Audit codes (spec 2026-10-22 §7)', () => {
+    const NAMES = { service: 'Youth service', group: 'Lifegroups', team: 'Student team', connect: 'Connect forms', decision: 'Decision forms' };
+    it('the three codes have entries with the right tiers', () => {
+      expect(TEXT['audit-source-failed']![0]).toBe('now');
+      expect(TEXT['audit-feed-stale']![0]).toBe('now');
+      expect(TEXT['audit-rows-skipped']![0]).toBe('later');
+      expect(textFor('audit', 'audit-rows-skipped', 'group', null, 3).tier).toBe('later');
+      expect(textFor('audit', 'audit-source-failed', 'decision', null, 1).tier).toBe('now');
+    });
+    it('{route} is stored as the source code and shown as its screen name', () => {
+      for (const [route, name] of Object.entries(NAMES)) {
+        expect(textFor('audit', 'audit-source-failed', route, null, 1).line1).toBe(`Connection Audit: ${name} didn't update`);
+      }
+      expect(textFor('audit', 'audit-source-failed', 'service', null, 1).line2)
+        .toBe("The audit is using the last copy that worked. Tap Who? for details. If it happens again next Friday, check the console's Friday log.");
+      expect(textFor('audit', 'audit-source-failed', 'weird', null, 1).line1).toBe("Connection Audit: weird didn't update");
+      expect(textFor('link', 'recon-failed', 'service', null).line1).toBe('The service check failed to run'); // only audit rows map
+    });
+    it('audit-rows-skipped picks singular / plural and is counted', () => {
+      expect(textFor('audit', 'audit-rows-skipped', 'connect', null, 1))
+        .toMatchObject({ line1: 'Connection Audit: 1 entry from Connect forms was left out', counted: true });
+      expect(textFor('audit', 'audit-rows-skipped', 'service', null, 4).line1).toBe('Connection Audit: 4 entries from Youth service were left out');
+      expect(textFor('audit', 'audit-rows-skipped', 'team', null, 2).line2)
+        .toBe('Tap Who? to see which and why. Fix them in Elvanto; this clears after the next Friday update.');
+    });
+    it('audit-feed-stale texts', () => {
+      expect(textFor('audit', 'audit-feed-stale', '', null, 1)).toMatchObject({ tier: 'now', counted: false,
+        line1: "Connection Audit hasn't updated for over a week",
+        line2: "On the console PC, check Friday's run finished and the console is up to date (link rev 16 or later)." });
+    });
+  });
 });
