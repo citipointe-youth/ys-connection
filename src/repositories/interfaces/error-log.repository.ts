@@ -1,6 +1,6 @@
 // Admin Error log (T3; Part 1 rework 2026-10-17). Table from migrations 0019 + 0035. Never a name or value.
 import type { ErrorTier } from '../../services/error-log-text';
-export const ERROR_CATEGORIES = ['server', 'link', 'elvanto-form', 'client', 'reconcile'] as const;
+export const ERROR_CATEGORIES = ['server', 'link', 'elvanto-form', 'client', 'reconcile', 'audit'] as const;
 export type ErrorCategory = (typeof ERROR_CATEGORIES)[number];
 /** An occurrence joins the newest row with its fold key whose last_seen is within this window. */
 export const FOLD_WINDOW_MS = 30 * 60_000;
