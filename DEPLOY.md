@@ -8,6 +8,8 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 
 **Shipping bc18 (0044 is not additive):** the Vercel build applies 0044 (it drops `bus_consents`) while the old build is still live, so the old build's Bus screens fail until the new build is live (about 1-3 min). Ship only when nobody is on Bus (not Friday afternoon or evening; the blockouts alone are not enough). If the build fails after the build log shows the migration applied, run the recreate SQL above at once.
 
+**consent-hub/ys carries 0045 + 0046 (additive) and LINK_REV 19 (SW `ysc-v147`); ship before the console's consent-hub/console; rollback = Instant Rollback (tables stay, nothing to undo); the console at rev 19 against a rolled-back rev 18 app sends no snapshot (it checks appRev) and the old screens work as before.**
+
 <!-- live -->
 - master sha: e85b857 (bus/chip-spacing)
 - last ship: 2026-10-23 05:44 EAST
