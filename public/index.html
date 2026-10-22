@@ -13564,6 +13564,96 @@ function _ikConsentHtml(det, list, st) {
     + `<div class="card">${_ikSaveHtml(det, list, st, 'Save to Elvanto')}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`;
 }
+// ── Consent hub (2026-10-23, design.md): one row per family, a stage per child, Needs action on top. Pure helpers first; the screens below.
+// A child joins its intake row (Task 6 personId), its consent row (key = person) and its New People step-0 flow row by Elvanto person;
+// siblings share their parent form (family). Stages: Form in -> In Elvanto -> Consent week -> Decided -> Done (step 0 complete).
+const HUB_STAGES = [['form', 'Form in'], ['elvanto', 'In Elvanto'], ['consent', 'Consent week'], ['decided', 'Decided'], ['done', 'Done']];
+function _hubFold(s) { return String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); }
+function _hubAddDays(ymd, n) { const t = Date.parse(String(ymd) + 'T00:00:00Z'); return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : null; }
+// The Friday the child's consent week ends: the step-0 row's (it knows the texted date), else the consent date, else intake + 7.
+function _hubFriday(c) { return (c.flow && c.flow.consentFriday) || (c.consent && c.consent.date) || (c.intake ? _hubAddDays(c.intake.date, 7) : null); }
+// cut(ymd) = that Friday's cut-off instant (ms); flowsKnown = the step-0 rows were read (off step 0 then means step 0 is complete).
+function _hubStage(c, now, cut, flowsKnown) {
+  const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
+  if (cr && cr.status === 'done') return 'done';
+  if (ir && ir.status === 'needs-you') return 'form';
+  if (ir && (ir.status === 'ready' || ir.hasText)) return 'elvanto';
+  if (cr && cr.outcome) return 'decided';
+  const f = _hubFriday(c), past = !!f && now >= cut(f);
+  if (ir && !cr && !c.flow && flowsKnown && c.personId && past) return 'done'; // saved, texted, and no longer on New People step 0
+  return past ? 'decided' : 'consent';
+}
+// [code, text]: the real reason, never a code. A wait for the parent form is not the admin's to do.
+function _hubReasons(c, st, fixes) {
+  const out = [], ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
+  if (ir && ir.status === 'needs-you' && ir.reason !== 'Waiting for parent form') out.push(['hold', ir.reason || 'Needs a look']);
+  if (cr && cr.status === 'needs-you') out.push(['hold', cr.reason || 'Needs a look']);
+  if (c.mis) out.push(['differs', 'Profile differs from the consent form']);
+  for (const r of [ir, cr]) {
+    const a = r && _ikAct(r.actions);
+    if (a && (a.status === 'refused' || a.status === 'unclear')) out.push([a.status, _ikChip(r, st, null).line]);
+  }
+  const fx = c.personId && fixes && fixes[c.personId];
+  if (fx && fx.status === 'refused') out.push(['refused', _ikFixText(fx, st, c.name)[1]]);
+  const fa = c.flow && c.flow.lastRefused;
+  if (fa) out.push(['refused', fa.detail || "The console couldn't do this. Do it in Elvanto."]);
+  return out;
+}
+function _hubNext(c) {
+  const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
+  if (c.mis) return ['fix', 'Make profile match'];
+  if (c.stage === 'form' || (c.stage === 'elvanto' && ir && ir.status === 'ready')) return ['save', 'Save to Elvanto'];
+  if (c.stage === 'elvanto') return ['text', 'Text parent'];
+  if (c.stage === 'decided') return cr && cr.status !== 'done' ? ['consent', 'Mark consent'] : c.flow && c.flow.notReceivedOk && !c.flow.dnc ? ['mark', 'Mark consent'] : null;
+  return null;
+}
+function _hubFamilies(src) {
+  const fams = new Map(), byPerson = new Map(), loose = [], lists = Object.entries((src && src.lists) || {});
+  const fam = (k) => { if (!fams.has(k)) fams.set(k, { key: k, kids: [] }); return fams.get(k); };
+  const add = (k, c) => { fam(k).kids.push(c); if (c.personId) byPerson.set(c.personId, c); };
+  const of = (m) => lists.filter(([k, l]) => k.startsWith(m + '|') && l).sort(([a], [b]) => a.localeCompare(b)).map(([, l]) => l);
+  for (const l of of('intake')) for (const r of l.rows || []) {
+    const was = r.personId && byPerson.get(r.personId);
+    if (was) { was.intake = { date: l.date, row: r }; continue; } // a newer date wins
+    add('f:' + (r.family || r.key), { name: r.title, personId: r.personId || null, intake: { date: l.date, row: r }, consent: null, flow: null, mis: null });
+  }
+  for (const l of of('consent')) for (const r of l.rows || []) {
+    const c = byPerson.get(r.key);
+    if (c) c.consent = { date: l.date, row: r };
+    else add('p:' + r.key, { name: r.title, personId: r.key, intake: null, consent: { date: l.date, row: r }, flow: null, mis: null });
+  }
+  for (const r of (src && src.flows) || []) {
+    if (!r.consentStep || !r.personId) continue;
+    const c = byPerson.get(r.personId);
+    if (c) c.flow = r;
+    else add('p:' + r.personId, { name: _ikFormName(r.name), personId: r.personId, intake: null, consent: null, flow: r, mis: null });
+  }
+  ((src && src.mis) || []).forEach((m, i) => { const c = m && byPerson.get(m.personId); if (c) c.mis = { row: m, i }; else loose.push(i); });
+  return { fams: [...fams.values()], loose };
+}
+function _hubModel(src, now, cut, st, fixes) {
+  const { fams, loose } = _hubFamilies(src), known = Array.isArray(src && src.flows), order = HUB_STAGES.map((s) => s[0]);
+  for (const f of fams) {
+    for (const c of f.kids) { c.stage = _hubStage(c, now, cut, known); c.reasons = _hubReasons(c, st, fixes); c.next = _hubNext(c); }
+    f.title = _ikAnd(f.kids.map((c) => c.name));
+    f.stage = f.kids.map((c) => c.stage).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
+    f.needs = f.kids.some((c) => c.reasons.length > 0);
+    f.date = f.kids.flatMap((c) => [c.intake && c.intake.date, c.consent && c.consent.date, c.flow && c.flow.due]).filter(Boolean).sort().pop() || '';
+  }
+  return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose };
+}
+// Every query word in the name, any order. A consent form is one hit per child (_ikClSplit: "Jo & Bo Sample", "Jo Sample, Bo Sample").
+function _hubSearch(M, forms, q) {
+  const ws = _hubFold(q).split(' ').filter(Boolean);
+  if (!ws.length) return null;
+  const hit = (n) => { const x = _hubFold(n); return ws.every((w) => x.includes(w)); };
+  const out = [];
+  (forms || []).forEach((r, i) => {
+    const one = _ikFormName(r.name), names = _ikClSplit(r.formName || one) || [one];
+    names.forEach((n) => { if (hit(n)) out.push({ i, name: n }); });
+  });
+  return { fams: M.fams.filter((f) => f.kids.some((c) => hit(c.name))), forms: out };
+}
 
 // ── Loading, tabs, dates, refresh, polling ──
 async function _ikLoad(quiet) {

@@ -1,0 +1,96 @@
+// Consent hub (2026-10-23, design.md): the pure helpers. One row per family, a stage per child; Needs action reasons; search per child.
+import { describe, it, expect } from 'vitest';
+import { loadIndexHtml, loadFns } from './helpers/extract-fn';
+
+const HTML = loadIndexHtml();
+const STAGES = HTML.match(/^const HUB_STAGES = .*$/m)![0];
+const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+  '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText'];
+const F = loadFns(NAMES, `${STAGES}\nconst _lkSeen = (x) => x; const IK_FIX_REASON = {};`, NAMES);
+const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const CUT = (y: string) => Date.parse(y + 'T06:30:00+10:00'); // Friday 06:30 Brisbane
+const irow = (o: any = {}) => ({ key: P(100 + (o.n || 0)), status: 'done', title: 'Ava Sample', reason: '', outcome: '', hasText: false, personId: P(1), family: null, actions: [], ...o });
+const crow = (o: any = {}) => ({ key: P(1), status: 'ready', title: 'Ava Sample', reason: '', outcome: '', actions: [], personId: P(1), family: null, ...o });
+const flow = (o: any = {}) => ({ rowId: P(200), personId: P(1), name: 'Sample, Ava', consentStep: true, consentFriday: '2026-10-23', notReceivedOk: false, dnc: false, due: '2026-10-16', ...o });
+const kid = (o: any = {}) => ({ name: 'Ava Sample', personId: P(1), intake: null, consent: null, flow: null, mis: null, ...o });
+
+describe('stage of a child', () => {
+  it('cut-off boundary: Consent week until Friday 06:30:00.000, Decided from that instant', () => {
+    const c = kid({ intake: { date: '2026-10-16', row: irow() }, flow: flow() });
+    expect(F._hubStage(c, CUT('2026-10-23') - 1, CUT, true)).toBe('consent');
+    expect(F._hubStage(c, CUT('2026-10-23'), CUT, true)).toBe('decided');
+  });
+  it('no flow row and no consent row: the Friday is the intake date + 7', () => {
+    expect(F._hubFriday(kid({ intake: { date: '2026-10-16', row: irow() } }))).toBe('2026-10-23');
+  });
+  it('Form in = needs-you; In Elvanto = ready or the parent text still to send; Decided = an outcome', () => {
+    expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ status: 'needs-you' }) } }), 0, CUT, true)).toBe('form');
+    expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ status: 'ready' }) } }), 0, CUT, true)).toBe('elvanto');
+    expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ hasText: true }) } }), 0, CUT, true)).toBe('elvanto');
+    expect(F._hubStage(kid({ consent: { date: '2026-10-23', row: crow({ outcome: 'Contact allowed' }) } }), 0, CUT, true)).toBe('decided');
+  });
+  it('Done = step 0 complete: the consent row is done, or past the Friday the person is off step 0 (flows known)', () => {
+    expect(F._hubStage(kid({ consent: { date: '2026-10-23', row: crow({ status: 'done', outcome: 'No contact' }) } }), 0, CUT, true)).toBe('done');
+    const off = kid({ intake: { date: '2026-10-16', row: irow() } });
+    expect(F._hubStage(off, CUT('2026-10-23'), CUT, true)).toBe('done');
+    expect(F._hubStage(off, CUT('2026-10-23'), CUT, false)).toBe('decided'); // flows unknown: never assume done
+    expect(F._hubStage(off, CUT('2026-10-23') - 1, CUT, true)).toBe('consent'); // before the Friday: just saved, flows may lag
+  });
+});
+
+describe('Needs action reasons', () => {
+  it('a hold (not "Waiting for parent form"), a mismatch, and a refused write with its real reason', () => {
+    const st = {};
+    expect(F._hubReasons(kid({ intake: { date: 'd', row: irow({ status: 'needs-you', reason: 'Waiting for parent form' }) } }), st, {})).toEqual([]);
+    expect(F._hubReasons(kid({ intake: { date: 'd', row: irow({ status: 'needs-you', reason: 'Check the match' }) } }), st, {})).toEqual([['hold', 'Check the match']]);
+    expect(F._hubReasons(kid({ mis: { row: {}, i: 0 } }), st, {})[0][0]).toBe('differs');
+    const refused = crow({ actions: [{ type: 'consentSave', status: 'refused', reason: 'unknown', detail: 'The profile has no consent date field.' }] });
+    expect(F._hubReasons(kid({ consent: { date: 'd', row: refused } }), st, {})).toEqual([['refused', 'The profile has no consent date field.']]);
+  });
+});
+
+describe('families', () => {
+  const src = {
+    lists: {
+      'intake|2026-10-16': { date: '2026-10-16', rows: [irow({ n: 1, title: 'Jo Sample', personId: P(1), family: P(9) }), irow({ n: 2, title: 'Bo Sample', personId: P(2), family: P(9) })] },
+      'consent|2026-10-23': { date: '2026-10-23', rows: [crow({ key: P(1), title: 'Jo Sample', status: 'done', outcome: 'Contact allowed' }), crow({ key: P(2), title: 'Bo Sample', outcome: 'No contact' })] },
+    },
+    flows: [flow({ personId: P(2), name: 'Sample, Bo' }), flow({ rowId: P(201), personId: P(3), name: 'Other, Kim' })],
+    mis: [{ personId: P(2) }, { personId: P(4) }],
+  };
+  it('mixed family: siblings sharing a parent form are one family in its earliest stage; each child keeps its own stage', () => {
+    const M = F._hubModel(src, CUT('2026-10-23') - 1, CUT, {}, {});
+    const f = M.fams.find((x: any) => x.kids.length === 2);
+    expect(f.title).toBe('Jo Sample & Bo Sample');
+    expect(f.kids.map((c: any) => c.stage)).toEqual(['done', 'decided']);
+    expect(f.stage).toBe('decided');
+    expect(f.needs).toBe(true); // Bo's profile differs
+  });
+  it('a step-0 person in no plan is a family of one ("Last, First" -> "First Last"); an unknown mismatch is loose', () => {
+    const M = F._hubModel(src, 0, CUT, {}, {});
+    expect(M.fams.some((f: any) => f.title === 'Kim Other' && f.kids[0].flow)).toBe(true);
+    expect(M.loose).toEqual([1]);
+  });
+});
+
+describe('next step', () => {
+  it('one primary action per child', () => {
+    expect(F._hubNext({ ...kid({ intake: { date: 'd', row: irow({ status: 'ready' }) } }), stage: 'elvanto' })).toEqual(['save', 'Save to Elvanto']);
+    expect(F._hubNext({ ...kid({ intake: { date: 'd', row: irow({ hasText: true }) } }), stage: 'elvanto' })).toEqual(['text', 'Text parent']);
+    expect(F._hubNext({ ...kid({ consent: { date: 'd', row: crow() } }), stage: 'decided' })).toEqual(['consent', 'Mark consent']);
+    expect(F._hubNext({ ...kid({ flow: flow({ notReceivedOk: true }) }), stage: 'decided' })).toEqual(['mark', 'Mark consent']);
+    expect(F._hubNext({ ...kid({ mis: { row: {}, i: 0 } }), stage: 'done' })).toEqual(['fix', 'Make profile match']);
+    expect(F._hubNext({ ...kid(), stage: 'consent' })).toBeNull();
+  });
+});
+
+describe('search per child', () => {
+  it('a multi-child form gives one hit per child, found by either name, words in any order', () => {
+    const M = { fams: [], loose: [] };
+    const forms = [{ name: 'Jo & Bo Sample' }, { name: 'Sample, Kim', formName: '' }];
+    expect(F._hubSearch(M, forms, 'bo').forms).toEqual([{ i: 0, name: 'Bo Sample' }]);
+    expect(F._hubSearch(M, forms, 'sample').forms.map((h: any) => h.name)).toEqual(['Jo Sample', 'Bo Sample', 'Kim Sample']);
+    expect(F._hubSearch(M, forms, 'sample kim').forms).toEqual([{ i: 1, name: 'Kim Sample' }]);
+    expect(F._hubSearch(M, forms, '  ')).toBeNull();
+  });
+});
