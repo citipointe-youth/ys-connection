@@ -27,7 +27,8 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   '_navSnap', '_navSame', '_here', '_still',
   // consent hub landing (2026-10-23)
   '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
-  '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch'];
+  '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+  '_hubNextHtml', '_hubMoreHtml', '_hubKidMore', '_hubUnlinkIdx', '_hubStripHtml'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
@@ -241,16 +242,15 @@ describe('Save disabled reasons', () => {
   });
 });
 
-describe('family review footer (ux18 P9)', () => {
-  it('one .rc-foot row: Save answers secondary, Save to Elvanto the only primary and last', () => {
+describe('family review footer (ux18 P9, consent hub T9)', () => {
+  it('Save to Elvanto is the one primary; Save answers is a secondary under More', () => {
     const e = makeEnv();
     const h = e.fns._ikFamilyHtml(DET(), LIST(), ST(), e.fns._ikSeed(DETAIL()));
-    const foot = h.match(/<div class="rc-foot">(.*?)<\/div>/)![1];
-    const btns = foot.match(/<button[^>]*>[^<]*<\/button>/g)!;
-    expect(btns[btns.length - 1]).toMatch(/btn-primary btn-sm[^>]*onclick="_ikSaveOpen\(\)">Save to Elvanto/);
-    expect(foot).toMatch(/btn-secondary btn-sm" onclick="_ikAnswersSave\(\)">Save answers/);
+    expect(h).toMatch(/btn-primary btn-full lk-mt"[^>]*onclick="_ikSaveOpen\(\)">Save to Elvanto/);
     expect((h.match(/btn-primary/g) || []).length).toBe(1);
-    expect(h).not.toContain('btn-full');
+    const more = h.slice(h.indexOf('<summary>More'));
+    expect(more).toMatch(/btn-secondary btn-sm" onclick="_ikAnswersSave\(\)">Save answers/);
+    expect(h).not.toContain('rc-foot');
   });
 });
 

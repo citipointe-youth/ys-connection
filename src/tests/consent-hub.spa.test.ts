@@ -128,3 +128,31 @@ describe('landing', () => {
     expect(F2._hubBodyHtml()).toContain('Nobody matches');
   });
 });
+
+describe('family page', () => {
+  const NAMES2 = ['esc', '_hubNextHtml', '_ikTextOpen', '_hubKidMore', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
+  const mk = (I: any) => loadFns(NAMES2, `const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const icS = () => '';
+    const _ikTextBlock = () => ''; const _ikSaveHtml = (det, list, st, label) => '<button>' + label + '</button>';
+    let __m = ''; const modal = (h) => { __m = h; }; const _ikSheetHtml = (t) => t;
+    const _ikLk = () => ({ res: { rows: [{ subId: 's', linked: { personId: 'p1' } }] } }); const _hubRows = (k) => _ikLk(k).res.rows;`,
+    [...NAMES2, '__I']);
+  const det = (steps: any[]) => ({ row: { key: 'k1', title: 'Ava Sample' }, detail: { steps }, actions: [] });
+  const text = { key: 'complete:parent:x', state: 'todo', text: 'Text', sms: { name: 'Jo Sample', last3: '123' } };
+  it('only the parent text left: the one primary button is Text parent; the sheet is an intakeText for that step', () => {
+    const F2 = mk({ tab: 'intake', det: det([text]) });
+    expect(F2._hubNextHtml(F2.__I.det, null, {})).toContain('Text parent');
+    F2._ikTextOpen();
+    expect(F2.__I.sheet).toEqual({ type: 'intakeText', key: 'k1', keys: ['complete:parent:x'], one: false });
+  });
+  it('steps still to save: the primary is Save to Elvanto (Mark consent on a consent row)', () => {
+    expect(mk({ tab: 'intake' })._hubNextHtml(det([{ key: 'a', state: 'todo', text: 'Approve' }, text]), null, {})).toContain('Save to Elvanto');
+    expect(mk({ tab: 'consent' })._hubNextHtml(det([{ key: 'a', state: 'todo', text: 'Approve' }]), null, {})).toContain('Mark consent');
+  });
+  it('More: Remove from New People for a step-0 child, Unlink for a console-linked form, Mark not received when it is not the next step', () => {
+    const F2 = mk({});
+    const h = F2._hubKidMore({ personId: 'p1', flow: { rowId: 'r', notReceivedOk: true, dnc: false }, next: ['consent', 'Mark consent'] });
+    expect(h.join('')).toContain('Remove from New People');
+    expect(h.join('')).toContain('_ikClUnlink(0)');
+    expect(h.join('')).toContain('Mark not received');
+  });
+});

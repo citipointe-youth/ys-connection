@@ -13417,7 +13417,8 @@ function _ikConsentHelp() {
 }
 function _ikFamilyPage() {
   const I = _ik(), st = _ikSt(), det = I.det && I.det.row && I.det.row.key === I.key ? I.det : null;
-  const back = '';
+  const back = _hubStripHtml();
+  if (String(I.key).indexOf('flow:') === 0) return back + _hubFlowCard();
   if (!det) return back + (I.detErr ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.detErr)}</div></div>` : progBar('Loading'));
   const L = I.list && I.list.date === I.date ? I.list : null;
   return back + _ikBanner(st, L, I.tab) + (I.tab === 'consent' ? _ikConsentHtml(det, L, st) : _ikFamilyHtml(det, L, st, _ikAns()));
@@ -13430,7 +13431,7 @@ function _ikHead(det, st, d) {
 }
 // The two forms side by side (spec 2026-10-14 §2): one row per question, the parent-name and parent-mobile mismatch
 // highlighted, flagged answers marked with what is wrong, Keep as is on its own row, the Elvanto links last.
-function _ikCompareHtml(d, a) {
+function _ikCompareHtml(d, a, keepsOut) {
   const F = d.forms || {}, s = F.student, p = F.parent, cols = [s ? ['student', s, 0] : null, p ? ['parent', p, 1] : null].filter(Boolean);
   if (!cols.length) return '';
   const sk = s ? s.subId : null, mine = (sk && a.keeps && a.keeps[sk]) || {}, keptAll = d.kept || [], n = cols.length;
@@ -13466,6 +13467,7 @@ function _ikCompareHtml(d, a) {
         + (mine[x.keep.field] === x.keep.value ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikUnkeep(${fi},${ii})">Undo keep</button>` : '')
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">Keep as is</button>` // F-41: short, so it fits at 360 px
         + (phone ? `<div class="ik-line">The text goes to the parent form's mobile.</div>` : '');
+    if (keepsOut) { keepsOut.push(inner); return ''; }
     return `<tr class="ik-keep"><td colspan="${n + 1}">${inner}</td></tr>`;
   }).join('');
   // The Elvanto links, each under its own form (links[] is [label, url]: "Student form · when", "Student profile", ...).
@@ -13542,14 +13544,12 @@ function _ikFamilyHtml(det, list, st, a) {
   if (!d) return _ikHead(det, st, null) + '<div class="lk-hint">Done. Nothing more to save.</div>' + _ikResultHtml(_ikAct(acts), null, st);
   const ans = _ikOpenOf(acts, ['intakeAnswer']);
   const save = acts.find((x) => (x.type === 'intakeSave' || x.type === 'intakeText') && x.status !== 'cancelled') || null;
-  const alone = _ikAlone(d), tb = _ikTextBlock(det, list, st);
+  const keeps = [], cmp = _ikCompareHtml(d, a, keeps);
   return _ikHead(det, st, d) + (ans ? `<div class="lk-alert practice">${icS('info')}<div>Updating plan…</div></div>` : '')
-    + _ikMatchHtml(d, a) + _ikCompareHtml(d, a) + _ikVerdictHtml(d, a)
-    // ux18 (risk #1): one .rc-foot row, Elvanto one-offs and Save answers secondary, Save to Elvanto the one primary, last.
-    + `<div class="card"><div class="lk-d">Save answers keeps your links and answers on the console. Nothing goes to Elvanto.</div>`
-    + _ikSaveHtml(det, list, st, 'Save to Elvanto', alone.map((s, i) => `<button type="button" class="btn btn-secondary btn-sm"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text + ' in Elvanto')}</button>`).join('')
-      + `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikAnswersSave()">Save answers</button>`)
-    + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
+    + _ikMatchHtml(d, a) + cmp + _ikVerdictHtml(d, a)
+    // One primary (Save to Elvanto, then Text parent); the Elvanto one-offs, Keep as is and Save answers under More.
+    + `<div class="card">${_hubNextHtml(det, list, st)}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
+    + _hubMoreHtml(det, list, st, keeps)
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`; // I8 (R2-G4): the parent text is sent from Flow steps
 }
 // The consent outcome (§7.4): the form's date and outcome, Save to Elvanto (consentSave), the steps.
@@ -13562,7 +13562,8 @@ function _ikConsentHtml(det, list, st) {
   const save = acts.find((x) => x.type === 'consentSave' && x.status !== 'cancelled') || null;
   return _ikHead(det, st, d) + `<div class="card"><div>${esc(line)}</div>`
     + (d.textedOn ? `<div class="lk-d">${esc('Texted on ' + _lkDay(d.textedOn))}</div>` : '') + (d.consentNote ? `<div class="lk-d">${esc(d.consentNote)}</div>` : '') + '</div>'
-    + `<div class="card">${_ikSaveHtml(det, list, st, 'Save to Elvanto')}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
+    + `<div class="card">${_hubNextHtml(det, list, st)}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
+    + _hubMoreHtml(det, list, st, [])
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`;
 }
 // ── Consent hub (2026-10-23, design.md): one row per family, a stage per child, Needs action on top. Pure helpers first; the screens below.
@@ -13754,6 +13755,78 @@ function _hubPage() {
     + _ikBanner(st, null) + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="hub-res">${_hubBodyHtml()}</div>` + _ikConsentHelp();
 }
+// A family row opens its child's current row (Form in / In Elvanto: the intake row; later: the consent row; a step-0 person in no plan:
+// the flow card). Several children: chips on the strip switch child without a new back step.
+function _hubOpen(fi, ci, swap) {
+  const I = _ik(), f = I.hubShown && I.hubShown[fi], c = f && f.kids[ci || 0];
+  if (!c) return;
+  const early = c.stage === 'form' || c.stage === 'elvanto', t = early ? c.intake || c.consent : c.consent || c.intake;
+  if (!swap) navPush();
+  I.hubFam = f; I.hubKid = ci || 0;
+  if (t) {
+    const mode = t === c.intake ? 'intake' : 'consent';
+    Object.assign(I, { tab: mode, date: t.date, list: (I.hub.lists || {})[mode + '|' + t.date] || null, key: t.row.key, det: null, detErr: null, pick: null });
+  } else Object.assign(I, { key: 'flow:' + (c.flow && c.flow.rowId), date: null, det: null, detErr: null });
+  _ikDraw();
+  try { window.scrollTo(0, 0); } catch (e) {}
+  if (t) _ikLoadRow(false).then(() => { _ikDraw(); _ikSchedule(); });
+}
+function _hubKid(i) { const I = _ik(), fi = (I.hubShown || []).indexOf(I.hubFam); if (fi >= 0 && i !== I.hubKid) _hubOpen(fi, i, true); }
+function _hubStripHtml() {
+  const I = _ik(), f = I.hubFam, c = f && f.kids[I.hubKid];
+  if (!f || !c) return '';
+  const at = HUB_STAGES.findIndex((s) => s[0] === c.stage);
+  return `<div class="card"><div class="lk-svc-t">${esc(f.title)}</div><div class="lk-d">${HUB_STAGES.map(([, l], i) => i === at ? '<b>' + esc(l) + '</b>' : esc(l)).join(' ' + icS('arrr') + ' ')}</div>`
+    + (f.kids.length > 1 ? `<div class="tbbar">${f.kids.map((k, i) => `<button type="button" class="tbbtn ${i === I.hubKid ? 'on' : ''}" onclick="_hubKid(${i})">${esc(String(k.name || '').split(' ')[0] + ' · ' + ((HUB_STAGES.find((s) => s[0] === k.stage) || [])[1] || ''))}</button>`).join('')}</div>` : '')
+    + (c.mis ? _ikMisRow(c.mis.row, c.mis.i, '', _ikSt()) : '') + '</div>';
+}
+// ONE primary button: Save to Elvanto (Mark consent on a consent row) while steps are left, else Text parent.
+function _hubNextHtml(det, list, st) {
+  const I = _ik(), d = det && det.detail, s = d && !_ikTodo(d).length ? _ikTextStep(d) : null;
+  if (!s) return _ikSaveHtml(det, list, st, I.tab === 'consent' ? 'Mark consent' : 'Save to Elvanto');
+  const why = _ikTextBlock(det, list, st);
+  return `<button type="button" class="btn btn-primary btn-full lk-mt"${why ? ' disabled' : ''} onclick="_ikTextOpen()">Text parent</button>`
+    + `<div class="lk-d${why ? ' lk-right' : ''}">${esc(why || 'Sends the consent text to ' + (s.sms ? s.sms.name : 'the parent') + '. Elvanto sends it; it cannot be recalled.')}</div>`;
+}
+function _ikTextOpen() {
+  const I = _ik(), det = I.det, s = det && _ikTextStep(det.detail);
+  if (!s || _ikTextBlock(det, I.list, _ikSt())) return;
+  I.sheet = { type: 'intakeText', key: det.row.key, keys: [s.key], one: false };
+  modal(_ikSheetHtml('Text the parent?', [{ text: _ikStepText(s) }], "Elvanto sends the consent text. It can't be recalled.", 'Send'));
+}
+function _hubUnlinkIdx(pid) { return (_hubRows('unlinked') || []).findIndex((r) => r && r.linked && (r.linked.personId === pid || (r.linkedIds || []).includes(pid))); }
+// The rare actions for one child (also on the flow card).
+function _hubKidMore(c) {
+  const out = [], ul = c && c.personId ? _hubUnlinkIdx(c.personId) : -1;
+  if (c && c.flow) out.push('<button type="button" class="btn btn-secondary btn-sm" onclick="_hubRemove()">Remove from New People</button>');
+  if (ul >= 0) out.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(${Number(ul)})">Unlink consent form</button>`);
+  if (c && c.flow && c.flow.notReceivedOk && !c.flow.dnc && !(c.next && c.next[0] === 'mark')) out.push('<button type="button" class="btn btn-secondary btn-sm" onclick="_hubMark()">Mark not received</button>');
+  return out;
+}
+function _hubMoreHtml(det, list, st, keeps) {
+  const I = _ik(), c = I.hubFam && I.hubFam.kids[I.hubKid], d = det && det.detail, out = [];
+  if (I.tab === 'intake' && d) {
+    const tb = _ikTextBlock(det, list, st);
+    _ikAlone(d).forEach((s, i) => out.push(`<button type="button" class="btn btn-secondary btn-sm"${tb ? ' disabled' : ''} onclick="_ikOneOpen(${i})">${esc(s.text + ' in Elvanto')}</button>`));
+    out.push(...(keeps || []), '<button type="button" class="btn btn-secondary btn-sm" onclick="_ikAnswersSave()">Save answers</button>');
+  }
+  out.push(..._hubKidMore(c));
+  return out.length ? `<details class="lk-done"><summary>More ${icS('chevd')}</summary><div class="card">${out.map((h) => `<div class="lk-mt">${h}</div>`).join('')}</div></details>` : '';
+}
+function _hubKidNow() { const I = _ik(); return I.hubFam && I.hubFam.kids[I.hubKid]; }
+function _hubRemove() { const c = _hubKidNow(); if (c && c.flow) { _lkOpenStep(c.flow.rowId); _lkRemoveAsk(); } }
+// Mark consent / not received for a step-0 person in no plan: the step sheet's Complete, which records "Consent not received" first (R4).
+function _hubMark() { const c = _hubKidNow(); if (c && c.flow) _lkOpenStep(c.flow.rowId); }
+function _hubFlowCard() {
+  const c = _hubKidNow(), r = c && c.flow;
+  if (!r) return '<div class="lk-hint">Not on New People step 0 any more.</div>';
+  const f = _hubFriday(c), wait = f && Date.now() < _siteInstant(f, _consentCutoff());
+  const line = r.dnc ? 'Do not contact.' : wait ? 'Waiting for the consent reply until ' + _lkDay(f) + ' ' + _cutoffWords() + '.'
+    : r.notReceivedOk ? 'No consent reply by ' + _lkDay(f) + '. Mark consent records "Consent not received" (dated today), then completes step 0.' : 'Do the consent check in Elvanto.';
+  const more = _hubKidMore(c);
+  return `<div class="card"><div class="lk-d">${esc(line)}</div>${c.next && c.next[0] === 'mark' ? '<button type="button" class="btn btn-primary btn-full lk-mt" onclick="_hubMark()">Mark consent</button>' : ''}</div>`
+    + (more.length ? `<details class="lk-done"><summary>More ${icS('chevd')}</summary><div class="card">${more.map((h) => `<div class="lk-mt">${h}</div>`).join('')}</div></details>` : '');
+}
 
 // ── Loading, tabs, dates, refresh, polling ──
 async function _ikLoad(quiet) {
@@ -13782,7 +13855,7 @@ async function _ikLoad(quiet) {
 }
 async function _ikLoadRow(quiet) {
   const I = _ik(), key = I.key, date = I.date, mode = I.tab;
-  if (!key || !date) return;
+  if (!key || !date || String(key).indexOf('flow:') === 0) return;
   try {
     const r = await API.fresh('/link/intake/row?mode=' + mode + '&date=' + encodeURIComponent(date) + '&key=' + encodeURIComponent(key), quiet);
     if (_ik() !== I || I.key !== key || I.date !== date) return;
