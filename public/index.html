@@ -10758,7 +10758,7 @@ function _lkTick() {
   if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups(true).then((ok) => { if (ok) _lkRefreshView(); });
   if (S.page === 'link-groups' && !LINK.rf && LINK.gid && LINK.gmOpen[LINK.gid]) _lkMembersLoad(LINK.gid, true);
   if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows(true).then((ok) => { if (ok) _lkRefreshView(); });
-  if (S.page === 'link-intake') _ikLoad(true); // T4: the list and the open family (10 s while something is Pending)
+  if (S.page === 'link-intake') _ikReload(); // T4: the list and the open family (10 s while something is Pending)
 }
 try {
   window.addEventListener('online', () => { if (S.user) _lkFlush(); });
@@ -13050,7 +13050,7 @@ function _ikQFlush() {
         else if (r && r.outcome !== 'duplicate' && r.message) { if (I.resend[fam] !== 'again') delete I.resend[fam]; const t = ((I.list && (I.list.rows || []).find((x) => x.key === fam)) || {}).title; toast(t && I.key !== fam ? t + ': ' + r.message : r.message); }
       });
     }
-    if (any && S.page === 'link-intake') _ikLoad(true);
+    if (any && S.page === 'link-intake') _ikReload();
     return any;
   })().catch(() => false).finally(() => { LINK.ikFlushing = null; }); // callers (_lkBoot, online, visibilitychange) never await: never reject
   LINK.ikFlushing = p;
@@ -13564,6 +13564,8 @@ function _hubSearch(M, forms, q) {
   return { fams: M.fams.filter((f) => f.kids.some((c) => hit(c.name))), forms: out };
 }
 
+// The open family reloads its own page; the hub landing (and a Flow-steps view) reloads the hub, never the old on-demand intake path.
+function _ikReload() { const I = _ik(); if (I.key && !String(I.key).startsWith('flow:')) _ikLoad(true); else _hubLoad(true); }
 function _hubRows(kind) { const x = _ikLk(kind); return x.res && !x.resQ ? x.res.rows || [] : null; }
 function _hubM() {
   const I = _ik(), h = I.hub || {};
@@ -13576,7 +13578,7 @@ function _hubSnapApply(snap) {
     const s = snap.kinds && snap.kinds[k], x = _ikLk(k);
     if (s && !_ikLkBusy(x)) Object.assign(x, { st: 'ready', res: { rows: s.rows || [], total: s.total, takenAt: s.takenAt, page: 1, pageSize: (s.rows || []).length || 25 }, resQ: '', q: '', msg: null });
   }
-  return true;
+  return ['unlinked', 'mismatches', 'forms'].every((k) => snap.kinds && snap.kinds[k]); // a null kind (unreadable, not pushed yet) falls back to the lookup: never a false all-clear
 }
 // Every list the hub joins, in parallel: both modes' dates then every date's rows (14-28 days: a handful), the step-0 rows, the cache.
 async function _hubLoad(quiet) {

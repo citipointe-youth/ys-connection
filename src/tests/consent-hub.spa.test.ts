@@ -129,6 +129,24 @@ describe('landing', () => {
   });
 });
 
+describe('final-review fixes', () => {
+  it('I2: a snapshot with a null kind is not "applied", so the caller warms the lookup (no false all-clear)', () => {
+    const F2 = loadFns(['_hubSnapApply'], `const _ikLk = (k) => (globalThis.__lk = globalThis.__lk || {})[k] || ((globalThis.__lk[k]) = { st: 'idle', res: null }); const _ikLkBusy = () => false;`, ['_hubSnapApply']);
+    const k = { rows: [], total: 0, takenAt: 't' };
+    expect(F2._hubSnapApply({ live: true, kinds: { unlinked: k, mismatches: k, forms: null } })).toBe(false);
+    expect(F2._hubSnapApply({ live: true, kinds: { unlinked: k, mismatches: k, forms: k } })).toBe(true);
+  });
+  it('I1: the tick/flush reload goes to the hub on the landing and to the family page when one is open', () => {
+    const calls: string[] = [];
+    (globalThis as any).__calls = calls;
+    const mk = (key: any) => loadFns(['_ikReload'], `const __I = { key: ${JSON.stringify(key)} }; const _ik = () => __I; const _ikLoad = () => globalThis.__calls.push('ik'); const _hubLoad = () => globalThis.__calls.push('hub');`, ['_ikReload']);
+    mk(null)._ikReload(); mk('flow:abc')._ikReload(); mk('fam-1')._ikReload();
+    expect(calls).toEqual(['hub', 'hub', 'ik']);
+    expect(HTML).not.toMatch(/S\.page === 'link-intake'\) _ikLoad\(true\)/);
+    expect(HTML).not.toMatch(/any && S\.page === 'link-intake'\) _ikLoad\(true\)/);
+  });
+});
+
 describe('family page', () => {
   const NAMES2 = ['esc', '_hubNextHtml', '_ikTextOpen', '_hubKidMore', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
   const mk = (I: any) => loadFns(NAMES2, `const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const icS = () => '';
