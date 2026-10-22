@@ -906,6 +906,8 @@ const BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: tru
       function _busBlockWrite() { return false; }
       async function _busGet(path, q) { globalThis.__sent.push(['GET', path, q]); return [{ id: 'a2', label: 'Dad' }, { id: 'a1', label: 'Mum' }]; }
       function _busAddressPicker(addrs) { return addrs.map((a) => a.id).join(','); }
+      function _busConsentPickerRow() { return null; }
+      function _busConsentUnmatched() { return false; } function _busOverMsg() { return ''; }
       function _busReadAddress() { return { addressId: 'a1' }; }
       function esc(s) { return String(s); }
       function modal(h) { __m = h; } function closeModal() {}
@@ -918,6 +920,31 @@ const BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: tru
     expect(__html()).toContain('a1,a2'); // the address they used last time is pre-selected (first)
     await busSavePast(0);
     expect(sent[1]).toEqual(['POST', '/bus/riders', { studentId: 's1', addressId: 'a1' }]);
+  });
+  it('operator 2026-10-23: a consent-only past rider gets the consent form row pre-selected, and Add posts consentFormId', async () => {
+    const sent: unknown[] = [];
+    const cp = [{ studentId: 's3', guestId: null, addressId: null, name: 'Riley Kim', grade: 10, suburb: 'Brisbane City',
+      consent: { year: 2026, current: true, details: { formId: 'f9', address: { line1: '1 Test St', city: 'Brisbane City' } } } }];
+    const { busAddPast, busSavePast, __html } = loadFns(['busAddPast', 'busSavePast', '_busAddressPicker', '_busConsentPickerRow', '_busAddrLabel'],
+      `const BUS = { view: { pastRiders: ${JSON.stringify(cp)}, vehicles: [] }, ac: {} };
+      let __m = '';
+      function _busBlockWrite() { return false; }
+      async function _busGet(path, q) { globalThis.__sent.push(['GET', path, q]); return []; }
+      function _busAcField() { return ''; } function _busUuid() { return 'u'; } function _busSuburb() { return ''; }
+      function _busReadAddress() { const m = /value="consent:([^"]+)" checked/.exec(__m); return m ? { consentFormId: m[1] } : null; } // the checked radio
+      function _busConsentUnmatched() { return false; } function _busOverMsg() { return ''; }
+      function esc(s) { return String(s); } function icS(k) { return k; }
+      function modal(h) { __m = h; } function closeModal() {}
+      async function _busSend(m, url, body) { globalThis.__sent.push([m, url, body]); }
+      function toast() {} function renderBus() {}
+      function __html() { return __m; }`, ['busAddPast', 'busSavePast', '__html']);
+    (globalThis as any).__sent = sent;
+    await busAddPast(0);
+    expect(__html()).toMatch(/value="consent:f9" checked/);
+    expect(__html()).toContain('Consent form · 1 Test St, Brisbane City');
+    expect(__html()).not.toMatch(/value="new" checked/);
+    await busSavePast(0);
+    expect(sent[1]).toEqual(['POST', '/bus/riders', { studentId: 's3', consentFormId: 'f9' }]);
   });
   // Task 13: a Generate/lock in progress must block the write itself, with a toast, even
   // though the Past riders list stays visible and tappable.

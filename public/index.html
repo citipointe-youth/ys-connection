@@ -14756,14 +14756,14 @@ function _busRosterHtml() {
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
     ${_busPastHtml(readOnly)}`;
 }
-// Past riders (saved address, not on tonight) — collapsed by default; BUS.pastOpen survives the 10 s re-render.
+// Past riders (saved address or a current consent form, not on tonight; consent-only rows have nothing to delete, so no trash) — collapsed by default; BUS.pastOpen survives the 10 s re-render.
 function _busPastHtml(locked) {
   const past = locked ? [] : (BUS.view.pastRiders || []);
   if (!past.length) return '';
   const rows = past.map((p, i) => `<div class="route-row clickable" onclick="busAddPast(${i})">
       <div class="route-main"><div class="route-name">${esc(p.name)} ${_busGradeChip(esc(String(p.grade || '')), p.gender)}</div>
       <div class="route-sub">${esc(p.suburb)} ${_busConsentChip(p)}</div></div>
-      <button type="button" class="btn-icon bus-danger" aria-label="Delete ${esc(p.name)}" onclick="event.stopPropagation();event.preventDefault();busDeletePastRider(this,${i})">${icS('trash')}</button>
+      ${p.addressId ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete ${esc(p.name)}" onclick="event.stopPropagation();event.preventDefault();busDeletePastRider(this,${i})">${icS('trash')}</button>` : ''}
       <span style="color:var(--accent-dark);display:flex" aria-label="Add ${esc(p.name)}">${icS('plus')}</span></div>`).join('');
   return `<div class="card drop${BUS.pastOpen ? ' open' : ''}" style="margin-top:12px">
     <div class="drop-head" onclick="BUS.pastOpen=!BUS.pastOpen;this.parentElement.classList.toggle('open')"><span class="card-title">Past riders (${past.length})</span><span class="drop-chev">${icS('chevr')}</span></div>
@@ -14787,8 +14787,9 @@ async function busAddPast(i) {
   let addrs;
   try { addrs = await _busGet('/bus/addresses', (p.studentId ? 'studentId=' + p.studentId : 'guestId=' + p.guestId)); } catch (e) { toast(e.message); return; }
   addrs.sort((a, b) => Number(b.id === p.addressId) - Number(a.id === p.addressId));
+  // Operator 2026-10-23: a consent-only past rider (no saved address) gets the consent form row pre-selected; R8: the leader still picks.
   modal(`<div class="mo-title">Add ${esc(p.name)}</div>
-    <div class="card-sub" style="margin-bottom:8px">Confirm where they're going tonight</div>${_busAddressPicker(addrs)}
+    <div class="card-sub" style="margin-bottom:8px">Confirm where they're going tonight</div>${_busAddressPicker(addrs, null, false, _busConsentPickerRow(p.consent, !addrs.filter((a) => !a.vehicleId).length))}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSavePast(${i})">Add</button></div>`);
 }
@@ -14800,7 +14801,7 @@ async function busSavePast(i) {
   try {
     await _busSend('POST', '/bus/riders', { ...(p.studentId ? { studentId: p.studentId } : { guestId: p.guestId }), ...a });
     closeModal(); toast(`${p.name} added${_busOverMsg(a)}`); renderBus();
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (!_busConsentUnmatched(e, p.consent)) toast(e.message); }
   finally { BUS.addingPast = false; }
 }
 
@@ -14948,7 +14949,9 @@ async function busAdd(i) {
 function busBulk() {
   if (_busBlockWrite()) return;
   BUS.bulk = (BUS.view.pastRiders || []).map((p) => ({ studentId: p.studentId || null, guestId: p.guestId || null,
-    name: p.name, grade: p.grade, sub: p.suburb, addr: { addressId: p.addressId }, on: false }));
+    name: p.name, grade: p.grade, sub: p.suburb, on: false,
+    // A consent-only past rider (no saved address) goes to their consent form address once ticked; none at all = the server says so.
+    addr: p.addressId ? { addressId: p.addressId } : (_busConsentPickerRow(p.consent) ? { consentFormId: p.consent.details.formId } : {}) }));
   BUS.bulkHits = []; BUS.bulkPick = null;
   modal(`<div class="mo-title">Add several</div>
     <div class="card-sub" style="margin-bottom:4px">Tick who needs a lift tonight</div>

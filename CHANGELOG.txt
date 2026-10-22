@@ -14,6 +14,9 @@ BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet li
 - The old tick-box consent is gone (migration 0044 drops its table). Rolling
   back below this build needs the SQL in DEPLOY.md first. Ship this app first,
   then the console.
+- Past riders now holds up to 100 people and also lists anyone with a
+  matched consent form this year, even if they have never ridden: tap them
+  and the consent form address is ready to pick (ysc-v145).
 
 -------------------------------------------------------------------------------
 CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)

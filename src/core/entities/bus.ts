@@ -92,7 +92,7 @@ export interface BusLeaderView { id: ID; name: string; gender: BusGender; inPool
 // tonight's roster. addressId lets the SPA one-tap add them via the existing addRider path
 // without re-entering the address; only the suburb is ever shown here (spec I2's rule).
 export interface BusPastRiderView {
-  studentId: ID | null; guestId: ID | null; addressId: ID; name: string; grade: number | null; gender: BusGender; suburb: string;
+  studentId: ID | null; guestId: ID | null; addressId: ID | null; name: string; grade: number | null; gender: BusGender; suburb: string; // addressId null = consent form only (no saved address)
   consent: BusConsentView; // same chip as tonight's riders; details only for a full-view login (R7)
 }
 export interface BusRunView {
@@ -106,7 +106,7 @@ export interface BusRunView {
   fleet: BusVehicle[];
   canCoordinate: boolean;
   pendingNewPeople: number | null;   // null unless director/admin
-  pastRiders: BusPastRiderView[];    // [] unless bus:roster; the most recent ~50, by first name then last name
+  pastRiders: BusPastRiderView[];    // [] unless bus:roster; the most recent 100 (saved address or a current matched consent form), by first name then last name
   // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car
   // ownerLeaderId), names+ids only, unscoped by grade/quad — feeds the "who are you" picker so
   // it can offer a leader outside the login's own scope. Sorted by name.

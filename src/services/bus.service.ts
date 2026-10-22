@@ -17,7 +17,7 @@ import type { Actor } from '../core/entities/user';
 import { makeDnc, type Dnc } from './dnc';
 import { createLogger } from '../utils/logger';
 import type { MinistryConfig } from '../core/ministry-config';
-import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
+import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender, BusConsentForm,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusGenerateResult,
   BusConsentView, BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide, VehicleKind } from '../core/entities/bus';
 
@@ -175,7 +175,7 @@ const MAP_FAILED = 'Could not draw the map';
 const SEARCH_FAILED = 'Address search is unavailable right now — try again in a minute.';
 const ANALYSIS_FAILED = "Couldn't reach Google Maps — try again in a minute.";
 const MAP_MAX_POINTS = 120; // per route, keeps the Static Maps URL far under its 16k limit
-const PAST_RIDERS_CAP = 50;
+const PAST_RIDERS_CAP = 100;
 
 function routingFailed(err: unknown, message = GENERATE_FAILED): AppError {
   console.error('[bus] routing failed:', err instanceof Error ? err.message : err);
@@ -658,7 +658,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   async function pastRidersList(ctx: BusCtx, c: MinistryConfig, riders: BusRunRider[], cv: ConsentFn): Promise<BusPastRiderView[]> {
     if (!allowed(ctx, c, 'bus:roster')) return [];
     const onRun = new Set(riders.map(riderKey));
-    const [addresses, guests, allStudents] = await Promise.all([bus.listAllAddresses(), bus.listGuests(), students.findAll()]);
+    const [addresses, guests, allStudents, forms] = await Promise.all([bus.listAllAddresses(), bus.listGuests(), students.findAll(), bus.listConsentForms()]);
     const guestById = new Map(guests.map((g) => [g.id, g]));
     const studentById = new Map(allStudents.map((s) => [s.id, s]));
     const latest = new Map<string, BusAddress>(); // owner key → their most-recently-used address
@@ -667,23 +667,28 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const cur = latest.get(key);
       if (!cur || a.lastUsedAt > cur.lastUsedAt) latest.set(key, a);
     }
+    // Operator 2026-10-23: a matched consent form for this consent year (R4) also lists them, address or not.
+    const year = Number(ctx.localNow.slice(0, 4));
+    const consented = new Map<string, BusConsentForm>(); // owner key → their newest current-year form
+    for (const f of forms) {
+      if (f.year !== year || !(f.studentId || f.guestId)) continue;
+      const key = riderKey(f), cur = consented.get(key);
+      if (!cur || f.submittedAt > cur.submittedAt) consented.set(key, f);
+    }
     const out: (Omit<BusPastRiderView, 'consent'> & { lastUsedAt: string; first: string; last: string })[] = [];
-    for (const [key, addr] of latest) {
+    for (const key of new Set([...latest.keys(), ...consented.keys()])) {
       if (onRun.has(key)) continue;
-      if (addr.studentId) {
-        const s = studentById.get(addr.studentId);
-        if (!s) continue;
-        out.push({ studentId: s.id, guestId: null, addressId: addr.id, name: `${s.firstName} ${s.lastName}`,
-          grade: s.grade, gender: genderOf(s.gender), suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt, first: s.firstName, last: s.lastName });
-      } else if (addr.guestId) {
-        const g = guestById.get(addr.guestId);
-        if (!g) continue; // purged, or never existed
-        out.push({ studentId: null, guestId: g.id, addressId: addr.id, name: `${g.firstName} ${g.lastName}`,
-          grade: g.grade, gender: g.gender, suburb: addrOut(addr).suburb, lastUsedAt: addr.lastUsedAt, first: g.firstName, last: g.lastName });
-      }
+      const addr = latest.get(key), f = consented.get(key), owner = addr ?? f!;
+      const p = owner.studentId ? studentById.get(owner.studentId) : owner.guestId ? guestById.get(owner.guestId) : undefined;
+      if (!p) continue; // purged guest, or never existed
+      const g = owner.studentId ? genderOf((p as { gender: string | null }).gender) : (p as { gender: BusGender }).gender;
+      const at = [addr?.lastUsedAt ?? '', f?.submittedAt ?? ''].sort().pop()!; // recency = max(address last used, consent submitted)
+      out.push({ studentId: owner.studentId ? p.id : null, guestId: owner.studentId ? null : p.id, addressId: addr?.id ?? null,
+        name: `${p.firstName} ${p.lastName}`, grade: p.grade, gender: g, suburb: addr ? addrOut(addr).suburb : f!.data.address.city,
+        lastUsedAt: at, first: p.firstName, last: p.lastName });
     }
     out.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt) || a.name.localeCompare(b.name));
-    // Operator 2026-10-23 (replaces N01b): the most recent 50 are kept, then shown by first name, then last name, any case.
+    // Operator 2026-10-23 (replaces N01b): the most recent 100 are kept, then shown by first name, then last name, any case.
     // The consent chip is the same per-request loader as tonight's riders (R7: no details for a junior leader).
     const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
     return out.slice(0, PAST_RIDERS_CAP).sort((a, b) => cmp(a.first, b.first) || cmp(a.last, b.last))
