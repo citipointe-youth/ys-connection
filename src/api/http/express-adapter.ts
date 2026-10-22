@@ -39,7 +39,6 @@ export const UNTIMED_ROUTES = new Set([
   'POST /import/csv',
   'POST /import/group-csv',
   'POST /connections/allocations/import',
-  'POST /audits',
   'POST /audits/import-all',
   // Google gets up to GENERATE_SOLVE_BUDGET_MS (30s) here; the service's own 55s lock + Vercel's 60s cap bound it.
   'POST /bus/run/generate',

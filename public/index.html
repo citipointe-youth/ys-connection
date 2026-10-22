@@ -8816,7 +8816,8 @@ function _auditLgStats(sel,prev){
   return {byQuad:Object.keys(quads).map(q=>({quad:q,grades:Object.values(quads[q].grades)}))};
 }
 // Youth nights of the selected scope from snapshot v2 weekly (nulls = no youth night, skipped): avgFri, actTrend, deck sparkline.
-function sessSeries(){const t=TERM==='ALL'?null:((AUDIT&&AUDIT.terms)||[]).find(x=>x.key===TERM);return((AUDIT&&AUDIT.weekly)||[]).filter(w=>w.youth!=null&&(!t||(w.weekEnd>=t.startDate&&w.weekEnd<=t.endDate))).map(w=>({date:w.weekEnd,v:w.youth}));}
+// Term dates are week starts and weekEnd = start + 6, so the term's last week ends at endDate + 6.
+function sessSeries(){const t=TERM==='ALL'?null:((AUDIT&&AUDIT.terms)||[]).find(x=>x.key===TERM);const e=t&&new Date(Date.parse(t.endDate+'T00:00:00Z')+6*864e5).toISOString().slice(0,10);return((AUDIT&&AUDIT.weekly)||[]).filter(w=>w.youth!=null&&(!t||(w.weekEnd>=t.startDate&&w.weekEnd<=e))).map(w=>({date:w.weekEnd,v:w.youth}));}
 function regR(){const s=D.settings||{};return(s.regRateNumerator||3)/(s.regRateDenominator||4);}
 
 function reset(){mdl=null;D=null;QF='';FOPEN='';TJUMP='';LGQ='';PF.quad='';AUDIT=null;AUDIT_SRC=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';}
@@ -9010,7 +9011,7 @@ function follow(list){FOPEN=list;go('ca-follow');}
 function fuPhone(r,wide){
   if(r.dnc)return '<span class="ca-cap">Do not contact</span>';
   if(!r.phone)return '<span class="ca-cap">No phone on file</span>';
-  const n=esc(r.phone.replace(/[^\d+]/g,''));
+  const n=esc(r.phone.replace(/[^\d+]/g,'').replace(/^\+?61(\d{9})$/,'0$1'));   // +61 4xx -> 04xx for the href; the text stays as stored
   if(wide)return '<a href="tel:'+n+'">'+esc(r.phone)+'</a>'+(r.phoneIsParent?' <span class="chip c-neutral">Parent\'s phone</span>':'');
   return '<a class="btn btn-secondary ca-act" href="tel:'+n+'">'+(r.phoneIsParent?'Call parent':'Call')+'</a><a class="btn btn-secondary ca-act" href="sms:'+n+'">'+(r.phoneIsParent?'Text parent':'Text')+'</a>';
 }

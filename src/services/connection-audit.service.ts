@@ -134,7 +134,9 @@ export function makeConnectionAuditService(
       // The push's own Zod (caps, row length, form header allowlist, Iso), so the manual path is the same code path.
       const r = AuditPush.safeParse({ contractVersion: LINK_CONTRACT_VERSION, consoleId: MANUAL_CONSOLE, takenAt: b['exportedAt'],
         exportedAt: b['exportedAt'], source, status: 'ok', headers: b['headers'], rows: b['rows'] });
-      if (!r.success) throw new BadRequestError("This file doesn't fit that source. Check it's the right export and the date.");
+      // A future export date would beat every console push until that date (+1 day covers time zones).
+      if (!r.success || Date.parse(r.data.exportedAt) > now().getTime() + 86_400_000)
+        throw new BadRequestError("This file doesn't fit that source. Check it's the right export and the date.");
       return ingest(r.data, 'manual', actor.id);
     },
 
@@ -183,9 +185,9 @@ export function makeConnectionAuditService(
         const s = await settingsRepo.getSettings();
         const t = now();
         const row = await repo.findByYear(siteYear(t, s.ministryConfig.structure.timeZone));
-        // ponytail: reads the whole year row; a fed_at column read if GET /admin/errors gets slow. A v1 row (never fed by
-        // the console) ages from its upload time.
-        const fedAt = row ? (row.snapshot as Partial<AuditSnapshotV2> | null)?.sources?.service?.fedAt ?? row.uploadedAt : null;
+        // ponytail: reads the whole year row; a fed_at column read if GET /admin/errors gets slow. Only a fed row ages: a v1
+        // row (never fed) is not stale, so no false "Act now" before the first console push (spec §7: the service fedAt).
+        const fedAt = (row?.snapshot as Partial<AuditSnapshotV2> | null | undefined)?.sources?.service?.fedAt ?? null;
         const n = fedAt && t.getTime() - Date.parse(fedAt) > FEED_STALE_MS ? 1 : 0;
         await d.errorLog.record({ category: 'audit', code: 'audit-feed-stale', route: '' }, n);
       } catch { /* never throws: the admin view and the console's latest() must still answer */ }

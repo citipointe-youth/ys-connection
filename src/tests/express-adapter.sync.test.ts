@@ -130,6 +130,10 @@ describe('sync routes: token gate', () => {
     expect([...UNTIMED_ROUTES].some((r) => r.includes('/sync'))).toBe(false);
   });
 
+  it('no dead route in UNTIMED_ROUTES: POST /audits is gone (final review M1)', () => {
+    expect(UNTIMED_ROUTES.has('POST /audits')).toBe(false);
+  });
+
   it('logs neither the header nor the body (pass, fail and handler error)', async () => {
     process.env['LINK_SYNC_TOKEN'] = TOKEN;
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((k) => vi.spyOn(console, k).mockImplementation(() => {}));

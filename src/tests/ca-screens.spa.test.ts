@@ -643,3 +643,19 @@ describe('Y11 Error log Who? for audit codes', () => {
     expect(f._elRowHtml(row('server', 'INTERNAL_ERROR'), 0, false)).not.toContain('Who?');
   });
 });
+
+describe('sessSeries + fuPhone (final review I2, M4)', () => {
+  it('a picked term keeps its last youth night: term dates are week starts, weekEnd = start + 6', () => {
+    const A = { terms: [{ key: 'T', startDate: '2026-10-03', endDate: '2026-10-10' }],
+      weekly: [w('2026-10-02', 30), w('2026-10-09', 44), w('2026-10-16', 48), w('2026-10-23', 50)] };
+    const f = loadFns(['sessSeries'], `var AUDIT = ${JSON.stringify(A)}; var TERM = 'T';`);
+    expect(f.sessSeries()).toEqual([{ date: '2026-10-09', v: 44 }, { date: '2026-10-16', v: 48 }]);
+  });
+  it('+61 phones dial as 04 in tel:/sms:, the shown text is unchanged', () => {
+    const { fuPhone } = loadFns(['fuPhone', 'esc']);
+    const html = fuPhone({ phone: '61400000001' }, true);
+    expect(html).toContain('href="tel:0400000001"');
+    expect(html).toContain('>61400000001<');
+    expect(fuPhone({ phone: '+61 400 000 001' }, false)).toContain('href="sms:0400000001"');
+  });
+});

@@ -177,6 +177,8 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     await expect(h.svc.uploadSource(ADMIN, 'people', manual(SVC))).rejects.toThrow(BadRequestError);
     await expect(h.svc.uploadSource(ADMIN, 'service', { ...manual(SVC), rows: [['too', 'short']] })).rejects.toThrow(BadRequestError);
     await expect(h.svc.uploadSource(ADMIN, 'service', { ...manual(SVC), exportedAt: '2026-10-23' })).rejects.toThrow(BadRequestError);
+    const future = new Date(NOW.getTime() + 2 * DAY).toISOString();   // M3: a future export date is refused
+    await expect(h.svc.uploadSource(ADMIN, 'service', { ...manual(SVC), exportedAt: future })).rejects.toThrow(BadRequestError);
     expect(await h.repo.sources(YEAR)).toEqual([]);
   });
 
@@ -261,6 +263,15 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     expect((await errs(h.errRepo))['audit-feed-stale:']).toBe(1);
     await h.svc.ingest(later(SVC, 9 * 24 * 60), 'console');
     expect((await errs(h.errRepo))['audit-feed-stale:']).toBeUndefined();   // a service store clears it
+  });
+
+  it('checkFeed: a v1 year row (never fed) is not stale however old, so no false "Act now" before the first push (I1)', async () => {
+    const h = await harness();
+    await h.repo.save({ id: String(YEAR), year: YEAR, label: String(YEAR), uploadedBy: 'Test', uploadedAt: new Date(NOW.getTime() - 60 * DAY).toISOString(),
+      snapshot: { generatedAt: NOW.toISOString(), dataStartDate: null, dataEndDate: null, terms: [], students: [], perTerm: {},
+        lgStatsByTerm: {}, uploads: { team: [], connect: [], decision: [], flows: [] } } as never });
+    await h.svc.checkFeed();
+    expect((await errs(h.errRepo))['audit-feed-stale:']).toBeUndefined();
   });
 
   it('checkFeed never throws', async () => {
