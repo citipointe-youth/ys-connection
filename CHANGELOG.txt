@@ -4,6 +4,13 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)
+-------------------------------------------------------------------------------
+- The app now tells the console which of its modules are on, so the console
+  can grey out settings the app does not use. No screen changes here. Ship
+  this app first, then restart the console.
+
+-------------------------------------------------------------------------------
 CONNECTION AUDIT FED BY THE CONSOLE  (ysc-v140, 2026-10-22)
 -------------------------------------------------------------------------------
 - The Connection Audit now fills itself: the console sends the five Elvanto

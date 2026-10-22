@@ -94,6 +94,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'claim-response-rev15.json': C.ClaimResponse,
   // Rev 15 (round 2026-10-21 L2, multi-name forms)
   'push-consent-lookup-unlinked-rev15.json': C.PUSH_SCHEMAS.consentLookup,
+  // Rev 17 (console module alignment, 2026-10-22)
+  'claim-response-rev17.json': C.ClaimResponse,
   // Rev 16 (Connection Audit, 2026-10-22)
   'push-audit-service.json': C.PUSH_SCHEMAS.audit,
   'push-audit-group.json': C.PUSH_SCHEMAS.audit,
@@ -194,7 +196,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(16); // 2026-10-22: rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(17); // 2026-10-22: rev 17 = claim reply modules; rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -509,10 +511,21 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
   });
 });
 
+describe('link contract: rev 17 (claim reply modules)', () => {
+  it('rev 17 parses with and without modules; a bad value is rejected', () => {
+    const r = C.ClaimResponse.parse(load('claim-response-rev17.json'));
+    expect(r.linkRev).toBe(17);
+    expect(r.modules).toEqual({ checkin: 'on', lifegroupReport: 'admin', flows: 'on', newYouthForms: 'on', intakeAdmin: 'on', lifegroups: true, connectionAudit: false });
+    const none = clone(load('claim-response-rev17.json')); delete none.modules;
+    expect(C.ClaimResponse.parse(none).modules).toBeUndefined();
+    const bad = clone(load('claim-response-rev17.json')); bad.modules.checkin = 'shadow'; rejects(C.ClaimResponse, bad);
+  });
+});
+
 describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', () => {
   const svc = () => clone(load('push-audit-service.json'));
-  it('LINK_REV is 16, MIN_CONSOLE_REV stays 12; audit is a push kind, never a mirror kind', () => {
-    expect(C.LINK_REV).toBe(16);
+  it('LINK_REV is 17, MIN_CONSOLE_REV stays 12; audit is a push kind, never a mirror kind', () => {
+    expect(C.LINK_REV).toBe(17);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.PUSH_KINDS).toContain('audit');
     expect(C.MIRROR_KINDS as readonly string[]).not.toContain('audit');

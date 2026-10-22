@@ -124,6 +124,9 @@ export function makeSyncService(d: SyncDeps) {
         site: { timeZone: settings.ministryConfig.structure.timeZone, serviceDay: settings.ministryConfig.structure.serviceDayOfWeek,
           consentCutoff: settings.ministryConfig.structure.consentCutoff, peopleFlowPrefix: settings.ministryConfig.elvanto.peopleFlowPrefix,
           consentFlowPrefix: settings.ministryConfig.elvanto.consentFlowPrefix },
+        // Rev 17: resolved values only (checkin/lifegroupReport/flows already inherit newYouthForms in the config transform).
+        modules: { checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms, flows: m.flows ?? m.newYouthForms, newYouthForms: m.newYouthForms,
+          intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
       };
     },
 

@@ -324,7 +324,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(16);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(17);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {
@@ -337,6 +337,14 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
       elvanto: { ...cfg.elvanto, peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' } } } as any);
     expect(ClaimResponse.parse(await svc.claim(claimReq)).site).toEqual({ timeZone: 'Australia/Sydney', serviceDay: 3, consentCutoff: '17:30',
       peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' });
+  });
+  it('rev 17: the claim reply carries modules mirroring config (legacy config inherits newYouthForms; connectionAudit false)', async () => {
+    const { svc, settings } = await setup();
+    const cfg = (await settings.getSettings()).ministryConfig;
+    const { checkin, lifegroupReport, flows, ...legacy } = cfg.modules as any; // a config stored before the T10 split
+    await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...legacy, newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
+    expect(ClaimResponse.parse(await svc.claim(claimReq)).modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'admin',
+      intakeAdmin: 'on', lifegroups: false, connectionAudit: false });
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();

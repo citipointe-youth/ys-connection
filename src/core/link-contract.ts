@@ -19,7 +19,9 @@ export const LINK_CONTRACT_VERSION = 1;
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
 // Rev 16 (Connection Audit, 2026-10-22): push kind `audit` (Connection Audit sources). MIN_CONSOLE_REV stays 12: an
 // older console simply never pushes it.
-export const LINK_REV = 16;
+// Rev 17 (console module alignment, 2026-10-22): claim reply may carry modules (this app's resolved module switches, values only).
+// MIN_CONSOLE_REV stays 12: an older console strips the key; a rev-17 console against a rev-16 app sees no key = modules unknown.
+export const LINK_REV = 17;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -172,7 +174,10 @@ export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Is
   intake: IntakeHint.optional(), progress: z.literal(true).optional(), // S5: this app takes POST /sync/push/progress
   consentLink: z.literal(true).optional(), // L6 review: this app takes the consentLink capability key
   // Rev 14 (multisite X1): this app's location facts; the console warns (never refuses) when its own differ.
-  site: z.object({ timeZone: z.string(), serviceDay: z.number().int().min(0).max(6), consentCutoff: z.string().regex(/^\d{2}:\d{2}$/), peopleFlowPrefix: z.string(), consentFlowPrefix: z.string() }).optional() });
+  site: z.object({ timeZone: z.string(), serviceDay: z.number().int().min(0).max(6), consentCutoff: z.string().regex(/^\d{2}:\d{2}$/), peopleFlowPrefix: z.string(), consentFlowPrefix: z.string() }).optional(),
+  // Rev 17: this app's resolved module switches (values only), so the console can mute settings the app does not use.
+  modules: z.object({ checkin: z.enum(['off', 'admin', 'on']), lifegroupReport: z.enum(['off', 'admin', 'on']), flows: z.enum(['off', 'admin', 'on']),
+    newYouthForms: z.enum(['off', 'admin', 'on']), intakeAdmin: z.enum(['off', 'on']), lifegroups: z.boolean(), connectionAudit: z.boolean() }).optional() });
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence

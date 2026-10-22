@@ -26,3 +26,5 @@ _The rel19/svc notes below predate auto-promote (2026-10-20): read "before the o
 Roll forward = promote the rel19 build again. The new build reads `kind`/`vehicle_id` again, but a night created by the old build has its bus copied as a car: open Car setup and save the bus (Charter bus ticked) to re-kind tonight's copy.
 
 Link contract changes (`src/core/link-*`, link/sync services+controllers, `src/tests/fixtures/elvanto-link/`): ship YS before the 11.1 console; console e2e = `spike/e2e-ys-link.js` in 11.1.
+
+**mod17/ys (`LINK_REV` 17, claim reply `modules`, no migration, no `public/` change)** ships before the console's module-alignment branch. `/health` `schema.current` is unchanged (0043).
