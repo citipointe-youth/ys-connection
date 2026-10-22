@@ -182,3 +182,27 @@ describe('R7 junior redaction on My car and search (Review Focus 3, fix round 1)
     for (const s of ['Alex Tran', '0400000003', 'Example High', '1 Test St', 'pickup', 'parent']) expect(json).not.toContain(s);
   });
 });
+
+describe('operator 2026-10-23: pickup state from the current form (R7: full-view logins only)', () => {
+  const pickupOf = async (over: Partial<BusConsentForm['data']>, ctx?: (t: Awaited<ReturnType<typeof withLink>>) => any) => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({ data: { ...form({}).data, ...over } })]);
+    await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
+    return (await t.svc.getRun(ctx ? ctx(t) : t.ctx('admin'))).riders[0]!.consent;
+  };
+  it('Yes = parent; No with a name = named (pickupBy in details only); No and blank = dropHome', async () => {
+    expect((await pickupOf({ pickup: true })).pickup).toBe('parent');
+    const named = await pickupOf({ pickup: false, pickupBy: 'Nan Tran' });
+    expect(named.pickup).toBe('named'); expect(named.details!.pickupBy).toBe('Nan Tran');
+    expect((await pickupOf({ pickup: false, pickupBy: '  ' })).pickup).toBe('dropHome');
+  });
+  it('no current-year form: no pickup field', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({ year: 2025, submittedAt: '2025-12-20T01:00:00.000Z' })]);
+    await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
+    expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent).not.toHaveProperty('pickup');
+  });
+  it('a junior leader gets no pickup field (still exactly {year, current})', async () => {
+    expect(await pickupOf({ pickup: false, pickupBy: '' }, juniorOf)).toEqual({ year: 2026, current: true });
+  });
+});

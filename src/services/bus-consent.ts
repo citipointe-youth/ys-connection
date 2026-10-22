@@ -32,7 +32,8 @@ export function consentView(forms: BusConsentForm[], who: Who, year: number, ful
   const cur = mine(forms, who).find((f) => f.year === year);
   if (!cur || !full) return { year, current: !!cur };
   const d = cur.data;
-  return { year, current: true, details: { formId: cur.id, submittedAt: cur.submittedAt, source: cur.source, filedBy: d.filedBy,
+  const pickup = d.pickup === true ? 'parent' : String(d.pickupBy || '').trim() ? 'named' : 'dropHome';
+  return { year, current: true, pickup, details: { formId: cur.id, submittedAt: cur.submittedAt, source: cur.source, filedBy: d.filedBy,
     parentName: d.parentName, parentPhone: d.parentPhone, address: d.address, pickup: d.pickup, pickupBy: d.pickupBy, school: d.school } };
 }
 const norm = (s: string) => s.toLowerCase().replace(/,?\s*australia\s*$/, '').replace(/\b(qld|nsw|vic|sa|wa|tas|nt|act)\b/g, '')

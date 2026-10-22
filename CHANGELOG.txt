@@ -20,6 +20,9 @@ BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet li
 - The consent form has an Address search at the top of the address: pick
   the Google suggestion and the street, unit, suburb, postcode and state fill
   in. The lines stay editable, and typing them in by hand still works.
+- Next to "Consent 2026" a green Pickup chip shows when a parent or a named
+  person meets them at the bus spot, or an orange Drop home chip when the
+  form names no one. The consent details say who. Junior leaders see neither.
 
 -------------------------------------------------------------------------------
 CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)

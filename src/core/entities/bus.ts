@@ -64,7 +64,10 @@ export interface BusConsentForm { id: ID; submissionId: string; childIndex: numb
 /** The app-side audit of one in-app submit (who filed, the read-out tick, what Elvanto answered). */
 export interface BusConsentSubmit { id: ID; studentId: ID | null; guestId: ID | null; leaderId: ID | null; leaderName: string;
   submittedAt: ISODateString; readOutConfirmed: true; elvantoResult: 'sent' | 'unconfirmed' | 'failed'; first: string; last: string }
-export interface BusConsentView { year: number; current: boolean; details?: BusConsentDetails; differs?: boolean }
+/** Operator 2026-10-23: who meets them at the bus spot, from the current form. Full-view logins only (R7: never a junior leader).
+ *  parent = pickup Yes; named = No with a name in pickupBy; dropHome = no one named (No and blank, or unanswered). */
+export type BusConsentPickup = 'parent' | 'named' | 'dropHome';
+export interface BusConsentView { year: number; current: boolean; details?: BusConsentDetails; differs?: boolean; pickup?: BusConsentPickup }
 export interface BusConsentDetails { formId: ID; submittedAt: ISODateString; source: 'app' | 'public'; filedBy: string | null;
   parentName: string; parentPhone: string | null; address: BusConsentData['address']; pickup: boolean | null; pickupBy: string; school: string }
 

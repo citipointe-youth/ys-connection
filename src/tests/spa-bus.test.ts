@@ -875,7 +875,7 @@ describe('Past riders (Tonight tab)', () => {
   const stubs = `function esc(s) { return String(s); }\nfunction icS(k) { return k; }`;
   const past = [{ studentId: 's1', guestId: null, addressId: 'a1', name: 'Jess Tran', grade: 9, suburb: 'Carina' }];
   it('renders collapsed by default with a count, and nothing when locked or empty', () => {
-    const load = (pastRiders: unknown[], open = false) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip'],
+    const load = (pastRiders: unknown[], open = false) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip', '_busPickupChip'],
       `${stubs}\nconst BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: ${open} };`)._busPastHtml;
     const html = load(past)(false);
     expect(html).toContain('Past riders (1)');
@@ -886,7 +886,7 @@ describe('Past riders (Tonight tab)', () => {
     expect(load([])(false)).toBe('');
   });
   it('operator 2026-10-23: a past row has the gender-coloured grade chip and the consent chip, escaped', () => {
-    const load = (pastRiders: unknown[]) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip'],
+    const load = (pastRiders: unknown[]) => loadFns(['_busPastHtml', '_busGradeChip', '_busConsentChip', '_busPickupChip'],
       `function esc(s) { return String(s).replace(/</g, '&lt;'); }
 function icS(k) { return k; }
 const BUS = { view: { pastRiders: ${JSON.stringify(pastRiders)} }, pastOpen: true };`)._busPastHtml;

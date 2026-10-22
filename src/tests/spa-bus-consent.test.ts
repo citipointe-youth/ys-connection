@@ -8,19 +8,19 @@ const PRE = "const esc = (s) => String(s == null ? '' : s).replace(/[&<>\"']/g, 
 
 describe('bus consent chip and details', () => {
   it('current = green "Consent 2026"; not current = warning "No consent 2026"; never a blocking class', () => {
-    const { _busConsentChip } = loadFns(['_busConsentChip'], PRE);
+    const { _busConsentChip } = loadFns(['_busConsentChip', '_busPickupChip'], PRE);
     expect(_busConsentChip({ consent: { year: 2026, current: true } })).toMatch(/pill ok[^]*Consent 2026/);
     expect(_busConsentChip({ consent: { year: 2026, current: false } })).toMatch(/c-warn[^]*No consent 2026/);
     expect(_busConsentChip({})).toBe('');
   });
   it('a coordinator tap on No consent opens the form; no tap by default', () => {
-    const { _busConsentChip } = loadFns(['_busConsentChip'], PRE);
+    const { _busConsentChip } = loadFns(['_busConsentChip', '_busPickupChip'], PRE);
     expect(_busConsentChip({ id: 'r1', consent: { year: 2026, current: false } }, true)).toContain("busConsentForm({riderId:'r1'})");
     expect(_busConsentChip({ id: 'r1', consent: { year: 2026, current: false } })).not.toContain('onclick');
   });
   it('details escape every value and show filed-by for an app form', () => {
-    const { _busConsentDetailsHtml } = loadFns(['_busConsentDetailsHtml'], PRE);
-    const h = _busConsentDetailsHtml({ year: 2026, current: true, details: { formId: 'f1', submittedAt: '2026-10-05T01:00:00Z', source: 'app', filedBy: 'Pat <b>',
+    const { _busConsentDetailsHtml } = loadFns(['_busConsentDetailsHtml', '_busPickupLine'], PRE);
+    const h = _busConsentDetailsHtml({ year: 2026, current: true, pickup: 'named', details: { formId: 'f1', submittedAt: '2026-10-05T01:00:00Z', source: 'app', filedBy: 'Pat <b>',
       parentName: 'Alex', parentPhone: null, address: { line1: '1 Test St', line2: '-', postcode: '4000', city: 'Brisbane City', state: 'QLD' }, pickup: false, pickupBy: 'Nan', school: 'X' } });
     expect(h).toContain('Pat &#60;b&#62;');
     expect(h).toMatch(/Filed from the app/);
@@ -266,5 +266,25 @@ describe('pickup-by visibility', () => {
       "const row = { hidden: false }, sel = { value: '' }; const document = { getElementById: (id) => (id === 'bc-pickup' ? sel : row) };", ['_bcPickupShown', 'row', 'sel']);
     const hiddenFor = (v: string) => { sel.value = v; _bcPickupShown(); return row.hidden; };
     expect([hiddenFor('n'), hiddenFor('y'), hiddenFor(''), hiddenFor('n')]).toEqual([false, true, true, false]);
+  });
+});
+
+describe('pickup chip and profile line (operator 2026-10-23)', () => {
+  const chip = () => loadFns(['_busConsentChip', '_busPickupChip'], PRE)._busConsentChip;
+  it('parent and named = green Pickup; dropHome = orange Drop home with the aria-label; no chip without a current form or a pickup', () => {
+    const c = chip();
+    for (const p of ['parent', 'named']) expect(c({ consent: { year: 2026, current: true, pickup: p } })).toMatch(/Consent 2026<\/span> <span class="pill ok"[^>]*>Pickup<\/span>/);
+    const dh = c({ consent: { year: 2026, current: true, pickup: 'dropHome' } });
+    expect(dh).toMatch(/<span class="chip c-warn"[^>]*aria-label="No pickup named, probably needs a drop home"[^>]*>Drop home<\/span>/);
+    expect(c({ consent: { year: 2026, current: false, pickup: 'parent' } })).not.toMatch(/Pickup|Drop home/);
+    expect(c({ consent: { year: 2026, current: true } })).not.toMatch(/Pickup|Drop home/); // a junior leader view carries no pickup
+  });
+  it('profile line text for the three states, escaped; nothing without a pickup', () => {
+    const { _busConsentDetailsHtml } = loadFns(['_busConsentDetailsHtml', '_busPickupLine'], PRE);
+    const det = { formId: 'f1', submittedAt: '2026-10-05T01:00:00Z', source: 'public', parentName: 'Alex', address: {}, school: 'X' };
+    expect(_busConsentDetailsHtml({ year: 2026, current: true, pickup: 'parent', details: { ...det, pickup: true, pickupBy: '' } })).toContain('Pickup: parent at bus spot');
+    expect(_busConsentDetailsHtml({ year: 2026, current: true, pickup: 'named', details: { ...det, pickup: false, pickupBy: 'Nan <b>' } })).toContain('Pickup: Nan &#60;b&#62;');
+    expect(_busConsentDetailsHtml({ year: 2026, current: true, pickup: 'dropHome', details: { ...det, pickup: false, pickupBy: '' } })).toContain('No pickup named: probably needs a drop home');
+    expect(_busConsentDetailsHtml({ year: 2026, current: true, details: det })).not.toMatch(/Pickup|pickup/);
   });
 });

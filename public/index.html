@@ -9746,10 +9746,21 @@ function _busSuburb(address) {
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
 function _busConsentChip(r, tap) {
   const c = r && r.consent; if (!c || !c.year) return '';
-  if (c.current) return `<span class="pill ok">${icS('check')} ${esc('Consent ' + c.year)}</span>`;
+  if (c.current) return `<span class="pill ok">${icS('check')} ${esc('Consent ' + c.year)}</span>${_busPickupChip(c)}`;
   // R11: a warning, never a block. A coordinator's tap (tap=true, Students rows) opens the consent form.
   const go = tap && r.id ? ` role="button" onclick="event.stopPropagation();busConsentForm({riderId:'${esc(r.id)}'})"` : '';
   return `<span class="chip c-warn"${go}>${icS('alert')} ${esc('No consent ' + c.year)}</span>`;
+}
+// Operator 2026-10-23: who meets them at the bus spot. The server sends c.pickup to full-view logins only (R7), so a junior leader sees nothing.
+function _busPickupChip(c) {
+  if (!c || !c.current || !c.pickup) return '';
+  if (c.pickup === 'dropHome') return ` <span class="chip c-warn" title="No pickup named, probably needs a drop home" aria-label="No pickup named, probably needs a drop home">Drop home</span>`;
+  return ` <span class="pill ok" title="${c.pickup === 'parent' ? 'Parent picks up at the bus spot' : 'Someone named picks up at the bus spot'}">Pickup</span>`;
+}
+function _busPickupLine(c) {
+  const d = (c && c.details) || {};
+  if (!c || !c.current || !c.pickup) return '';
+  return c.pickup === 'parent' ? 'Pickup: parent at bus spot' : c.pickup === 'named' ? 'Pickup: ' + (d.pickupBy || '') : 'No pickup named: probably needs a drop home';
 }
 function _busConsentDetailsHtml(c) {
   const d = c && c.details; if (!d) return '';
@@ -9758,7 +9769,7 @@ function _busConsentDetailsHtml(c) {
   const row = (k, v) => v ? `<div class="lk-d"><b>${esc(k)}</b> ${esc(v)}</div>` : '';
   return `<div class="card bus-consent">${row('Consent', fmtDay(d.submittedAt, true))}${row(d.source === 'app' ? 'Filed from the app by' : 'Filed by', d.source === 'app' ? (d.filedBy || 'a leader') : 'a parent')}
     ${row('Parent', d.parentName)}${row('Parent phone', d.parentPhone)}${row('Address', addr)}
-    ${row('Picking up', d.pickup === true ? 'Yes' : d.pickup === false ? 'No' + (d.pickupBy ? ' (' + d.pickupBy + ')' : '') : '')}${row('School', sch)}</div>`;
+    ${_busPickupLine(c) ? `<div class="lk-d">${esc(_busPickupLine(c))}</div>` : ''}${row('School', sch)}</div>`;
 }
 function _busConsentHintHtml(r) {
   const c = r && r.consent;
