@@ -736,6 +736,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 /* R19-U13: 44px hit areas with no visual growth: the arrows' outer edges, and a centred 44px band on small links/chips. */
 .stop-arrows button::after{content:'';position:absolute;inset:-4px 0 0}.stop-arrows button+button::after{inset:0 0 -4px}
 .bus-hit{position:relative;display:inline-block}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+.bus-differs{border:0;cursor:pointer;font-family:inherit;vertical-align:middle} /* compact "Consent address differs" chip-button */
 @media(pointer:coarse){.bus-pg .tbbar .tbbtn{min-height:44px}.bus-pg .bus-flt{min-height:44px}}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
@@ -9773,7 +9774,8 @@ function _busConsentDetailsHtml(c) {
 }
 function _busConsentHintHtml(r) {
   const c = r && r.consent;
-  return c && c.differs && c.details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
+  // Operator 2026-10-23: a one-line chip (was a 44px button); .bus-hit keeps a 44px tap band with no visual growth.
+  return c && c.differs && c.details ? `<button type="button" class="chip c-warn bus-hit bus-differs" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
 }
 function _busConsentStatusHtml(st) {
   if (!st) return '';

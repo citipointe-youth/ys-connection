@@ -288,3 +288,13 @@ describe('pickup chip and profile line (operator 2026-10-23)', () => {
     expect(_busConsentDetailsHtml({ year: 2026, current: true, details: det })).not.toMatch(/Pickup|pickup/);
   });
 });
+
+describe('compact differs chip (operator 2026-10-23)', () => {
+  it('is a one-line chip button, not a btn-sm block, and keeps the stopPropagation tap to the picker with the consent row', () => {
+    const { _busConsentHintHtml } = loadFns(['_busConsentHintHtml'], PRE);
+    const h = _busConsentHintHtml({ id: 'r1', consent: { differs: true, details: { formId: 'f1' } } });
+    expect(h).toMatch(/^<button type="button" class="chip c-warn bus-hit bus-differs" onclick="event\.stopPropagation\(\);busEditRider\('r1', 'consent:f1'\)"/);
+    expect(h).not.toContain('btn-sm'); expect(h).toContain('Consent address differs');
+    expect(loadIndexHtml()).toMatch(/\.bus-differs\{border:0;cursor:pointer;font-family:inherit/);
+  });
+});

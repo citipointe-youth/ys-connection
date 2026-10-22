@@ -23,6 +23,8 @@ BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet li
 - Next to "Consent 2026" a green Pickup chip shows when a parent or a named
   person meets them at the bus spot, or an orange Drop home chip when the
   form names no one. The consent details say who. Junior leaders see neither.
+- "Consent address differs" is now a small one-line chip instead of a tall
+  button. Tapping it still opens the address picker on the consent address.
 
 -------------------------------------------------------------------------------
 CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)
