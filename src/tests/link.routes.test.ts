@@ -27,6 +27,7 @@ const SPEC_ROUTES = [
   'POST /link/admin/create-students', // L3 r3 (2026-10-21)
   'GET /link/intake', 'GET /link/intake/row', 'POST /link/intake/refresh', // T4 (X19)
   'GET /link/consents/lookup', // rev 6 (R2 b/c)
+  'GET /link/consents/snapshot', 'POST /link/consents/refresh', // rev 19 (consent hub)
 ];
 
 describe('link + sync route table', () => {

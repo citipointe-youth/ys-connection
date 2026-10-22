@@ -167,6 +167,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
 
     /** Module turned Off (settings save): drop every stored plan and cancel the intake rows nobody has leased yet. */
     async off(): Promise<void> {
+      await d.link.clearConsentSnapshots(); // rev 19: names and consent dates go with the module
       await d.intake.clear();
       for (const r of await d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] })) await d.link.cancelPending(r.id);
     },

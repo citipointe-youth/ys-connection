@@ -2,11 +2,11 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
-import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
+import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
@@ -62,6 +62,13 @@ export function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.i
 export function makeSyncService(d: SyncDeps) {
   const now = d.now ?? (() => new Date());
 
+  // Rev 19: a Refresh asked in the last 10 min that no newer copy of every kind has answered yet.
+  const SNAP_REV = 19, SNAP_ASK_MS = 10 * 60_000;
+  const snapAsk = async () => {
+    const { askedAt, taken } = await d.link.consentSnapshotMeta();
+    const a = askedAt ? Date.parse(askedAt) : NaN;
+    return now().getTime() - a <= SNAP_ASK_MS && (taken.length < CONSENT_LOOKUP_KINDS.length || taken.some((x) => Date.parse(x.takenAt) < a));
+  };
   return {
     async claim(body: unknown): Promise<z.infer<typeof ClaimResponse>> {
       const req = parseBody(ClaimRequest, body);
@@ -136,6 +143,7 @@ export function makeSyncService(d: SyncDeps) {
         // Rev 17: resolved values only (checkin/lifegroupReport/flows already inherit newYouthForms in the config transform).
         modules: { checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms, flows: m.flows ?? m.newYouthForms, newYouthForms: m.newYouthForms,
           intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
+        ...(linkRev >= SNAP_REV && m.intakeAdmin === 'on' ? { consentSnap: { ask: await snapAsk() } } : {}), // rev 19
       };
     },
 
@@ -197,6 +205,12 @@ export function makeSyncService(d: SyncDeps) {
         await d.link.putConsentLookup({ requestId: req.requestId, kind: req.kind, page: req.page, pageSize: req.pageSize,
           total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
         return { applied: true, rows: req.rows.length };
+      }
+      if (pk === 'consentSnapshot') { // rev 19: the console's standing copy of one consent list; module Off stores nothing
+        const req = parseBody(PUSH_SCHEMAS.consentSnapshot, body) as z.infer<typeof ConsentSnapshotPush>;
+        if ((await d.settings.getSettings()).ministryConfig.modules.intakeAdmin !== 'on') return { applied: false };
+        const ok = await d.link.putConsentSnapshot({ kind: req.kind, total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
+        return ok ? { applied: true, rows: req.rows.length } : { applied: false };
       }
       if (pk === 'audit') { // rev 16: not a mirror (no link_mirror_state); its own store, staleness and transaction
         const req = parseBody(PUSH_SCHEMAS.audit, body) as AuditPushBody;

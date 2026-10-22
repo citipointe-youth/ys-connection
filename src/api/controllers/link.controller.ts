@@ -23,6 +23,8 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     lifegroups: (r: HttpRequest) => L.lifegroups(actor(r)),
     flows: (r: HttpRequest) => L.flows(actor(r)),
     consentLookup: (r: HttpRequest) => L.consentLookup(actor(r), r.query), // rev 6 (R2 b/c)
+    consentSnapshot: (r: HttpRequest) => L.consentSnapshot(actor(r)), // rev 19
+    consentSnapshotRefresh: (r: HttpRequest) => L.consentSnapshotRefresh(actor(r)),
     groupMembers: (r: HttpRequest) => L.groupMembers(actor(r), r.params['groupId']!, r.query),
     youth: (r: HttpRequest) => L.youth(actor(r), r.query),
     assignFlow: (r: HttpRequest) => L.assignFlow(actor(r), r.body),

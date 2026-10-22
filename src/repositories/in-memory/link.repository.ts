@@ -1,6 +1,6 @@
 // In-memory Elvanto link repo (spec 2026-10-12-elvanto-link-app-design.md §4.1). Used for `memory`
 // persistence; never saved to disk. Deep-clones on every read and write. `now` stands in for the DB clock.
-import type { ConsentLookupStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
+import type { ConsentLookupStored, ConsentSnapshotStored, ILinkRepository, LinkActionFilter, LinkRosterPushRow } from '../interfaces/link.repository';
 import { CONSENT_LOOKUP_KEEP_MS } from '../interfaces/link.repository';
 import type { ActionType, ClaimArgs, ClaimedRow, ConsoleRow, LinkFlowAssign, LinkFlowRow, LinkFlowStep, LinkGroupRow, LinkLogRow, LinkProgress, LinkRosterRow,
   LinkServiceRow, LogEvent, Match, MirrorStateRow, NewOutboxRow, OutboxRow, MirrorKind, ResultItem, ResultReply, Status,
@@ -269,6 +269,26 @@ export class InMemoryLinkRepository implements ILinkRepository {
     const { at: _a, ...rest } = v;
     return clone(rest);
   }
+  private snaps = new Map<string, ConsentSnapshotStored>();
+  private snapAsked: string | null = null;
+  async putConsentSnapshot(r: ConsentSnapshotStored & { consoleId: string }): Promise<boolean> {
+    const was = this.snaps.get(r.kind);
+    if (was && Date.parse(r.takenAt) <= Date.parse(was.takenAt)) return false;
+    const { consoleId: _c, ...rest } = r;
+    this.snaps.set(r.kind, clone(rest));
+    return true;
+  }
+  async consentSnapshots(): Promise<ConsentSnapshotStored[]> { return clone([...this.snaps.values()]); }
+  async consentSnapshotMeta() {
+    return { askedAt: this.snapAsked, taken: [...this.snaps.values()].map((s) => ({ kind: s.kind, takenAt: s.takenAt })) };
+  }
+  async askConsentSnapshot(): Promise<boolean> {
+    const t = this.clock().getTime();
+    if (this.snapAsked && t - Date.parse(this.snapAsked) < 60_000) return false;
+    this.snapAsked = new Date(t).toISOString();
+    return true;
+  }
+  async clearConsentSnapshots(): Promise<void> { this.snaps.clear(); this.snapAsked = null; }
 
   async setMatches(changes: { personId: string; studentId: string | null; match: Match }[]): Promise<void> {
     const now = this.nowIso();

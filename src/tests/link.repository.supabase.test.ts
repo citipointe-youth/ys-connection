@@ -74,7 +74,7 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(src).toContain("logger.warn('flow mobile unreadable', { rowId: r.row_id })");
     const consent = readFileSync(join(__dirname, '..', 'repositories', 'supabase', 'supabase.link-consent.ts'), 'utf8'); // rev 6
     expect(consent).not.toMatch(/console\./);
-    expect(consent.match(/logger\.\w+\(/g)).toEqual(['logger.warn(']);
+    expect(consent.match(/logger\.\w+\(/g)).toEqual(['logger.warn(', 'logger.warn(']);
     expect(consent).toContain("logger.warn('consent lookup unreadable', { requestId })");
     expect(consent).not.toContain('::jsonb'); // rows are an encrypted TEXT column, never jsonb
   });

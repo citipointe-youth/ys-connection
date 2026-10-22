@@ -8,6 +8,8 @@ import type { ConsentLookupKind } from '../../core/link-contract';
 export interface ConsentLookupStored { requestId: string; kind: ConsentLookupKind; page: number; pageSize: number;
   total: number | null; rows: unknown[]; takenAt: string; /** the stored rows could not be decrypted / parsed */ unreadable?: true }
 export const CONSENT_LOOKUP_KEEP_MS = 24 * 3_600_000;
+/** Rev 19 (consent hub): the console's standing copy of one consent list. */
+export interface ConsentSnapshotStored { kind: ConsentLookupKind; total: number | null; rows: unknown[]; takenAt: string; unreadable?: true }
 
 export interface LinkActionFilter {
   ids?: string[]; createdBy?: string; serviceDateFrom?: string; serviceDateTo?: string;   // service dates inclusive
@@ -72,6 +74,14 @@ export interface ILinkRepository {
   putConsentLookup(r: ConsentLookupStored & { consoleId: string }): Promise<void>;
   /** Rev 6: one answer, rows decrypted; null when unknown or over 24 h old. */
   consentLookup(requestId: string): Promise<ConsentLookupStored | null>;
+  /** Rev 19: replace the kind's copy; false (nothing stored) when the stored one is as new or newer. */
+  putConsentSnapshot(r: ConsentSnapshotStored & { consoleId: string }): Promise<boolean>;
+  consentSnapshots(): Promise<ConsentSnapshotStored[]>;
+  /** Cheap (no rows, no decrypt): for the claim hint. */
+  consentSnapshotMeta(): Promise<{ askedAt: string | null; taken: { kind: ConsentLookupKind; takenAt: string }[] }>;
+  /** The admin's Refresh; false when asked under 60 s ago. */
+  askConsentSnapshot(): Promise<boolean>;
+  clearConsentSnapshots(): Promise<void>;
   /** from inclusive, to exclusive (ISO instants); newest first; at most `limit` rows. */
   listLog(f: { from: string; to: string; userId?: string; event?: LogEvent; outboxId?: string; limit: number }): Promise<LinkLogRow[]>;
 }

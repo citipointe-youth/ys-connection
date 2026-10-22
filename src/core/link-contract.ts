@@ -23,7 +23,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // MIN_CONSOLE_REV stays 12: an older console strips the key; a rev-17 console against a rev-16 app sees no key = modules unknown.
 // Rev 18 (bus consent, 2026-10-22): type busConsentCheck (empty payload: "read the bus consent forms now") and push kind
 // busConsentForms. MIN_CONSOLE_REV stays 12: an older console never lists the type, so it is never leased one.
-export const LINK_REV = 18;
+// Rev 19 (consent hub, 2026-10-23): push kind consentSnapshot (one consent list, whole, on the console's 30 min timer) and the claim
+// reply's consentSnap {ask} (sent only to a rev 19 console). MIN_CONSOLE_REV stays 12: an older console never pushes it and the app
+// falls back to the on-demand consentLookup reads.
+export const LINK_REV = 19;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -54,7 +57,7 @@ export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'reso
 // off (or not listed) = the app refuses new rows of that type and never leases them. X-2: no 'locked' capability any more;
 // the refused reason 'locked' (Elvanto's 423) stays.
 export const CAPABILITIES = ['live', 'off'] as const;
-export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress', 'audit', 'busConsentForms'] as const;
+export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress', 'audit', 'busConsentForms', 'consentSnapshot'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const INTAKE_MODES = ['off', 'on'] as const; // X19 (R3): a plain switch, no shadow
@@ -180,7 +183,8 @@ export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Is
   site: z.object({ timeZone: z.string(), serviceDay: z.number().int().min(0).max(6), consentCutoff: z.string().regex(/^\d{2}:\d{2}$/), peopleFlowPrefix: z.string(), consentFlowPrefix: z.string() }).optional(),
   // Rev 17: this app's resolved module switches (values only), so the console can mute settings the app does not use.
   modules: z.object({ checkin: z.enum(['off', 'admin', 'on']), lifegroupReport: z.enum(['off', 'admin', 'on']), flows: z.enum(['off', 'admin', 'on']),
-    newYouthForms: z.enum(['off', 'admin', 'on']), intakeAdmin: z.enum(['off', 'on']), lifegroups: z.boolean(), connectionAudit: z.boolean() }).optional() });
+    newYouthForms: z.enum(['off', 'admin', 'on']), intakeAdmin: z.enum(['off', 'on']), lifegroups: z.boolean(), connectionAudit: z.boolean() }).optional(),
+  consentSnap: z.object({ ask: z.boolean() }).strict().optional() }); // rev 19: re-read the consent lists now
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence
@@ -324,6 +328,15 @@ export const ConsentLookupPush = z.discriminatedUnion('kind', [
   z.object({ ...lookupEnvelope, kind: z.literal('other'), rows: z.array(ConsentOtherRow).max(100) }).strict(),
 ]);
 
+// ---- Rev 19 (consent hub): one consent list, whole (no paging), the console's standing copy. Same row shapes as the lookups.
+const snapEnvelope = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, total: z.number().int().min(0).nullable() };
+export const ConsentSnapshotPush = z.discriminatedUnion('kind', [
+  z.object({ ...snapEnvelope, kind: z.literal('forms'), rows: z.array(ConsentFormRow).max(2000) }).strict(),
+  z.object({ ...snapEnvelope, kind: z.literal('mismatches'), rows: z.array(ConsentMismatchRow).max(2000) }).strict(),
+  z.object({ ...snapEnvelope, kind: z.literal('unlinked'), rows: z.array(ConsentUnlinkedRow).max(2000) }).strict(),
+  z.object({ ...snapEnvelope, kind: z.literal('other'), rows: z.array(ConsentOtherRow).max(2000) }).strict(),
+]);
+
 // ---- S5 (run 2026-10-15b): progress of one long console job. key: flows (the flows read), lookup:<consentLookup row id>,
 // intake:<mode>:<date> (an intake / consent push). done/total null = not known (the app shows a sliding bar). Never a name.
 export const PROGRESS_KEY = /^(flows|lookup:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|intake:(intake|consent):\d{4}-\d{2}-\d{2})$/;
@@ -376,7 +389,7 @@ export const BusConsentFormsResponse = z.object({ applied: z.boolean(), rows: z.
 
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
   flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
-  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush, audit: AuditPush, busConsentForms: BusConsentFormsPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
+  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush, audit: AuditPush, busConsentForms: BusConsentFormsPush, consentSnapshot: ConsentSnapshotPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
 

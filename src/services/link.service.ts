@@ -17,7 +17,7 @@ import type {
   LinkServiceRow, LogEvent, Match, MirrorKind, MirrorStateRow, OutboxRow, Status,
 } from '../core/link-types';
 import { MATCHES } from '../core/link-types';
-import { ACTION_TYPES, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, RECHECK_TYPES, Uuid, isDnc } from '../core/link-contract';
+import { ACTION_TYPES, CONSENT_LOOKUP_KINDS, CONSENT_TYPES, type ConsentLookupKind, LINK_REV, MIRROR_KINDS, NOTE_FAILED_DETAIL, PAYLOAD_SCHEMAS, RECHECK_TYPES, Uuid, isDnc } from '../core/link-contract';
 import {
   AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError, TooManyRequestsError,
 } from '../core/errors/app-error';
@@ -206,6 +206,9 @@ export interface LinkService {
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
   /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
   consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
+  /** Rev 19: the console's cached consent lists (admin only, module intakeAdmin). live = the newest console is rev 19+. */
+  consentSnapshot(actor: Actor): Promise<{ live: boolean; askedAt: string | null; kinds: Record<ConsentLookupKind, { total: number | null; takenAt: string; rows: unknown[] } | null> }>;
+  consentSnapshotRefresh(actor: Actor): Promise<{ asked: boolean }>;
 }
 
 /** L7: checking = the console has not answered yet; saved / not-saved resolve the unclear row; unclear = it stays unclear. */
@@ -1190,6 +1193,23 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (got.unreadable) return { ...base, status: 'failed', reason: 'unreadable' }; // never an empty 'all clear' (resilience M3)
       const ready = { id, kind: got.kind, status: 'ready' as const, reason: null, page: got.page, pageSize: got.pageSize, total: got.total, takenAt: got.takenAt, rows: got.rows };
       return got.kind === 'other' ? { ...ready, rows: await otherWait(context(actor, settings), got.rows as { rowId: string }[]) } : ready;
+    },
+
+    async consentSnapshot(actor) {
+      const settings = await d.settings.getSettings();
+      intakeGate(actor, settings);
+      const [snaps, meta, consoles] = await Promise.all([d.link.consentSnapshots(), d.link.consentSnapshotMeta(), d.link.listConsoles()]);
+      const kinds = {} as Record<ConsentLookupKind, { total: number | null; takenAt: string; rows: unknown[] } | null>;
+      for (const k of CONSENT_LOOKUP_KINDS) {
+        const s = snaps.find((x) => x.kind === k);
+        kinds[k] = !s || s.unreadable ? null // never an empty "all clear" (resilience M3)
+          : { total: s.total, takenAt: s.takenAt, rows: k === 'other' ? await otherWait(context(actor, settings), s.rows as { rowId: string }[]) : s.rows };
+      }
+      return { live: (newest(consoles)?.linkRev ?? 0) >= 19, askedAt: meta.askedAt, kinds };
+    },
+    async consentSnapshotRefresh(actor) {
+      intakeGate(actor, await d.settings.getSettings());
+      return { asked: await d.link.askConsentSnapshot() };
     },
 
     async groupMembers(actor, groupId, q) {

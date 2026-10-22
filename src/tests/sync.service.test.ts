@@ -324,7 +324,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(18);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(19);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {

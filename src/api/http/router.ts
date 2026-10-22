@@ -254,6 +254,8 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/link/intake/refresh',     auth: true, handler: (r) => linkCtl.intakeRefresh(r) },
     // Rev 6 (R2 b/c): poll a consentLookup's answer (under /link: vercel.json + sw.js API_RE already route it)
     { method: 'GET',    path: '/link/consents/lookup',    auth: true, handler: (r) => linkCtl.consentLookup(r) },
+    { method: 'GET',    path: '/link/consents/snapshot',  auth: true, handler: (r) => linkCtl.consentSnapshot(r) },
+    { method: 'POST',   path: '/link/consents/refresh',   auth: true, handler: (r) => linkCtl.consentSnapshotRefresh(r) },
 
     // ----- Elvanto link: the console (sync token, no session; checked in the adapter) -----
     { method: 'POST',   path: '/sync/claim',              auth: false, sync: true, handler: (r) => syncCtl.claim(r) },
