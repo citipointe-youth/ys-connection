@@ -112,7 +112,7 @@ describe('consent form sheet (R2, R3, R6)', () => {
   it('SW bumped; reset text no longer promises to delete bus consents', () => {
     const html = loadIndexHtml();
     expect(html).not.toMatch(/deletes bus parent consents/);
-    expect(html).toContain('Bus consent forms are kept and match again by name.');
+    expect(html).toContain('Bus consent forms and the record of who filed them are deleted too (Elvanto keeps the original forms).');
     expect(html).toContain('Bus consent forms count for one calendar year');
     expect(readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8')).toMatch(/const CACHE = 'ysc-v143'/);
   });

@@ -6822,7 +6822,7 @@ const US_REASON = { unreachable: "Elvanto couldn't be reached", 'form-changed': 
 let _usRows = null;
 function _usRowHtml(r) {
   const id = esc(r.id);
-  const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : 'parent form').join(' + ');
+  const forms = (r.forms || []).map(f => f === 'student' ? 'student form' : f === 'busConsent' ? 'bus consent form' : 'parent form').join(' + ');
   return `<div class="li rc">
     <div class="rc-top"><div class="lk-nm">${esc(r.name || 'Unreadable saved form')}${r.grade ? ' · Grade ' + esc(r.grade) : ''}</div></div>
     <div class="la-meta">${esc(US_REASON[r.reason] || r.reason)}${forms ? ' · ' + esc(forms) : ''}${r.host ? ' · added by ' + esc(r.host) : ''}</div>
@@ -6939,7 +6939,7 @@ function renderNewYearWizard() {
     step2Satisfied, false);
 
   // r22 L3 (A4): say plainly what the cascade takes too (no apostrophes: the text sits in a JS string in onclick).
-  const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms are kept and match again by name. Accounts are kept. This cannot be undone.';
+  const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms and the record of who filed them are deleted too (Elvanto keeps the original forms). Accounts are kept. This cannot be undone.';
   b += _wizStepCard(4, 'Full Reset', resetText,
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'${resetText}${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);

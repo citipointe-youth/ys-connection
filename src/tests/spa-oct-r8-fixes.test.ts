@@ -123,7 +123,7 @@ describe('T4 New Year Refresh with Prayers off', () => {
   });
   it('(A4) the reset text lists everything it deletes; Connection Audit naming; plain intro', () => {
     const h = load({ prayersOn: true, caOn: true, wiz: { step1Done: true, prayersExportDone: true, step2Done: true } }).renderNewYearWizard();
-    const list = 'all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms are kept and match again by name.';
+    const list = 'all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms and the record of who filed them are deleted too (Elvanto keeps the original forms).';
     expect(h.split(list).length - 1).toBe(2); // the card and the type-RESET confirm
     expect(h).toContain("word:'RESET'");
     expect(h).not.toContain('Configuration Audit');

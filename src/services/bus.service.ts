@@ -409,7 +409,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     return (who, at) => {
       const v = consentView(forms, who, year, full);
       if (v.details) v.details = mark(v.details, who.studentId); // DNC: parentPhone -> null for a non-admin/director login
-      if (coord && v.details && at && !(at.runVehicleId && onBus.has(at.runVehicleId))) v.differs = !sameAddress(v.details.address, at.snapAddress);
+      if (coord && v.details && at && !(at.runVehicleId && onBus.has(at.runVehicleId))) v.differs = !!at.snapAddress.trim() && !sameAddress(v.details.address, at.snapAddress); // M2: no address saved = no hint
       return v;
     };
   }

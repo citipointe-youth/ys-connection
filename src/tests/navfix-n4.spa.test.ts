@@ -25,6 +25,12 @@ describe('C-B2 Unsent retry: a re-render during the retry keeps the button busy'
     return { ...f(env, els, post), env, els };
   }
 
+  it('M3: a queued bus consent row is labelled bus consent form, not parent form', () => {
+    const t = setup(async () => ({}));
+    const h = t._usRowHtml({ id: 'u2', name: 'C D', reason: 'failed', forms: ['busConsent'], createdAt: 'x', updatedAt: 'x' });
+    expect(h).toContain('bus consent form');
+    expect(h).not.toContain('parent form');
+  });
   it('row drawn while a retry is in flight has a disabled Sending... button; after the reply it is enabled', async () => {
     let done!: (v: any) => void;
     const t = setup(() => new Promise((r) => { done = r; }));

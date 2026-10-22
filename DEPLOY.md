@@ -6,6 +6,8 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 
 **Rollback below bc18 (0044 dropped `bus_consents`)**: an older build reads that table. Before an Instant Rollback, the owner runs in the Supabase SQL editor: `create table if not exists bus_consents (id uuid primary key, student_id uuid unique references students(id) on delete cascade, guest_id uuid unique references bus_guests(id) on delete cascade, given boolean not null default false, note text, recorded_by text not null default '', recorded_at timestamptz not null default now(), check (student_id is not null or guest_id is not null)); alter table bus_consents enable row level security;` (empty: every rider reads Consent: not yet).
 
+**Shipping bc18 (0044 is not additive):** the Vercel build applies 0044 (it drops `bus_consents`) while the old build is still live, so the old build's Bus screens fail until the new build is live (about 1-3 min). Ship only when nobody is on Bus (not Friday afternoon or evening; the blockouts alone are not enough). If the build fails after the build log shows the migration applied, run the recreate SQL above at once.
+
 <!-- live -->
 - master sha: df62e99 (ui22/followup)
 - last ship: 2026-10-22 16:47 EAST

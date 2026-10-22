@@ -51,6 +51,14 @@ describe('consent status on Bus views (R7, R11)', () => {
     expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent.differs).toBe(false);
     expect((await t.svc.getRun(t.ctx('grade'))).riders[0]!.consent).not.toHaveProperty('differs');
   });
+  it('M2: a rider with no address saved (blank snap) gets no differs hint', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({})]);
+    await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '9 Other Rd, Carina QLD 4152, Australia', placeId: 'fake:1' } });
+    const at = (await t.bus.getRunRider((await t.svc.getRun(t.ctx('admin'))).riders[0]!.id))!;
+    await t.bus.saveRunRider({ ...at, addressId: null, snapAddress: ' ' }); // the one-space no-address sentinel
+    expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent.differs).toBe(false);
+  });
   it('F16: a rider on a running bus (drop-off address) gets no differs hint', async () => {
     const t = await withLink();
     const v = await t.svc.saveVehicle(t.ctx('admin'), { name: 'Charter', seats: 40, kind: 'bus', endsAt: 'address', endsAddress: '5 Depot Rd, Carindale QLD', endsPlaceId: 'fake:depot' });
