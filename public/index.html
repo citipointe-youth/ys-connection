@@ -8503,6 +8503,170 @@ function lgDisplayName(name){
 // Connection Audit — ported from the canonical demo (youth app demo/allocation-platform.html).
 // Same module contract: remove by deleting this block, the CA MODULE CSS block, and every /*CA-HOOK*/ line.
 // Data comes from GET /students + /trends + /settings (async adapter); uploads stay in localStorage.
+// ── Connection Audit screen logic (spec 2026-10-22 §6.4): pure, top-level, tested in src/tests/ca-screens.spa.test.ts.
+// Inside the CA MODULE markers, so deleting the module still removes them.
+// A count: one decimal below 10, whole numbers from 10 ("1.4", "41"); whole values stay whole ("2").
+function caNum(n){if(n==null||!isFinite(n))return'—';const r=Math.round(n*10)/10;return r<10&&!Number.isInteger(r)?r.toFixed(1):String(Math.round(r));}
+// A comparison in counts with a direction word, never a percentage. kind: 'week' | 'term' | 'lastterm' | 'prevterm'.
+// Same band: a change of at most max(1, 5% of ref) reads "≈ same as …". null when there is nothing to compare.
+function caCompare(value,ref,kind){
+  if(value==null||ref==null)return null;
+  const d=value-ref,a=Math.abs(d),avg=kind==='term'||kind==='lastterm';
+  const what=kind==='week'?'last week':kind==='prevterm'?'last term':(kind==='lastterm'?'last term avg':'term avg')+' ('+caNum(ref)+')';
+  if(a<=Math.max(1,0.05*ref))return{dir:'same',diff:0,kind,text:'≈ same as '+what};
+  const up=d>0;
+  return{dir:up?'up':'down',diff:a,kind,text:(up?'▲ ':'▼ ')+caNum(a)+' '+(avg?(up?'above ':'below '):'on ')+what};
+}
+// Display words (spec §6.1 glossary + Data check tables). Quads come from quadLabel(), never a table here.
+function caLabel(kind,code,x){
+  if(kind==='quad')return code&&code!=='none'?quadLabel(code):'No quad';
+  const W={
+    source:{service:'Youth service',group:'Lifegroups',team:'Student team',connect:'Connect forms',decision:'Decision forms'},
+    tile:{youth:'Youth service',lifegroup:'At lifegroup',connects:'New connects',decisions:'Decisions'},
+    status:{ok:'Up to date',failed:"Didn't update (using the last copy that worked)",missing:'Not received yet'},
+    reason:{read:"Couldn't read it from Elvanto",timeout:'Elvanto took too long',budget:'Ran out of time on Friday',empty:'Elvanto sent an empty list',shape:"The file's columns weren't what we expected"},
+    skip:{'no-name':'Missing first or last name','bad-date':"Date couldn't be read"},
+    note:{'no-gender-column':'No gender column, so gender is blank','bad-date-column':"A date column couldn't be read",'grade-out-of-range':'Grade outside Year '+(x?x.min+'–'+x.max:'')+', so grade is blank'},
+    dup:{'short-name':'Similar first names','matched-and-unmatched':'Same name, one linked and one not'},
+    list:{drifting:'Stopped coming',decidedNoGroup:'Decided, not in a lifegroup',connectedNeverCame:'Connected, not back yet'},
+    hint:{drifting:'Came 3+ times, then missed the last 4 weeks',decidedNoGroup:'Made a decision this year; no lifegroup since',connectedNeverCame:"Filled in a connect form; hasn't come to youth since"},
+    upload:{stored:'Uploaded. The audit has been updated.',stale:'Not used: a newer copy is already here. Pick a later export date.',shape:'This file is missing a column the audit needs (names or dates). Check you exported the right Elvanto list.','400':"This file couldn't be used. It may be too big or have unexpected columns."},
+    stage:{1:'in touch',2:'came',3:'regular',4:'lifegroup',5:'Student team'},
+    stageFrom:{1:'who were in touch',2:'who came to youth',3:'regulars',4:'in a lifegroup'},
+    stageTo:{2:'come to youth',3:'become regulars',4:'reached a lifegroup',5:'joined Student team'},
+  };
+  const t=W[kind];return t&&t[code]!=null?t[code]:String(code);
+}
+// This week's four tiles from snapshot v2, overall (quad '') or for one quad ('g79'… or 'none').
+// today = the site's YYYY-MM-DD (past-year headline). null when the snapshot has no weekly series (v1).
+function caWeekTiles(snap,quad,today){
+  const W=((snap&&snap.weekly)||[]).slice().sort((a,b)=>a.weekEnd<b.weekEnd?-1:a.weekEnd>b.weekEnd?1:0);
+  if(!W.length)return null;
+  const Z={youth:0,lifegroup:0,lgGroups:0,connects:0,decisions:0};
+  const at=e=>quad?Object.assign({},Z,(e.byQuad||{})[quad]||{},{youth:e.youth==null?null:(((e.byQuad||{})[quad]||{}).youth||0)}):e;
+  const night=e=>e.youth!=null;                       // a youth night is a week fact, not a quad fact
+  const terms=(snap.terms||[]).slice().sort((a,b)=>a.startDate<b.startDate?-1:1);
+  const termOf=d=>{let k=-1;for(let j=0;j<terms.length;j++)if(terms[j].startDate<=d)k=j;return k;};
+  const mean=xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
+  const i=W.length-1,cur=W[i];
+  const prevNight=j=>{for(let k=j-1;k>=0;k--)if(night(W[k]))return k;return -1;};
+  const refFor=(j,f)=>{                                // term avg excluding week j; < 3 such weeks: last term's avg
+    const ti=termOf(W[j].weekEnd);if(ti<0)return null;
+    const tw=W.filter((e,k)=>k!==j&&night(e)&&termOf(e.weekEnd)===ti);
+    if(tw.length>=3)return{v:mean(tw.map(e=>at(e)[f])),kind:'term'};
+    const pw=ti>0?W.filter(e=>night(e)&&termOf(e.weekEnd)===ti-1):[];
+    return pw.length?{v:mean(pw.map(e=>at(e)[f])),kind:'lastterm'}:null;
+  };
+  const SRC={youth:'service',lifegroup:'group',connects:'connect',decisions:'decision'};
+  const ti=termOf(cur.weekEnd),tKey=ti>=0?terms[ti].key:null;
+  const N=((snap.lgStatsByTerm||{})[tKey]||[]).filter(x=>!quad||(quad==='none'?!x.quad:x.quad===quad)).length;
+  const tiles={};
+  for(const f of Object.keys(SRC)){
+    const meta=(snap.sources||{})[SRC[f]];
+    const t={key:f,label:caLabel('tile',f),value:at(cur)[f],state:'ok',note:'',caption:'',cmp:[],partial:false,
+      spark:W.slice(-10).map(e=>night(e)?at(e)[f]:null)};
+    tiles[f]=t;
+    if(!meta||meta.status==='missing'){Object.assign(t,{state:'nodata',value:null,note:'No data yet',spark:[]});continue;}
+    if(meta.exportedAt&&_siteDay(Date.parse(meta.exportedAt))<cur.weekEnd){
+      Object.assign(t,{state:'stale',value:null,note:'Not updated since '+fmtDay(meta.exportedAt)});t.spark[t.spark.length-1]=null;continue;}
+    let j=i;
+    if(f==='youth'&&!night(cur)){Object.assign(t,{state:'nonight',value:null,note:'No youth night this week'});j=prevNight(i);if(j<0)continue;}
+    const val=at(W[j])[f],p=prevNight(j),pv=p>=0?at(W[p])[f]:null,ref=refFor(j,f);
+    if(f==='connects'||f==='decisions'){
+      t.note=[pv!=null?'Last week '+caNum(pv):'',ref?(ref.kind==='lastterm'?'last term avg ':'term avg ')+caNum(ref.v)+' a week':''].filter(Boolean).join(' · ');
+      continue;
+    }
+    if(f==='lifegroup'&&N){const g=at(cur).lgGroups;t.partial=g<N;t.caption=g+' of '+N+' groups marked'+(t.partial?' so far':'');}
+    t.cmp=[t.partial?null:caCompare(val,pv,'week'),ref?caCompare(val,ref.v,ref.kind):null].filter(Boolean);
+  }
+  const ln=prevNight(i);
+  return{weekEnd:cur.weekEnd,night:night(cur),lastNight:ln>=0?{weekEnd:W[ln].weekEnd,youth:at(W[ln]).youth}:null,
+    pastYear:today&&cur.weekEnd.slice(0,4)<today.slice(0,4)?cur.weekEnd.slice(0,4):null,tiles};
+}
+// One sentence for the top of This week.
+function caHeadline(t){
+  if(!t)return'';
+  const day=fmtDay(t.weekEnd),short=d=>fmtDay(d).replace(/^\S+ /,''),pl=(n,w)=>n+' '+w+(n===1?'':'s');
+  const pre=t.pastYear?'Last recorded week of '+t.pastYear+': ':'';
+  const y=t.tiles.youth,c=t.tiles.connects,d=t.tiles.decisions;
+  if(y.state==='nonight')return pre+'No youth night on '+day+'.'+(t.lastNight?' Last: '+short(t.lastNight.weekEnd)+', '+t.lastNight.youth+' at youth.':'');
+  let s=pre+day+(pre?', ':': ');
+  if(y.state==='ok'){
+    const w=y.cmp.find(x=>x.kind==='week');
+    s+=y.value+' at youth'+(!w?'':w.dir==='same'?', about the same as last week':', '+caNum(w.diff)+(w.dir==='up'?' more':' fewer')+' than last week');
+  }else s+='youth numbers not updated';
+  const rest=[d.state==='ok'?pl(d.value,'decision'):'',c.state==='ok'?pl(c.value,'new connect'):''].filter(Boolean);
+  return s+(rest.length?'; '+rest.join(' and '):'')+'.';
+}
+// 10-week sparkline: no axes, y from 0 to the max, null = a gap, latest point a dot (hollow when partial).
+function caSparkSvg(values,hollow){
+  const v=values||[],n=v.length,W=100,H=28,P=2;
+  const max=Math.max(1,...v.filter(x=>x!=null));
+  const X=i=>(n<2?W/2:P+(W-2*P)*i/(n-1)).toFixed(1),Y=x=>(H-P-(H-2*P)*x/max).toFixed(1);
+  let d='',pen=false;
+  v.forEach((x,i)=>{if(x==null){pen=false;return;}d+=(pen?'L':'M')+X(i)+' '+Y(x)+' ';pen=true;});
+  const last=v[n-1];
+  const dot=last!=null?'<circle cx="'+X(n-1)+'" cy="'+Y(last)+'" r="2.5" '+(hollow?'fill="none" stroke="currentColor" stroke-width="1.2"':'fill="currentColor"')+'/>':'';
+  return '<svg class="ca-spark" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Last '+n+' weeks: '+v.map(x=>x==null?'no data':x).join(', ')+'">'
+    +(d?'<path d="'+d.trim()+'" fill="none" stroke="currentColor" stroke-width="1.5"/>':'')+dot+'</svg>';
+}
+// The leakiest step of a ladder (same rounding as the funnel's "leakiest" pill). null when nobody is on it.
+function caLeak(R){
+  if(!R||R.length<2||!R[0].v)return null;
+  let best=0,bc=Infinity;
+  for(let i=1;i<R.length;i++){const c=R[i-1].v?Math.round(R[i].v/R[i-1].v*100):0;if(c<bc){bc=c;best=i-1;}}
+  return{n:R[best].n,fromN:R[best].v,lost:R[best].v-R[best+1].v};
+}
+// Up to three flag sentences, drifting first (phone calls), drop-off last. quad: '' | 'g79'… | 'none'.
+function caFlags(signals,leak,driftN,quad){
+  const out=[];
+  if(driftN>0)out.push({kind:'drift',link:'Call list →',text:driftN===1?'1 regular stopped coming (not seen in the last 4 weeks).':driftN+' regulars stopped coming (none of them seen in the last 4 weeks).'});
+  const qd=signals&&signals.quadDrop;
+  if(qd&&(!quad||quad===qd.quad))out.push({kind:'quad',link:'See Junior & Senior →',text:quadLabel(qd.quad)+' are down to '+caNum(qd.recentAvg)+' a week, from a term average of '+caNum(qd.termAvg)+', two weeks running.'});
+  if(leak&&leak.lost>0)out.push({kind:'leak',link:'See drop-off →',text:(out.length?'':'Nothing urgent this week. ')+'Biggest drop-off this term: '+leak.lost+' of '+leak.fromN+' '+caLabel('stageFrom',leak.n)+" haven't "+caLabel('stageTo',leak.n+1)+'.'});
+  return out;
+}
+// Footer on all three tabs. n = ok lists fed within 8 days of the newest; out of date when n < 5 or the newest is > 8 days old.
+function caFooter(snap,nowIso){
+  const D=864e5,src=(snap&&snap.sources)||{},now=Date.parse(nowIso);
+  const L=['service','group','team','connect','decision'].map(s=>({s,m:src[s]||{status:'missing',fedAt:null}}));
+  const ms=x=>x.m.fedAt?Date.parse(x.m.fedAt):0;
+  const newest=Math.max(0,...L.map(ms));
+  const fresh=x=>x.m.status==='ok'&&!!x.m.fedAt&&newest-ms(x)<=8*D;
+  const n=L.filter(fresh).length,k=((snap&&snap.quality&&snap.quality.unmatched)||[]).length;
+  if(!newest||n<5||now-newest>8*D){
+    const bad=L.filter(x=>!fresh(x)),o=(bad.length?bad:L).slice().sort((a,b)=>ms(a)-ms(b))[0];
+    const nm=caLabel('source',o.s);
+    return{outOfDate:true,n,k,text:'⚠ Out of date: '+(o.m.fedAt?nm+' last updated '+fmtDay(o.m.fedAt):nm+' not received yet')+' · '+n+' of 5 lists →'};
+  }
+  const days=Math.floor((now-newest)/D);
+  return{outOfDate:false,n,k,text:'Updated '+fmtDay(new Date(newest).toISOString(),true)+(days>=2?' ('+days+' days ago)':'')
+    +((src.service||{}).fedBy==='manual'?' by upload':'')+' · 5 of 5 lists · '+(k?k+' unlinked':'all linked')+' →'};
+}
+// One follow-up list as rows: contactable first, then newest date first, then last name. list: drifting | decidedNoGroup | connectedNeverCame.
+function caFollowRows(snap,list,quad){
+  const by={};for(const s of (snap&&snap.students)||[])by[s.id]=s;
+  const ids=((snap&&snap.followUp)||{})[list]||[];
+  const field={drifting:'lastSeen',decidedNoGroup:'decision',connectedNeverCame:'connect'}[list];
+  const W=(snap&&snap.weekly)||[],nowDay=W.reduce((m,e)=>e.weekEnd>m?e.weekEnd:m,(snap&&snap.dataEndDate)||'');
+  const short=d=>fmtDay(d).replace(/^\S+ /,'');
+  const rows=ids.map(id=>by[id]).filter(s=>s&&(!quad||(quad==='none'?!s.quad:s.quad===quad))).map(s=>{
+    const d=s[field]||null;let why;
+    if(list==='drifting'){const w=d?Math.max(1,Math.round((Date.parse(nowDay)-Date.parse(d))/(7*864e5))):0;why=d?'Last seen '+short(d)+' ('+w+(w===1?' wk)':' wks)'):'Not seen yet';}
+    else why=list==='decidedNoGroup'?'Decided '+short(d)+', no lifegroup since':'Connected '+short(d)+', not at youth since';
+    return{id:s.id,name:s.firstName+' '+s.lastName,last:s.lastName||'',quad:s.quad||null,grade:s.grade,gender:s.gender,
+      phone:s.phone||null,phoneIsParent:!!s.phoneIsParent,dnc:!!s.dnc,date:d,lastSeen:s.lastSeen||null,why,reason:caLabel('list',list)};
+  });
+  const late=r=>r.dnc||!r.phone?1:0;
+  return rows.sort((a,b)=>late(a)-late(b)||(a.date===b.date?0:(b.date||'')>(a.date||'')?1:-1)||a.last.localeCompare(b.last));
+}
+// Follow-up CSV cells (header first). withQuad adds a Quad column (the All filter). DNC rows say so in Phone.
+function caCsvRows(rows,withQuad){
+  const q=withQuad?['Quad']:[];
+  return[['Name',...q,'Grade','Gender','Phone',"Parent's phone",'Reason','Last seen']].concat((rows||[]).map(r=>[r.name,...(withQuad?[caLabel('quad',r.quad)]:[]),
+    r.grade==null?'':String(r.grade),r.gender==='female'?'Female':r.gender==='male'?'Male':'',r.dnc?'Do not contact':(r.phone||''),
+    r.phoneIsParent?'Yes':'No',r.reason,r.lastSeen||'Not seen yet']));
+}
 const CA=(()=>{
 const KEY='ca_audit_v4'; // v4: audit-specific uploads start EMPTY (no demo seed); bump evicts old seeded state
 let st=null,warnOff=false,mdl=null,D=null; // D = {students,trends,settings} cache; st.uploads has team/connect/decision/flows
