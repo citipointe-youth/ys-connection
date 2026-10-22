@@ -17,7 +17,9 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 15 (round 2026-10-21 L2, multi-name forms): an unlinked consent row may carry formName and linkedIds; a consentLink
 // ADDS its person to the form (null unlinks them all). MIN_CONSOLE_REV stays 12.
 // A future rev: bump LINK_REV here and in 11.1; raise MIN_CONSOLE_REV only once every console runs it.
-export const LINK_REV = 15;
+// Rev 16 (Connection Audit, 2026-10-22): push kind `audit` (Connection Audit sources). MIN_CONSOLE_REV stays 12: an
+// older console simply never pushes it.
+export const LINK_REV = 16;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -48,7 +50,7 @@ export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'reso
 // off (or not listed) = the app refuses new rows of that type and never leases them. X-2: no 'locked' capability any more;
 // the refused reason 'locked' (Elvanto's 423) stays.
 export const CAPABILITIES = ['live', 'off'] as const;
-export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress'] as const;
+export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress', 'audit'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const INTAKE_MODES = ['off', 'on'] as const; // X19 (R3): a plain switch, no shadow
@@ -320,9 +322,38 @@ export const PROGRESS_KEY = /^(flows|lookup:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-
 export const ProgressPush = z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, key: z.string().regex(PROGRESS_KEY),
   done: z.number().int().min(0).max(100000).nullable(), total: z.number().int().min(1).max(100000).nullable(), stage: Cut(60) }).strict();
 
+// ---- Rev 16 (Connection Audit, spec ys-connection/2026-10-22-connection-audit §3): one Elvanto source per body, as a
+// cell table. The console only splits the CSV and keeps the allowed columns; YS parses the cells (audit-parse.ts).
+export const AUDIT_SOURCES = ['service', 'group', 'team', 'connect', 'decision'] as const;
+export const AUDIT_FAIL = ['read', 'timeout', 'budget', 'empty'] as const;
+/** The only form columns that leave the PC (connect + decision). 11.1 keeps a byte copy: audit-form-headers.json.
+ *  No phone column: the follow-up phone comes from the service list only (bug 5). `What grade are you in?` is the
+ *  Decision form's grade question (Brisbane - Youth - Decision Form, operator sample 2026-10-22). */
+export const AUDIT_FORM_HEADERS = ['First Name', 'Last Name', 'Preferred Name', 'Date Submitted', 'Submitted', 'Grade',
+  'School Grade', 'Year', 'Gender', 'What grade are you in?'] as const;
+const AuditCell = Cut(200);                  // an over-long cell is cut, not refused (push tolerance)
+const AuditHeader = z.string().max(120);     // may be empty (Elvanto group/matrix exports)
+const FormHeader = z.enum(AUDIT_FORM_HEADERS); // an unexpected form column (prayer, health text) refuses the push
+const auditBase = { contractVersion: Version, consoleId: Uuid, takenAt: Iso, exportedAt: Iso };
+const auditOk = <S extends (typeof AUDIT_SOURCES)[number], H extends z.ZodType<string>>(source: S, maxRows: number, header: H) =>
+  z.object({ ...auditBase, source: z.literal(source), status: z.literal('ok'),
+    headers: z.array(header).min(1).max(400), rows: z.array(z.array(AuditCell).max(400)).max(maxRows) }).strict();
+export const AuditPush = z.union([
+  auditOk('service', 3000, AuditHeader), auditOk('group', 8000, AuditHeader), auditOk('team', 1500, AuditHeader),
+  auditOk('connect', 3000, FormHeader), auditOk('decision', 3000, FormHeader),
+  z.object({ ...auditBase, source: z.enum(AUDIT_SOURCES), status: z.literal('failed'), reason: z.enum(AUDIT_FAIL) }).strict(),
+]).superRefine((b, ctx) => { // every row has exactly headers.length cells
+  if (b.status === 'ok') b.rows.forEach((r, i) => {
+    if (r.length !== b.headers.length) ctx.addIssue({ code: 'custom', path: ['rows', i], message: 'row length != headers length' });
+  });
+});
+export type AuditPushBody = z.infer<typeof AuditPush>;
+export const AuditPushResponse = z.object({ applied: z.boolean(), source: z.enum(AUDIT_SOURCES),
+  status: z.enum(['stored', 'stale', 'shape', 'failed-recorded']) }).strict();
+
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
   flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
-  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
+  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush, audit: AuditPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
 

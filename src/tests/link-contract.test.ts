@@ -94,6 +94,15 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'claim-response-rev15.json': C.ClaimResponse,
   // Rev 15 (round 2026-10-21 L2, multi-name forms)
   'push-consent-lookup-unlinked-rev15.json': C.PUSH_SCHEMAS.consentLookup,
+  // Rev 16 (Connection Audit, 2026-10-22)
+  'push-audit-service.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-group.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-team.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-connect.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-decision.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-failed.json': C.PUSH_SCHEMAS.audit,
+  'push-audit-response.json': z.array(C.AuditPushResponse).min(1),
+  'audit-form-headers.json': z.array(z.enum(C.AUDIT_FORM_HEADERS)).min(1),
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -124,6 +133,7 @@ describe('link contract: bad requests are rejected', () => {
     ['claim-request.json', C.ClaimRequest], ['result-request.json', C.ResultRequest],
     ['push-roster.json', C.PUSH_SCHEMAS.roster], ['push-services.json', C.PUSH_SCHEMAS.services],
     ['push-groups.json', C.PUSH_SCHEMAS.groups], ['push-flows.json', C.PUSH_SCHEMAS.flows],
+    ['push-audit-service.json', C.PUSH_SCHEMAS.audit], ['push-audit-failed.json', C.PUSH_SCHEMAS.audit],
   ];
   for (const [f, schema] of REQUESTS) {
     it(`${f}: missing or other contractVersion, non-uuid or upper-case consoleId`, () => {
@@ -184,7 +194,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(15); // 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(16); // 2026-10-22: rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -447,7 +457,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     expect(row.type).toBe('recheck');
     const p = C.PAYLOAD_SCHEMAS.recheck.parse(row.payload);
     (C.PAYLOAD_SCHEMAS[p.type] as z.ZodTypeAny).parse(p.payload); // the ref row's own payload, by its own type
-    expect(C.LINK_REV).toBe(15);
+    expect(C.LINK_REV).toBeGreaterThanOrEqual(15);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck'];
     expect([...C.RECHECK_TYPES].sort()).toEqual(C.ACTION_TYPES.filter((t) => !not.includes(t)).sort());
@@ -470,7 +480,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     expect(p.rows[1].linkedIds).toHaveLength(2);
     const old = C.PUSH_SCHEMAS.consentLookup.parse(load('push-consent-lookup-unlinked.json')) as any; // an older push still parses
     expect(old.rows.every((r: any) => r.formName === undefined && r.linkedIds === undefined)).toBe(true);
-    expect(C.LINK_REV).toBe(15);
+    expect(C.LINK_REV).toBeGreaterThanOrEqual(15);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     for (const v of [[], ['x', 'y'], ['9e000000-0000-4000-8000-000000000003']]) { const bad = clone(load('push-consent-lookup-unlinked-rev15.json')); bad.rows[1].linkedIds = v; rejects(C.PUSH_SCHEMAS.consentLookup, bad); }
     const bad = clone(load('push-consent-lookup-unlinked-rev15.json')); bad.rows[0].formName = 5; rejects(C.PUSH_SCHEMAS.consentLookup, bad);
@@ -496,5 +506,66 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     const f = clone(load('push-consent-lookup-forms.json')); f.rows[0].email = 'x@example.com'; rejects(C.PUSH_SCHEMAS.consentLookup, f);
     const m = clone(load('push-consent-lookup-mismatches.json')); m.rows[0].diffs = []; rejects(C.PUSH_SCHEMAS.consentLookup, m);
     const k = clone(load('push-consent-lookup-forms.json')); k.kind = 'mismatches'; rejects(C.PUSH_SCHEMAS.consentLookup, k);
+  });
+});
+
+describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', () => {
+  const svc = () => clone(load('push-audit-service.json'));
+  it('LINK_REV is 16, MIN_CONSOLE_REV stays 12; audit is a push kind, never a mirror kind', () => {
+    expect(C.LINK_REV).toBe(16);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    expect(C.PUSH_KINDS).toContain('audit');
+    expect(C.MIRROR_KINDS as readonly string[]).not.toContain('audit');
+    expect(C.PUSH_SCHEMAS.audit).toBe(C.AuditPush);
+  });
+  it('one ok fixture per source, a failed body, and a response with every status', () => {
+    const srcs = ['service', 'group', 'team', 'connect', 'decision'].map((s) => C.AuditPush.parse(load(`push-audit-${s}.json`)).source);
+    expect(srcs).toEqual([...C.AUDIT_SOURCES]);
+    expect(C.AuditPush.parse(load('push-audit-failed.json'))).toMatchObject({ status: 'failed', reason: 'timeout' });
+    expect(load('push-audit-response.json').map((r: any) => r.status).sort()).toEqual(['failed-recorded', 'shape', 'stale', 'stored']);
+    // spec §3.4: applied is true only for stored (failed-recorded changes failure fields, never data)
+    for (const r of load('push-audit-response.json')) expect(r.applied, r.status).toBe(r.status === 'stored');
+  });
+  it('audit-form-headers.json is exactly AUDIT_FORM_HEADERS, in order (the console filters with this file)', () => {
+    expect(load('audit-form-headers.json')).toEqual([...C.AUDIT_FORM_HEADERS]);
+  });
+  it('400: a row whose length differs from the headers', () => {
+    const b = svc(); b.rows[1].pop(); rejects(C.AuditPush, b);
+    const g = clone(load('push-audit-group.json')); g.rows[0].push(''); rejects(C.AuditPush, g);
+  });
+  it('400: the row cap +1 (service 3000, team 1500, group 8000)', () => {
+    for (const [f, cap] of [['push-audit-service.json', 3000], ['push-audit-team.json', 1500], ['push-audit-group.json', 8000]] as const) {
+      const b = clone(load(f)); const row = b.rows[0];
+      C.AuditPush.parse({ ...b, rows: Array(cap).fill(row) });
+      rejects(C.AuditPush, { ...b, rows: Array(cap + 1).fill(row) });
+    }
+  });
+  it('400: an unknown key, on an ok body and on a failed body', () => {
+    rejects(C.AuditPush, { ...svc(), note: 'x' });
+    rejects(C.AuditPush, { ...load('push-audit-failed.json'), rows: [] });
+  });
+  it('400: an unlisted form header (connect, decision); service headers stay free', () => {
+    const c = clone(load('push-audit-connect.json')); c.headers[5] = 'Prayer Request'; rejects(C.AuditPush, c);
+    const d = clone(load('push-audit-decision.json')); d.headers[1] = 'first name'; rejects(C.AuditPush, d); // exact spelling only
+    // forms carry no phone (spec delta 35): the Decision form's own phone column and a Mobile column are refused
+    const p = clone(load('push-audit-decision.json')); p.headers[2] = "What's your phone number?"; rejects(C.AuditPush, p);
+    const m = clone(load('push-audit-connect.json')); m.headers[5] = 'Mobile'; rejects(C.AuditPush, m);
+    const s = svc(); s.headers[7] = 'Prayer Request'; C.AuditPush.parse(s);
+  });
+  it('400: a non-Z exportedAt or takenAt', () => {
+    rejects(C.AuditPush, { ...svc(), exportedAt: '2026-10-16T21:03:20+10:00' });
+    rejects(C.AuditPush, { ...svc(), takenAt: '2026-10-16' });
+  });
+  it('a cell over 200 is cut (push tolerance); a header over 120 is refused; an empty header is allowed', () => {
+    const b = svc(); b.rows[0][0] = 'x'.repeat(250);
+    expect((C.AuditPush.parse(b) as { rows: string[][] }).rows[0]![0]).toBe('x'.repeat(200));
+    const h = svc(); h.headers[7] = 'h'.repeat(121); rejects(C.AuditPush, h);
+    expect((C.AuditPush.parse(load('push-audit-group.json')) as { headers: string[] }).headers[0]).toBe('');
+  });
+  it('a failed body names read/timeout/budget/empty (shape is YS-side only) and one of the five sources', () => {
+    const f = load('push-audit-failed.json');
+    for (const reason of C.AUDIT_FAIL) C.AuditPush.parse({ ...f, reason });
+    rejects(C.AuditPush, { ...f, reason: 'shape' });
+    rejects(C.AuditPush, { ...f, source: 'flows' });
   });
 });

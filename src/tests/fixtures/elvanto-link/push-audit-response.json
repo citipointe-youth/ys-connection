@@ -1,0 +1,6 @@
+[
+  { "applied": true, "source": "service", "status": "stored" },
+  { "applied": false, "source": "service", "status": "stale" },
+  { "applied": false, "source": "connect", "status": "shape" },
+  { "applied": false, "source": "decision", "status": "failed-recorded" }
+]
