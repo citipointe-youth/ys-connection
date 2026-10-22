@@ -16,7 +16,7 @@ import type {
   ImportRecord,
 } from '../../core/entities/attendance';
 import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
-import type { ConnectionAudit } from '../../core/entities/connection-audit';
+import type { ConnectionAudit, StoredAuditSource } from '../../core/entities/connection-audit';
 import type { Grade, UserRole } from '../../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS } from '../../core/ministry-config';
 
@@ -37,6 +37,7 @@ import type {
   ISettingsRepository,
   IAuditRepository,
   IConnectionAuditRepository,
+  AuditSummary,
 } from '../interfaces/entity-repositories';
 
 // ---------------------------------------------------------------------------
@@ -377,9 +378,29 @@ export class InMemoryConnectionAuditRepository
   extends InMemoryBaseRepository<ConnectionAudit>
   implements IConnectionAuditRepository
 {
+  private src = new Map<string, StoredAuditSource>();
+
+  override async init(): Promise<void> { await super.init(); this.src.clear(); }
+
   async findByYear(year: number): Promise<ConnectionAudit | null> {
     for (const a of this.store.values()) if (a.year === year) return this.clone(a);
     return null;
   }
+
+  async findAllSummaries(): Promise<AuditSummary[]> {
+    return [...this.store.values()].sort((a, b) => b.year - a.year).map((a) => ({ year: a.year, label: a.label, uploadedAt: a.uploadedAt,
+      termKeys: ((a.snapshot as { terms?: { key: string }[] }).terms ?? []).map((t) => t.key) }));
+  }
+
+  async saveSource(row: StoredAuditSource): Promise<void> { this.src.set(`${row.year}|${row.source}`, JSON.parse(JSON.stringify(row))); }
+
+  async sources(year: number): Promise<StoredAuditSource[]> {
+    return [...this.src.values()].filter((s) => s.year === year).map((s) => JSON.parse(JSON.stringify(s)) as StoredAuditSource);
+  }
+
+  async deleteAllSources(): Promise<void> { this.src.clear(); }
+
+  // ponytail: memory mode (dev/test) has no rollback and no lock; Supabase does both (withYearLock above).
+  async withYearLock<T>(_year: number, fn: (tx: IConnectionAuditRepository) => Promise<T>): Promise<T> { return fn(this); }
 }
 

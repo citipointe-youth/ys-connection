@@ -15,7 +15,7 @@ import type {
   ImportRecord,
 } from '../../core/entities/attendance';
 import type { AppSettings, AdminAuditEntry } from '../../core/entities/settings';
-import type { ConnectionAudit } from '../../core/entities/connection-audit';
+import type { ConnectionAudit, StoredAuditSource } from '../../core/entities/connection-audit';
 import type { Grade, UserRole } from '../../core/types/enums';
 import type {
   BusVehicle,
@@ -124,8 +124,19 @@ export interface ISettingsRepository extends IRepository<AppSettings> {
 export interface IAuditRepository extends IRepository<AdminAuditEntry> {
 }
 
+/** GET /audits: one line per stored year, read without the snapshot (spec 2026-10-22 §5.7). */
+export interface AuditSummary { year: number; label: string; uploadedAt: string; termKeys: string[]; }
+
 export interface IConnectionAuditRepository extends IRepository<ConnectionAudit> {
   findByYear(year: number): Promise<ConnectionAudit | null>;
+  findAllSummaries(): Promise<AuditSummary[]>;
+  /** Upsert the (year, source) copy (spec §8). */
+  saveSource(row: StoredAuditSource): Promise<void>;
+  sources(year: number): Promise<StoredAuditSource[]>;
+  /** Full Reset. */
+  deleteAllSources(): Promise<void>;
+  /** ONE transaction under pg_advisory_xact_lock(hashtext('audit:' + year)); fn gets a repository bound to it (spec §5.6). */
+  withYearLock<T>(year: number, fn: (tx: IConnectionAuditRepository) => Promise<T>): Promise<T>;
 }
 
 export interface IBusRepository {
