@@ -6719,7 +6719,7 @@ function _elRowHtml(r, seenAt, open) {
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
       <button class="btn btn-secondary btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>
     </div>` : '';
-  return `<div class="li rc${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${r.category === 'reconcile' && r.code !== 'recon-failed' ? ` <button type="button" class="btn btn-secondary btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
+  return `<div class="li rc${r.ignored ? ' ign' : ''}"><button type="button" class="el-top" aria-expanded="${!!open}" onclick="elToggle('${id}')"><span class="el-msg">${esc(r.line1)}</span>${meta}</button><div class="help-text">${esc(r.line2)}${(r.category === 'reconcile' && r.code !== 'recon-failed') || r.category === 'audit' ? ` <button type="button" class="btn btn-secondary btn-sm el-who" onclick="elWho('${esc(r.code)}')">Who?</button>` : ''}</div>${acts}</div>`;
 }
 function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const all = rows || [];
@@ -6755,6 +6755,7 @@ async function _elLoad() {
 }
 // Part 2 Who?: names behind login, resolved by the server at read time. One section per reconcile code.
 async function elWho(code) {
+  if (/^audit-/.test(code) && window.CA) { CA.reset(); go('ca-quality'); return; } /*CA-HOOK*/ // reset: open the current year
   let d;
   try { d = await API.fresh('/admin/reconcile/latest'); } catch (e) { toast(e.message); return; }
   const li = (s) => `<li>${s}</li>`;
@@ -8518,7 +8519,7 @@ function lgDisplayName(name){
 /* ── CA MODULE START ── */
 // Connection Audit — ported from the canonical demo (youth app demo/allocation-platform.html).
 // Same module contract: remove by deleting this block, the CA MODULE CSS block, and every /*CA-HOOK*/ line.
-// Data comes from GET /students + /trends + /settings (async adapter); uploads stay in localStorage.
+// Data comes from GET /audits/:year (snapshot v2, fed by the console's Friday push) + GET /settings.
 // ── Connection Audit screen logic (spec 2026-10-22 §6.4): pure, top-level, tested in src/tests/ca-screens.spa.test.ts.
 // Inside the CA MODULE markers, so deleting the module still removes them.
 // A count: one decimal below 10, whole numbers from 10 ("1.4", "41"); whole values stay whole ("2").
@@ -8712,21 +8713,17 @@ function caFormCols(source,tbl){
   return{headers:keep.map(([h])=>h),rows:tbl.rows.map(r=>keep.map(([,i])=>r[i]??''))};
 }
 const CA=(()=>{
-const KEY='ca_audit_v4'; // v4: audit-specific uploads start EMPTY (no demo seed); bump evicts old seeded state
-let st=null,warnOff=false,mdl=null,D=null; // D = {students,trends,settings} cache; st.uploads has team/connect/decision/flows
+let mdl=null,D=null; // D = {students,trends,settings} cache for the selected term
 const PF={q:'',stage:'',quad:'',cap:60};
-let GF='',FQ=false;
-let FO=false; // overview: follow-up leader table open
+let FQ=false;
 // ── Server-stored audit state (replaces the old localStorage uploads) ──
 let AUDIT=null;            // loaded AuditSnapshot for AUDIT_YEAR
 let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
-let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
 let QF='',FOPEN='',TJUMP='',AUDIT_SRC=null; // shared quad chip ('' All, 'none' No quad); Follow up list to open; Term report section to scroll to; per-list status when the year has no row yet (Y8)
 
 // ---------- utils ----------
-function h32(x){let h=0;for(const c of String(x))h=(h*31+c.charCodeAt(0))>>>0;return h;}
 function norm(n){return String(n||'').toLowerCase().replace(/\s+/g,' ').trim();}
 // Mirrors computeQuad() in src/core/types/enums.ts — used here to attribute an
 // unmatched (caOnly) Connect/Decision submitter to a quad from the grade/gender
@@ -8744,9 +8741,9 @@ function fmtD(iso){return fmtDay(iso)||'—';}
 
 // ---------- server audit API ----------
 async function auditList(){ if(AUDIT_SUMMARIES)return AUDIT_SUMMARIES; AUDIT_SUMMARIES=await API.get('/audits').catch(()=>[]); return AUDIT_SUMMARIES||[]; }
-async function auditLoad(year){ const a=await API.get('/audits/'+year).catch(()=>null); AUDIT=a&&a.snapshot?a.snapshot:null; AUDIT_SRC=a&&!a.snapshot&&a.sources?a.sources:null; AUDIT_YEAR=a?a.year:null; TERM='ALL'; st=null; mdl=null; D=null; return AUDIT; }
+async function auditLoad(year){ const a=await API.get('/audits/'+year).catch(()=>null); AUDIT=a&&a.snapshot?a.snapshot:null; AUDIT_SRC=a&&!a.snapshot&&a.sources?a.sources:null; AUDIT_YEAR=a?a.year:null; TERM='ALL'; mdl=null; D=null; return AUDIT; }
 function auditInvalidate(){ AUDIT_SUMMARIES=null; Cache.del('/audits'); }
-async function setTerm(k){ TERM=k; D=null; mdl=null; st=null; await render(S.page); }
+async function setTerm(k){ TERM=k; D=null; mdl=null; await render(S.page); }
 async function setYear(y){ await auditLoad(Number(y)); await render(S.page); }
 
 // ---------- async adapter ----------
@@ -8820,165 +8817,7 @@ function _auditLgStats(sel,prev){
 function sessSeries(){const t=TERM==='ALL'?null:((AUDIT&&AUDIT.terms)||[]).find(x=>x.key===TERM);return((AUDIT&&AUDIT.weekly)||[]).filter(w=>w.youth!=null&&(!t||(w.weekEnd>=t.startDate&&w.weekEnd<=t.endDate))).map(w=>({date:w.weekEnd,v:w.youth}));}
 function regR(){const s=D.settings||{};return(s.regRateNumerator||3)/(s.regRateDenominator||4);}
 
-// ---------- store ----------
-// Uploads now live on the server inside the loaded audit snapshot, not in
-// localStorage. `st.uploads.<k>.rows` is sourced from AUDIT.uploads so the
-// existing model()/flowStats() code (which reads that shape) is unchanged.
-function save(){/* uploads are server-side now — no local persistence */}
-function emptyUploads(){
-  const mk=()=>({rows:[],at:null,fn:'(none)',src:'empty'});
-  return{team:mk(),connect:mk(),decision:mk(),flows:mk()};
-}
-function restore(){
-  if(st)return;
-  if(AUDIT&&AUDIT.uploads){
-    const u=AUDIT.uploads;const mk=rows=>({rows:rows||[],at:AUDIT.generatedAt||null,fn:'(audit)',src:'audit'});
-    st={v:5,uploads:{team:mk(u.team),connect:mk(u.connect),decision:mk(u.decision),flows:mk(u.flows)}};
-    return;
-  }
-  st={v:5,uploads:emptyUploads()};
-}
-function reset(){try{localStorage.removeItem(KEY);}catch{}st=null;mdl=null;D=null;warnOff=false;QF='';FOPEN='';TJUMP='';LGQ='';PF.quad='';AUDIT=null;AUDIT_SRC=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};}
-// Server audits have no localStorage-staleness/seed concept — the freshness cue
-// is the year + uploaded date shown in the switcher and Data tab.
-function stale(){return false;}
-
-// (Demo seed removed — audit uploads start empty; see emptyUploads.)
-
-// ---------- CSV parsing (reuses core splitCSVLine) ----------
-function isoDate(d){
-  if(!d)return null;
-  let m=String(d).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return m[0];
-  m=String(d).trim().match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
-  if(m){let y=+m[3];if(y<100)y+=2000;return y+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');}
-  return null;
-}
-function parseRows(text){
-  const lines=String(text||'').trim().split(/\r?\n/);
-  if(lines.length<2)return null;
-  const hd=splitCSVLine(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
-  const gi=n=>hd.indexOf(n);
-  const iN=gi('name');
-  const iF=Math.max(gi('first name'),gi('first_name'),gi('firstname'));
-  const iL=Math.max(gi('last name'),gi('last_name'),gi('lastname'));
-  let iD=Math.max(gi('date'),gi('decision date'),gi('connect date'));
-  // Fallback: any header containing 'date' as a whole word that isn't birth/DOB-related.
-  if(iD<0)iD=hd.findIndex(h=>/\bdate\b/.test(h)&&!/birth|born|dob/.test(h));
-  // Grade/gender, when the export carries them — lets an unmatched (no platform
-  // record) Connect/Decision submitter still be attributed to a quad. Optional:
-  // absent on exports that don't include these columns.
-  const iG=Math.max(gi('grade'),gi('school grade'));
-  const iGen=gi('gender');
-  if(iN<0&&iF<0)return null;
-  const out=[];
-  for(const line of lines.slice(1)){
-    const v=splitCSVLine(line).map(x=>x.replace(/^"|"$/g,'').trim());
-    const name=iN>=0?v[iN]:((v[iF]||'')+' '+(iL>=0?(v[iL]||''):'')).trim();
-    if(!name)continue;
-    const row={name,date:iD>=0?isoDate(v[iD]):null};
-    if(iG>=0&&v[iG])row.grade=parseInt(v[iG],10)||null;
-    if(iGen>=0&&v[iGen])row.gender=v[iGen].toLowerCase();
-    out.push(row);
-  }
-  return out;
-}
-// Parse a connect/decision CSV in the service-matrix format: rows are people, date-format
-// column headers are sessions, cell Y/yes/1/true = attended/submitted on that date.
-// Returns [{name, date}] — one row per person with the earliest (connect) or latest
-// (decision) date — or null when no date-format column headers are found.
-function parseMatrixRows(text,kind){
-  const lines=String(text||'').trim().split(/\r?\n/);
-  if(lines.length<2)return null;
-  const raw=splitCSVLine(lines[0]).map(h=>h.replace(/^"|"$/g,''));
-  const hd=raw.map(h=>h.trim().toLowerCase());
-  const gi=n=>hd.indexOf(n);
-  const iN=gi('name');
-  const iF=Math.max(gi('first name'),gi('first_name'),gi('firstname'));
-  const iL=Math.max(gi('last name'),gi('last_name'),gi('lastname'));
-  if(iN<0&&iF<0)return null;
-  // Grade/gender, when present — see the matching note in parseRows().
-  const iG=Math.max(gi('grade'),gi('school grade'));
-  const iGen=gi('gender');
-  const dateCols=[];
-  for(let i=0;i<raw.length;i++){const d=_extractHeaderDate(raw[i]);if(d)dateCols.push({i,d});}
-  if(!dateCols.length)return null;
-  const YES=new Set(['y','yes','1','true']);
-  const pick=(dates)=>kind==='connect'?dates.reduce((a,b)=>a<b?a:b):dates.reduce((a,b)=>a>b?a:b);
-  const out=[];
-  for(const line of lines.slice(1)){
-    const v=splitCSVLine(line).map(x=>x.replace(/^"|"$/g,'').trim());
-    const name=iN>=0?v[iN]:((v[iF]||'')+' '+(iL>=0?(v[iL]||''):'')).trim();
-    if(!name)continue;
-    const yDates=dateCols.filter(c=>YES.has((v[c.i]||'').toLowerCase())).map(c=>c.d);
-    if(!yDates.length)continue;
-    const row={name,date:pick(yDates)};
-    if(iG>=0&&v[iG])row.grade=parseInt(v[iG],10)||null;
-    if(iGen>=0&&v[iGen])row.gender=v[iGen].toLowerCase();
-    out.push(row);
-  }
-  return out.length?out:null;
-}
-// People Flow export: sectioned CSV — "Step N - …" divider rows, then person rows.
-// Columns: Person, Contact Number, Demographics, Status, Date Entered, Due Date, Days in Step, Administrator, …
-function parseFlows(text){
-  const lines=String(text||'').trim().split(/\r?\n/);
-  if(lines.length<2)return null;
-  const hd=splitCSVLine(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
-  const iP=hd.indexOf('person'),iSt=hd.indexOf('status'),iDe=hd.indexOf('date entered'),iDs=hd.indexOf('days in step'),iAd=hd.indexOf('administrator');
-  if(iP<0||iDe<0||iDs<0||iAd<0)return null;
-  let step=0;const out=[];
-  for(const line of lines.slice(1)){
-    const v=splitCSVLine(line).map(x=>x.replace(/^"|"$/g,'').trim());
-    const m=(v[iP]||'').match(/^step\s*(\d)/i);
-    if(m&&!v[iDe]&&!v[iAd]){step=+m[1];continue;}
-    if(!v[iP]||!step)continue;
-    out.push({person:v[iP],step,status:v[iSt]||'',entered:isoDate(v[iDe]),days:parseInt(v[iDs],10)||0,admin:v[iAd]||'Unassigned'});
-  }
-  return out;
-}
-// "Last, First" → "First Last"
-function fmtAdmin(a){const x=String(a||'').trim();if(!x||/^unassigned$/i.test(x))return'Unassigned';const m=x.match(/^([^,]+),\s*(.+)$/);return m?(m[2]+' '+m[1]):x;}
-// Per-leader, per-term follow-up stats from the flows upload.
-// Steps 1 & 5 ignored. Completion date = Date Entered + Days in Step → term (calendar quarter ≈ school term).
-// Overdue days = max(0, days in step − SLA), SLA: step 2 = 7d, step 3 = 7d, step 4 = 14d.
-function flowStats(){
-  restore();
-  const rows=(st.uploads.flows&&st.uploads.flows.rows)||[];
-  const SLA={2:7,3:7,4:14};
-  const terms=new Map(),admins=new Map();
-  for(const r of rows){
-    if(!(r.step>=2&&r.step<=4))continue;
-    if(!/^completed$/i.test(r.status||''))continue;
-    if(!r.entered)continue;
-    const t=Date.parse(r.entered);if(isNaN(t))continue;
-    const comp=new Date(t+(r.days||0)*864e5);
-    const q=Math.floor(comp.getUTCMonth()/3)+1,y=comp.getUTCFullYear();
-    const key=y+'-'+q;
-    if(!terms.has(key))terms.set(key,{key,label:'T'+q+' '+y,sort:y*10+q});
-    const od=Math.max(0,(r.days||0)-SLA[r.step]);
-    const nm=fmtAdmin(r.admin);
-    let a=admins.get(nm);if(!a){a=new Map();admins.set(nm,a);}
-    let c=a.get(key);if(!c){c={done:0,od:0};a.set(key,c);}
-    c.done++;c.od+=od;
-  }
-  const termList=[...terms.values()].sort((a,b)=>a.sort-b.sort).slice(-4);
-  const lastIdx=termList.length-1;
-  // Average days overdue in a given term cell (-1 = no follow-ups that term).
-  const cellAvgOd=(c)=>(c&&c.done)?c.od/c.done:-1;
-  const adminRows=[...admins.entries()].map(([nm,m])=>{
-    const cells=termList.map(t=>m.get(t.key)||null);
-    return {
-      admin:nm,
-      terms:cells,
-      total:cells.reduce((s,c)=>s+((c&&c.done)||0),0),
-      recentAvgOd:cellAvgOd(cells[lastIdx]),
-    };
-  }).filter(a=>a.total>0)
-    // Most recent term first, by highest average days overdue down to lowest.
-    .sort((a,b)=>b.recentAvgOd-a.recentAvgOd || b.total-a.total);
-  return{terms:termList,admins:adminRows};
-}
-
+function reset(){mdl=null;D=null;QF='';FOPEN='';TJUMP='';LGQ='';PF.quad='';AUDIT=null;AUDIT_SRC=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';}
 // ---------- model (SPA variant: rate-based personal trend; cohort groups) ----------
 function trendOf(s){
   if(!s||!s.psT||!s.sT)return'stable';
@@ -9119,7 +8958,6 @@ function caShell(body,page){
   content+=body+footerHtml();
   setApp(content);
 }
-function dismissWarn(){warnOff=true;rerender();}
 function rerender(){dispatch(S.page);}
 // ---------- shared quad filter, footer, empty states (spec §6.1) ----------
 const FU_LISTS=['drifting','decidedNoGroup','connectedNeverCame'];
@@ -9297,61 +9135,6 @@ async function uploadSource(){
   finally{uploadSource.busy=false;if(btn)btn.disabled=false;}
 }
 
-// ---------- screens ----------
-function rOverview(){
-  const m=model(),k=m.kpis;
-  const selTerm=(AUDIT&&AUDIT.terms||[]).find(t=>t.key===TERM);
-  const noPrevCompare=TERM==='ALL'||!!(selTerm&&selTerm.ordinal===1);
-  const dl=v=>noPrevCompare?'':(v>0?'<div class="ca-dlt up">▲ +'+v+'% vs prev term</div>':v<0?'<div class="ca-dlt dn">▼ '+v+'% vs prev term</div>':'<div class="ca-dlt fl">− level vs prev term</div>');
-  const at=noPrevCompare?'':(k.actTrend==='rising'?'<div class="ca-dlt up">▲ rising across term</div>':k.actTrend==='declining'?'<div class="ca-dlt dn">▼ declining across term</div>':'<div class="ca-dlt fl">− steady across term</div>');
-  let b='';
-  b+='<div class="stat-grid">'
-    +'<div class="stat"><div class="stat-v">'+k.act+'</div><div class="stat-l">Active youth</div>'+at+'</div>'
-    +'<div class="stat"><div class="stat-v">'+k.avgFri+'</div><div class="stat-l">Avg '+L('service')+'</div>'+dl(k.svcD)+'</div>'
-    +'<div class="stat"><div class="stat-v">'+k.inLG+'</div><div class="stat-l">In a lifegroup'+(k.act?' ('+Math.round(k.inLG/k.act*100)+'%)':'')+'</div>'+dl(k.grpD)+'</div>'
-    +'<div class="stat"><div class="stat-v">'+k.decisions+'</div><div class="stat-l">Decisions</div>'+(noPrevCompare?'':'<div class="ca-dlt fl">this term</div>')+'</div>'
-    +'</div>';
-  const max=m.rungs[0].v||1;
-  const cols=accentRamp(D.settings&&D.settings.ministryConfig&&D.settings.ministryConfig.branding&&D.settings.ministryConfig.branding.accent);
-  b+='<div class="card"><div class="ca-ct">Integration ladder</div>'+m.rungs.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+(i===0?' '+helpTip('The '+L('service')+' attendance numbers, plus anyone who attended a '+L('smallGroup').toLowerCase()+' but wasn\'t at a service, plus anyone who submitted a New Connect or Decision form but wasn\'t matched to an existing student record. That\'s why this can be higher than ‘Came to '+L('service')+'’.'):'')+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round(r.v/max*100))+'%;background:'+cols[i]+'">'+r.v+'</div></div></div>').join('')+'</div>';
-  const row=(g,chip)=>'<div class="ca-alr" onclick="CA.showGroup(\''+g.id+'\')"><div style="font-size:.78rem;font-weight:600">'+esc(g.name)+'</div>'+chip+'</div>';
-  const hasTrend=m.groups.some(g=>g.trendPct!==0);
-  const tops=m.groups.filter(g=>g.active>0).slice().sort((a,b)=>hasTrend?(b.trendPct-a.trendPct||b.active-a.active):(b.active-a.active||b.va-a.va)).slice(0,2);
-  b+='<div class="card"><div class="ca-ct">Cohort highlights</div>'
-    +(tops.length?tops.map(g=>row(g,'<span class="chip '+(hasTrend&&g.trendPct>0?'c-success':'c-neutral')+'">'+(hasTrend&&g.trendPct>0?'▲ +'+g.trendPct+'% · ':'')+g.active+' active</span>')).join(''):'<div style="font-size:.74rem;color:var(--ca-muted)">No cohort data yet</div>')
-    +'</div>';
-  const aDecl=m.groups.filter(g=>g.trend==='declining').sort((a,b)=>a.trendPct-b.trendPct).map(g=>[g,'<span class="chip c-danger">▼ Declining '+g.trendPct+'%</span>']);
-  const aZero=m.groups.filter(g=>g.enrolled>0&&g.active===0).map(g=>[g,'<span class="chip c-danger">No attendance this term</span>']);
-  const aLoose=m.groups.filter(g=>g.loose&&g.active>0).map(g=>[g,'<span class="chip ca-cw">Low frequency · '+g.va.toFixed(1)+' avg visits</span>']);
-  const alerts=[...aDecl,...aZero,...aLoose].slice(0,2);
-  b+='<div class="card"><div class="ca-ct">Cohort alerts</div>'
-    +(alerts.length?alerts.map(([g,c])=>row(g,c)).join(''):'<div style="font-size:.74rem;color:var(--ca-muted)">No alerts — cohorts look healthy</div>')
-    +'</div>';
-  // New-person follow-up — per-leader flow performance (collapsible)
-  b+='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="CA.fopen()"><div class="ca-ct" style="margin-bottom:0">New-person follow-up</div><span class="chip c-neutral">'+(FO?'Hide ▴':'Leaders ▾')+'</span></div>';
-  if(FO){
-    const fst=flowStats();
-    if(!fst.admins.length){
-      b+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">No flow data — upload the People Flow export in the <b>Data</b> tab.</div>';
-    }else{
-      b+='<div style="font-size:.6rem;color:var(--ca-muted);margin:9px 0 4px">Per term: <b style="color:var(--ca-ink)">steps completed</b> · <span style="color:#b91c1c;font-weight:700">average days overdue</span></div>';
-      b+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.66rem;min-width:'+(140+fst.terms.length*70)+'px">';
-      b+='<tr><th style="text-align:left;padding:5px 6px;color:var(--ca-muted);text-transform:uppercase;font-size:.56rem;letter-spacing:.04em">Leader</th>'+fst.terms.map(t=>'<th style="text-align:right;padding:5px 6px;color:var(--ca-muted);text-transform:uppercase;font-size:.56rem;letter-spacing:.04em">'+t.label+'</th>').join('')+'</tr>';
-      for(const a of fst.admins){
-        b+='<tr><td style="padding:6px;border-top:1px solid var(--ca-line);font-weight:600;font-size:.72rem;white-space:nowrap">'+esc(a.admin)+'</td>'
-          +a.terms.map(c=>'<td style="padding:6px;border-top:1px solid var(--ca-line);text-align:right;white-space:nowrap">'
-            +(c?'<b>'+c.done+'</b> · <span style="color:'+(c.od>0?'#b91c1c':'var(--ca-muted)')+';font-weight:700">'+(c.od/c.done).toFixed(1)+'</span>'
-              :'<span style="color:var(--ca-muted)">—</span>')
-            +'</td>').join('')+'</tr>';
-      }
-      b+='</table></div>';
-      b+='<div style="font-size:.6rem;color:var(--ca-muted);margin-top:6px">Steps 2–4 only (on time: 7d · 7d · 14d). Term = quarter the step was completed in.</div>';
-    }
-  }
-  b+='</div>';
-  caShell(b,'ca-overview');
-}
-function fopen(){FO=!FO;rerender();}
 function funnelHtml(){
   const m=model(),R=QF?qRungs(m,QF):m.rungs;
   const cols=accentRampPairs(D.settings&&D.settings.ministryConfig&&D.settings.ministryConfig.branding&&D.settings.ministryConfig.branding.accent);
@@ -9397,9 +9180,7 @@ function gChip(g){
   if(g.loose)return'<span class="chip ca-cw">Wide but loose</span>';
   return'<span class="chip c-neutral">− Stable</span>';
 }
-function gfilter(v){GF=GF===v?'':v;rerender();}
 let LGQ=''; // lifegroup-health quad filter
-function lgfilter(q){LGQ=LGQ===q?'':q;rerender();}
 // Flat per-lifegroup rows from /lifegroups/stats (gendered, tagged with quad).
 function lifegroupRows(){
   const ls=(D.lgStats&&D.lgStats.byQuad)||[];
@@ -9494,7 +9275,6 @@ function plist(){
   }
   if(!list.length)b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No people match</div>';
   if(list.length>PF.cap)b+='<button class="btn btn-secondary btn-full" onclick="CA.pmore()">Show more ('+(list.length-PF.cap)+' remaining)</button>';
-  b+='<div style="display:flex;align-items:center;gap:6px;margin-top:8px"><button class="btn btn-secondary" style="flex:1" onclick="CA.exportMenu()">Export follow-up CSV — by quad</button>'+helpTip('Downloads a CSV of people worth a follow-up in one quad: name, phone, reason (e.g. declining attendance) and score.',{left:true})+'</div>';
   return b;
 }
 function peopleHtml(){
@@ -9510,7 +9290,6 @@ function peopleHtml(){
 function pq(v){PF.q=v;PF.cap=60;const el=document.getElementById('ca-plist');if(el)el.innerHTML=plist();}
 function pmore(){PF.cap+=60;const el=document.getElementById('ca-plist');if(el)el.innerHTML=plist();}
 function pstage(v){PF.stage=v;PF.cap=60;rerender();}
-function pquad(v){PF.quad=v;PF.cap=60;rerender();}
 function showPerson(id){
   const p=model().people.find(x=>x.id===id);if(!p)return;
   const s=p.s;
@@ -9530,154 +9309,6 @@ function showPerson(id){
   else if(s&&s.ph)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Ph '+esc(s.ph)+(s.pp?' (parent)':'')+'</div>';
   h+='<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>';
   modal(h);
-}
-function exportMenu(){
-  modal('<div style="font-size:1rem;font-weight:800;margin-bottom:6px">Follow-up list — pick a quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<button class="btn btn-secondary" onclick="CA.exportQuad(\''+k+'\')">'+v+'</button>').join('')+'</div><button class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>');
-}
-function exportQuad(q){
-  const m=model();
-  const rows=[['Name',_gradeWord(),'Gender','Phone','Reason','Score']];
-  for(const p of m.people){
-    if(!p.s||p.s.quad!==q)continue;
-    let reason=null;
-    if(p.trend==='declining')reason='Declining attendance';
-    else if(p.dec&&p.s.gT===0)reason='Decision, not in a lifegroup';
-    else if(p.conn&&p.s.sA===0)reason='Connected, never attended';
-    if(!reason)continue;
-    rows.push([p.name,p.s.grade,p.s.gender,p.s.ph||'',reason,p.score]);
-  }
-  if(rows.length===1){closeModal();toast('No follow-ups for '+quadLabel(q));return;}
-  const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  const blob=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=u;a.download='followup-'+q+'-'+new Date().toISOString().slice(0,10)+'.csv';
-  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);
-  closeModal();toast((rows.length-1)+' follow-ups exported');
-}
-function rData(){
-  let b='';
-  // ── Year selector (existing server-stored audits) ──
-  const yrs=AUDIT_SUMMARIES||[];
-  const opts=yrs.map(y=>'<option value="'+y.year+'"'+(y.year===AUDIT_YEAR?' selected':'')+'>'+esc(y.label)+'</option>').join('');
-  b+='<div class="sh" style="margin-top:2px">Audit year</div><div class="card" style="padding:11px 13px">'
-    +(yrs.length?'<select onchange="CA.setYear(this.value)" style="width:100%;padding:8px;border:1px solid var(--ca-line);border-radius:7px;font-size:.82rem">'+opts+'</select>':'<div style="font-size:.74rem;color:var(--ca-muted)">No audits stored yet — upload a year-to-date export below to create the first one.</div>')
-    +(AUDIT?'<div style="font-size:.64rem;color:var(--ca-muted);margin-top:7px">Viewing '+esc(AUDIT_YEAR)+' · '+(AUDIT.terms||[]).length+' term(s) · data '+esc(AUDIT.dataStartDate||'—')+' → '+esc(AUDIT.dataEndDate||'—')+'</div>':'')
-    +'</div>';
-  // ── Staging slots for a new/updated audit ──
-  const slot=(kind,label,sub,staged)=>'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--ca-line)">'
-    +'<div style="flex:1"><div style="font-size:.78rem;font-weight:600">'+label+'</div><div style="font-size:.62rem;color:var(--ca-muted)">'+(staged?('✓ '+esc(staged)):sub)+'</div></div>'
-    +'<input type="file" id="ca-f-'+kind+'" accept=".csv,.xlsx" style="display:none" onchange="CA.upload(\''+kind+'\',this)">'
-    +'<button class="btn btn-secondary btn-sm" onclick="CA.pick(\''+kind+'\')">'+(staged?'Replace':'Choose')+'</button>'
-    +'</div>';
-  // A slot left unstaged this session carries forward whatever's already saved
-  // for the currently-loaded year (see the carry() fallback in saveAudit()) —
-  // shown here so it's clear re-uploading Service alone won't blank these out.
-  const carried=(kind)=>(AUDIT&&AUDIT.uploads&&AUDIT.uploads[kind]&&AUDIT.uploads[kind].length)?(AUDIT.uploads[kind].length+' rows carried over from '+esc(AUDIT_YEAR)):null;
-  b+='<div class="sh">Upload year-to-date data</div><div class="card" style="padding:4px 13px">'
-    +slot('service',L('service')+' attendance — required','Year-to-date '+L('service')+' export',PENDING.service?(PENDING._serviceFn||(PENDING.service.rows.length+' rows')):null)
-    +slot('group',L('smallGroup')+' attendance','Year-to-date '+L('smallGroup')+' export',PENDING.group?(PENDING._groupFn||(PENDING.group.groups.length+' groups')):null)
-    +slot('team','Student Team CSV','Current team roster',PENDING.team.length?(PENDING._teamFn||(PENDING.team.length+' rows')):carried('team'))
-    +slot('connect','New Connect CSV','Connect dates',PENDING.connect.length?(PENDING._connectFn||(PENDING.connect.length+' rows')):carried('connect'))
-    +slot('decision','Decision CSV','Decision dates',PENDING.decision.length?(PENDING._decisionFn||(PENDING.decision.length+' rows')):carried('decision'))
-    +slot('flows','People Flow CSV','Follow-up export',PENDING.flows.length?(PENDING._flowsFn||(PENDING.flows.length+' rows')):carried('flows'))
-    +(_exportGuidesOn() ? '<div style="padding:10px 0"><button class="btn btn-secondary btn-full" style="white-space:normal;text-align:left;line-height:1.35;height:auto" onclick="openExportGuide(\'audit\')">'+icS('info')+' How do I export the Team, Decision, New people &amp; Flow files?</button></div>' : '')
-    +'</div>';
-  b+='<div class="card" style="display:flex;gap:10px;align-items:center;justify-content:space-between">'
-    +'<div style="font-size:.66rem;color:var(--ca-muted);line-height:1.5">Saving computes the terms server-side and stores one audit for that year. Re-saving a year overwrites it. Other directors/admins can then load it.</div>'
-    +'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.saveAudit()">Save audit</button>'
-    +'</div>';
-  const deckTermOpts=AUDIT?(AUDIT.terms||[]).map(t=>{const ip=(AUDIT.perTerm[t.key]||{}).inProgress;return '<option value="'+t.key+'"'+(TERM===t.key?' selected':'')+'>T'+t.ordinal+(ip?' (in progress)':'')+'</option>';}).join(''):'';
-  const deckTermSel='<select id="ca-deck-term" class="fs ca-sel" style="flex:1"><option value="ALL"'+(TERM==='ALL'?' selected':'')+'>Year to date</option>'+deckTermOpts+'</select>';
-  b+='<div class="sh">Export</div><div class="card">'
-    +'<div style="display:flex;align-items:center;gap:12px'+(AUDIT?';margin-bottom:10px':'')+'">'
-    +'<div class="ca-uic ok" style="background:var(--ca-chip);color:var(--ca-blue)">'+icS('deck')+'</div>'
-    +'<div class="ca-usl"><div class="ca-ust">Executive brief</div><div class="ca-uss">Self-contained slide deck · opens in a new tab</div></div>'
-    +(AUDIT?'':'<button class="btn btn-primary btn-sm" onclick="CA.buildDeck()">Export ↗</button>')
-    +'</div>'
-    +(AUDIT?'<div style="display:flex;gap:8px;align-items:center">'+deckTermSel+'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.buildDeck(document.getElementById(\'ca-deck-term\').value)">Export ↗</button></div>':'')
-    +'</div>';
-  caShell(b,'ca-data');
-}
-function pick(kind){const el=document.getElementById('ca-f-'+kind);if(el)el.click();}
-// Stage an uploaded file into PENDING (not localStorage). saveAudit() then POSTs
-// the whole staged set to /audits, where the server computes the terms.
-function upload(kind,input){
-  const f=input&&input.files&&input.files[0];if(!f)return;
-  const isX=/\.xlsx?$/i.test(f.name);
-  const rd=new FileReader();
-  rd.onload=async e=>{
-    let text=e.target.result;
-    if(isX){
-      try{text=rowsToCsv(await readXlsx(e.target.result));}
-      catch(err){toast((err&&err.message)||'Could not read that Excel file');return;}
-    }
-    if(kind==='service'){
-      if(parseGroupCSV(text)){toast('That looks like a '+L('smallGroup')+' export — use the '+L('smallGroup')+' slot');return;}
-      const rows=parseCSV(text);
-      if(!rows.length){toast('Could not read that as a '+L('service')+' attendance CSV');return;}
-      PENDING.service={rows};PENDING._serviceFn=f.name;
-      toast(rows.length+' '+L('service')+' rows staged');rerender();return;
-    }
-    if(kind==='group'){
-      const grp=parseGroupCSV(text);
-      if(!grp||!grp.groups.length){toast('Could not read that as a lifegroup attendance CSV');return;}
-      PENDING.group=grp;PENDING._groupFn=f.name;
-      toast(grp.groups.length+' lifegroups staged');rerender();return;
-    }
-    if(kind==='flows'){
-      const frows=parseFlows(text);
-      if(!frows||!frows.length){toast('Could not read that file — needs the People Flow export columns (Person, Status, Date Entered, Days in Step, Administrator)');return;}
-      PENDING.flows=frows;PENDING._flowsFn=f.name;
-      toast(frows.length+' rows · '+frows.filter(r=>r.step>=2&&r.step<=4).length+' step 2–4 records');rerender();return;
-    }
-    // For connect/decision try the matrix format (date-column headers, Y/N cells) first,
-    // then fall back to the lean single-date-column format.
-    let rows=kind!=='team'?parseMatrixRows(text,kind):null;
-    if(!rows)rows=parseRows(text);
-    if(!rows||!rows.length){toast('Could not read that file — needs a Name (or First/Last Name) column');return;}
-    const seen=new Map();
-    for(const r of rows){
-      const k=norm(r.name);if(!k)continue;
-      const p=seen.get(k);
-      if(!p)seen.set(k,{name:r.name,date:r.date});
-      else if(kind==='connect'&&r.date&&(!p.date||r.date<p.date))p.date=r.date;
-      else if(kind==='decision'&&r.date&&(!p.date||r.date>p.date))p.date=r.date;
-    }
-    PENDING[kind]=[...seen.values()];PENDING['_'+kind+'Fn']=f.name;
-    toast(PENDING[kind].length+' '+kind+' rows staged');rerender();
-  };
-  if(isX)rd.readAsArrayBuffer(f);else rd.readAsText(f);
-}
-// POST the staged uploads as one audit; the server computes terms + per-term
-// aggregates and stores one row for that year (re-save overwrites the year).
-async function saveAudit(){
-  if(!PENDING.service){toast('Upload the year-to-date service CSV first');return;}
-  // Team/Connect/Decision/Flows are separate CRM exports that don't change every
-  // time attendance is refreshed. saveAudit() replaces the WHOLE year's audit
-  // row, so a slot the admin didn't re-stage this time must fall back to what's
-  // already stored for the currently-loaded year — otherwise a re-upload that
-  // only touches Service/Group silently wipes Team/Connect/Decision to empty,
-  // which collapses the "Interacted" funnel rung down to equal "Came to Youth"
-  // (stage-1-only people come solely from these overlays' hasConnect/hasDecision
-  // marks and unmatched caOnly names — see model() below).
-  const carry=(kind)=>PENDING[kind].length?PENDING[kind]:((AUDIT&&AUDIT.uploads&&AUDIT.uploads[kind])||[]);
-  if(saveAudit.busy)return; // C-B7: one save at a time (up to 90 s)
-  saveAudit.busy=true;
-  const btn=document.querySelector('[onclick="CA.saveAudit()"]');if(btn)btn.disabled=true;
-  const h=_here();
-  try{
-    const a=await API.post('/audits',{
-      service:PENDING.service,
-      group:PENDING.group||{groups:[]},
-      team:carry('team'),connect:carry('connect'),decision:carry('decision'),flows:carry('flows'),
-    },90000);
-    auditInvalidate();
-    await auditList();
-    await auditLoad(a.year);
-    PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};
-    toast('Audit saved for '+a.year);
-    if(_still(h))await render('ca-overview');
-  }catch(e){toast((e&&e.message)||'Save failed');}
-  finally{saveAudit.busy=false;if(btn)btn.disabled=false;}
 }
 
 // Public entry point: builds the deck for whichever term is currently active,
@@ -10022,11 +9653,11 @@ async function render(p){
   mdl=null;
   await dispatch(p);
 }
-return{render,reset,stale,dismissWarn,setYear,setTerm,saveAudit,
-  model:async()=>{await load();restore();return model();},
-  fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,showLgRoster,exportMenu,exportQuad,buildDeck,
+return{render,reset,setYear,setTerm,
+  model:async()=>{await load();return model();},
+  fquad,showPerson,showGroup,showLgRoster,buildDeck,
   setQuad,follow,term,followCsv,uploadSource,
-  pq,pstage,pquad,pmore};
+  pq,pstage,pmore};
 })();
 window.CA=CA;
 /* ── CA MODULE END ── */

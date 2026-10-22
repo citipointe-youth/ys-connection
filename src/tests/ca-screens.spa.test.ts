@@ -576,3 +576,54 @@ describe('Y10 structure', () => {
     expect(extractFn(HTML, 'model')).not.toMatch(/gr<=12|norm\(r\.name\)|st\.uploads/);
   });
 });
+
+// ── Y11: what the SPA no longer has (spec §6.3), what it keeps, and the module-removal contract ──
+describe('Y11 deletions and contract', () => {
+  const start = HTML.indexOf('/* ── CA MODULE START ── */'), end = HTML.indexOf('/* ── CA MODULE END ── */');
+  const block = HTML.slice(start, end);
+  it('three tab ids, no ca-data / ca-overview anywhere', () => {
+    expect(block).toContain("const T=[['ca-week','This week'],['ca-follow','Follow up'+(n?' · '+n:'')],['ca-term','Term report']];");
+    expect(HTML).not.toMatch(/ca-data|ca-overview|ca-funnel'|ca-groups'|ca-people'/);
+  });
+  it('flows, the Data tab and the localStorage shim are gone', () => {
+    for (const fn of ['flowStats', 'parseFlows', 'saveAudit', 'isoDate', 'parseRows', 'parseMatrixRows', 'fmtAdmin', 'emptyUploads', 'restore',
+      'stale', 'dismissWarn', 'gfilter', 'lgfilter', 'pquad', 'fopen', 'rOverview', 'rData', 'pick', 'upload', 'exportMenu', 'exportQuad', 'h32'])
+      expect(countFn(HTML, fn), fn).toBe(0);
+    expect(HTML).not.toMatch(/carry\(|ca_audit_v4|PENDING|New-person follow-up|\bst\.uploads/);
+  });
+  it('the Import screen parsers stay (detectAndPreview), and so does computeQuad (spa-ux-y2b)', () => {
+    for (const fn of ['parseCSV', 'parseGroupCSV', 'splitCSVLine', '_extractHeaderDate', 'detectAndPreview', 'computeQuad']) expect(countFn(HTML, fn), fn).toBe(1);
+  });
+  it('every ca* function sits inside the CA module markers; the tested ones are top-level, before the IIFE', () => {
+    const iife = HTML.indexOf('const CA=(()=>{');
+    for (const m of HTML.matchAll(/function (ca[A-Z]\w*)\(/g)) { expect(m.index!, m[1]).toBeGreaterThan(start); expect(m.index!, m[1]).toBeLessThan(end); }
+    for (const fn of ['caNum', 'caCompare', 'caLabel', 'caWeekTiles', 'caHeadline', 'caSparkSvg', 'caLeak', 'caFlags', 'caFooter', 'caFollowRows',
+      'caCsvRows', 'caReadTable', 'caExportedAt']) {
+      expect(countFn(HTML, fn), fn).toBe(1);
+      expect(HTML.indexOf('function ' + fn + '('), fn).toBeLessThan(iife);
+    }
+  });
+  it('outside the module, every line that touches CA carries /*CA-HOOK*/', () => {
+    const outside = (HTML.slice(0, start) + HTML.slice(end)).split('\n').filter((l) => /\bCA\.|'ca-[a-z]/.test(l));
+    expect(outside.length).toBeGreaterThan(3);
+    for (const l of outside) expect(l).toContain('/*CA-HOOK*/');
+  });
+});
+
+describe('Y11 Error log Who? for audit codes', () => {
+  it('audit- codes open Data check for the current year, without calling /admin/reconcile/latest', async () => {
+    const calls: string[] = [];
+    const elWho = new Function('env', `var window = { CA: 1 }, CA = { reset: () => env.push('reset') }, go = (p) => env.push('go ' + p);
+      var API = { fresh: async (p) => { env.push('fresh ' + p); return {}; } };
+      ${extractFn(HTML, 'elWho')}; return elWho;`)(calls);
+    await elWho('audit-source-failed');
+    expect(calls).toEqual(['reset', 'go ca-quality']);
+  });
+  it('an audit error row has a Who? button; reconcile rows keep theirs', () => {
+    const f = loadFns(['esc', '_laFmtBrisbane', '_laRelTime', '_elIsNew', '_elRowHtml'], 'var S = {};');
+    const row = (category: string, code: string) => ({ id: 'x', category, code, route: 'group', count: 1, counted: true, lastSeen: '2026-10-16T11:15:00Z', ignored: false, line1: 'l1', line2: 'l2' });
+    expect(f._elRowHtml(row('audit', 'audit-rows-skipped'), 0, false)).toContain(`onclick="elWho('audit-rows-skipped')">Who?</button>`);
+    expect(f._elRowHtml(row('reconcile', 'recon-unmatched'), 0, false)).toContain('Who?');
+    expect(f._elRowHtml(row('server', 'INTERNAL_ERROR'), 0, false)).not.toContain('Who?');
+  });
+});

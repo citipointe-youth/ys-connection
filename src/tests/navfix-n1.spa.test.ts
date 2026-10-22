@@ -84,50 +84,6 @@ describe('C-B6 notices send', () => {
   });
 });
 
-// ── C-B7: CA saveAudit ──
-function audit() {
-  const env: any = { posts: 0, renders: [] as string[], toasts: [] as string[], btn: { disabled: false } };
-  const f = new Function('env', `
-    var S = { page: 'ca-data' };
-    var PENDING = { service: { rows: [] }, group: null, team: [], connect: [], decision: [], flows: [] }, AUDIT = null;
-    var API = { post: () => { env.posts++; return env.post ? env.post() : Promise.resolve({ year: 2026 }); } };
-    var auditInvalidate = () => {}, auditList = async () => {}, auditLoad = async () => {};
-    var toast = (m) => env.toasts.push(m), render = async (p) => { env.renders.push(p); };
-    var _here = () => ({ p: S.page }), _still = (h) => h.p === S.page;
-    var document = { querySelector: () => env.btn };
-    ${fns(['saveAudit'])}
-    return { S, saveAudit, PENDING: () => PENDING };`);
-  return { ...f(env), env };
-}
-
-describe('C-B7 CA saveAudit', () => {
-  it('still on the screen -> goes to Audit Overview', async () => {
-    const t = audit();
-    await t.saveAudit();
-    expect(t.env.renders).toEqual(['ca-overview']);
-    expect(t.env.btn.disabled).toBe(false);
-  });
-  it('user went elsewhere mid-save -> no render, toast only', async () => {
-    let done: any; const t = audit(); t.env.post = () => new Promise((r) => { done = r; });
-    const p = t.saveAudit();
-    t.S.page = 'home';
-    done({ year: 2026 }); await p;
-    expect(t.env.renders).toEqual([]);
-    expect(t.env.toasts).toContain('Audit saved for 2026');
-  });
-  it('second tap while saving -> returns, one POST; button disabled while saving', async () => {
-    let done: any; const t = audit(); t.env.post = () => new Promise((r) => { done = r; });
-    const p = t.saveAudit();
-    expect(t.env.btn.disabled).toBe(true);
-    await t.saveAudit();
-    expect(t.env.posts).toBe(1);
-    done({ year: 2026 }); await p;
-    expect(t.env.btn.disabled).toBe(false);
-    await t.saveAudit();
-    expect(t.env.posts).toBe(1); // PENDING cleared after a save: nothing to send
-  });
-});
-
 // ── C-B8: bus sheets closed only if still the same sheet ──
 function bus() {
   const env: any = { closes: 0, mo: { id: 'bulk' }, toasts: [] as string[] };
