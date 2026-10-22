@@ -13685,7 +13685,9 @@ async function _hubLoad(quiet) {
     if (_ik() !== I || I.gen !== gen) return;
     I.hub = { lists: Object.fromEntries(want.map(([m, d], i) => [m + '|' + d, got[i]]).filter(([, l]) => l)), flows: fl ? fl.rows || [] : null, snap, at: Date.now() };
     if (fl) { LINK.flows = fl.rows || []; LINK.fSteps = fl.steps || []; } // the step sheet (Remove, Mark consent) reads LINK.flows
-    if (I.hubAsk && snap && Object.values(snap.kinds || {}).every((k) => k && Date.parse(k.takenAt) >= I.hubAsk)) { I.hubAsk = 0; toast('Checked just now.'); }
+    // Only the lists Refresh asked for count; an unreadable one (null) never holds it open, but one of them must be newer.
+    const asked = IK_LK_KINDS.map((k) => snap && snap.kinds && snap.kinds[k]);
+    if (I.hubAsk && asked.some(Boolean) && asked.every((k) => !k || Date.parse(k.takenAt) >= I.hubAsk)) { I.hubAsk = 0; toast('Checked just now.'); }
     if (I.hubAsk && Date.now() - I.hubAsk > 180e3) { I.hubAsk = 0; toast("The console hasn't answered yet. Try again later."); }
     I.err = null;
     if (!_hubSnapApply(snap) && (!quiet || !I.lkPre)) _ikLkWarm(_ikSt()); // ponytail: an older console warms page 1 only (25 forms); rev 19 has them all

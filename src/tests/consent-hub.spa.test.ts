@@ -156,3 +156,39 @@ describe('family page', () => {
     expect(h.join('')).toContain('Mark not received');
   });
 });
+
+// Fix round 1 (Task 8 review): Refresh waits only on the lists it asked for; an unreadable list (null) never holds it open.
+describe('Refresh clears', () => {
+  const KINDS = HTML.match(/^const IK_LK_KINDS = .*$/m)![0];
+  const run = async (kinds: any, askAgo = 30e3) => {
+    const ask = Date.now() - askAgo, toasts: string[] = [];
+    const I: any = { gen: 0, hubAsk: ask, lkPre: 1 };
+    const F2 = loadFns(['_hubLoad'], `${KINDS}
+      const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const LINK = {};
+      const __snap = ${JSON.stringify({ live: true, kinds })};
+      const API = { fresh: (u) => Promise.resolve(u.includes('snapshot') ? __snap : { dates: [] }) };
+      const _linkOn = () => false; const _intakeOn = () => true; const _hubSnapApply = () => true; const _ikLkWarm = () => [];
+      const _usLoad = () => Promise.resolve(); const _ikDraw = () => {}; const _ikSchedule = () => {};
+      const toast = (m) => globalThis.__toasts.push(m);`, ['_hubLoad', '_ik']);
+    (globalThis as any).__toasts = toasts;
+    await F2._hubLoad(true);
+    return { I: F2._ik(), toasts, ask };
+  };
+  const at = (ms: number) => ({ rows: [], total: 0, takenAt: new Date(ms).toISOString() });
+  it('the asked lists newer, other and an unreadable list null: clears with "Checked just now."', async () => {
+    const now = Date.now();
+    const r = await run({ unlinked: null, mismatches: at(now), forms: at(now), other: null });
+    expect(r.I.hubAsk).toBe(0);
+    expect(r.toasts).toEqual(['Checked just now.']);
+  });
+  it('an old other list never holds it open', async () => {
+    const now = Date.now();
+    const r = await run({ unlinked: at(now), mismatches: at(now), forms: at(now), other: at(now - 864e5) });
+    expect(r.I.hubAsk).toBe(0);
+  });
+  it('an asked list still older than the ask keeps waiting; nothing newer at all keeps waiting', async () => {
+    const now = Date.now();
+    expect((await run({ unlinked: at(now), mismatches: at(now - 864e5), forms: at(now), other: null })).I.hubAsk).not.toBe(0);
+    expect((await run({ unlinked: null, mismatches: null, forms: null, other: null })).I.hubAsk).not.toBe(0);
+  });
+});
