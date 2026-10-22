@@ -3,7 +3,7 @@ import { toIso } from './client';
 import { isEncrypted, decryptField, maybeEncrypt, encryptField } from '../../utils/field-crypto';
 import type { IBusRepository } from '../interfaces/entity-repositories';
 import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider,
-  BusOwnCar, EndsAt, BusGender, BusConsent, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
+  BusOwnCar, EndsAt, BusGender, BusConsentForm, BusConsentSubmit, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
 
 export const busCrypt = {
   enc: (v: string | null | undefined, aad: string): string | null => maybeEncrypt(v, aad),
@@ -86,9 +86,10 @@ function toRider(r: Record<string, any>): BusRunRider {
 function toEdit(r: Record<string, any>): BusRunEdit {
   return { id: r.id, runId: r.run_id, at: toIso(r.at), by: r.by, detail: busCrypt.dec(r.detail, `bus_run_edits:detail:${r.id}`) ?? '' };
 }
-function toConsent(r: Record<string, any>): BusConsent {
-  return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, given: r.given,
-    note: busCrypt.dec(r.note, `bus_consents:note:${r.id}`) ?? '', recordedBy: r.recorded_by, recordedAt: toIso(r.recorded_at) };
+export function toConsentForm(r: Record<string, any>): BusConsentForm {
+  return { id: r.id, submissionId: r.submission_id, childIndex: Number(r.child_index), submittedAt: toIso(r.submitted_at), year: Number(r.year),
+    studentId: r.student_id ?? null, guestId: r.guest_id ?? null, first: r.first, last: r.last,
+    data: JSON.parse(busCrypt.dec(r.data, `bus_consent_forms:data:${r.id}`) ?? '{}'), source: r.source, createdAt: toIso(r.created_at) };
 }
 
 export class SupabaseBusRepository implements IBusRepository {
@@ -232,24 +233,44 @@ export class SupabaseBusRepository implements IBusRepository {
       values (${e.id}, ${e.runId}, ${e.at}, ${e.by}, ${busCrypt.enc(e.detail, `bus_run_edits:detail:${e.id}`)})`;
   }
 
-  async listConsents() { return (await this.sql`select * from bus_consents`).map(toConsent); }
-  async getConsent(o: { studentId?: string; guestId?: string }) {
-    const r = o.studentId ? await this.sql`select * from bus_consents where student_id = ${o.studentId}`
-      : await this.sql`select * from bus_consents where guest_id = ${o.guestId ?? null}`;
-    return r[0] ? toConsent(r[0]) : null;
+  async listConsentForms() { return (await this.sql`select * from bus_consent_forms`).map(toConsentForm); }
+  async upsertConsentForms(rows: BusConsentForm[]) {
+    let added = 0;
+    for (const f of rows) {
+      const r = await this.sql`
+        insert into bus_consent_forms (id, submission_id, child_index, submitted_at, year, student_id, guest_id, first, last, data, source, created_at)
+        values (${f.id}, ${f.submissionId}, ${f.childIndex}, ${f.submittedAt}, ${f.year}, ${f.studentId}, ${f.guestId}, ${f.first}, ${f.last},
+          ${busCrypt.enc(JSON.stringify(f.data), `bus_consent_forms:data:${f.id}`)}, ${f.source}, ${f.createdAt})
+        on conflict (submission_id, child_index) do nothing returning id`;
+      if (r.length) { added++; continue; }
+      const [old] = await this.sql`select id from bus_consent_forms where submission_id = ${f.submissionId} and child_index = ${f.childIndex}`;
+      await this.sql`update bus_consent_forms set submitted_at = ${f.submittedAt}, year = ${f.year}, first = ${f.first}, last = ${f.last},
+        data = ${busCrypt.enc(JSON.stringify(f.data), `bus_consent_forms:data:${old!.id}`)} where id = ${old!.id}`;
+    }
+    return added;
   }
-  async saveConsent(k: BusConsent) {
-    const r = await this.sql`
-      insert into bus_consents (id, student_id, guest_id, given, note, recorded_by, recorded_at)
-      values (${k.id}, ${k.studentId}, ${k.guestId}, ${k.given}, ${busCrypt.enc(k.note, `bus_consents:note:${k.id}`)}, ${k.recordedBy}, ${k.recordedAt})
-      on conflict (id) do update set given = excluded.given, note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at
-      returning *`;
-    return toConsent(r[0]!);
+  async setConsentFormOwners(changes: { id: string; studentId: string | null; guestId: string | null }[]) {
+    for (const ch of changes) await this.sql`update bus_consent_forms set student_id = ${ch.studentId}, guest_id = ${ch.guestId} where id = ${ch.id}`;
   }
-  async reassignGuestConsent(guestId: string, studentId: string) {
-    const has = await this.sql`select 1 from bus_consents where student_id = ${studentId}`;
-    if (has.length) await this.sql`delete from bus_consents where guest_id = ${guestId}`;
-    else await this.sql`update bus_consents set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
+  async purgeConsentForms(beforeYear: number, submitsBefore: string) {
+    await this.sql`delete from bus_consent_forms where year < ${beforeYear}`;
+    await this.sql`delete from bus_consent_submits where submitted_at < ${submitsBefore}`;
+  }
+  async reassignGuestConsentForms(guestId: string, studentId: string) {
+    await this.sql`update bus_consent_forms set student_id = ${studentId}, guest_id = null where guest_id = ${guestId}`;
+  }
+  async insertConsentSubmit(s: BusConsentSubmit) {
+    // leader_id is a plain uuid (no FK): a leader can be deleted and the audit stays.
+    await this.sql`insert into bus_consent_submits (id, student_id, guest_id, leader_id, leader_name, submitted_at, read_out_confirmed, elvanto_result, name)
+      values (${s.id}, ${s.studentId}, ${s.guestId}, ${s.leaderId}, ${s.leaderName}, ${s.submittedAt}, true, ${s.elvantoResult},
+        ${busCrypt.enc(`${s.first}|${s.last}`, `bus_consent_submits:name:${s.id}`)})`;
+  }
+  async listConsentSubmits() {
+    return (await this.sql`select * from bus_consent_submits`).map((r): BusConsentSubmit => {
+      const [first = '', last = ''] = (busCrypt.dec(r.name, `bus_consent_submits:name:${r.id}`) ?? '|').split('|');
+      return { id: r.id, studentId: r.student_id ?? null, guestId: r.guest_id ?? null, leaderId: r.leader_id ?? null, leaderName: r.leader_name,
+        submittedAt: toIso(r.submitted_at), readOutConfirmed: true, elvantoResult: r.elvanto_result, first, last };
+    });
   }
 
   async tryLock(id: string, by: string, nowIso: string, untilIso: string) {

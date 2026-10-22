@@ -446,3 +446,58 @@ describe('sync.service push audit (rev 16, spec 2026-10-22 §3)', () => {
     expect(r).toMatchObject({ source: 'group', status: 'stored' });
   });
 });
+
+describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () => {
+  const BCC: NewOutboxRow = { id: 'b5c00000-0000-4000-8000-000000000001', type: 'busConsentCheck', payload: {}, note: null, dedupeKey: 'bcc',
+    serviceDate: '2026-10-23', studentId: null, personId: null, createdBy: CREATOR, leaderId: null, leaderName: 'Pat Leader' };
+  const req18 = { ...claimReq, linkRev: 18, max: 5, capabilities: { ...claimReq.capabilities, busConsentCheck: 'live' } };
+  it('a busConsentForms push parses and calls deps.busConsent with the parsed body; a bad body never reaches it', async () => {
+    const { link, settings, users, students } = await setup();
+    const reply = { applied: true, rows: 2, new: 2, unmatched: 1 };
+    const busConsent = vi.fn(async () => reply);
+    const svc = makeSyncService({ link, settings, students, users, busConsent });
+    const body = fx('push-bus-consent-forms.json');
+    expect(await svc.push('busConsentForms', body)).toEqual(reply);
+    expect(busConsent).toHaveBeenCalledWith(body);
+    await expect(svc.push('busConsentForms', { ...body, rows: [{ ...body.rows[0], extra: 1 }] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(busConsent).toHaveBeenCalledTimes(1);
+    expect(await link.mirrorState()).toEqual([]);
+  });
+  it('without the dep the push is not applied, in the strict response shape (F12)', async () => {
+    const { svc } = await setup();
+    expect(await svc.push('busConsentForms', fx('push-bus-consent-forms.json'))).toEqual({ applied: false, rows: 0, new: 0, unmatched: 0 });
+  });
+  it('every link screen off but the Bus module on: the claim leases (max > 0) the busConsentCheck row', async () => {
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any } });
+    await link.insertAction(BCC);
+    const reply = await svc.claim(req18);
+    expect(reply.rows.map((r) => r.type)).toEqual(['busConsentCheck']);
+  });
+  it('fix round 1: every link screen off, Bus on: a queued checkIn is not leased (stop button holds); only busConsentCheck stays listed', async () => {
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any } });
+    await link.insertAction(rowFromFixture(claimRes.rows.find((r: any) => r.type === 'checkIn')));
+    await link.insertAction(BCC);
+    const reply = await svc.claim(req18);
+    expect(reply.rows.map((r) => r.type)).toEqual(['busConsentCheck']);
+    expect(Object.keys((await link.listConsoles())[0]!.capabilities)).toEqual(['busConsentCheck']);
+  });
+  it('fix round 1: screens off, Bus on, intake on: the intake/consent capabilities stay listed too', async () => {
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any, intakeAdmin: 'on' } });
+    await svc.claim({ ...req18, capabilities: { ...req18.capabilities, intakeAnswer: 'live', consentLookup: 'live' } });
+    expect(Object.keys((await link.listConsoles())[0]!.capabilities).sort()).toEqual(['busConsentCheck', 'consentLookup', 'intakeAnswer']);
+  });
+  it('Bus module off: the claim strips busConsentCheck from the stored capabilities and never leases it', async () => {
+    const { svc, link } = await setup({ modules: { busMinistry: false as any } });
+    await link.insertAction(BCC);
+    const reply = await svc.claim(req18);
+    expect(reply.rows.map((r) => r.type)).not.toContain('busConsentCheck');
+    expect((await link.listConsoles())[0]!.capabilities.busConsentCheck).toBeUndefined();
+    expect((await link.listConsoles())[0]!.capabilities.checkIn).toBe('live');
+  });
+  it('container: a console bus consent push lands in the store (wiring)', async () => {
+    const { buildContainer } = await import('../container');
+    const c = await buildContainer();
+    const r = await c.services.sync.push('busConsentForms', fx('push-bus-consent-forms.json'));
+    expect(r).toMatchObject({ applied: true, rows: 2, new: 2 });
+  });
+});

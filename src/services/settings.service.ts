@@ -167,6 +167,13 @@ export function makeSettingsService(
           const { retiredGradeIds: _r, gradeRoleWasOn: _w, ...rest } = loginsPatch as Record<string, unknown>;
           cleanPatch = { ...ministryConfigPatch, logins: rest };
         }
+        // Bus consent check stamps are push-only (ingestBusConsentForms): a settings save keeps the stored values, so a
+        // stale SPA echo never overwrites a newer console check.
+        const busPatch = cleanPatch['busMinistry'];
+        if (busPatch && typeof busPatch === 'object' && !Array.isArray(busPatch)) {
+          const { consentLastChecked: _c, consentLastNew: _n, ...rest } = busPatch as Record<string, unknown>;
+          cleanPatch = { ...cleanPatch, busMinistry: rest };
+        }
         const merged = mergeMinistryConfig(cur, cleanPatch);
         // Only turning New person on is refused: a save that leaves the mode alone (e.g. an incomplete block after a
         // rollback) must not block unrelated Youth Setup saves; the send-time 409 ELVANTO_NOT_SET is the guard there.

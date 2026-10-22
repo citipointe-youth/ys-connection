@@ -26,7 +26,8 @@ import type {
   BusRunVehicle,
   BusRunRider,
   BusRunEdit,
-  BusConsent,
+  BusConsentForm,
+  BusConsentSubmit,
   BusUndoEntry,
 } from '../../core/entities/bus';
 
@@ -177,10 +178,16 @@ export interface IBusRepository {
   listRunVehiclesOf(runIds: string[]): Promise<BusRunVehicle[]>;
   listRunEdits(runIds: string[]): Promise<BusRunEdit[]>;   // newest first
   insertRunEdit(e: BusRunEdit): Promise<void>;
-  listConsents(): Promise<BusConsent[]>;
-  getConsent(owner: { studentId?: string; guestId?: string }): Promise<BusConsent | null>;
-  saveConsent(c: BusConsent): Promise<BusConsent>;
-  reassignGuestConsent(guestId: string, studentId: string): Promise<void>; // only if the student has none; else drop the guest's
+  // Bus consent via the Elvanto form (spec 2026-10-22, migration 0044).
+  listConsentForms(): Promise<BusConsentForm[]>;
+  /** Idempotent on (submissionId, childIndex): an existing row keeps its id, owner, source and createdAt. Returns how many were NEW. */
+  upsertConsentForms(rows: BusConsentForm[]): Promise<number>;
+  setConsentFormOwners(changes: { id: string; studentId: string | null; guestId: string | null }[]): Promise<void>;
+  /** Forms with year < beforeYear; submits with submitted_at < submitsBefore. */
+  purgeConsentForms(beforeYear: number, submitsBefore: string): Promise<void>;
+  reassignGuestConsentForms(guestId: string, studentId: string): Promise<void>;
+  insertConsentSubmit(s: BusConsentSubmit): Promise<void>;
+  listConsentSubmits(): Promise<BusConsentSubmit[]>;
   /** Atomic: sets lock_by/lock_until only if the run is unlocked or the lock has expired; null = someone else holds it. */
   tryLock(runId: string, by: string, nowIso: string, untilIso: string): Promise<BusRun | null>;
   /** M1: only clears the lock if `by` still holds it — a generate that overran LOCK_MS must

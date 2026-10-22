@@ -6,7 +6,7 @@ import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
-import type { AuditPushBody, ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
+import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
@@ -44,6 +44,8 @@ export interface SyncDeps {
   leaders?: Pick<ILeaderRepository, 'findActive'>;
   /** Rev 16 (spec 2026-10-22): push kind audit, one Connection Audit source per body. Without it that push is not applied. */
   audit?: Pick<ConnectionAuditService, 'ingest'>;
+  /** Rev 18 (bus consent, spec 2026-10-22): push kind busConsentForms. Without it that push is not applied. */
+  busConsent?: (req: BusConsentFormsPushBody) => Promise<z.infer<typeof BusConsentFormsResponse>>;
 }
 
 /** Version first (from the raw body), then Zod. Issues carry path + message only, never a value. */
@@ -70,12 +72,19 @@ export function makeSyncService(d: SyncDeps) {
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
-      const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
-        && m.intakeAdmin !== 'on' ? 0 : req.max;
+      const screensOff = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off');
+      const max = screensOff && m.intakeAdmin !== 'on' && !m.busMinistry ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
       if (m.intakeAdmin !== 'on') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
+      if (!m.busMinistry) delete capabilities.busConsentCheck; // rev 18: Bus module off = never leased
+      // Fix round 1: Bus on keeps the claim leasing, but the screens' stop button still holds. With every link screen off,
+      // only busConsentCheck (and the intake/consent types while intake is on) stays listed, so an older queued row is never sent.
+      if (screensOff) {
+        const keep = new Set<string>(['busConsentCheck', ...(m.intakeAdmin === 'on' ? [...INTAKE_TYPES, ...CONSENT_TYPES] : [])]);
+        for (const t of Object.keys(capabilities) as (keyof typeof capabilities)[]) if (!keep.has(t)) delete capabilities[t];
+      }
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,
@@ -166,7 +175,7 @@ export function makeSyncService(d: SyncDeps) {
       return reply;
     },
 
-    async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse> | IngestResult> {
+    async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse> | IngestResult | z.infer<typeof BusConsentFormsResponse>> {
       if (!(PUSH_KINDS as readonly string[]).includes(kind)) throw new SyncValidation([{ path: 'kind', message: 'Unknown kind' }]);
       const pk = kind as PushKind;
       if (pk === 'intakePlan' || pk === 'consentPlan') { // X19: one (mode, date) per push
@@ -193,6 +202,10 @@ export function makeSyncService(d: SyncDeps) {
         const req = parseBody(PUSH_SCHEMAS.audit, body) as AuditPushBody;
         if (!d.audit) return { applied: false };
         return d.audit.ingest(req, 'console');
+      }
+      if (pk === 'busConsentForms') { // rev 18: one console read of the bus consent forms; idempotent upsert, never a mirror
+        const req = parseBody(PUSH_SCHEMAS.busConsentForms, body) as BusConsentFormsPushBody;
+        return d.busConsent ? d.busConsent(req) : { applied: false, rows: 0, new: 0, unmatched: 0 }; // F12: the strict response shape
       }
       const k = pk as MirrorKind;
       const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[]; steps?: LinkFlowStep[] };

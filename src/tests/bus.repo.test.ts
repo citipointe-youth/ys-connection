@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { InMemoryBusRepository } from '../repositories/in-memory';
-import type { BusRun } from '../core/entities/bus';
+import type { BusRun, BusConsentForm } from '../core/entities/bus';
 
 const run = (id: string, date: string): BusRun => ({ id, serviceDate: date, version: 0, availablePoolLeaderIds: [],
   lockBy: null, lockUntil: null, lastChangeBy: null, lastChangeAt: null, undoSnapshot: null, undoUntil: null,
@@ -91,5 +91,34 @@ describe('run lock + undo (R2)', () => {
     expect(await r.getRun('a')).toMatchObject({ lockBy: 'Sarah#tok2' }); // phone B's lock survives
     await r.releaseLock('a', 'Sarah#tok2');
     expect((await r.getRun('a'))!.lockBy).toBeNull();
+  });
+});
+
+const form = (id: string, sub: string, i: number, over: Partial<BusConsentForm> = {}): BusConsentForm => ({
+  id, submissionId: sub, childIndex: i, submittedAt: '2026-10-21T09:15:00.000Z', year: 2026, studentId: null, guestId: null,
+  first: 'Jamie', last: 'Sample', source: 'public', createdAt: '2026-10-21T09:20:00.000Z',
+  data: { grade: 8, gender: 'female', mobile: '0400000001', school: 'Example High', address: { line1: '1 Test St', line2: '-', postcode: '4000', city: 'Brisbane City', state: 'QLD' },
+    parentName: 'Alex Sample', parentPhone: '0400000003', pickup: true, pickupBy: '', filedBy: null }, ...over });
+
+describe('InMemoryBusRepository bus consent forms', () => {
+  it('upsert is idempotent on (submissionId, childIndex), keeps id and owner, counts only new', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    expect(await r.upsertConsentForms([form('f1', 's1', 0), form('f2', 's1', 1)])).toBe(2);
+    await r.setConsentFormOwners([{ id: 'f1', studentId: 'st1', guestId: null }]);
+    expect(await r.upsertConsentForms([form('fX', 's1', 0, { first: 'Jamie-Lee' })])).toBe(0);
+    const all = await r.listConsentForms();
+    expect(all).toHaveLength(2);
+    expect(all.find((f) => f.childIndex === 0)).toMatchObject({ id: 'f1', studentId: 'st1', first: 'Jamie-Lee' });
+  });
+  it('purge drops forms of years before the cut and old submits; guest rows move to the student', async () => {
+    const r = new InMemoryBusRepository(); await r.init();
+    await r.upsertConsentForms([form('a', 's1', 0, { year: 2024 }), form('b', 's2', 0, { year: 2025, guestId: 'g1' })]);
+    await r.insertConsentSubmit({ id: 'x', studentId: null, guestId: 'g1', leaderId: null, leaderName: 'Pat', submittedAt: '2024-12-01T00:00:00.000Z',
+      readOutConfirmed: true, elvantoResult: 'sent', first: 'Jamie', last: 'Sample' });
+    await r.purgeConsentForms(2025, '2025-01-01T00:00:00.000Z');
+    expect((await r.listConsentForms()).map((f) => f.id)).toEqual(['b']);
+    expect(await r.listConsentSubmits()).toHaveLength(0);
+    await r.reassignGuestConsentForms('g1', 'st9');
+    expect((await r.listConsentForms())[0]).toMatchObject({ studentId: 'st9', guestId: null });
   });
 });
