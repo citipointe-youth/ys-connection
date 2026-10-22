@@ -176,13 +176,14 @@ export function busConsentBody(b: BusConsentIn, honeypot: string, e: ElvantoConf
   x.append(F.bcParentName ?? '', b.parentName);
   x.append(F.bcParentPhone ?? '', b.parentPhone);
   x.append(F.bcPickup ?? '', (b.pickup ? O.bcPickupYes : O.bcPickupNo) ?? '');
-  x.append(F.bcPickupBy ?? '', b.pickupBy);
+  x.append(F.bcPickupBy ?? '', b.pickup ? '' : b.pickupBy); // Elvanto shows this only when pickup = No
   x.append(honeypot, '');
   x.append('url', '');
   return x;
 }
 /** The drop-off location from the success page. Never throws; null when not found. */
-const DROPOFF_RE: RegExp | null = null; // TODO(Task0): set from the bc18-task0 capture (group 1 = the location)
+// The form's success message names no drop-off location (Task 0 capture), so there is nothing to parse: always null.
+const DROPOFF_RE: RegExp | null = null;
 export function dropoffOf(html: string): string | null {
   try { const m = DROPOFF_RE ? DROPOFF_RE.exec(String(html ?? '')) : null; return m?.[1] ? text(m[1]).slice(0, 200) : null; } catch { return null; }
 }
@@ -305,7 +306,13 @@ export function shapeProblems(html: string, body: URLSearchParams, e: ElvantoCon
 export const SUCCESS: Record<FormKind, { redirect: RegExp | null; marker: string | null }> = {
   student: { redirect: null, marker: null },
   parent: { redirect: null, marker: null },
-  busConsent: { redirect: null, marker: null }, // TODO(Task0): narrow from the bc18-task0 capture
+  busConsent: { redirect: null, marker: 'Thank you so much for completing this form' }, // the form's custom success message (Task 0); a miss is 'unconfirmed'
+};
+
+/** Case and whitespace tolerant (and tag-free) marker match. */
+const markerIn = (body: string, marker: string): boolean => {
+  const n = (x: string) => x.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|\s+/g, ' ').toLowerCase();
+  return n(body).includes(n(marker));
 };
 
 export function classifyPost(form: FormKind, r: { status: number; location: string | null; body: string }): Outcome {
@@ -315,7 +322,7 @@ export function classifyPost(form: FormKind, r: { status: number; location: stri
   }
   if (r.status >= 500) return 'unconfirmed'; // Elvanto may have saved it before erroring
   if (r.status !== 200) return 'failed';
-  if (ok.marker && r.body.includes(ok.marker)) return 'sent';
+  if (ok.marker && markerIn(r.body, ok.marker)) return 'sent';
   if (r.body.includes('name="save"')) return 'failed'; // the form came back: Elvanto refused it
   return ok.marker ? 'unconfirmed' : 'sent';
 }

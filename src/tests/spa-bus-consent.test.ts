@@ -193,3 +193,12 @@ describe('fix round 1', () => {
     expect(loadIndexHtml()).toMatch(/bus-decl'\)\.value\.trim\(\) \|\| MINISTRY_CONFIG_DEFAULTS_CLIENT\.busMinistry\.consentDeclaration/);
   });
 });
+
+describe('pickup-by visibility', () => {
+  it('shown only when pickup is No; hidden on Yes and blank', () => {
+    const { _bcPickupShown, row, sel } = loadFns(['_bcPickupShown'],
+      "const row = { hidden: false }, sel = { value: '' }; const document = { getElementById: (id) => (id === 'bc-pickup' ? sel : row) };", ['_bcPickupShown', 'row', 'sel']);
+    const hiddenFor = (v: string) => { sel.value = v; _bcPickupShown(); return row.hidden; };
+    expect([hiddenFor('n'), hiddenFor('y'), hiddenFor(''), hiddenFor('n')]).toEqual([false, true, true, false]);
+  });
+});

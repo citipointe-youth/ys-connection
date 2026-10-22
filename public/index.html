@@ -15173,7 +15173,7 @@ function _bcRead() {
   const g = (id) => (document.getElementById(id) || {}).value || '';
   return { first: g('bc-first').trim(), last: g('bc-last').trim(), grade: g('bc-grade'), gender: g('bc-gender'), mobile: g('bc-mobile').trim(), school: g('bc-school').trim(),
     address: { line1: g('bc-line1').trim(), line2: g('bc-line2').trim(), postcode: g('bc-postcode').trim(), city: g('bc-city').trim(), state: g('bc-state').trim() || 'QLD' },
-    parentName: g('bc-pname').trim(), parentPhone: g('bc-pphone').trim(), pickup: g('bc-pickup') === 'y' ? true : g('bc-pickup') === 'n' ? false : null, pickupBy: g('bc-pickupby').trim(),
+    parentName: g('bc-pname').trim(), parentPhone: g('bc-pphone').trim(), pickup: g('bc-pickup') === 'y' ? true : g('bc-pickup') === 'n' ? false : null, pickupBy: g('bc-pickup') === 'n' ? g('bc-pickupby').trim() : '',
     declaration: BUS.bc.p.declaration };
 }
 function busConsentSubmit() { const f = _bcRead(), miss = _bcMissing(f); if (miss) { toast(miss); return; } BUS.bc.f = f; modal(_bcConfirmHtml(f.parentName)); }
@@ -15203,9 +15203,8 @@ async function _bcRelookup() {
     declaration: p.declaration };
   busConsentForm(who, true);
 }
-// TODO(Task0): the "Who will be picking up" show/hide rule is not captured yet (spec 5.5: optional and conditional; the snapshot reads backwards).
-// Until Task 0 settles it, the row is always shown and is optional.
-function _bcPickupShown() { const row = document.getElementById('bc-pickupby-row'); if (row) row.hidden = false; }
+// Who picks up is shown only when pickup = No (matches the Elvanto form); hidden on Yes and blank.
+function _bcPickupShown() { const row = document.getElementById('bc-pickupby-row'), sel = document.getElementById('bc-pickup'); if (row) row.hidden = !sel || sel.value !== 'n'; }
 function busConfirmRemove(id) {
   const r = BUS.view.riders.find((x) => x.id === id);
   // Task 3: a guest with no prior ride is hard-deleted server-side (with their saved address)

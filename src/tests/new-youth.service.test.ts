@@ -361,6 +361,16 @@ describe('sendBusConsent', () => {
     expect((await down.sendBusConsent(LEADER, BUS_INPUT)).result).toBe('unconfirmed');
   });
 
+  it('a success page without the marker is unconfirmed and a second tap never posts again', async () => {
+    const f = busFetch(() => new Response('<p>Unknown page</p>', { status: 200 }));
+    const svc = makeNewYouthService(await busSettings(), { fetchFn: f.fetchFn, live: true });
+    expect((await svc.sendBusConsent(LEADER, BUS_INPUT)).result).toBe('unconfirmed');
+    expect(await svc.sendBusConsent(LEADER, BUS_INPUT)).toMatchObject({ result: 'unconfirmed', repeat: true });
+    expect(f.posts()).toHaveLength(1);
+    const ok = busFetch(() => new Response('<p>Thank you so much for completing this form!</p>', { status: 200 }));
+    expect(await makeNewYouthService(await busSettings(), { fetchFn: ok.fetchFn, live: true }).sendBusConsent(LEADER, BUS_INPUT)).toMatchObject({ result: 'sent', dropoff: null });
+  });
+
   it('module off -> MODULE_DISABLED; blank form id or option id -> ELVANTO_NOT_SET; changed form -> ELVANTO_FORM_CHANGED; nothing posted', async () => {
     const f = busFetch(() => new Response(null, { status: 302 }));
     const off = makeNewYouthService(await busSettings({ busMinistry: false }), { fetchFn: f.fetchFn, live: true });

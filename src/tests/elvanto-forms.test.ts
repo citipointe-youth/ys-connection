@@ -148,6 +148,20 @@ const BUS_IDS = { busConsentFormId: '8c9f0929-5b36-4ab7-b9bd-8b4082b013dc' };
 const busIn: EF.BusConsentIn = { first: 'Jamie', last: 'Sample', grade: '8', gender: 'f', mobile: '0400000001', school: 'Example High',
   address: { line1: '1 Test St', line2: '', postcode: '4000', city: 'Brisbane City', state: '' }, parentName: 'Alex Sample', parentPhone: '0400000003', pickup: false, pickupBy: 'Grandparent' };
 
+const BUS_OK = '<div class="alert"><p>Thank you   so much for\ncompleting this form! We will be in touch with Sample Family.</p></div>';
+
+describe('bus consent success rule', () => {
+  it('the marker is case and space tolerant; drop-off is always null', () => {
+    expect(EF.classifyPost('busConsent', { status: 200, location: null, body: BUS_OK })).toBe('sent');
+    expect(EF.classifyPost('busConsent', { status: 200, location: null, body: BUS_OK.toUpperCase() })).toBe('sent');
+    expect(EF.dropoffOf(BUS_OK)).toBeNull();
+  });
+  it('a 200 without the marker is unconfirmed, a returned form is failed', () => {
+    expect(EF.classifyPost('busConsent', { status: 200, location: null, body: '<p>Something else</p>' })).toBe('unconfirmed');
+    expect(EF.classifyPost('busConsent', { status: 200, location: null, body: '<input name="save">' })).toBe('failed');
+  });
+});
+
 describe('bus consent form', () => {
   const chk = EF.checkBusForm(BUS_HTML, [7, 8, 9, 10, 11, 12]);
   const e = { ...BRIS, ...BUS_IDS, fields: { ...BRIS.fields, ...chk.fields }, options: { ...BRIS.options, ...chk.options } };
@@ -166,6 +180,9 @@ describe('bus consent form', () => {
     expect(b.get(e.fields.bcPickup!)).toBe('840ad9f3-7775-4c01-a6e7-00238a8b5233');
     expect(b.get(e.fields.bcPickupBy!)).toBe('Grandparent');
     expect([b.get('save'), b.get('url'), b.get('elvanto1234567890123')]).toEqual(['1', '', '']);
+  });
+  it('pickupBy is sent only when pickup is No', () => {
+    expect(EF.busConsentBody({ ...busIn, pickup: true }, 'elvanto1234567890123', e).get(e.fields.bcPickupBy!)).toBe('');
   });
   it('a grade option id that is not on the form makes shapeProblems name it', () => {
     const b = EF.busConsentBody(busIn, 'elvanto1234567890123', { ...e, options: { ...e.options, bcGrade8: '11111111-1111-1111-1111-111111111111' } });
