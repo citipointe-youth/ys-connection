@@ -97,6 +97,15 @@ describe('Admin Service — wipe guard', () => {
     expect((await connectionAudits.findAll()).length).toBe(0);
   });
 
+  it('reset also wipes connection_audit_sources (spec 2026-10-22 §5.1)', async () => {
+    const { svc, connectionAudits } = await buildService();
+    await connectionAudits.saveSource({ year: 2026, source: 'service', headers: ['First Name'], rows: [['Alex']], rowCount: 1,
+      takenAt: '2026-10-23T11:00:00.000Z', exportedAt: '2026-10-23T11:00:00.000Z', fedAt: '2026-10-23T11:05:00.000Z', fedBy: 'console',
+      lastFailedAt: null, lastFailReason: null });
+    await svc.reset(ADMIN, { force: true, confirmWipe: CONFIRM });
+    expect(await connectionAudits.sources(2026)).toEqual([]);
+  });
+
   it('clearServiceGroupData without force/confirmWipe throws BadRequestError and touches no data', async () => {
     const { svc, students } = await buildService();
     await expect(svc.clearServiceGroupData(ADMIN)).rejects.toBeInstanceOf(BadRequestError);

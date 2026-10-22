@@ -91,12 +91,14 @@ export function makeAdminService(
       assertCan(actor, 'admin:manage');
       assertForceConfirmed(opts);
       await wipeData({ includeLeaders: true });
-      // Full Reset means NO student data left in the app at all — the Connection
-      // Audit's server-stored snapshots (connection_audits) hold per-student
-      // rows too, so they must go along with the live tables above. Back these
-      // up first via GET /audits/export-all if they're still needed.
+      // Full Reset means NO student data left in the app at all: the Connection
+      // Audit's server-stored snapshots (connection_audits) and the console's stored
+      // source copies (connection_audit_sources, 0043) hold per-student rows too, so
+      // they go along with the live tables above. Back the snapshots up first via
+      // GET /audits/export-all if they're still needed.
       const savedAudits = await connectionAudits.findAll();
       await Promise.all(savedAudits.map((a) => connectionAudits.delete(a.id)));
+      await connectionAudits.deleteAllSources();
       await writeAudit(audit, actor, 'reset', 'Full data reset — students, leaders, connections, services, lifegroup and connection audit data cleared');
       invalidateOverviewCache();
       invalidateTrendsCache();
