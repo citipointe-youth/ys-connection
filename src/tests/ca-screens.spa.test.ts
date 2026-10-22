@@ -347,7 +347,7 @@ function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
       get: async (p) => p === '/audits' ? (env.audit ? [{ year: env.audit.year, label: String(env.audit.year), uploadedAt: '', termKeys: [] }] : [])
         : p.indexOf('/audits/') === 0 ? env.audit : {},
       post: async (p, b) => { env.posts.push({ p, b }); if (env.reply instanceof Error) throw env.reply; return env.reply; } };
-    var setApp = (h) => { env.app = h; }, go = (p) => { env.went.push(p); }, toast = (m) => env.toasts.push(m), modal = () => {}, closeModal = () => {};
+    var setApp = (h) => { env.app = h; }, go = (p) => { env.went.push(p); }, toast = (m) => env.toasts.push(m), modal = (h) => { env.modal = h; }, closeModal = () => {};
     var icS = () => '', helpTip = () => '', lgDisplayName = (n) => n;
     var accentRamp = () => ['#111', '#222', '#333', '#444', '#555'], accentRampPairs = () => accentRamp().map((c) => [c, c]);
     var _here = () => ({}), _still = () => true, _downloadText = (n, t, m) => env.downloads.push({ n, t, m });
@@ -459,6 +459,29 @@ describe('Y10 screens', () => {
     w.CA.setQuad('b79');
     w.CA.followCsv();
     expect(w.env.downloads[1].t.split('\r\n')[0]).not.toContain('Quad');
+  });
+  it('consent audit #8 #9 #14: people inside their consent week are not offered; every count equals its list', async () => {
+    const a = audit26();
+    for (const x of a.snapshot.students) if (x.id === 'd' || x.id === 'e') x.consentPending = true; // connect + decision, this week
+    const w = caWorld(a);
+    const week = await w.show('ca-week');
+    expect(week).toContain('>Follow up · 3<');                             // was 5: d and e wait for consent
+    const fu = await w.show('ca-follow');
+    expect(fu).toMatch(/<b>Decided, not in a lifegroup<\/b> · 0/);
+    expect(fu).toMatch(/<b>Connected, not back yet<\/b> · 0/);
+    expect(fu).not.toContain('Ava Ld');
+    expect(fu).not.toContain('Ava Le');
+    w.CA.followCsv();
+    expect(w.env.downloads[0].t.split('\r\n').length - 1).toBe(3);       // header + 3 rows, the same as the tab total
+    const term = await w.show('ca-term');
+    expect(term).toContain('3 stopped coming</a>');
+    expect(term).toContain('0 decided, not in a lifegroup</a>');
+    expect(term).toContain('0 connected, not back yet</a>');
+    w.CA.showPerson('d');
+    expect(w.env.modal).toContain('Waiting for consent');
+    expect(w.env.modal).not.toContain('Ph ');
+    w.CA.showPerson('a');
+    expect(w.env.modal).toContain('Ph 0400 000 001');                      // a decided person still shows the number
   });
   it('Term report: story order, Open slides, Year so far, What to do counts', async () => {
     const html = await caWorld(audit26()).show('ca-term');

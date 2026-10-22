@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { makeLinkService, LINK_RATE_MAX, LINK_RATE_WINDOW_MS } from '../services/link.service';
 import { makeSyncService } from '../services/sync.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
-import { consentFriday, consentFridayPassed, consentStepAllowed } from '../services/link-rules';
+import { consentFriday, consentFridayPassed, consentPending, consentStepAllowed } from '../services/link-rules';
 import { InMemoryLinkIntakeRepository } from '../repositories/in-memory/link-intake.repository';
 import {
   InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
@@ -379,6 +379,21 @@ describe('rev 9: step-0 Complete past the consent Friday records consent not rec
     expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW, BNE)).toBeNull(); // open consent row
     expect(consentStepAllowed(r('2026-10-08', 'unknown'), [{ key: P_A, status: 'done' }], NOW, BNE)).toBe('done');
     expect(consentStepAllowed(r(null, 'ok'), [], NOW, BNE)).toBe('done');
+  });
+  it('consentPending (Connection Audit, consent audit B): inside the consent week = true; DNC / no date / decided = false', () => {
+    const p = (personId: string | null, due: string | null, consent: string | null, textedOn?: string) => ({ personId, due, consent, textedOn });
+    expect(consentPending(p(P_A, '2026-10-16', 'contact'), [], NOW, BNE)).toBe(false);          // DNC = decided ("Do not contact")
+    expect(consentPending(p(P_A, null, 'unknown'), [], NOW, BNE)).toBe(false);                  // no date (a regular) = decided
+    expect(consentPending(p(null, '2026-10-16', null), [], NOW, BNE)).toBe(true);               // unmatched, before Fri 23 9:00
+    expect(consentPending(p(null, '2026-10-08', null), [], NOW, BNE)).toBe(false);              // unmatched, Fri 9 Oct passed
+    expect(consentPending(p(null, '2026-10-16', null), [], new Date('2026-10-22T22:59:00Z'), BNE)).toBe(true);  // 8:59 Fri
+    expect(consentPending(p(null, '2026-10-16', null), [], new Date('2026-10-22T23:00:00Z'), BNE)).toBe(false); // 9:00 Fri
+    expect(consentPending(p(null, '2026-10-01', null, '2026-10-16'), [], NOW, BNE)).toBe(true); // textedOn counts first
+    expect(consentPending(p(P_A, '2026-10-08', 'unknown'), [{ key: P_A, status: 'ready' }], NOW, BNE)).toBe(true); // open row
+    expect(consentPending(p(P_A, '2026-10-16', 'unknown'), [{ key: P_A, status: 'done' }], NOW, BNE)).toBe(false); // done row
+    expect(consentPending(p(P_A, '2026-10-16', 'ok'), [], NOW, BNE)).toBe(false);               // profile ok
+    expect(consentPending(p(P_A, '2026-10-16', 'unknown'), [], NOW, BNE)).toBe(true);           // matched, in the week
+    expect(consentPending(p(P_A, '2026-10-08', 'unknown'), [], NOW, BNE)).toBe(false);          // matched, not received
   });
   it('allowed and stored with notReceived (set by the server); the claim carries it to the console', async () => {
     const h = await rev9();

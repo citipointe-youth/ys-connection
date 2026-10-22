@@ -228,6 +228,16 @@ export function consentStepAllowed(row: { personId: string | null; consent?: str
   const f = consentFriday(row.due, row.textedOn, s.serviceDayOfWeek);
   return f && consentFridayPassed(f, now, s.consentCutoff, s.timeZone) ? 'notReceived' : null;
 }
+/** Connection Audit (consent audit B): still inside the consent week, so not offered for contact. DNC = decided (the row stays
+ *  and reads "Do not contact"). No date to count from (a regular, not a new person) = decided. Matched: Complete on step 0's
+ *  own verdict (consentStepAllowed); unmatched: the consent Friday's cut-off has not passed. */
+export function consentPending(p: { personId: string | null; consent?: string | null; due?: string | null; textedOn?: string | null },
+  rows: { key: string; status: string }[], now: Date, s: SiteTime): boolean {
+  if (isDnc(p.consent) || (!p.due && !p.textedOn)) return false;
+  if (p.personId) return consentStepAllowed(p, rows, now, s) === null;
+  const f = consentFriday(p.due, p.textedOn, s.serviceDayOfWeek);
+  return !!f && !consentFridayPassed(f, now, s.consentCutoff, s.timeZone);
+}
 
 /** `Self identified leader: <name> — <note>`, or the name alone when the leader wrote no note. */
 export function attributedNote(leaderName: string, note: string | null): string {

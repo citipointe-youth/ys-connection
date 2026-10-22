@@ -8667,7 +8667,8 @@ function caFollowRows(snap,list,quad){
   const field={drifting:'lastSeen',decidedNoGroup:'decision',connectedNeverCame:'connect'}[list];
   const W=(snap&&snap.weekly)||[],nowDay=W.reduce((m,e)=>e.weekEnd>m?e.weekEnd:m,(snap&&snap.dataEndDate)||'');
   const short=d=>fmtDay(d).replace(/^\S+ /,'');
-  const rows=ids.map(id=>by[id]).filter(s=>s&&(!quad||(quad==='none'?!s.quad:s.quad===quad))).map(s=>{
+  // consentPending (server): still inside the consent week, so not offered for contact (DNC is decided: stays, reads Do not contact).
+  const rows=ids.map(id=>by[id]).filter(s=>s&&!s.consentPending&&(!quad||(quad==='none'?!s.quad:s.quad===quad))).map(s=>{
     const d=s[field]||null;let why;
     if(list==='drifting'){const w=d?Math.max(1,Math.round((Date.parse(nowDay)-Date.parse(d))/(7*864e5))):0;why=d?'Last seen '+short(d)+' ('+w+(w===1?' wk)':' wks)'):'Not seen yet';}
     else why=list==='decidedNoGroup'?'Decided '+short(d)+', no lifegroup since':'Connected '+short(d)+', not at youth since';
@@ -8767,7 +8768,7 @@ async function load(force){
       const c=sumOver(sel,s.id), p=sumOver(prev,s.id);
       return {id:s.id,fn:s.firstName,ln:s.lastName,gender:s.gender,grade:s.grade,quad:s.quad,
         sA:c.sA,sT:c.sT,gA:c.gA,gT:c.gT, psA:p.sA,psT:p.sT,pgA:p.gA,pgT:p.gT,
-        ph:s.phone||'',pp:!!s.phoneIsParent,dnc:!!s.dnc,team:!!s.team,connect:s.connect||null,decision:s.decision||null,caOnly:!!s.caOnly,lastSeen:s.lastSeen||null};
+        ph:s.phone||'',pp:!!s.phoneIsParent,dnc:!!s.dnc,cp:!!s.consentPending,team:!!s.team,connect:s.connect||null,decision:s.decision||null,caOnly:!!s.caOnly,lastSeen:s.lastSeen||null};
     }),
     trends:null, settings:settings||{}, lgStats:_auditLgStats(sel,prev),
   };
@@ -9308,6 +9309,7 @@ function showPerson(id){
   if(p.team)ev.push(['Student team','current']);
   if(ev.length)h+='<div class="card"><div class="ca-ct">Journey</div>'+ev.map(e=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ca-line)"><div style="font-size:.78rem;font-weight:600">'+e[0]+'</div><div style="font-size:.7rem;color:var(--ca-muted)">'+(/^\d{4}/.test(e[1])?fmtD(e[1]):e[1])+'</div></div>').join('')+'</div>';
   if(s&&s.dnc)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Do not contact</div>';
+  else if(s&&s.cp)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Waiting for consent</div>';
   else if(s&&s.ph)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Ph '+esc(s.ph)+(s.pp?' (parent)':'')+'</div>';
   h+='<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>';
   modal(h);

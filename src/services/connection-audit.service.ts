@@ -12,7 +12,8 @@ import type { LinkRosterRow } from '../core/link-types';
 import { BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
 import type { AppSettings } from '../core/entities/settings';
 import type { ErrorLogService } from './error-log.service';
-import { brisbaneToday, matchFold } from './link-rules';
+import { brisbaneToday, consentPending, isConsentStep, matchFold } from './link-rules';
+import { peopleFlowOf, peoplePrefix, shownConsent } from './link.service';
 import { parseSource } from './audit-parse';
 import { auditConfigOf, buildYear, sourcesMeta } from './audit-build';
 import { upgradeSnapshot } from './audit-upgrade';
@@ -28,7 +29,8 @@ const MANUAL_CONSOLE = '00000000-0000-4000-8000-000000000000';
 
 export type IngestStatus = 'stored' | 'stale' | 'shape' | 'failed-recorded';
 export interface IngestResult { applied: boolean; source: AuditSource; status: IngestStatus }
-export type AuditStudentView = AuditSnapshotV2['students'][number] & { dnc: boolean };
+/** consentPending (consent audit B): still inside the consent week; the Follow up lists and the person modal offer no contact. */
+export type AuditStudentView = AuditSnapshotV2['students'][number] & { dnc: boolean; consentPending?: boolean };
 export type AuditView = Omit<ConnectionAudit, 'snapshot'> & { snapshot: Omit<AuditSnapshotV2, 'students'> & { students: AuditStudentView[] } };
 /** A year with stored source copies but no year row yet (Youth service never stored): the per-list status only (spec §6.1). */
 export interface AuditSourcesView { year: number; snapshot: null; sources: Record<AuditSource, SourceMeta> }
@@ -62,7 +64,9 @@ const ImportAllSchema = z.array(z.object({
 }));
 
 export interface ConnectionAuditDeps {
-  link: Pick<ILinkRepository, 'roster'>;
+  link: Pick<ILinkRepository, 'roster' | 'flows'>;
+  /** The Consents rows (intake mode 'consent'): Complete on step 0's done/open check. */
+  consentRows: () => Promise<{ key: string; status: string }[]>;
   errorLog: Pick<ErrorLogService, 'record'>;
   now?: () => Date;
 }
@@ -156,7 +160,8 @@ export function makeConnectionAuditService(
 
     async get(actor, year) {
       assertCan(actor, 'import:run');
-      requireCaModule(await settingsRepo.getSettings());
+      const settings = await settingsRepo.getSettings();
+      requireCaModule(settings);
       const a = await repo.findByYear(year);
       let snap: AuditSnapshotV2 | null = null;
       // A null/corrupt stored snapshot must not 500 the read: it is answered as "no year row" (the next feed rebuilds it).
@@ -165,7 +170,19 @@ export function makeConnectionAuditService(
         const copies = await repo.sources(year);
         return copies.length ? { year, snapshot: null, sources: sourcesMeta(copies, year) } : null;
       }
-      return { ...a, snapshot: { ...snap, students: maskDnc(snap.students, await d.link.roster(), canSeeDncPhones(actor)) } };
+      const [roster, flows, rows] = await Promise.all([d.link.roster(), d.link.flows(), d.consentRows().catch(() => [])]);
+      // Consent audit B: computed at read time, so a person opens up at their consent Friday's cut-off with no rebuild.
+      const t = now(), site = settings.ministryConfig.structure;
+      const people = peopleFlowOf(flows, t, site.timeZone, peoplePrefix(settings));
+      const rosterById = new Map(roster.map((r) => [r.personId, r]));
+      const step0 = new Map(flows.filter((f) => f.personId && isConsentStep(f, people)).map((f) => [f.personId!, f]));
+      const students = maskDnc(snap.students, roster, canSeeDncPhones(actor)).map((v) => {
+        const f = v.personId ? step0.get(v.personId) : undefined;
+        const consent = v.dnc ? 'contact' : f ? shownConsent(f, rosterById) : v.personId ? rosterById.get(v.personId)?.consent : null;
+        return { ...v, consentPending: consentPending({ personId: v.personId, consent, due: f?.due ?? v.connect ?? v.decision,
+          textedOn: f?.textedOn }, rows, t, site) };
+      });
+      return { ...a, snapshot: { ...snap, students } };
     },
 
     async remove(actor, year) {

@@ -262,12 +262,12 @@ function consentWait(f: LinkFlowRow, consent: string, consentRows: { key: string
   return { consentFriday: fri, notReceivedOk: !!fri && consentStepAllowed({ personId: f.personId, consent, due: f.due, textedOn: f.textedOn }, consentRows, now, s) === 'notReceived' };
 }
 /** E3: this year's New People flow among the pushed flow rows. */
-const peopleFlowOf = (flows: LinkFlowRow[], now: Date, tz: string, prefix: string) =>
+export const peopleFlowOf = (flows: LinkFlowRow[], now: Date, tz: string, prefix: string) =>
   peopleFlowName(flows.map((f) => f.flowName), brisbaneToday(now, tz), prefix);
 /** Y2a: this location's New People flow prefix (Youth Setup). `?.`: a json-mode settings file stored before Y1 is never re-parsed. */
-const peoplePrefix = (s: AppSettings) => s.ministryConfig.elvanto?.peopleFlowPrefix ?? '';
+export const peoplePrefix = (s: AppSettings) => s.ministryConfig.elvanto?.peopleFlowPrefix ?? '';
 /** Resilience H3: a flow row's shown consent flag; an unreadable flow profile (unknown) falls back to the roster's sticky flag. */
-function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
+export function shownConsent(f: LinkFlowRow, byId: Map<string, LinkRosterRow>): 'ok' | 'contact' | 'all' | 'unknown' {
   if (f.consent === 'ok' || f.consent === 'contact' || f.consent === 'all') return f.consent;
   const r = f.personId ? byId.get(f.personId) : undefined;
   return isDnc(r?.consent) ? r!.consent! as 'contact' | 'all' : f.consent ?? 'unknown';

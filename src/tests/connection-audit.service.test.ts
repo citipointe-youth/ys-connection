@@ -34,7 +34,7 @@ const withRow = (b: OkBody, cells: Record<string, string>): OkBody => {
   return { ...b, rows: [...b.rows, r] };
 };
 
-async function harness(o: { errorLog?: { record: (...a: any[]) => Promise<void> } } = {}) {
+async function harness(o: { errorLog?: { record: (...a: any[]) => Promise<void> }; consentRows?: () => Promise<{ key: string; status: string }[]> } = {}) {
   const repo = new InMemoryConnectionAuditRepository(); await repo.init();
   const settings = new InMemorySettingsRepository(); await settings.init();
   await settings.updateSettings({ serviceMinAttendance: 1 });
@@ -42,7 +42,7 @@ async function harness(o: { errorLog?: { record: (...a: any[]) => Promise<void> 
   const errRepo = new InMemoryErrorLogRepository();
   let t = NOW;
   const errorLog = o.errorLog ?? makeErrorLogService({ repo: errRepo, now: () => t });
-  const svc = makeConnectionAuditService(repo, settings, { link, errorLog, now: () => t });
+  const svc = makeConnectionAuditService(repo, settings, { link, errorLog, now: () => t, consentRows: o.consentRows ?? (async () => []) });
   return { svc, repo, settings, link, errRepo, setNow: (d: Date) => { t = d; } };
 }
 const errs = async (r: InMemoryErrorLogRepository) => Object.fromEntries((await r.list()).map((x) => [`${x.code}:${x.route}`, x.count]));
@@ -229,6 +229,49 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     expect(me).toMatchObject({ dnc: true, phone: '0400000001' });        // admin keeps the number
     const masked = maskDnc(got.snapshot.students, await h.link.roster(), false);
     expect(masked.find((x) => x.id === me.id)).toMatchObject({ dnc: true, phone: null });
+  });
+
+  it('T2 (#8 #9 #14): get() marks consentPending per student; it opens itself at the consent Friday 9:00 with no rebuild', async () => {
+    const CON: OkBody = fx('push-audit-connect.json');                  // an unmatched connect dated Wed 14/10 -> consent Fri 16 Oct
+    const fi = col(SVC, 'First Name'), li = col(SVC, 'Last Name');
+    const [a, b] = [SVC.rows[0]!, SVC.rows[1]!];
+    const P2 = '9e000000-0000-4000-8000-0000000000a2', NPN = 'Brisbane - Youth - New People 2026';
+    const h = await harness({ consentRows: async () => [{ key: P2, status: 'ready' }] });
+    const st = await h.settings.getSettings();
+    await h.settings.updateSettings({ ministryConfig: { ...st.ministryConfig, elvanto: { ...st.ministryConfig.elvanto,
+      peopleFlowPrefix: 'Brisbane - Youth - New People' } } } as never);
+    await h.link.replaceMirror('roster', [
+      { personId: P1, firstName: a[fi]!, lastName: a[li]!, gender: null, grade: null, kind: 'student', consent: 'unknown' },
+      { personId: P2, firstName: b[fi]!, lastName: b[li]!, gender: null, grade: null, kind: 'student', consent: 'unknown' },
+    ], { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    // P1 waits on New People step 0, due Fri 16 Oct -> consent Fri 23 Oct; P2's Friday passed long ago but its consent row is open
+    await h.link.replaceMirror('flows', [{ rowId: 'r1', flowId: 'f', flowName: NPN, stepId: 's0', stepName: 'Step 0 - wait', stepOrder: 1,
+      personId: P1, name: 'Synthetic Kid', due: '2026-10-16', assignedTo: '', grade: 9, gender: 'male', mobile: null, mobileIsParent: false,
+      consent: 'unknown' }, { rowId: 'r2', flowId: 'f', flowName: NPN, stepId: 's0', stepName: 'Step 0 - wait', stepOrder: 1, personId: P2,
+      name: 'Synthetic Kid', due: '2026-10-01', assignedTo: '', grade: 9, gender: 'female', mobile: null, mobileIsParent: false,
+      consent: 'unknown' }] as never, { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    await h.svc.ingest(SVC, 'console');
+    await h.svc.ingest(CON, 'console');
+    const pending = async (at: string) => {
+      h.setNow(new Date(at));
+      const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+      const by = (f: string) => got.snapshot.students.find((x) => x.firstName === f)!.consentPending;
+      return [by(a[fi]!), by(b[fi]!), by(CON.rows[0]![0]!)];
+    };
+    expect(await pending('2026-10-15T22:59:00.000Z')).toEqual([true, true, true]);   // Fri 16 Oct 8:59 Brisbane
+    expect(await pending('2026-10-15T23:00:00.000Z')).toEqual([true, true, false]);  // 9:00: the connect's Friday passed
+    expect(await pending('2026-10-22T23:00:00.000Z')).toEqual([false, true, false]); // Fri 23 Oct 9:00: step 0's Friday passed
+  });
+
+  it('T2: a DNC person is consent-decided (stays on the list as Do not contact), never pending', async () => {
+    const fi = col(SVC, 'First Name'), li = col(SVC, 'Last Name');
+    const h = await harness();
+    await h.link.replaceMirror('roster', [{ personId: P1, firstName: SVC.rows[0]![fi]!, lastName: SVC.rows[0]![li]!, gender: null,
+      grade: null, kind: 'student', consent: 'contact' }], { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    await h.svc.ingest(SVC, 'console');
+    h.setNow(new Date('2026-10-15T22:00:00.000Z'));
+    const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+    expect(got.snapshot.students.find((x) => x.personId === P1)).toMatchObject({ dnc: true, consentPending: false });
   });
 
   it('T1 (#3): a namesake pair where one is DNC makes the ambiguous n: row DNC; matched rows are untouched', () => {

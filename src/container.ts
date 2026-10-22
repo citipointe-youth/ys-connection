@@ -291,7 +291,8 @@ export async function buildContainer(): Promise<Container> {
   // Local dev and preview deployments send real forms too.
   // auditFeed arrows run at request time, after connectionAudit exists (spec 2026-10-22 §7: feed check on /admin/errors and latest).
   const errorLog = makeErrorLogService({ repo: errorLogRepo, link, auditFeed: () => connectionAudit.checkFeed() });
-  const connectionAudit = makeConnectionAuditService(connectionAudits, settings, { link, errorLog });
+  const connectionAudit = makeConnectionAuditService(connectionAudits, settings, { link, errorLog,
+    consentRows: () => intakeRepo.rows('consent') }); // consent audit B: get() catches a failed read as []
   const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, errorLog });
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
