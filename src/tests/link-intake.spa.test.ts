@@ -24,11 +24,14 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   // L6 Unlinked consent forms (run 2026-10-15b)
   '_lkYouthFilter', '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct', '_ikClOpen', '_ikClQ', '_ikClDraw', '_ikClPick', '_ikClUnlink', '_ikClGo',
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
-  '_navSnap', '_navSame', '_here', '_still'];
+  '_navSnap', '_navSame', '_here', '_still',
+  // consent hub landing (2026-10-23)
+  '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
+  '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
-  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m, /^const _LK_RC = \{\};$/m].map((re) => HTML.match(re)![0]).join('\n');
+  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m, /^const _LK_RC = \{\};$/m, /^const IK_LK_KINDS = .*$/m, /^const HUB_STAGES = .*$/m].map((re) => HTML.match(re)![0]).join('\n');
 
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const HOSTILE = '<img src=x onerror=alert(1)>';
@@ -68,6 +71,7 @@ function makeEnv(e: Env = {}) {
     const _deviceLabel = () => 'iPhone';
     const _lkLastFriday = () => '2026-10-09';
     const _lkRefreshView = () => {};
+    const _usLoad = () => Promise.resolve(); const _usPaint = () => {}; const _usRows = [];
     function __get() { return { S, LINK }; }
   `;
   const fresh = (p: string) => { calls.fresh.push(p); return e.fresh ? Promise.resolve(e.fresh(p)) : Promise.reject(new Error('no')); };
@@ -541,59 +545,12 @@ const ST6 = (caps: Record<string, string> = {}) => ST({ rev: 6, caps: { intakeSa
 const LROW = (n: number, o: any = {}) => ({ key: P(n), status: 'ready', title: 'Kid ' + n, reason: '', outcome: 'Contact allowed', fromApp: false, hasText: false, actions: [], ...o });
 
 describe('consents sub-menus (R2)', () => {
-  const consentEnv = () => makeEnv({ storage: new Map([['ysc.intakeTab', 'consent']]), fresh: (p) => (p.includes('date=')
-    ? { ...ST6(), ...LIST({ date: '2026-10-16', rows: [LROW(1), LROW(2, { outcome: 'No reply: assume consent' }), LROW(3, { status: 'needs-you', outcome: '' })] }) }
-    : { ...ST6(), dates: [{ date: '2026-10-16', takenAt: iso(1000), counts: { needsYou: 1 } }, { date: '2026-10-09', takenAt: iso(1000), counts: {} }] }) });
-  it('R1 (consents run 2026-10-17): the plan is the default; one control (cohort chips), status line with Refresh, Tidy up and help below', async () => {
-    const e = consentEnv();
-    await e.fns._ikLoad(false);
-    const h = e.fns._ikPageHtml(), t = strip(h);
-    expect(e.fns._ik().csub).toBe('last');
-    expect(h).not.toContain('<select'); // no Show dropdown, no Other weeks dropdown
-    expect(t).not.toContain('Last Friday');
-    expect(t).toContain('New people from');
-    expect(h).toContain('onclick="_ikPickDate(0)"');
-    expect(h).toContain('onclick="_ikPickDate(1)"');
-    expect(t).toContain(e.fns._lkDay('2026-10-09') + ' · 1'); // the cohort, with its needs-you count
-    expect(t).toContain(e.fns._lkDay('2026-10-02'));
-    expect(t).toMatch(/New people from.*Checked [^·]+ ·\s*Refresh/s); // one status line under the chips: Checked … · Refresh
-    expect((h.match(/onclick="_ikRefresh\(\)"/g) || []).length).toBe(1);
-    expect(t).toContain('Contact OK');
-    expect(t).toContain('No form · assume OK');
-    expect(t).not.toContain('Form back');
-    expect(t).toContain('Save all 2');
-    expect(t).toContain('1 contact OK · 1 no form');
-    expect(t.indexOf('Ready to save (2)')).toBeLessThan(t.indexOf('Save all 2')); // M2: under the Ready heading
-    expect(t.indexOf('Ready to save (2)')).toBeLessThan(t.indexOf('Tidy up'));
-    expect(t.indexOf('Tidy up')).toBeLessThan(t.indexOf('How consent is decided'));
-    expect(t).not.toContain('What counts as consent');
-  });
   it('R1: Ready is sorted Do not contact, Contact OK, No form; the line counts each', () => {
     const f = makeEnv().fns;
     const rows = [LROW(1, { title: 'Zed', outcome: 'Contact allowed' }), LROW(2, { title: 'Amy', outcome: 'No reply: assume consent' }),
       LROW(3, { title: 'Bo', outcome: 'No contact' }), LROW(4, { title: 'Al', outcome: 'Contact allowed' })];
     expect(f._ikByOutcome(rows).map((r: any) => r.title)).toEqual(['Bo', 'Al', 'Zed', 'Amy']);
     expect(f._ikOutcomeLine(rows)).toBe('1 do not contact · 2 contact OK · 1 no form');
-  });
-  // ux18 P1 (operator 2026-10-18) reverses "nothing loads until asked" for this menu: the page entry warms every list through
-  // _ikLkWarm (tested in consents-preload.spa.test.ts); opening a sub-menu itself still sends nothing.
-  it('the other sub-menus send nothing on open (the page entry warms them), and the Intakes tab still works', async () => {
-    const e = consentEnv();
-    await e.fns._ikLoad(false);
-    expect((e.calls as any).warm.length).toBe(1);
-    const n = e.calls.fresh.length;
-    e.fns._ikConsentSub('forms');
-    const t = strip(e.fns._ikPageHtml());
-    expect(t).toContain('Load forms');
-    expect(t).toContain('Nothing loaded yet');
-    expect(e.calls.posts.length).toBe(0);
-    expect(e.calls.fresh.length).toBe(n);
-    e.fns._ikConsentSub('mismatches');
-    expect(strip(e.fns._ikPageHtml())).toContain('Find mismatches');
-    e.fns._ikConsentSub('bogus');
-    expect(e.fns._ik().csub).toBe('mismatches');
-    e.fns._ikTab('intake');
-    expect(e.fns._ik().tab).toBe('intake');
   });
   it('a console without the lookup says so instead of a search box', () => {
     const e = makeEnv();

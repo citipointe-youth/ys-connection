@@ -94,3 +94,37 @@ describe('search per child', () => {
     expect(F._hubSearch(M, forms, '  ')).toBeNull();
   });
 });
+
+// Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
+const LANDING_NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+  '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml'];
+describe('landing', () => {
+  const env = (I: any) => loadFns(LANDING_NAMES,
+    `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
+     const _lk = {}; const _ikLk = (k) => (_lk[k] = _lk[k] || { kind: k, st: 'idle', res: null }); const _ikLkBusy = () => false;
+     const _lkSeen = (x) => x; const _lkDay = (x) => x; const icS = () => ''; const _ikFormRowEnd = () => '';
+     const _ikClRow = (f, i) => '<div class="unl">' + i + '</div>'; const _ikMisRow = (m, i) => '<div class="mis">' + i + '</div>';
+     const _usRows = [{ id: 'u1' }];`, // _siteDay / _siteInstant / _consentCutoff: loadFns brings the real site-time helpers itself
+    ['_hubSnapApply', '_hubBodyHtml', '_ikLk']);
+  const I = { hub: { lists: { 'intake|2026-10-16': { date: '2026-10-16', rows: [{ key: P(101), status: 'needs-you', title: 'Ava Sample', reason: 'Check the match', outcome: '', hasText: false, personId: null, family: null, actions: [] }] } }, flows: [] }, fixes: {}, hubQ: '' };
+  it('Needs action counts families, unlinked forms, loose mismatches and unsent forms; stage groups show counts', () => {
+    const F2 = env(I);
+    F2._hubSnapApply({ live: true, kinds: { unlinked: { rows: [{ subId: P(5) }], total: 1, takenAt: 't' }, mismatches: { rows: [{ personId: P(77) }], total: 1, takenAt: 't' }, forms: null } });
+    const h = F2._hubBodyHtml().replace(/<[^>]*>/g, '');
+    expect(h).toContain('Needs action (4)');
+    expect(h).toContain('Form in (1)');
+    expect(h).toContain('Done (0)');
+  });
+  it('fallback: a snapshot from an older console is not applied (the caller warms the on-demand lookups)', () => {
+    const F2 = env(I);
+    expect(F2._hubSnapApply({ live: false, kinds: {} })).toBe(false);
+    expect(F2._hubSnapApply(null)).toBe(false);
+    expect(F2._ikLk('unlinked').res).toBeNull();
+  });
+  it('search shows families and per-child form hits; nothing found says so', () => {
+    const F2 = env({ ...I, hubQ: 'zz' });
+    F2._hubSnapApply({ live: true, kinds: { forms: { rows: [{ name: 'Jo & Bo Sample' }], total: 1, takenAt: 't' } } });
+    expect(F2._hubBodyHtml()).toContain('Nobody matches');
+  });
+});

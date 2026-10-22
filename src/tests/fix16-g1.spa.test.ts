@@ -31,7 +31,8 @@ function env(o: { tab?: string; date?: string | null } = {}) {
     const clearTimeout = () => {};
     const _ikDraw = () => {};
     const _ikLoad = () => { __calls.loads++; };
-    const _ikLkPoll = () => {}; const _ikFixPoll = () => {};
+    const _ikLkPoll = () => {}; const _ikFixPoll = () => {}; const _hubLoad = () => {};
+    const IK_LK_KINDS = ['unlinked', 'mismatches', 'forms']; // consent hub: "other" is the step-0 flow rows now
     const _ikRefBar = () => ''; const _ikSubBar = () => ''; const _ikLkPage = () => ''; const _ikWeekHtml = () => '';
     const _ikConsentHelp = () => ''; const _ikConsentTag = () => null; const _ikReadyRows = () => [];
     const _ikFamilyPage = () => 'FAMILY';
@@ -204,13 +205,13 @@ describe('F-47(c) no per-row "console last seen" (the banner already says it)', 
 describe('GAP-2 a pending intake row polls every 5 s, and keeps polling after the phone was away', () => {
   it('polls at 5 s while something is pending', () => {
     const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
-    I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
+    I.key = 'k1'; I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
     f._ikSchedule();
     expect(calls.timers).toContain(5000);
   });
   it('a poll that fires while the app is hidden re-arms, so the result shows within ~5 s of coming back (was the 60 s tick)', () => {
     const { f, I, calls } = env({ tab: 'intake', date: '2026-10-09' });
-    I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
+    I.key = 'k1'; I.det = { ...DET(), actions: [{ id: P(9), type: 'intakeText', status: 'pending' }] };
     f._ikSchedule();
     calls.vis = 'hidden';
     calls.cbs.shift()!();

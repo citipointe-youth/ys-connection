@@ -37,13 +37,10 @@ const ST = (o: any = {}, caps: Record<string, string> = {}, rev = 10) => ({ cons
 const kinds = (a: Array<{ k: string }>) => a.map((x) => x.k);
 
 describe('P1/P2 preload: every Tidy up list on entry', () => {
-  it('asks for all four lists (Profiles that differ included), page 1, no search', () => {
+  it('asks for all three lists (Profiles that differ included), page 1, no search', () => {
     const { fns, asked } = env();
-    expect(fns._ikLkPreload(ST(), NOW)).toEqual(['unlinked', 'mismatches', 'forms', 'other']);
+    expect(fns._ikLkPreload(ST(), NOW)).toEqual(['unlinked', 'mismatches', 'forms']);
     expect(asked.every((a) => a.p === 1 && a.q === '' && a.after === null)).toBe(true);
-  });
-  it('only on the Consents tab', () => {
-    expect(env({ tab: 'intake' }).fns._ikLkPreload(ST(), NOW)).toEqual([]);
   });
   it('skips in the service window, with the console offline, or with lookups off', () => {
     expect(env().fns._ikLkPreload(ST({ inWindow: true }), NOW)).toEqual([]);
@@ -52,32 +49,27 @@ describe('P1/P2 preload: every Tidy up list on entry', () => {
     expect(env().fns._ikLkPreload(null, NOW)).toEqual([]);
   });
   it('skips unlinked without consentLink', () => {
-    expect(env().fns._ikLkPreload(ST({}, { consentLink: 'off' }), NOW)).toEqual(['mismatches', 'forms', 'other']);
+    expect(env().fns._ikLkPreload(ST({}, { consentLink: 'off' }), NOW)).toEqual(['mismatches', 'forms']);
   });
   it('keeps a search, a later page, a busy or failed ask and a fresh answer; asks again for a stale one', () => {
     const lk = {
       unlinked: { kind: 'unlinked', q: 'smith', st: 'idle', res: null },
       mismatches: { kind: 'mismatches', q: '', st: 'ready', res: { page: 1, takenAt: iso(2 * 60e3) }, resQ: '' },
-      forms: { kind: 'forms', q: '', st: 'ready', res: { page: 2, takenAt: iso(20 * 60e3) }, resQ: '' },
-      other: { kind: 'other', q: '', st: 'ready', res: { page: 1, takenAt: iso(20 * 60e3) }, resQ: '' },
+      forms: { kind: 'forms', q: '', st: 'ready', res: { page: 1, takenAt: iso(20 * 60e3) }, resQ: '' },
     };
-    expect(env({ lk }).fns._ikLkPreload(ST(), NOW)).toEqual(['other']);
+    expect(env({ lk }).fns._ikLkPreload(ST(), NOW)).toEqual(['forms']);
+    expect(env({ lk: { forms: { kind: 'forms', q: '', st: 'ready', res: { page: 2, takenAt: iso(20 * 60e3) }, resQ: '' } } }).fns._ikLkPreload(ST(), NOW)).not.toContain('forms');
     expect(env({ lk: { mismatches: { kind: 'mismatches', q: '', st: 'working', res: null } } }).fns._ikLkPreload(ST(), NOW)).not.toContain('mismatches');
-    expect(env({ lk: { other: { kind: 'other', q: '', st: 'failed', res: null } } }).fns._ikLkPreload(ST(), NOW)).not.toContain('other');
+    expect(env({ lk: { forms: { kind: 'forms', q: '', st: 'failed', res: null } } }).fns._ikLkPreload(ST(), NOW)).not.toContain('forms');
   });
 });
 
 describe('_ikLkWarm: once per page entry', () => {
   it('restores, then preloads; a second call within a minute does nothing', async () => {
     const { fns, asked } = env();
-    expect(await fns._ikLkWarm(ST(), NOW)).toEqual(['unlinked', 'mismatches', 'forms', 'other']);
+    expect(await fns._ikLkWarm(ST(), NOW)).toEqual(['unlinked', 'mismatches', 'forms']);
     expect(await fns._ikLkWarm(ST(), NOW + 5000)).toEqual([]);
-    expect(asked.length).toBe(4);
-  });
-  it('not on the New youth tab', async () => {
-    const { fns, asked } = env({ tab: 'intake' });
-    expect(await fns._ikLkWarm(ST(), NOW)).toEqual([]);
-    expect(asked.length).toBe(0);
+    expect(asked.length).toBe(3);
   });
 });
 
@@ -107,12 +99,12 @@ describe('P4 kept answers: ids only, shown at once after a reload', () => {
     expect(I.lk.forms.id).toBe(ID(4));
   });
   it('an expired, failed or unreachable kept answer is dropped quietly (no error on the screen)', async () => {
-    const store = { 'ysc.ikLk.u-admin': JSON.stringify({ forms: { id: ID(4), at: iso(60e3) }, other: { id: ID(6), at: iso(60e3) } }) };
+    const store = { 'ysc.ikLk.u-admin': JSON.stringify({ forms: { id: ID(4), at: iso(60e3) }, mismatches: { id: ID(6), at: iso(60e3) } }) };
     const { fns, I } = env({}, { store, fresh: (p: string) => { if (p.includes(ID(6))) throw Object.assign(new Error('x'), { status: 404 }); return { status: 'failed', reason: 'expired' }; } });
     await fns._ikLkRestore(ST(), NOW);
     expect(I.lk.forms.st).toBe('idle');
     expect(I.lk.forms.msg).toBeFalsy();
-    expect(I.lk.other.st).toBe('idle');
+    expect(I.lk.mismatches.st).toBe('idle');
     expect(JSON.parse(store['ysc.ikLk.u-admin']!)).toEqual({});
   });
   it('a kept answer over a day old is not even asked for', async () => {
@@ -194,19 +186,19 @@ describe('P4 contract: consentLookup payload may carry since (optional, for a co
 describe('N06 one tab warms per login', () => {
   it('a second tab within 3 min asks nothing; after 3 min it asks again', () => {
     const store: Record<string, string> = {};
-    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW)).toHaveLength(4);
+    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW)).toHaveLength(3);
     expect(env({}, { store }).fns._ikLkPreload(ST(), NOW + 60e3)).toEqual([]);
-    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW + 3 * 60e3 + 1)).toHaveLength(4);
+    expect(env({}, { store }).fns._ikLkPreload(ST(), NOW + 3 * 60e3 + 1)).toHaveLength(3);
   });
   it('the same tab is not blocked by its own lock', () => {
     const store: Record<string, string> = {};
     const a = env({}, { store });
     a.fns._ikLkPreload(ST(), NOW);
     a.I.lk = {};
-    expect(a.fns._ikLkPreload(ST(), NOW + 60e3)).toHaveLength(4);
+    expect(a.fns._ikLkPreload(ST(), NOW + 60e3)).toHaveLength(3);
   });
   it('blocked storage still preloads', () => {
-    expect(env({}, { noStorage: true }).fns._ikLkPreload(ST(), NOW)).toHaveLength(4);
+    expect(env({}, { noStorage: true }).fns._ikLkPreload(ST(), NOW)).toHaveLength(3);
   });
 });
 

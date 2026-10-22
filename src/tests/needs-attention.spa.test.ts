@@ -233,7 +233,7 @@ function ik(st: any, intakeAdmin = 'on') {
     const I = { dates: [{ date: '2026-10-09' }], key: null, resend: {}, debT: null };
     const _ik = () => I, _ikSt = () => (${JSON.stringify(st)});
     const esc = (s) => String(s), icS = () => '', progBar = () => 'loading';
-    const _ikListPage = () => 'LIST', _ikFamilyPage = () => 'FAMILY', _ikHoldReason = () => '', _ikOpenOf = () => null, _ikTodo = () => [1];
+    const _hubPage = () => 'LIST', _ikFamilyPage = () => 'FAMILY', _ikHoldReason = () => '', _ikOpenOf = () => null, _ikTodo = () => [1];
   `);
 }
 const INTAKE_CAPS = { intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live', consentLookup: 'live', checkIn: 'live' };
