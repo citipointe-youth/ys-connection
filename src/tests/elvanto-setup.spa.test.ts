@@ -140,7 +140,7 @@ describe('fix round 1: typed ids, fail closed, stale results, null draft', () =>
     function setDraft(d) { _setupDraft = d; }
     function setElv(v) { _setupElv = v; }
     function state() { return { d: _setupDraft, s: _setupElv }; }`;
-  const FN = ['_elvSplitLink', '_setupElvText', '_setupElvLink', '_setupElvCheck', '_elvIdProblem', '_setupElvId', '_setupElvCardHtml', '_setupElvIdHtml'];
+  const FN = ['_elvSplitLink', '_setupElvText', '_setupElvBusText', '_setupElvBusLink', '_setupElvLink', '_setupElvCheck', '_elvIdProblem', '_setupElvId', '_setupElvCardHtml', '_setupElvIdHtml'];
   const load = (post?: string) => loadFns(FN, pre(post), [...FN, 'setDraft', 'setElv', 'state']);
   const notFound = { ok: false, n: 2, fields: {}, options: {}, missing: ['Name of Host filling out form', 'Citipointe Location, option North'],
     missingKeys: ['fields.host', 'options.location'], extra: [],
