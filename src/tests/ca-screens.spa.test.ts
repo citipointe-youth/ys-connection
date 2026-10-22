@@ -636,7 +636,7 @@ describe('Y11 Error log Who? for audit codes', () => {
     expect(calls).toEqual(['reset', 'go ca-quality']);
   });
   it('an audit error row has a Who? button; reconcile rows keep theirs', () => {
-    const f = loadFns(['esc', '_laFmtBrisbane', '_laRelTime', '_elIsNew', '_elRowHtml'], 'var S = {};');
+    const f = loadFns(['esc', 'fmtDay', '_laFmtBrisbane', '_laRelTime', '_elIsNew', '_elRowHtml'], 'var S = {};');
     const row = (category: string, code: string) => ({ id: 'x', category, code, route: 'group', count: 1, counted: true, lastSeen: '2026-10-16T11:15:00Z', ignored: false, line1: 'l1', line2: 'l2' });
     expect(f._elRowHtml(row('audit', 'audit-rows-skipped'), 0, false)).toContain(`onclick="elWho('audit-rows-skipped')">Who?</button>`);
     expect(f._elRowHtml(row('reconcile', 'recon-unmatched'), 0, false)).toContain('Who?');

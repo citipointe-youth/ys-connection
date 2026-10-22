@@ -8,7 +8,7 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 - master sha: aa59979 (audit/ys)
 - last ship: 2026-10-22 12:08 EAST
 - migration: 0043
-- SW version: ysc-v140
+- SW version: ysc-v141
 - promote: auto (Vercel promotes every master build); check /health after the build
 - pending branches: chore/ship ux17/bus 
 <!-- /live -->

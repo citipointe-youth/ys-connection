@@ -6126,7 +6126,8 @@ function showImportReport(report) {
   };
   let h = `<div class="mo-title" style="font-size:16px;font-weight:800;margin-bottom:8px">Import report</div>`;
   h += sec('ir-skip', 'Rows skipped', report.skippedRows, x => `<div>Row ${x.row + 2}: ${esc(x.reason)}</div>`);
-  h += sec('ir-coll', 'Same-name rows in this file', report.nameCollisions, x => `<div>${esc(x.name)} — ${x.count} rows merged into one student</div>`);
+  // Not a rejection: the rows were kept and combined into one student.
+  h += sec('ir-coll', 'Same-name rows combined (nothing dropped)', report.nameCollisions, x => `<div>${esc(x.name)}: ${x.count} rows with the same name were combined into one student, nothing was dropped</div>`);
   h += `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="closeModal()">Done</button>`;
   modal(h);
 }
@@ -6714,7 +6715,7 @@ function _elRowHtml(r, seenAt, open) {
   const n = Number(r.count) || 0;
   const meta = (_elIsNew(r, seenAt) ? '<span class="chip el-new">New</span>' : '')
     + (n > 1 && !r.counted ? `<span class="chip" style="background:var(--paper-dark,#eee)">×${n}</span>` : '')
-    + `<span class="el-when">${esc(_laRelTime(r.lastSeen))}</span>`;
+    + `<span class="el-when">${esc(Date.now() - Date.parse(r.lastSeen) > 1728e5 ? 'Last on ' + fmtDay(r.lastSeen) : _laRelTime(r.lastSeen))}</span>`; // 2+ days old: the date, so an old line is not read as today's
   const acts = open ? `<div class="rc-foot">
       <button class="btn btn-secondary btn-sm" onclick="elFlag('${id}',{ignored:${!r.ignored}})">${r.ignored ? 'Stop ignoring' : 'Ignore'}</button>
       <button class="btn btn-secondary btn-sm" id="el-del-${id}" onclick="elDelete('${id}')">Delete</button>

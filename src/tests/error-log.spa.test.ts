@@ -5,7 +5,7 @@ import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 const html = loadIndexHtml();
 const EL_GROUPS_SRC = html.match(/^const EL_GROUPS = \[[\s\S]*?\];/m)![0];
 // _laFmtBrisbane stays: the real _laRelTime calls it for dates 7 or more days old.
-const NAMES = ['esc', '_laFmtBrisbane', '_laRelTime', '_elVisible', '_elIsNew', '_elRowHtml', '_elBodyHtml', '_errRoute', '_errReport'];
+const NAMES = ['esc', 'fmtDay', '_laFmtBrisbane', '_laRelTime', '_elVisible', '_elIsNew', '_elRowHtml', '_elBodyHtml', '_errRoute', '_errReport'];
 
 function load(token: string | null = 'tok') {
   const sent: any[] = [];
