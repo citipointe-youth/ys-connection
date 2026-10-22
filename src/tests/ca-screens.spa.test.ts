@@ -458,6 +458,19 @@ describe('Y10 screens', () => {
     expect(html).toContain('1 decided, not in a lifegroup</a>');
     expect(html).toContain('1 connected, not back yet</a>');
     expect(html).toContain('No quad (0)');
+    expect(html).not.toContain('ca-deck-term');
+    expect((html.match(/CA\.setTerm\(/g) || []).length).toBe(3);
+    expect((html.match(/>Year so far</g) || []).length).toBe(1);
+    expect((html.match(/Open slides/g) || []).length).toBe(1);
+    expect(html).toContain('onclick="CA.buildDeck()"');
+  });
+  it('Term report: the single Period control drives the page', async () => {
+    const w = caWorld(audit26());
+    await w.show('ca-term');
+    await w.CA.setTerm('2026-T4');
+    const html = w.env.app;
+    expect(html).toContain(`class="ca-chip2 on" onclick="CA.setTerm('2026-T4')"`);
+    expect(html).not.toContain(`class="ca-chip2 on" onclick="CA.setTerm('ALL')"`);
   });
   it('Data check: summary, the lists table words; Upload a file for admins only', async () => {
     const a = audit26();

@@ -9071,9 +9071,7 @@ function rTerm(){
   const ss=QF?D.students.filter(s=>QF==='none'?!s.quad:s.quad===QF):D.students;
   const act=ss.filter(s=>s.sA>0).length,inLG=ss.filter(s=>s.gA>0).length;
   const t=(AUDIT.terms||[]).find(x=>x.key===TERM),pt=t&&AUDIT.perTerm[t.key]||{};
-  const opts=(AUDIT.terms||[]).map(x=>'<option value="'+x.key+'"'+(TERM===x.key?' selected':'')+'>T'+x.ordinal+((AUDIT.perTerm[x.key]||{}).inProgress?' (in progress)':'')+'</option>').join('');
-  let b='<div class="card" style="display:flex;gap:8px;align-items:center"><select id="ca-deck-term" class="fs ca-sel" style="flex:1"><option value="ALL"'+(TERM==='ALL'?' selected':'')+'>Year so far</option>'+opts+'</select>'
-    +'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.buildDeck(document.getElementById(\'ca-deck-term\').value)">Open slides</button></div>';
+  let b='<div class="card" style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="CA.buildDeck()">Open slides</button></div>';
   b+='<p class="ca-head">'+esc((t?t.label:AUDIT_YEAR+' so far')+': '+R[1].v+' came to youth at least once; '+(act?Math.round(inLG/act*100):0)+'% reached a lifegroup.'
     +(lk?' Biggest drop-off: '+caLabel('stage',lk.n)+' → '+caLabel('stage',lk.n+1)+'.':''))+'</p>';
   if(t&&pt.inProgress)b+='<p class="ca-cap">'+esc('Term '+t.ordinal+' is still going: '+(pt.svcTotal||0)+' youth nights so far. Numbers will change.')+'</p>';
