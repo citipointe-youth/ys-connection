@@ -28,7 +28,7 @@ const BEFORE = {
     ['2026-10-18', '2026-10-16'], ['2026-10-19', '2026-10-16'], ['2026-10-20', '2026-10-16'], ['2026-10-21', '2026-10-16'],
     ['2026-10-22', '2026-10-16'], ['2026-10-23', '2026-10-23']],
   stepWait: 'Waiting for the consent reply. Complete opens after Fri 2 Jan 2099 9am.',
-  stepDo: 'Do the consent check first (New youth & consent > Consents).',
+  stepDo: 'Do the consent check first (New youth & consent).',
   notRec: 'No consent reply by Fri 3 Jan 2020 9am. Complete marks "Consent not received" (dated today) on their Elvanto profile, then completes step 0.',
   late: 'The consent form came in after Friday 9 am, so it counts for next week.',
   wait: "Parents can still reply until Friday 9 am, so consent isn't assumed yet. Check again after 9 am.",

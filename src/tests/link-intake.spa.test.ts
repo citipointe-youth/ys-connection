@@ -16,8 +16,8 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   '_ikSchedule', '_ikLeave',
   // R2 Consents sub-menus + R8 Save all (run 2026-10-15)
   '_ikReadyRows', '_ikSaveAllItems', '_ikSaveAllGo',
-  '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkGo', '_ikLkErr', 
-  '_ikLkApply', '_ikLkPoll', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikMisLines', '_ikMisVal', 
+  '_ikLk', '_ikLkBusy', '_ikLkItem', '_ikLkGate', '_ikLkReason', '_ikLkGo', '_ikLkErr',
+  '_ikLkApply', '_ikLkPoll', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', '_ikMisLines', '_ikMisVal',
   '_ikFixText', '_ikFixOpen', '_ikFixGo', '_ikFixPoll',
   // integration review fixes (run 2026-10-15)
   '_ikSaveAllGroups', '_ikDmy', 'fmtDay', '_ikFixChanges', '_ikDncLine',
@@ -634,5 +634,84 @@ describe('Unlinked consent forms (L6)', () => {
   it('a refused link says why', () => {
     const { e } = env();
     expect(e.fns._ikClText({ status: 'refused', detail: 'Only the admin can do this.' })).toEqual(['bad', 'Not saved: Only the admin can do this.']);
+  });
+});
+
+// Task 11 fix round 1: the helpers the hub still uses, tested directly (their old cases went through the deleted Tidy up screens).
+describe('consent hub: mismatch rows and lookups, called directly', () => {
+  const mis = { subId: P(3), personId: P(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date', 'opt-outs'],
+    form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };
+  const live = (rev: number) => ({ ...ST6({ consentFix: 'live' }), consoleLinkRev: rev });
+  it('lines show form vs profile; fix result lines', () => {
+    const f = makeEnv().fns;
+    expect(f._ikMisLines(mis).map((l: string[]) => l.map((x) => x.replace(/ 2026$/, '')))).toEqual([['Consent date', 'Fri 9 Oct', 'blank'], ['Opt-outs', 'Contact with my child', 'blank']]);
+    const h = strip(f._ikMisRow(mis, 0, '', live(15)));
+    expect(h).toContain('Consent date');
+    expect(h).toContain('Contact with my child');
+    expect(f._ikFixText({ status: 'sent', reason: 'already' }, ST6())[1]).toMatch(/Already matched/);
+  });
+  it('F-36: a console-linked row on an older console has no Fix button and says to fix it in Elvanto; an unlinked row has one', () => {
+    const f = makeEnv().fns;
+    const linked = f._ikMisRow({ ...mis, linked: true }, 1, '', live(14));
+    expect(linked).not.toContain('_ikFixOpen(');
+    expect(strip(linked)).toContain('Linked on the console; fix in Elvanto.');
+    expect(f._ikMisRow(mis, 2, '', live(14))).toContain('onclick="_ikFixOpen(2)"');
+  });
+  it('L2: a rev 15 console copies a console-linked form too, so the linked row gets the Fix button', () => {
+    const h = makeEnv().fns._ikMisRow({ ...mis, linked: true }, 1, '', live(15));
+    expect(h).toContain('onclick="_ikFixOpen(1)"');
+    expect(strip(h)).not.toContain('fix in Elvanto');
+  });
+  it('a console without the writer: "Do in Elvanto", no Fix button', () => {
+    const h = makeEnv().fns._ikMisRow(mis, 0, '', ST6({ consentFix: 'off' }));
+    expect(h).toContain('Do in Elvanto');
+    expect(h).not.toContain('_ikFixOpen(');
+  });
+  it('a hostile name and form value render inert; the onclick holds only the index', () => {
+    const h = makeEnv().fns._ikMisRow({ ...mis, name: HOSTILE, form: { ...mis.form, optOuts: [HOSTILE] } }, 3, '', live(15));
+    expect(h).not.toContain(HOSTILE);
+    expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(h).not.toContain(P(4));
+  });
+  it('_ikLkGo posts one consentLookup and waits', async () => {
+    const e = makeEnv({ post: (_p, b) => ({ results: b.items.map((i: any) => ({ id: i.id, kind: 'action', outcome: 'saved' })) }) });
+    await e.fns._ikLkGo('forms', 1, ' Ava ');
+    const x = e.fns._ikLk('forms');
+    expect(x.st).toBe('waiting');
+    const item = e.calls.posts[0].b.items[0];
+    expect(item.type).toBe('consentLookup');
+    expect(item.payload).toEqual({ kind: 'forms', page: 1, ref: item.id });
+    expect(item.note).toBe('Ava');
+    clearTimeout(x.poll);
+    expect(e.fns._ikLkApply(x, { status: 'ready', kind: 'forms', page: 1, pageSize: 25, total: 60, rows: [] }, Date.now())).toBe(false);
+    expect(x.st).toBe('ready');
+  });
+  it('a refused queue shows the server message; no network = offline; 404 = expired', async () => {
+    const e = makeEnv({ post: (_p, b) => ({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'LINK_UNAVAILABLE', message: 'Do this in Elvanto for now.' }] }) });
+    await e.fns._ikLkGo('forms', 1, '');
+    expect(e.fns._ikLk('forms').st).toBe('failed');
+    expect(e.fns._ikLk('forms').msg).toBe('Do this in Elvanto for now.');
+    const x: any = { kind: 'forms' };
+    e.fns._ikLkErr(x, new Error('Load failed'));
+    expect(x.st).toBe('offline');
+    e.fns._ikLkErr(x, Object.assign(new Error('nf'), { status: 404 }));
+    expect(x.msg).toMatch(/expired/);
+  });
+  it('M6: a resend after a network error with the same id (sameId) posts that id again', async () => {
+    const ids: string[] = [];
+    const e = makeEnv({ post: (_p, b) => { ids.push(b.items[0].id); if (ids.length === 1) throw new Error('Load failed'); return { results: [{ id: b.items[0].id, kind: 'action', outcome: 'replay' }] }; } });
+    await e.fns._ikLkGo('forms', 1, '');
+    const x = e.fns._ikLk('forms');
+    expect(x.st).toBe('offline');
+    await e.fns._ikLkGo('forms', 1, '', x.id);
+    expect(ids[1]).toBe(ids[0]);
+    expect(e.fns._ikLk('forms').st).toBe('waiting');
+    clearTimeout(e.fns._ikLk('forms').poll);
+  });
+  it('M3/M5: an unreadable answer is an error that says why', () => {
+    const f = makeEnv().fns, now = Date.now();
+    const x: any = { kind: 'mismatches', since: now };
+    f._ikLkApply(x, { status: 'failed', reason: 'unreadable' }, now);
+    expect(x.msg).toBe("Couldn't read the answer. Search again.");
   });
 });

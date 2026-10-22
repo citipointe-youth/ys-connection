@@ -1505,7 +1505,7 @@ function _navLanding(page) {
   if (page === 'link-groups' && !(LINK.rf && LINK.rf.dirty && LINK.rf.mode === 'edit')) { LINK.gid = null; LINK.rf = null; }
   if (page === 'link-intake' && LINK.ik) {
     _ikLeave();
-    Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, date: null, list: null, saErr: {}, hubQ: '', hubFam: null });
+    Object.assign(LINK.ik, { key: null, det: null, detErr: null, pick: null, date: null, list: null, saErr: {}, hubQ: '', hubFam: null, hubKid: 0 });
   }
   if (page === 'bus') { BUS.tab = 'roster'; BUS.carsOpen = false; } // BUS-1: Students (Car setup for a junior leader via _busPickTab)
 }
@@ -10250,7 +10250,7 @@ function _lkFresh() {
   return { status: null, services: null, today: null, defaultSvc: null, svc: null, people: {}, mem: {}, memOnly: false,
     q: { search: '' }, doneOpen: false, flushing: null, timer: null, fails: 0, red: false, flash: false,
     tick: null, ticks: 0, statusAt: 0, refusals: {}, inflight: {}, pickDay: null, okDay: {}, toast: null, toastT: null, searchT: null, loadGen: 0, resGen: 0, lq: null, pickSel: null, pickThen: null, loadErr: null, booted: false, ask: null,
-    groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, gm: {}, gmOpen: {}, mres: {}, youth: null, youthErr: null, yp: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, fFlow: '', adm: _lkAdmFresh(), ik: null };
+    groups: null, gErr: null, gid: null, gwk: 0, rf: null, gres: {}, ldrs: null, iamThen: null, gm: {}, gmOpen: {}, mres: {}, youth: null, youthErr: null, yp: null, flows: null, flowsAt: 0, fOpen: {}, fErr: null, fres: {}, fs: null, adm: _lkAdmFresh(), ik: null };
 }
 const LK_DOOR_TYPES = ['checkIn', 'checkOut'];
 const LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
@@ -10347,7 +10347,7 @@ function _lkStatusText(row, lastSeen) {
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Checked in with no room, so there is nothing to check out.'; // T6 (2026-10-21)
-      if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent > Consents).';
+      if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
       return R[row.reason] || row.message || R.unknown;
     case 'unclear': return 'Not sure it saved. The admin is checking Elvanto.';
@@ -11884,11 +11884,10 @@ function _lkFfHtml(on) {
 }
 // The rows this login sees on the screen (filters only for admin/director).
 function _lkFlowVisible() {
-  const k = '';
-  const rows = k ? (LINK.flows || []).filter((r) => _lkFlowKind(r) === k) : (LINK.flows || []);
+  const rows = LINK.flows || [];
   return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), _juniorMin()) : rows;
 }
-// I7 (R2-G4): admin-only tiles "New Students" / "Parent text" (the Parent Consent flow's first step), shown when both flows are pushed.
+// Flow kinds 'people' / 'parent' (_lkHubOwned finds the Parent Consent flow's first step by kind).
 // Y2b: the two flow names come from this location's settings (Youth Setup, ministryConfig.elvanto); a blank one matches nothing.
 function _lkFlowKind(r) {
   const n = String((r && r.flowName) || ''), e = ((S.settings && S.settings.ministryConfig) || {}).elvanto || {};
@@ -11918,7 +11917,7 @@ function _lkHubOwned(r) {
 function _lkStepBlock(r) {
   if (r && r.dnc) return 'Do not contact: this person can only be removed from the step.';
   if (r && r.consentStep && r.consent !== 'ok' && !r.notReceivedOk) {
-    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : 'Do the consent check first (New youth & consent > Consents).';
+    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : 'Do the consent check first (New youth & consent).';
   }
   return '';
 }

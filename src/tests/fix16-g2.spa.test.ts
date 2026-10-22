@@ -2,8 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
-const FNS = ['esc', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll', 
-  '_ikMisRow', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName', 
+const FNS = ['esc', '_ikLk', '_ikLkBusy', '_ikLkReason', '_ikLkErr', '_ikLkGo', '_ikLkItem', '_ikLkApply', '_ikLkPoll',
+  '_ikMisRow', '_ikLkGate', '_ikRev', '_ikMisLines', '_ikMisVal', '_ikFixText', '_ikDmy', 'fmtDay', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikAnd', '_ikFormName', 'tidyName',
   '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');

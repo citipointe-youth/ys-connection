@@ -11,9 +11,9 @@ export class LinkUnavailable extends AppError {
 export class LinkDnc extends AppError {
   constructor() { super('LINK_DNC', 'Do not contact: this person can only be removed from the step.', 409); }
 }
-/** Rev 6 (review C1): the New People consent step moves on through New youth & consent > Consents only. */
+/** Rev 6 (review C1): the New People consent step moves on through New youth & consent only. */
 export class ConsentCheckFirst extends AppError {
-  constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (New youth & consent > Consents).', 409); }
+  constructor() { super('CONSENT_CHECK_FIRST', 'Do the consent check first (New youth & consent).', 409); }
 }
 /** Y2a: no New People flow known (blank or unmatched peopleFlowPrefix): no step 0 can be told from the consent step (fail closed). */
 export class ConsentFlowUnknown extends AppError {

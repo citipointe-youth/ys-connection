@@ -213,7 +213,7 @@ export function consentFriday(due: string | null | undefined, textedOn: string |
 /** That night's consent cut-off (structure.consentCutoff, local time; Brisbane 9:00) has passed. */
 export const consentFridayPassed = (friday: string, now: Date, cutoff: string, tz: string) => now.getTime() >= instantOf(friday, cutoff, tz);
 /**
- * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent > Consents) is done, or
+ * Complete on the consent step (step 0). 'done': that person's consent row (New youth & consent) is done, or
  * their profile consent is 'ok' and no consent row for them is open. 'notReceived' (R4): no consent row at all, no consent
  * on the profile, not DO NOT CONTACT, and their consent Friday 9:00 has passed: allowed, and the console records consent
  * not received first. null: refused (CONSENT_CHECK_FIRST).
