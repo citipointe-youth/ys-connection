@@ -12,10 +12,12 @@ import type { LinkRosterRow } from '../core/link-types';
 import { BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
 import type { AppSettings } from '../core/entities/settings';
 import type { ErrorLogService } from './error-log.service';
-import { brisbaneToday } from './link-rules';
+import { brisbaneToday, matchFold } from './link-rules';
 import { parseSource } from './audit-parse';
 import { auditConfigOf, buildYear, sourcesMeta } from './audit-build';
 import { upgradeSnapshot } from './audit-upgrade';
+
+const nameKey = (first: string, last: string) => `${matchFold(first)}|${matchFold(last)}`; // the build's keyOf (audit-build.ts:27)
 
 export type { AuditSummary } from '../repositories/interfaces/entity-repositories';
 
@@ -40,11 +42,17 @@ function requireCaModule(settings: AppSettings): void {
 /** The audit's calendar year: the site-time year of `at` (spec §5.3). */
 export const siteYear = (at: Date, tz: string): number => Number(brisbaneToday(at, tz).slice(0, 4));
 
-/** R1: every student gets `dnc`; a DO NOT CONTACT person's phone is nulled unless `keep` (canSeeDncPhones). Read time only. */
-export function maskDnc(students: AuditSnapshotV2['students'], roster: readonly Pick<LinkRosterRow, 'personId' | 'consent'>[], keep: boolean): AuditStudentView[] {
-  const dnc = new Set(roster.filter((r) => isDnc(r.consent)).map((r) => r.personId));
+/** R1: every student gets `dnc`; a DO NOT CONTACT person's phone is nulled unless `keep` (canSeeDncPhones). Read time only.
+ *  An unmatched row (`n:` id: no active roster hit, or a namesake) is DNC when ANY roster row (inactive too, sticky) with
+ *  its name key is DNC: fail closed (consent audit C#3). */
+export function maskDnc(students: AuditSnapshotV2['students'],
+  roster: readonly Pick<LinkRosterRow, 'personId' | 'firstName' | 'lastName' | 'consent'>[], keep: boolean): AuditStudentView[] {
+  const dncRows = roster.filter((r) => isDnc(r.consent));
+  const dnc = new Set(dncRows.map((r) => r.personId));
+  const dncKeys = new Set(dncRows.map((r) => nameKey(r.firstName, r.lastName)));
   return students.map((s) => {
-    const d = !!s.personId && dnc.has(s.personId);
+    const d = s.personId ? dnc.has(s.personId)
+      : (s.id.startsWith('n:') && dncKeys.has(s.id.slice(2))) || dncKeys.has(nameKey(s.firstName, s.lastName));
     return { ...s, dnc: d, phone: d && !keep ? null : s.phone };
   });
 }

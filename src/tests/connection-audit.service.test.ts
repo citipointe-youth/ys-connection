@@ -207,11 +207,41 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     const others = got.snapshot.students.filter((x) => x.personId !== P1);
     expect(others.every((x) => x.dnc === false)).toBe(true);
     // import:run is admin + director only and both see DNC phones, so the strip itself is checked on the pure helper:
-    const masked = maskDnc(got.snapshot.students, [{ personId: P1, consent: 'contact' }], false);
+    const masked = maskDnc(got.snapshot.students, [{ personId: P1, firstName: 'Zz', lastName: 'Zz', consent: 'contact' }], false);
     expect(masked.find((x) => x.personId === P1)).toMatchObject({ dnc: true, phone: null });
     expect(masked.filter((x) => x.personId !== P1)).toEqual(others);
-    expect(maskDnc(got.snapshot.students, [{ personId: P1, consent: 'ok' }], false).find((x) => x.personId === P1))
+    expect(maskDnc(got.snapshot.students, [{ personId: P1, firstName: 'Zz', lastName: 'Zz', consent: 'ok' }], false).find((x) => x.personId === P1))
       .toMatchObject({ dnc: false, phone: '0400000001' });
+  });
+
+  it('T1 (#3): an inactive DNC roster person gets an n: row that is still DNC (fail closed by name key)', async () => {
+    const h = await harness();
+    const fi = col(SVC, 'First Name'), li = col(SVC, 'Last Name'), mi = col(SVC, 'Mobile');
+    const first = SVC.rows[0]![fi]!, last = SVC.rows[0]![li]!;
+    const body: OkBody = { ...SVC, rows: SVC.rows.map((r, i) => (i === 0 ? r.map((c, j) => (j === mi ? '0400000001' : c)) : r)) };
+    await h.link.replaceMirror('roster', [{ personId: P1, firstName: first, lastName: last, gender: null, grade: null, kind: 'student',
+      consent: 'all' }], { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    await h.link.replaceMirror('roster', [], { takenAt: later(SVC, 1).takenAt, consoleId: SVC.consoleId }); // P1 now inactive (sticky DNC)
+    await h.svc.ingest(body, 'console');
+    const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+    const me = got.snapshot.students.find((x) => x.firstName === first && x.lastName === last)!;
+    expect(me.personId).toBeNull();                                      // identify uses active rows only
+    expect(me).toMatchObject({ dnc: true, phone: '0400000001' });        // admin keeps the number
+    const masked = maskDnc(got.snapshot.students, await h.link.roster(), false);
+    expect(masked.find((x) => x.id === me.id)).toMatchObject({ dnc: true, phone: null });
+  });
+
+  it('T1 (#3): a namesake pair where one is DNC makes the ambiguous n: row DNC; matched rows are untouched', () => {
+    const s = (id: string, personId: string | null, firstName: string, lastName: string) => ({ id, personId, firstName, lastName,
+      gender: 'male' as const, grade: 9, quad: null, caOnly: false, team: false, connect: null, decision: null, lastSeen: null,
+      phone: '0400000009', phoneIsParent: false });
+    const roster = [
+      { personId: 'pa', firstName: 'Testa', lastName: "O'Synth", consent: 'contact' as const },
+      { personId: 'pb', firstName: 'testa', lastName: 'OSynth', consent: 'ok' as const },
+      { personId: 'pc', firstName: 'Other', lastName: 'Synth', consent: 'ok' as const },
+    ];
+    const out = maskDnc([s('n:testa|osynth', null, 'Testa', "O'Synth"), s('pc', 'pc', 'Other', 'Synth'), s('n:nobody|synth', null, 'Nobody', 'Synth')], roster, false);
+    expect(out.map((x) => [x.dnc, x.phone])).toEqual([[true, null], [false, '0400000009'], [false, '0400000009']]);
   });
 
   it('v1 snapshot upgraded on read', async () => {
