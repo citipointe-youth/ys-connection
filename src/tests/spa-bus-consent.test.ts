@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadFns, loadIndexHtml } from './helpers/extract-fn';
+import { MINISTRY_CONFIG_DEFAULTS, DEFAULT_CONSENT_DECLARATION } from '../core/ministry-config';
 
 const PRE = "const esc = (s) => String(s == null ? '' : s).replace(/[&<>\"']/g, (c) => '&#' + c.charCodeAt(0) + ';'); const icS = (n) => '<i data-i=\"' + n + '\"></i>'; const fmtDay = (v) => 'Mon 5 Oct';";
 
@@ -117,13 +118,23 @@ describe('consent form sheet (R2, R3, R6)', () => {
   });
 });
 
-// F5: the "client default = server default" pin moves to Task 10 (DEFAULT_CONSENT_DECLARATION lands in lane B).
+// F5: the "client default = server default" pin landed at the Task 10 merge.
 describe('declaration editor and client defaults', () => {
   it('Bus settings has the declaration textarea, a reset and the patch key; defaults carry the new keys', () => {
     const html = loadIndexHtml();
     expect(html).toContain('id="bus-decl"');
     expect(html).toContain('consentDeclaration: document.getElementById(\'bus-decl\').value.trim()');
     expect(html).toMatch(/consentDeclaration: '[^']+', consentLastChecked: '', consentLastNew: 0/);
+  });
+  it('client default = server default (F5, Task 10): the whole busMinistry block, declaration included', () => {
+    const src = loadIndexHtml();
+    const i = src.indexOf('const MINISTRY_CONFIG_DEFAULTS_CLIENT = {');
+    const block = src.slice(i, src.indexOf('\n};', i) + 3);
+    // eslint-disable-next-line no-new-func
+    const client = new Function(`${block}\nreturn MINISTRY_CONFIG_DEFAULTS_CLIENT;`)();
+    expect(client.busMinistry.consentDeclaration).toBe(DEFAULT_CONSENT_DECLARATION);
+    expect(client.busMinistry).toEqual(MINISTRY_CONFIG_DEFAULTS.busMinistry);
+    expect(client.elvanto.busConsentFormId).toBe(MINISTRY_CONFIG_DEFAULTS.elvanto.busConsentFormId);
   });
   it('Youth Setup has the Bus consent form link input (F11)', () => {
     expect(loadIndexHtml()).toContain('setup-elv-bus');
