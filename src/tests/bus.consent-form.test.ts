@@ -1,5 +1,5 @@
 // Bus consent (spec 2026-10-22 §5.5/§5.7, R2/R8): POST /bus/consent-form and the consent address Where option.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { makeBusService } from '../services/bus.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { FakeRoutingProvider } from '../services/routing/fake-routing-provider';
@@ -64,6 +64,29 @@ describe('consent form submit (R2)', () => {
     const { studentId: _s, ...rest } = body;
     await t.svc.consentSubmit(t.ctx('admin'), { ...rest, riderId: r.id });
     expect((await t.bus.listConsentSubmits())[0]).toMatchObject({ studentId: 's1', guestId: null, elvantoResult: 'unconfirmed' });
+  });
+  it('fix round 1: after a sent form, an audit-row or queue failure never turns the reply into an error; logged without PII', async () => {
+    const t = await mk('sent');
+    await claimWith(t.link);
+    t.bus.insertConsentSubmit = async () => { throw Object.assign(new Error('db down Jess Tran'), { code: '57P01' }); };
+    t.link.insertAction = async () => { throw Object.assign(new Error('boom'), { code: 'XX000' }); };
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await t.svc.consentSubmit(t.ctx('admin'), body)).toMatchObject({ result: 'sent', dropoff: 'Carindale bus stop' });
+      const lines = err.mock.calls.map((c) => JSON.stringify(c));
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain('57P01');
+      expect(lines[1]).toContain('XX000');
+      for (const l of lines) for (const pii of ['Jess', 'Tran', '0400000003', 'Alex', 'Test St']) expect(l).not.toContain(pii);
+    } finally { err.mockRestore(); }
+  });
+  it('fix round 1: no console listing the type (LinkUnavailable) is expected and logs nothing', async () => {
+    const t = await mk('sent');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await t.svc.consentSubmit(t.ctx('admin'), body);
+      expect(err).not.toHaveBeenCalled();
+    } finally { err.mockRestore(); }
   });
   it('the route is untimed (a 503 after the POST would invite a duplicate)', () => {
     expect(UNTIMED_ROUTES.has('POST /bus/consent-form')).toBe(true);

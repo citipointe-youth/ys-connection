@@ -535,3 +535,14 @@ describe('Y1b: New person needs this location\'s Elvanto forms before it is turn
     expect(off.ministryConfig.modules.newYouthForms).toBe('off');
   });
 });
+
+describe('bus consent check stamps are push-only (fix round 1)', () => {
+  it('PATCH /settings ignores busMinistry.consentLastChecked / consentLastNew and keeps the stored values; other bus keys still save', async () => {
+    const { repo, service } = await makeService();
+    const cur = (await repo.getSettings()).ministryConfig;
+    await repo.updateSettings({ ministryConfig: { ...cur, busMinistry: { ...cur.busMinistry, consentLastChecked: '2026-10-23T04:00:20.000Z', consentLastNew: 3 } } });
+    await service.update(ADMIN, { ministryConfig: { busMinistry: { consentLastChecked: '2026-01-01T00:00:00.000Z', consentLastNew: 0, leaveTime: '20:30' } } });
+    const b = (await repo.getSettings()).ministryConfig.busMinistry;
+    expect([b.consentLastChecked, b.consentLastNew, b.leaveTime]).toEqual(['2026-10-23T04:00:20.000Z', 3, '20:30']);
+  });
+});

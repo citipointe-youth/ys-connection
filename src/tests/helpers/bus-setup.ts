@@ -40,5 +40,5 @@ export async function setup(opts: { moduleOn?: boolean; routing?: RoutingProvide
   await connections.save({ id: 'c-L1-s1', studentId: 's1', leaderId: 'L1', assignedByRole: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
   const svc = makeBusService(bus, students, leaders, settings, opts.routing, connections);
   const ctx = (role: string, asLeaderId: string | null = null, localNow = FRI_7PM): BusCtx => ({ actor: actor(role), asLeaderId, localNow });
-  return { svc, bus, students, leaders, settings, ctx };
+  return { svc, bus, students, leaders, settings, ctx, connections };
 }

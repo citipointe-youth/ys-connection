@@ -15,6 +15,7 @@ import { LinkOpenDuplicate, LinkUnavailable } from '../core/errors/link-errors';
 import { consentView, latestForm, sameAddress } from './bus-consent';
 import type { Actor } from '../core/entities/user';
 import { makeDnc, type Dnc } from './dnc';
+import { createLogger } from '../utils/logger';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
   BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusGenerateResult,
@@ -234,6 +235,8 @@ const hhmmAt = (startIso: string, addSec: number): string => new Date(Date.parse
 // M1: a bare schema.parse(input) throws ZodError, which the global error middleware maps to the
 // generic "Validation failed" — unhelpful for a refine() message like "Choose a student or a new
 // person". Bus routes parse through this instead so the caller sees the first real issue.
+const log = createLogger('bus');
+
 function parseIn<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
   try {
     return schema.parse(input);
@@ -1362,12 +1365,20 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         who = { studentId: r.studentId, guestId: r.studentId ? null : r.guestId };
       }
       const r = await ext.newYouth.sendBusConsent(ctx.actor, input); // 4xx/5xx refusals throw before any POST: no audit row then
+      // The form is in Elvanto now: nothing below may turn the reply into an error (a leader would file it twice).
       if (!r.repeat) { // F20: a double tap answers the first send again; it is not a second submit
-        await bus.insertConsentSubmit({ id: generateId(), ...who, leaderId: selfLeaderId(ctx), leaderName: await whoLabel(ctx), submittedAt: nowIso(),
-          readOutConfirmed: true, elvantoResult: r.result === 'sent' ? 'sent' : r.result === 'failed' ? 'failed' : 'unconfirmed',
-          first: String(i.first ?? ''), last: String(i.last ?? '') });
+        try {
+          await bus.insertConsentSubmit({ id: generateId(), ...who, leaderId: selfLeaderId(ctx), leaderName: await whoLabel(ctx), submittedAt: nowIso(),
+            readOutConfirmed: true, elvantoResult: r.result === 'sent' ? 'sent' : r.result === 'failed' ? 'failed' : 'unconfirmed',
+            first: String(i.first ?? ''), last: String(i.last ?? '') });
+        } catch (err) { log.error('bus consent audit row not saved', { result: r.result, code: (err as { code?: string }).code ?? 'unknown' }); }
       }
-      if (r.result === 'sent' && ext.link) { try { await queueCheck(ctx); } catch { /* no console listed: Friday's checks pick it up */ } }
+      if (r.result === 'sent' && ext.link) {
+        try { await queueCheck(ctx); } catch (err) {
+          // LinkUnavailable = no console lists the type yet: Friday's checks pick the form up. Anything else is logged (code only).
+          if (!(err instanceof LinkUnavailable)) log.error('bus consent check not queued', { code: (err as { code?: string }).code ?? 'unknown' });
+        }
+      }
       return r;
     },
     async setDropped(ctx, riderId, input) {

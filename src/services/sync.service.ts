@@ -72,13 +72,19 @@ export function makeSyncService(d: SyncDeps) {
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
-      const max = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off')
-        && m.intakeAdmin !== 'on' && !m.busMinistry ? 0 : req.max;
+      const screensOff = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off');
+      const max = screensOff && m.intakeAdmin !== 'on' && !m.busMinistry ? 0 : req.max;
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
       if (m.intakeAdmin !== 'on') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
       if (!m.busMinistry) delete capabilities.busConsentCheck; // rev 18: Bus module off = never leased
+      // Fix round 1: Bus on keeps the claim leasing, but the screens' stop button still holds. With every link screen off,
+      // only busConsentCheck (and the intake/consent types while intake is on) stays listed, so an older queued row is never sent.
+      if (screensOff) {
+        const keep = new Set<string>(['busConsentCheck', ...(m.intakeAdmin === 'on' ? [...INTAKE_TYPES, ...CONSENT_TYPES] : [])]);
+        for (const t of Object.keys(capabilities) as (keyof typeof capabilities)[]) if (!keep.has(t)) delete capabilities[t];
+      }
       const claimed = await d.link.claim({
         console: { consoleId: req.consoleId, label: req.consoleLabel, contractVersion: req.contractVersion,
           consoleVersion: req.consoleVersion, inWindow: req.inWindow, pollSeconds: req.pollSeconds,

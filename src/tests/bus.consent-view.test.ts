@@ -13,7 +13,7 @@ const form = (over: Partial<BusConsentForm>): BusConsentForm => ({ id: 'f1', sub
 async function withLink() {
   const t = await setup();
   const link = new InMemoryLinkRepository();
-  const svc = makeBusService(t.bus, t.students, t.leaders, t.settings, undefined, undefined, undefined, { link });
+  const svc = makeBusService(t.bus, t.students, t.leaders, t.settings, undefined, t.connections, undefined, { link });
   return { ...t, svc, link };
 }
 const juniorOf = (t: Awaited<ReturnType<typeof withLink>>) => ({ ...t.ctx('leader'), actor: { ...t.ctx('leader').actor, leaderId: 'L1' } });
@@ -127,5 +127,36 @@ describe('DNC on consent details', () => {
     await svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
     const d = (await svc.getRun(t.ctx('grade'))).riders[0]!.consent.details!;
     expect([d.parentName, d.parentPhone]).toEqual(['Alex Tran', null]);
+  });
+});
+
+describe('R7 junior redaction on My car and search (Review Focus 3, fix round 1)', () => {
+  const PARENT = ['parentName', 'parentPhone', 'address', 'school', 'pickup', 'pickupBy'];
+  it('a junior leader driving the car gets {year, current} on its stops: no parent name, phone, address, school or pickup', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({})]);
+    const v = await t.svc.saveVehicle(t.ctx('admin'), { name: 'Van', seats: 8, endsAt: 'church' });
+    const rv = (await t.svc.getRun(t.ctx('admin'))).vehicles.find((x) => x.vehicleId === v.id)!;
+    await t.svc.updateRunVehicle(t.ctx('admin'), rv.id, { leaderIds: ['L1'], running: true });
+    const r = await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
+    await t.svc.moveRider(t.ctx('admin'), r.id, { runVehicleId: rv.id });
+    const admin = (await t.svc.myCar(t.ctx('admin', 'L1'))).stops[0]!.consent;
+    expect(admin.details).toMatchObject({ parentName: 'Alex Tran' }); // the same car, a full login: details present
+    const stop = (await t.svc.myCar(juniorOf(t))).stops[0]!;
+    expect(stop.consent).toEqual({ year: 2026, current: true });
+    const json = JSON.stringify(stop.consent);
+    for (const k of PARENT) expect(json).not.toContain(k);
+    expect(json).not.toContain('Alex Tran');
+    expect(json).not.toContain('0400000003');
+    expect(json).not.toContain('Example High');
+  });
+  it('a junior leader search hit (own connected student) carries {year, current} only', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({})]);
+    const hits = await t.svc.search(juniorOf(t), 'Jess');
+    expect(hits.map((h) => h.id)).toEqual(['s1']);
+    expect(hits[0]!.consent).toEqual({ year: 2026, current: true });
+    const json = JSON.stringify(hits[0]);
+    for (const s of ['Alex Tran', '0400000003', 'Example High', '1 Test St', 'pickup', 'parent']) expect(json).not.toContain(s);
   });
 });
