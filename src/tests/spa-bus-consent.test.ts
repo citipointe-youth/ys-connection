@@ -129,3 +129,56 @@ describe('declaration editor and client defaults', () => {
     expect(loadIndexHtml()).toContain('setup-elv-bus');
   });
 });
+
+describe('fix round 1', () => {
+  it('the differs button stops the tap reaching the row', () => {
+    const { _busConsentHintHtml } = loadFns(['_busConsentHintHtml'], PRE);
+    expect(_busConsentHintHtml({ id: 'r1', consent: { differs: true, details: { formId: 'f1' } } })).toContain("onclick=\"event.stopPropagation();busEditRider('r1', 'consent:f1')");
+  });
+  const POLL = (page: string, editing = false) => `
+    const S = { page: '${page}' }; const BUS = { consentStatus: null, pendingRepaint: false }; const calls = { render: 0, toast: [], get: 0 };
+    let reply = { checking: true }, offline = false, tmr = null, _busConsentPoll = null;
+    const setInterval = (f) => { calls.intervals = (calls.intervals || 0) + 1; tmr = f; return calls.intervals; }; const clearInterval = () => { calls.cleared = (calls.cleared || 0) + 1; tmr = null; };
+    const renderBus = () => { calls.render++; }; const _busEditing = () => ${editing}; const toast = (m) => calls.toast.push(m);
+    const _busSend = async () => ({}); const _busGet = async () => { calls.get++; if (offline) throw new Error('x'); return reply; };`;
+  const NAMES = ['_busConsentRepaint', 'busConsentCheck', '_busConsentPollTick'];
+  const RET = [...NAMES, 'calls', 'BUS', 'S', '_pollSet'];
+  const load = (page: string, editing = false) => loadFns(NAMES, POLL(page, editing) + ' const _pollSet = (o) => { if (o.reply) reply = o.reply; if ("offline" in o) offline = o.offline; };', RET);
+  it('stops polling and repaints once checking is false', async () => {
+    const f = load('bus'); f._pollSet({ reply: { checking: false, lastNew: 1 } });
+    await f._busConsentPollTick(Date.now() + 1000);
+    expect(f.calls.cleared).toBe(1); expect(f.calls.render).toBe(1); expect(f.BUS.consentStatus.lastNew).toBe(1);
+  });
+  it('times out with the toast, even while offline, and re-enables the button', async () => {
+    const f = load('bus'); f._pollSet({ offline: true });
+    await f._busConsentPollTick(Date.now() - 1);
+    expect(f.calls.toast).toEqual(["Console didn't respond, try again later"]); expect(f.BUS.consentStatus.checking).toBe(false); expect(f.calls.cleared).toBe(1);
+  });
+  it('two taps leave one live interval; a tap off the Bus page does not repaint', async () => {
+    const f = load('bus'); await f.busConsentCheck(); await f.busConsentCheck();
+    expect(f.calls.intervals).toBe(2); expect(f.calls.cleared).toBe(2); // each tap clears the previous before setting its own
+    const g = load('home'); await g.busConsentCheck();
+    expect(g.calls.render).toBe(0);
+    await g._busConsentPollTick(Date.now() + 1000); expect(g.calls.cleared).toBeGreaterThan(1);
+  });
+  it('typing in a field defers the repaint', async () => {
+    const f = load('bus', true); await f.busConsentCheck();
+    expect(f.calls.render).toBe(0); expect(f.BUS.pendingRepaint).toBe(true);
+  });
+  it('a late _bcRelookup reply is dropped when the sheet was replaced (house late-reply rule)', async () => {
+    let sheet: any = { id: 1 };
+    const { _bcRelookup, BUS } = loadFns(['_bcRelookup', '_bcQuery'], `
+      const BUS = { bc: { p: { declaration: 'd' }, who: { riderId: 'r' } } };
+      const _bcRead = () => ({ first: 'Jess', last: 'Tran', address: {} });
+      const _here = () => ({ mo: 1 }); const _stillSheet = (h) => globalThis.__sheetSame;
+      const _busGet = async (p) => p.includes('search') ? [{ kind: 'student', id: 's1' }] : { address: {}, declaration: 'd2' };
+      const busConsentForm = () => { globalThis.__rendered = true; };`, ['_bcRelookup', 'BUS']);
+    (globalThis as any).__sheetSame = false; (globalThis as any).__rendered = false;
+    await _bcRelookup(); expect((globalThis as any).__rendered).toBe(false); expect(BUS.bc.who).toEqual({ riderId: 'r' });
+    (globalThis as any).__sheetSame = true; await _bcRelookup(); expect((globalThis as any).__rendered).toBe(true); expect(BUS.bc.who).toEqual({ studentId: 's1' });
+    void sheet;
+  });
+  it('a blank declaration saves as the default', () => {
+    expect(loadIndexHtml()).toMatch(/bus-decl'\)\.value\.trim\(\) \|\| MINISTRY_CONFIG_DEFAULTS_CLIENT\.busMinistry\.consentDeclaration/);
+  });
+});

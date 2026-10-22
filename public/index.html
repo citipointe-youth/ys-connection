@@ -9762,7 +9762,7 @@ function _busConsentDetailsHtml(c) {
 }
 function _busConsentHintHtml(r) {
   const c = r && r.consent;
-  return c && c.differs && c.details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
+  return c && c.differs && c.details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
 }
 function _busConsentStatusHtml(st) {
   if (!st) return '';
@@ -9773,17 +9773,22 @@ function _busConsentStatusHtml(st) {
   return `<div class="strip"><span class="lk-d">${esc(last)}</span>${btn}</div>${un}`;
 }
 let _busConsentPoll = null;
+// Repaint like busRefresh does: only while Bus is showing, and not over a field being typed in.
+function _busConsentRepaint() { if (S.page === 'bus') { if (_busEditing()) BUS.pendingRepaint = true; else { BUS.pendingRepaint = false; renderBus(); } } }
 async function busConsentCheck() {
   try { await _busSend('POST', '/bus/consent/check', {}); } catch (e) { toast(e.code === 'LINK_UNAVAILABLE' ? "The console can't check right now. Try again later." : e.message); return; }
-  BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: true }); renderBus();
+  BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: true }); _busConsentRepaint();
   const until = Date.now() + 180000; clearInterval(_busConsentPoll);
   _busConsentPoll = setInterval(() => _busConsentPollTick(until), 5000);
 }
 async function _busConsentPollTick(until) {
-  let st; try { st = await _busGet('/bus/consent/status'); } catch { return; }
-  BUS.consentStatus = st;
-  if (!st.checking) { clearInterval(_busConsentPoll); renderBus(); return; }
-  if (Date.now() > until) { clearInterval(_busConsentPoll); toast("Console didn't respond, try again later"); renderBus(); }
+  let st = null; try { st = await _busGet('/bus/consent/status'); } catch { /* offline: still reach the timeout below */ }
+  if (st) { BUS.consentStatus = st; if (!st.checking) { clearInterval(_busConsentPoll); _busConsentRepaint(); return; } }
+  if (S.page !== 'bus') { clearInterval(_busConsentPoll); return; }
+  if (Date.now() > until) {
+    clearInterval(_busConsentPoll); BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: false });
+    toast("Console didn't respond, try again later"); _busConsentRepaint();
+  }
 }
 // Task D (owner, 2026-10-08): no saved address at all (addressId null) vs a saved address Google
 // can't locate (addressId set, placeId null, the pre-existing "No map pin" case) — both leave the
@@ -15177,10 +15182,12 @@ async function _bcSend() {
 // fills only the EMPTY fields (what the leader typed stays).
 async function _bcRelookup() {
   const cur = _bcRead(), q = (cur.first + ' ' + cur.last).trim(); if (q.length < 3) return;
+  const here = _here();
   let hits; try { hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(q)); } catch { return; }
-  if (!Array.isArray(hits) || hits.length !== 1) return;
+  if (!_stillSheet(here) || !Array.isArray(hits) || hits.length !== 1) return;
   const h = hits[0], who = h.kind === 'student' ? { studentId: h.id } : { guestId: h.id };
   let p; try { p = await _busGet('/bus/consent/prefill', _bcQuery(who)); } catch { return; }
+  if (!_stillSheet(here)) return;
   const pick = (a, b) => (a == null || a === '' ? (b == null ? a : b) : a), ca = cur.address, pa = p.address || {};
   BUS.bc.who = who; BUS.bc.p = p;
   BUS.bc.f = { first: cur.first, last: cur.last, grade: pick(cur.grade, p.grade), gender: pick(cur.gender, p.gender), mobile: pick(cur.mobile, p.mobile), school: pick(cur.school, p.school),
@@ -15232,7 +15239,7 @@ async function busSaveSettings() {
   const coordinatorLeaderIds = [...document.querySelectorAll('.bus-checks input:checked')].map((i) => i.value);
   const church = _busAcValue('bs-church');
   if (church.address && !church.placeId) { toast('Pick the address from the suggestions list'); return; }
-  const patch = { ministryConfig: { busMinistry: { churchAddress: church.address, churchPlaceId: church.placeId || '', coordinatorLeaderIds, consentDeclaration: document.getElementById('bus-decl').value.trim() } } };
+  const patch = { ministryConfig: { busMinistry: { churchAddress: church.address, churchPlaceId: church.placeId || '', coordinatorLeaderIds, consentDeclaration: document.getElementById('bus-decl').value.trim() || MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration } } };
   try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
   catch (e) { toast(e.message); }
 }
