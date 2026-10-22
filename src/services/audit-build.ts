@@ -1,11 +1,12 @@
 // Connection Audit build (spec ys-connection/2026-10-22-connection-audit §5.3-§5.5). Pure: no I/O, `now` injected.
 // It builds from the STORED tables (parseSource runs here), so a parser fix re-applies on the next build, no re-feed.
-import { computeQuad, type Quad } from '../core/types/enums';
+import { QUADS, computeQuad, type Quad } from '../core/types/enums';
 import type { AppSettings } from '../core/entities/settings';
 import type { LinkRosterRow } from '../core/link-types';
-import type { AuditQuality, AuditSnapshotV2, AuditSource, AuditStudent, AuditTermSnapshot, SourceMeta, StoredAuditSource } from '../core/entities/connection-audit';
+import type { AuditQuality, AuditSnapshotV2, AuditSource, AuditStudent, AuditTermSnapshot, AuditWeek, AuditWeekCounts, SourceMeta, StoredAuditSource } from '../core/entities/connection-audit';
 import { leaderTagRe, parseSource, type AuditParseCtx, type AuditPerson, type AuditRow } from './audit-parse';
-import { buildGroupModel, buildServiceModel, type GroupInput } from './attendance-build';
+import { buildGroupModel, buildLifegroupStats, buildServiceModel, parseGroupMeta, type GroupInput, type ServiceParsed } from './attendance-build';
+import { saturdayOf } from './terms';
 import { computeYearAggregates } from './year-aggregates';
 import { addDays, brisbaneToday, matchFold } from './link-rules';
 
@@ -70,6 +71,14 @@ function identify(fed: Fed[], roster: AuditRosterPerson[], range: AuditBuildConf
     if (x.p.grade === null) x.p.grade = p.grade;
     if (x.p.gender === null) x.p.gender = p.gender;
     if (x.p.preferred === null) x.p.preferred = p.preferred;
+    if (source === 'service') {
+      row.dates.forEach((d) => x!.svc.add(d));
+      if (x.phone === null && p.phone !== null) { x.phone = p.phone; x.phoneIsParent = p.phoneIsParent; } // bug 5: service only
+    }
+    if (source === 'group') row.dates.forEach((d) => x!.grp.add(d));
+    if (source === 'team') x.team = true;           // parseAll kept only rows with an in-year date
+    if (source === 'connect') x.connects.push(row.submitted!);
+    if (source === 'decision') x.decisions.push(row.submitted!);
     return id;
   });
   for (const [id, r] of hitOf) {
@@ -123,6 +132,54 @@ function duplicates(people: Person[]): AuditQuality['duplicates'] {
   return out.slice(0, 200);
 }
 
+const NONE = 'none' as const;
+export const weekEndOf = (d: string, serviceDayOfWeek: number) => addDays(saturdayOf(d, serviceDayOfWeek), 6);
+const zero = (night: boolean): AuditWeekCounts => ({ youth: night ? 0 : null, lifegroup: 0, lgGroups: 0, connects: 0, decisions: 0 });
+
+/** §5.3.9: every week of the year up to the latest data week; youth null = no valid session that week (holidays). */
+function weeklySeries(year: number, students: AuditStudent[], people: Map<string, Person>, svc: ServiceParsed, groups: GroupInput[], sdow: number): AuditWeek[] {
+  const quad = new Map(students.map((s) => [s.id, s.quad ?? NONE]));
+  type Acc = { night: boolean; youth: Set<string>; lg: Set<string>; rolls: Map<string, Quad | typeof NONE>; con: Set<string>; dec: Set<string> };
+  const weeks = new Map<string, Acc>();
+  const at = (d: string): Acc => {
+    const k = weekEndOf(d, sdow);
+    let a = weeks.get(k);
+    if (!a) { a = { night: false, youth: new Set(), lg: new Set(), rolls: new Map(), con: new Set(), dec: new Set() }; weeks.set(k, a); }
+    return a;
+  };
+  const valid = new Set(svc.sessions.filter((s) => s.isValid).map((s) => s.id));
+  valid.forEach((d) => { at(d).night = true; });
+  for (const a of svc.attendance) if (valid.has(a.sessionId)) at(a.sessionId).youth.add(a.id);
+  for (const g of groups) {
+    const meta = parseGroupMeta(g.name), gq = quadOf(meta.grade, meta.gender) ?? NONE;
+    for (const m of g.members) m.attendance.forEach((mark, i) => {
+      if (mark === null) return;
+      const w = at(g.meetings[i]!);
+      w.rolls.set(g.name, gq);
+      if (mark) w.lg.add(m.id);
+    });
+  }
+  for (const x of people.values()) { x.connects.forEach((d) => at(d).con.add(x.id)); x.decisions.forEach((d) => at(d).dec.add(x.id)); }
+  if (!weeks.size) return [];
+  const last = [...weeks.keys()].sort().at(-1)!, out: AuditWeek[] = [];
+  for (let k = weekEndOf(`${year}-01-01`, sdow); k <= last; k = addDays(k, 7)) {
+    const a = weeks.get(k), night = !!a?.night;
+    const tot = zero(night), byQuad = Object.fromEntries([...QUADS, NONE].map((q) => [q, zero(night)])) as AuditWeek['byQuad'];
+    const bump = (ids: Set<string>, f: 'youth' | 'lifegroup' | 'connects' | 'decisions') => ids.forEach((id) => {
+      const b = byQuad[quad.get(id) ?? NONE];
+      b[f] = (b[f] ?? 0) + 1;
+      tot[f] = (tot[f] ?? 0) + 1;
+    });
+    if (a) {
+      if (night) bump(a.youth, 'youth');
+      bump(a.lg, 'lifegroup'); bump(a.con, 'connects'); bump(a.dec, 'decisions');
+      a.rolls.forEach((q) => { byQuad[q].lgGroups++; tot.lgGroups++; });
+    }
+    out.push({ weekEnd: k, ...tot, byQuad });
+  }
+  return out;
+}
+
 export function buildYear(year: number, sources: StoredAuditSource[], roster: AuditRosterPerson[], cfg: AuditBuildConfig, now: Date): AuditSnapshotV2 {
   const fed = parseAll(year, sources, cfg);
   const { people, ids } = identify(fed, roster, cfg.gradeRange);
@@ -155,12 +212,14 @@ export function buildYear(year: number, sources: StoredAuditSource[], roster: Au
     id: x.id, personId: x.personId, firstName: x.p.preferred || x.p.first, lastName: x.p.last,
     gender: x.p.gender ?? 'other', grade: x.p.grade, quad: quadOf(x.p.grade, x.p.gender),
     caOnly: !x.sources.has('service') && !x.sources.has('group'),
-    team: false, connect: null, decision: null, lastSeen: null, phone: null, phoneIsParent: false, // facts: Y5b
+    team: x.team, connect: [...x.connects].sort()[0] ?? null, decision: [...x.decisions].sort().at(-1) ?? null,
+    lastSeen: [...x.svc, ...x.grp].sort().at(-1) ?? null, phone: x.phone, phoneIsParent: x.phoneIsParent,
   })).sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName) || a.id.localeCompare(b.id));
 
+  const weekly = weeklySeries(year, students, people, svc, groups, cfg.serviceDayOfWeek);
   return {
     version: 2, generatedAt: now.toISOString(), dataStartDate, dataEndDate, terms: agg.terms, students, perTerm,
-    lgStatsByTerm: {}, weekly: [],                                                          // Y5b
+    lgStatsByTerm: buildLifegroupStats(groups, agg.terms, cfg.serviceDayOfWeek), weekly,
     followUp: { drifting: [], decidedNoGroup: [], connectedNeverCame: [] }, signals: { quadDrop: null }, // Y5c
     sources: {} as Record<AuditSource, SourceMeta>,                                          // Y5c
     quality: { skipped: [], notes: [], unmatched: unmatched(all), duplicates: duplicates(all) },
