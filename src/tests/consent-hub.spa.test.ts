@@ -98,7 +98,7 @@ describe('search per child', () => {
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
 const LANDING_NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
-  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml'];
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows'];
 describe('landing', () => {
   const env = (I: any) => loadFns(LANDING_NAMES,
     `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
@@ -190,5 +190,26 @@ describe('Refresh clears', () => {
     const now = Date.now();
     expect((await run({ unlinked: at(now), mismatches: at(now - 864e5), forms: at(now), other: null })).I.hubAsk).not.toBe(0);
     expect((await run({ unlinked: null, mismatches: null, forms: null, other: null })).I.hubAsk).not.toBe(0);
+  });
+});
+
+describe('bulk buttons', () => {
+  const B = loadFns(['esc', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_ikOpenAct'], `const _ik = () => ({ saBusy: false });`, ['_hubBulkRows', '_hubBulkHtml']);
+  const fam = (kids: any[]) => ({ kids });
+  const M = { fams: [fam([
+    { stage: 'elvanto', intake: { date: 'd', row: { key: 'a', status: 'ready', actions: [] } } },
+    { stage: 'elvanto', intake: { date: 'd', row: { key: 'b', status: 'done', hasText: true, actions: [] } } },
+    { stage: 'elvanto', intake: { date: 'd', row: { key: 'c', status: 'done', hasText: true, actions: [{ status: 'pending' }] } } }]),
+    fam([{ stage: 'decided', consent: { date: 'e', row: { key: 'p', status: 'ready', actions: [] } } }])] };
+  it('Save all takes ready rows with nothing open; Text all takes rows whose save is done and text still to send', () => {
+    expect(B._hubBulkRows(M, 'save').map((x: any) => x[1].row.key)).toEqual(['a']);
+    expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b']);
+    expect(B._hubBulkRows(M, 'consent').map((x: any) => x[1].row.key)).toEqual(['p']);
+  });
+  it('the In Elvanto group shows both buttons; Decided shows Save all; the others none', () => {
+    const h = B._hubBulkHtml('elvanto', M).replace(/<[^>]*>/g, '|');
+    expect(h).toContain('Save all 1'); expect(h).toContain('Text all 1 parent');
+    expect(B._hubBulkHtml('decided', M)).toContain('Save all 1');
+    expect(B._hubBulkHtml('consent', M)).toBe('');
   });
 });

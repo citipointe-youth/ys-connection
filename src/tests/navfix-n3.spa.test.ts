@@ -29,6 +29,7 @@ function env(names: string[], o: { fresh?: (p: string) => any; post?: (items: an
     const toast = (m) => __t.toasts.push(m);
     const _ikDraw = () => { __t.draws++; };
     const _ikLoad = () => {};
+    const _hubLoad = () => {};
     const _ikLocal = () => {};
     const _ikSt = () => null;
     const _ikSeenLine = () => '';

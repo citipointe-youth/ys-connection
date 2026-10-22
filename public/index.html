@@ -13746,8 +13746,59 @@ function _hubBodyHtml() {
     + HUB_STAGES.map(([k, label]) => {
       const fs = M.fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
       return `<details class="lk-done"${open[k] ? ' open' : ''} ontoggle="_hubToggle('${k}', this.open)"><summary>${esc(label + ' (' + fs.length + ')')} ${icS('chevd')}</summary>`
-        + (fs.map(row).join('') || '<div class="lk-hint">None.</div>') + '</details>';
+        + _hubBulkHtml(k, M) + (fs.map(row).join('') || '<div class="lk-hint">None.</div>') + '</details>';
     }).join('');
+}
+function _hubBulkRows(M, kind) {
+  const out = [];
+  for (const f of M.fams) for (const c of f.kids) {
+    const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
+    if (kind === 'save' && c.stage === 'elvanto' && ir && _ikReadyRows({ rows: [ir] }).length) out.push(['intake', c.intake]);
+    if (kind === 'text' && c.stage === 'elvanto' && ir && ir.status !== 'ready' && ir.hasText && !(ir.actions || []).some(_ikOpenAct)) out.push(['intake', c.intake]);
+    if (kind === 'consent' && c.stage === 'decided' && cr && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]);
+  }
+  return out;
+}
+function _hubBulkHtml(stage, M) {
+  const b = (kind, label) => { const n = _hubBulkRows(M, kind).length; return n ? `<button type="button" class="btn btn-primary btn-sm"${_ik().saBusy ? ' disabled' : ''} onclick="_hubBulkOpen('${kind}')">${esc(label(n))}</button>` : ''; };
+  const h = stage === 'elvanto' ? b('save', (n) => 'Save all ' + n) + b('text', (n) => 'Text all ' + n + (n === 1 ? ' parent' : ' parents'))
+    : stage === 'decided' ? b('consent', (n) => 'Save all ' + n) : '';
+  return h ? `<div class="strip">${h}</div>` : '';
+}
+// One confirm for the group: each row's own detail is read (the step keys go verbatim, as Save all), blocked ones are named and skipped.
+async function _hubBulkOpen(kind) {
+  const I = _ik(), xs = _hubBulkRows(_hubM(), kind), st = _ikSt();
+  if (!xs.length || I.saBusy) return;
+  I.saBusy = true; _ikDraw();
+  const h = _here();
+  const dets = await Promise.all(xs.map(([m, x]) => API.fresh('/link/intake/row?mode=' + m + '&date=' + encodeURIComponent(x.date) + '&key=' + encodeURIComponent(x.row.key), true).catch(() => null)));
+  if (_ik() !== I) return;
+  I.saBusy = false;
+  if (!_still(h)) { _ikDraw(); return; }
+  const type = kind === 'text' ? 'intakeText' : kind === 'consent' ? 'consentSave' : 'intakeSave', items = [], skipped = [];
+  xs.forEach(([m, x], i) => {
+    const det = dets[i], list = (I.hub.lists || {})[m + '|' + x.date];
+    if (!det) { skipped.push(x.row.title); return; }
+    if (type === 'intakeText') {
+      const s = _ikTextStep(det.detail);
+      if (!s || _ikTextBlock(det, list, st)) skipped.push(x.row.title);
+      else items.push({ key: x.row.key, title: x.row.title, outcome: '', payload: { date: x.date, row: x.row.key, key: s.key } });
+      return;
+    }
+    const r = _ikSaveAllItems([det], x.date, type, list, st);
+    items.push(...r.items); skipped.push(...r.skipped);
+  });
+  _ikDraw();
+  if (!items.length) { toast('Nothing to do yet. Open each one to see why.'); return; }
+  I.sa = { type, items };
+  const n = items.length;
+  const title = type === 'intakeText' ? `Text ${n} parent${n === 1 ? '' : 's'}?` : type === 'consentSave' ? `Save ${n} consent${n === 1 ? '' : 's'} to Elvanto?` : `Save ${n} famil${n === 1 ? 'y' : 'ies'} to Elvanto?`;
+  modal(`<div class="mo-title">${esc(title)}</div>`
+    + (type === 'consentSave' ? _ikSaveAllGroups(items) : items.map((it) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(it.title)}</span></div>`).join(''))
+    + (type === 'intakeText' ? `<div class="ik-line">${esc("Elvanto sends each consent text. They can't be recalled.")}</div>` : '')
+    + (type === 'consentSave' && items.some((it) => it.outcome === 'No reply: assume consent') ? `<div class="ik-line">${esc(_ikD26())}</div>` : '')
+    + `<p class="lk-sub lk-mt">${esc('The console does them one at a time.' + (skipped.length ? ' Not included (open them to see why): ' + skipped.join(', ') + '.' : ''))}</p>`
+    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSaveAllGo()">${esc((type === 'intakeText' ? 'Send ' : 'Save ') + n)}</button></div>`);
 }
 function _hubPage() {
   const I = _ik(), st = _ikSt(), at = _hubCheckedAt();
@@ -14109,7 +14160,7 @@ async function _ikSaveAllGo() {
   }
   if (_ik() !== I) return;
   toast(ok ? 'Saving ' + ok + '. The console works through them one at a time.' : 'Nothing was saved. See each row.');
-  _ikDraw(); _ikLoad(true);
+  _ikDraw(); if (I.key) _ikLoad(true); else _hubLoad(true);
 }
 
 // ── Lookups (All consent forms / Mismatches) ──

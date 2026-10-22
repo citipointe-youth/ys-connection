@@ -32,6 +32,7 @@ function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
     let __n = 0; const _lkUuid = () => 'id-' + (++__n);
     const _lkDay = (d) => d; const closeModal = () => {}; const _ikDraw = () => {}; const _ikSchedule = () => {};
     const _ikLoad = () => { __calls.loads++; return Promise.resolve(); };
+    const _hubLoad = () => {};
     const _ikAns = () => ({ fixes: {}, keeps: {} });
     const _ikAnswerBody = (date, key) => ({ payload: { date, family: [key], choices: {}, pairs: {}, undo: false }, note: null });
     const navBack = () => { __calls.backs++; };
