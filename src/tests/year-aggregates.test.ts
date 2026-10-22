@@ -38,3 +38,15 @@ describe('computeYearAggregates', () => {
     expect(r.perTerm.get('2026-T1')!.svcTotal).toBe(1); // only s2 remains valid in T1
   });
 });
+
+describe('computeYearAggregates: serviceDayOfWeek and term options', () => {
+  it('week-buckets sessions by serviceDayOfWeek (a Wednesday service starts its week on Thursday)', () => {
+    const r = computeYearAggregates({ ...input(), serviceDayOfWeek: 3,
+      serviceSessions: [{ id: 's1', date: '2026-02-04', valid: true }], serviceAttendance: [{ studentId: 'a', sessionId: 's1', attended: true }] });
+    expect(r.terms[0]!.startDate).toBe('2026-01-29');
+    expect(r.perTerm.get(r.terms[0]!.key)!.byStudent.get('a')!.svcAttended).toBe(1);
+  });
+  it('passes minRun through: a one-session run is merged instead of becoming a term', () => {
+    expect(computeYearAggregates(input(), { minRun: 3 }).terms.map((t) => t.key)).toEqual(['2026-T1']);
+  });
+});

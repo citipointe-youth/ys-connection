@@ -26,3 +26,22 @@ describe('computeAllTerms', () => {
     expect(t.map((x) => x.key)).toEqual(['2025-T1', '2026-T1']);
   });
 });
+
+describe('computeAllTerms: short runs and the build year (spec 2026-10-22 §5.3.3)', () => {
+  it('a run of fewer than minRun sessions joins the neighbour with the smaller gap (here the next one)', () => {
+    const t = computeAllTerms(['2026-02-07', '2026-02-14', '2026-02-21', '2026-03-28', '2026-04-25', '2026-05-02', '2026-05-09'], 14, { minRun: 3 });
+    expect(t.map((x) => [x.key, x.startDate, x.endDate])).toEqual([
+      ['2026-T1', '2026-02-07', '2026-02-21'], ['2026-T2', '2026-03-28', '2026-05-09']]);
+  });
+  it('joins the previous run when that gap is smaller', () => {
+    const t = computeAllTerms(['2026-02-07', '2026-02-14', '2026-02-21', '2026-03-14', '2026-05-02', '2026-05-09', '2026-05-16'], 14, { minRun: 3 });
+    expect(t.map((x) => x.endDate)).toEqual(['2026-03-14', '2026-05-16']);
+  });
+  it('a lone short run is kept (nothing to join)', () => {
+    expect(computeAllTerms(['2026-02-07'], 14, { minRun: 3 })).toHaveLength(1);
+  });
+  it('year: every run is numbered in the build year, even one whose first week starts in late December', () => {
+    const t = computeAllTerms(['2025-12-27', '2026-01-03', '2026-01-10'], 14, { year: 2026 });
+    expect(t[0]).toMatchObject({ key: '2026-T1', label: 'Term 1 2026', year: 2026, ordinal: 1 });
+  });
+});

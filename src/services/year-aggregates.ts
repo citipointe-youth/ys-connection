@@ -1,17 +1,17 @@
 import { saturdayOf } from './terms';
-import { computeAllTerms, type LabeledTerm } from './year-terms';
+import { computeAllTerms, type LabeledTerm, type TermOpts } from './year-terms';
 import type { AggregateInput } from './aggregates';
 
 export interface YearStudentAggregate { svcAttended: number; grpAttended: number; grpTotal: number; }
 export interface YearTermResult { key: string; svcTotal: number; byStudent: Map<string, YearStudentAggregate>; }
 export interface YearAggregateResult { terms: LabeledTerm[]; perTerm: Map<string, YearTermResult>; }
 
-export function computeYearAggregates(input: AggregateInput): YearAggregateResult {
-  const { termGapDays, serviceSessions, serviceAttendance, weekStartById, lifegroupAttendance } = input;
+export function computeYearAggregates(input: AggregateInput, opts: TermOpts = {}): YearAggregateResult {
+  const { termGapDays, serviceDayOfWeek = 5, serviceSessions, serviceAttendance, weekStartById, lifegroupAttendance } = input;
 
-  const validWeeks = serviceSessions.filter((s) => s.valid).map((s) => saturdayOf(s.date));
+  const validWeeks = serviceSessions.filter((s) => s.valid).map((s) => saturdayOf(s.date, serviceDayOfWeek));
   const boundarySource = validWeeks.length > 0 ? validWeeks : [...weekStartById.values()];
-  const terms = computeAllTerms(boundarySource, termGapDays);
+  const terms = computeAllTerms(boundarySource, termGapDays, opts);
 
   const termFor = (d: string): string | null => {
     for (const t of terms) if (d >= t.startDate && d <= t.endDate) return t.key;
@@ -24,7 +24,7 @@ export function computeYearAggregates(input: AggregateInput): YearAggregateResul
   const sessionTerm = new Map<string, string>();
   for (const s of serviceSessions) {
     if (!s.valid) continue;
-    const k = termFor(saturdayOf(s.date));
+    const k = termFor(saturdayOf(s.date, serviceDayOfWeek));
     if (!k) continue;
     sessionTerm.set(s.id, k);
     perTerm.get(k)!.svcTotal++;

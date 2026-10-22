@@ -1,74 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { buildServiceModel, buildGroupModel, buildLifegroupStats, normaliseServiceDate } from '../services/attendance-build';
+import { buildServiceModel, buildGroupModel, buildLifegroupStats, parseGroupMeta } from '../services/attendance-build';
 import { computeAllTerms } from '../services/year-terms';
 
-describe('normaliseServiceDate', () => {
-  it('passes ISO through and normalises Excel short-dates', () => {
-    expect(normaliseServiceDate('2026-02-06')).toBe('2026-02-06');
-    expect(normaliseServiceDate('7-Feb-25')).toBe('2025-02-07');
-    expect(normaliseServiceDate('not-a-date')).toBeNull();
-  });
-});
-
-describe('buildServiceModel', () => {
-  it('builds sessions, roster and name-keyed attendance with validity', () => {
-    const rows = [
-      { first_name: 'Ava', last_name: 'Okafor', gender: 'female', grade: 9, '2026-02-06': 'Y', '2026-02-13': '' },
-      { first_name: 'Eli', last_name: 'Borowski', gender: 'male', grade: 10, '2026-02-06': 'Y', '2026-02-13': 'Y' },
-    ];
-    const m = buildServiceModel(rows, 1);
-    expect(m.sessions).toHaveLength(2);
-    expect(m.roster.map((r) => r.nameKey).sort()).toEqual(['ava okafor', 'eli borowski']);
-    // 2026-02-06 has 2 attendees (valid); 2026-02-13 has 1 (>=1 floor, valid too)
-    const s06 = m.sessions.find((s) => s.sessionDate === '2026-02-06')!;
-    expect(s06.isValid).toBe(true);
-    const avaTo06 = m.attendance.find((a) => a.nameKey === 'ava okafor' && a.sessionId === s06.id)!;
-    expect(avaTo06.attended).toBe(true);
-  });
-
-  it('marks a session invalid when below the attendance floor', () => {
-    const rows = [{ first_name: 'Ava', last_name: 'Okafor', gender: 'female', grade: 9, '2026-02-06': 'Y' }];
-    const m = buildServiceModel(rows, 100); // floor 100, only 1 attendee
-    expect(m.sessions[0]!.isValid).toBe(false);
+describe('buildServiceModel (typed rows, spec 2026-10-22 §5.1)', () => {
+  it('one session per ISO date (id = the date), validity from the floor, no gender needed, duplicates counted once', () => {
+    const m = buildServiceModel([
+      { id: 'p1', dates: ['2026-02-06', '2026-02-13'] },
+      { id: 'p2', dates: ['2026-02-06'] },
+      { id: 'p2', dates: ['2026-02-06'] }, // the same person twice in one export
+    ], 2);
+    expect(m.sessions).toEqual([
+      { id: '2026-02-06', sessionDate: '2026-02-06', isValid: true },
+      { id: '2026-02-13', sessionDate: '2026-02-13', isValid: false },
+    ]);
+    expect(m.attendance).toEqual([
+      { id: 'p1', sessionId: '2026-02-06' }, { id: 'p1', sessionId: '2026-02-13' }, { id: 'p2', sessionId: '2026-02-06' },
+    ]);
   });
 });
 
 describe('buildGroupModel', () => {
-  it('excludes leaders and zero-week members, keeps youth attendance', () => {
-    const m = buildGroupModel([{
-      name: 'Grade 9 Girls Lifegroup',
-      meetings: ['2026-02-09', '2026-02-16'],
-      members: [
-        { first_name: 'Ava', last_name: 'Okafor', attendance: [true, false] },
-        { first_name: 'Mia (Leader)', last_name: 'Stone', attendance: [true, true] },
-        { first_name: 'Ghost', last_name: 'Member', attendance: [null, null] },
-      ],
-    }]);
-    expect(m.roster.map((r) => r.nameKey)).toEqual(['ava okafor']);
-    expect(m.weeks).toHaveLength(2);
-    const ava = m.attendance.filter((a) => a.nameKey === 'ava okafor');
-    expect(ava).toHaveLength(2);
-    expect(ava.filter((a) => a.attended)).toHaveLength(1);
+  const group = {
+    name: 'Grade 9 Girls Lifegroup', meetings: ['2026-02-09', '2026-02-16'],
+    members: [
+      { id: 'p1', first_name: 'Jamie', last_name: 'Test', attendance: [true, false] },
+      { id: 'p2', first_name: 'Mia', last_name: 'Sample', attendance: [false, false] }, // never came: not part of it
+    ],
+  };
+  it('keeps members with at least one attended week; weeks ran = weeks with any mark', () => {
+    const m = buildGroupModel([group]);
+    expect(m.weeks.map((w) => w.weekStart)).toEqual(['2026-02-07', '2026-02-14']);
+    expect(m.attendance.filter((a) => a.id === 'p1').map((a) => a.attended)).toEqual([true, false]);
+    expect(m.attendance.some((a) => a.id === 'p2')).toBe(false);
+  });
+  it('buckets weeks by serviceDayOfWeek (Wednesday service: weeks start Thursday)', () => {
+    expect(buildGroupModel([group], 3).weeks.map((w) => w.weekStart)).toEqual(['2026-02-05', '2026-02-12']);
   });
 });
 
 describe('buildLifegroupStats', () => {
-  it('computes per-term per-lifegroup stats bucketed by term', () => {
-    // Boundary source is Saturday-bucketed in production (computeYearAggregates),
-    // so lifegroup weekStarts (also Saturdays) align with the term ranges.
-    const terms = computeAllTerms(['2026-02-07', '2026-02-14', '2026-04-18', '2026-04-25'], 14); // T1 (Feb), T2 (Apr)
+  it('per-term per-lifegroup stats keyed by member id; weeks follow serviceDayOfWeek', () => {
+    const terms = computeAllTerms(['2026-02-07', '2026-02-14', '2026-04-18', '2026-04-25'], 14);
     const stats = buildLifegroupStats([{
-      name: 'Grade 9 Girls Lifegroup',
-      meetings: ['2026-02-09', '2026-04-20'], // one week in T1, one in T2
+      name: 'Grade 9 Girls Lifegroup', meetings: ['2026-02-09', '2026-04-20'],
       members: [
-        { first_name: 'Ava', last_name: 'Okafor', attendance: [true, true] },
-        { first_name: 'Maya', last_name: 'Lindqvist', attendance: [true, false] },
+        { id: 'p1', first_name: 'Jamie', last_name: 'Test', attendance: [true, true] },
+        { id: 'p2', first_name: 'Mia', last_name: 'Sample', attendance: [true, false] },
       ],
     }], terms);
-    const t1 = stats['2026-T1']!;
-    expect(t1).toHaveLength(1);
-    expect(t1[0]).toMatchObject({ name: 'Grade 9 Girls Lifegroup', grade: 9, quad: 'g79', uniqueAttenders: 2, weeksRan: 1, totalVisits: 2 });
-    const t2 = stats['2026-T2']!;
-    expect(t2[0]).toMatchObject({ uniqueAttenders: 1, weeksRan: 1, totalVisits: 1 });
+    expect(stats['2026-T1']![0]).toMatchObject({ name: 'Grade 9 Girls Lifegroup', grade: 9, quad: 'g79', uniqueAttenders: 2, weeksRan: 1, totalVisits: 2 });
+    expect(stats['2026-T2']![0]).toMatchObject({ uniqueAttenders: 1, weeksRan: 1, totalVisits: 1 });
+    // Wednesday weeks: 2026-02-09 -> week of 2026-02-05, outside a term that starts 2026-02-07
+    expect(buildLifegroupStats([{ name: 'Grade 9 Girls Lifegroup', meetings: ['2026-02-09'],
+      members: [{ id: 'p1', first_name: 'Jamie', last_name: 'Test', attendance: [true] }] }], terms, 3)['2026-T1']).toEqual([]);
+  });
+});
+
+describe('parseGroupMeta', () => {
+  it('reads grade and gender from the group name', () => {
+    expect(parseGroupMeta('Grade 9 Girls Lifegroup')).toEqual({ grade: 9, gender: 'female' });
+    expect(parseGroupMeta('Senior Lifegroup')).toEqual({ grade: null, gender: null });
   });
 });

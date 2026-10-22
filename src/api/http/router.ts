@@ -180,7 +180,6 @@ export function buildRoutes(services: Services): Route[] {
     // NOTE: static /audits/* sub-paths (export-all) MUST be registered before
     // the /audits/:year param routes below — Express matches routes in
     // registration order, and :year would otherwise swallow them.
-    { method: 'POST',   path: '/audits',       auth: true, handler: (r) => connectionAudit.upload(r) },
     { method: 'GET',    path: '/audits',       auth: true, handler: (r) => connectionAudit.list(r) },
     { method: 'GET',    path: '/audits/export-all', auth: true, handler: (r) => connectionAudit.exportAll(r) },
     { method: 'POST',   path: '/audits/import-all', auth: true, handler: (r) => connectionAudit.importAll(r) },
