@@ -279,6 +279,12 @@ describe('caFollowRows + caCsvRows', () => {
     expect(csv.find((r: string[]) => r[0] === 'Ava Echo')[1]).toBe('No quad');
     expect(f.caCsvRows(f.caFollowRows(s, 'connectedNeverCame', ''), false)[1]).toEqual(['Ava Golf', '11', 'Female', '0400 000 001', 'No', 'Connected, not back yet', 'Not seen yet']);
   });
+  it('the CSV defuses spreadsheet formulas (= + - @ tab CR at the start of a cell)', () => {
+    const r = (name: string, phone: string | null = '0400 000 001') => ({ name, quad: 'g79', grade: 8, gender: 'female', phone, phoneIsParent: false, dnc: false, reason: 'Stopped coming', lastSeen: null });
+    const csv = f.caCsvRows([r('=HYPERLINK("x")'), r('+1'), r('-1'), r('@SUM(A1)'), r('\tTab'), r('\rCr'), r('Ok', '+61 400 000 001')], false);
+    expect(csv.slice(1).map((x: string[]) => x[0])).toEqual(["'=HYPERLINK(\"x\")", "'+1", "'-1", "'@SUM(A1)", "'\tTab", "'\rCr", 'Ok']);
+    expect(csv[7][3]).toBe("'+61 400 000 001");
+  });
 });
 
 describe('caLabel: the glossary words', () => {
@@ -406,6 +412,10 @@ describe('Y10 screens', () => {
     const html = await caWorld({ year: 2026, snapshot: null, sources }).show('ca-week');
     expect(html).toContain('No data for 2026 yet. The console fills this after the first Friday sync.');
     expect(html).toContain('⚠ Out of date: Youth service not received yet · 1 of 5 lists →');
+    // Fix round 1: Data check reads the same per-list status as the footer.
+    const q = await caWorld({ year: 2026, snapshot: null, sources }).show('ca-quality');
+    expect(q).toContain('1 of 5 lists up to date.');
+    expect(q).toMatch(/<td>Lifegroups<\/td><td>Up to date/);
   });
   it('empty states: no row for the year; v1 snapshot', async () => {
     expect(await caWorld(null).show('ca-week')).toContain('No data for 2026 yet. The console fills this after the first Friday sync.');
@@ -570,6 +580,12 @@ describe('Y10 structure', () => {
   it('call/text buttons are at least 44x44 with an 8px gap', () => {
     expect(HTML).toContain('.ca-act{min-width:44px;min-height:44px;');
     expect(HTML).toContain('.ca-acts{display:flex;gap:8px;');
+  });
+  it('deck currency text has single spaces around the date', () => {
+    const b = extractFn(HTML, '_buildDeckBody');
+    expect(b).toContain("was last updated '+upDate");
+    expect(b).toContain("was last saved on '+upDate");
+    expect(b).not.toContain("const upDate=' '+");
   });
   it('the cohort loop uses the grade range, not 7..12', () => {
     expect(extractFn(HTML, 'model')).toContain('for(const gr of _gradeList())');

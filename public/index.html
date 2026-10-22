@@ -8680,9 +8680,11 @@ function caFollowRows(snap,list,quad){
 // Follow-up CSV cells (header first). withQuad adds a Quad column (the All filter). DNC rows say so in Phone.
 function caCsvRows(rows,withQuad){
   const q=withQuad?['Quad']:[];
+  // Spreadsheet formula guard: a cell starting = + - @ tab or CR opens as text.
+  const safe=c=>/^[=+\-@\t\r]/.test(c)?"'"+c:c;
   return[['Name',...q,'Grade','Gender','Phone',"Parent's phone",'Reason','Last seen']].concat((rows||[]).map(r=>[r.name,...(withQuad?[caLabel('quad',r.quad)]:[]),
     r.grade==null?'':String(r.grade),r.gender==='female'?'Female':r.gender==='male'?'Male':'',r.dnc?'Do not contact':(r.phone||''),
-    r.phoneIsParent?'Yes':'No',r.reason,r.lastSeen||'Not seen yet']));
+    r.phoneIsParent?'Yes':'No',r.reason,r.lastSeen||'Not seen yet'].map(safe)));
 }
 // Admin "Upload a file" (Data check): a CSV or Excel export -> the {headers, rows} cell table the console pushes.
 // CSV: UTF-8 (fatal) else windows-1252, read by SheetJS with raw:true so dates stay text (YS parses them with
@@ -9088,8 +9090,9 @@ function rTerm(){
 
 // ---------- Data check (ca-quality, not a tab) ----------
 function rQuality(){
-  const src=(AUDIT&&AUDIT.sources)||{},Q=(AUDIT&&AUDIT.quality)||{skipped:[],notes:[],unmatched:[],duplicates:[]};
-  const f=caFooter(AUDIT,new Date().toISOString());
+  const A=AUDIT||(AUDIT_SRC?{sources:AUDIT_SRC}:null); // no row yet: the per-list status Y8 kept, same as the footer
+  const src=(A&&A.sources)||{},Q=(AUDIT&&AUDIT.quality)||{skipped:[],notes:[],unmatched:[],duplicates:[]};
+  const f=caFooter(A,new Date().toISOString());
   const left=Q.skipped.reduce((t,x)=>t+x.count,0),pl=(n,one,many)=>n+' '+(n===1?one:many);
   const names={};for(const s of (AUDIT&&AUDIT.students)||[])names[s.id]=s.firstName+' '+s.lastName;
   const g=_gradeList(),rng={min:g[0],max:g[g.length-1]};
@@ -9347,9 +9350,9 @@ function _buildDeckBody(){
   const strongLg=gSorted[0]||null,weakLg=gSorted[gSorted.length-1]||null;
   const gDecl=m.groups.filter(g=>g.trend==='declining').length;
   const isStale=caFooter(AUDIT,new Date().toISOString()).outOfDate;
-  const upDate=' '+fmtD(((AUDIT&&AUDIT.sources&&AUDIT.sources.service)||{}).fedAt);
+  const upDate=fmtD(((AUDIT&&AUDIT.sources&&AUDIT.sources.service)||{}).fedAt);
   const rrPct=Math.round(((D.settings&&D.settings.regRateNumerator)||3)/((D.settings&&D.settings.regRateDenominator)||4)*100);
-  const currency=isStale?'Student Team / Connect / Decision data was last updated'+upDate+' — see Data check in the app.'
+  const currency=isStale?'Student Team / Connect / Decision data was last updated '+upDate+' — see Data check in the app.'
     :'This audit — attendance, Student Team, Connect and Decision — was last saved on '+upDate+'.';
   const funnelViz=()=>{const max=Math.max(1,atLeast(1));return '<div class="funnel">'+m.rungs.map((r,i)=>{const w=Math.max(7,Math.round(r.v/max*100)),leaky=i===leak;return '<div class="frow"><span class="flabel">'+esc(r.lb)+'</span><span class="ftrack"><span class="fbar'+(leaky?' leaky':'')+'" style="width:'+w+'%"></span></span><b class="fval'+(leaky?' leaky':'')+'">'+r.v+'</b></div>';}).join('')+'</div>';};
   const sparkViz=()=>{
