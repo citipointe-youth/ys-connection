@@ -47,6 +47,8 @@ export const UNTIMED_ROUTES = new Set([
   'POST /intake/new-youth',
   // T10 admin resend: the same send path, same reason.
   'POST /admin/unsent/:id/retry',
+  // Bus consent form (spec 2026-10-22): the same Elvanto send path, same reason.
+  'POST /bus/consent-form',
 ]);
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();

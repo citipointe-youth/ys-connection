@@ -49,6 +49,7 @@ export function makeBusController(deps: { bus: BusService }) {
     moveRider: (r: HttpRequest) => b.moveRider(ctxOf(r), p(r, 'id'), r.body),
     setDropped: (r: HttpRequest) => b.setDropped(ctxOf(r), p(r, 'id'), r.body),
     consentStatus: (r: HttpRequest) => b.consentStatus(ctxOf(r)),
+    consentSubmit: (r: HttpRequest) => b.consentSubmit(ctxOf(r), r.body),
     consentCheck: (r: HttpRequest) => b.consentCheck(ctxOf(r)),
     consentPrefill: (r: HttpRequest) => b.consentPrefill(ctxOf(r), { riderId: r.query['riderId'] ? String(r.query['riderId']) : undefined,
       studentId: r.query['studentId'] ? String(r.query['studentId']) : undefined, guestId: r.query['guestId'] ? String(r.query['guestId']) : undefined }),

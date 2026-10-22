@@ -74,6 +74,8 @@ export interface BusService {
   consentCheck(ctx: BusCtx): Promise<{ id: string }>;
   /** F6: riderId is resolved to the person on the server (a redacted junior view carries no studentId/guestId). */
   consentPrefill(ctx: BusCtx, q: { riderId?: string; studentId?: string; guestId?: string }): Promise<Record<string, unknown>>;
+  /** POST /bus/consent-form: files the Elvanto bus consent form for one child (R2: the read-out tick is required). */
+  consentSubmit(ctx: BusCtx, input: unknown): Promise<Awaited<ReturnType<BusConsentSender['sendBusConsent']>>>;
 }
 
 export interface BusConsentStatus { year: number; lastChecked: string; lastNew: number; checking: boolean; canCheck: boolean;
@@ -90,9 +92,10 @@ const addrOut = (a: BusAddress) => ({ id: a.id, label: a.label, suburb: a.vehicl
 
 const NewAddress = z.object({ label: z.string().max(40).default(''), address: z.string().min(3).max(200), placeId: z.string().max(300).nullable().default(null) });
 // BUS-2: where = exactly one of a saved address, a new address, or a running bus ("Bus drop off").
-const Where = { addressId: z.string().min(1).optional(), newAddress: NewAddress.optional(), busRunVehicleId: z.string().min(1).optional() };
-const oneWhere = (v: { addressId?: string; newAddress?: unknown; busRunVehicleId?: string }) =>
-  [v.addressId, v.newAddress, v.busRunVehicleId].filter((x) => x !== undefined).length === 1;
+const Where = { addressId: z.string().min(1).optional(), newAddress: NewAddress.optional(), busRunVehicleId: z.string().min(1).optional(),
+  consentFormId: z.string().min(1).optional() }; // spec 2026-10-22 bus consent §5.7: the consent form address (resolved to newAddress first)
+const oneWhere = (v: { addressId?: string; newAddress?: unknown; busRunVehicleId?: string; consentFormId?: string }) =>
+  [v.addressId, v.newAddress, v.busRunVehicleId, v.consentFormId].filter((x) => x !== undefined).length === 1;
 const AddRider = z.object({
   studentId: z.string().min(1).optional(), guestId: z.string().min(1).optional(), ...Where,
 }).refine((v) => !!v.studentId !== !!v.guestId, 'Choose a student or a new person')
@@ -406,6 +409,20 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (coord && v.details && at && !(at.runVehicleId && onBus.has(at.runVehicleId))) v.differs = !sameAddress(v.details.address, at.snapAddress);
       return v;
     };
+  }
+
+  /** R8: the person's own consent form -> an ordinary new address, geocoded through the Places path (never stored as a form link). */
+  async function consentWhere<T extends { consentFormId?: string }>(v: T, owner: { studentId?: string | null; guestId?: string | null }) {
+    if (!v.consentFormId) return v;
+    const f = (await bus.listConsentForms()).find((x) => x.id === v.consentFormId
+      && (owner.studentId ? x.studentId === owner.studentId : !!owner.guestId && x.guestId === owner.guestId));
+    if (!f) throw new NotFoundError('That consent form is not this person\'s');
+    const a = f.data.address, text = `${a.line1}, ${a.city} ${a.state} ${a.postcode}`.replace(/\s+/g, ' ').trim();
+    let hit: PlaceSuggestion | undefined;
+    try { hit = (await routing.autocomplete(text, generateId(), routingDeadline()))[0]; } catch (err) { throw routingFailed(err, SEARCH_FAILED); }
+    if (!hit) throw new AppError('CONSENT_ADDRESS_UNMATCHED', "We couldn't find that address. Pick it from the list.", 422, { text });
+    const { consentFormId: _drop, ...rest } = v;
+    return { ...rest, newAddress: { label: 'Consent form', address: hit.text, placeId: hit.placeId } };
   }
 
   /** Queue one busConsentCheck for the newest console (reuses a fresh open row; replaces a stale pending one). No role check. */
@@ -959,7 +976,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     },
     async addRider(ctx, input) {
       const c = await gate(ctx, 'bus:roster');
-      const v = parseIn(AddRider, input);
+      const p = parseIn(AddRider, input);
+      const v = await consentWhere(p, p);
       const run = await writableRun(ctx, c);
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rider = await placeRider(ctx, run, v);
@@ -974,7 +992,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const r = await bus.getRunRider(riderId);
       if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
       const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
-      const addr = await resolveAddress(owner, v, run);
+      const addr = await resolveAddress(owner, await consentWhere(v, owner), run);
       const seat = busPatch(r, addr, await bus.listRunVehicles(run.id), await bus.listAddresses(owner)); // BUS-2
       if (!seat) throw new BadRequestError(NO_BUS_NO_HOME);
       const saved = await bus.saveRunRider({ ...r, addressId: addr.id, ...seat });
@@ -1330,6 +1348,27 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return mark({ ...base, mobile: s ? s.mobile : g!.phone, parentPhone: s?.parentPhone ?? f?.data.parentPhone ?? null,
         school: f?.data.school ?? '', parentName: f?.data.parentName ?? '', pickup: f?.data.pickup ?? null, pickupBy: f?.data.pickupBy ?? '',
         address: f ? f.data.address : home ? { line1: streetOf(home.address), line2: '', postcode: '', city: suburbOf(home.address), state: '' } : null }, who.studentId);
+    },
+    async consentSubmit(ctx, input) {
+      await gate(ctx, 'bus:use');
+      const i = (input ?? {}) as Record<string, unknown>;
+      if (i.readOut !== true) throw new BadRequestError('Tick that you read the declaration to the parent');
+      if (!ext.newYouth) throw new AppError('ELVANTO_NOT_SET', "The bus consent form isn't set up here yet. Ask your admin.", 409);
+      let who = { studentId: typeof i.studentId === 'string' ? i.studentId : null,
+        guestId: typeof i.studentId === 'string' ? null : typeof i.guestId === 'string' ? i.guestId : null };
+      if (typeof i.riderId === 'string') { // F6: a redacted junior view has no studentId/guestId
+        const r = await bus.getRunRider(i.riderId);
+        if (!r) throw new NotFoundError('Rider not found');
+        who = { studentId: r.studentId, guestId: r.studentId ? null : r.guestId };
+      }
+      const r = await ext.newYouth.sendBusConsent(ctx.actor, input); // 4xx/5xx refusals throw before any POST: no audit row then
+      if (!r.repeat) { // F20: a double tap answers the first send again; it is not a second submit
+        await bus.insertConsentSubmit({ id: generateId(), ...who, leaderId: selfLeaderId(ctx), leaderName: await whoLabel(ctx), submittedAt: nowIso(),
+          readOutConfirmed: true, elvantoResult: r.result === 'sent' ? 'sent' : r.result === 'failed' ? 'failed' : 'unconfirmed',
+          first: String(i.first ?? ''), last: String(i.last ?? '') });
+      }
+      if (r.result === 'sent' && ext.link) { try { await queueCheck(ctx); } catch { /* no console listed: Friday's checks pick it up */ } }
+      return r;
     },
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
