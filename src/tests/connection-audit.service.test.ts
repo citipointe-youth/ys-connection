@@ -449,6 +449,13 @@ describe('T5: a missing phone is filled from the person\'s flow row (consent aud
     expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ personId: P3, phone: null });
   });
 
+  it('fix 1: DNC only on a later step (step-0 row + roster not DNC) is decided: dnc, never consentPending', async () => {
+    const h = await setup([ros(P3, CF, CL, 'unknown')], [fl({ stepId: 's0', stepName: 'Step 0 - wait', stepOrder: 1, due: '2026-10-16',
+      consent: 'unknown' }), fl({ flowName: 'Brisbane - Youth - Leaders', consent: 'contact' })]);
+    h.setNow(new Date('2026-10-15T22:00:00.000Z'));                       // inside the consent week
+    expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ dnc: true, consentPending: false });
+  });
+
   it('#6 (with T2): a step-0 person inside the consent week gets the phone but stays consentPending', async () => {
     const h = await setup([ros(P3, CF, CL, 'unknown')], [fl({ stepId: 's0', stepName: 'Step 0 - wait', stepOrder: 1, due: '2026-10-16',
       consent: 'unknown' })]);

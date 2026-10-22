@@ -193,7 +193,7 @@ export function makeConnectionAuditService(
         const f = v.personId ? step0.get(v.personId) : undefined;
         const consent = v.dnc ? 'contact' : f ? shownConsent(f, rosterById) : v.personId ? rosterById.get(v.personId)?.consent : null;
         const dnc = v.dnc || isDnc(consent) || (!!v.personId && flowDnc.has(v.personId)); // flow-row DNC (review I1, T5)
-        return { ...v, dnc, phone: dnc && !keep ? null : v.phone, consentPending: consentPending({ personId: v.personId, consent,
+        return { ...v, dnc, phone: dnc && !keep ? null : v.phone, consentPending: consentPending({ personId: v.personId, consent: dnc ? 'contact' : consent, // dnc => decided
           due: f?.due ?? v.connect ?? v.decision, textedOn: f?.textedOn }, rows, t, site) };
       });
       return { ...a, snapshot: { ...snap, students } };
