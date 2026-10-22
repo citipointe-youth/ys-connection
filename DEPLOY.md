@@ -5,12 +5,12 @@ Pushing `master` builds on Vercel and the build applies migrations (`vercel-buil
 Rollback = Vercel dashboard > Deployments > the previous good build > Instant Rollback (migrations are additive, nothing to undo). While rolled back, Vercel stops auto-promoting; promote the fixed build by hand to turn it back on.
 
 <!-- live -->
-- master sha: 1c1813f (fix/import-merge-copy)
-- last ship: 2026-10-22 15:46 EAST
+- master sha: d8ca68c (mod17/ys)
+- last ship: 2026-10-22 16:32 EAST
 - migration: 0043
 - SW version: ysc-v141
 - promote: auto (Vercel promotes every master build); check /health after the build
-- pending branches: chore/ship ux17/bus 
+- pending branches: chore/ship ui22/followup ux17/bus 
 <!-- /live -->
 
 _The rel19/svc notes below predate auto-promote (2026-10-20): read "before the owner promotes" as "after the build"._
