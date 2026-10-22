@@ -37,6 +37,9 @@ const uuidOrEmpty = z.union([z.literal(''), z.string().uuid()]);
 
 export const DEFAULT_LOCATION_QUESTION = 'Citipointe Location';
 
+// Drafted from the form's consent text (spec §5.5 step 4). G1: the operator or Citipointe approves it before go-live.
+export const DEFAULT_CONSENT_DECLARATION = 'Do you give permission for [child] to travel on the Youth Society bus to, from and during Friday nights at Citipointe Brisbane? Do you consent to the leaders arranging emergency medical, hospital or ambulance care if needed, at your cost? Do you release Citipointe from liability as set out in the full form? Do you agree to us contacting you with updates? The full terms and privacy policy are at citipointechurch.com.';
+
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
   preset: z.enum(MINISTRY_PRESETS).default('large-graded-au'),
@@ -179,6 +182,11 @@ export const MinistryConfigSchema = z.object({
       detourMin: z.number().int().min(1).max(120).default(10),
       detourPct: z.number().int().min(1).max(100).default(20),
       coordinatorLeaderIds: z.array(z.string()).default([]),
+      // Bus consent via the Elvanto form (spec 2026-10-22): the abbreviated declaration a leader reads out (Bus settings, admin),
+      // and the last console check (written by the push, never by a phone).
+      consentDeclaration: z.string().max(2000).default(DEFAULT_CONSENT_DECLARATION),
+      consentLastChecked: z.string().max(40).default(''),
+      consentLastNew: z.number().int().min(0).default(0),
     })
     .default({}),
 

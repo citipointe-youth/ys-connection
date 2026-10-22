@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-config';
+import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig, DEFAULT_CONSENT_DECLARATION } from '../core/ministry-config';
 import { can } from '../services/access-control';
 import type { Actor } from '../core/entities/user';
 import { currentRunDate, localDay, isServiceDay, addDays, eligibilityOf, capacityOf, nameMatches, suburbOf, riderKey, phoneKey, phoneMatches, suburbOnly, tidyName } from '../services/bus-logic';
@@ -14,6 +14,8 @@ describe('bus config defaults', () => {
       churchAddress: '', churchPlaceId: '', leaveTime: '21:00',
       targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120,
       detourMin: 10, detourPct: 20, coordinatorLeaderIds: [],
+      // bus consent (spec 2026-10-22): the drafted declaration is the one deliberate default (G1 approves it)
+      consentDeclaration: DEFAULT_CONSENT_DECLARATION, consentLastChecked: '', consentLastNew: 0,
     });
   });
   it('merges a partial busMinistry patch', () => {
