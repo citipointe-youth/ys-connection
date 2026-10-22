@@ -7343,7 +7343,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
   /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
   /*BUS-HOOK*/ busMinistry: { churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [] },
-  elvanto: { baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' },
+  elvanto: { baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '', busConsentFormId: '' },
 };
 
 // Lazily seed the draft from freshly-fetched settings — only when there isn't
@@ -9873,6 +9873,13 @@ function _nyHostDraw() { const el = document.getElementById('ny-hostc'); if (el)
 function _nyPickHost(then) { _lkIamPick(() => { _nyHostDraw(); if (then) then(); }); }
 function _nyMessage(r) {
   if (r.dryRun) return { tone: 'good', retryParent: false, lines: ['Test mode: nothing was sent to Elvanto.'] };
+  if (r.result !== undefined && r.student === undefined) { // bus consent form (one form, no parent step)
+    const bl = [];
+    if (r.repeat) bl.push('This was already sent a moment ago, so it was not sent again.');
+    bl.push(r.result === 'sent' ? 'Bus consent form is in Elvanto.' : r.result === 'failed' ? "Bus consent form wasn't accepted by Elvanto." : "Bus consent form was sent, but Elvanto didn't confirm it. Check the forms list in Elvanto before sending again.");
+    if (r.queued) bl.push('Saved for the admin to resend.');
+    return { tone: r.result === 'sent' ? 'good' : r.result === 'failed' ? 'bad' : 'warn', retryParent: false, lines: bl };
+  }
   const say = { sent: 'is in Elvanto.', failed: "wasn't accepted by Elvanto.", unconfirmed: "was sent, but Elvanto didn't confirm it. Check the forms list in Elvanto before sending again." };
   const lines = [];
   if (r.repeat) lines.push('This was already sent a moment ago, so it was not sent again.');

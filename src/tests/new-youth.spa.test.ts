@@ -13,6 +13,13 @@ describe('New youth SPA', () => {
     expect(listOf('NY_ALLERGIES')).toEqual(LABELS.allergies);
     expect(listOf('NY_CONDITIONS')).toEqual(LABELS.conditions);
   });
+  it('bus consent result: one line, no parent step, no "undefined"', () => {
+    expect(nyMessage({ result: 'sent', dropoff: null })).toEqual({ tone: 'good', retryParent: false, lines: ['Bus consent form is in Elvanto.'] });
+    const w = nyMessage({ result: 'unconfirmed', dropoff: null, queued: true });
+    expect(w.tone).toBe('warn');
+    expect(w.lines.join(' ')).not.toMatch(/undefined|Student/);
+    expect(nyMessage({ result: 'failed', dropoff: null }).tone).toBe('bad');
+  });
   it('both sent → good, no retry', () => {
     const m = nyMessage({ student: 'sent', parent: 'sent', dryRun: false });
     expect(m).toEqual({ tone: 'good', retryParent: false, lines: ['Student form is in Elvanto.', 'Parent form is in Elvanto.'] });

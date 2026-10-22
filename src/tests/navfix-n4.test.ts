@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { makeNewYouthService } from '../services/new-youth.service';
+import { makeNewYouthService, type NewYouthResult } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
 import { brisbaneElvanto } from './helpers/brisbane-elvanto';
 const BRIS = brisbaneElvanto();
@@ -202,7 +202,7 @@ describe('C-B2 Unsent retry lock (server)', () => {
     await t.svc.send(ADMIN, INPUT);
     const [row] = await t.unsent.list();
     await new Promise((r) => setTimeout(r, 5)); // updatedAt moves on
-    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('failed');
-    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('sent');
+    expect(((await t.svc.unsentRetry(ADMIN, row!.id, {})) as NewYouthResult).student).toBe('failed');
+    expect(((await t.svc.unsentRetry(ADMIN, row!.id, {})) as NewYouthResult).student).toBe('sent');
   });
 });

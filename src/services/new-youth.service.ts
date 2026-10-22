@@ -36,11 +36,15 @@ export function makeRef(): string {
   return s;
 }
 
+/** Bus consent form send (spec 2026-10-22 bus consent). `dropoff` is parsed from Elvanto's success page (null until Task 0 sets the rule). */
+export type BusResult = { result: EF.Outcome; dropoff: string | null; queued?: boolean; repeat?: boolean };
+
 export interface NewYouthService {
   send(actor: Actor, input: unknown): Promise<NewYouthResult>;
+  sendBusConsent(actor: Actor, input: unknown): Promise<BusResult>;
   /** T10 admin queue (admin:manage): list, resend through the same send path, delete. */
   unsentList(actor: Actor): Promise<{ rows: UnsentView[] }>;
-  unsentRetry(actor: Actor, id: string, body: unknown): Promise<NewYouthResult>;
+  unsentRetry(actor: Actor, id: string, body: unknown): Promise<NewYouthResult | BusResult>;
   unsentDelete(actor: Actor, id: string): Promise<{ ok: true }>;
 }
 
@@ -59,6 +63,18 @@ const mobile = z.string().transform((v, ctx) => {
   if (!m) { ctx.addIssue({ code: z.ZodIssueCode.custom }); return z.NEVER; }
   return m;
 });
+
+const BusSchema = z.object({
+  first: name, last: name, grade: z.enum(['6', '7', '8', '9', '10', '11', '12']), gender: z.enum(['m', 'f']), mobile,
+  school: z.string().trim().min(1).max(80),
+  address: z.object({
+    line1: z.string().trim().min(1).max(120), line2: z.string().trim().max(120).default(''),
+    postcode: z.string().trim().regex(/^\d{4}$/), city: z.string().trim().min(1).max(60), state: z.string().trim().max(20).default('QLD'),
+  }),
+  parentName: z.string().trim().min(1).max(120), parentPhone: mobile, pickup: z.boolean(), pickupBy: z.string().trim().max(120).default(''),
+});
+const BUS_LABELS: Record<string, string> = { first: 'first name', last: 'last name', grade: 'grade', gender: 'gender', mobile: 'mobile',
+  school: 'school', address: 'address', parentName: 'parent name', parentPhone: 'parent phone', pickup: 'pickup answer' };
 
 const Schema = z.object({
   send: z.array(z.enum(['student', 'parent'])).min(1).default(['student', 'parent']),
@@ -122,7 +138,7 @@ export function makeNewYouthService(
     }
   }
 
-  async function post(e: ElvantoConfig, form: EF.FormKind, body: URLSearchParams): Promise<EF.Outcome> {
+  async function postRaw(e: ElvantoConfig, form: EF.FormKind, body: URLSearchParams): Promise<{ outcome: EF.Outcome; body: string }> {
     const url = EF.formUrl(e, form);
     try {
       const r = await fetchFn(url, {
@@ -137,11 +153,13 @@ export function makeNewYouthService(
           Referer: url,
         },
       });
-      return EF.classifyPost(form, { status: r.status, location: r.headers.get('location'), body: await r.text() });
+      const text = await r.text();
+      return { outcome: EF.classifyPost(form, { status: r.status, location: r.headers.get('location'), body: text }), body: text };
     } catch {
-      return 'unconfirmed'; // a timeout may still have landed in Elvanto: never auto-resend
+      return { outcome: 'unconfirmed', body: '' }; // a timeout may still have landed in Elvanto: never auto-resend
     }
   }
+  const post = async (e: ElvantoConfig, form: EF.FormKind, body: URLSearchParams): Promise<EF.Outcome> => (await postRaw(e, form, body)).outcome;
 
   // ── T10 unsent queue. The payload is the submitted form, encrypted; nothing about it is ever logged. ──
   const purge = () => opts.unsent!.purgeBefore(new Date(Date.now() - UNSENT_KEEP_DAYS * 86_400_000).toISOString());
@@ -280,6 +298,68 @@ export function makeNewYouthService(
       return result;
   }
 
+  // ponytail: envelope duplicated from run(); extract a shared guard if a third form kind appears
+  async function runBus(actor: Actor, input: unknown, retryId?: string, reqId?: string): Promise<BusResult> {
+    assertCan(actor, 'bus:use');
+    const settings = await settingsRepo.getSettings();
+    if (!settings.ministryConfig.modules.busMinistry) throw new ModuleDisabledError('Bus Ministry');
+    if (!EF.elvantoBusReady(settings.ministryConfig)) throw new AppError('ELVANTO_NOT_SET', "The bus consent form isn't set up here yet. Ask your admin.", 409);
+    const elv = settings.ministryConfig.elvanto;
+    const p = BusSchema.safeParse(input);
+    if (!p.success) throw new BadRequestError(`Check the ${BUS_LABELS[String(p.error.issues[0]?.path[0] ?? '')] ?? 'details'}`);
+    if (!gradeRange(settings.ministryConfig.structure).includes(Number(p.data.grade))) throw new BadRequestError('Check the grade');
+    const b = p.data;
+    const k = createHash('sha256').update(JSON.stringify(['bus', b.first, b.last, b.parentPhone])).digest('hex');
+    const now = Date.now();
+    for (const [x, v] of recent) if (now - v.at > DEDUPE_MS) recent.delete(x);
+    const hit = retryId ? undefined : recent.get(k);
+    if (hit) return { ...(hit.result as unknown as BusResult), repeat: true };
+    if (limiter.isBlocked(actor.id)) throw new AppError('RATE_LIMITED', 'Too many forms from this login. Try again in an hour.', 429);
+    let held: string | undefined;
+    if (live && reqId && opts.unsent) {
+      const c = await claim(reqId, actor.id, retryId ? RETRY_STALE_MS : undefined);
+      if (c && !c.fresh) {
+        if (retryId && c.result == null) throw new AppError('UNSENT_BUSY', 'Already resending. Wait for it to finish.', 409);
+        return { ...((c.result as BusResult | null) ?? { result: 'unconfirmed', dropoff: null }), repeat: true };
+      }
+      if (c) held = reqId;
+    }
+    if (live) recent.set(k, { at: now, result: { result: 'unconfirmed', dropoff: null } as unknown as NewYouthResult });
+    const saved = { ...(input as object), kind: 'busConsent', send: ['busConsent'] };
+    let body: URLSearchParams;
+    try {
+      const html = await getForm(EF.formUrl(elv, 'busConsent'));
+      const hp = EF.honeypotName(html);
+      body = EF.busConsentBody(b, hp ?? 'elvanto-missing', elv);
+      // F17: a blank grade or pickup option id would post an empty select: refuse like any other form change.
+      if (!hp || !elv.options[`bcGrade${b.grade}`] || !elv.options[b.pickup ? 'bcPickupYes' : 'bcPickupNo'] || EF.shapeProblems(html, body, elv).length) {
+        throw new AppError('ELVANTO_FORM_CHANGED', 'The Elvanto bus consent form has changed, so nothing was sent. Tell the admin.', 502);
+      }
+    } catch (e) {
+      recent.delete(k);
+      await finish(held, null);
+      if (live && e instanceof AppError && e.statusCode === 502
+        && await keep(retryId, e.code === 'ELVANTO_FORM_CHANGED' ? 'form-changed' : 'unreachable', saved) && !retryId) {
+        throw new AppError(e.code, e.code === 'ELVANTO_FORM_CHANGED'
+          ? 'The Elvanto bus consent form has changed, so nothing was sent. Saved for the admin to resend.'
+          : "Couldn't reach Elvanto, so nothing was sent. Saved for the admin to resend.", 502);
+      }
+      throw e;
+    }
+    if (!live) return { result: 'skipped', dropoff: null };
+    const r = await postRaw(elv, 'busConsent', body);
+    const out: BusResult = { result: r.outcome, dropoff: r.outcome === 'sent' ? EF.dropoffOf(r.body) : null };
+    if (r.outcome === 'sent') {
+      if (opts.unsent && retryId) { try { await opts.unsent.remove(retryId); } catch { /* sent; a stale row waits for the admin or the purge */ } }
+    } else {
+      await opts.errorLog?.record({ category: 'elvanto-form', code: `BUS_CONSENT_FORM_${r.outcome.toUpperCase()}`, route: 'POST /bus/consent-form', role: actor.role });
+      if (await keep(retryId, r.outcome === 'unconfirmed' ? 'unconfirmed' : 'failed', saved)) out.queued = true;
+    }
+    if (r.outcome === 'sent' || r.outcome === 'unconfirmed') { recent.set(k, { at: now, result: out as unknown as NewYouthResult }); await finish(held, out as unknown as NewYouthResult); }
+    else { recent.delete(k); await finish(held, null); }
+    return out;
+  }
+
   return {
     send: (actor, input) => {
       // S-5: optional client request id (a UUID made at Send, reused on resend). Anything else is ignored, never refused.
@@ -287,13 +367,18 @@ export function makeNewYouthService(
       return run(actor, input, undefined, typeof r === 'string' && UUID_RE.test(r) ? r : undefined);
     },
 
+    sendBusConsent: (actor, input) => {
+      const r = (input as { requestId?: unknown } | null)?.requestId;
+      return runBus(actor, input, undefined, typeof r === 'string' && UUID_RE.test(r) ? r : undefined);
+    },
+
     async unsentList(actor) {
       assertCan(actor, 'admin:manage');
       if (!opts.unsent) return { rows: [] };
       return { rows: (await readAll()).map(({ input: i, ...r }) => ({ ...r,
         forms: Array.isArray(i?.send) ? i.send.map(String) : [],
-        name: i ? `${String(i.firstName ?? '')} ${String(i.lastName ?? '')}`.trim() : null,
-        host: i ? String(i.host ?? '') : null, grade: i ? String(i.grade ?? '') : null })) };
+        name: i ? (i.kind === 'busConsent' ? `${String(i.first ?? '')} ${String(i.last ?? '')}` : `${String(i.firstName ?? '')} ${String(i.lastName ?? '')}`).trim() : null,
+        host: i && i.kind !== 'busConsent' ? String(i.host ?? '') : null, grade: i ? String(i.grade ?? '') : null })) };
     },
 
     async unsentRetry(actor, id, body) {
@@ -304,6 +389,7 @@ export function makeNewYouthService(
       if (row.reason === 'unconfirmed' && (body as { confirm?: unknown } | undefined)?.confirm !== true) {
         throw new AppError('UNSENT_CHECK_ELVANTO', 'This may already be in Elvanto: check before retrying.', 409);
       }
+      if (row.input.kind === 'busConsent') return runBus(actor, row.input, id, `retry:${id}:${row.updatedAt}`);
       return run(actor, row.input, id, `retry:${id}:${row.updatedAt}`); // C-B2: never the phone's requestId
     },
 

@@ -11,7 +11,7 @@ import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { AppError, BadRequestError } from '../core/errors/app-error';
 import { googleRoutingEnabled } from './routing/google-routing-provider';
-import { elvantoReady, checkForms, formUrl, type FormCheck, type FormKind } from './elvanto-forms';
+import { elvantoReady, checkForms, checkBusForm, formUrl, type FormCheck, type FormKind } from './elvanto-forms';
 
 // The optional roles a ministry can switch off in Setup (Admin always exists
 // and isn't toggleable — see ministry-config.ts). User.role values match these
@@ -37,8 +37,8 @@ const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 
 // P11: Check forms runs on the Youth Setup draft (not yet saved), validated by the same allow-list fields before any fetch.
 const ELV = MinistryConfigSchema.shape.elvanto.removeDefault();
-const ElvantoCheckSchema = ELV.pick({ baseUrl: true, studentFormId: true, parentFormId: true })
-  .extend({ location: ELV.shape.location.removeDefault().optional(), locationQuestion: z.string().max(120).optional() });
+const ElvantoCheckSchema = ELV.pick({ baseUrl: true, studentFormId: true, parentFormId: true, busConsentFormId: true })
+  .extend({ busConsentFormId: ELV.shape.busConsentFormId.removeDefault().optional(), location: ELV.shape.location.removeDefault().optional(), locationQuestion: z.string().max(120).optional() });
 const FORM_GET_MS = 8_000; // as new-youth
 
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */
@@ -93,13 +93,19 @@ export function makeSettingsService(
           if (r.status !== 200) throw new Error(`status ${r.status}`);
           return await r.text();
         } catch {
-          throw new AppError('ELVANTO_UNREACHABLE', `Can't open the ${kind} form. Check the link.`, 502);
+          throw new AppError('ELVANTO_UNREACHABLE', `Can't open the ${kind === 'busConsent' ? 'bus consent' : kind} form. Check the link.`, 502);
         }
       };
-      const [s, p] = await Promise.allSettled([get('student'), get('parent')]);
+      // F11: the bus form is checked whenever a bus link is set (saved or sent), so Brisbane is covered on ship.
+      const [s, p, b] = await Promise.allSettled([get('student'), get('parent'), e.busConsentFormId ? get('busConsent') : Promise.resolve('')]);
       if (s.status === 'rejected') throw s.reason;
       if (p.status === 'rejected') throw p.reason;
-      return checkForms(s.value, p.value, e.location, gradeRange(cfg.structure), e.locationQuestion);
+      if (b.status === 'rejected') throw b.reason;
+      const main = checkForms(s.value, p.value, e.location, gradeRange(cfg.structure), e.locationQuestion);
+      if (!e.busConsentFormId) return main;
+      const bus = checkBusForm(b.value, gradeRange(cfg.structure));
+      return { ...main, ok: main.ok && bus.ok, n: main.n + bus.n, fields: { ...main.fields, ...bus.fields }, options: { ...main.options, ...bus.options },
+        missing: [...main.missing, ...bus.missing], missingKeys: [...main.missingKeys, ...bus.missingKeys], lines: [...main.lines, ...bus.lines] };
     },
 
     async update(actor, input) {

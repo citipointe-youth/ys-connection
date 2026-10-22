@@ -46,7 +46,7 @@ describe('0040 site elvanto', () => {
   it('the Brisbane block parses through the schema unchanged', () => {
     const cfg = parseMinistryConfig({ elvanto: brisbaneElvanto() });
     // 2026-10-22 F7: plus the location question label, which Brisbane gets from the default (pinned).
-    expect(cfg.elvanto).toEqual({ ...brisbaneElvanto(), locationQuestion: 'Citipointe Location' });
+    expect(cfg.elvanto).toEqual({ ...brisbaneElvanto(), locationQuestion: 'Citipointe Location', busConsentFormId: '' });
   });
   it('F7: a fresh install defaults the location question to the shared tenant label, and can set its own', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.elvanto.locationQuestion).toBe('Citipointe Location');
@@ -72,7 +72,7 @@ describe('0040 site elvanto', () => {
   });
   it('defaults are blank (write targets; the location question is a read label, F7)', () => {
     const e = parseMinistryConfig({}).elvanto;
-    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' });
+    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '', busConsentFormId: '' });
   });
   it.each(['http://x.elvanto.com.au', 'https://evil.com', 'https://a.elvanto.com.au/', 'https://a.elvanto.com.au.evil.com', 'https://169.254.169.254'])('baseUrl %s refused', (u) => {
     expect(() => parseMinistryConfig({ elvanto: { baseUrl: u } })).toThrow();
@@ -195,6 +195,23 @@ describe('POST /settings/elvanto-check', () => {
     expect(r.fields).toEqual(B.fields);
     expect(r.options).toEqual(B.options);
     expect((await services.settings.get()).ministryConfig.elvanto).toEqual(before);
+  });
+
+  it('Check forms with no bus id in the request checks the SAVED bus form (and does not clear it)', async () => {
+    const BUS_ID = '8c9f0929-5b36-4ab7-b9bd-8b4082b013dc';
+    const BUS = readFileSync(join(__dirname, 'fixtures/elvanto-bus-consent-form.html'), 'utf8');
+    const prev = (await services.settings.get()).ministryConfig.elvanto;
+    await services.settings.update(act('admin'), { ministryConfig: { elvanto: { ...prev, busConsentFormId: BUS_ID } } });
+    try {
+      fetchStub = vi.fn(async (url: string) => new Response(url.endsWith(B.studentFormId) ? STUDENT : url.endsWith(B.parentFormId) ? PARENT : url.endsWith(BUS_ID) ? BUS : '', { status: url.endsWith(B.studentFormId) || url.endsWith(B.parentFormId) || url.endsWith(BUS_ID) ? 200 : 404 }));
+      vi.stubGlobal('fetch', fetchStub);
+      const r = await check(DRAFT);
+      expect(fetchStub.mock.calls.some((c) => String(c[0]).endsWith(BUS_ID))).toBe(true);
+      expect(r.fields.bcSchool).toBeTruthy();
+      expect((await services.settings.get()).ministryConfig.elvanto.busConsentFormId).toBe(BUS_ID);
+    } finally {
+      await services.settings.update(act('admin'), { ministryConfig: { elvanto: { ...prev, busConsentFormId: '' } } });
+    }
   });
   it('F7: the draft location question is used; a blank one uses the saved setting', async () => {
     const ren = (h: string) => h.replace('>Citipointe Location <', '>Which campus? <');

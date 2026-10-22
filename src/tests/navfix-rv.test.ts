@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { makeNewYouthService } from '../services/new-youth.service';
+import { makeNewYouthService, type NewYouthResult } from '../services/new-youth.service';
 import * as EF from '../services/elvanto-forms';
 import { brisbaneElvanto } from './helpers/brisbane-elvanto';
 const BRIS = brisbaneElvanto();
@@ -99,7 +99,7 @@ describe('RV-S-m4 an Unsent retry claim whose finish was lost expires after 10 m
     await t.unsent.claimRequest(key, ADMIN.id); // a retry whose finish never came back
     await expect(t.svc.unsentRetry(ADMIN, row!.id, {})).rejects.toMatchObject({ code: 'UNSENT_BUSY' });
     (t.unsent as any).reqs.get(key).createdAt = new Date(Date.now() - 11 * 60_000).toISOString();
-    expect((await t.svc.unsentRetry(ADMIN, row!.id, {})).student).toBe('sent');
+    expect(((await t.svc.unsentRetry(ADMIN, row!.id, {})) as NewYouthResult).student).toBe('sent');
   });
   it('Supabase: the takeover is one conditional update, only when staleMs is passed', async () => {
     const calls: string[] = [];
