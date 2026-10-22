@@ -74,6 +74,7 @@ export interface BusService {
   // Bus consent via the Elvanto form (spec 2026-10-22 §5.4/§5.6).
   consentStatus(ctx: BusCtx): Promise<BusConsentStatus>;
   consentCheck(ctx: BusCtx): Promise<{ id: string }>;
+  consentForms(ctx: BusCtx): Promise<{ rows: { name: string; submittedAt: string; year: number; matched: boolean }[] }>;
   /** F6: riderId is resolved to the person on the server (a redacted junior view carries no studentId/guestId). */
   consentPrefill(ctx: BusCtx, q: { riderId?: string; studentId?: string; guestId?: string }): Promise<Record<string, unknown>>;
   /** POST /bus/consent-form: files the Elvanto bus consent form for one child (R2: the read-out tick is required). */
@@ -1338,6 +1339,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const c = await gate(ctx, 'bus:use');
       if (!(allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin')) throw new ForbiddenError('Only bus coordinators and admins can check for consent forms');
       return queueCheck(ctx);
+    },
+    async consentForms(ctx) { // consent hub (2026-10-23): Bus > Forms, coordinators and admins (names only, never a parent's details)
+      const c = await gate(ctx, 'bus:use');
+      if (!(allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin')) throw new ForbiddenError('Only bus coordinators and admins can see consent forms');
+      return { rows: (await bus.listConsentForms()).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+        .map((f) => ({ name: `${f.first} ${f.last}`.trim(), submittedAt: f.submittedAt, year: f.year, matched: !!(f.studentId || f.guestId) })) };
     },
     async consentPrefill(ctx, q) {
       const c = await gate(ctx, 'bus:use');

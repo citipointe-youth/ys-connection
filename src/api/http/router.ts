@@ -210,6 +210,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/bus/riders/:id/dropped',   auth: true, handler: (r) => busCtl.setDropped(r) },
     { method: 'GET',    path: '/bus/consent/status',       auth: true, handler: (r) => busCtl.consentStatus(r) },
     { method: 'POST',   path: '/bus/consent/check',        auth: true, handler: (r) => busCtl.consentCheck(r) },
+    { method: 'GET',    path: '/bus/consent/forms',        auth: true, handler: (r) => busCtl.consentForms(r) },
     { method: 'GET',    path: '/bus/consent/prefill',      auth: true, handler: (r) => busCtl.consentPrefill(r) },
     { method: 'POST',   path: '/bus/consent-form',         auth: true, handler: (r) => busCtl.consentSubmit(r) },
     { method: 'POST',   path: '/bus/guests',               auth: true, handler: (r) => busCtl.createGuest(r) },

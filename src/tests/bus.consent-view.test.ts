@@ -206,3 +206,15 @@ describe('operator 2026-10-23: pickup state from the current form (R7: full-view
     expect(await pickupOf({ pickup: false, pickupBy: '' }, juniorOf)).toEqual({ year: 2026, current: true });
   });
 });
+
+describe('Bus Forms list (consent hub 2026-10-23)', () => {
+  it('one row per child, newest first, matched or not; admin yes, a grade login no', async () => {
+    const t = await withLink();
+    await t.bus.upsertConsentForms([form({}), form({ id: 'f2', childIndex: 1, first: 'Bo', last: 'Tran', studentId: null, submittedAt: '2026-10-06T01:00:00.000Z' })]);
+    const r = await t.svc.consentForms(t.ctx('admin'));
+    expect(r.rows).toEqual([
+      { name: 'Bo Tran', submittedAt: '2026-10-06T01:00:00.000Z', year: 2026, matched: false },
+      { name: 'Jess Tran', submittedAt: '2026-10-05T01:00:00.000Z', year: 2026, matched: true }]);
+    await expect(t.svc.consentForms(t.ctx('grade'))).rejects.toMatchObject({ statusCode: 403 });
+  });
+});

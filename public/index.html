@@ -9805,7 +9805,7 @@ async function busConsentCheck() {
 }
 async function _busConsentPollTick(until) {
   let st = null; try { st = await _busGet('/bus/consent/status'); } catch { /* offline: still reach the timeout below */ }
-  if (st) { BUS.consentStatus = st; if (!st.checking) { clearInterval(_busConsentPoll); _busConsentRepaint(); return; } }
+  if (st) { BUS.consentStatus = st; if (!st.checking) { clearInterval(_busConsentPoll); if (BUS.tab === 'forms') await busLoadForms(); _busConsentRepaint(); return; } }
   if (S.page !== 'bus') { clearInterval(_busConsentPoll); return; }
   if (Date.now() > until) {
     clearInterval(_busConsentPoll); BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: false });
@@ -14670,17 +14670,18 @@ async function renderBus() {
   const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
   // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays director/admin.
   const seesAnalysis = seesPast || v.canCoordinate || u.role !== 'leader';
+  const seesForms = isAdmin || !!v.canCoordinate; // consent hub: Bus > Forms
   const tabs = [
     canRoster && { id: 'roster', label: 'Students' },
     { id: 'cars', label: 'Car setup' }, // every Bus login (2026-10-15)
     { id: 'routes', label: 'Assign' }, // read-only unless v.canCoordinate
     { id: 'mycar', label: 'My car' }, // BUS-1 (2026-10-18): now last; 2026-10-19 operator: label back to "My car" (was "Trip logging")
   ].filter(Boolean);
-  BUS.tab = _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
+  BUS.tab = BUS.tab === 'forms' && seesForms ? 'forms' : _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
   const date = fmtDay(_busHeadDate(v));
   const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
   const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
-  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + _busAllCarsSection(), analysis: _busAnalysisHtml, past: _busHistHtml }[BUS.tab]();
+  const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + _busAllCarsSection(), analysis: _busAnalysisHtml, past: _busHistHtml, forms: _busFormsHtml }[BUS.tab]();
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
@@ -14688,6 +14689,7 @@ async function renderBus() {
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}
+        ${seesForms ? `<button class="btn btn-sm ${BUS.tab === 'forms' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenForms()">Forms</button>` : ''}
         ${isAdmin ? `<button class="btn-icon" aria-label="Bus settings" onclick="busSettings()">${icN('settings')}</button>` : ''}</div></div>
     <div class="tbbar">${tabs.map((t) => `<button class="tbbtn ${BUS.tab === t.id ? 'on' : ''}" onclick="BUS.tab='${t.id}';renderBus()">${esc(t.label)}</button>`).join('')}</div>
     ${isAdmin && v.google && v.google.state !== 'on' ? `<div class="alert al-warn">${esc(v.google.text)}</div>` : ''}
@@ -16256,6 +16258,37 @@ async function busOpenPast() {
   renderBus();
   await busLoadHist();
   if (S.page === 'bus' && BUS.tab === 'past') renderBus();
+}
+// Consent hub (2026-10-23): Bus > Forms. The bus consent forms the console keeps fresh (every 30 min, and on Check for new consent forms),
+// one row per child, searchable here. Coordinators and admins (the server says no to anyone else).
+async function busOpenForms() {
+  BUS.tab = 'forms'; BUS.formsErr = '';
+  renderBus();
+  await busLoadForms();
+  if (S.page === 'bus' && BUS.tab === 'forms') renderBus();
+}
+async function busLoadForms() {
+  try { BUS.forms = await _busGet('/bus/consent/forms'); BUS.formsErr = ''; } catch (e) { BUS.formsErr = e.message || 'Could not load the forms.'; }
+}
+function _busFormHits(rows, q) {
+  const f = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const ws = f(q).split(/\s+/).filter(Boolean);
+  return (rows || []).filter((r) => ws.every((w) => f(r.name).includes(w)));
+}
+function busFormsQ(v) { BUS.formsQ = v; const el = document.getElementById('bus-forms-list'); if (el) el.innerHTML = _busFormsListHtml(); }
+function _busFormsListHtml() {
+  const rows = _busFormHits((BUS.forms && BUS.forms.rows) || [], BUS.formsQ || '');
+  if (!rows.length) return `<div class="lk-hint">${esc(BUS.formsQ ? 'No forms match "' + BUS.formsQ + '".' : 'No bus consent forms yet.')}</div>`;
+  return rows.map((r) => `<div class="li rc"><div class="rc-top"><div class="lk-nm">${esc(r.name)}</div>${r.matched ? '' : '<span class="pill warn">Not matched</span>'}</div>`
+    + `<div class="lk-d">${esc('Filled in ' + fmtDay(r.submittedAt))}</div></div>`).join('');
+}
+function _busFormsHtml() {
+  const back = `<div style="margin-bottom:10px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer">${icS('chevl')} Back</a></div>`;
+  if (BUS.formsErr && !BUS.forms) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.formsErr)}</div>`;
+  if (!BUS.forms) return back + progBar('Loading');
+  return back + _busConsentStatusHtml(BUS.consentStatus)
+    + `<div class="sbar"><input type="search" maxlength="60" placeholder="Search a name" aria-label="Search a name" autocomplete="off" value="${esc(BUS.formsQ || '')}" oninput="busFormsQ(this.value)"></div>`
+    + `<div id="bus-forms-list">${_busFormsListHtml()}</div>`;
 }
 function _busHistHtml() {
   const back = `<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer;font-size:13px">‹ Back to Assign</a>
