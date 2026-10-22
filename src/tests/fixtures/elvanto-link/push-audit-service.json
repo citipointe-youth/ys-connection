@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T11:01:00.000Z",
+  "exportedAt": "2026-10-16T11:03:20.000Z",
+  "source": "service",
+  "status": "ok",
+  "headers": ["First Name", "Last Name", "Preferred Name", "Gender", "School Grade", "Mobile", "Youth Parent Phone", "Date of Birth",
+    "Brisbane - Youth Society - Fri 09/10 6:50 PM", "Brisbane - Youth Society - Fri 16/10 6:50 PM"],
+  "rows": [
+    ["Alex", "Sample", "", "Male", "Year 9", "0400000001", "", "", "Y", "Y"],
+    ["Jamie", "Test", "", "Female", "9", "", "0400000002", "", "", "Y"],
+    ["Joanna", "Sample", "Jo", "", "10", "", "", "", "Y", ""]
+  ]
+}

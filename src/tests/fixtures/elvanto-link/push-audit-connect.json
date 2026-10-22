@@ -1,0 +1,12 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "takenAt": "2026-10-16T11:01:00.000Z",
+  "exportedAt": "2026-10-16T11:02:05.000Z",
+  "source": "connect",
+  "status": "ok",
+  "headers": ["First Name", "Last Name", "Preferred Name", "Date Submitted", "School Grade", "Gender"],
+  "rows": [
+    ["Riley", "Sample", "", "14/10/2026", "8", "Female"]
+  ]
+}
