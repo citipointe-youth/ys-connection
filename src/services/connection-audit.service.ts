@@ -8,7 +8,7 @@ import type { ILinkRepository } from '../repositories/interfaces/link.repository
 import type { Actor } from '../core/entities/user';
 import type { ConnectionAudit, AuditSnapshotV2, AuditSource, SourceMeta, StoredAuditSource } from '../core/entities/connection-audit';
 import { AUDIT_SOURCES, AuditPush, LINK_CONTRACT_VERSION, isDnc, type AuditPushBody } from '../core/link-contract';
-import type { LinkRosterRow } from '../core/link-types';
+import type { LinkFlowRow, LinkRosterRow } from '../core/link-types';
 import { BadRequestError, ModuleDisabledError } from '../core/errors/app-error';
 import type { AppSettings } from '../core/entities/settings';
 import type { ErrorLogService } from './error-log.service';
@@ -177,11 +177,22 @@ export function makeConnectionAuditService(
       const people = peopleFlowOf(flows, t, site.timeZone, peoplePrefix(settings));
       const rosterById = new Map(roster.map((r) => [r.personId, r]));
       const step0 = new Map(flows.filter((f) => f.personId && isConsentStep(f, people)).map((f) => [f.personId!, f]));
+      // T5 (consent audit E): a missing phone comes from the person's flow row (the Elvanto profile's mobile, else parent),
+      // joined on the audit's own personId only (n:/ambiguous rows get none). This year's New People row wins, else the first
+      // row in flows() order. Read time only, never stored; filled BEFORE the DNC mask, so a DNC number is still nulled.
+      const phoneOf = new Map<string, LinkFlowRow>();
+      for (const f of flows) if (f.personId && f.mobile && (!phoneOf.has(f.personId) || (f.flowName === people && phoneOf.get(f.personId)!.flowName !== people))) phoneOf.set(f.personId, f);
+      const filled = snap.students.map((s) => {
+        const f = s.phone === null && s.personId ? phoneOf.get(s.personId) : undefined;
+        return f ? { ...s, phone: f.mobile, phoneIsParent: f.mobileIsParent } : s;
+      });
+      // Fail closed: a DNC on ANY of the person's flow rows (roster lagging the flows push) is DNC (link.service.ts:1150).
+      const flowDnc = new Set(flows.filter((f) => f.personId && isDnc(shownConsent(f, rosterById))).map((f) => f.personId!));
       const keep = canSeeDncPhones(actor);
-      const students = maskDnc(snap.students, roster, keep).map((v) => {
+      const students = maskDnc(filled, roster, keep).map((v) => {
         const f = v.personId ? step0.get(v.personId) : undefined;
         const consent = v.dnc ? 'contact' : f ? shownConsent(f, rosterById) : v.personId ? rosterById.get(v.personId)?.consent : null;
-        const dnc = v.dnc || isDnc(consent); // a DNC on the step-0 flow row only (roster not DNC) is DNC too (review I1)
+        const dnc = v.dnc || isDnc(consent) || (!!v.personId && flowDnc.has(v.personId)); // flow-row DNC (review I1, T5)
         return { ...v, dnc, phone: dnc && !keep ? null : v.phone, consentPending: consentPending({ personId: v.personId, consent,
           due: f?.due ?? v.connect ?? v.decision, textedOn: f?.textedOn }, rows, t, site) };
       });

@@ -10,6 +10,13 @@ import type { AuditPushBody } from '../core/link-contract';
 import type { AuditSnapshotV2 } from '../core/entities/connection-audit';
 import type { Actor } from '../core/entities/user';
 
+// T5 #4: import:run is admin + director only, and both see DNC phones; this switch plays a non-keep reader through get().
+const dncPhones = vi.hoisted(() => ({ off: false }));
+vi.mock('../services/access-control', async (orig) => {
+  const m = await orig<typeof import('../services/access-control')>();
+  return { ...m, canSeeDncPhones: (a: Actor) => !dncPhones.off && m.canSeeDncPhones(a) };
+});
+
 const FIX = join(__dirname, 'fixtures/elvanto-link');
 const fx = (n: string) => JSON.parse(readFileSync(join(FIX, n), 'utf8'));
 type OkBody = Extract<AuditPushBody, { status: 'ok' }>;
@@ -368,6 +375,85 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     const h = await harness({ errorLog: { record: async () => { throw new Error('x'); } } });
     h.repo.findByYear = async () => { throw new Error('db'); };
     await expect(h.svc.checkFeed()).resolves.toBeUndefined();
+  });
+});
+
+describe('T5: a missing phone is filled from the person\'s flow row (consent audit E)', () => {
+  const CON: OkBody = fx('push-audit-connect.json');                   // one connect-only row, Riley Sample, no phone cells
+  const [CF, CL] = [CON.rows[0]![0]!, CON.rows[0]![1]!];
+  const P3 = '9e000000-0000-4000-8000-0000000000a3', P4 = '9e000000-0000-4000-8000-0000000000a4';
+  const NPN = 'Brisbane - Youth - New People 2026';
+  const meta = { takenAt: SVC.takenAt, consoleId: SVC.consoleId };
+  const ros = (personId: string, firstName: string, lastName: string, consent = 'ok') =>
+    ({ personId, firstName, lastName, gender: null, grade: null, kind: 'student', consent });
+  const fl = (o: Record<string, unknown>) => ({ rowId: `r${Math.random()}`, flowId: 'f', flowName: NPN, stepId: 's1', stepName: 'Step 1 - call',
+    stepOrder: 2, personId: P3, name: 'Synthetic Kid', due: '2026-10-01', assignedTo: '', grade: 9, gender: 'female', mobile: '0400000077',
+    mobileIsParent: false, consent: 'ok', ...o });
+  async function setup(roster: unknown[], flows: unknown[], bodies: AuditPushBody[] = [SVC, CON]) {
+    const h = await harness();
+    const st = await h.settings.getSettings();
+    await h.settings.updateSettings({ ministryConfig: { ...st.ministryConfig, elvanto: { ...st.ministryConfig.elvanto,
+      peopleFlowPrefix: 'Brisbane - Youth - New People' } } } as never);
+    await h.link.replaceMirror('roster', roster, meta);
+    await h.link.replaceMirror('flows', flows, meta);
+    for (const b of bodies) await h.svc.ingest(b, 'console');
+    return h;
+  }
+  const riley = (got: AuditView) => got.snapshot.students.find((x) => x.firstName === CF && x.lastName === CL)!;
+
+  it('#1: a matched connect-only student gets the New People flow mobile (parent flag carried), preferred over another flow; never stored', async () => {
+    const h = await setup([ros(P3, CF, CL)], [fl({ flowName: 'Brisbane - Youth - Leaders', mobile: '0400000066' }),
+      fl({ mobile: '0400000077', mobileIsParent: true })]);
+    const save = vi.spyOn(h.repo, 'save');
+    const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+    expect(riley(got)).toMatchObject({ personId: P3, phone: '0400000077', phoneIsParent: true, dnc: false });
+    expect(save).not.toHaveBeenCalled();
+    expect(JSON.stringify(await snap(h.repo))).not.toContain('0400000077');
+  });
+
+  it('#1b: with no New People row, the first flow row with a mobile is used', async () => {
+    const h = await setup([ros(P3, CF, CL)], [fl({ flowName: 'Other A', mobile: null }), fl({ flowName: 'Other B', mobile: '0400000066' }),
+      fl({ flowName: 'Other C', mobile: '0400000055' })]);
+    expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ phone: '0400000066', phoneIsParent: false });
+  });
+
+  it('#2: a service-list phone is kept over a different flow mobile', async () => {
+    const fi = col(SVC, 'First Name'), li = col(SVC, 'Last Name'), mi = col(SVC, 'Mobile');
+    const body: OkBody = { ...SVC, rows: SVC.rows.map((r, i) => (i === 0 ? r.map((c, j) => (j === mi ? '0400000001' : c)) : r)) };
+    const h = await setup([ros(P1, SVC.rows[0]![fi]!, SVC.rows[0]![li]!)], [fl({ personId: P1, mobile: '0400000055' })], [body]);
+    const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+    expect(got.snapshot.students.find((x) => x.personId === P1)).toMatchObject({ phone: '0400000001' });
+  });
+
+  it('#3: unmatched (n:) and ambiguous students get no flow phone, even when a flow row carries their name (no name join)', async () => {
+    const name = `${CF} ${CL}`;
+    for (const roster of [[], [ros(P3, CF, CL), ros(P4, CF, CL)]]) {      // nobody / a namesake pair (ambiguous)
+      const h = await setup(roster, [fl({ name }), fl({ personId: P4, name })]);
+      const me = riley((await h.svc.get(ADMIN, YEAR)) as AuditView);
+      expect(me.id.startsWith('n:')).toBe(true);
+      expect(me).toMatchObject({ personId: null, phone: null });
+    }
+  });
+
+  it('#4: a DNC flow row (roster not DNC, any step) makes the person DNC: admin/director keep the number, others do not', async () => {
+    const h = await setup([ros(P3, CF, CL, 'ok')], [fl({ consent: 'contact' })]);
+    expect(riley((await h.svc.get(DIRECTOR, YEAR)) as AuditView)).toMatchObject({ dnc: true, phone: '0400000077' });
+    dncPhones.off = true;
+    try {
+      expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ dnc: true, phone: null });
+    } finally { dncPhones.off = false; }
+  });
+
+  it('#5: flow rows with no personId or no mobile are ignored', async () => {
+    const h = await setup([ros(P3, CF, CL)], [fl({ personId: null }), fl({ mobile: null })]);
+    expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ personId: P3, phone: null });
+  });
+
+  it('#6 (with T2): a step-0 person inside the consent week gets the phone but stays consentPending', async () => {
+    const h = await setup([ros(P3, CF, CL, 'unknown')], [fl({ stepId: 's0', stepName: 'Step 0 - wait', stepOrder: 1, due: '2026-10-16',
+      consent: 'unknown' })]);
+    h.setNow(new Date('2026-10-15T22:00:00.000Z'));
+    expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ phone: '0400000077', consentPending: true });
   });
 });
 
