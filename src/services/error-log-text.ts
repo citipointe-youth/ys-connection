@@ -45,6 +45,9 @@ export const TEXT: Record<string, Entry> = {
   PARENT_FORM_UNCONFIRMED: ['now', "A parent form was sent but Elvanto didn't confirm it", "Search Elvanto for the parent. Resend from Admin > Unsent new people only if they're missing."],
   STUDENT_FORM_FAILED: ['now', 'Elvanto rejected a student form', 'Open Admin > Unsent new people, fix the details and resend.'],
   PARENT_FORM_FAILED: ['now', 'Elvanto rejected a parent form', 'Open Admin > Unsent new people, fix the details and resend.'],
+  BUS_CONSENT_FORM_UNCONFIRMED: ['now', 'A bus consent form may not have reached Elvanto', 'Check the bus consent form submissions in Elvanto, then resend or delete it in Admin > Unsent new people.'],
+  BUS_CONSENT_FORM_FAILED: ['now', 'Elvanto refused a bus consent form', 'Run Check forms in Admin > Youth Setup > Elvanto for this location, then resend from Admin > Unsent new people.'],
+  CONSENT_ADDRESS_UNMATCHED: ['fyi', 'A consent form address was not found on Google', 'Nothing to do; the leader picked the address by hand.'],
   UNSENT_SAVE_FAILED: ['now', 'A failed new-person send could not be saved, so they may be lost', `Re-enter them from the welcome-desk form. FIELD_ENCRYPTION_KEY in Vercel needs checking.${TELL}`],
   NY_REQ_FAILED: ['fyi', 'The new-person double-tap guard was skipped (database blip)', 'Nothing to do; the send went ahead. If it repeats, check Admin > Unsent new people for a duplicate.'],
   // 6.2 Elvanto link sweeps/results and reconcile

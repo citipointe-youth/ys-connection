@@ -321,3 +321,86 @@ describe('NewYouthService.send', () => {
     await expect(svc.send(LEADER, { ...INPUT, firstName: 'Last' })).rejects.toMatchObject({ statusCode: 429 });
   });
 });
+
+describe('sendBusConsent', () => {
+  const BUS_HTML = readFileSync(join(__dirname, 'fixtures/elvanto-bus-consent-form.html'), 'utf8');
+  const chk = EF.checkBusForm(BUS_HTML, [7, 8, 9, 10, 11, 12]);
+  const BUS_ELV = { ...BRIS, busConsentFormId: '8c9f0929-5b36-4ab7-b9bd-8b4082b013dc',
+    fields: { ...BRIS.fields, ...chk.fields }, options: { ...BRIS.options, ...chk.options } };
+  const BUS_INPUT = { first: 'jamie', last: 'sample', grade: '8', gender: 'f', mobile: '0400 000 001', school: 'Example High',
+    address: { line1: '1 Test St', postcode: '4000', city: 'Brisbane City' }, parentName: 'Alex Sample', parentPhone: '0400 000 003', pickup: false, pickupBy: '' };
+
+  async function busSettings(over: { busMinistry?: boolean; elvanto?: object } = {}) {
+    const repo = new InMemorySettingsRepository();
+    await repo.init();
+    await repo.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: over.elvanto ?? BUS_ELV,
+      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, busMinistry: over.busMinistry ?? true } } } as any);
+    return repo;
+  }
+  function busFetch(post: () => Response, html = BUS_HTML) {
+    const calls: { method: string; url: string }[] = [];
+    const fn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, url: String(url) });
+      return method === 'GET' ? new Response(html, { status: 200 }) : post();
+    });
+    return { fetchFn: fn as unknown as typeof fetch, posts: () => calls.filter((c) => c.method === 'POST') };
+  }
+
+  it('posts the bus form once; a double tap is a repeat; a refused form is failed; a 500 is unconfirmed', async () => {
+    const f = busFetch(() => new Response(null, { status: 302, headers: { location: '/thanks' } }));
+    const svc = makeNewYouthService(await busSettings(), { fetchFn: f.fetchFn, live: true });
+    expect(await svc.sendBusConsent(LEADER, BUS_INPUT)).toMatchObject({ result: 'sent', dropoff: null });
+    expect(f.posts()).toHaveLength(1);
+    expect(f.posts()[0]!.url).toContain(BUS_ELV.busConsentFormId);
+    expect(await svc.sendBusConsent(LEADER, BUS_INPUT)).toMatchObject({ result: 'sent', repeat: true });
+    expect(f.posts()).toHaveLength(1);
+    const bad = makeNewYouthService(await busSettings(), { fetchFn: busFetch(() => new Response('<form><input name="save"></form>', { status: 200 })).fetchFn, live: true });
+    expect((await bad.sendBusConsent(LEADER, BUS_INPUT)).result).toBe('failed');
+    const down = makeNewYouthService(await busSettings(), { fetchFn: busFetch(() => new Response('', { status: 500 })).fetchFn, live: true });
+    expect((await down.sendBusConsent(LEADER, BUS_INPUT)).result).toBe('unconfirmed');
+  });
+
+  it('module off -> MODULE_DISABLED; blank form id or option id -> ELVANTO_NOT_SET; changed form -> ELVANTO_FORM_CHANGED; nothing posted', async () => {
+    const f = busFetch(() => new Response(null, { status: 302 }));
+    const off = makeNewYouthService(await busSettings({ busMinistry: false }), { fetchFn: f.fetchFn, live: true });
+    await expect(off.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'MODULE_DISABLED' });
+    const blank = makeNewYouthService(await busSettings({ elvanto: { ...BUS_ELV, busConsentFormId: '' } }), { fetchFn: f.fetchFn, live: true });
+    await expect(blank.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_NOT_SET', statusCode: 409 });
+    const noOpt = makeNewYouthService(await busSettings({ elvanto: { ...BUS_ELV, options: { ...BUS_ELV.options, bcGrade8: '' } } }), { fetchFn: f.fetchFn, live: true });
+    await expect(noOpt.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_NOT_SET' });
+    const changed = makeNewYouthService(await busSettings(), { fetchFn: busFetch(() => new Response(null, { status: 302 }), BUS_HTML.replace('name="submissions[0][home_city]"', 'name="x"')).fetchFn, live: true });
+    await expect(changed.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_FORM_CHANGED', statusCode: 502 });
+    expect(f.posts()).toHaveLength(0);
+  });
+
+  it('a bad detail is BAD_REQUEST naming the field, never the value', async () => {
+    const svc = makeNewYouthService(await busSettings(), { fetchFn: busFetch(() => new Response(null, { status: 302 })).fetchFn, live: true });
+    await expect(svc.sendBusConsent(LEADER, { ...BUS_INPUT, parentPhone: 'nope' })).rejects.toMatchObject({ statusCode: 400, message: 'Check the parent phone' });
+  });
+
+  it('an unconfirmed bus consent is queued, lists with forms ["busConsent"], and its retry posts the bus form and clears the row', async () => {
+    const { InMemoryUnsentRepository } = await import('../repositories/in-memory');
+    const { randomBytes } = await import('node:crypto');
+    const old = [process.env.FIELD_ENCRYPTION_KEY, process.env.FIELD_ENCRYPTION_KEY_ID];
+    process.env.FIELD_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+    process.env.FIELD_ENCRYPTION_KEY_ID = 't1';
+    try {
+      const unsent = new InMemoryUnsentRepository();
+      let status = 500;
+      const f = busFetch(() => new Response(status === 500 ? '' : null, { status }));
+      const svc = makeNewYouthService(await busSettings(), { fetchFn: f.fetchFn, live: true, unsent });
+      expect(await svc.sendBusConsent(LEADER, BUS_INPUT)).toMatchObject({ result: 'unconfirmed', queued: true });
+      const rows = (await svc.unsentList(ADMIN)).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ forms: ['busConsent'], name: 'jamie sample', host: null, grade: '8' });
+      status = 302;
+      const r = await svc.unsentRetry(ADMIN, rows[0]!.id, { confirm: true });
+      expect((r as unknown as { result: string }).result).toBe('sent');
+      expect(f.posts().every((c) => c.url.includes(BUS_ELV.busConsentFormId))).toBe(true);
+      expect((await svc.unsentList(ADMIN)).rows).toHaveLength(0);
+    } finally {
+      for (const [k, v] of [['FIELD_ENCRYPTION_KEY', old[0]], ['FIELD_ENCRYPTION_KEY_ID', old[1]]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  });
+});

@@ -202,6 +202,7 @@ export const MinistryConfigSchema = z.object({
       fields: z.record(z.string().max(40), z.string().max(200)).default({}), // key -> Elvanto input name (Check forms)
       options: z.record(z.string().max(40), z.string().max(64)).default({}), // key -> option id (Check forms)
       checkedAt: z.string().max(40).default(''),
+      busConsentFormId: uuidOrEmpty.default(''), // bus consent form (spec 2026-10-22 bus consent)
     })
     .default({}),
 });

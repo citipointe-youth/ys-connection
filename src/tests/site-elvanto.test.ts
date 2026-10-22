@@ -46,7 +46,7 @@ describe('0040 site elvanto', () => {
   it('the Brisbane block parses through the schema unchanged', () => {
     const cfg = parseMinistryConfig({ elvanto: brisbaneElvanto() });
     // 2026-10-22 F7: plus the location question label, which Brisbane gets from the default (pinned).
-    expect(cfg.elvanto).toEqual({ ...brisbaneElvanto(), locationQuestion: 'Citipointe Location' });
+    expect(cfg.elvanto).toEqual({ ...brisbaneElvanto(), locationQuestion: 'Citipointe Location', busConsentFormId: '' });
   });
   it('F7: a fresh install defaults the location question to the shared tenant label, and can set its own', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.elvanto.locationQuestion).toBe('Citipointe Location');
@@ -72,7 +72,7 @@ describe('0040 site elvanto', () => {
   });
   it('defaults are blank (write targets; the location question is a read label, F7)', () => {
     const e = parseMinistryConfig({}).elvanto;
-    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' });
+    expect(e).toEqual({ baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '', busConsentFormId: '' });
   });
   it.each(['http://x.elvanto.com.au', 'https://evil.com', 'https://a.elvanto.com.au/', 'https://a.elvanto.com.au.evil.com', 'https://169.254.169.254'])('baseUrl %s refused', (u) => {
     expect(() => parseMinistryConfig({ elvanto: { baseUrl: u } })).toThrow();

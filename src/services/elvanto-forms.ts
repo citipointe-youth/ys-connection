@@ -27,8 +27,9 @@ export interface NewYouth {
   parentGender?: 'm' | 'f';
 }
 
-export type FormKind = 'student' | 'parent';
-export const formUrl = (e: ElvantoConfig, kind: FormKind): string => `${e.baseUrl}/form/${kind === 'student' ? e.studentFormId : e.parentFormId}`;
+export type FormKind = 'student' | 'parent' | 'busConsent';
+export const formUrl = (e: ElvantoConfig, kind: FormKind): string =>
+  `${e.baseUrl}/form/${kind === 'student' ? e.studentFormId : kind === 'parent' ? e.parentFormId : e.busConsentFormId}`;
 
 const S = 'submissions[0]';
 
@@ -127,6 +128,63 @@ export function checkForms(studentHtml: string, parentHtml: string, location: st
     ...extra.map((l) => `This form asks something the app doesn't fill: ${l}.`),
   ];
   return { ok: !missing.length && !extra.length, n, fields, options, missing, missingKeys, extra, lines };
+}
+
+// Bus consent form (spec 2026-10-22 bus consent, snapshot labels). Keys live in the same fields/options records with a bc prefix.
+const BQ = { bcSchool: 'What school do you attend?', bcParentName: 'Parent Full Name', bcParentPhone: 'Parent Phone Number',
+  bcPickup: 'Will you be picking up your child from the drop-off location?', bcPickupBy: 'Who will be picking up your child?' } as const;
+const BUS_GRADES = [6, 7, 8, 9, 10, 11, 12];
+export interface BusConsentIn { first: string; last: string; grade: string; gender: 'm' | 'f'; mobile: string; school: string;
+  address: { line1: string; line2: string; postcode: string; city: string; state: string };
+  parentName: string; parentPhone: string; pickup: boolean; pickupBy: string }
+
+export function checkBusForm(html: string, grades: number[]): FormCheck {
+  const qs = readFormFields(html), q = (l: string) => qs.find((f) => f.label === l);
+  const fields: Record<string, string> = {}, options: Record<string, string> = {}, missing: string[] = [], missingKeys: string[] = [];
+  let n = 0;
+  for (const [k, l] of Object.entries(BQ)) { n++; const f = q(l); if (f?.name) fields[k] = f.name; else { missing.push(l); missingKeys.push(`fields.${k}`); } }
+  const opts: [string, string, string][] = [['bcPickupYes', BQ.bcPickup, 'Yes'], ['bcPickupNo', BQ.bcPickup, 'No'],
+    ...BUS_GRADES.map((g): [string, string, string] => [`bcGrade${g}`, 'School Grade', String(g)])];
+  for (const [k, ql, ol] of opts) {
+    const need = !k.startsWith('bcGrade') || grades.includes(Number(k.slice(7)));
+    if (need) n++;
+    const v = q(ql)?.options.find((o) => o.label === ol)?.value;
+    if (v) options[k] = v; else if (need) { missing.push(`${ql}, option ${ol}`); missingKeys.push(`options.${k}`); }
+  }
+  const lines = missing.length ? missing.map((m) => `Bus consent form: not found: ${m}. Make the question match, or type its id.`) : [`Bus consent form: all ${n} found.`];
+  return { ok: !missing.length, n, fields, options, missing, missingKeys, extra: [], lines };
+}
+export function elvantoBusReady(cfg: Pick<MinistryConfig, 'elvanto' | 'structure'>): boolean {
+  const e = cfg.elvanto;
+  return !!(e.baseUrl && e.busConsentFormId) && Object.keys(BQ).every((k) => !!e.fields[k])
+    && ['bcPickupYes', 'bcPickupNo', ...gradeRange(cfg.structure).map((g) => `bcGrade${g}`)].every((k) => !!e.options[k]);
+}
+export function busConsentBody(b: BusConsentIn, honeypot: string, e: ElvantoConfig): URLSearchParams {
+  const F = e.fields, O = e.options, x = new URLSearchParams();
+  x.append('save', '1');
+  x.append(`${S}[first_name]`, b.first);
+  x.append(`${S}[last_name]`, b.last);
+  x.append(`${S}[school_grade]`, O[`bcGrade${b.grade}`] ?? '');
+  x.append(`${S}[gender]`, b.gender);
+  x.append(`${S}[mobile_number]`, b.mobile);
+  x.append(F.bcSchool ?? '', b.school);
+  x.append(`${S}[home_address]`, b.address.line1);
+  x.append(`${S}[home_address2]`, b.address.line2.trim() || '-'); // Elvanto marks Line 2 required
+  x.append(`${S}[home_postcode]`, b.address.postcode);
+  x.append(`${S}[home_city]`, b.address.city);
+  x.append(`${S}[home_state]`, b.address.state.trim() || 'QLD');
+  x.append(F.bcParentName ?? '', b.parentName);
+  x.append(F.bcParentPhone ?? '', b.parentPhone);
+  x.append(F.bcPickup ?? '', (b.pickup ? O.bcPickupYes : O.bcPickupNo) ?? '');
+  x.append(F.bcPickupBy ?? '', b.pickupBy);
+  x.append(honeypot, '');
+  x.append('url', '');
+  return x;
+}
+/** The drop-off location from the success page. Never throws; null when not found. */
+const DROPOFF_RE: RegExp | null = null; // TODO(Task0): set from the bc18-task0 capture (group 1 = the location)
+export function dropoffOf(html: string): string | null {
+  try { const m = DROPOFF_RE ? DROPOFF_RE.exec(String(html ?? '')) : null; return m?.[1] ? text(m[1]).slice(0, 200) : null; } catch { return null; }
 }
 
 /** True when every key the body builders read is set (grade6 only when "Include Grade 6" is on). */
@@ -247,6 +305,7 @@ export function shapeProblems(html: string, body: URLSearchParams, e: ElvantoCon
 export const SUCCESS: Record<FormKind, { redirect: RegExp | null; marker: string | null }> = {
   student: { redirect: null, marker: null },
   parent: { redirect: null, marker: null },
+  busConsent: { redirect: null, marker: null }, // TODO(Task0): narrow from the bc18-task0 capture
 };
 
 export function classifyPost(form: FormKind, r: { status: number; location: string | null; body: string }): Outcome {

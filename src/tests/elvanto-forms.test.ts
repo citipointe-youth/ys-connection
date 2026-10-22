@@ -142,3 +142,42 @@ describe('classifyPost', () => {
     expect(EF.classifyPost('student', { status: 302, location: '/x', body: '' })).toBe('sent');
   });
 });
+
+const BUS_HTML = readFileSync(join(__dirname, 'fixtures', 'elvanto-bus-consent-form.html'), 'utf8');
+const BUS_IDS = { busConsentFormId: '8c9f0929-5b36-4ab7-b9bd-8b4082b013dc' };
+const busIn: EF.BusConsentIn = { first: 'Jamie', last: 'Sample', grade: '8', gender: 'f', mobile: '0400000001', school: 'Example High',
+  address: { line1: '1 Test St', line2: '', postcode: '4000', city: 'Brisbane City', state: '' }, parentName: 'Alex Sample', parentPhone: '0400000003', pickup: false, pickupBy: 'Grandparent' };
+
+describe('bus consent form', () => {
+  const chk = EF.checkBusForm(BUS_HTML, [7, 8, 9, 10, 11, 12]);
+  const e = { ...BRIS, ...BUS_IDS, fields: { ...BRIS.fields, ...chk.fields }, options: { ...BRIS.options, ...chk.options } };
+  const struct = { gradeMin: 7, gradeMax: 12 };
+  it('Check forms maps every bus key by label from the snapshot form', () => {
+    expect(chk.missing).toEqual([]);
+    expect(chk.fields.bcParentPhone).toBe('submissions[0][people_custom_field][c184c020-76ce-11e5-9d36-06ba798128be]');
+    expect([chk.options.bcPickupYes, chk.options.bcPickupNo, chk.options.bcGrade8]).toEqual(['414b4a65-e135-4b54-9325-6fd99e86b101', '840ad9f3-7775-4c01-a6e7-00238a8b5233', '807cbbb6-3825-11e1-9229-ea942707ad51']);
+  });
+  it('the body matches the live form both ways (shapeProblems empty); line 2 "-" when blank; state QLD by default; grade and pickup ids', () => {
+    const b = EF.busConsentBody(busIn, 'elvanto1234567890123', e);
+    expect(EF.shapeProblems(BUS_HTML, b, e)).toEqual([]);
+    expect(b.get('submissions[0][home_address2]')).toBe('-');
+    expect(b.get('submissions[0][home_state]')).toBe('QLD');
+    expect(b.get('submissions[0][school_grade]')).toBe('807cbbb6-3825-11e1-9229-ea942707ad51');
+    expect(b.get(e.fields.bcPickup!)).toBe('840ad9f3-7775-4c01-a6e7-00238a8b5233');
+    expect(b.get(e.fields.bcPickupBy!)).toBe('Grandparent');
+    expect([b.get('save'), b.get('url'), b.get('elvanto1234567890123')]).toEqual(['1', '', '']);
+  });
+  it('a grade option id that is not on the form makes shapeProblems name it', () => {
+    const b = EF.busConsentBody(busIn, 'elvanto1234567890123', { ...e, options: { ...e.options, bcGrade8: '11111111-1111-1111-1111-111111111111' } });
+    expect(EF.shapeProblems(BUS_HTML, b, e).length).toBeGreaterThan(0);
+  });
+  it('elvantoBusReady needs the form id, every bus key and every grade option', () => {
+    expect(EF.elvantoBusReady({ elvanto: e, structure: struct } as never)).toBe(true);
+    expect(EF.elvantoBusReady({ elvanto: { ...e, busConsentFormId: '' }, structure: struct } as never)).toBe(false);
+    expect(EF.elvantoBusReady({ elvanto: { ...e, options: { ...e.options, bcGrade8: '' } }, structure: struct } as never)).toBe(false);
+  });
+  it('dropoffOf never throws and finds nothing on an unrelated page', () => {
+    expect(EF.dropoffOf('<html>thanks</html>')).toBeNull();
+    expect(() => EF.dropoffOf(undefined as unknown as string)).not.toThrow();
+  });
+});
