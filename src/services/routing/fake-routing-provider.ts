@@ -1,5 +1,5 @@
-import type { RoutingProvider, SolveProblem, SolveResult, SolvedRoute, PlaceSuggestion, RoutePoint, MapPath, MapMarker,
-  MapImage } from './routing-provider';
+import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult, type SolvedRoute, type PlaceSuggestion, type PlaceAddress,
+  type RoutePoint, type MapPath, type MapMarker, type MapImage } from './routing-provider';
 import { encodePolyline, decodePolyline, type LatLng } from './polyline';
 
 // Deterministic, straight-line, no network. Used in tests, PERSISTENCE=memory and whenever the
@@ -72,6 +72,15 @@ export class FakeRoutingProvider implements RoutingProvider {
     if (q.length < 3) return [];
     const slug = q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return [1, 2, 3].map((n) => ({ placeId: `fake:${slug}:${n}`, text: `${q} ${n}, Testville` }));
+  }
+
+  /** Matches the fake suggestions: `fake:<slug>:<n>` -> "<n> <slug words>", Testville. A slug starting "unit-N-" puts "Unit N" in line 2. */
+  async addressDetails(placeId: string, _sessionToken?: string, _signal?: AbortSignal): Promise<PlaceAddress> {
+    const m = /^fake:([a-z0-9-]+):(\d+)$/.exec(placeId);
+    if (!m) throw new RoutingError('Google address details failed (404)');
+    const u = /^unit-(\d+)-(.*)$/.exec(m[1]!);
+    const words = (u ? u[2]! : m[1]!).replace(/-/g, ' ');
+    return { line1: `${m[2]} ${words}`.trim(), line2: u ? `Unit ${u[1]}` : '', city: 'Testville', postcode: '4000', state: 'QLD' };
   }
 
   async matrix(pairs: { from: RoutePoint; to: RoutePoint }[], _signal?: AbortSignal): Promise<number[]> {

@@ -1,7 +1,7 @@
 import { createSign } from 'node:crypto';
-import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult, type PlaceSuggestion, type RoutePoint,
+import { RoutingError, type RoutingProvider, type SolveProblem, type SolveResult, type PlaceSuggestion, type PlaceAddress, type RoutePoint,
   type MapPath, type MapMarker, type MapImage } from './routing-provider';
-import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, routeMatrixBody, parseRouteMatrix,
+import { optimizeToursBody, parseOptimizeTours, autocompleteBody, parseAutocomplete, parseAddressDetails, routeMatrixBody, parseRouteMatrix,
   computeRoutesBody, parseComputeRoutes,
   staticMapUrl, MATRIX_MAX_PAIRS, type ResolvedPlaces } from './google-requests';
 import { FakeRoutingProvider } from './fake-routing-provider';
@@ -145,6 +145,13 @@ export class GoogleRoutingProvider implements RoutingProvider {
         'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text' },
       body: JSON.stringify(autocompleteBody(input, sessionToken)) }, signal, 'address search');
     return parseAutocomplete(await res.json());
+  }
+
+  /** Never logs the address: call() only logs Google's error body, and the result is returned, not printed. */
+  async addressDetails(placeId: string, sessionToken: string, signal: AbortSignal): Promise<PlaceAddress> {
+    const res = await this.call(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?sessionToken=${encodeURIComponent(sessionToken)}`,
+      { method: 'GET', headers: { 'X-Goog-Api-Key': this.cfg.apiKey, 'X-Goog-FieldMask': 'addressComponents,formattedAddress' } }, signal, 'address details');
+    return parseAddressDetails(await res.json());
   }
 
   async matrix(pairs: { from: RoutePoint; to: RoutePoint }[], signal: AbortSignal): Promise<number[]> {

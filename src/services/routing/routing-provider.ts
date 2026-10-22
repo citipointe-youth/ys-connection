@@ -29,6 +29,8 @@ export interface SolvedRoute {
 }
 export interface SolveResult { routes: SolvedRoute[]; skipped: number[] }
 export interface PlaceSuggestion { placeId: string; text: string }
+/** A picked place split into the consent form's five address lines (line2 '' when there is no unit). */
+export interface PlaceAddress { line1: string; line2: string; city: string; postcode: string; state: string }
 export interface MapPath { colour: string; polyline: string }                 // colour = '#rrggbb'
 export interface MapMarker { colour: string; label: string; lat: number; lng: number }
 export interface MapImage { contentType: string; bytes: Uint8Array }
@@ -37,6 +39,8 @@ export interface RoutingProvider {
   readonly name: 'google' | 'fake';
   solve(p: SolveProblem, signal: AbortSignal): Promise<SolveResult>;
   autocomplete(input: string, sessionToken: string, signal: AbortSignal): Promise<PlaceSuggestion[]>;
+  /** Place Details (New), addressComponents only; `sessionToken` closes the autocomplete billing session. */
+  addressDetails(placeId: string, sessionToken: string, signal: AbortSignal): Promise<PlaceAddress>;
   /** Drive seconds for each from→to pair, same order as `pairs`. */
   matrix(pairs: { from: RoutePoint; to: RoutePoint }[], signal: AbortSignal): Promise<number[]>;
   staticMap(paths: MapPath[], markers: MapMarker[], signal: AbortSignal): Promise<MapImage>;

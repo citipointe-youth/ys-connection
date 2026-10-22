@@ -17,6 +17,9 @@ BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet li
 - Past riders now holds up to 100 people and also lists anyone with a
   matched consent form this year, even if they have never ridden: tap them
   and the consent form address is ready to pick (ysc-v145).
+- The consent form has an Address search at the top of the address: pick
+  the Google suggestion and the street, unit, suburb, postcode and state fill
+  in. The lines stay editable, and typing them in by hand still works.
 
 -------------------------------------------------------------------------------
 CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)

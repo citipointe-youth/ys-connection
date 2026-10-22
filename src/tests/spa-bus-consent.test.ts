@@ -79,7 +79,7 @@ describe('address picker consent row (R8)', () => {
 
 describe('consent form sheet (R2, R3, R6)', () => {
   it('banner first, declaration shows the saved text with both links, the child name filled in', () => {
-    const { _bcFormHtml } = loadFns(['_bcFormHtml'], PRE);
+    const { _bcFormHtml } = loadFns(['_bcFormHtml', '_busAcField', '_busUuid'], PRE + ' const window = {}; const BUS = { ac: {} };');
     const h = _bcFormHtml({ first: 'Jess', last: 'Tran', grade: 9, gender: 'f', declaration: 'May [child] ride?' });
     expect(h.indexOf('on the parent')).toBeLessThan(h.indexOf('bc-first'));
     expect(h).toContain('May Jess Tran ride?');
@@ -191,6 +191,72 @@ describe('fix round 1', () => {
   });
   it('a blank declaration saves as the default', () => {
     expect(loadIndexHtml()).toMatch(/bus-decl'\)\.value\.trim\(\) \|\| MINISTRY_CONFIG_DEFAULTS_CLIENT\.busMinistry\.consentDeclaration/);
+  });
+});
+
+describe('consent form Address search (operator 2026-10-23)', () => {
+  const DOC = `const els = {}; for (const id of ['bc-line1', 'bc-line2', 'bc-city', 'bc-postcode', 'bc-state']) els[id] = { value: 'old', focused: false, focus() { this.focused = true; } };
+    const document = { getElementById: (id) => els[id] || null }; const toasts = []; const toast = (m) => toasts.push(m);
+    let reply = null, fail = false, same = true, gate = null; const asked = [];
+    const BUS = { ac: {} }; const _here = () => ({ mo: 1 }); const _stillSheet = () => same;
+    const _busGet = async (p, q) => { asked.push([p, q]); const g = gate; const r = reply; if (g) await g; if (fail) throw new Error('Address search is unavailable'); return r; };
+    const _set = (o) => { if ('reply' in o) reply = o.reply; if ('fail' in o) fail = o.fail; if ('same' in o) same = o.same; if ('gate' in o) gate = o.gate; };`;
+  const load = () => loadFns(['_bcFillFromPlace'], DOC, ['_bcFillFromPlace', 'els', 'toasts', 'asked', '_set', 'BUS']);
+  const LINES = ['bc-line1', 'bc-line2', 'bc-city', 'bc-postcode', 'bc-state'];
+  it('the sheet has one Address search at the top of the block, the five lines below it, and a type-it-in path', () => {
+    const { _bcFormHtml } = loadFns(['_bcFormHtml', '_busAcField', '_busUuid'], PRE + ' const window = {}; const BUS = { ac: {} };');
+    const h = _bcFormHtml({ first: 'J', last: 'T', address: { line1: '1 <b> St', line2: '-', city: 'B', postcode: '4000', state: 'QLD' } });
+    const ac = h.indexOf('id="bc-addr"'), l1 = h.indexOf('id="bc-line1"');
+    expect(ac).toBeGreaterThan(-1); expect(l1).toBeGreaterThan(ac);
+    for (const id of LINES.slice(1)) expect(h.indexOf('id="' + id + '"')).toBeGreaterThan(l1);
+    expect(h).toContain("Can't find it? Type it in"); expect(h).toContain("getElementById('bc-line1').focus()");
+    expect(h).toContain('1 &#60;b&#62; St'); // prefill unchanged and escaped
+    expect(h).toMatch(/id="bc-line2"[^>]*value=""/); // '-' shows blank
+  });
+  it('picking a suggestion fills all five lines: a unit case and a no-unit case', async () => {
+    const f = load();
+    f._set({ reply: { line1: '12 Test St', line2: 'Unit 3', city: 'Carina', postcode: '4152', state: 'QLD' } });
+    await f._bcFillFromPlace('pl1', 'sess-0001');
+    expect(f.asked[0]).toEqual(['/bus/places/details', 'placeId=pl1&session=sess-0001']);
+    expect(LINES.map((id) => f.els[id].value)).toEqual(['12 Test St', 'Unit 3', 'Carina', '4152', 'QLD']);
+    f._set({ reply: { line1: '5 Other Rd', line2: '', city: 'Testville', postcode: '4000', state: 'QLD' } });
+    await f._bcFillFromPlace('pl2', 'sess-0002');
+    expect(LINES.map((id) => f.els[id].value)).toEqual(['5 Other Rd', '', 'Testville', '4000', 'QLD']);
+  });
+  it('a late details reply is dropped: sheet replaced, or a newer pick', async () => {
+    const f = load();
+    f._set({ reply: { line1: '12 Test St', line2: '', city: 'C', postcode: '4152', state: 'QLD' }, same: false });
+    await f._bcFillFromPlace('pl1', 's');
+    expect(f.els['bc-line1'].value).toBe('old');
+    let release: () => void = () => {};
+    f._set({ same: true, reply: { line1: 'STALE', line2: '', city: 'S', postcode: '1', state: 'QLD' }, gate: new Promise<void>((r) => { release = r; }) });
+    const first = f._bcFillFromPlace('pl1', 's');
+    f._set({ gate: null, reply: { line1: '2 New St', line2: '', city: 'N', postcode: '4001', state: 'QLD' } });
+    await f._bcFillFromPlace('pl2', 's');
+    release(); await first;
+    expect(f.els['bc-line1'].value).toBe('2 New St');
+  });
+  it('a Google error leaves manual entry: a toast and line 1 focused, nothing overwritten', async () => {
+    const f = load(); f._set({ fail: true });
+    await f._bcFillFromPlace('pl1', 's');
+    expect(f.toasts).toEqual(['Could not fill in that address. Type it in below.']);
+    expect(f.els['bc-line1'].focused).toBe(true); expect(f.els['bc-line1'].value).toBe('old');
+  });
+  it('manual entry still submits: typed lines with no search pass the check and reach the confirm step', () => {
+    const vals: Record<string, string> = { 'bc-first': 'Jess', 'bc-last': 'Tran', 'bc-grade': '9', 'bc-gender': 'f', 'bc-mobile': '0400000001', 'bc-school': 'X',
+      'bc-line1': '7 Typed St', 'bc-line2': '', 'bc-city': 'Carina', 'bc-postcode': '4152', 'bc-state': 'QLD', 'bc-addr': '', 'bc-pname': 'Alex', 'bc-pphone': '0400000003', 'bc-pickup': 'y' };
+    const f = loadFns(['busConsentSubmit', '_bcRead', '_bcMissing'], `const __v = ${JSON.stringify(vals)}; const document = { getElementById: (id) => ({ value: __v[id] || '' }) };
+      const BUS = { bc: { p: { declaration: 'd' } } }; const toasts = []; const toast = (m) => toasts.push(m); let shown = ''; const modal = (h) => { shown = h; };
+      const _bcConfirmHtml = (p) => 'confirm ' + p; const _shown = () => shown;`, ['busConsentSubmit', 'BUS', 'toasts', '_shown']);
+    f.busConsentSubmit();
+    expect(f.toasts).toEqual([]); expect(f._shown()).toBe('confirm Alex');
+    expect(f.BUS.bc.f.address).toEqual({ line1: '7 Typed St', line2: '', postcode: '4152', city: 'Carina', state: 'QLD' });
+  });
+  it('busAcPick on the consent field asks for details with the session the suggestions used', () => {
+    const f = loadFns(['busAcPick'], `const BUS = { ac: { 'bc-addr': { session: 'sess-old1' } }, acHits: { 'bc-addr': [{ placeId: 'pl9', text: '9 A St' }] } };
+      const document = { getElementById: () => null }; const _busUuid = () => 'sess-new1'; const calls = []; const _bcFillFromPlace = (p, s) => calls.push([p, s]);`, ['busAcPick', 'calls', 'BUS']);
+    f.busAcPick('bc-addr', 0);
+    expect(f.calls).toEqual([['pl9', 'sess-old1']]); expect(f.BUS.ac['bc-addr'].session).toBe('sess-new1');
   });
 });
 

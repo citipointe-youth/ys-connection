@@ -5,7 +5,7 @@ import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisable
 import { currentRunDate, localDay, addDays, isServiceDay, eligibilityOf, capacityOf, nameMatches, normName, tidyName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
 import { FakeRoutingProvider } from './routing/fake-routing-provider';
-import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type SolveProblem, type SolveResult,
+import { routingDeadline, RoutingError, type RoutingProvider, type PlaceSuggestion, type PlaceAddress, type SolveProblem, type SolveResult,
   type MapImage, type MapMarker, type MapPath } from './routing/routing-provider';
 import { decodePolyline, thinPolyline } from './routing/polyline';
 import { markerLabel, ROUTE_MAX_INTERMEDIATES } from './routing/google-requests';
@@ -63,6 +63,7 @@ export interface BusService {
   history(ctx: BusCtx, from?: string): Promise<BusHistoryView>;
   editPastRider(ctx: BusCtx, runId: string, riderId: string, input: unknown): Promise<{ ok: true }>;
   autocomplete(ctx: BusCtx, q: string, session: string): Promise<PlaceSuggestion[]>;
+  placeDetails(ctx: BusCtx, placeId: string, session: string): Promise<PlaceAddress>;
   generate(ctx: BusCtx, input: unknown): Promise<BusGenerateResult>;
   undo(ctx: BusCtx): Promise<void>;
   unassignAll(ctx: BusCtx): Promise<{ unassigned: number }>;
@@ -169,6 +170,7 @@ const GENERATE_SOLVE_BUDGET_MS = 30_000;
 const LOCK_MS = 55_000;
 const UNDO_MS = 120_000;
 const SESSION_RE = /^[A-Za-z0-9-]{8,36}$/;
+const PLACE_ID_RE = /^[A-Za-z0-9_:-]{1,300}$/; // Google place ids (and the fake provider's)
 const NO_CHURCH = 'Set the church address in Bus settings first';
 const GENERATE_FAILED = "Couldn't reach Google Maps — nothing changed. Try again, or move riders by hand.";
 const MAP_FAILED = 'Could not draw the map';
@@ -1553,6 +1555,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (input.length < 3 || input.length > 120) return [];
       const token = SESSION_RE.test(session) ? session : generateId();
       try { return await routing.autocomplete(input, token, routingDeadline()); }
+      catch (err) { throw routingFailed(err, SEARCH_FAILED); }
+    },
+    // Operator 2026-10-23: the consent form sheet's Address search fills the five lines from the picked place.
+    async placeDetails(ctx, placeId, session) {
+      await gate(ctx, 'bus:use');
+      if (!PLACE_ID_RE.test(placeId)) throw new BadRequestError('Pick the address from the suggestions list');
+      const token = SESSION_RE.test(session) ? session : generateId();
+      try { return await routing.addressDetails(placeId, token, routingDeadline()); }
       catch (err) { throw routingFailed(err, SEARCH_FAILED); }
     },
     async generate(ctx, input) {

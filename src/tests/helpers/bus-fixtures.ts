@@ -22,12 +22,13 @@ export function recordingRouting(inner: RoutingProvider = new FakeRoutingProvide
     matrix: (pairs, s) => { calls.matrix++; calls.matrixCalls.push(pairs); return inner.matrix(pairs, s); },
     staticMap: (paths, markers, s) => { calls.map.push({ paths, markers }); return inner.staticMap(paths, markers, s); },
     route: (points, s) => { calls.route.push(points); return inner.route(points, s); },
+    addressDetails: (id, t, s) => inner.addressDetails(id, t, s),
   };
   return { provider, calls };
 }
 
 /** Fake provider with some methods replaced. */
-export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autocomplete' | 'matrix' | 'staticMap' | 'route'>>): RoutingProvider {
+export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autocomplete' | 'matrix' | 'staticMap' | 'route' | 'addressDetails'>>): RoutingProvider {
   const f = new FakeRoutingProvider();
   return {
     name: 'fake',
@@ -36,6 +37,7 @@ export function stubRouting(over: Partial<Pick<RoutingProvider, 'solve' | 'autoc
     matrix: over.matrix ?? ((p, s) => f.matrix(p, s)),
     staticMap: over.staticMap ?? ((p, m, s) => f.staticMap(p, m, s)),
     route: over.route ?? ((p, s) => f.route(p, s)),
+    addressDetails: over.addressDetails ?? ((id, t, s) => f.addressDetails(id, t, s)),
   };
 }
 

@@ -1,4 +1,4 @@
-import { RoutingError, type SolveProblem, type SolveResult, type SolvedRoute, type PlaceSuggestion, type RoutePoint,
+import { RoutingError, type SolveProblem, type SolveResult, type SolvedRoute, type PlaceSuggestion, type PlaceAddress, type RoutePoint,
   type MapPath, type MapMarker } from './routing-provider';
 
 const COST_PER_HOUR = 60;                 // 1 cost unit = 1 minute driving, so penalty minutes plug straight in
@@ -85,6 +85,19 @@ export function parseAutocomplete(json: unknown): PlaceSuggestion[] {
   return (j.suggestions ?? []).map((s: any) => s.placePrediction).filter(Boolean)
     .map((pp: any) => ({ placeId: String(pp.placeId ?? ''), text: String(pp.text?.text ?? '') }))
     .filter((x: PlaceSuggestion) => x.placeId && x.text).slice(0, 5);
+}
+
+/** Place Details (New) addressComponents -> the consent form lines. Unit (subpremise) goes in line 2. */
+export function parseAddressDetails(json: unknown): PlaceAddress {
+  const j = (json ?? {}) as any;
+  const cs: any[] = Array.isArray(j.addressComponents) ? j.addressComponents : [];
+  const get = (t: string, short = false) => { const c = cs.find((x) => Array.isArray(x.types) && x.types.includes(t)); return c ? String((short ? c.shortText : c.longText) ?? '').trim() : ''; };
+  const sub = get('subpremise');
+  const street = [get('street_number'), get('route')].filter(Boolean).join(' ');
+  return { line1: street || get('premise') || String(j.formattedAddress ?? '').split(',')[0]!.trim(),
+    line2: sub ? (/^\d/.test(sub) ? `Unit ${sub}` : sub) : '',
+    city: get('locality') || get('sublocality_level_1') || get('postal_town'),
+    postcode: get('postal_code'), state: get('administrative_area_level_1', true) };
 }
 
 export const MATRIX_MAX_PAIRS = 25; // safety chunk size — a car's own skip pairs rarely get near this

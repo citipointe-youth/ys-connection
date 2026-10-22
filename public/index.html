@@ -14868,7 +14868,9 @@ function busAc(id, q) {
 function busAcPick(id, i) {
   const h = (BUS.acHits[id] || [])[i]; if (!h) return;
   const input = document.getElementById(id); if (input) input.value = h.text;
+  const session = (BUS.ac[id] || {}).session;
   BUS.ac[id] = { text: h.text, placeId: h.placeId, session: _busUuid() }; // a pick ends the billing session
+  if (id === 'bc-addr') _bcFillFromPlace(h.placeId, session); // consent form: the details call closes that same session
   BUS.acHits[id] = [];
   const el = document.getElementById(id + '-ac'); if (el) el.innerHTML = '';
 }
@@ -15131,7 +15133,9 @@ function _bcFormHtml(p) {
   <div class="fg"><label>Gender</label><select class="fi" id="bc-gender">${opt('', 'Choose', p.gender)}${opt('f', 'Female', p.gender)}${opt('m', 'Male', p.gender)}</select></div>
   <div class="fg"><label>Student mobile</label><input class="fi" id="bc-mobile" inputmode="tel" value="${v(mobile)}"></div>
   <div class="fg"><label>School</label><input class="fi" id="bc-school" value="${v(school)}"></div>
-  <div class="fg"><label>Address</label><input class="fi" id="bc-line1" value="${v(a.line1)}"><input class="fi" id="bc-line2" placeholder="Line 2 (optional)" value="${v(a.line2 === '-' ? '' : a.line2)}">
+  <div class="fg"><label>Address</label>${_busAcField('bc-addr', '', null, 'Search the address')}
+    <button type="button" class="btn btn-secondary btn-sm" style="margin:4px 0" onclick="document.getElementById('bc-line1').focus()">Can't find it? Type it in</button>
+    <input class="fi" id="bc-line1" placeholder="Street" value="${v(a.line1)}"><input class="fi" id="bc-line2" placeholder="Line 2 (optional)" value="${v(a.line2 === '-' ? '' : a.line2)}">
     <input class="fi" id="bc-city" placeholder="Suburb" value="${v(a.city)}"><input class="fi" id="bc-postcode" inputmode="numeric" placeholder="Postcode" value="${v(a.postcode)}">
     <input class="fi" id="bc-state" placeholder="State" value="${v(a.state || 'QLD')}"></div>
   <div class="fg"><label>Parent full name</label><input class="fi" id="bc-pname" value="${v(p.parentName)}"></div>
@@ -15141,6 +15145,20 @@ function _bcFormHtml(p) {
   <div class="card"><div class="card-sub">Read this to the parent</div><p>${esc(decl)}</p>
     <p class="lk-d"><a href="https://citipointechurch.com/privacypolicy" target="_blank" rel="noopener">Privacy policy</a> · <a href="https://citipointechurch.com/parent-info" target="_blank" rel="noopener">Parent info</a></p></div>
   <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="busConsentSubmit()">Submit</button></div>`;
+}
+// Operator 2026-10-23: a picked Address suggestion fills the five lines (they stay editable). Late or stale replies are dropped;
+// a failed lookup leaves manual entry with a toast. Line 2 stays blank here; the server still sends '-' to Elvanto.
+async function _bcFillFromPlace(placeId, session) {
+  const here = _here(), seq = BUS.bcDet = (BUS.bcDet || 0) + 1;
+  let a;
+  try { a = await _busGet('/bus/places/details', 'placeId=' + encodeURIComponent(placeId) + '&session=' + encodeURIComponent(session || '')); }
+  catch (e) {
+    if (!_stillSheet(here) || seq !== BUS.bcDet) return;
+    toast('Could not fill in that address. Type it in below.'); const l1 = document.getElementById('bc-line1'); if (l1) l1.focus(); return;
+  }
+  if (!_stillSheet(here) || seq !== BUS.bcDet || !a) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : String(val); };
+  set('bc-line1', a.line1); set('bc-line2', a.line2); set('bc-city', a.city); set('bc-postcode', a.postcode); set('bc-state', a.state || 'QLD');
 }
 function _bcMissing(f) {
   const a = f.address || {};

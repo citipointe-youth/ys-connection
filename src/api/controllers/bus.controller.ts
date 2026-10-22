@@ -68,6 +68,7 @@ export function makeBusController(deps: { bus: BusService }) {
     history: (r: HttpRequest) => b.history(ctxOf(r), r.query['from'] ? String(r.query['from']) : undefined),
     editPastRider: (r: HttpRequest) => b.editPastRider(ctxOf(r), p(r, 'id'), p(r, 'riderId'), r.body),
     autocomplete: (r: HttpRequest) => b.autocomplete(ctxOf(r), String(r.query['q'] ?? ''), String(r.query['session'] ?? '')),
+    placeDetails: (r: HttpRequest) => b.placeDetails(ctxOf(r), String(r.query['placeId'] ?? ''), String(r.query['session'] ?? '')),
     generate: (r: HttpRequest) => b.generate(ctxOf(r), r.body),
     undo: async (r: HttpRequest) => { await b.undo(ctxOf(r)); return { ok: true }; },
     unassignAll: (r: HttpRequest) => b.unassignAll(ctxOf(r)),

@@ -222,6 +222,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'PATCH',  path: '/bus/runs/:id/riders/:riderId', auth: true, handler: (r) => busCtl.editPastRider(r) },
     { method: 'GET',    path: '/bus/history',              auth: true, handler: (r) => busCtl.history(r) },
     { method: 'GET',    path: '/bus/places/autocomplete', auth: true, handler: (r) => busCtl.autocomplete(r) },
+    { method: 'GET',    path: '/bus/places/details',      auth: true, handler: (r) => busCtl.placeDetails(r) },
     { method: 'POST',   path: '/bus/run/generate',        auth: true, handler: (r) => busCtl.generate(r) },
     { method: 'POST',   path: '/bus/run/undo',            auth: true, handler: (r) => busCtl.undo(r) },
     { method: 'POST',   path: '/bus/run/unassign-all',    auth: true, handler: (r) => busCtl.unassignAll(r) },
