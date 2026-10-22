@@ -389,7 +389,7 @@ export class InMemoryConnectionAuditRepository
 
   async findAllSummaries(): Promise<AuditSummary[]> {
     return [...this.store.values()].sort((a, b) => b.year - a.year).map((a) => ({ year: a.year, label: a.label, uploadedAt: a.uploadedAt,
-      termKeys: ((a.snapshot as { terms?: { key: string }[] }).terms ?? []).map((t) => t.key) }));
+      termKeys: ((a.snapshot as { terms?: { key: string }[] } | null)?.terms ?? []).map((t) => t.key) }));
   }
 
   async saveSource(row: StoredAuditSource): Promise<void> { this.src.set(`${row.year}|${row.source}`, JSON.parse(JSON.stringify(row))); }

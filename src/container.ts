@@ -287,10 +287,11 @@ export async function buildContainer(): Promise<Container> {
     lifegroups, lifegroupWeeks, lifegroupAttendance,
     imports, audit, connectionAudits,
   );
-  const connectionAudit = makeConnectionAuditService(connectionAudits, settings);
   // Always live (owner 2026-10-12: the ELVANTO_FORMS_LIVE gate was removed; test sends are deleted in Elvanto).
   // Local dev and preview deployments send real forms too.
-  const errorLog = makeErrorLogService({ repo: errorLogRepo, link });
+  // auditFeed arrows run at request time, after connectionAudit exists (spec 2026-10-22 §7: feed check on /admin/errors and latest).
+  const errorLog = makeErrorLogService({ repo: errorLogRepo, link, auditFeed: () => connectionAudit.checkFeed() });
+  const connectionAudit = makeConnectionAuditService(connectionAudits, settings, { link, errorLog });
   const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, errorLog });
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
@@ -300,7 +301,8 @@ export async function buildContainer(): Promise<Container> {
   const intake = makeIntakeService({ intake: intakeRepo, link, settings, status: (a) => linkSvc.status(a), errorLog });
   const sync = makeSyncService({ link, settings, students, users, errorLog, intake, leaders });
   const reconcile = makeReconcileService({ link, students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions,
-    serviceAttendance, imports, settings, errorLog, errorRows: errorLogRepo, runs: reconcileRuns });
+    serviceAttendance, imports, settings, errorLog, errorRows: errorLogRepo, runs: reconcileRuns,
+    auditFeed: () => connectionAudit.checkFeed() });
   // Never throws: the bus step is caught here, rematch/run catch internally and run() is bounded (10 s).
   afterImport = async (kind) => {
     await busSvc.linkGuestsAfterImport().catch(() => undefined);

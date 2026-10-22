@@ -183,6 +183,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/audits',       auth: true, handler: (r) => connectionAudit.list(r) },
     { method: 'GET',    path: '/audits/export-all', auth: true, handler: (r) => connectionAudit.exportAll(r) },
     { method: 'POST',   path: '/audits/import-all', auth: true, handler: (r) => connectionAudit.importAll(r) },
+    { method: 'POST',   path: '/audits/sources/:source', auth: true, handler: (r) => connectionAudit.uploadSource(r) },
     { method: 'GET',    path: '/audits/:year', auth: true, handler: (r) => connectionAudit.get(r) },
     { method: 'DELETE', path: '/audits/:year', auth: true, handler: (r) => connectionAudit.remove(r) },
 

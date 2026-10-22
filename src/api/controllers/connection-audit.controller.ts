@@ -4,6 +4,9 @@ import { BadRequestError } from '../../core/errors/app-error';
 
 export function makeConnectionAuditController(deps: { connectionAudit: ConnectionAuditService }) {
   return {
+    async uploadSource(req: AuthedRequest) {
+      return deps.connectionAudit.uploadSource(req.ctx, String(req.params?.['source'] ?? ''), req.body);
+    },
     async list(req: AuthedRequest) {
       return deps.connectionAudit.list(req.ctx);
     },
