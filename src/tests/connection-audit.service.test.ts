@@ -274,6 +274,23 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     expect(got.snapshot.students.find((x) => x.personId === P1)).toMatchObject({ dnc: true, consentPending: false });
   });
 
+  it('Fix 1 (I1): DNC on the step-0 flow row only (roster unknown) is DNC: "Do not contact", never pending', async () => {
+    const fi = col(SVC, 'First Name'), li = col(SVC, 'Last Name'), a = SVC.rows[0]!;
+    const h = await harness();
+    const st = await h.settings.getSettings();
+    await h.settings.updateSettings({ ministryConfig: { ...st.ministryConfig, elvanto: { ...st.ministryConfig.elvanto,
+      peopleFlowPrefix: 'Brisbane - Youth - New People' } } } as never);
+    await h.link.replaceMirror('roster', [{ personId: P1, firstName: a[fi]!, lastName: a[li]!, gender: null, grade: null, kind: 'student',
+      consent: 'unknown' }], { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    await h.link.replaceMirror('flows', [{ rowId: 'r1', flowId: 'f', flowName: 'Brisbane - Youth - New People 2026', stepId: 's0',
+      stepName: 'Step 0 - wait', stepOrder: 1, personId: P1, name: 'Synthetic Kid', due: '2026-10-16', assignedTo: '', grade: 9,
+      gender: 'male', mobile: null, mobileIsParent: false, consent: 'contact' }] as never, { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
+    await h.svc.ingest(SVC, 'console');
+    h.setNow(new Date('2026-10-15T22:00:00.000Z'));                       // inside the consent week
+    const got = (await h.svc.get(ADMIN, YEAR)) as AuditView;
+    expect(got.snapshot.students.find((x) => x.personId === P1)).toMatchObject({ dnc: true, consentPending: false });
+  });
+
   it('T1 (#3): a namesake pair where one is DNC makes the ambiguous n: row DNC; matched rows are untouched', () => {
     const s = (id: string, personId: string | null, firstName: string, lastName: string) => ({ id, personId, firstName, lastName,
       gender: 'male' as const, grade: 9, quad: null, caOnly: false, team: false, connect: null, decision: null, lastSeen: null,

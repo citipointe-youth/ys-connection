@@ -172,15 +172,18 @@ export function makeConnectionAuditService(
       }
       const [roster, flows, rows] = await Promise.all([d.link.roster(), d.link.flows(), d.consentRows().catch(() => [])]);
       // Consent audit B: computed at read time, so a person opens up at their consent Friday's cut-off with no rebuild.
+      // A failed Consents read is [] (a spec choice; link.service lets it throw): an open-row person past their Friday then lists.
       const t = now(), site = settings.ministryConfig.structure;
       const people = peopleFlowOf(flows, t, site.timeZone, peoplePrefix(settings));
       const rosterById = new Map(roster.map((r) => [r.personId, r]));
       const step0 = new Map(flows.filter((f) => f.personId && isConsentStep(f, people)).map((f) => [f.personId!, f]));
-      const students = maskDnc(snap.students, roster, canSeeDncPhones(actor)).map((v) => {
+      const keep = canSeeDncPhones(actor);
+      const students = maskDnc(snap.students, roster, keep).map((v) => {
         const f = v.personId ? step0.get(v.personId) : undefined;
         const consent = v.dnc ? 'contact' : f ? shownConsent(f, rosterById) : v.personId ? rosterById.get(v.personId)?.consent : null;
-        return { ...v, consentPending: consentPending({ personId: v.personId, consent, due: f?.due ?? v.connect ?? v.decision,
-          textedOn: f?.textedOn }, rows, t, site) };
+        const dnc = v.dnc || isDnc(consent); // a DNC on the step-0 flow row only (roster not DNC) is DNC too (review I1)
+        return { ...v, dnc, phone: dnc && !keep ? null : v.phone, consentPending: consentPending({ personId: v.personId, consent,
+          due: f?.due ?? v.connect ?? v.decision, textedOn: f?.textedOn }, rows, t, site) };
       });
       return { ...a, snapshot: { ...snap, students } };
     },
