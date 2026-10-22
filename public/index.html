@@ -12211,7 +12211,7 @@ function _lkLastFriday(ymd) {
 function _lkAt(iso) { return fmtDay(iso, true); }
 // APP-63 (r22 A6): a word for every server LOG_EVENTS value (every action type plus identity/cancel/undo/resolve).
 function _lkEvents() {
-  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again',
+  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again', busConsentCheck: 'Bus consent check',
     checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
     removeFromFlowStep: 'Remove from flow step' };
   ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',

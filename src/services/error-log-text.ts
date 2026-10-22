@@ -15,7 +15,7 @@ const LABELS: Record<(typeof ACTION_TYPES)[number], string> = {
   checkIn: 'Check-in', checkOut: 'Check-out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
   editReport: 'Report edit', addGroupMember: 'Add to group', removeGroupMember: 'Remove from group', completeStep: 'Flow step',
   removeFromFlowStep: 'Flow step removal', intakeAnswer: 'Intake answer', intakeSave: 'Intake save', intakeText: 'Intake text',
-  consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link', recheck: 'Re-check',
+  consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link', recheck: 'Re-check', busConsentCheck: 'Bus consent check',
 };
 // Spec 2026-10-22 §6.1: the audit source codes as the screens name them (a stored row never carries display text).
 const AUDIT_ROUTE_NAMES: Record<string, string> = { service: 'Youth service', group: 'Lifegroups', team: 'Student team',

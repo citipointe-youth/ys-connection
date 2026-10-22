@@ -1,0 +1,4 @@
+{ "contractVersion": 1, "serverTime": "2026-10-23T04:00:05.000Z", "linkRev": 18,
+  "rows": [ { "id": "b5c00000-0000-4000-8000-000000000001", "type": "busConsentCheck", "attempts": 1, "reclaimed": false,
+    "createdAt": "2026-10-23T04:00:00.000Z", "serviceDate": "2026-10-23", "by": { "login": "admin", "leaderName": "Pat Leader" },
+    "payload": {}, "note": null } ] }

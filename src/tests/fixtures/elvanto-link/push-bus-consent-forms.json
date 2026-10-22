@@ -1,0 +1,11 @@
+{ "contractVersion": 1, "consoleId": "8f5a1c2e-0000-4000-8000-000000000001", "takenAt": "2026-10-23T04:00:20.000Z",
+  "checkedAt": "2026-10-23T04:00:20.000Z",
+  "rows": [
+    { "submissionId": "b5c10000-0000-4000-8000-000000000001", "childIndex": 0, "submittedAt": "2026-10-21T09:15:00.000Z",
+      "first": "Jamie", "last": "Sample", "grade": 8, "gender": "female", "mobile": "0400000001", "school": "Example State High",
+      "address": { "line1": "1 Test St", "line2": "-", "postcode": "4000", "city": "Brisbane City", "state": "QLD" },
+      "parentName": "Alex Sample", "parentPhone": "0400000003", "pickup": true, "pickupBy": "" },
+    { "submissionId": "b5c10000-0000-4000-8000-000000000001", "childIndex": 1, "submittedAt": "2026-10-21T09:15:00.000Z",
+      "first": "Riley", "last": "Sample", "grade": 10, "gender": "male", "mobile": "0400000002", "school": "Example State High",
+      "address": { "line1": "1 Test St", "line2": "-", "postcode": "4000", "city": "Brisbane City", "state": "QLD" },
+      "parentName": "Alex Sample", "parentPhone": "0400000003", "pickup": false, "pickupBy": "Grandparent" } ] }

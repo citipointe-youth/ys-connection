@@ -21,14 +21,16 @@ export const LINK_CONTRACT_VERSION = 1;
 // older console simply never pushes it.
 // Rev 17 (console module alignment, 2026-10-22): claim reply may carry modules (this app's resolved module switches, values only).
 // MIN_CONSOLE_REV stays 12: an older console strips the key; a rev-17 console against a rev-16 app sees no key = modules unknown.
-export const LINK_REV = 17;
+// Rev 18 (bus consent, 2026-10-22): type busConsentCheck (empty payload: "read the bus consent forms now") and push kind
+// busConsentForms. MIN_CONSOLE_REV stays 12: an older console never lists the type, so it is never leased one.
+export const LINK_REV = 18;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
-  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck'] as const;
+  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck'] as const;
 /** Rev 15 (L7): the unclear saves the console can re-check (read only). Not the intake chains, lookups or console-local links. */
 export const RECHECK_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix'] as const;
@@ -52,7 +54,7 @@ export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'reso
 // off (or not listed) = the app refuses new rows of that type and never leases them. X-2: no 'locked' capability any more;
 // the refused reason 'locked' (Elvanto's 423) stays.
 export const CAPABILITIES = ['live', 'off'] as const;
-export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress', 'audit'] as const;
+export const PUSH_KINDS = ['roster', 'services', 'groups', 'flows', 'intakePlan', 'consentPlan', 'consentLookup', 'progress', 'audit', 'busConsentForms'] as const;
 /** The four mirror kinds (link_mirror_state); intakePlan / consentPlan are stored per (mode, date) instead (X19). */
 export const MIRROR_KINDS = ['roster', 'services', 'groups', 'flows'] as const;
 export const INTAKE_MODES = ['off', 'on'] as const; // X19 (R3): a plain switch, no shadow
@@ -142,6 +144,7 @@ export const PAYLOAD_SCHEMAS = {
   // The console answers already (saved), refused not-landed (not saved) or refused another reason (still unclear), and
   // `resolved` on the ref row itself when it knows.
   recheck: z.object({ ref: Uuid, type: z.enum(RECHECK_TYPES), payload: z.record(z.unknown()), sentLogKey: StepKey.nullable() }).strict(),
+  busConsentCheck: z.object({}).strict(), // rev 18: read the bus consent forms now (no input)
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -156,7 +159,7 @@ export const ClaimRequest = z.object({
     intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
     // Rev 6: sent only when the app's linkRev >= 6.
     removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional(),
-    recheck: Cap.optional() }).strict(), // rev 15 (L7)
+    recheck: Cap.optional(), busConsentCheck: Cap.optional() }).strict(), // rev 15 (L7); rev 18
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
@@ -356,9 +359,24 @@ export type AuditPushBody = z.infer<typeof AuditPush>;
 export const AuditPushResponse = z.object({ applied: z.boolean(), source: z.enum(AUDIT_SOURCES),
   status: z.enum(['stored', 'stale', 'shape', 'failed-recorded']) }).strict();
 
+// ---- Rev 18 (bus consent, spec 2026-10-22 §5.2/§7): one row per child of an Elvanto bus consent submission. PII-allowlisted:
+// exactly these fields leave the console PC. Over-long text is cut (push tolerance); anything else unknown refuses the push.
+export const BusConsentFormRow = z.object({
+  submissionId: Uuid, childIndex: z.number().int().min(0).max(9), submittedAt: Iso,
+  first: Name, last: Name,
+  grade: Grade, gender: Gender.nullable(), mobile: Cut(20), school: Cut(80),
+  address: z.object({ line1: Cut(120), line2: Cut(120), postcode: Cut(10), city: Cut(60), state: Cut(20) }).strict(),
+  parentName: Cut(120), parentPhone: Cut(20), pickup: z.boolean().nullable(), pickupBy: Cut(120),
+}).strict();
+export const BusConsentFormsPush = z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, checkedAt: Iso,
+  rows: z.array(BusConsentFormRow).max(2000) }).strict();
+export type BusConsentFormsPushBody = z.infer<typeof BusConsentFormsPush>;
+export const BusConsentFormsResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0),
+  new: z.number().int().min(0), unmatched: z.number().int().min(0) }).strict();
+
 export const PUSH_SCHEMAS = { roster: push(RosterRow), services: push(ServiceRow), groups: push(GroupRow),
   flows: push(FlowRow).extend({ steps: z.array(FlowStep).max(2000).optional() }), // T12: optional (rev 5)
-  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush, audit: AuditPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
+  intakePlan: IntakePush, consentPlan: ConsentPush, consentLookup: ConsentLookupPush, progress: ProgressPush, audit: AuditPush, busConsentForms: BusConsentFormsPush } satisfies Record<(typeof PUSH_KINDS)[number], z.ZodTypeAny>;
 export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().int().min(0).optional(),
   matched: z.object({ auto: z.number().int().min(0), ambiguous: z.number().int().min(0) }).optional() });
 
