@@ -19,7 +19,7 @@ import { canUseIntakeAdmin } from './access-control';
 import { addDays, brisbaneToday } from './link-rules';
 
 export const INTAKE_STALE_MS = 2 * 3_600_000;  // a plan older than this greys out; Save / Text refuse
-export const INTAKE_KEEP_DAYS = 14;            // rows and dates older than this are deleted
+export const INTAKE_KEEP_DAYS = 28;           // rows and dates older than this are deleted (consent hub: Done shows the last 4 weeks; was 14)
 export const INTAKE_NOTE_MAX = 1900;
 const HURRY_LOOKUP_MS = 5 * 60_000;           // L8: a consentLookup made in the last 5 min (any status: its own claim leased it)
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
@@ -138,6 +138,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const acts = await actionsOf(f.mode, f.date);
       return { ...head, ...(x ? dateView(x) : { date: f.date, takenAt: null, stale: true, cut: false, inputs: null, refreshAskedAt: null }),
         rows: rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.reason, outcome: r.outcome, fromApp: r.fromApp, hasText: r.hasText,
+          personId: r.personId, family: r.family,
           actions: acts.filter((a) => rowKeyOf(a) === r.key).slice(0, 3).map(actionView) })) };
     },
 
@@ -209,6 +210,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const rows: IntakeRowWrite[] = req.rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.holds[0]?.text ?? '', outcome: 'outcome' in r ? r.outcome : '',
         fromApp: 'fromApp' in r ? r.fromApp : false,
         hasText: mode === 'intake' && r.steps.some((s) => s.state === 'todo' && s.key.startsWith('complete:parent:')),
+        personId: mode === 'consent' ? r.key : ('profiles' in r && r.profiles.student ? r.profiles.student.id : null),
+        family: mode === 'intake' && 'match' in r ? r.match.parentSub : null,
         detail: r }));
       const inputs = 'inputs' in req ? req.inputs : null;
       const res = await d.intake.replace(mode, { date: req.date, takenAt: req.takenAt, consoleId: req.consoleId, cut: req.cut, inputs }, rows);

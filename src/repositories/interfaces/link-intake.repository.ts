@@ -16,6 +16,8 @@ export interface IntakeRowLite {
   fromApp: boolean; hasText: boolean; takenAt: string; doneAt: string | null;
   /** Consent rows: the planned outcome ('' for intake rows). */
   outcome: string;
+  /** Consent hub: the student's Elvanto person (intake once known; consent = key) and the parent form siblings share. */
+  personId: string | null; family: string | null;
 }
 export interface IntakePushMeta {
   date: string; takenAt: string; consoleId: string; cut: boolean; inputs: { from: 'console' | 'app'; at: string } | null;

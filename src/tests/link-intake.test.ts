@@ -469,3 +469,23 @@ describe('settings: turning Intake Off deletes every intake row at once', () => 
 });
 
 void clone;
+
+describe('consent hub (2026-10-23): person and family on list rows; 28-day keep', () => {
+  it('intake rows carry the student profile id (null before one exists) and the parent form; consent rows their own key', async () => {
+    const h = await setup();
+    const i = await h.intake.list(ADMIN, { mode: 'intake', date: DATE }) as any;
+    expect(i.rows.map((r: any) => [r.title, r.personId, r.family])).toEqual([
+      ['Ava Sample', null, SUB_P], ['Liam Example', '9e000000-0000-4000-8000-000000000014', null]]);
+    const c = await h.intake.list(ADMIN, { mode: 'consent', date: DATE }) as any;
+    expect(c.rows.every((r: any) => r.personId === r.key && r.family === null)).toBe(true);
+  });
+  it('a 27-day-old date survives the purge; a 29-day-old one goes', async () => {
+    const h = await setup();
+    h.clock.now = new Date(NOW.getTime() + 27 * 864e5);
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    expect((await h.intakeRepo.rows('intake', DATE)).length).toBe(2);
+    h.clock.now = new Date(NOW.getTime() + 29 * 864e5 + 2 * 3_600_000);
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    expect((await h.intakeRepo.rows('intake', DATE)).length).toBe(0);
+  });
+});
