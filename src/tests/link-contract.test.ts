@@ -620,4 +620,14 @@ describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent 
     const at = sql.indexOf('add constraint link_outbox_type_check'), check = sql.slice(at, sql.indexOf('));', at) + 2);
     expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort());
   });
+  it('0044: two new tables with RLS, unique (submission_id, child_index), drops bus_consents and nothing else', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0044_bus_consent_forms.sql'), 'utf8');
+    for (const t of ['bus_consent_forms', 'bus_consent_submits']) {
+      expect(sql).toContain(`create table if not exists ${t}`);
+      expect(sql).toContain(`alter table ${t} enable row level security`);
+    }
+    expect(sql).toMatch(/unique \(submission_id, child_index\)/);
+    expect([...sql.matchAll(/drop table[^;]*;/gi)].map((m) => m[0])).toEqual(['drop table if exists bus_consents;']);
+    expect(sql).not.toMatch(/\b(rename|alter column|truncate)\b/i);
+  });
 });

@@ -5,43 +5,9 @@ import { MINISTRY_CONFIG_DEFAULTS, mergeMinistryConfig } from '../core/ministry-
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { Leader } from '../core/entities/leader';
-import type { BusRunRider, BusConsent, BusGuest } from '../core/entities/bus';
+import type { BusRunRider, BusGuest } from '../core/entities/bus';
+import { actor, student, leader, FRI_7PM, setup } from './helpers/bus-setup';
 import type { RoutingProvider } from '../services/routing/routing-provider';
-
-export const actor = (role: string, extra: Partial<Actor> = {}): Actor =>
-  ({ id: 'u-' + role, role: role as any, displayName: role.toUpperCase(), grade: null as any, quad: null as any, leaderId: null, ...extra });
-export const student = (id: string, first: string, last: string, grade: number, gender: 'male' | 'female', mobile: string | null = null): Student => ({
-  id, firstName: first, lastName: last, gender, grade, quad: null, mobile, parentPhone: null, dateOfBirth: null,
-  svcAttended: 0, svcTotal: 0, grpAttended: 0, grpTotal: 0, grpMetWeeks: 0,
-  prevSvcAttended: 0, prevSvcTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0,
-  atRiskStatus: null, dataSource: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-});
-export const leader = (id: string, name: string, gender: 'male' | 'female' | null): Leader => ({
-  id, fullName: name, gender, grades: [], active: true, createdByGrade: null, smsTemplate: null,
-  createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-});
-export const FRI_7PM = '2026-10-09T19:00';
-
-export async function setup(opts: { moduleOn?: boolean; routing?: RoutingProvider } = {}) {
-  const bus = new InMemoryBusRepository(); const students = new InMemoryStudentRepository();
-  const leaders = new InMemoryLeaderRepository(); const settings = new InMemorySettingsRepository();
-  await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
-  const cfg = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
-    modules: { busMinistry: opts.moduleOn ?? true },
-  });
-  await settings.updateSettings({ ministryConfig: cfg });
-  await students.save(student('s1', 'Jess', 'Tran', 9, 'female', '0412345678'));
-  await students.save(student('s2', 'Sam', 'Ode', 8, 'male'));
-  await students.save(student('s3', 'Riley', 'Kim', 10, 'male'));
-  await leaders.save(leader('L1', 'Tom', 'male'));
-  await leaders.save(leader('L2', 'Sarah', 'female'));
-  // SY-04: a junior leader's own car takes only its connected students — s1 is Tom's (L1).
-  const connections = new InMemoryConnectionRepository(); await connections.init();
-  await connections.save({ id: 'c-L1-s1', studentId: 's1', leaderId: 'L1', assignedByRole: 'admin', createdAt: '2026-01-01T00:00:00.000Z' });
-  const svc = makeBusService(bus, students, leaders, settings, opts.routing, connections);
-  const ctx = (role: string, asLeaderId: string | null = null, localNow = FRI_7PM): BusCtx => ({ actor: actor(role), asLeaderId, localNow });
-  return { svc, bus, students, leaders, settings, ctx };
-}
 
 describe('gate', () => {
   it('module off → MODULE_DISABLED for everyone', async () => {
@@ -340,74 +306,6 @@ describe('guest linking', () => {
   });
 });
 
-describe('parent consent', () => {
-  // Task 3 (bug): setConsent didn't check the Generate lock, unlike every other rider write
-  // (addRider/updateRider/removeRider/moveRider) — a consent tick mid-solve could race Generate's
-  // own writes to the same rider row.
-  it('Task 3: setConsent is blocked while the Generate lock is active, like other rider writes', async () => {
-    const t = await setup();
-    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina', placeId: 'fake:1-a-st-carina' } });
-    const runId = (await t.svc.getRun(t.ctx('admin'))).run.id;
-    await t.bus.tryLock(runId, 'someone#tok', new Date().toISOString(), new Date(Date.now() + 60_000).toISOString());
-    await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'x' })).rejects.toMatchObject({ statusCode: 409 });
-  });
-  it('starts as not yet, persists to next week, and follows a linked walk-in', async () => {
-    const t = await setup();
-    const r = await t.svc.addRider(t.ctx('grade'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
-    expect((await t.svc.getRun(t.ctx('admin'))).riders[0]!.consent).toBeNull();
-    await expect(t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: '' })).rejects.toThrow();
-    const v = await t.svc.setConsent(t.ctx('grade', 'L2'), r.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
-    expect(v.consent).toMatchObject({ given: true, note: 'Mum (Lisa) 7:10pm by text', recordedBy: 'Sarah' });
-    await t.svc.addRider(t.ctx('grade', null, '2026-10-16T19:00'), { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
-    const next = await t.svc.getRun(t.ctx('admin', null, '2026-10-16T19:00'));
-    expect(next.riders[0]!.consent!.given).toBe(true);
-    await expect(t.svc.setConsent(t.ctx('leader'), r.id, { given: false, note: '' })).rejects.toMatchObject({ statusCode: 403 });
-  });
-  it("a walk-in's consent moves to the student on link", async () => {
-    const t = await setup();
-    const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Riley', lastName: 'Kim', grade: 10, gender: 'male', phone: '0400000000' });
-    const r = await t.svc.addRider(t.ctx('grade'), { guestId: g.id, newAddress: { address: '3 C St, Wynnum' , placeId: 'fake:3-c-st-wynnum' } });
-    await t.svc.setConsent(t.ctx('grade'), r.id, { given: true, note: 'Dad, call 7pm' });
-    await t.svc.linkGuestsAfterImport();
-    expect((await t.bus.getConsent({ studentId: 's3' }))!.note).toBe('Dad, call 7pm');
-  });
-  it('first-time consent race: two leaders ticking at once merges onto one row, not a raw 500', async () => {
-    // Simulates the DB's unique student_id/guest_id index on bus_consents (migration 0012)
-    // rejecting a NEW consent's insert with a Postgres unique-violation (code 23505) because
-    // another request already inserted the first consent row for the same person a moment
-    // earlier — the same race addRider already defends against for bus_run_riders.
-    class RacyConsentBusRepository extends InMemoryBusRepository {
-      private raced = false;
-      override async saveConsent(c: BusConsent): Promise<BusConsent> {
-        if (!this.raced && c.studentId === 's1') {
-          this.raced = true;
-          // The "other leader"'s concurrent first-time consent silently lands first.
-          await super.saveConsent({ ...c, id: 'c-other', note: 'First leader, 7:05pm' });
-          throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
-        }
-        return super.saveConsent(c);
-      }
-    }
-    const bus = new RacyConsentBusRepository();
-    const students = new InMemoryStudentRepository();
-    const leaders = new InMemoryLeaderRepository();
-    const settings = new InMemorySettingsRepository();
-    await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
-    await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS,
-      { modules: { busMinistry: true } }) });
-    await students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
-    const svc = makeBusService(bus, students, leaders, settings);
-    const asGrade: BusCtx = { actor: actor('grade'), asLeaderId: null, localNow: FRI_7PM };
-    const r = await svc.addRider(asGrade, { studentId: 's1', newAddress: { address: '1 A St, Carina' , placeId: 'fake:1-a-st-carina' } });
-
-    const v = await svc.setConsent(asGrade, r.id, { given: true, note: 'Second leader, 7:06pm' });
-    expect(v.consent).toMatchObject({ given: true, note: 'Second leader, 7:06pm' });
-    const rows = await bus.listConsents();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.note).toBe('Second leader, 7:06pm');
-  });
-});
-
 describe('drop-off record', () => {
   it('car leaders tick with a time, can edit and clear it; any Bus login can too (2026-10-15)', async () => {
     const t = await withFleet();
@@ -455,7 +353,6 @@ describe('createGuest input validation (C2)', () => {
 describe('leader role sees "My car only" on the shared run view (I1)', () => {
   it('a non-coordinating leader gets suburb-only addresses and a bare consent flag; leaders + fleet stay for Car setup', async () => {
     const t = await withFleet();
-    await t.svc.setConsent(t.ctx('grade', 'L2'), t.a.id, { given: true, note: 'Mum (Lisa) 7:10pm by text' });
     const leaderCtx: BusCtx = { actor: actor('leader', { leaderId: 'L1' }), asLeaderId: null, localNow: FRI_7PM };
     const v = await t.svc.getRun(leaderCtx);
     // every rider is address-redacted
@@ -464,7 +361,7 @@ describe('leader role sees "My car only" on the shared run view (I1)', () => {
       expect(r.address).not.toContain('St');
     }
     const ridden = v.riders.find((r) => r.id === t.a.id)!;
-    expect(ridden.consent).toEqual({ given: true });
+    expect(Object.keys(ridden.consent).sort()).toEqual(['current', 'year']);
     expect(v.leaders.map((l) => l.id).sort()).toEqual(['L1', 'L2']);
     expect(v.fleet.map((f) => f.name)).toEqual(['Big Bus']);
     expect(v.canCoordinate).toBe(false);
@@ -548,9 +445,9 @@ describe('linking into a run where the student already has a rider (I4)', () => 
 
   it('linkGuestsAfterImport continues past a guest whose link fails', async () => {
     class FlakyBusRepository extends InMemoryBusRepository {
-      override async reassignGuestConsent(guestId: string, studentId: string): Promise<void> {
+      override async reassignGuestConsentForms(guestId: string, studentId: string): Promise<void> {
         if (guestId === 'bad') throw new Error('boom');
-        return super.reassignGuestConsent(guestId, studentId);
+        return super.reassignGuestConsentForms(guestId, studentId);
       }
     }
     const bus = new FlakyBusRepository();

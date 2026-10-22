@@ -14,7 +14,7 @@ import type { Actor } from '../core/entities/user';
 import { makeDnc, type Dnc } from './dnc';
 import type { MinistryConfig } from '../core/ministry-config';
 import type { BusRun, BusRunRider, BusRunVehicle, BusRunVehicleView, BusRiderView, BusSearchHit, BusGender,
-  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusConsent, BusGenerateResult,
+  BusLeaderView, BusAddress, BusRunView, MyCarView, PendingGuestView, BusOwnCar, BusVehicle, BusGenerateResult,
   BusAnalysisView, BusExtraCarsView, BusExtraCarsCar, BusPastRiderView, BusHistoryView, BusHistoryNight, BusHistoryRide, VehicleKind } from '../core/entities/bus';
 
 // tripDate (BUS-1): optional ?date= for the own-car / my-car endpoints (Trip logging); see tripRunIfAny.
@@ -50,7 +50,6 @@ export interface BusService {
   saveOwnCar(ctx: BusCtx, input: unknown): Promise<BusRunVehicleView & { skipped: { name: string; car: string }[] }>;
   removeOwnCar(ctx: BusCtx, ownerLeaderId?: string | null): Promise<void>;
   moveRider(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView & { reordered: boolean }>;
-  setConsent(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   setDropped(ctx: BusCtx, riderId: string, input: unknown): Promise<BusRiderView>;
   myCar(ctx: BusCtx): Promise<MyCarView>;
   pendingGuests(ctx: BusCtx): Promise<PendingGuestView[]>;
@@ -135,8 +134,6 @@ const MoveIn = z.object({ runVehicleId: z.string().nullable().optional(), unpin:
 // riders exactly, checked in the handler, not here).
 const MyCarStopsIn = z.object({ riderIds: z.array(z.string()), removeIds: z.array(z.string()) });
 const LinkIn = z.object({ studentId: z.string().min(1) });
-const ConsentIn = z.object({ given: z.boolean(), note: z.string().trim().max(300) })
-  .refine((v) => !v.given || v.note.length > 0, 'Add a short note: when, who, call or text');
 const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
 // Past-night correction (director/admin): every field optional; only what actually changes is logged.
 const EditPastIn = z.object({
@@ -378,20 +375,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     await bus.bumpRun(run.id, await whoLabel(ctx), nowIso());
   }
 
-  function riderView(r: BusRunRider, consent?: BusConsent | null): BusRiderView {
+  function riderView(r: BusRunRider): BusRiderView {
     return { id: r.id, studentId: r.studentId, guestId: r.guestId, addressId: r.addressId, runVehicleId: r.runVehicleId,
       stopOrder: r.stopOrder, pinned: r.pinned, name: r.snapName, grade: r.snapGrade, gender: r.snapGender,
       address: r.snapAddress, placeId: r.snapPlaceId,
-      consent: consent ? { given: consent.given, note: consent.note, recordedBy: consent.recordedBy, recordedAt: consent.recordedAt } : null,
+      consent: { year: 0, current: false }, // Task 5 fills it from the bus consent forms
       droppedAt: r.droppedAt, droppedBy: r.droppedBy };
-  }
-  function consentFor(consents: BusConsent[], r: BusRunRider): BusConsent | null {
-    return consents.find((k) => (r.studentId ? k.studentId === r.studentId : k.guestId === r.guestId)) ?? null;
-  }
-  // One-off consent lookup for a single write's response (vs. consentFor's in-memory lookup
-  // against a batch already loaded by buildView/myCar).
-  async function consentOf(r: { studentId: string | null; guestId: string | null }): Promise<BusConsent | null> {
-    return bus.getConsent(r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! });
   }
 
   /** `ridersIn`: the caller's own ridingOf(runId) read, so one request reads the riders once. */
@@ -419,8 +408,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
 
   async function buildView(ctx: BusCtx, c: MinistryConfig, run: BusRun): Promise<BusRunView> {
     const ridersP = ridingOf(run.id);
-    const [vehicles, riders, active, prefs, fleet, consents] = await Promise.all([
-      vehicleViews(run.id, isPast(run, ctx, c), ridersP), ridersP, leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(), bus.listConsents(),
+    const [vehicles, riders, active, prefs, fleet] = await Promise.all([
+      vehicleViews(run.id, isPast(run, ctx, c), ridersP), ridersP, leaders.findActive(), bus.listLeaderPrefs(), bus.listVehicles(),
     ]);
     const prefBy = new Map(prefs.map((p) => [p.id, p]));
     const leaderViews: BusLeaderView[] = active.map((l) => ({ id: l.id, name: l.fullName, gender: genderOf(l.gender),
@@ -428,7 +417,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       prefGrades: prefBy.get(l.id)?.prefGrades ?? [] }));
     const seesPending = can(ctx.actor, 'bus:analysis');
     const canCoordinate = allowed(ctx, c, 'bus:coordinate');
-    const riderViews = riders.map((r) => riderView(r, consentFor(consents, r)));
+    const riderViews = riders.map((r) => riderView(r));
     const busIds = new Set(vehicles.filter(isBus).map((v) => v.id));
     if (riderViews.some((r) => r.runVehicleId && busIds.has(r.runVehicleId))) {
       const all = await bus.listAllAddresses();
@@ -455,7 +444,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         id: r.id, studentId: null, guestId: null, addressId: null,
         runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
         name: r.name, grade: r.grade, gender: r.gender, address: suburbOnly(r.address), placeId: null,
-        consent: r.consent ? { given: r.consent.given } : null,
+        consent: { year: r.consent.year, current: r.consent.current },
         droppedAt: r.droppedAt, droppedBy: r.droppedBy,
       })) : riderViews,
       leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
@@ -631,7 +620,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!g) throw new NotFoundError('Person not found');
     if (!(await students.findById(studentId))) throw new NotFoundError('Student not found');
     await bus.reassignGuestAddresses(guestId, studentId);
-    await bus.reassignGuestConsent(guestId, studentId);
+    await bus.reassignGuestConsentForms(guestId, studentId);
     // Rider rows in every run (past and present) move to the student so phones/addresses
     // resolve. I4: if the student already has a rider in that SAME run (two separate people
     // ended up added once as the walk-in, once as the real student), repointing the guest's
@@ -918,7 +907,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (lockActive(run)) throw lockConflict(run); // a solve in flight is working off this run's current roster
       const rider = await placeRider(ctx, run, v);
       await touch(ctx, run);
-      return riderView(rider, await consentOf(rider));
+      return riderView(rider);
     },
     async updateRider(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:roster');
@@ -935,7 +924,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rv = saved.runVehicleId ? (await bus.listRunVehicles(run.id)).find((x) => x.id === saved.runVehicleId && x.running) : undefined;
       if (rv) await reorderCar(c, run, rv); // a new address can change the best stop order
       await touch(ctx, run);
-      return riderView(saved, await consentOf(saved));
+      return riderView(saved);
     },
     async removeRider(ctx, riderId) {
       const c = await gate(ctx, 'bus:roster');
@@ -1215,21 +1204,21 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         cur = await bus.saveRunRider({ ...r, ...(addr ? { addressId: addr.id, ...busPatch(r, addr, rvs, owned)! } : { addressId: null, ...NO_SEAT }) });
         if (ontoBus) {
           await bus.setUndo(run.id, null, null); await touch(ctx, run);
-          return { ...riderView(cur, await consentOf(cur)), reordered: true };
+          return { ...riderView(cur), reordered: true };
         }
       }
       if (v.unpin) { // keeps the rider's current car/stop — works pinned-in-a-car or pinned-in-Unassigned
         const saved = await bus.saveRunRider({ ...r, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: survive Undo like moveRider's other writes
         await touch(ctx, run);
-        return { ...riderView(saved, await consentOf(saved)), reordered: true };
+        return { ...riderView(saved), reordered: true };
       }
       if (v.runVehicleId === null) {
         // Owner 2026-10-06: Unassigned is never pinned — the next Generate / Fit in places them again.
         const saved = await bus.saveRunRider({ ...cur, runVehicleId: null, stopOrder: null, pinned: false });
         await bus.setUndo(run.id, null, null); // I2: a hand-moved rider must survive a later Undo, not be reverted by it
         await touch(ctx, run);
-        return { ...riderView(saved, await consentOf(saved)), reordered: true };
+        return { ...riderView(saved), reordered: true };
       }
       const rv = target;
       if (!rv) throw new NotFoundError('Car not found');
@@ -1246,34 +1235,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       await bus.setUndo(run.id, null, null); // I2: see above
       await touch(ctx, run);
       const fresh = (await bus.getRunRider(saved.id)) ?? saved;
-      return { ...riderView(fresh, await consentOf(fresh)), reordered };
-    },
-    async setConsent(ctx, riderId, input) {
-      const c = await gate(ctx, 'bus:roster');
-      const v = parseIn(ConsentIn, input);
-      const run = await writableRun(ctx, c);
-      if (lockActive(run)) throw lockConflict(run); // Task 3: same rider-write guard as addRider/updateRider/removeRider
-      const r = await bus.getRunRider(riderId);
-      if (!r || r.runId !== run.id || r.notRiding) throw new NotFoundError('Rider not found');
-      const owner = r.studentId ? { studentId: r.studentId } : { guestId: r.guestId! };
-      const prior = await bus.getConsent(owner);
-      const who = await whoLabel(ctx);
-      let saved: BusConsent;
-      try {
-        saved = await bus.saveConsent({ id: prior?.id ?? generateId(), studentId: r.studentId, guestId: r.studentId ? null : r.guestId,
-          given: v.given, note: v.note, recordedBy: who, recordedAt: nowIso() });
-      } catch (err) {
-        // First-time consent for the same person, ticked by two leaders at once: the DB's
-        // unique student_id/guest_id index on bus_consents rejects the loser's fresh-id
-        // insert with a Postgres unique-violation. Re-read and save onto the winner's row
-        // instead of surfacing a raw 500 — same pattern addRider uses for the rider race.
-        if ((err as { code?: string }).code !== '23505') throw err;
-        const again = await bus.getConsent(owner);
-        if (!again) throw err;
-        saved = await bus.saveConsent({ ...again, given: v.given, note: v.note, recordedBy: who, recordedAt: nowIso() });
-      }
-      await touch(ctx, run);
-      return riderView(r, saved);
+      return { ...riderView(fresh), reordered };
     },
     async setDropped(ctx, riderId, input) {
       const c = await gate(ctx, 'bus:use');
@@ -1285,7 +1247,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
-      return riderView(saved, await consentOf(saved));
+      return riderView(saved);
     },
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');
@@ -1299,12 +1261,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (vehicle) {
         const mine = (await ridingOf(run.id)).filter((r) => r.runVehicleId === vehicle.id)
           .sort((a, b) => (a.stopOrder ?? 999) - (b.stopOrder ?? 999));
-        const [consents, mark] = await Promise.all([bus.listConsents(), dnc.forActor(ctx.actor)]);
+        const mark = await dnc.forActor(ctx.actor);
         for (const r of mine) {
           const mobile = r.studentId ? (await students.findById(r.studentId))?.mobile ?? null
             : r.guestId ? (await bus.getGuest(r.guestId))?.phone ?? null : null;
           // R1: a guest has no roster row, so studentId null = never DNC.
-          stops.push(mark({ ...riderView(r, consentFor(consents, r)), mobile }, r.studentId));
+          stops.push(mark({ ...riderView(r), mobile }, r.studentId));
         }
       }
       let ownCarDraft: MyCarView['ownCarDraft'] = null;

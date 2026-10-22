@@ -20,9 +20,10 @@ describe('bus field encryption', () => {
     expect(busCrypt.dec(null, 'x')).toBeNull();
     expect(busCrypt.enc(null, 'x')).toBeNull();
   });
-  it('consent notes use their own AAD', () => {
-    const ct = busCrypt.enc('Mum, text 7pm', 'bus_consents:note:c1');
-    expect(busCrypt.dec(ct, 'bus_consents:note:c1')).toBe('Mum, text 7pm');
+  it('bus consent form data round-trips under its own row AAD', () => {
+    const ct = busCrypt.enc(JSON.stringify({ parentName: 'Alex Sample' }), 'bus_consent_forms:data:f1');
+    expect(JSON.parse(busCrypt.dec(ct, 'bus_consent_forms:data:f1')!)).toEqual({ parentName: 'Alex Sample' });
+    expect(() => busCrypt.dec(ct, 'bus_consent_forms:data:f2')).toThrow();
   });
   // Task D (owner, 2026-10-08): bus_run_riders.snap_address is `text not null`; busCrypt.enc('')
   // short-circuits to null (would violate that constraint), so an address-less rider's '' snap

@@ -55,7 +55,18 @@ export interface BusRunRider {
   notRiding: boolean; noShow: boolean; note: string | null; wasGuest: boolean;
 }
 export interface BusRunEdit { id: ID; runId: ID; at: ISODateString; by: string; detail: string }
-export interface BusConsent { id: ID; studentId: ID | null; guestId: ID | null; given: boolean; note: string; recordedBy: string; recordedAt: ISODateString }
+// Bus consent via the Elvanto public form (spec 2026-10-22). One row per child of a submission; the data blob is encrypted.
+export interface BusConsentData { grade: number | null; gender: BusGender | null; mobile: string; school: string;
+  address: { line1: string; line2: string; postcode: string; city: string; state: string };
+  parentName: string; parentPhone: string; pickup: boolean | null; pickupBy: string; filedBy: string | null }
+export interface BusConsentForm { id: ID; submissionId: string; childIndex: number; submittedAt: ISODateString; year: number;
+  studentId: ID | null; guestId: ID | null; first: string; last: string; data: BusConsentData; source: 'app' | 'public'; createdAt: ISODateString }
+/** The app-side audit of one in-app submit (who filed, the read-out tick, what Elvanto answered). */
+export interface BusConsentSubmit { id: ID; studentId: ID | null; guestId: ID | null; leaderId: ID | null; leaderName: string;
+  submittedAt: ISODateString; readOutConfirmed: true; elvantoResult: 'sent' | 'unconfirmed' | 'failed'; first: string; last: string }
+export interface BusConsentView { year: number; current: boolean; details?: BusConsentDetails; differs?: boolean }
+export interface BusConsentDetails { formId: ID; submittedAt: ISODateString; source: 'app' | 'public'; filedBy: string | null;
+  parentName: string; parentPhone: string | null; address: BusConsentData['address']; pickup: boolean | null; pickupBy: string; school: string }
 
 // ---- view types returned by BusService ----
 export interface BusEligibility { female: boolean; male: boolean; unknown: boolean }
@@ -70,9 +81,8 @@ export interface BusRiderView {
   id: ID; studentId: ID | null; guestId: ID | null; addressId: ID | null;
   runVehicleId: ID | null; stopOrder: number | null; pinned: boolean;
   name: string; grade: number | null; gender: BusGender; address: string; placeId: string | null;
-  // note/recordedBy/recordedAt are omitted for a non-coordinating 'leader' role (spec I1) —
-  // they only ever see { given }.
-  consent: { given: boolean; note?: string; recordedBy?: string; recordedAt?: string } | null;
+  // Bus consent (spec 2026-10-22 R7): details only for a non-redacted login; differs only for coordinators.
+  consent: BusConsentView;
   droppedAt: string | null; droppedBy: string | null;
   /** Review E11: on a bus with no home address saved — turning the bus off leaves them with no address. */
   noHome?: boolean;
@@ -107,6 +117,7 @@ export interface BusSearchHit {
   // the decrypted address's street part, always populated so the SPA can fall back to it when
   // `label` is blank on an address saved before the default-label fix.
   addresses: { id: ID; label: string; suburb: string; street: string; vehicleId: ID | null }[];
+  consent?: BusConsentView;
 }
 export interface MyCarView {
   vehicle: BusRunVehicleView | null;

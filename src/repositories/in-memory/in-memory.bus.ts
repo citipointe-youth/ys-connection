@@ -1,5 +1,5 @@
 import type { IBusRepository } from '../interfaces/entity-repositories';
-import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsent, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
+import type { BusVehicle, BusLeaderPrefs, BusGuest, BusAddress, BusRun, BusRunVehicle, BusRunRider, BusConsentForm, BusConsentSubmit, BusUndoEntry, BusRunEdit } from '../../core/entities/bus';
 
 const c = <T>(v: T): T => structuredClone(v);
 
@@ -11,7 +11,8 @@ export class InMemoryBusRepository implements IBusRepository {
   private runs = new Map<string, BusRun>();
   private runVehicles = new Map<string, BusRunVehicle>();
   private riders = new Map<string, BusRunRider>();
-  private consents = new Map<string, BusConsent>();
+  private forms = new Map<string, BusConsentForm>();
+  private submits = new Map<string, BusConsentSubmit>();
   private edits = new Map<string, BusRunEdit>();
 
   async init(): Promise<void> {}
@@ -30,7 +31,8 @@ export class InMemoryBusRepository implements IBusRepository {
   async deleteGuest(id: string) {
     this.guests.delete(id);
     for (const [k, a] of this.addresses) if (a.guestId === id) this.addresses.delete(k);
-    for (const [k, c] of this.consents) if (c.guestId === id) this.consents.delete(k);
+    // bus_consent_forms/submits.guest_id: on delete set null (0044)
+    for (const f of [...this.forms.values(), ...this.submits.values()]) if (f.guestId === id) f.guestId = null;
   }
 
   async listAddresses(o: { studentId?: string; guestId?: string }) {
@@ -81,18 +83,28 @@ export class InMemoryBusRepository implements IBusRepository {
   async listRunEdits(ids: string[]) { return [...this.edits.values()].filter((e) => ids.includes(e.runId)).sort((a, b) => b.at.localeCompare(a.at)).map(c); }
   async insertRunEdit(e: BusRunEdit) { this.edits.set(e.id, c(e)); }
 
-  async listConsents() { return [...this.consents.values()].map(c); }
-  async getConsent(o: { studentId?: string; guestId?: string }) {
-    const x = [...this.consents.values()].find((k) => (o.studentId ? k.studentId === o.studentId : k.guestId === o.guestId));
-    return x ? c(x) : null;
+  async listConsentForms() { return [...this.forms.values()].map(c); }
+  async upsertConsentForms(rows: BusConsentForm[]) {
+    let added = 0;
+    for (const r of rows) {
+      const old = [...this.forms.values()].find((f) => f.submissionId === r.submissionId && f.childIndex === r.childIndex);
+      if (old) this.forms.set(old.id, c({ ...r, id: old.id, studentId: old.studentId, guestId: old.guestId, source: old.source, createdAt: old.createdAt }));
+      else { this.forms.set(r.id, c(r)); added++; }
+    }
+    return added;
   }
-  async saveConsent(k: BusConsent) { this.consents.set(k.id, c(k)); return c(k); }
-  async reassignGuestConsent(guestId: string, studentId: string) {
-    const g = [...this.consents.values()].find((k) => k.guestId === guestId);
-    if (!g) return;
-    if ([...this.consents.values()].some((k) => k.studentId === studentId)) { this.consents.delete(g.id); return; }
-    g.guestId = null; g.studentId = studentId;
+  async setConsentFormOwners(changes: { id: string; studentId: string | null; guestId: string | null }[]) {
+    for (const ch of changes) { const f = this.forms.get(ch.id); if (f) { f.studentId = ch.studentId; f.guestId = ch.guestId; } }
   }
+  async purgeConsentForms(beforeYear: number, submitsBefore: string) {
+    for (const [id, f] of this.forms) if (f.year < beforeYear) this.forms.delete(id);
+    for (const [id, s] of this.submits) if (s.submittedAt < submitsBefore) this.submits.delete(id);
+  }
+  async reassignGuestConsentForms(guestId: string, studentId: string) {
+    for (const f of this.forms.values()) if (f.guestId === guestId) { f.guestId = null; f.studentId = studentId; }
+  }
+  async insertConsentSubmit(s: BusConsentSubmit) { this.submits.set(s.id, c(s)); }
+  async listConsentSubmits() { return [...this.submits.values()].map(c); }
 
   async tryLock(id: string, by: string, nowIso: string, untilIso: string) {
     const r = this.runs.get(id);
