@@ -413,3 +413,28 @@ describe('rematchRoster', () => {
     expect((await link.roster()).filter((r) => r.match === 'none').length).toBe(before - 1);
   });
 });
+
+describe('sync.service push audit (rev 16, spec 2026-10-22 §3)', () => {
+  it("push('audit') is routed to ingest with by 'console'; a Zod failure never reaches it; no mirror is written", async () => {
+    const { link, settings, users, students } = await setup();
+    const ingest = vi.fn(async () => ({ applied: true, source: 'service' as const, status: 'stored' as const }));
+    const svc = makeSyncService({ link, settings, students, users, audit: { ingest } });
+    const body = fx('push-audit-service.json');
+    expect(await svc.push('audit', body)).toEqual({ applied: true, source: 'service', status: 'stored' });
+    expect(ingest).toHaveBeenCalledWith(expect.objectContaining({ source: 'service', status: 'ok', takenAt: body.takenAt }), 'console');
+    await expect(svc.push('audit', { ...body, rows: [['short']] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    await expect(svc.push('audit', { ...body, contractVersion: 2 })).rejects.toMatchObject({ code: 'LINK_CONTRACT_MISMATCH' });
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(await link.mirrorState()).toEqual([]);
+  });
+  it('without the audit dep the push is not applied (test constructors)', async () => {
+    const { svc } = await setup();
+    expect(await svc.push('audit', fx('push-audit-failed.json'))).toEqual({ applied: false });
+  });
+  it('container: a console audit push lands in the store (wiring)', async () => {
+    const { buildContainer } = await import('../container');
+    const c = await buildContainer();
+    const r = await c.services.sync.push('audit', fx('push-audit-group.json'));
+    expect(r).toMatchObject({ source: 'group', status: 'stored' });
+  });
+});

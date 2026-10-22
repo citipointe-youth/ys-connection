@@ -6,7 +6,8 @@ import { CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
-import type { ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
+import type { AuditPushBody, ConsentLookupPush, ConsentPush, IntakePush } from '../core/link-contract';
+import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
@@ -41,6 +42,8 @@ export interface SyncDeps {
   intake?: Pick<IntakeService, 'hint' | 'push'>;
   /** T8 (rev 5): POST /sync/leaders. Without it the reply is an empty list. */
   leaders?: Pick<ILeaderRepository, 'findActive'>;
+  /** Rev 16 (spec 2026-10-22): push kind audit, one Connection Audit source per body. Without it that push is not applied. */
+  audit?: Pick<ConnectionAuditService, 'ingest'>;
 }
 
 /** Version first (from the raw body), then Zod. Issues carry path + message only, never a value. */
@@ -160,7 +163,7 @@ export function makeSyncService(d: SyncDeps) {
       return reply;
     },
 
-    async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse>> {
+    async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse> | IngestResult> {
       if (!(PUSH_KINDS as readonly string[]).includes(kind)) throw new SyncValidation([{ path: 'kind', message: 'Unknown kind' }]);
       const pk = kind as PushKind;
       if (pk === 'intakePlan' || pk === 'consentPlan') { // X19: one (mode, date) per push
@@ -182,6 +185,11 @@ export function makeSyncService(d: SyncDeps) {
         await d.link.putConsentLookup({ requestId: req.requestId, kind: req.kind, page: req.page, pageSize: req.pageSize,
           total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
         return { applied: true, rows: req.rows.length };
+      }
+      if (pk === 'audit') { // rev 16: not a mirror (no link_mirror_state); its own store, staleness and transaction
+        const req = parseBody(PUSH_SCHEMAS.audit, body) as AuditPushBody;
+        if (!d.audit) return { applied: false };
+        return d.audit.ingest(req, 'console');
       }
       const k = pk as MirrorKind;
       const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[]; steps?: LinkFlowStep[] };
