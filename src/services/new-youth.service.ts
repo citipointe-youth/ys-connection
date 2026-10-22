@@ -44,7 +44,7 @@ export interface NewYouthService {
   sendBusConsent(actor: Actor, input: unknown): Promise<BusResult>;
   /** T10 admin queue (admin:manage): list, resend through the same send path, delete. */
   unsentList(actor: Actor): Promise<{ rows: UnsentView[] }>;
-  unsentRetry(actor: Actor, id: string, body: unknown): Promise<NewYouthResult>;
+  unsentRetry(actor: Actor, id: string, body: unknown): Promise<NewYouthResult | BusResult>;
   unsentDelete(actor: Actor, id: string): Promise<{ ok: true }>;
 }
 
@@ -389,7 +389,7 @@ export function makeNewYouthService(
       if (row.reason === 'unconfirmed' && (body as { confirm?: unknown } | undefined)?.confirm !== true) {
         throw new AppError('UNSENT_CHECK_ELVANTO', 'This may already be in Elvanto: check before retrying.', 409);
       }
-      if (row.input.kind === 'busConsent') return runBus(actor, row.input, id, `retry:${id}:${row.updatedAt}`) as unknown as NewYouthResult; // the route passes the body through
+      if (row.input.kind === 'busConsent') return runBus(actor, row.input, id, `retry:${id}:${row.updatedAt}`);
       return run(actor, row.input, id, `retry:${id}:${row.updatedAt}`); // C-B2: never the phone's requestId
     },
 

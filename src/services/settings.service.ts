@@ -38,7 +38,7 @@ const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 // P11: Check forms runs on the Youth Setup draft (not yet saved), validated by the same allow-list fields before any fetch.
 const ELV = MinistryConfigSchema.shape.elvanto.removeDefault();
 const ElvantoCheckSchema = ELV.pick({ baseUrl: true, studentFormId: true, parentFormId: true, busConsentFormId: true })
-  .extend({ location: ELV.shape.location.removeDefault().optional(), locationQuestion: z.string().max(120).optional() });
+  .extend({ busConsentFormId: ELV.shape.busConsentFormId.removeDefault().optional(), location: ELV.shape.location.removeDefault().optional(), locationQuestion: z.string().max(120).optional() });
 const FORM_GET_MS = 8_000; // as new-youth
 
 /** `renamedQuads` is present only when the save flipped Simple (Junior/Senior) logins. */

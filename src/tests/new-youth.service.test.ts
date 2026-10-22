@@ -369,8 +369,10 @@ describe('sendBusConsent', () => {
     await expect(blank.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_NOT_SET', statusCode: 409 });
     const noOpt = makeNewYouthService(await busSettings({ elvanto: { ...BUS_ELV, options: { ...BUS_ELV.options, bcGrade8: '' } } }), { fetchFn: f.fetchFn, live: true });
     await expect(noOpt.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_NOT_SET' });
-    const changed = makeNewYouthService(await busSettings(), { fetchFn: busFetch(() => new Response(null, { status: 302 }), BUS_HTML.replace('name="submissions[0][home_city]"', 'name="x"')).fetchFn, live: true });
+    const cf = busFetch(() => new Response(null, { status: 302 }), BUS_HTML.replace('name="submissions[0][home_city]"', 'name="x"'));
+    const changed = makeNewYouthService(await busSettings(), { fetchFn: cf.fetchFn, live: true });
     await expect(changed.sendBusConsent(LEADER, BUS_INPUT)).rejects.toMatchObject({ code: 'ELVANTO_FORM_CHANGED', statusCode: 502 });
+    expect(cf.posts()).toHaveLength(0);
     expect(f.posts()).toHaveLength(0);
   });
 
