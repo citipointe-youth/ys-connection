@@ -523,3 +523,20 @@ describe('migration 0035', () => {
     expect(m).not.toMatch(/(drop table|drop column|alter column|rename)/i);
   });
 });
+
+describe('audit-feed-stale hook (spec 2026-10-22 §7)', () => {
+  it('list() re-evaluates the audit feed before reading rows; a throwing check never breaks the list', async () => {
+    const repo = new InMemoryErrorLogRepository();
+    let calls = 0;
+    const svc = makeErrorLogService({ repo, auditFeed: async () => {
+      calls++;
+      await repo.record(entry({ id: 'feed', category: 'audit', code: 'audit-feed-stale', route: '', status: null, tier: 'now',
+        at: new Date().toISOString() }), 1);
+    } });
+    const { rows } = await svc.list(admin);
+    expect(calls).toBe(1);
+    expect(rows.find((r) => r.code === 'audit-feed-stale')).toMatchObject({ line1: "Connection Audit hasn't updated for over a week" });
+    const bad = makeErrorLogService({ repo, auditFeed: async () => { throw new Error('x'); } });
+    await expect(bad.list(admin)).resolves.toMatchObject({ rows: expect.any(Array) });
+  });
+});

@@ -4,7 +4,7 @@ vi.mock('../utils/logger', () => {
   const nop = () => {};
   return { createLogger: () => ({ info: nop, warn: nop, error: nop }) };
 });
-import { makeReconcileService } from '../services/reconcile.service';
+import { makeReconcileService, rosterNameOf } from '../services/reconcile.service';
 import { makeErrorLogService } from '../services/error-log.service';
 import { InMemoryErrorLogRepository } from '../repositories/in-memory/error-log.repository';
 import { InMemoryReconcileRunRepository } from '../repositories/in-memory/reconcile-run.repository';
@@ -15,7 +15,7 @@ import type { OutboxRow } from '../core/link-types';
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = new Date('2026-10-23T11:20:00Z');            // Fri 23 Oct 9:20 pm Brisbane
 
-async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroups'; hang?: 'sessions' | 'roster'; budgetMs?: number } = {}) {
+async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroups'; hang?: 'sessions' | 'roster'; budgetMs?: number; auditFeed?: () => Promise<void> } = {}) {
   const link = new InMemoryLinkRepository();
   await link.replaceMirror('roster', [
     { personId: P(1), firstName: 'Ava', lastName: 'Test', gender: 'female', grade: 9, kind: 'student' },
@@ -33,7 +33,7 @@ async function harness(o: { actions?: Partial<OutboxRow>[]; throwIn?: 'lifegroup
   const svc = makeReconcileService({ link, students, lifegroups, lifegroupWeeks: { findAll: async () => [] },
     lifegroupAttendance: { findAll: async () => [] }, serviceSessions: { findAll: () => (o.hang === 'sessions' ? new Promise(() => {}) : Promise.resolve([])) },
     serviceAttendance: { findBySession: async () => [] }, imports: { findByType: async () => [{ id: 'imp-1', importedAt: '2026-10-23T11:15:00Z' } as any] },
-    settings, errorLog, errorRows: errRepo, runs, now: () => NOW, budgetMs: o.budgetMs });
+    settings, errorLog, errorRows: errRepo, runs, now: () => NOW, budgetMs: o.budgetMs, auditFeed: o.auditFeed });
   return { svc, errRepo, runs, students, link };
 }
 const codes = async (r: InMemoryErrorLogRepository) => Object.fromEntries((await r.list()).map((x) => [x.code + (x.route ? `:${x.route}` : ''), x.count]));
@@ -95,6 +95,25 @@ describe('reconcile.run', () => {
 
 describe('reconcile.latest (console endpoint)', () => {
   const body = { contractVersion: 1, consoleId: P(99) };
+  it('audit rows are kept at any age (spec 2026-10-22 §7), like reconcile rows', async () => {
+    const { svc, errRepo } = await harness();
+    const old = new Date(NOW.getTime() - 30 * 86_400_000).toISOString();
+    await errRepo.record({ id: 'aud1', category: 'audit', code: 'audit-source-failed', route: 'group', status: null, message: 'x',
+      role: null, at: old, tier: 'now', foldKey: null }, 1);
+    await errRepo.record({ id: 'old2', category: 'link', code: 'unclear', route: 'checkIn', status: null, message: 'x',
+      role: null, at: old, tier: 'now', foldKey: null });
+    const r = await svc.latest(body);
+    expect(r.entries.find((e) => e.code === 'audit-source-failed')).toMatchObject({ tier: 'now', count: 1,
+      line1: "Connection Audit: Lifegroups didn't update" });
+    expect(r.entries.some((e) => e.code === 'unclear')).toBe(false);   // the 7-day rule still holds for other rows
+  });
+  it('latest() re-evaluates audit-feed-stale first; a throwing check never breaks the answer', async () => {
+    const calls: string[] = [];
+    const { svc } = await harness({ auditFeed: async () => { calls.push('feed'); throw new Error('x'); } });
+    const r = await svc.latest(body);
+    expect(calls).toEqual(['feed']);
+    expect(r.contractVersion).toBe(1);
+  });
   it('shape: run + entries, tier now/later only, ignored left out, 7-day filter for non-reconcile rows', async () => {
     const { svc, errRepo } = await harness();
     await svc.run();
@@ -132,6 +151,15 @@ describe('reconcile.latest (console endpoint)', () => {
   it('no run yet gives run null', async () => {
     const { svc } = await harness();
     expect((await svc.latest(body)).run).toBeNull();
+  });
+});
+
+describe('rosterNameOf (shared with the audit build)', () => {
+  it('"First Last" for a roster person, trimmed; "(no longer on the roster)" otherwise', () => {
+    const nm = rosterNameOf([{ personId: P(1), firstName: 'Ava', lastName: 'Test' }, { personId: P(3), firstName: 'Jo', lastName: '' }]);
+    expect(nm(P(1))).toBe('Ava Test');
+    expect(nm(P(3))).toBe('Jo');
+    expect(nm(P(9))).toBe('(no longer on the roster)');
   });
 });
 
