@@ -332,7 +332,7 @@ describe('quad filter consistency', () => {
 const CA_BLOCK = HTML.slice(HTML.indexOf('/* ── CA MODULE START ── */'), HTML.indexOf('/* ── CA MODULE END ── */'));
 const XLSX_SRC = readFileSync(join(__dirname, '..', '..', 'public', 'vendor', 'xlsx.full.min.js'), 'utf8');
 const loadXlsx = () => new Function(`var module, define, window; ${XLSX_SRC}; return XLSX;`)();
-const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx'];
+const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx', 'phoneLink', 'fmtPhone'];
 function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
   const env: any = { audit, app: '', posts: [] as any[], toasts: [] as string[], downloads: [] as any[], went: [] as string[], dom: {} as any, reply: null, X: loadXlsx() };
   const { CA, S } = new Function('env', `
@@ -428,8 +428,14 @@ describe('Y10 screens', () => {
     const html = await caWorld(audit26()).show('ca-follow');
     expect((html.match(/<details class="card ca-fu"/g) || []).length).toBe(3);
     expect(html).not.toContain('<details class="card ca-fu" open');
-    expect(html).toContain('href="tel:0400000001">Call parent</a>');
-    expect(html).toContain('href="sms:0400000001">Text parent</a>');
+    expect(html).toContain("callPhone('0400000001'");
+    expect(html).toContain('<span class="ca-cap">Parent </span>');
+    expect(html).not.toContain('btn btn-secondary ca-act');
+    expect(html).not.toContain('>Call<');
+    expect(html).not.toContain('>Text<');
+    const cards = html.split('<div class="ca-fu-cards">').slice(1).map((c: string) => c.split('<table')[0]).join('');
+    expect((cards.match(/callPhone\(/g) || []).length).toBe(3); // b, e, d have phones; c (DNC) and f (no phone) add none
+    expect((cards.match(/class="li rc ca-fu-card"/g) || []).length).toBe(5);
     expect(html).toContain('Do not contact');
     expect(html).toContain('No phone on file');
     expect(html).toContain("<span class=\"chip c-neutral\">Parent's phone</span>");
@@ -597,9 +603,9 @@ describe('Y10 structure', () => {
   it('nav item is ca-week and tagged as a CA hook', () => {
     expect(HTML).toContain("const caItem = { id:'ca-week', ic:'link', label:'Connection Audit', mbl:'Connection Audit' }; /*CA-HOOK*/");
   });
-  it('call/text buttons are at least 44x44 with an 8px gap', () => {
-    expect(HTML).toContain('.ca-act{min-width:44px;min-height:44px;');
-    expect(HTML).toContain('.ca-acts{display:flex;gap:8px;');
+  it('follow-up rows use the compact .rc anatomy; the number link keeps a 44px tap target; no Call/Text buttons', () => {
+    expect(HTML).toContain('.ca-fu-card .rc-foot a{display:inline-block;padding:12px 0;margin:-12px 0}');
+    expect(HTML).not.toContain('.ca-act');
   });
   it('deck currency text has single spaces around the date', () => {
     const b = extractFn(HTML, '_buildDeckBody');
@@ -672,10 +678,10 @@ describe('sessSeries + fuPhone (final review I2, M4)', () => {
     expect(f.sessSeries()).toEqual([{ date: '2026-10-09', v: 44 }, { date: '2026-10-16', v: 48 }]);
   });
   it('+61 phones dial as 04 in tel:/sms:, the shown text is unchanged', () => {
-    const { fuPhone } = loadFns(['fuPhone', 'esc']);
+    const { fuPhone } = loadFns(['fuPhone', 'esc', 'phoneLink', 'fmtPhone']);
     const html = fuPhone({ phone: '61400000001' }, true);
     expect(html).toContain('href="tel:0400000001"');
     expect(html).toContain('>61400000001<');
-    expect(fuPhone({ phone: '+61 400 000 001' }, false)).toContain('href="sms:0400000001"');
+    expect(fuPhone({ phone: '+61 400 000 001', first: 'Ava' }, false)).toContain("callPhone('0400000001','Ava',false)");
   });
 });

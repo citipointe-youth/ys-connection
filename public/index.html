@@ -588,10 +588,9 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 @media(min-width:480px) and (max-width:719px){.ca-tiles{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:720px){.ca-tiles{grid-template-columns:repeat(4,1fr)}}
 .ca-fu summary{cursor:pointer}
-.ca-acts{display:flex;gap:8px;margin-top:6px}
-.ca-act{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
 .ca-fu-table{display:none;width:100%;border-collapse:collapse;font-size:.72rem}
 .ca-fu-table th,.ca-fu-table td,.ca-qt th,.ca-qt td{text-align:left;padding:6px 8px;border-top:1px solid var(--ca-line)}
+.ca-fu-card .rc-foot a{display:inline-block;padding:12px 0;margin:-12px 0}   /* ~44px tap target without growing the row */
 @media(min-width:720px){.ca-fu-cards{display:none}.ca-fu-table{display:table}}
 .ca-qt{width:100%;border-collapse:collapse;font-size:.7rem}
 .ca-foot{display:block;font-size:.66rem;color:var(--ca-muted);margin:14px 0 0;text-decoration:none}
@@ -8673,7 +8672,7 @@ function caFollowRows(snap,list,quad){
     if(list==='drifting'){const w=d?Math.max(1,Math.round((Date.parse(nowDay)-Date.parse(d))/(7*864e5))):0;why=d?'Last seen '+short(d)+' ('+w+(w===1?' wk)':' wks)'):'Not seen yet';}
     else why=list==='decidedNoGroup'?'Decided '+short(d)+', no lifegroup since':'Connected '+short(d)+', not at youth since';
     return{id:s.id,name:s.firstName+' '+s.lastName,last:s.lastName||'',quad:s.quad||null,grade:s.grade,gender:s.gender,
-      phone:s.phone||null,phoneIsParent:!!s.phoneIsParent,dnc:!!s.dnc,date:d,lastSeen:s.lastSeen||null,why,reason:caLabel('list',list)};
+      first:s.firstName||'',phone:s.phone||null,phoneIsParent:!!s.phoneIsParent,dnc:!!s.dnc,date:d,lastSeen:s.lastSeen||null,why,reason:caLabel('list',list)};
   });
   const late=r=>r.dnc||!r.phone?1:0;
   return rows.sort((a,b)=>late(a)-late(b)||(a.date===b.date?0:(b.date||'')>(a.date||'')?1:-1)||a.last.localeCompare(b.last));
@@ -9012,9 +9011,9 @@ function follow(list){FOPEN=list;go('ca-follow');}
 function fuPhone(r,wide){
   if(r.dnc)return '<span class="ca-cap">Do not contact</span>';
   if(!r.phone)return '<span class="ca-cap">No phone on file</span>';
-  const n=esc(r.phone.replace(/[^\d+]/g,'').replace(/^\+?61(\d{9})$/,'0$1'));   // +61 4xx -> 04xx for the href; the text stays as stored
-  if(wide)return '<a href="tel:'+n+'">'+esc(r.phone)+'</a>'+(r.phoneIsParent?' <span class="chip c-neutral">Parent\'s phone</span>':'');
-  return '<a class="btn btn-secondary ca-act" href="tel:'+n+'">'+(r.phoneIsParent?'Call parent':'Call')+'</a><a class="btn btn-secondary ca-act" href="sms:'+n+'">'+(r.phoneIsParent?'Text parent':'Text')+'</a>';
+  const n=r.phone.replace(/[^\d+]/g,'').replace(/^\+?61(\d{9})$/,'0$1');   // +61 4xx -> 04xx to dial; the wide text stays as stored
+  if(wide)return '<a href="tel:'+esc(n)+'">'+esc(r.phone)+'</a>'+(r.phoneIsParent?' <span class="chip c-neutral">Parent\'s phone</span>':'');
+  return '<span>'+(r.phoneIsParent?'<span class="ca-cap">Parent </span>':'')+phoneLink(n,r.first,r.phoneIsParent)+'</span>';   // tap opens the Call / Message sheet
 }
 function rFollow(){
   if(!AUDIT){caShell(emptyYear(),'ca-follow');return;}
@@ -9025,7 +9024,7 @@ function rFollow(){
   for(const[l,rows]of all){
     b+='<details class="card ca-fu"'+(l===open?' open':'')+'><summary><b>'+esc(caLabel('list',l))+'</b> · '+rows.length+'<div class="ca-cap">'+esc(caLabel('hint',l))+'</div></summary>';
     if(!rows.length)b+='<div class="ca-cap">Nobody here this week.</div>';
-    else b+='<div class="ca-fu-cards">'+rows.map(r=>'<div class="li ca-fu-card"><div><b>'+esc(r.name)+'</b> <span class="ca-cap">'+esc(caLabel('quad',r.quad))+'</span></div><div class="ca-cap">'+esc(r.why)+'</div><div class="ca-acts">'+fuPhone(r,false)+'</div></div>').join('')+'</div>'
+    else b+='<div class="ca-fu-cards">'+rows.map(r=>'<div class="li rc ca-fu-card"><div class="rc-top"><span class="lk-nm">'+esc(r.name)+'</span><span class="rc-pills"><span class="ca-cap">'+esc(caLabel('quad',r.quad))+'</span></span></div><div class="lk-d">'+esc(r.why)+'</div><div class="rc-foot">'+fuPhone(r,false)+'</div></div>').join('')+'</div>'
       +'<table class="ca-fu-table"><thead><tr><th>Name</th><th>Quad</th><th>Why</th><th>Phone</th></tr></thead><tbody>'
       +rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+esc(caLabel('quad',r.quad))+'</td><td>'+esc(r.why)+'</td><td>'+fuPhone(r,true)+'</td></tr>').join('')+'</tbody></table>';
     b+='</details>';
