@@ -14,7 +14,8 @@ function requireCaModule(settings: AppSettings): void {
   }
 }
 
-export interface AuditSummary { year: number; label: string; uploadedAt: string; termKeys: string[]; }
+import type { AuditSummary } from '../repositories/interfaces/entity-repositories';
+export type { AuditSummary };
 
 // Exact round-trip backup/restore format for the New Year Refresh wizard: the
 // raw ConnectionAudit rows as exported by exportAll(), trusted as our own
