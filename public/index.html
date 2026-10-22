@@ -735,11 +735,12 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .stop-arrows button:disabled{opacity:.3;cursor:default}
 /* R19-U13: 44px hit areas with no visual growth: the arrows' outer edges, and a centred 44px band on small links/chips. */
 .stop-arrows button::after{content:'';position:absolute;inset:-4px 0 0}.stop-arrows button+button::after{inset:0 0 -4px}
-.bus-hit{position:relative}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+.bus-hit{position:relative;display:inline-block}.bus-hit::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
 .bus-differs{border:0;cursor:pointer;font-family:inherit} /* "Consent address differs" chip-button */
 .bus-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
 .bus-chip{gap:4px;height:24px;padding:2px 8px;font-size:13px;font-weight:600;line-height:20px;border-radius:999px;box-sizing:border-box}
 .bus-chip .ic-s{width:14px;height:14px;flex:none}
+.bus-chips .bus-hit{display:inline-flex}
 @media(pointer:coarse){.bus-pg .tbbar .tbbtn{min-height:44px}.bus-pg .bus-flt{min-height:44px}}
 /* A long bus sheet (Edit vehicle, Leader pool…) keeps its primary button floating at the bottom. */
 .mo-box > .btn-primary.btn-full{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 10px -4px var(--paper-card)}
