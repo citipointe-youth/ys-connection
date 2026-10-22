@@ -6918,6 +6918,7 @@ function renderNewYearWizard() {
 
   let b = `<div class="card" style="margin-bottom:10px">
     <div style="font-size:13px;color:var(--ink-mid)">Do these in order. Full Reset unlocks after the three exports.</div>
+    <div style="font-size:13px;color:var(--ink-mid);margin-top:6px">Bus consent forms count for one calendar year: every rider shows No consent from 1 January.</div>
   </div>`;
 
   b += _wizStepCard(1, 'Export Allocations',
@@ -6938,7 +6939,7 @@ function renderNewYearWizard() {
     step2Satisfied, false);
 
   // r22 L3 (A4): say plainly what the cascade takes too (no apostrophes: the text sits in a JS string in onclick).
-  const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes bus parent consents and saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their consents and addresses. Accounts are kept. This cannot be undone.';
+  const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms are kept and match again by name. Accounts are kept. This cannot be undone.';
   b += _wizStepCard(4, 'Full Reset', resetText,
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'${resetText}${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);
@@ -7342,7 +7343,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
   /*BUS-HOOK*/ // generic Setup wizard (Bus settings has its own dedicated sheet, busSettings()), kept
   /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
-  /*BUS-HOOK*/ busMinistry: { churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [] },
+  /*BUS-HOOK*/ busMinistry: { churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], consentDeclaration: 'Do you give permission for [child] to travel on the Youth Society bus to, from and during Friday nights at Citipointe Brisbane? Do you consent to the leaders arranging emergency medical, hospital or ambulance care if needed, at your cost? Do you release Citipointe from liability as set out in the full form? Do you agree to us contacting you with updates? The full terms and privacy policy are at citipointechurch.com.', consentLastChecked: '', consentLastNew: 0 },
   elvanto: { baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '' },
 };
 
@@ -7936,13 +7937,29 @@ function _setupElvLink(kind, val) {
   }
   _setupRerender();
 }
+// F11: the optional Bus consent form link. Blank clears it; a link must be on the same Elvanto address as the other two.
+function _setupElvBusText() {
+  const s = _setupElv || {}, e = (_setupDraft && _setupDraft.elvanto) || {};
+  return s.bus != null ? s.bus : (e.baseUrl && e.busConsentFormId ? e.baseUrl + '/form/' + e.busConsentFormId : '');
+}
+function _setupElvBusLink(val) {
+  const s = _setupElv || (_setupElv = {}), v = String(val || '').trim(), a = v ? _elvSplitLink(v) : null;
+  if (!_setupDraft) _setupDraft = {};
+  const e = _setupDraft.elvanto || (_setupDraft.elvanto = {});
+  s.bus = val; s.lines = null;
+  if (!v) { s.busErr = ''; e.busConsentFormId = ''; }
+  else if (!a) s.busErr = 'The bus consent form link is not a public Elvanto form link.';
+  else if (e.baseUrl && a.baseUrl !== e.baseUrl) s.busErr = 'All form links must be on the same Elvanto address.';
+  else { s.busErr = ''; e.busConsentFormId = a.id; if (!e.baseUrl) e.baseUrl = a.baseUrl; delete s.bus; }
+  _setupRerender();
+}
 // Check forms runs on the draft. Its ids merge into the draft (a key not found keeps its old id); checkedAt is set
 // only when every row is found. Save Youth Setup stores it.
 // A result that lands after the links or location changed is dropped. A reply without a missing list never
 // counts as all found (fail closed).
 async function _setupElvCheck() {
   const cur = () => (_setupDraft && _setupDraft.elvanto) || {};
-  const ask = (e) => ({ baseUrl: e.baseUrl || '', studentFormId: e.studentFormId || '', parentFormId: e.parentFormId || '', location: e.location || '', locationQuestion: e.locationQuestion || '' });
+  const ask = (e) => Object.assign({ baseUrl: e.baseUrl || '', studentFormId: e.studentFormId || '', parentFormId: e.parentFormId || '', location: e.location || '', locationQuestion: e.locationQuestion || '' }, e.busConsentFormId ? { busConsentFormId: e.busConsentFormId } : {});
   const s = _setupElv || (_setupElv = {});
   const body = ask(cur());
   s.busy = true; s.lines = null; s.keys = []; s.typed = {}; s.idErr = {}; _setupRerender();
@@ -7990,9 +8007,12 @@ function _setupElvCardHtml(cfg) {
   return `<div class="help-text" style="margin-bottom:8px">New person sends these two Elvanto forms. Paste each form's public link.</div>
     ${link('student', 'Student form link')}${link('parent', 'Parent form link')}
     ${s.err ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.err)}</div>` : ''}
+    <div class="fg"><label class="fl" for="setup-elv-bus">Bus consent form link (optional)</label>
+      <input class="fi" id="setup-elv-bus" inputmode="url" autocomplete="off" placeholder="https://your-org.elvanto.com.au/form/..." value="${esc(_setupElvBusText())}" onchange="_setupElvBusLink(this.value)"></div>
+    ${s.busErr ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.busErr)}</div>` : ''}
     ${text('locationQuestion', 'Location question on the form')}${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
     ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'State for new addresses (e.g. QLD)')}
-    <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
+    <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err || s.busErr ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
     ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l, i) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>` + _setupElvIdHtml(e, s, i)).join('')}</div>` : ''}`;
 }
 function _setupElvIdHtml(e, s, i) {
@@ -15083,6 +15103,95 @@ function _busOverMsg(a) {
   const n = rv ? BUS.view.riders.filter((r) => r.runVehicleId === id).length - rv.capacity : 0;
   return n > 0 ? `. ${rv.name} is over by ${n}` : '';
 }
+// ── Bus consent form (the leader files it for the parent) ──
+function _bcFormHtml(p) {
+  const v = (x) => esc(x == null ? '' : x), a = p.address || {};
+  const { mobile, school } = p; // v() escapes
+  const decl = String(p.declaration || '').split('[child]').join(((p.first || '') + ' ' + (p.last || '')).trim() || 'your child');
+  const opt = (val, lab, cur) => `<option value="${val}" ${String(cur) === String(val) ? 'selected' : ''}>${lab}</option>`;
+  const pk = p.pickup == null ? '' : p.pickup ? 'y' : 'n';
+  return `<div class="card" style="background:var(--bad-bg,#fde8e8);border-color:var(--bad,#c62828)"><b>${esc("You are submitting this on the parent's behalf. Read the declaration below to them and only submit if they agree.")}</b></div>
+  <div class="fg"><label>First name</label><input class="fi" id="bc-first" value="${v(p.first)}" onchange="_bcRelookup()"></div>
+  <div class="fg"><label>Last name</label><input class="fi" id="bc-last" value="${v(p.last)}" onchange="_bcRelookup()"></div>
+  <div class="fg"><label>Grade</label><select class="fi" id="bc-grade">${['', '6', '7', '8', '9', '10', '11', '12'].map((g) => opt(g, g || 'Choose', p.grade)).join('')}</select></div>
+  <div class="fg"><label>Gender</label><select class="fi" id="bc-gender">${opt('', 'Choose', p.gender)}${opt('f', 'Female', p.gender)}${opt('m', 'Male', p.gender)}</select></div>
+  <div class="fg"><label>Student mobile</label><input class="fi" id="bc-mobile" inputmode="tel" value="${v(mobile)}"></div>
+  <div class="fg"><label>School</label><input class="fi" id="bc-school" value="${v(school)}"></div>
+  <div class="fg"><label>Address</label><input class="fi" id="bc-line1" value="${v(a.line1)}"><input class="fi" id="bc-line2" placeholder="Line 2 (optional)" value="${v(a.line2 === '-' ? '' : a.line2)}">
+    <input class="fi" id="bc-city" placeholder="Suburb" value="${v(a.city)}"><input class="fi" id="bc-postcode" inputmode="numeric" placeholder="Postcode" value="${v(a.postcode)}">
+    <input class="fi" id="bc-state" placeholder="State" value="${v(a.state || 'QLD')}"></div>
+  <div class="fg"><label>Parent full name</label><input class="fi" id="bc-pname" value="${v(p.parentName)}"></div>
+  <div class="fg"><label>Parent phone</label><input class="fi" id="bc-pphone" inputmode="tel" value="${v(p.parentPhone)}"></div>
+  <div class="fg"><label>${esc('Will the parent pick up from the drop-off location?')}</label><select class="fi" id="bc-pickup" onchange="_bcPickupShown()">${opt('', 'Choose', pk)}${opt('y', 'Yes', pk)}${opt('n', 'No', pk)}</select></div>
+  <div class="fg" id="bc-pickupby-row"><label>Who will pick them up?</label><input class="fi" id="bc-pickupby" value="${v(p.pickupBy)}"></div>
+  <div class="card"><div class="card-sub">Read this to the parent</div><p>${esc(decl)}</p>
+    <p class="lk-d"><a href="https://citipointechurch.com/privacypolicy" target="_blank" rel="noopener">Privacy policy</a> · <a href="https://citipointechurch.com/parent-info" target="_blank" rel="noopener">Parent info</a></p></div>
+  <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="busConsentSubmit()">Submit</button></div>`;
+}
+function _bcMissing(f) {
+  const a = f.address || {};
+  const need = [['first', f.first, 'first name'], ['last', f.last, 'last name'], ['grade', f.grade, 'grade'], ['gender', f.gender, 'gender'], ['mobile', f.mobile, 'student mobile'],
+    ['school', f.school, 'school'], ['line1', a.line1, 'address'], ['city', a.city, 'suburb'], ['postcode', a.postcode, 'postcode'], ['state', a.state, 'state'],
+    ['parentName', f.parentName, 'parent name'], ['parentPhone', f.parentPhone, 'parent phone'], ['pickup', f.pickup === true || f.pickup === false ? 'x' : '', 'picking up']];
+  const miss = need.find(([, val]) => !String(val == null ? '' : val).trim());
+  return miss ? 'Add the ' + miss[2] : null;
+}
+function _bcConfirmHtml(parent) {
+  return `<div class="mo-title">Before you submit</div>
+  <label class="cbx-row"><input type="checkbox" id="bc-agree" onchange="document.getElementById('bc-submit').disabled = !this.checked"> ${esc('I read the declaration to ' + (parent || 'the parent') + ' and they agreed')}</label>
+  <div class="mo-actions"><button type="button" class="btn btn-secondary" onclick="busConsentForm(BUS.bc.who, true)">Back</button>
+  <button type="button" class="btn btn-primary" id="bc-submit" disabled onclick="_bcSend()">Submit to Elvanto</button></div>`;
+}
+function _bcResultText(r) {
+  if (r.result === 'sent') return { tone: 'ok', lines: ['Sent to Elvanto.', r.dropoff ? 'Drop-off: ' + r.dropoff : 'Tell the parent the drop-off location shows after the form is in.'] };
+  if (r.result === 'failed') return { tone: 'bad', lines: ['Elvanto did not take the form.', r.queued ? 'It is saved for the admin to resend.' : 'Use the paper form and tell the admin.'] };
+  return { tone: 'warn', lines: ["We don't know if the form went in.", 'Check the bus consent form in Elvanto before sending again.'] };
+}
+// who = { riderId } | { studentId } | { guestId }. F6: a rider is sent as riderId, so a redacted (junior) login
+// that sees no student or guest id on its rows still works; the server resolves the person.
+function _bcQuery(who) { return who.riderId ? 'riderId=' + encodeURIComponent(who.riderId) : who.studentId ? 'studentId=' + encodeURIComponent(who.studentId) : 'guestId=' + encodeURIComponent(who.guestId); }
+async function busConsentForm(who, keep) {
+  if (!keep) {
+    let p; try { p = await _busGet('/bus/consent/prefill', _bcQuery(who)); } catch (e) { toast(e.message); return; }
+    BUS.bc = { who, p, requestId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) };
+  }
+  modal(`<div class="mo-title">Bus consent form</div>${_bcFormHtml(BUS.bc.f || BUS.bc.p)}`); _bcPickupShown();
+}
+function _bcRead() {
+  const g = (id) => (document.getElementById(id) || {}).value || '';
+  return { first: g('bc-first').trim(), last: g('bc-last').trim(), grade: g('bc-grade'), gender: g('bc-gender'), mobile: g('bc-mobile').trim(), school: g('bc-school').trim(),
+    address: { line1: g('bc-line1').trim(), line2: g('bc-line2').trim(), postcode: g('bc-postcode').trim(), city: g('bc-city').trim(), state: g('bc-state').trim() || 'QLD' },
+    parentName: g('bc-pname').trim(), parentPhone: g('bc-pphone').trim(), pickup: g('bc-pickup') === 'y' ? true : g('bc-pickup') === 'n' ? false : null, pickupBy: g('bc-pickupby').trim(),
+    declaration: BUS.bc.p.declaration };
+}
+function busConsentSubmit() { const f = _bcRead(), miss = _bcMissing(f); if (miss) { toast(miss); return; } BUS.bc.f = f; modal(_bcConfirmHtml(f.parentName)); }
+async function _bcSend() {
+  const btn = document.getElementById('bc-submit'); if (btn) btn.disabled = true;
+  const { declaration, ...f } = BUS.bc.f;
+  try {
+    const r = await API.post('/bus/consent-form?' + _busQs(), Object.assign({}, BUS.bc.who, f, { requestId: BUS.bc.requestId, readOut: true }), 45000);
+    const m = _bcResultText(r); modal(`<div class="mo-title">Bus consent form</div><div class="card ${m.tone}">${m.lines.map((l) => '<p>' + esc(l) + '</p>').join('')}</div><div class="mo-actions"><button class="btn btn-primary" onclick="closeModal();renderBus()">Done</button></div>`);
+  } catch (e) { if (btn) btn.disabled = false; toast(e.message); }
+}
+// Spec 5.5 step 2: a changed name re-runs the search. Exactly one hit: that person becomes the target and their prefill
+// fills only the EMPTY fields (what the leader typed stays).
+async function _bcRelookup() {
+  const cur = _bcRead(), q = (cur.first + ' ' + cur.last).trim(); if (q.length < 3) return;
+  let hits; try { hits = await _busGet('/bus/search', 'q=' + encodeURIComponent(q)); } catch { return; }
+  if (!Array.isArray(hits) || hits.length !== 1) return;
+  const h = hits[0], who = h.kind === 'student' ? { studentId: h.id } : { guestId: h.id };
+  let p; try { p = await _busGet('/bus/consent/prefill', _bcQuery(who)); } catch { return; }
+  const pick = (a, b) => (a == null || a === '' ? (b == null ? a : b) : a), ca = cur.address, pa = p.address || {};
+  BUS.bc.who = who; BUS.bc.p = p;
+  BUS.bc.f = { first: cur.first, last: cur.last, grade: pick(cur.grade, p.grade), gender: pick(cur.gender, p.gender), mobile: pick(cur.mobile, p.mobile), school: pick(cur.school, p.school),
+    address: { line1: pick(ca.line1, pa.line1), line2: pick(ca.line2, pa.line2), postcode: pick(ca.postcode, pa.postcode), city: pick(ca.city, pa.city), state: pick(ca.state, pa.state) },
+    parentName: pick(cur.parentName, p.parentName), parentPhone: pick(cur.parentPhone, p.parentPhone), pickup: cur.pickup == null ? (p.pickup == null ? null : p.pickup) : cur.pickup, pickupBy: pick(cur.pickupBy, p.pickupBy),
+    declaration: p.declaration };
+  busConsentForm(who, true);
+}
+// TODO(Task0): the "Who will be picking up" show/hide rule is not captured yet (spec 5.5: optional and conditional; the snapshot reads backwards).
+// Until Task 0 settles it, the row is always shown and is optional.
+function _bcPickupShown() { const row = document.getElementById('bc-pickupby-row'); if (row) row.hidden = false; }
 function busConfirmRemove(id) {
   const r = BUS.view.riders.find((x) => x.id === id);
   // Task 3: a guest with no prior ride is hard-deleted server-side (with their saved address)
@@ -15102,6 +15211,10 @@ function busSettings() {
     ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
     <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
+    <label class="fl" for="bus-decl">Bus consent declaration</label>
+    <textarea class="fi" id="bus-decl" rows="6" maxlength="2000">${esc(b.consentDeclaration || MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration)}</textarea>
+    <div class="help-text">The leader reads this to the parent. [child] becomes the student's name.</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bus-decl').value = MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration">Reset to default</button>
     ${BUS.view.google ? `<div class="help-text" style="margin-top:8px"><b>${esc(BUS.view.google.text)}</b></div>
       <button class="btn btn-secondary btn-full" onclick="busGoogleCheck()">Test Google connection</button>
       <div id="bus-gcheck"></div>` : ''}
@@ -15119,7 +15232,7 @@ async function busSaveSettings() {
   const coordinatorLeaderIds = [...document.querySelectorAll('.bus-checks input:checked')].map((i) => i.value);
   const church = _busAcValue('bs-church');
   if (church.address && !church.placeId) { toast('Pick the address from the suggestions list'); return; }
-  const patch = { ministryConfig: { busMinistry: { churchAddress: church.address, churchPlaceId: church.placeId || '', coordinatorLeaderIds } } };
+  const patch = { ministryConfig: { busMinistry: { churchAddress: church.address, churchPlaceId: church.placeId || '', coordinatorLeaderIds, consentDeclaration: document.getElementById('bus-decl').value.trim() } } };
   try { S.settings = await API.patch('/settings', patch); Cache.clear(); closeModal(); toast('Saved'); busRefresh(); }
   catch (e) { toast(e.message); }
 }

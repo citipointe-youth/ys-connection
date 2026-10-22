@@ -76,3 +76,56 @@ describe('address picker consent row (R8)', () => {
   });
 });
 
+describe('consent form sheet (R2, R3, R6)', () => {
+  it('banner first, declaration shows the saved text with both links, the child name filled in', () => {
+    const { _bcFormHtml } = loadFns(['_bcFormHtml'], PRE);
+    const h = _bcFormHtml({ first: 'Jess', last: 'Tran', grade: 9, gender: 'f', declaration: 'May [child] ride?' });
+    expect(h.indexOf('on the parent')).toBeLessThan(h.indexOf('bc-first'));
+    expect(h).toContain('May Jess Tran ride?');
+    expect(h).toContain('https://citipointechurch.com/privacypolicy'); expect(h).toContain('https://citipointechurch.com/parent-info');
+  });
+  it('every required field is named when missing; line 2 is optional', () => {
+    const { _bcMissing } = loadFns(['_bcMissing']);
+    const ok = { first: 'J', last: 'T', grade: '9', gender: 'f', mobile: '0400000001', school: 'X', address: { line1: '1 A St', line2: '', postcode: '4000', city: 'B', state: 'QLD' },
+      parentName: 'A', parentPhone: '0400000003', pickup: true };
+    expect(_bcMissing(ok)).toBeNull();
+    for (const [k, label] of [['school', 'school'], ['parentPhone', 'parent phone'], ['pickup', 'picking up']] as const) expect(_bcMissing({ ...ok, [k]: k === 'pickup' ? null : '' })).toMatch(label);
+    expect(_bcMissing({ ...ok, address: { ...ok.address, postcode: '' } })).toMatch(/postcode/);
+  });
+  it('the confirm gate: Submit stays disabled until the tick (R2)', () => {
+    const { _bcConfirmHtml } = loadFns(['_bcConfirmHtml'], PRE);
+    const h = _bcConfirmHtml('Alex Tran');
+    expect(h).toMatch(/I read the declaration to Alex Tran and they agreed/);
+    expect(h).toMatch(/id="bc-submit"[^>]*disabled/);
+  });
+  it('result text: sent with drop-off; unconfirmed says check Elvanto, never "try again"', () => {
+    const { _bcResultText } = loadFns(['_bcResultText']);
+    expect(_bcResultText({ result: 'sent', dropoff: 'Carindale stop' }).lines.join(' ')).toMatch(/Carindale stop/);
+    const u = _bcResultText({ result: 'unconfirmed', dropoff: null, queued: true }).lines.join(' ');
+    expect(u).toMatch(/Elvanto/); expect(u).not.toMatch(/try again/i);
+  });
+  it('a rider opens the form by riderId so a redacted login still works (F6)', () => {
+    const src = loadIndexHtml();
+    expect(src).toContain("'riderId=' + encodeURIComponent(who.riderId)");
+  });
+  it('SW bumped; reset text no longer promises to delete bus consents', () => {
+    const html = loadIndexHtml();
+    expect(html).not.toMatch(/deletes bus parent consents/);
+    expect(html).toContain('Bus consent forms are kept and match again by name.');
+    expect(html).toContain('Bus consent forms count for one calendar year');
+    expect(readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8')).toMatch(/const CACHE = 'ysc-v143'/);
+  });
+});
+
+// F5: the "client default = server default" pin moves to Task 10 (DEFAULT_CONSENT_DECLARATION lands in lane B).
+describe('declaration editor and client defaults', () => {
+  it('Bus settings has the declaration textarea, a reset and the patch key; defaults carry the new keys', () => {
+    const html = loadIndexHtml();
+    expect(html).toContain('id="bus-decl"');
+    expect(html).toContain('consentDeclaration: document.getElementById(\'bus-decl\').value.trim()');
+    expect(html).toMatch(/consentDeclaration: '[^']+', consentLastChecked: '', consentLastNew: 0/);
+  });
+  it('Youth Setup has the Bus consent form link input (F11)', () => {
+    expect(loadIndexHtml()).toContain('setup-elv-bus');
+  });
+});
