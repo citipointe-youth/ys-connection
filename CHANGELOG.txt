@@ -4,6 +4,15 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+CONNECTION AUDIT FED BY THE CONSOLE  (ysc-v140, 2026-10-22)
+-------------------------------------------------------------------------------
+- The Connection Audit now fills itself: the console sends the five Elvanto
+  tables after the Friday email, and the audit rebuilds the year from them.
+  Needs the console updated (link rev 16, migration 0043). Ship this app first.
+- New screens: This week, Follow up, Term report and a Data check page.
+  A file can still be uploaded by hand on the Data check page.
+
+-------------------------------------------------------------------------------
 DEPLOY DOCS MATCH AUTO-PROMOTE  (2026-10-22, not yet live)
 -------------------------------------------------------------------------------
 - Docs only. Vercel puts every master push live by itself (since 20 Oct), so
