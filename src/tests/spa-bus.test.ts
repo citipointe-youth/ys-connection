@@ -79,7 +79,7 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
     const { busRefresh, __state } = mk('bus');
     await Promise.all([busRefresh(), busRefresh(), busRefresh()]);
     const st = __state();
-    expect(st.fetchCalls).toBe(2); // one /bus/run + one /bus/my-car, not 6
+    expect(st.fetchCalls).toBe(3); // one /bus/run + one /bus/my-car + one /bus/consent/status, not 9
     expect(st.calls.filter((c: string) => c === 'renderBus')).toHaveLength(1);
     expect(st.BUS.loading).toBeNull(); // cleared once the shared fetch settles
     expect(st.BUS.version).toBe(7);
@@ -200,8 +200,8 @@ describe('busRefresh starts a fresh load when the identity changes mid-flight (T
     await Promise.all([staleLoad, freshLoad]);
     // Both busRefresh() calls are async functions, so each returns its OWN promise wrapper
     // regardless — the real proof the second call didn't just reattach to the stale fetch is a
-    // second /bus/run + /bus/my-car dispatch (4 resolvers total, not 2) landing L2's car.
-    expect(__state().resolverCount).toBe(4);
+    // second /bus/run + /bus/my-car dispatch (6 resolvers total, not 3) landing L2's car.
+    expect(__state().resolverCount).toBe(6);
     expect(__state().BUS.myCar).toEqual({ vehicle: { id: 'car-for-L2' } }); // L2's car, not the stale L1 fetch's
   });
 
@@ -210,7 +210,7 @@ describe('busRefresh starts a fresh load when the identity changes mid-flight (T
     const a = busRefresh(), b = busRefresh();
     __resolveAll();
     await Promise.all([a, b]);
-    expect(__state().resolverCount).toBe(2); // one /bus/run + one /bus/my-car, not two pairs
+    expect(__state().resolverCount).toBe(3); // run + my-car + consent status, not two sets
     expect(__state().BUS.myCar).toEqual({ vehicle: { id: 'car-for-L1' } });
   });
 });
@@ -258,7 +258,7 @@ describe('renderBus shows a retry card instead of hot-looping busRefresh on a fa
     const { renderBus, __state } = loadFns(['renderBus', 'busRefresh', ...TRIP], prelude, ['renderBus', '__state']);
     await renderBus();
     const st = __state();
-    expect(st.fetchCalls).toBe(2); // one /bus/run + one /bus/my-car pair — not repeated
+    expect(st.fetchCalls).toBe(3); // run + my-car + consent status — not repeated
     expect(st.BUS.failed).toBe(true);
     expect(st.appHtml[st.appHtml.length - 1]).toContain('Retry');
   });
@@ -514,7 +514,7 @@ describe('_busRoutesHtml flags a car with exactly one unaccompanied girl', () =>
     function esc(s) { return String(s); }
     function icS(k) { return k; }
     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-    function _busConsentChip() { return ''; }
+    function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; }
     function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
     function _busPinnedIcon() { return ''; }
@@ -588,7 +588,7 @@ describe('busGenerate toast mentions girls needing a female leader', () => {
 describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascending, then name', () => {
   it('orders female before male (the app Girls/Boys order), grade up, unknown gender/grade last', () => {
     const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
     const riders = [
       { id: 'a', name: 'Zed', gender: 'male', grade: 7 }, { id: 'b', name: 'Amy', gender: 'female', grade: 11 },
@@ -605,7 +605,7 @@ describe('N01 _busRosterHtml sorts tonight riders girls first, then grade ascend
 describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta line; a bus is a neutral Bus chip', () => {
   it('car = coloured pill inside li-sub; bus = neutral chip, never a car colour (pink read as a girls car)', () => {
     const stubs = `function esc(s) { return String(s); } function icS(k) { return '[' + k + ']'; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#f0f'; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#f0f'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
     const view = { run: { readOnly: false, lockBy: null, lockUntil: null }, vehicles: [{ id: 'v1', name: 'Van', kind: 'car', running: true, capacity: 4, colourIndex: 1 }, { id: 'b1', name: 'Charter', kind: 'bus', running: true, capacity: 3, colourIndex: 2 }],
       riders: [{ id: 'a', name: 'Amy', gender: 'female', grade: 7, runVehicleId: 'v1', address: 'Carina' }, { id: 'b', name: 'Bo', gender: 'male', grade: 8, runVehicleId: 'b1', address: 'Bus drop off' }] };
@@ -636,7 +636,7 @@ describe('R19-U14 flow S11/S13 wording', () => {
 
 describe('_busRosterHtml keeps search/Past riders visible during Generate; only readOnly hides them', () => {
   const stubs = `function esc(s) { return String(s); } function icS() { return ''; } function icEmpty() { return ''; }
-     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
+     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; } function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; } function _busPinChip() { return ''; } function _busCarColour() { return '#000'; }
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; }`;
   const run = (readOnly: boolean, generating: boolean, lockBy: string | null, lockUntil: string | null) => {
     const prelude = `${stubs}
@@ -1165,7 +1165,7 @@ describe('_busMyCarHtml church dead-end message depends on who can fix it (Task 
       function icS(k) { return ''; }
       function _busMapsLinks() { return []; }
       function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-      function _busConsentChip() { return ''; }
+      function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; }
       function _busPinnedIcon() { return ''; }
       function _busFmtTime() { return ''; }
     `;
@@ -1478,7 +1478,7 @@ describe('_busRoutesHtml Lock control (I11)', () => {
     function esc(s) { return String(s); }
     function icS(k) { return k; }
     function _busSuburb(a) { return a; } function _busWhere(r) { return r.address; }
-    function _busConsentChip() { return ''; }
+    function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; }
     function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
     function _busPinnedIcon() { return ''; }
@@ -1792,7 +1792,7 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
     const S = { user: { role: 'grade' } };
     function getMyLeaderId() { return 'L1'; } function esc(s) { return String(s == null ? '' : s); } function icS() { return ''; }
     function _busToday() { return '2026-10-14'; } function dncChip() { return ''; } function _busWhere() { return ''; }
-    function _busConsentChip() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } function _lkSwitchGuard() {} ${extra}`)._busMyCarHtml();
+    function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; } function _busPinChip() { return ''; } function _busPinnedIcon() { return ''; } function _lkSwitchGuard() {} ${extra}`)._busMyCarHtml();
   it('R19-U11: the trip card carries a meta line (seats, where it ends)', () => {
     const own = "{ id: 'rv', name: \"Amy's car\", seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'last_drop', endsAddress: null }";
     expect(tripView(own)).toContain('5 seats · Ends at last drop');
@@ -2050,7 +2050,7 @@ describe('BUS-2 assign + move + maps', () => {
     function esc(s) { return String(s); }
     function icS(k) { return k; }
     function _busSuburb(a) { return a; }
-    function _busConsentChip() { return ''; }
+    function _busConsentChip() { return ''; } function _busConsentHintHtml() { return ''; } function _busConsentStatusHtml() { return ''; }
     function _busPinChip() { return ''; }
     function _busCarColour() { return '#000'; }
     function _busPinnedIcon() { return ''; }

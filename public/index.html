@@ -9724,7 +9724,47 @@ function _busSuburb(address) {
   return parts[1].replace(/\s+[A-Z]{2,3}\s+\d{4}$/, '').trim();
 }
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
-function _busConsentChip(r) { return r.consent && r.consent.given ? '' : `<span class="chip c-warn">${icS('alert')} Consent: not yet</span>`; }
+function _busConsentChip(r, tap) {
+  const c = r && r.consent; if (!c || !c.year) return '';
+  if (c.current) return `<span class="pill ok">${icS('check')} ${esc('Consent ' + c.year)}</span>`;
+  // R11: a warning, never a block. A coordinator's tap (tap=true, Students rows) opens the consent form.
+  const go = tap && r.id ? ` role="button" onclick="event.stopPropagation();busConsentForm({riderId:'${esc(r.id)}'})"` : '';
+  return `<span class="chip c-warn"${go}>${icS('alert')} ${esc('No consent ' + c.year)}</span>`;
+}
+function _busConsentDetailsHtml(c) {
+  const d = c && c.details; if (!d) return '';
+  const sch = d.school; // row() escapes
+  const a = d.address || {}, addr = [a.line1, a.line2 && a.line2 !== '-' ? a.line2 : '', a.city, a.state, a.postcode].filter(Boolean).join(', ');
+  const row = (k, v) => v ? `<div class="lk-d"><b>${esc(k)}</b> ${esc(v)}</div>` : '';
+  return `<div class="card bus-consent">${row('Consent', fmtDay(d.submittedAt, true))}${row(d.source === 'app' ? 'Filed from the app by' : 'Filed by', d.source === 'app' ? (d.filedBy || 'a leader') : 'a parent')}
+    ${row('Parent', d.parentName)}${row('Parent phone', d.parentPhone)}${row('Address', addr)}
+    ${row('Picking up', d.pickup === true ? 'Yes' : d.pickup === false ? 'No' + (d.pickupBy ? ' (' + d.pickupBy + ')' : '') : '')}${row('School', sch)}</div>`;
+}
+function _busConsentHintHtml(r) {
+  const c = r && r.consent;
+  return c && c.differs && c.details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')} Consent address differs</button>` : '';
+}
+function _busConsentStatusHtml(st) {
+  if (!st) return '';
+  const last = st.lastChecked ? 'Last checked ' + fmtDay(st.lastChecked, true) + ' · ' + st.lastNew + ' new' : 'Never checked';
+  const btn = st.canCheck ? `<button type="button" class="btn btn-secondary btn-sm" ${st.checking ? 'disabled' : ''} onclick="busConsentCheck()">${st.checking ? 'Checking…' : 'Check for new consent forms'}</button>` : '';
+  const un = st.unmatched && st.unmatched.length ? `<details class="card"><summary>${esc("Forms we couldn't match: " + st.unmatched.length)}</summary>
+    ${st.unmatched.map((u) => `<div class="lk-d">${esc(u.name)} · ${esc(fmtDay(u.submittedAt))}</div>`).join('')}</details>` : '';
+  return `<div class="strip"><span class="lk-d">${esc(last)}</span>${btn}</div>${un}`;
+}
+let _busConsentPoll = null;
+async function busConsentCheck() {
+  try { await _busSend('POST', '/bus/consent/check', {}); } catch (e) { toast(e.code === 'LINK_UNAVAILABLE' ? "The console can't check right now. Try again later." : e.message); return; }
+  BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: true }); renderBus();
+  const until = Date.now() + 180000; clearInterval(_busConsentPoll);
+  _busConsentPoll = setInterval(() => _busConsentPollTick(until), 5000);
+}
+async function _busConsentPollTick(until) {
+  let st; try { st = await _busGet('/bus/consent/status'); } catch { return; }
+  BUS.consentStatus = st;
+  if (!st.checking) { clearInterval(_busConsentPoll); renderBus(); return; }
+  if (Date.now() > until) { clearInterval(_busConsentPoll); toast("Console didn't respond, try again later"); renderBus(); }
+}
 // Task D (owner, 2026-10-08): no saved address at all (addressId null) vs a saved address Google
 // can't locate (addressId set, placeId null, the pre-existing "No map pin" case) — both leave the
 // rider out of Generate, but only the first one needs a brand-new address, not a re-pick.
@@ -9786,8 +9826,8 @@ async function busRefresh() {
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
       // The read-only All cars list has its own fetch (busCarsRefresh), only while that tab is open.
-      const [view, myCar] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car', _busTripQs())]);
-      if (gen === BUS.gen) { if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
+      const [view, myCar, cst] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car', _busTripQs()), _busGet('/bus/consent/status').catch(() => null)]);
+      if (gen === BUS.gen) { if (cst) BUS.consentStatus = cst; if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
     } finally {
@@ -14669,7 +14709,7 @@ function _busRosterHtml() {
       : `<span class="car-pill" style="--c:${_busCarColour(car.colourIndex)}">${esc(car.name)}</span> `;
     return `<div class="li bus-rrow">
       <div class="li-body" onclick="busEditRider('${r.id}')"><div class="li-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div>
-        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busConsentChip(r)} ${_busPinChip(r)}</div></div>
+        <div class="li-sub">${pill}${car && car.kind === 'bus' ? '' : esc(_busWhere(r))} ${_busConsentChip(r, v.canCoordinate)} ${_busConsentHintHtml(r)} ${_busPinChip(r)}</div></div>
       ${locked ? '' : `<button class="btn-icon bus-danger" aria-label="Remove ${esc(r.name)}" onclick="busConfirmRemove('${r.id}')">${icS('trash')}</button>`}
     </div>`;
   }).join('');
@@ -14679,6 +14719,7 @@ function _busRosterHtml() {
         value="${esc(BUS.search)}" oninput="busSearch(this.value)"></div>
       <button type="button" class="btn btn-secondary bus-bulk-btn" onclick="busBulk()" aria-label="Add several students">${icS('users')}<span>Add several</span></button></div>
       <div id="bus-hits">${_busHitsHtml()}</div>`}
+    ${_busConsentStatusHtml(BUS.consentStatus)}
     <div class="bus-sec bus-sec-row"><span class="card-title">Students who need a lift home tonight (${shown.length === v.riders.length ? v.riders.length : `${shown.length} of ${v.riders.length}`})</span>${v.riders.length ? filters : ''}</div>
     ${rows || (v.riders.length ? '<div class="card-sub">No one matches the filter.</div>' : `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`)}
     <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
@@ -14754,7 +14795,7 @@ function _busHitsHtml() {
   const status = BUS.searching
     ? `<div class="li"><div class="spin" style="margin-right:8px"></div><div class="li-body"><div class="li-title">Searching…</div></div></div>`
     : BUS.searchErr ? `<div class="li"><div class="li-body"><div class="li-title">${esc(BUS.searchErr)}</div></div></div>` : '';
-  const rows = BUS.hits.map((h, i) => `<div class="li" onclick="busPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''}</div></div>${icS('chevr')}</div>`).join('');
+  const rows = BUS.hits.map((h, i) => `<div class="li" onclick="busPick(${i})"><div class="li-body"><div class="li-title">${esc(h.name)} ${h.grade ? `<span class="chip c-neutral">Y${h.grade}</span>` : ''} ${_busConsentChip(h)}</div></div>${icS('chevr')}</div>`).join('');
   return `<div class="card bus-hits">${status}${rows}
     <div class="li" onclick="busNewPerson()"><div class="li-body"><div class="li-title">${icS('plus')} New Person: "${esc(BUS.search.trim())}"</div></div></div></div>`;
 }
@@ -14820,14 +14861,17 @@ function _busAddrLabel(a) {
 // BUS-2: a running bus is offered as "Bus drop off · street · suburb" (never in the own-car picker: noBus).
 // Their bus row (vehicleId set) is never listed as a plain address; when it was their last
 // choice and that bus runs tonight, the bus option is pre-selected.
-function _busAddressPicker(addresses, del, noBus) {
+function _busAddressPicker(addresses, del, noBus, consent) {
   const buses = noBus ? [] : ((BUS.view && BUS.view.vehicles) || []).filter((x) => x.kind === 'bus' && x.running && x.endsAddress);
   const last = addresses[0], busPick = last && last.vehicleId ? buses.find((x) => x.vehicleId === last.vehicleId) : null;
   const busRows = buses.map((x) => `<label class="radio-row"><input type="radio" name="bus-addr" value="bus:${esc(x.id)}" ${x === busPick ? 'checked' : ''}><span style="flex:1">${esc(_busAddrLabel({ label: 'Bus drop off', street: x.endsAddress.split(',')[0].trim(), address: x.endsAddress }))}</span></label>`).join(''); // review E8: same "Label · street · suburb" as the rows below
   addresses = addresses.filter((a) => !a.vehicleId);
-  const saved = busRows + addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 && !busPick ? 'checked' : ''}>
+  // R8: the current consent form's address sits after the bus rows and before the saved ones; nothing else is pre-checked when it is the pick.
+  const consentRow = consent ? `<label class="radio-row"><input type="radio" name="bus-addr" value="consent:${esc(consent.formId)}" ${consent.pick ? 'checked' : ''}><span style="flex:1">${esc('Consent form · ' + consent.line1 + ', ' + consent.city)}</span></label>` : '';
+  const consentPick = !!(consent && consent.pick);
+  const saved = busRows + consentRow + addresses.map((a, i) => `<label class="radio-row" id="bus-addr-row-${a.id}"><input type="radio" name="bus-addr" value="${a.id}" ${i === 0 && !busPick && !consentPick ? 'checked' : ''}>
       <span style="flex:1">${esc(_busAddrLabel(a))}</span>${del ? `<button type="button" class="btn-icon bus-danger" aria-label="Delete this address" onclick="event.preventDefault();busDeleteAddress('${del.riderId}','${a.id}')">${icS('trash')}</button>` : ''}</label>`).join('');
-  return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length || busPick ? '' : 'checked'}><span>New address</span></label>
+  return `${saved}<label class="radio-row"><input type="radio" name="bus-addr" value="new" ${addresses.length || busPick || consentPick ? '' : 'checked'}><span>New address</span></label>
     <div class="fg">${_busAcField('bus-addr-text', '', null, 'Start typing a street address')}
       <input class="fi" id="bus-addr-label" placeholder="Label, e.g. Mum's" style="margin-top:8px"></div>`;
 }
@@ -14835,6 +14879,7 @@ function _busAddressPicker(addresses, del, noBus) {
 function _busReadAddress(optional) {
   const pick = (document.querySelector('input[name="bus-addr"]:checked') || {}).value;
   if (pick && pick.startsWith('bus:')) return { busRunVehicleId: pick.slice(4) }; // BUS-2
+  if (pick && pick.startsWith('consent:')) return { consentFormId: pick.slice(8) };
   if (pick && pick !== 'new') return { addressId: pick };
   const a = _busAcValue('bus-addr-text');
   if (optional && !a.address.trim()) return {};
@@ -14846,9 +14891,18 @@ function _busReadAddress(optional) {
 }
 function busPick(i) {
   const h = BUS.hits[i];
-  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busAddressPicker(h.addresses)}
+  // F21: consent details and the Consent form button, for a student who is not on the bus yet.
+  modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busConsentDetailsHtml(h.consent)}
+    <button type="button" class="btn btn-secondary btn-sm" onclick="busConsentHit(${i})">Consent form</button>
+    ${_busAddressPicker(h.addresses, null, false, _busConsentPickerRow(h.consent))}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busAdd(${i})">Add</button></div>`);
+}
+function busConsentHit(i) { const h = BUS.hits[i]; if (h) busConsentForm(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }); }
+// The picker's consent row: only for a current form with details (redacted views carry none).
+function _busConsentPickerRow(c, pick) {
+  const d = c && c.current && c.details;
+  return d && d.address ? { formId: d.formId, line1: d.address.line1, city: d.address.city, pick: !!pick } : null;
 }
 async function busAdd(i) {
   if (_busBlockWrite()) return;
@@ -14856,7 +14910,7 @@ async function busAdd(i) {
   try {
     await _busSend('POST', '/bus/riders', { ...(h.kind === 'student' ? { studentId: h.id } : { guestId: h.id }), ...a });
     closeModal(); BUS.search = ''; BUS.hits = []; toast(`${h.name} added${_busOverMsg(a)}`); renderBus();
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (!_busConsentUnmatched(e, h.consent)) toast(e.message); }
 }
 // ── Add several (owner, 2026-10-09): tick regulars (their last-used address) and/or add others
 // by name + address at the bottom, then one "Add N". Posts each rider in turn, refreshes once.
@@ -14983,11 +15037,13 @@ async function busSaveNewPerson() {
     _busNpGender = null; closeModal(); BUS.search = ''; BUS.hits = []; toast(`${g.name} added${_busOverMsg(a)}`); renderBus(); // I10: the server's tidied name
   } catch (e) { toast(e.message); }
 }
-async function busEditRider(id) {
+async function busEditRider(id, pick) {
   const r = BUS.view.riders.find((x) => x.id === id); if (!r || BUS.view.run.readOnly) return;
   let addrs;
   try { addrs = await _busGet('/bus/riders/' + id + '/addresses'); } catch (e) { toast(e.message); return; }
-  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentBox(r)}${_busAddressPicker(addrs, { riderId: id, currentId: r.addressId })}
+  modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentDetailsHtml(r.consent)}
+    <button type="button" class="btn btn-secondary btn-sm" onclick="busConsentForm({ riderId: '${esc(id)}' })">Consent form</button>
+    ${_busAddressPicker(addrs, { riderId: id, currentId: r.addressId }, false, _busConsentPickerRow(r.consent, r.consent && r.consent.details && pick === 'consent:' + r.consent.details.formId))}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveRider('${id}')">Save</button></div>`);
 }
@@ -15008,35 +15064,24 @@ async function busDeleteAddress(riderId, addressId) {
 }
 async function busSaveRider(id) {
   const a = _busReadAddress(); if (!a) return;
-  // The consent box lives in the same sheet: if it was changed, save it too (never lose either).
-  const r = BUS.view.riders.find((x) => x.id === id) || {}, c = r.consent || { given: false, note: '' };
-  const given = document.getElementById('bc-given').checked, note = document.getElementById('bc-note').value.trim();
-  const consentChanged = given !== !!c.given || note !== (c.note || '').trim();
-  if (consentChanged && given && !note) { toast('Add when, who, and call or text'); return; }
   try {
-    if (consentChanged) await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note });
     await _busSend('PATCH', '/bus/riders/' + id, a); closeModal();
     const over = _busOverMsg(a); if (over) toast('Saved' + over);
-  } catch (e) { toast(e.message); }
+  } catch (e) { const r = BUS.view.riders.find((x) => x.id === id) || {}; if (!_busConsentUnmatched(e, r.consent)) toast(e.message); }
+}
+// F7: the consent address could not be found. Switch the sheet to "New address", pre-filled from the form's address, and stay.
+function _busConsentUnmatched(e, c) {
+  if (!e || e.code !== 'CONSENT_ADDRESS_UNMATCHED') return false;
+  const a = (c && c.details && c.details.address) || {}, text = [a.line1, [a.city, a.state, a.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const nw = document.querySelector('input[name="bus-addr"][value="new"]'); if (nw) nw.checked = true;
+  const t = document.getElementById('bus-addr-text'); if (t) t.value = text;
+  toast(e.message); return true;
 }
 // Review E10: a bus is never full, so whoever puts a student on an over-full bus is told (BUS.view is already refreshed).
 function _busOverMsg(a) {
   const id = a && a.busRunVehicleId, rv = id && ((BUS.view && BUS.view.vehicles) || []).find((x) => x.id === id);
   const n = rv ? BUS.view.riders.filter((r) => r.runVehicleId === id).length - rv.capacity : 0;
   return n > 0 ? `. ${rv.name} is over by ${n}` : '';
-}
-function _busConsentBox(r) {
-  const c = r.consent || { given: false, note: '' };
-  return `<div class="card bus-consent">
-    <label class="cbx-row"><input type="checkbox" id="bc-given" ${c.given ? 'checked' : ''}> Parent consent given</label>
-    <textarea class="fi" id="bc-note" rows="2" maxlength="300" placeholder="When, who, call or text — e.g. Mum (Lisa), 7:10pm, text">${esc(c.note)}</textarea>
-    ${r.consent ? `<div class="card-sub">${esc(r.consent.recordedBy)} · ${esc(fmtDay(r.consent.recordedAt, true))}</div>` : ''}
-    <button class="btn btn-secondary btn-sm" onclick="busSaveConsent('${r.id}')">Save consent</button></div>`;
-}
-async function busSaveConsent(id) {
-  const given = document.getElementById('bc-given').checked, note = document.getElementById('bc-note').value.trim();
-  if (given && !note) { toast('Add when, who, and call or text'); return; }
-  try { await _busSend('POST', '/bus/riders/' + id + '/consent', { given, note }); toast('Consent saved'); closeModal(); } catch (e) { toast(e.message); }
 }
 function busConfirmRemove(id) {
   const r = BUS.view.riders.find((x) => x.id === id);
