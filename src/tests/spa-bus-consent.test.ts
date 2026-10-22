@@ -71,7 +71,7 @@ describe('address picker consent row (R8)', () => {
     expect(els['bus-addr-text'].value).toBe('1 Test St, Brisbane City QLD 4000');
     expect(radio.checked).toBe(true); expect(said).toEqual(['Pick it']);
   });
-  it('no bus_consents leftovers in the SPA', () => {
+  it('no old consent table leftovers in the SPA', () => {
     const html = loadIndexHtml();
     for (const gone of ['_busConsentBox', 'busSaveConsent', "/consent'", 'bc-given', 'bc-note']) expect(html).not.toContain(gone);
   });

@@ -4,6 +4,18 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet live)
+-------------------------------------------------------------------------------
+- Bus consent now comes from the Elvanto bus consent form. Each rider shows
+  "Consent 2026" or "No consent 2026" (a warning only, it never blocks).
+- A coordinator can fill the form in the app with a parent on the phone: read
+  the declaration out, tick that you did, send. The console checks Elvanto for
+  new forms and sends them to the app.
+- The old tick-box consent is gone (migration 0044 drops its table). Rolling
+  back below this build needs the SQL in DEPLOY.md first. Ship this app first,
+  then the console.
+
+-------------------------------------------------------------------------------
 CONSOLE MODULE SWITCHES  (link rev 17, 2026-10-22, not yet live)
 -------------------------------------------------------------------------------
 - The app now tells the console which of its modules are on, so the console

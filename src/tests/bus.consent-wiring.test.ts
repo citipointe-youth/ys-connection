@@ -17,7 +17,7 @@ describe('bus consent wiring (F4)', () => {
     const now = new Date().toISOString().slice(0, 16); // ctxOf wants the phone's local time near the server clock
     const res = await route.handler({ body, query: { now }, params: {}, ctx: actor('admin'), headers: {} } as any);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][1]).toMatchObject(body);
+    expect(spy.mock.calls[0]?.[1]).toMatchObject(body);
     expect(res).toMatchObject({ result: 'failed' });
   });
 });

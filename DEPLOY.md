@@ -4,6 +4,8 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-scr
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`). **Vercel auto-promotes every `master` build to production** (since 2026-10-20), so a push to `master` is a release: there is no manual promote step and no chance to read `/health` first. Check the clock before you push (no ships Fri 17:30-20:00 or Sun 10:00-12:00). After the build, read `Database up to date — …` in the build log and `/health` `schema.current`.
 Rollback = Vercel dashboard > Deployments > the previous good build > Instant Rollback (migrations are additive, nothing to undo). While rolled back, Vercel stops auto-promoting; promote the fixed build by hand to turn it back on.
 
+**Rollback below bc18 (0044 dropped `bus_consents`)**: an older build reads that table. Before an Instant Rollback, the owner runs in the Supabase SQL editor: `create table if not exists bus_consents (id uuid primary key, student_id uuid unique references students(id) on delete cascade, guest_id uuid unique references bus_guests(id) on delete cascade, given boolean not null default false, note text, recorded_by text not null default '', recorded_at timestamptz not null default now(), check (student_id is not null or guest_id is not null)); alter table bus_consents enable row level security;` (empty: every rider reads Consent: not yet).
+
 <!-- live -->
 - master sha: df62e99 (ui22/followup)
 - last ship: 2026-10-22 16:47 EAST
