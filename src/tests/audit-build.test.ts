@@ -225,3 +225,91 @@ describe('buildYear: weekly series and byQuad (spec §5.3.9)', () => {
     expect(wk(s, '2026-10-16').byQuad.none.youth).toBe(1);
   });
 });
+
+describe('buildYear: follow-up lists (spec §5.3.10, "now" = the latest data week)', () => {
+  const d = fridays('2026-07-24', 12); // ... Sep 11 | Sep 18, Sep 25, Oct 2, Oct 9 (the last 4 weeks)
+  const s = buildYear(2026, [
+    svcOf(d, [{ f: 'Alex', l: 'Sample', at: d },
+      { f: 'Jamie', l: 'Test', at: [d[1]!, d[2]!, d[3]!] },        // 3 in the 8 weeks before, 0 since: drifting
+      { f: 'Jo', l: 'Sample', at: [d[1]!] },                       // with the Sep 7 lifegroup: only 2
+      { f: 'Mia', l: 'Sample', at: [d[1]!, d[2]!, d[3]!, d[10]!] }, // came back
+      { f: 'Ava', l: 'Example', at: ['2026-09-04'] }]),
+    groupOf(['2026-08-31', '2026-09-07'], [{ name: 'Grade 9 Girls Lifegroup', members: [
+      { name: 'Test, Jamie', at: ['2026-08-31'] }, { name: 'Sample, Jo', at: ['2026-09-07'] }] }]),
+    formOf('decision', [{ f: 'Jamie', l: 'Test', date: '2026-09-01' }, { f: 'Jo', l: 'Sample', date: '2026-09-01' }]),
+    formOf('connect', [{ f: 'Riley', l: 'Sample', date: '2026-09-01' }, { f: 'Ava', l: 'Example', date: '2026-09-01' }]),
+  ], [], CFG, NOW);
+  it('drifting: not caOnly, >= 3 attendances in the 8 weeks before the last 4, and none in the last 4', () => {
+    expect(s.followUp.drifting).toEqual(['n:jamie|test']);
+  });
+  it('decidedNoGroup: a decision this year and no lifegroup attendance on or after it', () => {
+    expect(s.followUp.decidedNoGroup).toEqual(['n:jamie|test']);
+  });
+  it('connectedNeverCame: a connect this year and no service attendance on or after it', () => {
+    expect(s.followUp.connectedNeverCame).toEqual(['n:riley|sample']);
+  });
+});
+
+describe('buildYear: quadDrop (spec §5.3.11, §17)', () => {
+  const NAMES = ['Alex', 'Sam', 'Jamie', 'Casey', 'Riley', 'Jo', 'Mia', 'Ava', 'Bo', 'Jordan'];
+  /** 12 Fridays in one term: `high` grade-10 girls every week, only `low` of them in the last `lowWeeks`; one steady senior boy. */
+  const dropYear = (high: number, low: number, lowWeeks: number, grade = '10') => {
+    const d = fridays('2026-07-24', 12), cut = 12 - lowWeeks;
+    const girls = NAMES.slice(0, high).map((f, i) => ({ f, l: 'Sample', g: 'Female', gr: grade, at: d.filter((_, w) => w < cut || i < low) }));
+    return buildYear(2026, [svcOf(d, [...girls, { f: 'Liam', l: 'Example', g: 'Male', gr: '11', at: d }])], [], CFG, new Date('2026-10-10T00:00:00Z')).signals.quadDrop;
+  };
+  it('flags a quad whose last-4-week average fell >= 25% from a term average >= 8, two weeks running', () => {
+    expect(dropYear(10, 7, 5)).toEqual({ quad: 'g1012', recentAvg: 7, termAvg: 9.6, dropPct: 27 });
+  });
+  it('2-weeks-running guard: a fall that qualifies only this week is not flagged', () => {
+    expect(dropYear(10, 7, 4)).toBeNull();
+  });
+  it('thresholds: a term average under 8, or a fall under 25%, is not flagged', () => {
+    expect(dropYear(7, 1, 5)).toBeNull();  // term average 6.3
+    expect(dropYear(10, 8, 5)).toBeNull(); // fall 18%
+  });
+  it('people with no quad are never flagged', () => {
+    expect(dropYear(10, 0, 5, '')).toBeNull();
+  });
+});
+
+describe('buildYear: quality (spec §5.5)', () => {
+  it('skipped rows are grouped by source, reason and name; notes are summed per source; names never become ids', () => {
+    const d = ['2026-10-16'];
+    const s = buildYear(2026, [
+      stored('service', ['First Name', 'Last Name', ...d], [['Alex', '', 'Y'], ['Alex', '', 'Y'], ['Jamie', 'Test', 'Y']]),
+    ], [], CFG, NOW);
+    expect(s.quality.skipped).toEqual([{ source: 'service', reason: 'no-name', name: 'Alex', count: 2 }]);
+    expect(s.quality.notes).toEqual([{ source: 'service', note: 'no-gender-column', count: 1 }]);
+    const f = buildYear(2026, [svcOf(d, [{ f: 'Jamie', l: 'Test', at: d }]),
+      stored('connect', ['First Name', 'Last Name', 'Date Submitted', 'Gender'], [['Riley', 'Sample', 'yesterday', 'F']])], [], CFG, NOW);
+    expect(f.quality.skipped).toEqual([{ source: 'connect', reason: 'bad-date', name: 'Riley Sample', count: 1 }]);
+  });
+  it('grade-out-of-range is a note (the row is kept); clipped out-of-year dates are never reported', () => {
+    const d = ['2025-12-12', '2026-10-16'];
+    const s = buildYear(2026, [svcOf(d, [{ f: 'Alex', l: 'Sample', gr: '13', at: d }])], [], CFG, NOW);
+    expect(s.students).toHaveLength(1);
+    expect(s.quality.notes).toEqual([{ source: 'service', note: 'grade-out-of-range', count: 1 }]);
+  });
+  it('a stored copy that no longer parses (shape) contributes nothing and the build does not throw', () => {
+    const s = buildYear(2026, [svcOf(['2026-10-16'], [{ f: 'Alex', l: 'Sample', at: ['2026-10-16'] }]), stored('group', ['', 'Notes'], [['Grade 9 Girls Lifegroup', '']])], [], CFG, NOW);
+    expect(s.students).toHaveLength(1);
+  });
+});
+
+describe('buildYear: per-source meta (spec §9 status rule)', () => {
+  it('ok / failed (a failure newer than the good copy) / missing (absent, or failed but never good)', () => {
+    const d = ['2026-10-16'];
+    const s = buildYear(2026, [
+      svcOf(d, [{ f: 'Alex', l: 'Sample', at: d }]),
+      stored('group', [], [], { rowCount: 0, fedAt: null, fedBy: null, lastFailedAt: AT, lastFailReason: 'timeout' }),
+      formOf('connect', [{ f: 'Riley', l: 'Sample', date: '2026-10-14' }]),
+    ].map((x) => (x.source === 'connect' ? { ...x, lastFailedAt: '2026-10-23T11:02:00.000Z', lastFailReason: 'shape' as const } : x)), [], CFG, NOW);
+    expect(s.sources.service).toEqual({ status: 'ok', fedBy: 'console', fedAt: AT, exportedAt: AT, rows: 1, lastFailedAt: null, lastFailReason: null });
+    expect(s.sources.connect).toMatchObject({ status: 'failed', rows: 1, fedAt: AT, lastFailReason: 'shape' });
+    expect(byFirst(s, 'Riley').connect).toBe('2026-10-14'); // a failed source still feeds its last good copy
+    expect(s.sources.group).toEqual({ status: 'missing', fedBy: null, fedAt: null, exportedAt: null, rows: 0, lastFailedAt: AT, lastFailReason: 'timeout' });
+    for (const k of ['team', 'decision'] as const)
+      expect(s.sources[k]).toEqual({ status: 'missing', fedBy: null, fedAt: null, exportedAt: null, rows: 0, lastFailedAt: null, lastFailReason: null });
+  });
+});

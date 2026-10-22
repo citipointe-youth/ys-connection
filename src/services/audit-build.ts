@@ -9,6 +9,8 @@ import { buildGroupModel, buildLifegroupStats, buildServiceModel, parseGroupMeta
 import { saturdayOf } from './terms';
 import { computeYearAggregates } from './year-aggregates';
 import { addDays, brisbaneToday, matchFold } from './link-rules';
+import { AUDIT_SOURCES } from '../core/link-contract';
+import type { LabeledTerm } from './year-terms';
 
 export type AuditRosterPerson = Pick<LinkRosterRow, 'personId' | 'firstName' | 'lastName' | 'grade' | 'gender' | 'active'>;
 export type AuditBuildConfig = Omit<AuditParseCtx, 'exportedAt'> & { serviceDayOfWeek: number; termGapDays: number; serviceMinAttendance: number };
@@ -32,13 +34,22 @@ interface Person { id: string; personId: string | null; ambiguous: boolean; p: A
 type Fed = { source: AuditSource; row: AuditRow };
 
 /** Parse every good stored copy of the year and clip each fact to the calendar year (silently, §5.5). */
-function parseAll(year: number, sources: StoredAuditSource[], cfg: AuditBuildConfig): Fed[] {
+function parseAll(year: number, sources: StoredAuditSource[], cfg: AuditBuildConfig): { fed: Fed[]; skipped: AuditQuality['skipped']; notes: AuditQuality['notes'] } {
   const from = `${year}-01-01`, to = `${year}-12-31`, inYear = (d: string) => d >= from && d <= to;
   const fed: Fed[] = [];
+  const skipped = new Map<string, AuditQuality['skipped'][number]>(), notes = new Map<string, AuditQuality['notes'][number]>();
   for (const s of sources) {
     if (s.year !== year || s.fedAt === null) continue; // never had a good copy: contributes nothing (§8)
     const r = parseSource(s.source, { headers: s.headers, rows: s.rows }, { ...cfg, exportedAt: s.exportedAt });
     if (r.shape) continue; // a stored copy the parser can no longer read contributes nothing; the build never throws
+    for (const k of r.skipped) {
+      const key = `${s.source}|${k.reason}|${k.name ?? ''}`, g = skipped.get(key) ?? { source: s.source, reason: k.reason, name: k.name, count: 0 };
+      g.count++; skipped.set(key, g);
+    }
+    for (const n of r.notes) {
+      const key = `${s.source}|${n.note}`, g = notes.get(key) ?? { source: s.source, note: n.note, count: 0 };
+      g.count += n.count; notes.set(key, g);
+    }
     for (const row of r.rows) {
       if (row.submitted !== undefined && !inYear(row.submitted)) continue;
       const dates = row.dates.filter(inYear), marked = row.marked?.filter(inYear);
@@ -46,7 +57,7 @@ function parseAll(year: number, sources: StoredAuditSource[], cfg: AuditBuildCon
       fed.push({ source: s.source, row: { ...row, dates, ...(marked ? { marked } : {}) } });
     }
   }
-  return fed.sort((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source)); // stable: keeps row order per source
+  return { fed: fed.sort((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source)), skipped: [...skipped.values()].slice(0, 500), notes: [...notes.values()] };
 }
 
 /** §5.3.5: one id per person. Roster key first|last, else preferred|last; one hit = personId; 2+ = ambiguous; 0 = n:key. */
@@ -180,8 +191,59 @@ function weeklySeries(year: number, students: AuditStudent[], people: Map<string
   return out;
 }
 
+/** §5.3.10: ids into students; "now" is the latest data week. */
+function followUp(students: AuditStudent[], people: Map<string, Person>, weekly: AuditWeek[], sdow: number): AuditSnapshotV2['followUp'] {
+  const out: AuditSnapshotV2['followUp'] = { drifting: [], decidedNoGroup: [], connectedNeverCame: [] };
+  const now = weekly.at(-1)?.weekEnd;
+  if (!now) return out;
+  const recentFrom = addDays(now, -21), priorFrom = addDays(now, -77), priorTo = addDays(now, -28); // last 4 | the 8 before
+  for (const s of students) {
+    const x = people.get(s.id)!, seen = [...x.svc, ...x.grp].map((d) => weekEndOf(d, sdow));
+    if (!s.caOnly && seen.filter((w) => w >= priorFrom && w <= priorTo).length >= 3 && !seen.some((w) => w >= recentFrom)) out.drifting.push(s.id);
+    if (s.decision && ![...x.grp].some((d) => d >= s.decision!)) out.decidedNoGroup.push(s.id);
+    if (s.connect && ![...x.svc].some((d) => d >= s.connect!)) out.connectedNeverCame.push(s.id);
+  }
+  return out;
+}
+
+const r1 = (n: number) => Math.round(n * 10) / 10;
+/** §5.3.11: per quad, the last 4 youth nights against the current term's other youth nights; >= 25% fall from >= 8,
+ *  and the same holds as of the previous youth night (2 weeks running). The largest fall wins. No-quad never flags. */
+function quadDrop(weekly: AuditWeek[], terms: LabeledTerm[]): AuditSnapshotV2['signals']['quadDrop'] {
+  const nights = weekly.filter((w) => w.youth !== null);
+  const termOf = (w: AuditWeek) => { const s = addDays(w.weekEnd, -6); return terms.find((t) => s >= t.startDate && s <= t.endDate)?.key ?? null; };
+  const asOf = (q: Quad, k: number) => {
+    if (k < 3) return null;
+    const recent = nights.slice(k - 3, k + 1), term = termOf(nights[k]!);
+    const others = nights.slice(0, k - 3).filter((w) => termOf(w) === term);
+    if (!others.length) return null;
+    const avg = (ws: AuditWeek[]) => ws.reduce((n, w) => n + (w.byQuad[q].youth ?? 0), 0) / ws.length;
+    const recentAvg = avg(recent), termAvg = avg(others), fall = (termAvg - recentAvg) / termAvg;
+    return termAvg >= 8 && fall >= 0.25 ? { quad: q, recentAvg: r1(recentAvg), termAvg: r1(termAvg), dropPct: Math.round(fall * 100) } : null;
+  };
+  let best: AuditSnapshotV2['signals']['quadDrop'] = null;
+  for (const q of QUADS) {
+    const cur = asOf(q, nights.length - 1);
+    if (cur && asOf(q, nights.length - 2) && (!best || cur.dropPct > best.dropPct)) best = cur;
+  }
+  return best;
+}
+
+/** §9: missing when never good (or no row), failed when the last failure is newer than the good copy, else ok.
+ *  Exported: Y8's get(year) uses it for a year that has source copies but no year row yet (spec §6.1 empty state). */
+export function sourcesMeta(sources: StoredAuditSource[], year: number): Record<AuditSource, SourceMeta> {
+  return Object.fromEntries(AUDIT_SOURCES.map((src): [AuditSource, SourceMeta] => {
+    const s = sources.find((x) => x.year === year && x.source === src);
+    if (!s) return [src, { status: 'missing', fedBy: null, fedAt: null, exportedAt: null, rows: 0, lastFailedAt: null, lastFailReason: null }];
+    const good = s.fedAt !== null;
+    const status = !good ? 'missing' : s.lastFailedAt !== null && Date.parse(s.lastFailedAt) > Date.parse(s.fedAt!) ? 'failed' : 'ok';
+    return [src, { status, fedBy: s.fedBy, fedAt: s.fedAt, exportedAt: good ? s.exportedAt : null, rows: good ? s.rowCount : 0,
+      lastFailedAt: s.lastFailedAt, lastFailReason: s.lastFailReason }];
+  })) as Record<AuditSource, SourceMeta>;
+}
+
 export function buildYear(year: number, sources: StoredAuditSource[], roster: AuditRosterPerson[], cfg: AuditBuildConfig, now: Date): AuditSnapshotV2 {
-  const fed = parseAll(year, sources, cfg);
+  const { fed, skipped, notes } = parseAll(year, sources, cfg);
   const { people, ids } = identify(fed, roster, cfg.gradeRange);
   const svc = buildServiceModel(fed.flatMap((f, i) => (f.source === 'service' ? [{ id: ids[i]!, dates: f.row.dates }] : [])), cfg.serviceMinAttendance);
   const groups = groupInputs(fed, ids);
@@ -220,8 +282,8 @@ export function buildYear(year: number, sources: StoredAuditSource[], roster: Au
   return {
     version: 2, generatedAt: now.toISOString(), dataStartDate, dataEndDate, terms: agg.terms, students, perTerm,
     lgStatsByTerm: buildLifegroupStats(groups, agg.terms, cfg.serviceDayOfWeek), weekly,
-    followUp: { drifting: [], decidedNoGroup: [], connectedNeverCame: [] }, signals: { quadDrop: null }, // Y5c
-    sources: {} as Record<AuditSource, SourceMeta>,                                          // Y5c
-    quality: { skipped: [], notes: [], unmatched: unmatched(all), duplicates: duplicates(all) },
+    followUp: followUp(students, people, weekly, cfg.serviceDayOfWeek), signals: { quadDrop: quadDrop(weekly, agg.terms) },
+    sources: sourcesMeta(sources, year),
+    quality: { skipped, notes, unmatched: unmatched(all), duplicates: duplicates(all) },
   };
 }
