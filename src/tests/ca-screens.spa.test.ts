@@ -321,3 +321,258 @@ describe('quad filter consistency', () => {
     expect(f.caWeekTiles(s2, 'none', '2026-10-23').tiles.youth.state).toBe('nonight');
   });
 });
+
+// ── Y10: the screens, run as the real CA module block with stubbed globals ──
+const CA_BLOCK = HTML.slice(HTML.indexOf('/* ── CA MODULE START ── */'), HTML.indexOf('/* ── CA MODULE END ── */'));
+const XLSX_SRC = readFileSync(join(__dirname, '..', '..', 'public', 'vendor', 'xlsx.full.min.js'), 'utf8');
+const loadXlsx = () => new Function(`var module, define, window; ${XLSX_SRC}; return XLSX;`)();
+const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx'];
+function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
+  const env: any = { audit, app: '', posts: [] as any[], toasts: [] as string[], downloads: [] as any[], went: [] as string[], dom: {} as any, reply: null, X: loadXlsx() };
+  const { CA, S } = new Function('env', `
+    var S = { user: { id: 'u1', role: ${JSON.stringify(o.role || 'director')} }, page: 'ca-week',
+      settings: { ministryConfig: { structure: { gradeMin: ${o.gradeMin || 7}, gradeMax: 12 }, logins: { simple: true } } } };
+    ${QUAD_SRC}
+    ${SITE_TIME_SRC}
+    ${HELPERS.map((n) => extractFn(HTML, n)).join('\n')}
+    var L = (k) => ({ service: 'Youth', smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups' })[k] || k;
+    var Cache = { del() {} }, XLSX = env.X, _ensureXlsx = () => Promise.resolve();
+    var API = {
+      get: async (p) => p === '/audits' ? (env.audit ? [{ year: env.audit.year, label: String(env.audit.year), uploadedAt: '', termKeys: [] }] : [])
+        : p.indexOf('/audits/') === 0 ? env.audit : {},
+      post: async (p, b) => { env.posts.push({ p, b }); if (env.reply instanceof Error) throw env.reply; return env.reply; } };
+    var setApp = (h) => { env.app = h; }, go = (p) => { env.went.push(p); }, toast = (m) => env.toasts.push(m), modal = () => {}, closeModal = () => {};
+    var icS = () => '', helpTip = () => '', lgDisplayName = (n) => n;
+    var accentRamp = () => ['#111', '#222', '#333', '#444', '#555'], accentRampPairs = () => accentRamp().map((c) => [c, c]);
+    var _here = () => ({}), _still = () => true, _downloadText = (n, t, m) => env.downloads.push({ n, t, m });
+    var document = { getElementById: (id) => env.dom[id] || null, querySelector: () => null }, window = {};
+    ${CA_BLOCK}
+    return { CA, S };`)(env);
+  // go() is stubbed: a test sets S.page the way go() would, then renders.
+  const show = async (p: string) => { S.page = p; await CA.render(p); return env.app; };
+  return { CA, S, env, show };
+}
+
+const st2 = (id: string, o: Record<string, unknown> = {}) => ({ id, personId: id, firstName: 'Ava', lastName: 'L' + id, gender: 'female', grade: 11,
+  quad: 'g1012', caOnly: false, team: false, connect: null, decision: null, lastSeen: '2026-10-16', phone: '0400 000 00' + id.length, phoneIsParent: false, ...o });
+function audit26(over: Record<string, unknown> = {}) {
+  const s: any = snap({
+    students: [st2('a'), st2('b', { phoneIsParent: true, lastSeen: '2026-09-11' }), st2('c', { dnc: true, phone: null, lastSeen: '2026-09-11' }),
+      st2('d', { connect: '2026-10-09', lastSeen: null }), st2('e', { caOnly: true, personId: null, decision: '2026-10-16', quad: 'b79', grade: 8, gender: 'male' }),
+      st2('f', { grade: 6, quad: 'g79', lastSeen: '2026-09-04', phone: null })],
+    perTerm: { '2026-T3': { key: '2026-T3', svcTotal: 4, inProgress: false, byStudent: { a: { svcAttended: 4, grpAttended: 2, grpTotal: 4 }, b: { svcAttended: 3, grpAttended: 0, grpTotal: 0 } } },
+      '2026-T4': { key: '2026-T4', svcTotal: 2, inProgress: true, byStudent: { a: { svcAttended: 2, grpAttended: 1, grpTotal: 2 }, f: { svcAttended: 1, grpAttended: 0, grpTotal: 1 } } } },
+    followUp: { drifting: ['b', 'c', 'f'], decidedNoGroup: ['e'], connectedNeverCame: ['d'] },
+    ...over,
+  });
+  return { year: 2026, snapshot: s };
+}
+
+describe('Y10 screens', () => {
+  it('This week: three tabs with the Follow up total, quad chips with counts, headline, tiles, sparklines, footer', async () => {
+    const w = caWorld(audit26());
+    const html = await w.show('ca-week');
+    expect(html).toMatch(/class="ca-tab on" onclick="go\('ca-week'\)">This week</);
+    expect(html).toContain('>Follow up · 5<');
+    expect(html).toContain('>Term report<');
+    expect(html).toContain('>All (6)<');
+    expect(html).toContain('>Junior Girls (1)<');
+    expect(html).toContain('>No quad (0)<');
+    expect(html).toContain('Fri 16 Oct: 48 at youth, 4 more than last week; 4 decisions and 3 new connects.');
+    expect((html.match(/class="ca-spark"/g) || []).length).toBe(4);
+    expect(html).toContain('Updated Fri 16 Oct, 9:14pm (5 days ago) · 5 of 5 lists · all linked →');
+    expect(html).toContain('onclick="go(\'ca-quality\');return false"');
+    expect(html).not.toMatch(/Period/); // the term picker lives on the Term report
+  });
+  it('flags: drifting first with a Call list link into Follow up; the drop-off flag last', async () => {
+    const w = caWorld(audit26());
+    const html = await w.show('ca-week');
+    const iDrift = html.indexOf('3 regulars stopped coming'), iLeak = html.indexOf('Biggest drop-off this term');
+    expect(iDrift).toBeGreaterThan(-1);
+    expect(iLeak).toBeGreaterThan(iDrift);
+    expect(html).toContain(`CA.follow('drifting');return false">Call list →`);
+  });
+  it('choosing a quad repaints This week for that quad', async () => {
+    const w = caWorld(audit26());
+    await w.show('ca-week');
+    w.CA.setQuad('b79');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.env.app).toMatch(/class="ca-chip2 on"[^>]*>Junior Guys \(1\)</);
+    expect(w.env.app).not.toContain('regulars stopped coming'); // nobody in b79 drifted
+  });
+  it('no row for the year, but stored lists: the footer still shows each list\'s status (Y8 sources-only reply)', async () => {
+    const sources: any = { service: { status: 'missing', fedBy: null, fedAt: null, exportedAt: null, rows: 0, lastFailedAt: null, lastFailReason: null },
+      group: ok(), team: { status: 'missing', fedAt: null }, connect: { status: 'missing', fedAt: null }, decision: { status: 'missing', fedAt: null } };
+    const html = await caWorld({ year: 2026, snapshot: null, sources }).show('ca-week');
+    expect(html).toContain('No data for 2026 yet. The console fills this after the first Friday sync.');
+    expect(html).toContain('⚠ Out of date: Youth service not received yet · 1 of 5 lists →');
+  });
+  it('empty states: no row for the year; v1 snapshot', async () => {
+    expect(await caWorld(null).show('ca-week')).toContain('No data for 2026 yet. The console fills this after the first Friday sync.');
+    expect(await caWorld(null).show('ca-follow')).toContain('No data for 2026 yet.');
+    const v1 = audit26({ weekly: [] });
+    expect(await caWorld(v1).show('ca-week')).toContain("Weekly numbers aren't available for 2026. See Term report.");
+    expect(await caWorld(v1).show('ca-follow')).toContain('Follow-up lists start with data from the console.');
+  });
+  it('Follow up: three <details>, the first non-empty open; Call/Text, parent wording, DNC, no phone', async () => {
+    const html = await caWorld(audit26()).show('ca-follow');
+    expect((html.match(/<details class="card ca-fu"/g) || []).length).toBe(3);
+    expect(html).toMatch(/<details class="card ca-fu" open><summary><b>Stopped coming<\/b> · 3/);
+    expect(html).toContain('href="tel:0400000001">Call parent</a>');
+    expect(html).toContain('href="sms:0400000001">Text parent</a>');
+    expect(html).toContain('Do not contact');
+    expect(html).toContain('No phone on file');
+    expect(html).toContain("<span class=\"chip c-neutral\">Parent's phone</span>");
+    expect(html).toContain('Download list (CSV)');
+  });
+  it('Follow up CSV: the selected quad, or all quads with a Quad column; parent phones marked', async () => {
+    const w = caWorld(audit26());
+    await w.show('ca-follow');
+    w.CA.followCsv();
+    expect(w.env.downloads[0].n).toMatch(/^follow-up-all-2026-10-22\.csv$/);
+    expect(w.env.downloads[0].m).toBe('text/csv');
+    expect(w.env.downloads[0].t.split('\r\n')[0]).toBe('"Name","Quad","Grade","Gender","Phone","Parent\'s phone","Reason","Last seen"');
+    expect(w.env.downloads[0].t).toContain('"Ava Lb","Senior Girls","11","Female","0400 000 001","Yes","Stopped coming","2026-09-11"');
+    w.CA.setQuad('b79');
+    w.CA.followCsv();
+    expect(w.env.downloads[1].t.split('\r\n')[0]).not.toContain('Quad');
+  });
+  it('Term report: story order, Open slides, Year so far, What to do counts', async () => {
+    const html = await caWorld(audit26()).show('ca-term');
+    const order = ['Open slides', 'Where we are', 'id="ca-drop"', 'Junior &amp; Senior', 'id="ca-lg"', 'What to do', 'id="ca-people"'].map((s) => html.indexOf(s));
+    expect(order.every((x) => x > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).toContain('>Year so far<');
+    expect(html).toContain('2026 so far: ');
+    expect(html).toContain('3 stopped coming</a>');
+    expect(html).toContain('1 decided, not in a lifegroup</a>');
+    expect(html).toContain('1 connected, not back yet</a>');
+    expect(html).toContain('No quad (0)');
+  });
+  it('Data check: summary, the lists table words; Upload a file for admins only', async () => {
+    const a = audit26();
+    a.snapshot.sources.group = { ...a.snapshot.sources.group, status: 'failed', lastFailedAt: '2026-10-16T11:12:00Z', lastFailReason: 'timeout' };
+    const html = await caWorld(a).show('ca-quality');
+    expect(html).toContain('4 of 5 lists up to date. 0 entries left out, 0 unlinked names, 0 might be the same person.');
+    expect(html).toContain('Didn&#39;t update (using the last copy that worked)');
+    expect(html).toContain('Fri 16 Oct: Elvanto took too long');
+    expect(html).not.toContain('Upload a file');
+    expect(await caWorld(audit26(), { role: 'admin' }).show('ca-quality')).toContain('Upload a file');
+  });
+  it('model(): marks by id (connect / form-only decision), phones from students, cohorts over gradeRange, weekly sessions', async () => {
+    const w = caWorld(audit26(), { gradeMin: 6 });
+    await w.show('ca-term'); // loads the year
+    const m = await w.CA.model();
+    const d = m.people.find((p: any) => p.id === 'd'), e = m.people.find((p: any) => p.id === 'e');
+    expect(d).toMatchObject({ stage: 1, conn: true, connect: '2026-10-09' });
+    expect(e).toMatchObject({ caOnly: true, stage: 1, dec: true, quad: 'b79' });
+    expect(m.people.find((p: any) => p.id === 'b').s).toMatchObject({ ph: '0400 000 001', pp: true });
+    expect(m.groups.some((g: any) => g.grade === 6)).toBe(true);
+    expect(m.kpis.avgFri).toBe(42); // mean of the 6 youth nights: 40,40,40,40,44,48 -> 42 (the old /trends read gave 0)
+  });
+});
+
+describe('Y10 Upload a file', () => {
+  const csv = (s: string) => new TextEncoder().encode(s).buffer;
+  const up = async (reply: any, file: { name: string; buf: ArrayBuffer }, day = '2026-10-22', src = 'group') => {
+    const w = caWorld(audit26(), { role: 'admin' });
+    await w.show('ca-quality');
+    w.env.reply = reply;
+    w.env.dom = { 'ca-up-src': { value: src }, 'ca-up-day': { value: day }, 'ca-up-file': { files: [{ name: file.name, arrayBuffer: async () => file.buf }] } };
+    await w.CA.uploadSource();
+    return w.env;
+  };
+  it('posts the cell table to /audits/sources/:source; stored -> "Uploaded. The audit has been updated."', async () => {
+    const env = await up({ applied: true, source: 'group', status: 'stored' }, { name: 'g.csv', buf: csv('Name,03/10/2026\nAlpha,Y\n') });
+    expect(env.posts[0].p).toBe('/audits/sources/group');
+    expect(env.posts[0].b).toEqual({ headers: ['Name', '03/10/2026'], rows: [['Alpha', 'Y']], exportedAt: '2026-10-22T00:00:00.000Z' });
+    expect(env.toasts).toContain('Uploaded. The audit has been updated.');
+  });
+  it('stale, shape and 400 messages', async () => {
+    expect((await up({ applied: false, source: 'group', status: 'stale' }, { name: 'g.csv', buf: csv('A\nb\n') })).toasts)
+      .toContain('Not used: a newer copy is already here. Pick a later export date.');
+    expect((await up({ applied: false, source: 'group', status: 'shape' }, { name: 'g.csv', buf: csv('A\nb\n') })).toasts)
+      .toContain('This file is missing a column the audit needs (names or dates). Check you exported the right Elvanto list.');
+    expect((await up(Object.assign(new Error('bad'), { status: 400 }), { name: 'g.csv', buf: csv('A\nb\n') })).toasts)
+      .toContain("This file couldn't be used. It may be too big or have unexpected columns.");
+  });
+  it('a past date is sent as noon on that day at the location (31 Dec stays in its year)', async () => {
+    const env = await up({ applied: false, source: 'group', status: 'stale' }, { name: 'g.csv', buf: csv('A\nb\n') }, '2025-12-31');
+    expect(env.posts[0].b.exportedAt).toBe('2025-12-31T02:00:00.000Z');
+  });
+  // Spec delta 38: a raw Elvanto form export is trimmed to the allowlist before it is posted (same rule as console C4 toTable).
+  const q = (rows: string[][]) => rows.map((r) => r.map((c) => '"' + c.replace(/"/g, '""') + '"').join(',')).join('\n') + '\n';
+  // ALL 12 real headers of "Brisbane - Youth - Decision Form" (P0, operator sample 2026-10-22), synthetic values.
+  const DEC_HEADERS = ['Date Submitted', 'Submission Status', 'Person', 'Person Status', 'First Name', 'Gender', "What's your phone number?",
+    "Citipointe Location (Hint: Click 'Brisbane')", 'Last Name', 'What grade are you in?',
+    "When did you make a decision to follow Jesus? (Hint: it's today's date)", 'Who invited you to Youth Society? (eg. My friend John Smith invited me)'];
+  const DEC_ROW = ['16/10/2026 7:43 PM', 'Completed', 'Marlowe Finch', 'Visitor', 'Marlowe', 'Male', '0400 000 003',
+    'Brisbane', 'Finch', '10', 'Tonight at youth', 'My friend Sawyer Lang invited me'];
+  it('decision: the 12 real headers -> the 5 allowlisted, in the export order; no dropped value is posted', async () => {
+    const env = await up({ applied: true, source: 'decision', status: 'stored' }, { name: 'd.csv', buf: csv(q([DEC_HEADERS, DEC_ROW])) }, '2026-10-22', 'decision');
+    expect(env.posts[0].p).toBe('/audits/sources/decision');
+    expect(env.posts[0].b.headers).toEqual(['Date Submitted', 'First Name', 'Gender', 'Last Name', 'What grade are you in?']);
+    expect(env.posts[0].b.rows).toEqual([['16/10/2026 7:43 PM', 'Marlowe', 'Male', 'Finch', '10']]);
+    const body = JSON.stringify(env.posts[0].b);
+    for (const v of ['Completed', 'Marlowe Finch', 'Visitor', '0400 000 003', 'Brisbane', 'Tonight at youth', 'Sawyer Lang', 'phone number']) expect(body, v).not.toContain(v);
+  });
+  it('connect: a file with no name or date column left after the filter -> the server says shape -> the missing-column message', async () => {
+    const env = await up({ applied: false, source: 'connect', status: 'shape' },
+      { name: 'c.csv', buf: csv(q([['Gender', 'Prayer request'], ['F', 'Pray for my exam']])) }, '2026-10-22', 'connect');
+    expect(env.posts[0].b).toMatchObject({ headers: ['Gender'], rows: [['F']] });
+    expect(JSON.stringify(env.posts[0].b)).not.toContain('Pray for my exam');
+    expect(env.toasts).toContain('This file is missing a column the audit needs (names or dates). Check you exported the right Elvanto list.');
+  });
+});
+
+// The SPA's copy of the form allowlist can't drift from the contract (the console's byte copy is pinned by Y1/C4 the same way).
+// A top-level const, so it is pulled out the way QUAD_SRC is (one line, run in a Function), not with extractFn.
+import { AUDIT_FORM_HEADERS } from '../core/link-contract';
+describe('CA_FORM_HEADERS', () => {
+  it('equals link-contract AUDIT_FORM_HEADERS, in order', () => {
+    const line = HTML.match(/^const CA_FORM_HEADERS=.*$/m)![0];
+    expect(new Function(`${line}\nreturn CA_FORM_HEADERS;`)()).toEqual([...AUDIT_FORM_HEADERS]);
+  });
+});
+
+describe('caReadTable', () => {
+  const X = loadXlsx();
+  const f = () => new Function('X', `var XLSX = X; var _ensureXlsx = () => Promise.resolve();
+    ${extractFn(HTML, 'readXlsx')}\n${extractFn(HTML, 'caReadTable')}\nreturn caReadTable;`)(X);
+  it('UTF-8 CSV: BOM dropped, quoted multi-line cell, dates kept as text, every row as wide as the sheet, blank rows dropped', async () => {
+    const t = await f()(new TextEncoder().encode('\uFEFFFirst Name,Date Submitted,Note\n"Zoë","03/10/2026","two\nlines"\n,,\nNoah,2026-10-03\nMia,1,2,3\n').buffer, 'connect.csv');
+    expect(t.headers).toEqual(['First Name', 'Date Submitted', 'Note', '']); // a header may be empty (contract §3.2)
+    expect(t.rows).toEqual([['Zoë', '03/10/2026', 'two\nlines', ''], ['Noah', '2026-10-03', '', ''], ['Mia', '1', '2', '3']]);
+  });
+  it('windows-1252 CSV falls back from UTF-8', async () => {
+    const t = await f()(new Uint8Array([0x4e, 0x61, 0x6d, 0x65, 0x0a, 0x5a, 0x6f, 0xeb, 0x0a]).buffer, 'x.csv');
+    expect(t.rows).toEqual([['Zoë']]);
+  });
+  it('xlsx: date cells come out yyyy-mm-dd', async () => {
+    const ws = X.utils.aoa_to_sheet([['First Name', 'Date Submitted'], ['Ava', new Date(2026, 9, 3)]], { cellDates: true });
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'S');
+    const t = await f()(X.write(wb, { type: 'array', bookType: 'xlsx' }), 'connect.xlsx');
+    expect(t).toEqual({ headers: ['First Name', 'Date Submitted'], rows: [['Ava', '2026-10-03']] });
+    // The Elvanto Decision export (operator sample 2026-10-22) stores Date Submitted as a NUMERIC cell with a date format
+    // (Excel serial 46317 = 22 Oct 2026, a fraction = the time). readXlsx reads with cellDates, so it is yyyy-mm-dd too.
+    const ns = X.utils.aoa_to_sheet([['Date Submitted', 'First Name'], [46317, 'Casey'], [46317.82, 'Riley']]);
+    ns['A2'].z = 'dd/mm/yyyy'; ns['A3'].z = 'dd/mm/yyyy hh:mm';
+    const nb = X.utils.book_new(); X.utils.book_append_sheet(nb, ns, 'S');
+    const n = await f()(X.write(nb, { type: 'array', bookType: 'xlsx' }), 'Form-Submissions_Decision.xlsx');
+    expect(n).toEqual({ headers: ['Date Submitted', 'First Name'], rows: [['2026-10-22', 'Casey'], ['2026-10-22', 'Riley']] });
+  });
+});
+
+describe('Y10 structure', () => {
+  it('nav item is ca-week and tagged as a CA hook', () => {
+    expect(HTML).toContain("const caItem = { id:'ca-week', ic:'link', label:'Connection Audit', mbl:'Connection Audit' }; /*CA-HOOK*/");
+  });
+  it('call/text buttons are at least 44x44 with an 8px gap', () => {
+    expect(HTML).toContain('.ca-act{min-width:44px;min-height:44px;');
+    expect(HTML).toContain('.ca-acts{display:flex;gap:8px;');
+  });
+  it('the cohort loop uses the grade range, not 7..12', () => {
+    expect(extractFn(HTML, 'model')).toContain('for(const gr of _gradeList())');
+    expect(extractFn(HTML, 'model')).not.toMatch(/gr<=12|norm\(r\.name\)|st\.uploads/);
+  });
+});

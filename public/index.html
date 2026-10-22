@@ -580,6 +580,22 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ca-warnb b{color:#92660b}
 .ca-warnb .ca-wi{flex:none;font-size:.8rem;line-height:1}
 @media(min-width:768px){.ca-warnb{bottom:12px}}
+.ca-head{font-size:.95rem;font-weight:700;line-height:1.4;margin:0 0 10px}
+.ca-cap{font-size:.62rem;color:var(--ca-muted);margin-top:2px}
+.ca-flag{font-size:.78rem;line-height:1.45}
+.ca-quads{margin:0 0 12px}
+.ca-spark{display:block;width:100%;height:28px;margin-top:6px;color:var(--ca-blue)}
+@media(min-width:480px) and (max-width:719px){.ca-tiles{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:720px){.ca-tiles{grid-template-columns:repeat(4,1fr)}}
+.ca-fu summary{cursor:pointer}
+.ca-acts{display:flex;gap:8px;margin-top:6px}
+.ca-act{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.ca-fu-table{display:none;width:100%;border-collapse:collapse;font-size:.72rem}
+.ca-fu-table th,.ca-fu-table td,.ca-qt th,.ca-qt td{text-align:left;padding:6px 8px;border-top:1px solid var(--ca-line)}
+@media(min-width:720px){.ca-fu-cards{display:none}.ca-fu-table{display:table}}
+.ca-qt{width:100%;border-collapse:collapse;font-size:.7rem}
+.ca-foot{display:block;font-size:.66rem;color:var(--ca-muted);margin:14px 0 0;text-decoration:none}
+.ca-foot.warn{color:#7a5a10;background:#fffaf0;border-left:4px solid var(--ca-amber);padding:6px 9px;border-radius:8px}
 /* ── CA MODULE CSS END ── */
 
 /* ── BUS MODULE CSS ── */
@@ -2644,7 +2660,7 @@ function _navItemsBase(u = S.user) {
   const modules = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.modules) || {};
   // CA defaults true (empty/absent config = current behaviour).
   const caOn = modules.connectionAudit !== false;
-  const caItem = { id:'ca-overview', ic:'link', label:'Connection Audit', mbl:'Connection Audit' };
+  const caItem = { id:'ca-week', ic:'link', label:'Connection Audit', mbl:'Connection Audit' }; /*CA-HOOK*/
   // Leader (junior leader, §5.2): a slim, follow-up-focused nav — Home (lite) |
   // Prayers | Health | My Connections | Birthdays (2026-10-11: Prayers and My Connections swapped). No Connect Setup / Trends / Import.
   if (u.role === 'leader') return [
@@ -8667,6 +8683,34 @@ function caCsvRows(rows,withQuad){
     r.grade==null?'':String(r.grade),r.gender==='female'?'Female':r.gender==='male'?'Male':'',r.dnc?'Do not contact':(r.phone||''),
     r.phoneIsParent?'Yes':'No',r.reason,r.lastSeen||'Not seen yet']));
 }
+// Admin "Upload a file" (Data check): a CSV or Excel export -> the {headers, rows} cell table the console pushes.
+// CSV: UTF-8 (fatal) else windows-1252, read by SheetJS with raw:true so dates stay text (YS parses them with
+// import.dateOrder; SheetJS would read 03/10/2026 as 10 March). Excel: readXlsx (cellDates: numeric/Date cells -> yyyy-mm-dd).
+// Every row is cut or padded to the header width (the contract refuses a row of another length). Blank rows dropped.
+async function caReadTable(buf,fileName){
+  let aoa;
+  if(/\.xlsx?$/i.test(fileName||''))aoa=await readXlsx(buf);
+  else{
+    let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf);}catch(e){text=new TextDecoder('windows-1252').decode(buf);}
+    await _ensureXlsx();
+    const wb=XLSX.read(text,{type:'string',raw:true}),ws=wb.Sheets[wb.SheetNames[0]];
+    aoa=ws?XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}):[];
+  }
+  const all=aoa.map(r=>(r||[]).map(c=>c==null?'':String(c)));
+  const headers=all.shift()||[],n=headers.length;
+  return{headers,rows:all.filter(r=>r.some(c=>c.trim())).map(r=>{const o=r.slice(0,n);while(o.length<n)o.push('');return o;})};
+}
+// The upload's exportedAt (it is also its takenAt): now for today's date, else noon on the picked day at the location
+// (so 31 Dec stays in that year in any time zone).
+function caExportedAt(day,today,nowIso){return day===today?nowIso:new Date(_siteInstant(day,'12:00')).toISOString();}
+// Connect/Decision upload: only these columns may be posted (the SPA's copy of link-contract AUDIT_FORM_HEADERS, pinned equal by a test).
+const CA_FORM_HEADERS=['First Name','Last Name','Preferred Name','Date Submitted','Submitted','Grade','School Grade','Year','Gender','What grade are you in?'];
+// Same rule as the console's toTable (C4): trimmed header, exact match, export order; the dropped cells go from every row.
+function caFormCols(source,tbl){
+  if(source!=='connect'&&source!=='decision')return tbl;
+  const keep=tbl.headers.map((h,i)=>[h.trim(),i]).filter(([h])=>CA_FORM_HEADERS.includes(h));
+  return{headers:keep.map(([h])=>h),rows:tbl.rows.map(r=>keep.map(([,i])=>r[i]??''))};
+}
 const CA=(()=>{
 const KEY='ca_audit_v4'; // v4: audit-specific uploads start EMPTY (no demo seed); bump evicts old seeded state
 let st=null,warnOff=false,mdl=null,D=null; // D = {students,trends,settings} cache; st.uploads has team/connect/decision/flows
@@ -8679,6 +8723,7 @@ let AUDIT_YEAR=null;       // selected year (number) or null
 let AUDIT_SUMMARIES=null;  // cached list of {year,label,uploadedAt,termKeys}
 let TERM='ALL';            // selected term key, or 'ALL' for year-to-date
 let PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]}; // staged for next Save
+let QF='',FOPEN='',TJUMP='',AUDIT_SRC=null; // shared quad chip ('' All, 'none' No quad); Follow up list to open; Term report section to scroll to; per-list status when the year has no row yet (Y8)
 
 // ---------- utils ----------
 function h32(x){let h=0;for(const c of String(x))h=(h*31+c.charCodeAt(0))>>>0;return h;}
@@ -8699,7 +8744,7 @@ function fmtD(iso){return fmtDay(iso)||'—';}
 
 // ---------- server audit API ----------
 async function auditList(){ if(AUDIT_SUMMARIES)return AUDIT_SUMMARIES; AUDIT_SUMMARIES=await API.get('/audits').catch(()=>[]); return AUDIT_SUMMARIES||[]; }
-async function auditLoad(year){ const a=await API.get('/audits/'+year).catch(()=>null); AUDIT=a&&a.snapshot?a.snapshot:null; AUDIT_YEAR=a?a.year:null; TERM='ALL'; st=null; mdl=null; D=null; return AUDIT; }
+async function auditLoad(year){ const a=await API.get('/audits/'+year).catch(()=>null); AUDIT=a&&a.snapshot?a.snapshot:null; AUDIT_SRC=a&&!a.snapshot&&a.sources?a.sources:null; AUDIT_YEAR=a?a.year:null; TERM='ALL'; st=null; mdl=null; D=null; return AUDIT; }
 function auditInvalidate(){ AUDIT_SUMMARIES=null; Cache.del('/audits'); }
 async function setTerm(k){ TERM=k; D=null; mdl=null; st=null; await render(S.page); }
 async function setYear(y){ await auditLoad(Number(y)); await render(S.page); }
@@ -8722,7 +8767,8 @@ async function load(force){
     students:(AUDIT.students||[]).map(s=>{
       const c=sumOver(sel,s.id), p=sumOver(prev,s.id);
       return {id:s.id,fn:s.firstName,ln:s.lastName,gender:s.gender,grade:s.grade,quad:s.quad,
-        sA:c.sA,sT:c.sT,gA:c.gA,gT:c.gT, psA:p.sA,psT:p.sT,pgA:p.gA,pgT:p.gT, ph:'',pp:''};
+        sA:c.sA,sT:c.sT,gA:c.gA,gT:c.gT, psA:p.sA,psT:p.sT,pgA:p.gA,pgT:p.gT,
+        ph:s.phone||'',pp:!!s.phoneIsParent,dnc:!!s.dnc,team:!!s.team,connect:s.connect||null,decision:s.decision||null,caOnly:!!s.caOnly,lastSeen:s.lastSeen||null};
     }),
     trends:null, settings:settings||{}, lgStats:_auditLgStats(sel,prev),
   };
@@ -8770,7 +8816,8 @@ function _auditLgStats(sel,prev){
   }
   return {byQuad:Object.keys(quads).map(q=>({quad:q,grades:Object.values(quads[q].grades)}))};
 }
-function sessSeries(){const t=D&&D.trends&&D.trends.ministry;return((t&&t.sessions)||[]).filter(x=>!x.isOutlier).map(x=>({date:x.sessionDate,v:x.totalAttended||0}));}
+// Youth nights of the selected scope from snapshot v2 weekly (nulls = no youth night, skipped): avgFri, actTrend, deck sparkline.
+function sessSeries(){const t=TERM==='ALL'?null:((AUDIT&&AUDIT.terms)||[]).find(x=>x.key===TERM);return((AUDIT&&AUDIT.weekly)||[]).filter(w=>w.youth!=null&&(!t||(w.weekEnd>=t.startDate&&w.weekEnd<=t.endDate))).map(w=>({date:w.weekEnd,v:w.youth}));}
 function regR(){const s=D.settings||{};return(s.regRateNumerator||3)/(s.regRateDenominator||4);}
 
 // ---------- store ----------
@@ -8791,7 +8838,7 @@ function restore(){
   }
   st={v:5,uploads:emptyUploads()};
 }
-function reset(){try{localStorage.removeItem(KEY);}catch{}st=null;mdl=null;D=null;warnOff=false;AUDIT=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};}
+function reset(){try{localStorage.removeItem(KEY);}catch{}st=null;mdl=null;D=null;warnOff=false;QF='';FOPEN='';TJUMP='';LGQ='';PF.quad='';AUDIT=null;AUDIT_SRC=null;AUDIT_YEAR=null;AUDIT_SUMMARIES=null;TERM='ALL';PENDING={service:null,group:null,team:[],connect:[],decision:[],flows:[]};}
 // Server audits have no localStorage-staleness/seed concept — the freshness cue
 // is the year + uploaded date shown in the switcher and Data tab.
 function stale(){return false;}
@@ -8946,11 +8993,9 @@ function scoreOf(stage,s,trend){
   return Math.max(0,Math.min(100,base+cons+tm));
 }
 function model(){
-  if(mdl)return mdl;restore();
+  if(mdl)return mdl;
   const students=D.students,rr=regR();
   const rate=(a,b)=>b>0?a/b:0;
-  const marks=new Map();
-  const mk=(k,nm)=>{let x=marks.get(k);if(!x){x={name:nm};marks.set(k,x);}return x;};
   // When a specific term is selected, filter connect/decision rows to that term's date range.
   // Undated rows are always included. Team rows have no dates — for a specific term, a team
   // member only counts toward stage 5 if they also attended in that term (see stage logic below).
@@ -8965,45 +9010,26 @@ function model(){
   if(tObj){pStart=tObj.startDate;pEnd=tObj.endDate;}
   else if(AUDIT){for(const t of (AUDIT.terms||[])){if(t.startDate&&(pStart==null||t.startDate<pStart))pStart=t.startDate;if(t.endDate&&(pEnd==null||t.endDate>pEnd))pEnd=t.endDate;}}
   const inPeriod=d=>!d||pStart==null||(d>=pStart&&d<=pEnd);
-  for(const r of st.uploads.team.rows){const k=norm(r.name);if(!k)continue;mk(k,r.name).team=true;}
-  // Grade/gender (when the CRM export carries them) let an unmatched submitter
-  // still be placed in a quad below — first value seen for a name wins.
-  for(const r of st.uploads.connect.rows){const k=norm(r.name);if(!k||!inPeriod(r.date))continue;const x=mk(k,r.name);x.hasConnect=true;if(r.date&&(!x.connect||r.date<x.connect))x.connect=r.date;if(r.grade!=null&&x.grade==null)x.grade=r.grade;if(r.gender&&!x.gender)x.gender=r.gender;}
-  for(const r of st.uploads.decision.rows){const k=norm(r.name);if(!k||!inPeriod(r.date))continue;const x=mk(k,r.name);x.hasDecision=true;if(r.date&&(!x.decision||r.date>x.decision))x.decision=r.date;if(r.grade!=null&&x.grade==null)x.grade=r.grade;if(r.gender&&!x.gender)x.gender=r.gender;}
-  const byName=new Set(students.map(s=>norm(s.fn+' '+s.ln)));
+  // v2: team/connect/decision are facts on each student (matched by id on the server, spec §5.3). caOnly = form-only people.
   const people=[];
   for(const s of students){
-    const k=norm(s.fn+' '+s.ln),x=marks.get(k)||{};
-    // Team has no per-row dates: for a specific term, only count as team if they attended
-    // in that term (sA or gA > 0). For YTD (TERM==='ALL') count all team members.
-    const teamActive=x.team&&(TERM==='ALL'||(s.sA>0||s.gA>0));
-    // Stage 5 requires the stage-4 criterion too (gA>0) — the ladder's own methodology
-    // text says "each rung counts people at that stage OR BEYOND", so a team member not
-    // currently in a lifegroup isn't "beyond" stage 4 and shouldn't inflate its count.
-    // Without this, "Attended a lifegroup this period" (rung 4, and the Overview's
-    // "In a lifegroup" tile which is gA>0-only) diverge by exactly the number of team
-    // members who aren't currently in a lifegroup.
-    const stage=(teamActive&&s.gA>0)?5:s.gA>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(x.hasConnect||x.hasDecision)?1:0;
+    const conn=!!s.connect&&inPeriod(s.connect),dec=!!s.decision&&inPeriod(s.decision);
+    if(s.caOnly){
+      if(!conn&&!dec)continue;
+      people.push({id:s.id,name:s.fn+' '+s.ln,s:null,caOnly:true,stage:1,trend:'stable',score:scoreOf(1,null,'stable'),connect:conn?s.connect:null,decision:dec?s.decision:null,conn,dec,team:!!s.team,quad:s.quad});
+      continue;
+    }
+    // Team has no per-row dates: for a specific term, only count as team if they attended in that term.
+    // Stage 5 requires the stage-4 criterion too (gA>0): each rung counts people at that stage OR BEYOND.
+    const teamActive=s.team&&(TERM==='ALL'||(s.sA>0||s.gA>0));
+    const stage=(teamActive&&s.gA>0)?5:s.gA>0?4:(s.sT>0&&s.sA/s.sT>=rr)?3:s.sA>0?2:(conn||dec)?1:0;
     const trend=trendOf(s);
-    people.push({id:s.id,name:s.fn+' '+s.ln,s,caOnly:false,stage,trend,score:scoreOf(stage,s,trend),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team,quad:s.quad});
-  }
-  for(const[k,x]of marks){
-    if(byName.has(k))continue;
-    // No matching platform student means no gA to check, so — unlike the loop above —
-    // there's no way to confirm a Team-roster name here is currently in a lifegroup.
-    // Capped at 1 rather than an unverified 5, so this can never inflate rung 4 past
-    // the "In a lifegroup" tile (which only ever sums matched students). `team` stays
-    // true regardless, so the person-detail Journey popup still shows them as team.
-    const stage=1;
-    // Quad from the connect/decision export's own grade/gender columns, when
-    // present — this is the only way to place an unmatched person in a quad.
-    const quad=computeQuad(x.grade,x.gender);
-    people.push({id:'cax-'+h32(k),name:x.name,s:null,caOnly:true,stage,trend:'stable',score:scoreOf(stage,null,'stable'),connect:x.connect||null,decision:x.decision||null,conn:!!x.hasConnect,dec:!!x.hasDecision,team:!!x.team,quad});
+    people.push({id:s.id,name:s.fn+' '+s.ln,s,caOnly:false,stage,trend,score:scoreOf(stage,s,trend),connect:conn?s.connect:null,decision:dec?s.decision:null,conn,dec,team:!!s.team,quad:s.quad});
   }
   const rungs=[[1,'Interacted'],[2,'Came to '+L('service')],[3,'Regular'],[4,'Attended a '+L('smallGroup').toLowerCase()+' this period'],[5,'Student team']]
     .map(([n,lb])=>({n,lb,v:people.filter(p=>p.stage>=n).length}));
   // KPIs
-  const act=students.filter(s=>s.sA>0).length;
+  const act=students.filter(s=>s.sA>0).length; // caOnly students have no attendance, so they never count here
   // "In a lifegroup" = attending one THIS term (gA>0). With the term split, gT>0
   // alone means the group merely ran for them this term (they may have attended
   // only last term), so it would over-count. Matches the gA>0 used elsewhere.
@@ -9023,7 +9049,7 @@ function model(){
   const decisions=people.filter(p=>p.dec).length;
   // groups = 12 grade×gender cohorts (the API exposes no named lifegroups)
   const groups=[];
-  for(const gender of['female','male'])for(let gr=7;gr<=12;gr++){
+  for(const gender of['female','male'])for(const gr of _gradeList()){
     const mem=students.filter(s=>s.grade===gr&&s.gender===gender&&s.gT>0);
     const enrolled=mem.length;
     const active=mem.filter(s=>s.gA>0).length;
@@ -9047,7 +9073,8 @@ function model(){
 
 // ---------- shell ----------
 function tabs(page){
-  const T=[['ca-overview','Overview'],['ca-funnel','Funnel'],['ca-groups',L('smallGroupPlural')],['ca-people','People'],['ca-data','Data']];
+  const n=AUDIT?FU_LISTS.reduce((t,l)=>t+caFollowRows(AUDIT,l,QF).length,0):0;
+  const T=[['ca-week','This week'],['ca-follow','Follow up'+(n?' · '+n:'')],['ca-term','Term report']];
   return '<div class="ca-tabs">'+T.map(([id,lb])=>'<span class="ca-tab'+(page===id?' on':'')+'" onclick="go(\''+id+'\')">'+lb+'</span>').join('')+'</div>';
 }
 // A human label for the loaded scope, e.g. "2026 · T2 (in progress)" or
@@ -9056,7 +9083,7 @@ function tabs(page){
 function scopeLabel(){
   if(!AUDIT)return'';
   const y=AUDIT_YEAR!=null?String(AUDIT_YEAR):'';
-  if(TERM==='ALL')return (y?y+' · ':'')+'Year to date';
+  if(TERM==='ALL')return (y?y+' · ':'')+'Year so far';
   const t=(AUDIT.terms||[]).find(x=>x.key===TERM);
   if(!t)return y;
   const ip=(AUDIT.perTerm[t.key]||{}).inProgress;
@@ -9066,7 +9093,7 @@ function scopeLabel(){
 // visible on the analytical tabs. Year is inline pills when there are few
 // audits, a <select> once there are many. Replaces the old term-only switcher
 // (which never showed the year, so cross-year views looked identical).
-function scopeBar(){
+function scopeBar(page){
   if(!AUDIT)return'';
   const terms=AUDIT.terms||[];
   const yrs=AUDIT_SUMMARIES||[];
@@ -9079,24 +9106,196 @@ function scopeBar(){
   }else{
     yearCtl='<span class="ca-chip2 on">'+esc(AUDIT_YEAR!=null?String(AUDIT_YEAR):'—')+'</span>';
   }
-  let termCtl='<span class="ca-chip2'+(TERM==='ALL'?' on':'')+'" onclick="CA.setTerm(\'ALL\')">Year to date</span>';
+  let termCtl='<span class="ca-chip2'+(TERM==='ALL'?' on':'')+'" onclick="CA.setTerm(\'ALL\')">Year so far</span>';
   for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;termCtl+='<span class="ca-chip2'+(TERM===t.key?' on':'')+'" onclick="CA.setTerm(\''+t.key+'\')">T'+t.ordinal+(ip?' • live':'')+'</span>';}
   return '<div class="ca-scope">'
-    +'<div class="ca-scope-row"><span class="ca-scope-lb">Year '+helpTip('This is a frozen snapshot from your last year-to-date upload, not live data. Re-upload in the Data tab to refresh it.')+'</span><div class="ca-scope-ctl">'+yearCtl+'</div></div>'
-    +'<div class="ca-scope-row"><span class="ca-scope-lb">Period</span><div class="ca-scope-ctl">'+termCtl+'</div></div>'
+    +'<div class="ca-scope-row"><span class="ca-scope-lb">Year '+helpTip('Updated by the console after each Friday sync. Tap the line at the bottom to see where the numbers come from.')+'</span><div class="ca-scope-ctl">'+yearCtl+'</div></div>'
+    +(page==='ca-term'?'<div class="ca-scope-row"><span class="ca-scope-lb">Period</span><div class="ca-scope-ctl">'+termCtl+'</div></div>':'')
     +'</div>';
 }
 function caShell(body,page){
   let content=tabs(page);
-  if(!AUDIT&&page!=='ca-data'){
-    content+='<div class="ca-warnb"><span class="ca-wi">'+icS('alert')+'</span><div onclick="go(\'ca-data\')" style="cursor:pointer"><b>No audit loaded.</b> Upload year-to-date data in the <b>Data</b> tab to create one.</div></div>';
-  }
-  if(AUDIT&&page!=='ca-data'){ content+=scopeBar(); }
-  content+=body;
+  if(AUDIT){ content+=scopeBar(page)+quadChips(); }
+  content+=body+footerHtml();
   setApp(content);
 }
 function dismissWarn(){warnOff=true;rerender();}
 function rerender(){dispatch(S.page);}
+// ---------- shared quad filter, footer, empty states (spec §6.1) ----------
+const FU_LISTS=['drifting','decidedNoGroup','connectedNeverCame'];
+function isPast(){return AUDIT_YEAR!=null&&String(AUDIT_YEAR)<_siteDay(Date.now()).slice(0,4);}
+function emptyYear(){return '<div class="card ca-empty">No data for '+esc(String(AUDIT_YEAR!=null?AUDIT_YEAR:_siteDay(Date.now()).slice(0,4)))+' yet. The console fills this after the first Friday sync.</div>';}
+function quadChips(){
+  const c={'':0,none:0};for(const s of (AUDIT&&AUDIT.students)||[]){c['']++;const q=s.quad||'none';c[q]=(c[q]||0)+1;}
+  const chip=(q,lb)=>'<span class="ca-chip2'+(QF===q?' on':'')+'" role="button" tabindex="0" onclick="CA.setQuad(\''+q+'\')">'+esc(lb)+' ('+(c[q]||0)+')</span>';
+  return '<div class="ca-scope-ctl ca-quads">'+chip('','All')+Object.keys(QUAD_LABELS).map(q=>chip(q,quadLabel(q))).join('')+chip('none','No quad')+'</div>';
+}
+function setQuad(q){QF=q;LGQ=q==='none'?'uncl':q;PF.quad=q;PF.cap=60;rerender();}
+function footerHtml(){
+  const f=caFooter(AUDIT||(AUDIT_SRC?{sources:AUDIT_SRC}:null),new Date().toISOString());
+  return '<a href="#" class="ca-foot'+(f.outOfDate?' warn':'')+'" onclick="go(\'ca-quality\');return false">'+esc(f.text)+'</a>';
+}
+// One quad's ladder (the per-quad funnel's numbers); 'none' = people with no quad.
+function qRungs(m,q){const qp=m.people.filter(p=>q==='none'?!p.quad:p.quad===q);return m.rungs.map(r=>({n:r.n,lb:r.lb,v:qp.filter(p=>p.stage>=r.n).length}));}
+// The model for one term without disturbing the on-screen scope (the buildDeck swap).
+async function modelFor(key){
+  if(key===TERM)return model();
+  const prior={term:TERM,d:D,mdl};TERM=key;D=null;mdl=null;
+  try{await load(true);return model();}finally{TERM=prior.term;D=prior.d;mdl=prior.mdl;}
+}
+
+// ---------- This week (ca-week, landing) ----------
+function tileHtml(t){
+  return '<div class="stat ca-tile"><div class="stat-v">'+(t.value==null?'—':t.value)+'</div><div class="stat-l">'+esc(t.label)+'</div>'
+    +(t.caption?'<div class="ca-cap">'+esc(t.caption)+'</div>':'')+(t.note?'<div class="ca-cap">'+esc(t.note)+'</div>':'')
+    +t.cmp.map(c=>'<div class="ca-dlt '+(c.dir==='up'?'up':c.dir==='down'?'dn':'fl')+'">'+esc(c.text)+'</div>').join('')
+    +(t.spark.length?caSparkSvg(t.spark,t.partial):'')+'</div>';
+}
+async function rWeek(){
+  if(!AUDIT){caShell(emptyYear(),'ca-week');return;}
+  const t=caWeekTiles(AUDIT,QF,_siteDay(Date.now()));
+  if(!t){caShell('<div class="card ca-empty">Weekly numbers aren\'t available for '+esc(String(AUDIT_YEAR))+'. See Term report.</div>','ca-week');return;}
+  const terms=AUDIT.terms||[],cur=terms.length?terms[terms.length-1].key:'ALL';
+  const m=await modelFor(cur);
+  const fl=caFlags(AUDIT.signals,caLeak(QF?qRungs(m,QF):m.rungs),caFollowRows(AUDIT,'drifting',QF).length,QF);
+  const to={drift:"CA.follow('drifting')",quad:"CA.term('ca-js')",leak:"CA.term('ca-drop')"};
+  let b='<p class="ca-head">'+esc(caHeadline(t))+'</p>';
+  b+=fl.map(x=>'<div class="card ca-flag">'+esc(x.text)+' <a href="#" onclick="'+to[x.kind]+';return false">'+esc(x.link)+'</a></div>').join('');
+  b+='<div class="stat-grid ca-tiles">'+['youth','lifegroup','connects','decisions'].map(k=>tileHtml(t.tiles[k])).join('')+'</div>';
+  if(S.page==='ca-week')caShell(b,'ca-week');
+}
+
+// ---------- Follow up (ca-follow) ----------
+function follow(list){FOPEN=list;go('ca-follow');}
+function fuPhone(r,wide){
+  if(r.dnc)return '<span class="ca-cap">Do not contact</span>';
+  if(!r.phone)return '<span class="ca-cap">No phone on file</span>';
+  const n=esc(r.phone.replace(/[^\d+]/g,''));
+  if(wide)return '<a href="tel:'+n+'">'+esc(r.phone)+'</a>'+(r.phoneIsParent?' <span class="chip c-neutral">Parent\'s phone</span>':'');
+  return '<a class="btn btn-secondary ca-act" href="tel:'+n+'">'+(r.phoneIsParent?'Call parent':'Call')+'</a><a class="btn btn-secondary ca-act" href="sms:'+n+'">'+(r.phoneIsParent?'Text parent':'Text')+'</a>';
+}
+function rFollow(){
+  if(!AUDIT){caShell(emptyYear(),'ca-follow');return;}
+  if(!(AUDIT.weekly||[]).length){caShell('<div class="card ca-empty">Follow-up lists start with data from the console.</div>','ca-follow');return;}
+  const all=FU_LISTS.map(l=>[l,caFollowRows(AUDIT,l,QF)]);
+  const open=FOPEN||(all.find(x=>x[1].length)||all[0])[0];FOPEN='';
+  let b=isPast()?'<div class="ca-cap">As at '+esc(fmtDay(AUDIT.dataEndDate))+'. These people may already have been followed up.</div>':'';
+  for(const[l,rows]of all){
+    b+='<details class="card ca-fu"'+(l===open?' open':'')+'><summary><b>'+esc(caLabel('list',l))+'</b> · '+rows.length+'<div class="ca-cap">'+esc(caLabel('hint',l))+'</div></summary>';
+    if(!rows.length)b+='<div class="ca-cap">Nobody here this week.</div>';
+    else b+='<div class="ca-fu-cards">'+rows.map(r=>'<div class="li ca-fu-card"><div><b>'+esc(r.name)+'</b> <span class="ca-cap">'+esc(caLabel('quad',r.quad))+'</span></div><div class="ca-cap">'+esc(r.why)+'</div><div class="ca-acts">'+fuPhone(r,false)+'</div></div>').join('')+'</div>'
+      +'<table class="ca-fu-table"><thead><tr><th>Name</th><th>Quad</th><th>Why</th><th>Phone</th></tr></thead><tbody>'
+      +rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+esc(caLabel('quad',r.quad))+'</td><td>'+esc(r.why)+'</td><td>'+fuPhone(r,true)+'</td></tr>').join('')+'</tbody></table>';
+    b+='</details>';
+  }
+  b+='<button class="btn btn-secondary btn-full" onclick="CA.followCsv()">Download list (CSV)</button>';
+  caShell(b,'ca-follow');
+}
+function followCsv(){
+  const rows=[].concat(...FU_LISTS.map(l=>caFollowRows(AUDIT,l,QF)));
+  if(!rows.length){toast('Nobody to download');return;}
+  _downloadText('follow-up-'+(QF||'all')+'-'+_siteDay(Date.now())+'.csv',rowsToCsv(caCsvRows(rows,!QF)),'text/csv');
+}
+
+// ---------- Term report (ca-term): the existing renderers in story order ----------
+function term(anchor){TJUMP=anchor;go('ca-term');}
+function quadSectionHtml(m){
+  const pct=(a,b)=>b>0?Math.round(a/b*100):0;
+  let b='<div class="card"><div class="ca-ct">Junior &amp; Senior</div>';
+  for(const q of Object.keys(QUAD_LABELS)){
+    if(QF&&QF!==q)continue;
+    const ss=D.students.filter(s=>!s.caOnly&&s.quad===q);
+    const cur=ss.filter(s=>s.sA>0||s.gA>0).length;
+    const c=ss.some(s=>s.psT>0)?caCompare(cur,ss.filter(s=>s.psA>0||s.pgA>0).length,'prevterm'):null;
+    const cohorts=m.groups.filter(g=>computeQuad(g.grade,g.gender)===q);
+    b+='<details class="ca-q"><summary><span class="chip quad-'+q+'">'+esc(quadLabel(q))+'</span> '
+      +m.people.filter(p=>p.quad===q&&p.stage>0).length+' people · '+pct(ss.reduce((t,s)=>t+s.sA,0),ss.reduce((t,s)=>t+s.sT,0))+'% of youth nights · '
+      +pct(ss.filter(s=>s.gA>0).length,cur)+'% in a lifegroup'+(c?' · '+esc(c.text):'')+'</summary>'
+      +(cohorts.length?cohorts.map(g=>'<div class="ca-alr" onclick="CA.showGroup(\''+g.id+'\')"><div style="font-size:.78rem;font-weight:600">'+esc(g.name)+'</div>'
+        +(g.enrolled>0&&g.active===0?'<span class="chip c-danger">No attendance this term</span>':gChip(g))+'</div>').join(''):'<div class="ca-cap">No grades in this quad</div>')
+      +'</details>';
+  }
+  if(!QF||QF==='none')b+='<div class="ca-cap">No quad ('+m.people.filter(p=>!p.quad&&p.stage>0).length+')</div>';
+  return b+'</div>';
+}
+function ladderHtml(R){
+  const max=R[0].v||1;
+  const cols=accentRamp(D.settings&&D.settings.ministryConfig&&D.settings.ministryConfig.branding&&D.settings.ministryConfig.branding.accent);
+  return '<div class="card"><div class="ca-ct">Where we are</div>'+R.map((r,i)=>'<div class="ca-lrow"><div class="ca-lname">'+r.lb+'</div><div class="ca-lbar"><div class="ca-lfill" style="width:'+Math.max(8,Math.round(r.v/max*100))+'%;background:'+cols[i]+'">'+r.v+'</div></div></div>').join('')+'</div>';
+}
+function rTerm(){
+  if(!AUDIT){caShell(emptyYear(),'ca-term');return;}
+  const m=model(),R=QF?qRungs(m,QF):m.rungs,lk=caLeak(R);
+  const ss=QF?D.students.filter(s=>QF==='none'?!s.quad:s.quad===QF):D.students;
+  const act=ss.filter(s=>s.sA>0).length,inLG=ss.filter(s=>s.gA>0).length;
+  const t=(AUDIT.terms||[]).find(x=>x.key===TERM),pt=t&&AUDIT.perTerm[t.key]||{};
+  const opts=(AUDIT.terms||[]).map(x=>'<option value="'+x.key+'"'+(TERM===x.key?' selected':'')+'>T'+x.ordinal+((AUDIT.perTerm[x.key]||{}).inProgress?' (in progress)':'')+'</option>').join('');
+  let b='<div class="card" style="display:flex;gap:8px;align-items:center"><select id="ca-deck-term" class="fs ca-sel" style="flex:1"><option value="ALL"'+(TERM==='ALL'?' selected':'')+'>Year so far</option>'+opts+'</select>'
+    +'<button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="CA.buildDeck(document.getElementById(\'ca-deck-term\').value)">Open slides</button></div>';
+  b+='<p class="ca-head">'+esc((t?t.label:AUDIT_YEAR+' so far')+': '+R[1].v+' came to youth at least once; '+(act?Math.round(inLG/act*100):0)+'% reached a lifegroup.'
+    +(lk?' Biggest drop-off: '+caLabel('stage',lk.n)+' → '+caLabel('stage',lk.n+1)+'.':''))+'</p>';
+  if(t&&pt.inProgress)b+='<p class="ca-cap">'+esc('Term '+t.ordinal+' is still going: '+(pt.svcTotal||0)+' youth nights so far. Numbers will change.')+'</p>';
+  const fc=l=>caFollowRows(AUDIT,l,QF).length;
+  b+='<div id="ca-ladder">'+ladderHtml(R)+'</div>'
+    +'<div id="ca-drop">'+funnelHtml()+'</div>'
+    +'<div id="ca-js">'+quadSectionHtml(m)+'</div>'
+    +'<div id="ca-lg">'+groupsHtml()+'</div>'
+    +'<div class="card"><div class="ca-ct">What to do</div><a href="#" onclick="CA.follow(\'drifting\');return false">'+fc('drifting')+' stopped coming</a> · '
+    +'<a href="#" onclick="CA.follow(\'decidedNoGroup\');return false">'+fc('decidedNoGroup')+' decided, not in a lifegroup</a> · '
+    +'<a href="#" onclick="CA.follow(\'connectedNeverCame\');return false">'+fc('connectedNeverCame')+' connected, not back yet</a></div>'
+    +'<div id="ca-people">'+peopleHtml()+'</div>';
+  caShell(b,'ca-term');
+  if(TJUMP){const el=document.getElementById(TJUMP);TJUMP='';if(el)el.scrollIntoView();}
+}
+
+// ---------- Data check (ca-quality, not a tab) ----------
+function rQuality(){
+  const src=(AUDIT&&AUDIT.sources)||{},Q=(AUDIT&&AUDIT.quality)||{skipped:[],notes:[],unmatched:[],duplicates:[]};
+  const f=caFooter(AUDIT,new Date().toISOString());
+  const left=Q.skipped.reduce((t,x)=>t+x.count,0),pl=(n,one,many)=>n+' '+(n===1?one:many);
+  const names={};for(const s of (AUDIT&&AUDIT.students)||[])names[s.id]=s.firstName+' '+s.lastName;
+  const g=_gradeList(),rng={min:g[0],max:g[g.length-1]};
+  let b='<p class="ca-head">'+esc((f.n===5?'All 5 lists up to date.':f.n+' of 5 lists up to date.')+' '+pl(left,'entry','entries')+' left out, '
+    +pl(Q.unmatched.length,'unlinked name','unlinked names')+', '+Q.duplicates.length+' might be the same person.')+'</p>'
+    +'<p class="ca-cap">Where this year\'s audit numbers come from, and anything that didn\'t fit.</p>';
+  b+='<div class="card" style="padding:0;overflow-x:auto"><table class="ca-qt"><thead><tr><th>List</th><th>Status</th><th>Updated</th><th>From Elvanto</th><th>Entries</th><th>Last problem</th></tr></thead><tbody>'
+    +['service','group','team','connect','decision'].map(s=>{const m=src[s]||{status:'missing'};
+      return '<tr><td>'+esc(caLabel('source',s))+'</td><td>'+esc(caLabel('status',m.status))+'</td><td>'+esc(m.fedAt?fmtDay(m.fedAt,true)+(m.fedBy==='manual'?' by upload':''):'—')
+        +'</td><td>'+esc(m.exportedAt?fmtDay(m.exportedAt,true):'—')+'</td><td>'+(m.rows||0)+'</td><td>'+esc(m.lastFailedAt?fmtDay(m.lastFailedAt)+': '+caLabel('reason',m.lastFailReason):'—')+'</td></tr>';}).join('')
+    +'</tbody></table></div>';
+  const sec=(title,n,inner,hint)=>'<details class="card"><summary><b>'+esc(title)+'</b> ('+n+')</summary>'+(hint?'<div class="ca-cap">'+esc(hint)+'</div>':'')+(inner||'<div class="ca-cap">Nothing here.</div>')+'</details>';
+  const li=s=>'<div class="ca-alr">'+s+'</div>';
+  b+=sec('Left out',left,Q.skipped.map(x=>li(esc((x.name||'(no name)')+' · '+caLabel('source',x.source)+' · '+caLabel('skip',x.reason))+' ('+x.count+')')).join(''));
+  b+=sec('Worth knowing',Q.notes.length,Q.notes.map(x=>li(esc(caLabel('source',x.source)+': '+caLabel('note',x.note,rng))+' ('+x.count+')')).join(''));
+  const un=Q.unmatched.slice().sort((a,c)=>(c.ambiguous?1:0)-(a.ambiguous?1:0)||c.sources.length-a.sources.length||a.name.localeCompare(c.name));
+  b+=sec('Unlinked names',un.length,un.map(x=>li(esc(x.name+(x.grade!=null?', '+_gradeWord()+' '+x.grade:'')+' · '+x.sources.map(s=>caLabel('source',s)).join(', '))
+    +(x.ambiguous?' <span class="chip ca-cw">More than one person has this name</span>':''))).join(''),"Not matched to one person in Elvanto. They're still counted.");
+  b+=sec('Might be the same person',Q.duplicates.length,Q.duplicates.map(x=>li(esc((names[x.a]||x.a)+' / '+(names[x.b]||x.b)+' · '+caLabel('dup',x.why)))).join(''));
+  if(S.user&&S.user.role==='admin'){
+    const today=_siteDay(Date.now()),def=isPast()?AUDIT_YEAR+'-12-31':today;
+    b+='<details class="card"><summary><b>Upload a file</b></summary><div class="ca-cap">Use only if the console couldn\'t update this list. Export the list from Elvanto as CSV or Excel, then upload it here.</div>'
+      +'<select id="ca-up-src" class="fs ca-sel">'+['service','group','team','connect','decision'].map(s=>'<option value="'+s+'">'+esc(caLabel('source',s))+'</option>').join('')+'</select>'
+      +'<label class="fl">Date exported from Elvanto</label><input type="date" id="ca-up-day" class="fi" value="'+def+'" max="'+today+'"><div class="ca-cap">To rebuild a past year, pick a date in that year.</div>'
+      +'<input type="file" id="ca-up-file" class="fi" accept=".csv,.xlsx,.xls"><button class="btn btn-primary btn-sm" onclick="CA.uploadSource()">Upload</button></details>';
+  }
+  setApp('<div class="ca-tabs"><span class="ca-tab" onclick="go(\'ca-week\')">‹ Back</span><span class="ca-tab on">Data check</span></div>'+b);
+}
+async function uploadSource(){
+  if(uploadSource.busy)return;
+  const src=document.getElementById('ca-up-src').value,el=document.getElementById('ca-up-file'),day=document.getElementById('ca-up-day').value;
+  const file=el&&el.files&&el.files[0];if(!file){toast('Choose a file first');return;}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day||'')){toast('Pick the date it was exported from Elvanto');return;}
+  uploadSource.busy=true;const btn=document.querySelector('[onclick="CA.uploadSource()"]');if(btn)btn.disabled=true;
+  const h=_here();
+  try{
+    const tbl=caFormCols(src,await caReadTable(await file.arrayBuffer(),file.name)); // forms: allowlisted columns only (delta 38)
+    const exportedAt=caExportedAt(day,_siteDay(Date.now()),new Date().toISOString());
+    const r=await API.post('/audits/sources/'+src,{headers:tbl.headers,rows:tbl.rows,exportedAt},90000);
+    toast(caLabel('upload',r.status));
+    if(r.applied){const y=Number(day.slice(0,4));auditInvalidate();await auditList();await auditLoad(y);if(_still(h))await render('ca-quality');}
+  }catch(e){toast(e&&e.status===400?caLabel('upload','400'):((e&&e.message)||'Upload failed'));}
+  finally{uploadSource.busy=false;if(btn)btn.disabled=false;}
+}
 
 // ---------- screens ----------
 function rOverview(){
@@ -9153,8 +9352,8 @@ function rOverview(){
   caShell(b,'ca-overview');
 }
 function fopen(){FO=!FO;rerender();}
-function rFunnel(){
-  const m=model(),R=m.rungs;
+function funnelHtml(){
+  const m=model(),R=QF?qRungs(m,QF):m.rungs;
   const cols=accentRampPairs(D.settings&&D.settings.ministryConfig&&D.settings.ministryConfig.branding&&D.settings.ministryConfig.branding.accent);
   const convs=[];for(let i=1;i<R.length;i++)convs.push(R[i-1].v?Math.round(R[i].v/R[i-1].v*100):0);
   const leak=convs.indexOf(Math.min(...convs));
@@ -9172,8 +9371,8 @@ function rFunnel(){
   let b='';
   b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run Interacted, '+L('service')+', Regular, '+L('smallGroup')+', then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
   b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+quadLabel(worst[0])+' ('+worst[1]+').':'')+'</div></div>';
-  b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
-  if(FQ){
+  if(!QF)b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
+  if(FQ&&!QF){
     for(const q of Object.keys(QUAD_LABELS)){
       const qp=m.people.filter(p=>p.quad===q);
       const qr=R.map(r=>({lb:r.lb,v:qp.filter(p=>p.stage>=r.n).length}));
@@ -9189,7 +9388,7 @@ function rFunnel(){
     }
     b+='<div style="font-size:.6rem;color:var(--ca-muted);text-align:center;margin:4px 0 8px">Upload-only people with no platform match are placed by the grade/gender on their Connect or Decision form; without those columns they have no quad and are excluded from these breakdowns.</div>';
   }
-  caShell(b,'ca-funnel');
+  return b;
 }
 function fquad(){FQ=!FQ;rerender();}
 function gChip(g){
@@ -9214,19 +9413,14 @@ function lifegroupRows(){
   }
   return out;
 }
-function rGroups(){
+function groupsHtml(){
   model();
   let rows=lifegroupRows();
   if(LGQ)rows=rows.filter(r=>r.quad===LGQ);
   rows.sort((a,b)=>b.unique-a.unique||a.name.localeCompare(b.name));
   let b='';
   b+='<div class="ca-ct" style="margin-bottom:6px">'+L('smallGroup')+' Health '+helpTip('A named lifegroup average divides by the weeks that group actually ran. Grade, quad and overall averages divide by valid services in the term instead, so they are not directly comparable.')+'</div>';
-  // Quad filter buttons.
-  b+='<div class="ca-fch">'
-    +'<span class="chip '+(LGQ===''?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\'\')">All</span>'
-    +Object.keys(QUAD_LABELS).map(q=>'<span class="chip '+(LGQ===q?'c-accent':'c-neutral')+'" style="cursor:pointer" onclick="CA.lgfilter(\''+q+'\')">'+quadLabel(q)+'</span>').join('')
-    +'</div>';
-  if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';caShell(b,'ca-groups');return;}
+  if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';return b;}
   const rc='text-align:center;padding:7px 8px;white-space:nowrap';
   b+='<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'
     +'<thead><tr style="color:var(--ca-muted)"><th style="text-align:left;padding:8px 10px">'+L('smallGroup')+'</th>'
@@ -9238,7 +9432,7 @@ function rGroups(){
       +'<td style="'+rc+'">'+r.run+'</td><td style="'+rc+'">'+r.avgT+'</td></tr>';
   }
   b+='</tbody></table></div>';
-  caShell(b,'ca-groups');
+  return b;
 }
 // Click a named lifegroup row in CA's own Lifegroup Health tab → who attended.
 // Roster comes from the loaded audit snapshot (already in memory, no fetch).
@@ -9248,7 +9442,7 @@ function showLgRoster(id){
   const r=lifegroupRows().find(x=>x.id===id);if(!r)return;
   let h='<div class="mo-title">'+esc(lgDisplayName(r.name))+'</div>';
   if(!r.roster.length){
-    h+='<div style="padding:10px 0;color:var(--ca-muted);font-size:.78rem">No attendee detail for this snapshot — re-upload this year\'s data in the Data tab to see who attended.</div>';
+    h+='<div style="padding:10px 0;color:var(--ca-muted);font-size:.78rem">No attendee detail for this snapshot.</div>';
   }else{
     h+='<div style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--ca-line)">';
     for(const m of r.roster){
@@ -9285,7 +9479,7 @@ function plist(){
   if(PF.q){const q=norm(PF.q);list=m.people.filter(p=>norm(p.name).includes(q));}
   else list=m.people.filter(p=>p.stage>0);
   if(PF.stage)list=list.filter(p=>p.stage===+PF.stage);
-  if(PF.quad)list=list.filter(p=>p.quad===PF.quad);
+  if(PF.quad)list=list.filter(p=>PF.quad==='none'?!p.quad:p.quad===PF.quad);
   list=list.slice().sort((a,b)=>b.score-a.score||(a.name<b.name?-1:1));
   let b='';
   for(const p of list.slice(0,PF.cap)){
@@ -9303,16 +9497,15 @@ function plist(){
   b+='<div style="display:flex;align-items:center;gap:6px;margin-top:8px"><button class="btn btn-secondary" style="flex:1" onclick="CA.exportMenu()">Export follow-up CSV — by quad</button>'+helpTip('Downloads a CSV of people worth a follow-up in one quad: name, phone, reason (e.g. declining attendance) and score.',{left:true})+'</div>';
   return b;
 }
-function rPeople(){
+function peopleHtml(){
   const m=model();
   let b='';
   b+='<input class="fi" style="margin-bottom:9px" placeholder="Search '+m.people.length+' people…" value="'+PF.q.replace(/"/g,'&quot;')+'" oninput="CA.pq(this.value)">';
   b+='<div class="ca-fch">'
     +'<select class="fs ca-sel" onchange="CA.pstage(this.value)"><option value="">All stages</option>'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(PF.stage==n?' selected':'')+'>Stage '+n+' · '+STG()[n]+'</option>').join('')+'</select>'
-    +'<select class="fs ca-sel" onchange="CA.pquad(this.value)"><option value="">All quads</option>'+Object.keys(QUAD_LABELS).map(k=>[k,quadLabel(k)]).map(([k,v])=>'<option value="'+k+'"'+(PF.quad===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'
     +'</div>';
   b+='<div id="ca-plist">'+plist()+'</div>';
-  caShell(b,'ca-people');
+  return b;
 }
 function pq(v){PF.q=v;PF.cap=60;const el=document.getElementById('ca-plist');if(el)el.innerHTML=plist();}
 function pmore(){PF.cap+=60;const el=document.getElementById('ca-plist');if(el)el.innerHTML=plist();}
@@ -9333,7 +9526,8 @@ function showPerson(id){
   if(s&&s.gT>0)ev.push(['In a lifegroup','this term']);
   if(p.team)ev.push(['Student team','current']);
   if(ev.length)h+='<div class="card"><div class="ca-ct">Journey</div>'+ev.map(e=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ca-line)"><div style="font-size:.78rem;font-weight:600">'+e[0]+'</div><div style="font-size:.7rem;color:var(--ca-muted)">'+(/^\d{4}/.test(e[1])?fmtD(e[1]):e[1])+'</div></div>').join('')+'</div>';
-  if(s&&s.ph)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Ph '+esc(s.ph)+(s.pp?' · Parent '+esc(s.pp):'')+'</div>';
+  if(s&&s.dnc)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Do not contact</div>';
+  else if(s&&s.ph)h+='<div style="font-size:.74rem;color:var(--ca-muted);margin-top:8px">Ph '+esc(s.ph)+(s.pp?' (parent)':'')+'</div>';
   h+='<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="closeModal()">Close</button>';
   modal(h);
 }
@@ -9493,10 +9687,10 @@ async function saveAudit(){
 // (unchanged) deck body, then restores whatever was active before, so picking
 // an export term never disturbs the rest of the screen.
 async function buildDeck(termOverride){
-  const prior=(termOverride!=null&&termOverride!==TERM)?{term:TERM,d:D,mdl:mdl,st:st}:null;
-  if(prior){TERM=termOverride;D=null;mdl=null;st=null;await load(true);}
+  const prior=(termOverride!=null&&termOverride!==TERM)?{term:TERM,d:D,mdl:mdl}:null;
+  if(prior){TERM=termOverride;D=null;mdl=null;await load(true);}
   try{ _buildDeckBody(); }
-  finally{ if(prior){TERM=prior.term;D=prior.d;mdl=prior.mdl;st=prior.st;} }
+  finally{ if(prior){TERM=prior.term;D=prior.d;mdl=prior.mdl;} }
 }
 function _buildDeckBody(){
   const m=model(),k=m.kpis;
@@ -9521,10 +9715,10 @@ function _buildDeckBody(){
   const gSorted=m.groups.slice().sort((a,b)=>b.va-a.va);
   const strongLg=gSorted[0]||null,weakLg=gSorted[gSorted.length-1]||null;
   const gDecl=m.groups.filter(g=>g.trend==='declining').length;
-  const isStale=stale();
-  const upDate=fmtD(st.uploads.connect.at);
+  const isStale=caFooter(AUDIT,new Date().toISOString()).outOfDate;
+  const upDate=' '+fmtD(((AUDIT&&AUDIT.sources&&AUDIT.sources.service)||{}).fedAt);
   const rrPct=Math.round(((D.settings&&D.settings.regRateNumerator)||3)/((D.settings&&D.settings.regRateDenominator)||4)*100);
-  const currency=isStale?'Student Team / Connect / Decision data was last updated'+upDate+' — refresh it in the Data tab for full currency.'
+  const currency=isStale?'Student Team / Connect / Decision data was last updated'+upDate+' — see Data check in the app.'
     :'This audit — attendance, Student Team, Connect and Decision — was last saved on '+upDate+'.';
   const funnelViz=()=>{const max=Math.max(1,atLeast(1));return '<div class="funnel">'+m.rungs.map((r,i)=>{const w=Math.max(7,Math.round(r.v/max*100)),leaky=i===leak;return '<div class="frow"><span class="flabel">'+esc(r.lb)+'</span><span class="ftrack"><span class="fbar'+(leaky?' leaky':'')+'" style="width:'+w+'%"></span></span><b class="fval'+(leaky?' leaky':'')+'">'+r.v+'</b></div>';}).join('')+'</div>';};
   const sparkViz=()=>{
@@ -9814,24 +10008,24 @@ function _buildDeckBody(){
 
 // ---------- router ----------
 function dispatch(p){
-  if(p==='ca-funnel')rFunnel();
-  else if(p==='ca-groups')rGroups();
-  else if(p==='ca-people')rPeople();
-  else if(p==='ca-data')rData();
-  else{S.page='ca-overview';rOverview();}
+  if(p==='ca-follow')return rFollow();
+  if(p==='ca-term')return rTerm();
+  if(p==='ca-quality')return rQuality();
+  S.page='ca-week';return rWeek();
 }
 async function render(p){
   if(!S.user||!['director','admin'].includes(S.user.role)){go('home');return;}
   // Ensure the audit list is known and a year is loaded (default: most recent).
   await auditList();
-  if(!AUDIT&&AUDIT_SUMMARIES&&AUDIT_SUMMARIES.length){ await auditLoad(AUDIT_SUMMARIES[0].year); }
-  await load(p==='ca-overview'||!D);
-  restore();mdl=null;
-  dispatch(p);
+  if(!AUDIT&&AUDIT_YEAR==null){ await auditLoad(AUDIT_SUMMARIES&&AUDIT_SUMMARIES.length?AUDIT_SUMMARIES[0].year:Number(_siteDay(Date.now()).slice(0,4))); } // no row yet: the current year's list status (Y8)
+  await load(p==='ca-week'||!D);
+  mdl=null;
+  await dispatch(p);
 }
 return{render,reset,stale,dismissWarn,setYear,setTerm,saveAudit,
   model:async()=>{await load();restore();return model();},
   fquad,gfilter,lgfilter,fopen,flowStats,_parseFlows:parseFlows,pick,upload,showPerson,showGroup,showLgRoster,exportMenu,exportQuad,buildDeck,
+  setQuad,follow,term,followCsv,uploadSource,
   pq,pstage,pquad,pmore};
 })();
 window.CA=CA;
