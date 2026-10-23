@@ -116,6 +116,14 @@ describe('landing', () => {
     expect(h).toContain('Form in (1)');
     expect(h).toContain('Done (0)');
   });
+  it('Needs action is a collapsed details by default (count in the summary), open when remembered', () => {
+    const F2 = env(I);
+    F2._hubSnapApply({ live: true, kinds: { unlinked: { rows: [{ subId: P(5) }], total: 1, takenAt: 't' }, mismatches: { rows: [], total: 0, takenAt: 't' }, forms: null } });
+    expect(F2._hubBodyHtml()).toMatch(/<details class="lk-done" ontoggle="_hubToggle\('need', this.open\)"><summary>Needs action \(\d+\)/);
+    const F3 = env({ ...I, hubOpen: { need: true } });
+    F3._hubSnapApply({ live: true, kinds: { forms: null } });
+    expect(F3._hubBodyHtml()).toContain(`<details class="lk-done" open ontoggle="_hubToggle('need'`);
+  });
   it('fallback: a snapshot from an older console is not applied (the caller warms the on-demand lookups)', () => {
     const F2 = env(I);
     expect(F2._hubSnapApply({ live: false, kinds: {} })).toBe(false);

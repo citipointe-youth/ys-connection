@@ -13651,8 +13651,8 @@ function _hubBodyHtml() {
   const unl = _hubRows('unlinked') || [], mis = _hubRows('mismatches') || [], need = M.fams.filter((f) => f.needs);
   const n = need.length + unl.length + M.loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
   const old = _hubAddDays(_siteDay(Date.now()), -28), open = I.hubOpen || {};
-  return `<div class="lk-sec">Needs action (${n})</div>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
-    + M.loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>')
+  return `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
+    + M.loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
       const fs = M.fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
       return `<details class="lk-done"${open[k] ? ' open' : ''} ontoggle="_hubToggle('${k}', this.open)"><summary>${esc(label + ' (' + fs.length + ')')} ${icS('chevd')}</summary>`
