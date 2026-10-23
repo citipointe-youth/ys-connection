@@ -41,12 +41,12 @@ describe('isoToDmy', () => {
   it.each(['2012-02-30', '12-04-2012', '', '2026-10-01', '1990-01-01'])('refuses %s', (iso) => expect(EF.isoToDmy(iso, today)).toBeNull());
 });
 
-describe('T4 (X19): the app submission ref on the student form', () => {
+describe('T4 (X19): the app submission ref is never on the forms (2026-10-24)', () => {
   const HOST = 'submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]';
-  it('the host answer ends with (ref) on the student form only; both bodies still match the real forms', () => {
+  it('the host answer is the host only, on both forms; both bodies still match the real forms', () => {
     const s = EF.studentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(studentHtml)!, BRIS);
-    expect(s.get(HOST)).toBe('Sam Host (YS-7K2M9Q)');
-    expect(/\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/.exec(s.get(HOST)!)![1]).toBe('YS-7K2M9Q'); // the console's own regex
+    expect(s.get(HOST)).toBe('Sam Host');
+    expect(s.toString()).not.toContain('YS-7K2M9Q');
     expect(EF.shapeProblems(studentHtml, s, BRIS)).toEqual([]);
     const p = EF.parentBody({ ...SAMPLE, ref: 'YS-7K2M9Q' }, EF.honeypotName(parentHtml)!, BRIS);
     expect(p.toString()).not.toContain('YS-7K2M9Q');

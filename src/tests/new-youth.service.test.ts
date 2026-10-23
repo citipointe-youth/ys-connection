@@ -79,13 +79,14 @@ describe('NewYouthService.send', () => {
     expect(await svc.send(ADMIN, INPUT)).toEqual({ student: 'sent', parent: 'sent', dryRun: false, ref: REF });
   });
 
-  it('T4 (X19): the posted student form carries the returned ref on its host answer; the parent form does not', async () => {
+  it('T4 (X19), 2026-10-24: neither posted form carries the returned ref', async () => {
     const f = fakeFetch();
     const svc = makeNewYouthService(await settingsWith('on'), { fetchFn: f.fetchFn, live: true });
     const r = await svc.send(LEADER, INPUT);
     expect(r.ref).toMatch(APP_REF_RE);
     const [student, parent] = f.posts().map((c) => new URLSearchParams(c.body));
-    expect(student!.get('submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]')).toBe(`Sam Host (${r.ref})`);
+    expect(student!.get('submissions[0][forms_custom_field][70d2227e-1a78-47c0-be6d-4fd8ddc12735]')).toBe('Sam Host');
+    expect(student!.toString()).not.toContain(r.ref!);
     expect(parent!.toString()).not.toContain(r.ref!);
     expect((await svc.send(LEADER, INPUT)).ref).toBe(r.ref); // a repeat answers with the same send
   });

@@ -231,7 +231,7 @@ export function studentBody(y: NewYouth, honeypot: string, e: ElvantoConfig): UR
   const F = e.fields, O = e.options;
   const b = new URLSearchParams();
   b.append('save', '1');
-  b.append(F.host ?? '', y.ref ? `${y.host} (${y.ref})` : y.host); // the console reads /\((YS-[0-9A-HJKMNP-TV-Z]{6})\)\s*$/
+  b.append(F.host ?? '', y.host); // 2026-10-24 (operator): no app ref on the host answer ("(YS-...)" showed in Elvanto); the console then pairs by pickParent
   b.append(F.givenBy ?? '', O.givenByChild ?? '');
   b.append(F.attending ?? '', O.attendRegular ?? '');
   b.append(`${S}[first_name]`, y.firstName);
