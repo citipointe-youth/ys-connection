@@ -246,6 +246,13 @@ export function attributedNote(leaderName: string, note: string | null): string 
   return note ? `${head} — ${note}` : head;
 }
 
+const FLOW_NOTE: readonly ActionType[] = ['completeStep', 'removeFromFlowStep'];
+/** Flows (2026-10-24, ruling Q2): `<name>: "<note>"`, or the name alone; reports keep attributedNote. */
+export function claimNote(type: ActionType, leaderName: string, note: string | null): string {
+  if (!FLOW_NOTE.includes(type)) return attributedNote(leaderName, note);
+  return note ? `${leaderName}: "${note}"` : leaderName;
+}
+
 /** The longest leader note that still fits CLAIM_NOTE_MAX once prefixed. */
 export function noteRoom(leaderName: string): number {
   return CLAIM_NOTE_MAX - attributedNote(leaderName, 'x').length + 1;

@@ -73,6 +73,9 @@ export const TEXT: Record<string, Entry> = {
   'form-unknown': ['later', 'A consent fix pointed at the wrong form', "Check that person's newest approved consent form in Elvanto."],
   'console-cannot-read': ['later', "The console couldn't read the Elvanto page for {type}", `Run that action again in the console to see which Elvanto page it could not read.${TELL}`],
   unknown: ['later', 'The console refused {type} for an unknown reason', `The console's log on the PC at that time has the reason.${TELL}`],
+  // 2026-10-24: a consentFix refused `unknown` whose detail names a missing profile field (sync.service result(), derived; not a REASON).
+  'fix-no-field': ['fyi', ["A consent fix needs a field this Elvanto profile doesn't have", "{n} consent fixes need a field their Elvanto profiles don't have"],
+    'Move them to New People in Elvanto (the console does this itself when the consent date field is missing), or add the field.'],
   'not-landed': ['now', "{type} didn't save in Elvanto", 'Do it in Elvanto by hand; the leader was told to as well.'],
   'report-exists': ['fyi', 'A report for that date already existed', `${LEADER_TOLD} edit it.`],
   'report-not-found': ['fyi', 'A report edit found the report gone', `${LEADER_TOLD} reload.`],

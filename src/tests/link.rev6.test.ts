@@ -233,7 +233,7 @@ describe('rev 6: removeFromFlowStep (R4)', () => {
     await h.one(ADMIN, a); await h.one(ADMIN, b);
     const rows = (await h.claim()).rows;
     expect(rows.find((r) => r.id === a.id)!.note).toBeNull();
-    expect(rows.find((r) => r.id === b.id)!.note).toBe('Self identified leader: Dana Day — Moved away.');
+    expect(rows.find((r) => r.id === b.id)!.note).toBe('Dana Day: "Moved away."');
   });
 });
 

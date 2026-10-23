@@ -11,7 +11,7 @@ import type { ConnectionAuditService, IngestResult } from './connection-audit.se
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, attributedNote, autoMatch, genderFixes } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, claimNote, genderFixes } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
 
@@ -23,6 +23,8 @@ export async function saveGenderFixes(repo: IStudentRepository, fixes: { student
 }
 import { parseGroupName } from './import.service';
 import type { ErrorLogService } from './error-log.service';
+// 2026-10-24: the console names a missing consent field only in detail (FIX_SHAPE, 11.1 ys-link.js:72-76); a contract reason would need a LINK_REV.
+const NO_FIELD = /profile (?:still )?has no (?:consent date|TOTAL non-consent date) field/;
 
 /** Roster auto-match + gender fixes (approved YS-only write). Called after a roster push and after every import (Part 2). */
 export async function rematchRoster(link: Pick<ILinkRepository, 'roster' | 'setMatches'>, students: IStudentRepository) {
@@ -115,7 +117,7 @@ export function makeSyncService(d: SyncDeps) {
       // is its ref row's (the repository claim), attributed by that row's own type, so the console compares what it first got.
       const noteFor = (row: (typeof ok)[number]['row']) => {
         const t = row.type === 'recheck' ? (row.payload as { type: ActionType }).type : row.type;
-        return ATTRIBUTED_TYPES.includes(t) && (t !== 'removeFromFlowStep' || row.note) ? attributedNote(row.leaderName, row.note) : row.note;
+        return ATTRIBUTED_TYPES.includes(t) && (t !== 'removeFromFlowStep' || row.note) ? claimNote(t, row.leaderName, row.note) : row.note;
       };
       const logins = new Map<string, string>();
       for (const id of new Set(ok.map((c) => c.row.createdBy))) {
@@ -173,7 +175,9 @@ export function makeSyncService(d: SyncDeps) {
         const groups = new Map<string, { code: string; route: string; count: number }>();
         hits.forEach((it, i) => {
           if (rows[i]?.type === 'recheck') return; // L7: a re-check's answer shows on its own row, never as an Error log line
-          const code = it.outcome === 'refused' ? it.reason : 'unclear', route = rows[i]?.type ?? 'unknown';
+          const code = it.outcome !== 'refused' ? 'unclear'
+            : rows[i]?.type === 'consentFix' && it.reason === 'unknown' && NO_FIELD.test(it.detail ?? '') ? 'fix-no-field' : it.reason;
+          const route = rows[i]?.type ?? 'unknown';
           const g = groups.get(`${route}|${code}`) ?? { code, route, count: 0 };
           g.count++; groups.set(`${route}|${code}`, g);
         });

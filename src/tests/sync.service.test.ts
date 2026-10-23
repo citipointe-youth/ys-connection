@@ -113,7 +113,9 @@ describe('sync.service claim', () => {
     }
     // Same as the fixture, apart from the clock fields and the leader prefix on the note (X1, ledger 25 D2).
     const strip = (r: any) => { const { createdAt: _c, ...rest } = r; return rest; };
-    const prefixed = (r: any) => (['submitReport', 'editReport', 'completeStep'].includes(r.type)
+    // 2026-10-24 (ruling Q2): flow notes read `<name>: "<note>"`; reports keep the label.
+    const prefixed = (r: any) => (r.type === 'completeStep' ? { ...r, note: r.note ? `${r.by.leaderName}: "${r.note}"` : r.by.leaderName }
+      : ['submitReport', 'editReport'].includes(r.type)
       ? { ...r, note: `Self identified leader: ${r.by.leaderName}` + (r.note ? ` — ${r.note}` : '') } : r);
     expect(reply.rows.map(strip)).toEqual(claimRes.rows.map(strip).map(prefixed));
     expect((await link.listConsoles()).map((c) => c.consoleId)).toEqual([CONSOLE]);
@@ -138,10 +140,13 @@ describe('sync.service claim', () => {
     const reply = await svc.claim({ ...claimReq, max: 20 });
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     const note = (id: string) => reply.rows.find((r) => r.id === id)!.note;
-    for (const t of ['submitReport', 'editReport', 'completeStep']) {
+    for (const t of ['submitReport', 'editReport']) {
       expect(note(ids[`${t}:note`]!)).toBe('Self identified leader: Cody Codeman — Called, left a message.');
       expect(note(ids[`${t}:none`]!)).toBe('Self identified leader: Cody Codeman');
     }
+    // 2026-10-24 (ruling Q2, Q7): a flow note is `<name>: "<note>"`, or the name alone.
+    expect(note(ids['completeStep:note']!)).toBe('Cody Codeman: "Called, left a message."');
+    expect(note(ids['completeStep:none']!)).toBe('Cody Codeman');
     expect(note(ci.id)).toBeNull();
     // The stored note stays the leader's own words.
     expect(link._peekNote(ids['completeStep:note']!)).toBe('Called, left a message.');
@@ -499,5 +504,49 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
     const c = await buildContainer();
     const r = await c.services.sync.push('busConsentForms', fx('push-bus-consent-forms.json'));
     expect(r).toMatchObject({ applied: true, rows: 2, new: 2 });
+  });
+});
+
+// ---------------- 2026-10-24 (plan Task 4): consentFix "missing field" refusals ----------------
+
+describe('sync.service result: consentFix missing-field refusals (fix-no-field)', () => {
+  // Byte for byte from 11.1 src/ys-link.js FIX_SHAPE (fix-no-date, fix-no-total, fix-no-date-moved, fix-no-total-moved).
+  const SHAPES = [
+    "Not sent: this person's Elvanto profile has no consent date field, so the console can't copy the form. Change it in Elvanto.",
+    "Not sent: this person's Elvanto profile has no TOTAL non-consent date field, so the console can't copy the form. Change it in Elvanto.",
+    "Not sent: this person is now in New People in Elvanto, but their profile still has no consent date field, so the console can't copy the form. Change it in Elvanto.",
+    "Not sent: this person is now in New People in Elvanto, but their profile still has no TOTAL non-consent date field, so the console can't copy the form. Change it in Elvanto.",
+  ];
+  const rid = (n: number) => `0c000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  function mk(types: Record<string, string>) {
+    const record = vi.fn(async () => {});
+    const link = {
+      applyResults: async (_c: string, res: { id: string }[]) => ({ applied: res.map((r) => r.id), ignored: [] }),
+      getAction: async (id: string) => (types[id] ? { id, type: types[id] } : null),
+    };
+    const svc = makeSyncService({ link: link as any, settings: new InMemorySettingsRepository(), students: new InMemoryStudentRepository(),
+      users: new InMemoryUserRepository(), errorLog: { record } } as any);
+    return { svc, record };
+  }
+  it('each of the four FIX_SHAPE details records fix-no-field, counted', async () => {
+    const types = Object.fromEntries([1, 2, 3, 4, 5].map((n) => [rid(n), 'consentFix']));
+    const { svc, record } = mk(types);
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [
+      ...SHAPES.map((detail, i) => ({ id: rid(i + 1), outcome: 'refused', reason: 'unknown', detail })),
+      { id: rid(5), outcome: 'refused', reason: 'unknown', detail: SHAPES[0] },
+    ] });
+    expect(record.mock.calls).toEqual([[{ category: 'link', code: 'fix-no-field', route: 'consentFix', role: 'console', count: 5 }]]);
+  });
+  it('a consentFix unknown with another detail or none, or another type with that detail, stays unknown', async () => {
+    const { svc, record } = mk({ [rid(1)]: 'consentFix', [rid(2)]: 'consentFix', [rid(3)]: 'consentSave' });
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [
+      { id: rid(1), outcome: 'refused', reason: 'unknown', detail: 'Something else.' },
+      { id: rid(2), outcome: 'refused', reason: 'unknown' },
+      { id: rid(3), outcome: 'refused', reason: 'unknown', detail: SHAPES[0] },
+    ] });
+    expect(record.mock.calls).toEqual([
+      [{ category: 'link', code: 'unknown', route: 'consentFix', role: 'console', count: 2 }],
+      [{ category: 'link', code: 'unknown', route: 'consentSave', role: 'console', count: 1 }],
+    ]);
   });
 });

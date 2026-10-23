@@ -63,6 +63,13 @@ describe('error-log-text', () => {
     expect(textFor('server', 'SETUP_INCOMPLETE', 'POST /auth/login', 503).tier).toBe('now');
   });
 
+  it('2026-10-24: fix-no-field (consentFix missing a field) is fyi, plain and counted, not raised', () => {
+    expect(textFor('link', 'fix-no-field', 'consentFix', null, 1)).toMatchObject({ tier: 'fyi', counted: true,
+      line1: "A consent fix needs a field this Elvanto profile doesn't have" });
+    expect(textFor('link', 'fix-no-field', 'consentFix', null, 12).line1).toBe("12 consent fixes need a field their Elvanto profiles don't have");
+    expect(textFor('link', 'fix-no-field', 'consentFix', null, 1).line2).toMatch(/^Move them to New People in Elvanto/);
+  });
+
   it('client rows: JS crash, network, 401/403, other 4xx, client copy of a server code', () => {
     expect(textFor('client', 'JS_TypeError', 'line 12:3', null)).toMatchObject({ tier: 'later', line1: 'A screen crashed in a browser (line 12:3)' });
     expect(textFor('client', 'NETWORK', 'page', null).tier).toBe('fyi');

@@ -94,7 +94,7 @@ describe('L7: POST /link/admin/unclear/:id/recheck queues a recheck row', () => 
     const row = (await h.claim()).rows.find((r) => r.id === id)!;
     expect(row.type).toBe('recheck');
     expect(row.payload).toEqual({ ref: h.a.id, type: 'completeStep', payload: h.orig.payload, sentLogKey: `complete:ys:${FR_OK}` });
-    expect(row.note).toBe(h.orig.note); // "Self identified leader: Dana Day — Called mum."
+    expect(row.note).toBe(h.orig.note); // 'Dana Day: "Called mum."'
     expect(row.by.leaderName).toBe('Dana Day');
   });
   it('a recheck row is not something a phone can queue, and never shows in the action lists', async () => {
