@@ -10,6 +10,8 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 
 **consent-hub/ys carries 0045 + 0046 (additive) and LINK_REV 19 (SW `ysc-v147`); ship before the console's consent-hub/console; rollback = Instant Rollback (tables stay, nothing to undo); the console at rev 19 against a rolled-back rev 18 app sends no snapshot (it checks appRev) and the old screens work as before.**
 
+**fix24/ys (flows reassign + consent hub "Saving X of N" + `fix-no-field`, SW `ysc-v149`): no migration (`/health` `schema.current` stays `0046`), `LINK_REV` stays 19, ship order vs the console does not matter; rollback = Instant Rollback to 20c0632 (`ysc-v148`), nothing to undo.**
+
 <!-- live -->
 - master sha: 6821ffb (hub-collapse/ys)
 - last ship: 2026-10-23 10:56 EAST
