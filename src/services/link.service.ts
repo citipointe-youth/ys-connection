@@ -26,7 +26,6 @@ import {
   LinkStillSending, LinkTooOld, LinkUnavailable,
   ConsentFlowUnknown,
 } from '../core/errors/link-errors';
-import { makeLeaderService } from './leader.service';
 import { dncFullyOn } from './dnc';
 import { makeStudentService } from './student.service';
 import { gradeRange } from '../core/ministry-config';
@@ -40,7 +39,7 @@ import {
 } from './access-control';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
 import { saveGenderFixes } from './sync.service';
@@ -141,6 +140,8 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   personId: string | null; name: string; due: string | null; assignedTo: string; openAction: ActionView | null;
   grade: number | null; gender: LinkFlowRow['gender']; mobile: string | null; mobileIsParent: boolean;
   assignedLeaderId: string | null; assignedLeaderName: string | null;
+  /** 2026-10-24: who has this person now: the app assignee, else the one active leader named by Elvanto's assignedTo; else null. */
+  currentLeaderId: string | null;
   /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/director login). */
   consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
@@ -153,6 +154,7 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   serviceVisits: number | null;
   /** S-1 / D7: the newest Complete/Remove of the last 7 days when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
+export interface FlowLeader { id: string; name: string; personId: string | null; gender: string | null; grades: number[] }
 /** Rev 6 (R2 b/c): GET /link/consents/lookup. `rows` are ConsentFormRow / ConsentMismatchRow (link-contract.ts). R9: an `other`
  *  row also carries flowId, stepId, dnc, consentFriday, notReceivedOk and marking (otherWait). */
 export interface ConsentLookupView { id: string; kind: ConsentLookupKind; status: 'waiting' | 'working' | 'ready' | 'failed';
@@ -190,7 +192,8 @@ export interface LinkService {
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
-  flows(actor: Actor): Promise<{ rows: FlowView[]; assignees?: { personId: string; name: string }[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
+  /** 2026-10-24: `leaders` (admin/director only) = the active app leaders for the Assigned to picker; personId null = no Elvanto match. */
+  flows(actor: Actor): Promise<{ rows: FlowView[]; leaders?: FlowLeader[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor, q?: unknown): Promise<{ rows: YouthRow[] }>;
   assignFlow(actor: Actor, body: unknown): Promise<{ ok: true }>;
@@ -308,6 +311,18 @@ function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRoster
   const grade = f.grade ?? r?.grade ?? null;
   const gender = f.gender ?? r?.gender ?? null;
   return canAccessGrade(a, grade, s) && (gender ? canAccessGender(a, gender, s) : genderScopeOf(a, s) == null);
+}
+/** 2026-10-24 (plan Task 2): leaderFitsPerson on the row's own grade/gender first, then the roster's (as flowRowVisible). */
+function fitsRow(l: Leader, f: LinkFlowRow, roster: Map<string, LinkRosterRow>): boolean {
+  const r = f.personId ? roster.get(f.personId) : undefined;
+  return leaderFitsPerson(l, f.grade ?? r?.grade ?? null, f.gender ?? r?.gender ?? null);
+}
+/** 2026-10-24: who has this row now: the app assignee, else the one active leader whose folded name is Elvanto's assignedTo. */
+function currentOf(f: LinkFlowRow, assigned: Leader | undefined, leaders: Leader[]): Leader | null {
+  if (assigned) return assigned;
+  const k = matchFold(f.assignedTo || '');
+  const hits = k ? leaders.filter((l) => l.active && matchFold(l.fullName) === k) : [];
+  return hits.length === 1 ? hits[0]! : null;
 }
 /** T6: a youth roster person this login may pick (admin/director: anyone; else grade, then gender when known). */
 // F-50(a): unknown gender is visible only to a login with no gender scope (as flowRowVisible).
@@ -587,7 +602,13 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const noteGiven = it.note != null && it.note.trim() !== '';
       const me0 = await resolveLeader(c, it.leaderId, false);
       // R4 (rev 9): notReceived is the server's own mark on a stored completeStep, never part of what the phone sent.
-      const sent = (x: unknown) => { if (it.type !== 'completeStep' || !x || typeof x !== 'object') return x; const { notReceived: _n, ...rest } = x as Record<string, unknown>; return rest; };
+      // 2026-10-24: so is assignTo for a non-admin (the server sets it to the current assignee).
+      const sent = (x: unknown) => {
+        if (it.type !== 'completeStep' || !x || typeof x !== 'object') return x;
+        const { notReceived: _n, ...rest } = x as Record<string, unknown>;
+        if (!isAdminRole(c.actor)) delete rest.assignTo;
+        return rest;
+      };
       if (prev.type !== it.type || stable(sent(prev.payload)) !== stable(sent(it.payload)) || prev.hasNote !== noteGiven
         || (prev.leaderId ?? null) !== me0.id) throw new LinkIdReused();
       Object.assign(who, { id: prev.leaderId, name: prev.leaderName });
@@ -754,8 +775,24 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         throw new LinkBusyRow();
       }
       if (it.type === 'completeStep') {
-        // r21 L6b review fix 1: only the admin or a director picks who gets the next step (the SPA shows the picker to them only).
-        if ((p as { assignTo?: string }).assignTo && !isAdminRole(c.actor)) throw new ForbiddenError('Only the admin or a director can pick who gets the next step.');
+        // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or a director picks who gets the next step, and only a leader who
+        // fits the person or the current assignee. Anyone else hands it to the current assignee (server-set, like notReceived);
+        // with no Elvanto match for them, Elvanto's usual pick (Q9).
+        const [leaders, assigns] = await Promise.all([c.leaders(), d.link.flowAssignments()]);
+        const byRoster = new Map(roster.map((x) => [x.personId, x]));
+        const a0 = row.personId ? assigns.find((x) => x.flowId === row.flowId && x.personId === row.personId) : undefined;
+        const current = currentOf(row, a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined, leaders);
+        const personOf = rosterPersonMatcher(roster, leaders);
+        const pa = p as { assignTo?: string };
+        if (isAdminRole(c.actor)) {
+          if (pa.assignTo && !leaders.some((l) => l.active && personOf(l) === pa.assignTo && (fitsRow(l, row, byRoster) || l.id === current?.id))) {
+            throw new BadRequestError('Pick a leader from the list.');
+          }
+        } else {
+          delete pa.assignTo;
+          const to = current ? personOf(current) : null;
+          if (to) pa.assignTo = to;
+        }
         // R4: DO NOT CONTACT = Remove only. CY-B1: the flag GET /link/flows shows (the roster's sticky DNC when the flow
         // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
         const consent = shownConsent(row, new Map(roster.map((x) => [x.personId, x])));
@@ -1154,7 +1191,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent, serviceVisits: f.serviceVisits ?? null,
-            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null,
+            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null, currentLeaderId: currentOf(f, l, leaders)?.id ?? null,
             consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people, c.time),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
@@ -1163,12 +1200,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
-      // r21 L6b (T4): who can get the next step on a Complete: active app leaders matched to one Elvanto person (as the door's leaders).
+      // 2026-10-24 (replaces r21 assignees): the Assigned to picker's leaders, admin/director only (they alone pick or reassign).
       const personOf = rosterPersonMatcher(roster, leaders);
-      const assignees = leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
-        .flatMap((l) => { const personId = personOf(l); return personId ? [{ personId, name: l.fullName }] : []; });
-      // only admin/director have the picker, so only they get assignees
-      return { rows, ...(isAdminRole(actor) ? { assignees } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
+      const pick = (): FlowLeader[] => leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
+        .map((l) => ({ id: l.id, name: l.fullName, personId: personOf(l), gender: l.gender, grades: [...l.grades] }));
+      return { rows, ...(isAdminRole(actor) ? { leaders: pick() } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder), progress };
     },
 
@@ -1250,9 +1286,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { rows };
     },
 
-    /** T6: give a flow person to a leader (app only, never sent to Elvanto). Any login that sees the person may. */
+    /** T6: give a flow person to a leader (app only, never sent to Elvanto). 2026-10-24 (Q4): admin/director only. */
     async assignFlow(actor, body) {
       const c = context(actor, await gate(actor, ['flows']));
+      if (!isAdminRole(actor)) throw new ForbiddenError('Only the admin or a director can reassign.');
       const parsed = z.object({ flowId: Uuid, personId: Uuid, leaderId: Uuid.nullable() }).safeParse(body ?? {});
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
       const b = parsed.data;
@@ -1263,9 +1300,15 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!rows.some((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))) {
         throw new ForbiddenError('This person is not one of yours.');
       }
-      // Only a leader this login could pick in its "I am" list (same scope as GET /leaders).
-      if (b.leaderId !== null && !(await makeLeaderService(d.leaders).list(actor)).some((l) => l.id === b.leaderId)) {
-        throw new BadRequestError('Pick a leader from the list.');
+      // 2026-10-24: only a leader who fits the person (leaderFitsPerson), or the one who has them now.
+      if (b.leaderId !== null) {
+        const [leaders, assigns] = await Promise.all([c.leaders(), d.link.flowAssignments()]);
+        const a0 = assigns.find((x) => x.flowId === b.flowId && x.personId === b.personId);
+        const assigned = a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined;
+        const l = leaders.find((x) => x.id === b.leaderId && x.active);
+        if (!l || !rows.some((f) => fitsRow(l, f, byId) || currentOf(f, assigned, leaders)?.id === l.id)) {
+          throw new BadRequestError('Pick a leader from the list.');
+        }
       }
       await d.link.setFlowAssign({ ...b, assignedBy: await c.login() });
       return { ok: true };

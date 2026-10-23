@@ -13,6 +13,7 @@ import { RateLimiter } from '../utils/rate-limiter';
 import type { Actor } from '../core/entities/user';
 import type { Capabilities, LinkGroupRow } from '../core/link-types';
 import { parseGroupName } from '../services/import.service';
+import { leaderFitsPerson } from '../services/link-rules';
 
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = new Date('2026-10-16T09:00:00.000Z'); // Friday 19:00 Brisbane
@@ -1419,31 +1420,84 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T4: flow rows carry grade, gender, mobile, mobileIsParent and the assignee', async () => {
     const h = await setup();
     const r = (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FR1)!;
-    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'dnc', 'due', 'flowId', 'flowName',
+    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'currentLeaderId', 'dnc', 'due', 'flowId', 'flowName',
       'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'notReceivedOk', 'openAction', 'personId', 'rowId', 'serviceVisits', 'stepId', 'stepName', 'stepOrder']);
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });
 
-  it('r21 L6b (T4): the flows view lists who can get the next step: active app leaders matched to one Elvanto person', async () => {
+  // ---- Flows reassign (plan 2026-10-24 Task 2; rulings Q1, Q4, Q9) ----
+  let pushN = 10;
+  const repush = async (h: H, tweak: Record<string, Record<string, unknown>>) => h.link.replaceMirror('flows',
+    (await h.link.flows()).map((f) => ({ ...f, ...tweak[f.rowId] })), { takenAt: `2026-10-16T08:${++pushN}:00.000Z`, consoleId: CONSOLE });
+  const tom = (p: Record<string, unknown> = {}) => step({ rowId: FR3, flowId: FLOW_A, stepId: STEP3, personId: P_TOM, ...p });
+
+  it('2026-10-24: ADMIN/DIRECTOR get leaders (active, by name, personId or null); others get none; nobody gets assignees', async () => {
     const h = await setup();
-    expect((await h.svc.flows(ADMIN)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Codeman' }]); // Dana: no match, Eve: two, Fay: inactive
+    const want = [{ id: L_CODY, name: 'Cody  Codeman', personId: P_CODY, gender: 'male', grades: [9, 10] },
+      { id: L_DANA, name: 'Dana Day', personId: null, gender: 'female', grades: [9, 10] },
+      { id: L_EVE, name: 'Eve Evans', personId: null, gender: 'female', grades: [9, 10] }]; // Fay: inactive
+    for (const a of [ADMIN, DIRECTOR]) {
+      const v = await h.svc.flows(a);
+      expect(v.leaders).toEqual(want);
+      expect(v).not.toHaveProperty('assignees');
+    }
+    for (const a of [GRADE, LEADER]) {
+      const v = await h.svc.flows(a);
+      expect(v).not.toHaveProperty('leaders');
+      expect(v).not.toHaveProperty('assignees');
+    }
   });
 
-  it('r21 fix (review #4): only admin/director get the assignees list', async () => {
+  it('2026-10-24: currentLeaderId = the app assignment, else the one active leader named by assignedTo, else null', async () => {
     const h = await setup();
-    expect((await h.svc.flows(DIRECTOR)).assignees).toEqual([{ personId: P_CODY, name: 'Cody  Codeman' }]);
-    for (const a of [GRADE, LEADER]) expect((await h.svc.flows(a)).assignees).toBeUndefined();
+    await repush(h, { [FR3]: { assignedTo: 'Dana Day' }, [FR1]: { assignedTo: 'Eve Evans' } });
+    const cur = async (a: Actor, rowId: string) => (await h.svc.flows(a)).rows.find((r) => r.rowId === rowId)!.currentLeaderId;
+    expect(await cur(ADMIN, FR3)).toBe(L_DANA);            // Elvanto's assignee, matched by name
+    expect(await cur(GRADE, FR1)).toBe(L_EVE);             // every login gets it
+    await h.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    expect(await cur(GRADE, FR1)).toBe(L_CODY);            // the app assignment wins
+    await repush(h, { [FR3]: { assignedTo: 'Fay Fox' } });
+    expect(await cur(ADMIN, FR3)).toBeNull();              // inactive = no hit
+    await repush(h, { [FR3]: { assignedTo: 'Admin' } });
+    expect(await cur(ADMIN, FR3)).toBeNull();              // no hit
+    await h.leaders.save(leader(u(305), 'Dana  Day', 'female') as never);
+    await repush(h, { [FR3]: { assignedTo: 'Dana Day' } });
+    expect(await cur(ADMIN, FR3)).toBeNull();              // two hits
   });
 
-  it('r21 L6b (T4): a Complete may carry assignTo (an Elvanto person id); it is stored on the payload', async () => {
+  it('2026-10-24: admin Complete: a fitting leader is saved, a non-fitting one refused, the current one always accepted', async () => {
     const h = await setup();
     expect((await enq(h.svc, ADMIN, step({ assignTo: 'x' }), DEV)).code).toBe('VALIDATION_ERROR');
-    const s = step({ assignTo: P_CODY });
-    expect((await enq(h.svc, ADMIN, s, DEV)).outcome).toBe('saved');
-    expect((await h.link.getAction(s.id))!.payload).toMatchObject({ assignTo: P_CODY });
-    const g = await setup(); // review fix 1: only the admin or a director picks the next step's person
-    expect((await enq(g.svc, GRADE, step({ assignTo: P_CODY }), DEV)).code).toBe('FORBIDDEN');
-    expect((await enq(g.svc, GRADE, step(), DEV)).outcome).toBe('saved');
+    const fit = tom({ assignTo: P_CODY }); // Tom: grade 10 boy; Cody: grades 9-10, male
+    expect((await enq(h.svc, ADMIN, fit, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(fit.id))!.payload).toMatchObject({ assignTo: P_CODY });
+    const bad = await enq(h.svc, DIRECTOR, step({ assignTo: P_CODY }), DEV); // Amy: grade 9 girl
+    expect(bad).toMatchObject({ code: 'BAD_REQUEST', message: 'Pick a leader from the list.' });
+    const g = await setup();
+    await repush(g, { [FR1]: { assignedTo: 'Cody Codeman' } });
+    const cur = step({ assignTo: P_CODY });
+    expect((await enq(g.svc, ADMIN, cur, DEV)).outcome).toBe('saved'); // the current assignee, though he does not fit
+    const none = tom();
+    expect((await enq(g.svc, ADMIN, none, DEV)).outcome).toBe('saved');
+    expect((await g.link.getAction(none.id))!.payload).not.toHaveProperty('assignTo'); // Elvanto's usual pick
+  });
+
+  it('2026-10-24: a non-admin Complete ignores any assignTo and hands the next step to the current assignee', async () => {
+    const h = await setup();
+    const a = step({ assignTo: P_CODY });
+    expect((await enq(h.svc, GRADE, a, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(a.id))!.payload).not.toHaveProperty('assignTo'); // no current assignee: Elvanto picks (Q9)
+    const g = await setup();
+    await g.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    const b = step();
+    expect((await enq(g.svc, GRADE, b, DEV)).outcome).toBe('saved');
+    expect((await g.link.getAction(b.id))!.payload).toMatchObject({ assignTo: P_CODY });
+    expect((await enq(g.svc, GRADE, b, DEV)).outcome).toBe('replay'); // the phone item has no assignTo: not a conflict
+    const e = await setup();
+    await e.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA, assignedBy: 'admin' });
+    const c = step({ assignTo: P_CODY });
+    expect((await enq(e.svc, GRADE, c, DEV)).outcome).toBe('saved');
+    expect((await e.link.getAction(c.id))!.payload).not.toHaveProperty('assignTo'); // Dana has no Elvanto match (Q9)
   });
 
   it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
@@ -1501,26 +1555,26 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {
     const h = await setup();
     const row = async (a: Actor) => (await h.svc.flows(a)).rows.find((r) => r.rowId === FR1)!;
-    expect(await h.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true });
-    expect(await row(GRADE)).toMatchObject({ assignedLeaderId: L_DANA, assignedLeaderName: 'Dana Day' });
-    expect((await h.link.flowAssignments())[0]).toMatchObject({ assignedBy: 'grade9g' });
-    await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_EVE });
+    expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true });
+    expect(await row(GRADE)).toMatchObject({ assignedLeaderId: L_DANA, assignedLeaderName: 'Dana Day', currentLeaderId: L_DANA });
+    expect((await h.link.flowAssignments())[0]).toMatchObject({ assignedBy: 'admin' });
+    await h.svc.assignFlow(DIRECTOR, { flowId: FLOW_B, personId: P_AMY, leaderId: L_EVE });
     expect(await row(ADMIN)).toMatchObject({ assignedLeaderId: L_EVE, assignedLeaderName: 'Eve Evans' });
-    await h.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: null });
+    await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: null });
     expect(await row(GRADE)).toMatchObject({ assignedLeaderId: null, assignedLeaderName: null });
   });
 
   it('T6: 404 module off, 403 outside scope or step 0, 400 unknown/inactive leader or no such person', async () => {
     const h = await setup();
     const a = (actor: Actor, b: object) => code(h.svc.assignFlow(actor, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA, ...b }));
-    expect(await a(GRADE2, {})).toBe('FORBIDDEN');                            // Amy is a Year 9 girl
-    expect(await a(GRADE, { personId: P_BEN })).toBe('FORBIDDEN');            // Ben: step 0
-    expect(await a(GRADE, { leaderId: u(399) })).toBe('BAD_REQUEST');         // unknown leader
-    expect(await a(GRADE, { leaderId: L_FAY })).toBe('BAD_REQUEST');          // inactive leader
-    expect(await a(GRADE, { personId: P_TOM })).toBe('BAD_REQUEST');          // not in this flow
-    expect(await a(GRADE, { personId: null })).toBe('VALIDATION_ERROR');      // a row with no person cannot be assigned
+    expect(await a(GRADE, {})).toBe('FORBIDDEN');                             // 2026-10-24 (Q4): only admin/director reassign
+    expect(await a(GRADE2, {})).toBe('FORBIDDEN');
+    expect(await a(ADMIN, { leaderId: u(399) })).toBe('BAD_REQUEST');         // unknown leader
+    expect(await a(ADMIN, { leaderId: L_FAY })).toBe('BAD_REQUEST');          // inactive leader
+    expect(await a(ADMIN, { personId: P_TOM })).toBe('BAD_REQUEST');          // not in this flow
+    expect(await a(ADMIN, { personId: null })).toBe('VALIDATION_ERROR');      // a row with no person cannot be assigned
     const off = await setup({ checkin: 'on', lifegroupReport: 'on' });
-    expect(await code(off.svc.assignFlow(GRADE, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA }))).toBe('MODULE_DISABLED');
+    expect(await code(off.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA }))).toBe('MODULE_DISABLED');
   });
 
   it('T8: lifegroups carry grade, gender and history (overlay first), sorted 6..12, girls then boys, no grade last', async () => {
@@ -1606,12 +1660,34 @@ describe('RFIX (review of the UX batch)', () => {
     expect((await enq(h.svc, GRADE, checkOut(P_STR), DEV)).code).toBe('BAD_REQUEST'); // not on the roster, not checked in
   });
 
-  it('T6: assignFlow only takes a leader the login could pick in its "I am" list (gender scope)', async () => {
+  it('2026-10-24: assignFlow takes only a leader who fits the person (or the current assignee)', async () => {
     const h = await setup();
-    const a = (actor: Actor, leaderId: string) => code(h.svc.assignFlow(actor, { flowId: FLOW_B, personId: P_AMY, leaderId }));
-    expect(await a(GRADE, L_CODY)).toBe('BAD_REQUEST');   // Cody is male; GRADE is a girls login
-    expect(await a(GRADE, L_DANA)).toBe('ok');
-    expect(await a(ADMIN, L_CODY)).toBe('ok');            // admin picks anyone
+    const a = (actor: Actor, leaderId: string | null, personId = P_AMY, flowId = FLOW_B) => code(h.svc.assignFlow(actor, { flowId, personId, leaderId }));
+    expect(await a(ADMIN, L_CODY)).toBe('BAD_REQUEST');   // Amy is a grade 9 girl; Cody is male
+    expect(await a(ADMIN, L_DANA)).toBe('ok');
+    expect(await a(DIRECTOR, L_CODY, P_TOM, FLOW_A)).toBe('ok'); // Tom: grade 10 boy
+    expect(await a(ADMIN, null)).toBe('ok');
+    await h.leaders.save({ ...leader(u(306), 'Nora None', null), grades: [] } as never); // no grades = director level (Q1)
+    expect(await a(ADMIN, u(306))).toBe('ok');
+    expect(await a(ADMIN, null)).toBe('ok'); // no app assignee, so Elvanto's assignedTo names the current one
+    await h.link.replaceMirror('flows', (await h.link.flows()).map((f) => (f.rowId === FR1 ? { ...f, assignedTo: 'Cody Codeman' } : f)),
+      { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
+    expect(await a(ADMIN, L_CODY)).toBe('ok');            // the current assignee stays pickable
+  });
+
+  it('2026-10-24: leaderFitsPerson (ruling Q1)', () => {
+    const L = (grades: number[], gender: string | null, active = true) => ({ active, grades, gender });
+    for (const [g, s] of [[8, 'male'], [8, 'female'], [null, null], [12, null]] as const) expect(leaderFitsPerson(L([], null), g, s)).toBe(true);
+    expect(leaderFitsPerson(L([], 'female'), 8, 'male')).toBe(true); // no grades = director/admin level, any gender
+    const m8 = L([8], 'male');
+    expect(leaderFitsPerson(m8, 8, 'male')).toBe(true);
+    expect(leaderFitsPerson(m8, 8, 'female')).toBe(false);
+    expect(leaderFitsPerson(m8, 10, 'male')).toBe(false);
+    expect(leaderFitsPerson(m8, null, 'male')).toBe(false);
+    expect(leaderFitsPerson(L([8], null), 8, 'male')).toBe(true);
+    expect(leaderFitsPerson(L([8], null), 8, 'female')).toBe(true);
+    expect(leaderFitsPerson(L([], null, false), 8, 'male')).toBe(false);
+    expect(leaderFitsPerson(L([8], 'male', false), 8, 'male')).toBe(false);
   });
 });
 
