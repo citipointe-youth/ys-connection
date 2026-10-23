@@ -1,4 +1,4 @@
-import { computeQuad } from '../core/types/enums';
+import { computeQuad, groupQuadOf, type Quad } from '../core/types/enums';
 import { saturdayOf } from './terms';
 import type { LabeledTerm } from './year-terms';
 
@@ -33,14 +33,15 @@ export interface GroupInput {
   members: { id: string; first_name: string; last_name: string; attendance: (boolean | null)[] }[]; // null = no mark
 }
 
-// Grade + gender from a lifegroup name, e.g. "Grade 9 Girls Lifegroup".
-export function parseGroupMeta(name: string): { grade: number | null; gender: 'male' | 'female' | null } {
+// Grade + gender from a lifegroup name, e.g. "Grade 9 Girls Lifegroup"; a "Junior Guys ..." name (no grade) gives its quad.
+export function parseGroupMeta(name: string): { grade: number | null; gender: 'male' | 'female' | null; quad: Quad | null } {
   const gm = name.match(/\bGrade\s+(\d+)\b/i);
   const grade = gm ? parseInt(gm[1]!, 10) : null;
   let gender: 'male' | 'female' | null = null;
   if (/\bboys?\b/i.test(name)) gender = 'male';
   else if (/\bgirls?\b/i.test(name)) gender = 'female';
-  return { grade, gender };
+  const quad = groupQuadOf(name);
+  return { grade, gender: quad ? (quad.startsWith('g') ? 'female' : 'male') : gender, quad };
 }
 
 export function buildGroupModel(groups: GroupInput[], serviceDayOfWeek = 5): GroupParsed {
@@ -100,7 +101,7 @@ export function buildLifegroupStats(groups: GroupInput[], terms: LabeledTerm[], 
 
   groups.forEach((group, gi) => {
     const meta = parseGroupMeta(group.name);
-    const quad = (computeQuad(meta.grade, meta.gender ?? 'other') as string | null) ?? null;
+    const quad = (computeQuad(meta.grade, meta.gender ?? 'other') as string | null) ?? meta.quad;
     const weekOfIdx = group.meetings.map((d) => saturdayOf(d, serviceDayOfWeek));
     const youth = group.members; // leaders were excluded by audit-parse (import.leaderTag)
 

@@ -162,7 +162,7 @@ function weeklySeries(year: number, students: AuditStudent[], people: Map<string
   valid.forEach((d) => { at(d).night = true; });
   for (const a of svc.attendance) if (valid.has(a.sessionId)) at(a.sessionId).youth.add(a.id);
   for (const g of groups) {
-    const meta = parseGroupMeta(g.name), gq = quadOf(meta.grade, meta.gender) ?? NONE;
+    const meta = parseGroupMeta(g.name), gq = quadOf(meta.grade, meta.gender) ?? meta.quad ?? NONE;
     for (const m of g.members) m.attendance.forEach((mark, i) => {
       if (mark === null) return;
       const w = at(g.meetings[i]!);
