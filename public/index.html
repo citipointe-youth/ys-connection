@@ -13690,6 +13690,15 @@ function _hubSendHtml() {
   s.shown = true;
   return `<div class="strip" role="status">${esc('Done: ' + n + ' of ' + n + (s.bad ? ', ' + s.bad + ' not saved: open it to see why' : '') + '.')}</div>`;
 }
+// Week filter (2026-10-24): Current week / Last week / All, Monday to Sunday (_lkWeekStart) in the location's zone. A family goes by its
+// newest date (f.date), a consent form by the day it was filled in. No date = All only. Search ignores the filter.
+function _hubInWeek(ymd, wk, today) {
+  if (wk !== 'cur' && wk !== 'last') return true;
+  const s = _lkAddDays(_lkWeekStart(today), wk === 'last' ? -7 : 0), d = String(ymd || '').slice(0, 10);
+  return !!d && d >= s && d <= _lkAddDays(s, 6);
+}
+function _hubWk() { const I = _ik(); if (!I.hubWk) { try { I.hubWk = localStorage.getItem('yap_hub_wk'); } catch (e) {} } return I.hubWk === 'cur' || I.hubWk === 'last' ? I.hubWk : 'all'; }
+function _hubSetWk(v) { _ik().hubWk = v; try { localStorage.setItem('yap_hub_wk', v); } catch (e) {} _ikDraw(); }
 function _hubBodyHtml() {
   const I = _ik(), st = _ikSt(), M = _hubM(), q = String(I.hubQ || '').trim(), row = (f) => _hubFamRow(f, M.fams.indexOf(f));
   I.hubShown = M.fams;
@@ -13702,13 +13711,15 @@ function _hubBodyHtml() {
       }).join('') : '');
     return h || `<div class="lk-hint">${esc('Nobody matches "' + q + '".')}</div>`;
   }
-  const unl = _hubRows('unlinked') || [], mis = _hubRows('mismatches') || [], need = M.fams.filter((f) => f.needs);
-  const n = need.length + unl.length + M.loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
-  const old = _hubAddDays(_siteDay(Date.now()), -28), open = I.hubOpen || {};
-  return _hubSendHtml() + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
-    + M.loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
+  const wk = _hubWk(), today = _siteDay(Date.now()), inWk = (d) => _hubInWeek(d, wk, today), fams = M.fams.filter((f) => inWk(f.date));
+  const mis = _hubRows('mismatches') || [], need = fams.filter((f) => f.needs), loose = M.loose.filter((i) => inWk(mis[i] && mis[i].submitted));
+  const unl = (_hubRows('unlinked') || []).map((f, i) => [f, i]).filter(([f]) => inWk(f && f.submitted)); // keep each form's own index
+  const n = need.length + unl.length + loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
+  const old = _hubAddDays(today, -28), open = I.hubOpen || {};
+  return _hubSendHtml() + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
+    + loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
-      const fs = M.fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
+      const fs = fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
       return `<details class="lk-done"${open[k] ? ' open' : ''} ontoggle="_hubToggle('${k}', this.open)"><summary>${esc(label + ' (' + fs.length + ')')} ${icS('chevd')}</summary>`
         + _hubBulkHtml(k, M) + (fs.map(row).join('') || '<div class="lk-hint">None.</div>') + '</details>';
     }).join('');
@@ -13769,6 +13780,7 @@ function _hubPage() {
   if (!I.hub) return I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>` : progBar('Loading');
   return `<div class="sbar"><input id="hub-q" type="search" maxlength="60" placeholder="Search a name or consent form" aria-label="Search a name or consent form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(I.hubQ || '')}" oninput="_hubQ(this.value)"></div>`
     + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Checking…' : 'Refresh'}</button></div>`
+    + `<div class="tbbar" role="group" aria-label="Show">${[['cur', 'Current week'], ['last', 'Last week'], ['all', 'All']].map(([k, l]) => `<button type="button" class="tbbtn ${_hubWk() === k ? 'on' : ''}" aria-pressed="${_hubWk() === k}" onclick="_hubSetWk('${k}')">${esc(l)}</button>`).join('')}</div>`
     + _ikBanner(st, null) + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="hub-res">${_hubBodyHtml()}</div>` + _ikConsentHelp();
 }
