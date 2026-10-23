@@ -142,6 +142,8 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   assignedLeaderId: string | null; assignedLeaderName: string | null;
   /** 2026-10-24: who has this person now: the app assignee, else the one active leader named by Elvanto's assignedTo; else null. */
   currentLeaderId: string | null;
+  /** 2026-10-24 (Q9): the current leader has an Elvanto person, so a non-admin Complete hands the next step to them; false = Elvanto picks. */
+  currentLeaderLinked: boolean;
   /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/director login). */
   consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
@@ -318,6 +320,9 @@ function fitsRow(l: Leader, f: LinkFlowRow, roster: Map<string, LinkRosterRow>):
   return leaderFitsPerson(l, f.grade ?? r?.grade ?? null, f.gender ?? r?.gender ?? null);
 }
 /** 2026-10-24: who has this row now: the app assignee, else the one active leader whose folded name is Elvanto's assignedTo. */
+function currentFields(cur: Leader | null, personOf: (l: Leader) => string | null) {
+  return { currentLeaderId: cur?.id ?? null, currentLeaderLinked: cur ? personOf(cur) != null : false };
+}
 function currentOf(f: LinkFlowRow, assigned: Leader | undefined, leaders: Leader[]): Leader | null {
   if (assigned) return assigned;
   const k = matchFold(f.assignedTo || '');
@@ -1182,6 +1187,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const cRows = flows.some((f) => isConsentStep(f, people)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
       const byId = new Map(roster.map((r) => [r.personId, r]));
       const assigned = new Map(assigns.map((x) => [`${x.flowId}:${x.personId}`, leaders.find((l) => l.id === x.leaderId)]));
+      const personOf = rosterPersonMatcher(roster, leaders);
       const rows = flows.filter((f) => flowRowVisible(actor, f, byId, c.structure, c.settings.ministryConfig.modules.flowHiddenStep))
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder)
         .map((f: LinkFlowRow): FlowView => {
@@ -1191,7 +1197,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent, serviceVisits: f.serviceVisits ?? null,
-            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null, currentLeaderId: currentOf(f, l, leaders)?.id ?? null,
+            assignedLeaderId: l?.id ?? null, assignedLeaderName: l?.fullName ?? null, ...currentFields(currentOf(f, l, leaders), personOf),
             consent, dnc, consentStep: isConsentStep(f, people), ...consentWait(f, consent, cRows, now, people, c.time),
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
@@ -1201,7 +1207,6 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
       // 2026-10-24 (replaces r21 assignees): the Assigned to picker's leaders, admin/director only (they alone pick or reassign).
-      const personOf = rosterPersonMatcher(roster, leaders);
       const pick = (): FlowLeader[] => leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
         .map((l) => ({ id: l.id, name: l.fullName, personId: personOf(l), gender: l.gender, grades: [...l.grades] }));
       return { rows, ...(isAdminRole(actor) ? { leaders: pick() } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step

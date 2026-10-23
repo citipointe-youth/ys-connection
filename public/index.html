@@ -12108,7 +12108,7 @@ function _lkStepHtml() {
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
     assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
-      <p class="lk-hint">${r.currentLeaderId ? 'Complete gives the next step to them.' : 'Elvanto will pick who gets the next step.'} Ask the admin to change it.</p>`;
+      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them.' : 'Elvanto will pick who gets the next step.'} Ask the admin to change it.</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
@@ -12169,7 +12169,7 @@ function _lkFits(l, grade, gender) {
 async function _lkAssignSave(r, l) {
   const lid = l ? l.id : null;
   await API.post('/link/flows/assign', { flowId: r.flowId, personId: r.personId, leaderId: lid });
-  (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.name : null; x.currentLeaderId = lid; } });
+  (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.name : null; x.currentLeaderId = lid; x.currentLeaderLinked = !!(l && l.personId); } });
 }
 // Reassign (admin/director): saves the pick, does not complete the step.
 async function _lkReassign() {

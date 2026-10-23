@@ -1420,7 +1420,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T4: flow rows carry grade, gender, mobile, mobileIsParent and the assignee', async () => {
     const h = await setup();
     const r = (await h.svc.flows(ADMIN)).rows.find((x) => x.rowId === FR1)!;
-    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'currentLeaderId', 'dnc', 'due', 'flowId', 'flowName',
+    expect(Object.keys(r).sort()).toEqual(['assignedLeaderId', 'assignedLeaderName', 'assignedTo', 'consent', 'consentFriday', 'consentStep', 'currentLeaderId', 'currentLeaderLinked', 'dnc', 'due', 'flowId', 'flowName',
       'gender', 'grade', 'mobile', 'mobileIsParent', 'name', 'notReceivedOk', 'openAction', 'personId', 'rowId', 'serviceVisits', 'stepId', 'stepName', 'stepOrder']);
     expect(r).toMatchObject({ grade: null, gender: null, mobile: null, mobileIsParent: false, assignedLeaderId: null, assignedLeaderName: null });
   });
@@ -1463,6 +1463,16 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     await h.leaders.save(leader(u(305), 'Dana  Day', 'female') as never);
     await repush(h, { [FR3]: { assignedTo: 'Dana Day' } });
     expect(await cur(ADMIN, FR3)).toBeNull();              // two hits
+  });
+
+  it('2026-10-24: currentLeaderLinked = the current leader has an Elvanto person (every login), else false', async () => {
+    const h = await setup();
+    await repush(h, { [FR1]: { assignedTo: 'Dana Day' }, [FR3]: { assignedTo: 'Admin' } });
+    const lk = async (a: Actor, rowId: string) => (await h.svc.flows(a)).rows.find((r) => r.rowId === rowId)!.currentLeaderLinked;
+    expect(await lk(GRADE, FR1)).toBe(false);              // Dana: a known leader, no Elvanto person
+    expect(await lk(ADMIN, FR3)).toBe(false);              // no current leader
+    await h.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    expect(await lk(GRADE, FR1)).toBe(true);               // Cody: matched to P_CODY
   });
 
   it('2026-10-24: admin Complete: a fitting leader is saved, a non-fitting one refused, the current one always accepted', async () => {

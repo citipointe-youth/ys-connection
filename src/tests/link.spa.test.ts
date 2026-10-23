@@ -1552,7 +1552,7 @@ describe('F3 flow steps', () => {
     expect(out).not.toContain('<b>Codeman');
   });
   it('T5: tapping a row opens the detail sheet with a text link and Complete; a grade login sees who has the person, no picker', () => {
-    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Codeman</b>', currentLeaderId: 'L1' })]);
+    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Codeman</b>', currentLeaderId: 'L1', currentLeaderLinked: true })]);
     expect(h.fns._lkFlowsHtml()).toContain(`onclick="_lkOpenStep('${F(1)}')"`);
     h.fns._lkOpenStep(F(1));
     const sheet = h.calls.modals[0]!;
@@ -1571,6 +1571,10 @@ describe('F3 flow steps', () => {
     el.fns._lkOpenStep(F(1));
     expect(el.calls.modals[0]).toContain('Assigned to: Sam &lt;i&gt;Example&lt;/i&gt;');
     expect(strip(el.calls.modals[0]!)).toContain('Elvanto will pick who gets the next step. Ask the admin to change it.');
+    // a known app leader with no Elvanto person: Elvanto still picks (Q9)
+    const un = setup('L1', [row(1, { assignedLeaderId: 'L4', assignedLeaderName: 'Una Unlinked', currentLeaderId: 'L4', currentLeaderLinked: false })]);
+    un.fns._lkOpenStep(F(1));
+    expect(strip(un.calls.modals[0]!)).toContain('Elvanto will pick who gets the next step. Ask the admin to change it.');
     const nob = setup('L1', [row(1, { assignedTo: null })]);
     nob.fns._lkOpenStep(F(1));
     expect(strip(nob.calls.modals[0]!)).toContain('Assigned to: Nobody');
