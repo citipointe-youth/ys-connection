@@ -1510,6 +1510,25 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await e.link.getAction(c.id))!.payload).not.toHaveProperty('assignTo'); // Dana has no Elvanto match (Q9)
   });
 
+  it('2026-10-24 review: flowAssignments is read once per batch, not once per completeStep', async () => {
+    const h = await setup();
+    const spy = vi.spyOn(h.link, 'flowAssignments');
+    const r = await h.svc.batch(ADMIN, { device: DEV, items: [{ kind: 'action', ...step() }, { kind: 'action', ...tom() }] });
+    expect(r.results.map((x: any) => x.outcome)).toEqual(['saved', 'saved']);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('2026-10-24 review: an inactive app assignee is no current leader (no assignTo, not linked, no currentLeaderId)', async () => {
+    const h = await setup();
+    await h.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    await h.leaders.save(leader(L_CODY, 'Cody  Codeman', 'male', false) as never);
+    const r = (await h.svc.flows(GRADE)).rows.find((x) => x.rowId === FR1)!;
+    expect(r).toMatchObject({ currentLeaderId: null, currentLeaderLinked: false });
+    const b = step();
+    expect((await enq(h.svc, GRADE, b, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(b.id))!.payload).not.toHaveProperty('assignTo'); // Elvanto picks (Q9)
+  });
+
   it('T4: visibility uses the own grade/gender of the row first, then the roster; step 0 (the 7-day wait) is never listed', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);

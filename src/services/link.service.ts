@@ -324,7 +324,7 @@ function currentFields(cur: Leader | null, personOf: (l: Leader) => string | nul
   return { currentLeaderId: cur?.id ?? null, currentLeaderLinked: cur ? personOf(cur) != null : false };
 }
 function currentOf(f: LinkFlowRow, assigned: Leader | undefined, leaders: Leader[]): Leader | null {
-  if (assigned) return assigned;
+  if (assigned?.active) return assigned; // review #2: an inactive assignee is no current leader
   const k = matchFold(f.assignedTo || '');
   const hits = k ? leaders.filter((l) => l.active && matchFold(l.fullName) === k) : [];
   return hits.length === 1 ? hits[0]! : null;
@@ -487,7 +487,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       admin: can(actor, 'link:admin'),
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
-      leaders: memo(() => d.leaders.findAll()),
+      leaders: memo(() => d.leaders.findAll()), flowAssignments: memo(() => d.link.flowAssignments()), // review #4
       // Rev 6: read once per batch. ponytail: a Complete and a Remove for one row queued in the SAME batch are not seen by each other.
       openFlowRows: memo(() => d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN })),
       consentRows: memo(async () => (d.intake ? d.intake.rows('consent') : [])),
@@ -783,7 +783,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or a director picks who gets the next step, and only a leader who
         // fits the person or the current assignee. Anyone else hands it to the current assignee (server-set, like notReceived);
         // with no Elvanto match for them, Elvanto's usual pick (Q9).
-        const [leaders, assigns] = await Promise.all([c.leaders(), d.link.flowAssignments()]);
+        const [leaders, assigns] = await Promise.all([c.leaders(), c.flowAssignments()]);
         const byRoster = new Map(roster.map((x) => [x.personId, x]));
         const a0 = row.personId ? assigns.find((x) => x.flowId === row.flowId && x.personId === row.personId) : undefined;
         const current = currentOf(row, a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined, leaders);
@@ -1307,7 +1307,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       // 2026-10-24: only a leader who fits the person (leaderFitsPerson), or the one who has them now.
       if (b.leaderId !== null) {
-        const [leaders, assigns] = await Promise.all([c.leaders(), d.link.flowAssignments()]);
+        const [leaders, assigns] = await Promise.all([c.leaders(), c.flowAssignments()]);
         const a0 = assigns.find((x) => x.flowId === b.flowId && x.personId === b.personId);
         const assigned = a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined;
         const l = leaders.find((x) => x.id === b.leaderId && x.active);
