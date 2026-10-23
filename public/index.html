@@ -12074,7 +12074,7 @@ function _lkCanRemove(r) {
 function _lkOpenStep(id) {
   const r = _lkFlowRow(id);
   if (!r) return;
-  if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false };
+  if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false, pick: _lkPickList(r).findIndex((l) => l.id === r.currentLeaderId) };
   modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`, () => { LINK.fs = null; });
   if (!LINK.ldrs) _lkLoadLeaders().then(() => { if (LINK.fs) _lkStepDraw(); });
 }
@@ -12098,21 +12098,22 @@ function _lkStepHtml() {
   const why = _lkStepBlock(r), blocked = hub ? '' : r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
     : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>` : '';
   let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
-  if (r.personId) {
-    const ls = (LINK.ldrs || []).filter((l) => l && (l.active !== false || l.id === r.assignedLeaderId)).sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
-    const known = ls.some((l) => l.id === r.assignedLeaderId);
-    assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="_lkAssign(this.value)"><option value="">Nobody</option>
-      ${r.assignedLeaderId && !known ? `<option value="${esc(r.assignedLeaderId)}" selected>${esc(r.assignedLeaderName || 'A leader')}</option>` : ''}
-      ${ls.map((l) => `<option value="${esc(l.id)}"${l.id === r.assignedLeaderId ? ' selected' : ''}>${esc(l.fullName)}</option>`).join('')}</select>
-      <p class="lk-hint">Saved in this app only. Elvanto isn't changed.</p></div>`;
+  if (r.personId && _lkBoss()) {
+    // 2026-10-24 flows reassign: admin/director pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
+    const ls = _lkPickList(r), l = ls[f.pick];
+    assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=+this.value;_lkStepDraw()"><option value="-1">Nobody (Elvanto's usual pick)</option>
+      ${ls.map((x, i) => `<option value="${i}"${i === f.pick ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+      <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p>
+      ${l && !l.personId ? '<p class="lk-hint">Not linked to an Elvanto person: Elvanto picks who gets the next step.</p>' : ''}</div>`;
+  } else if (r.personId) {
+    // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
+    assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
+      <p class="lk-hint">${r.currentLeaderId ? 'Complete gives the next step to them.' : 'Elvanto will pick who gets the next step.'} Ask the admin to change it.</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl">Note</label><textarea class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
-    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>`
-    // r21 L6b (T4): who Elvanto gives the next step to (leaders matched to an Elvanto person); empty = Elvanto's own pick
-    + (_lkBoss() && (LINK.fAssignees || []).length ? `<div class="fg"><label class="fl" for="lk-next">Next step goes to</label><select class="fs" id="lk-next" onchange="LINK.fs.assignTo=this.value"><option value="">Elvanto's usual pick</option>
-      ${LINK.fAssignees.map((a) => `<option value="${esc(a.personId)}"${a.personId === f.assignTo ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : '') : '';
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
   return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
     ${text}${hub}${blocked}${assign}${done}${rm}`;
@@ -12144,20 +12145,41 @@ function _lkStepBtns() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (r && f.rm) return `<button type="button" class="btn btn-secondary" onclick="_lkRemoveBack()">Back</button>
       <button type="button" class="btn btn-danger" onclick="_lkRemoveSend()">Remove</button>`;
-  const can = !!r && _lkCanComplete(r);
-  return `<button type="button" class="btn btn-secondary" onclick="closeModal()">${can ? 'Cancel' : 'Close'}</button>
+  const can = !!r && _lkCanComplete(r), re = !!r && !!r.personId && _lkBoss();
+  return `<button type="button" class="btn btn-secondary" onclick="closeModal()">${can || re ? 'Cancel' : 'Close'}</button>
+      ${re ? `<button type="button" class="btn btn-secondary" onclick="_lkReassign()">Reassign</button>` : ''}
       ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} ${_lkFlowKind(r) === 'parent' ? 'Send parent text' : 'Complete'}</button>` : ''}`;
 }
+// The admin/director pick, as a leader from _lkPickList(r) (null = Nobody).
+function _lkPickList(r) {
+  const ls = (LINK.fLeaders || []).filter((l) => _lkFits(l, r.grade, r.gender) || l.id === r.currentLeaderId);
+  // an inactive app assignee is not in leaders: keep them listed so the sheet never unassigns by itself
+  if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
+  return ls;
+}
+// Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = director/admin level (anyone, any gender);
+// else the person's grade, and the leader's gender unset or the person's.
+function _lkFits(l, grade, gender) {
+  if (!l || l.active === false) return false;
+  const gs = l.grades || [];
+  if (!gs.length) return true;
+  return grade != null && gs.includes(grade) && (!l.gender || l.gender === gender);
+}
 // Assign or unassign (app only, never sent to Elvanto). One assignment covers the person's rows in that flow.
-async function _lkAssign(leaderId) {
+async function _lkAssignSave(r, l) {
+  const lid = l ? l.id : null;
+  await API.post('/link/flows/assign', { flowId: r.flowId, personId: r.personId, leaderId: lid });
+  (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.name : null; x.currentLeaderId = lid; } });
+}
+// Reassign (admin/director): saves the pick, does not complete the step.
+async function _lkReassign() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
-  if (!r || !r.personId) return;
-  const lid = leaderId || null, l = lid && (LINK.ldrs || []).find((x) => x.id === lid);
-  try { await API.post('/link/flows/assign', { flowId: r.flowId, personId: r.personId, leaderId: lid }); }
-  catch (e) { toast(e.message || 'Could not assign.'); _lkStepDraw(); return; }
-  (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.fullName : null; } });
-  _lkStepDraw(); _lkRefreshView();
-  toast(l ? 'Assigned to ' + l.fullName : 'Unassigned');
+  if (!r || !r.personId || !_lkBoss()) return;
+  const l = _lkPickList(r)[f.pick] || null;
+  try { await _lkAssignSave(r, l); } catch (e) { toast(e.message || 'Could not assign.'); return; }
+  LINK.fs = null;
+  closeModal(); _lkRefreshView();
+  toast(l ? 'Assigned to ' + l.name : 'Unassigned');
 }
 function _lkStepDraw() {
   const b = document.getElementById('lk-fs'), a = document.getElementById('lk-fs-act');
@@ -12181,11 +12203,15 @@ function _lkStepSend() {
   const lid = getMyLeaderId();
   if (!lid) { _lkIamPick(() => _lkOpenStep(r.rowId)); return; }
   const note = String(f.note || '').trim() ? f.note : null;
+  // admin/director: the pick gets the next step (no Elvanto person = Elvanto's usual pick); a changed pick is also saved here.
+  // Other logins send no assignTo: the server gives the next step to the current assignee.
+  const l = _lkBoss() && r.personId ? _lkPickList(r)[f.pick] || null : null;
+  if (_lkBoss() && r.personId && (l ? l.id : null) !== (r.currentLeaderId || null)) _lkAssignSave(r, l).catch((e) => toast(e.message || 'Could not assign.'));
   if (LINK.fres) delete LINK.fres[r.rowId];
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(f.assignTo && _lkBoss() ? { assignTo: f.assignTo } : {}) },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(l && l.personId ? { assignTo: l.personId } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).
@@ -12226,7 +12252,7 @@ async function _lkLoadFlows(quiet) {
       if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
     });
     LINK.fSteps = (r && r.steps) || [];
-    LINK.fAssignees = (r && r.assignees) || []; // r21 L6b (T4)
+    LINK.fLeaders = (r && r.leaders) || []; // 2026-10-24 flows reassign: admin/director only
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
     LINK.fProg = (r && r.progress) || null;
@@ -13586,6 +13612,7 @@ async function _hubLoad(quiet) {
   try {
     const [hi, hc, snap, fl] = await Promise.all([get('/link/intake?mode=intake' + (quiet ? '' : '&view=1')), get('/link/intake?mode=consent'),
       get('/link/consents/snapshot').catch(() => null), _linkOn('flows') ? get('/link/flows').catch(() => null) : null]);
+    if (I.hubSend) await _hubSendPoll(I);
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: hi && hi.console, consoleLinkRev: hi && hi.consoleLinkRev, appLinkRev: hi && hi.appLinkRev };
     I.dates = (hi && hi.dates) || [];
@@ -13636,6 +13663,26 @@ function _hubFamRow(f, fi) {
     + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many)).join('')}</span>${icS('chevr')}</div>`
     + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
 }
+// Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
+async function _hubSendPoll(I) {
+  const s = I.hubSend;
+  if (!s || s.done >= s.ids.length) return;
+  try {
+    const acts = await API.fresh('/link/actions?ids=' + s.ids.map(encodeURIComponent).join(','), true);
+    const fin = (Array.isArray(acts) ? acts : []).filter((a) => a && s.ids.includes(a.id) && ['sent', 'refused', 'cancelled', 'unclear'].includes(a.status));
+    s.done = fin.length; s.bad = fin.filter((a) => a.status === 'refused' || a.status === 'unclear').length;
+  } catch (e) { /* keep the last count */ }
+}
+// "Saving X of N…" while the batch runs, then "Done" once (the next draw clears it).
+function _hubSendHtml() {
+  const I = _ik(), s = I.hubSend;
+  if (!s) return '';
+  const n = s.ids.length;
+  if (s.done < n) return `<div class="strip" role="status">${esc(s.verb + ' ' + Math.min(s.done + 1, n) + ' of ' + n + '…')}</div>`;
+  if (s.shown) { I.hubSend = null; return ''; }
+  s.shown = true;
+  return `<div class="strip" role="status">${esc('Done: ' + n + ' of ' + n + (s.bad ? ', ' + s.bad + ' not saved: open it to see why' : '') + '.')}</div>`;
+}
 function _hubBodyHtml() {
   const I = _ik(), st = _ikSt(), M = _hubM(), q = String(I.hubQ || '').trim(), row = (f) => _hubFamRow(f, M.fams.indexOf(f));
   I.hubShown = M.fams;
@@ -13651,7 +13698,7 @@ function _hubBodyHtml() {
   const unl = _hubRows('unlinked') || [], mis = _hubRows('mismatches') || [], need = M.fams.filter((f) => f.needs);
   const n = need.length + unl.length + M.loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
   const old = _hubAddDays(_siteDay(Date.now()), -28), open = I.hubOpen || {};
-  return `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
+  return _hubSendHtml() + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
     + M.loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
       const fs = M.fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
@@ -13842,7 +13889,8 @@ function _ikSchedule() {
   if (I.poll) { clearTimeout(I.poll); I.poll = null; }
   if (S.page !== 'link-intake') return;
   const busy = (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
-    || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key);
+    || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key)
+    || (!!I.hubSend && I.hubSend.done < I.hubSend.ids.length);
   // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
   // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
   if (busy) I.poll = setTimeout(() => {
@@ -13910,6 +13958,7 @@ async function _ikSaveAllGo() {
   // RV-I-m4: a row whose earlier save is still kept with the same payload goes again with that id (replay, never twice).
   const all = x.items.map((it) => { const p = it.payload || {}, was = _ikQFind(x.type, p.row, p.date); return { it, id: was && _ikSame(was.payload, p) ? was.id : _lkUuid() }; });
   let ok = 0;
+  const ids = [];
   for (let i = 0; i < all.length; i += 20) { // S-3: 20 a call keeps each well inside the server's 20 s guard
     const part = all.slice(i, i + 20);
     let res;
@@ -13925,12 +13974,14 @@ async function _ikSaveAllGo() {
     for (const p of part) {
       const r = _ikOutcome(res, p.id);
       if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
-        ok++;
+        ok++; ids.push(p.id);
         _ikLocal(p.it.key, { id: p.id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
       } else if (!(r && r.outcome === 'duplicate')) I.saErr[p.it.key] = (r && r.message) || 'Not saved. Try again.';
     }
   }
   if (_ik() !== I) return;
+  // Fix round 24 Oct (Task 5): the hub shows "Saving X of N" until the batch has landed (one actions read takes 200 ids).
+  if (ids.length && ids.length <= 200 && !I.key && S.page === 'link-intake') I.hubSend = { verb: x.type === 'intakeText' ? 'Sending' : 'Saving', ids, done: 0 };
   toast(ok ? 'Saving ' + ok + '. The console works through them one at a time.' : 'Nothing was saved. See each row.');
   _ikDraw(); if (I.key) _ikLoad(true); else _hubLoad(true);
 }

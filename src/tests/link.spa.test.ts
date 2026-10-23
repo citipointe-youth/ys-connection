@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkAssign', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -1551,45 +1551,139 @@ describe('F3 flow steps', () => {
     expect(out).toContain('Cody &lt;b&gt;Codeman&lt;/b&gt;');
     expect(out).not.toContain('<b>Codeman');
   });
-  it('T5: tapping a row opens the detail sheet with a text link, Assign and Complete', () => {
-    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Codeman</b>' })]);
+  it('T5: tapping a row opens the detail sheet with a text link and Complete; a grade login sees who has the person, no picker', () => {
+    const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', mobileIsParent: false, assignedLeaderId: 'L1', assignedLeaderName: 'Cody <b>Codeman</b>', currentLeaderId: 'L1' })]);
     expect(h.fns._lkFlowsHtml()).toContain(`onclick="_lkOpenStep('${F(1)}')"`);
     h.fns._lkOpenStep(F(1));
     const sheet = h.calls.modals[0]!;
     expect(sheet).toContain('href="sms:0412345678');
     expect(sheet).toContain('body=Hey%20Sam%20');
     expect(strip(sheet)).toContain('Text Sam · 0412 345 678');
-    expect(sheet).toContain('onchange="_lkAssign(this.value)"');
-    expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
+    expect(sheet).not.toContain('id="lk-assign"');
+    expect(sheet).not.toContain('_lkReassign');
+    expect(sheet).not.toContain('_lkAssign');
+    expect(sheet).toContain('Assigned to: Cody &lt;b&gt;Codeman&lt;/b&gt;');
+    expect(strip(sheet)).toContain('Complete gives the next step to them. Ask the admin to change it.');
     expect(sheet).toContain('_lkStepSend()');
     expect(sheet).not.toContain('Elvanto will show');
+    // Elvanto's own assignee name when no app leader is known; then Elvanto picks the next leader
+    const el = setup('L1', [row(1, { assignedTo: 'Sam <i>Example</i>', currentLeaderId: null })]);
+    el.fns._lkOpenStep(F(1));
+    expect(el.calls.modals[0]).toContain('Assigned to: Sam &lt;i&gt;Example&lt;/i&gt;');
+    expect(strip(el.calls.modals[0]!)).toContain('Elvanto will pick who gets the next step. Ask the admin to change it.');
+    const nob = setup('L1', [row(1, { assignedTo: null })]);
+    nob.fns._lkOpenStep(F(1));
+    expect(strip(nob.calls.modals[0]!)).toContain('Assigned to: Nobody');
     const par = setup('L1', [row(1, { name: 'Sam Lee', mobile: '0412345678', mobileIsParent: true })]);
     par.fns._lkOpenStep(F(1));
     expect(strip(par.calls.modals[0]!)).toContain('Text Parent · 0412 345 678');
     const none = setup('L1', [row(1, { personId: null })]);
     none.fns._lkOpenStep(F(1));
     expect(strip(none.calls.modals[0]!)).toContain('cannot be assigned');
-    expect(none.calls.modals[0]).not.toContain('_lkAssign');
+    expect(none.calls.modals[0]).not.toContain('Assigned to');
   });
-  it('T6: Assign posts flowId, personId and leaderId (null = unassign) and updates every row of that person in the flow', async () => {
-    const h = setup('L1', [row(1, { name: 'Sam' }), row(1, { rowId: F(11), stepId: F(201), name: 'Sam' })]);
-    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
+  // 2026-10-24 flows reassign: admin/director pick from leaders who fit the person (no grades = anyone), Reassign or Complete.
+  const LDRS = () => [
+    { id: 'L1', name: 'Cody <b>Codeman</b>', personId: P(70), gender: 'male', grades: [8] },
+    { id: 'L2', name: 'Gina Girl', personId: P(71), gender: 'female', grades: [8] },
+    { id: 'L3', name: 'Dee Director', personId: P(72), gender: null, grades: [] },
+    { id: 'L4', name: 'Una Unlinked', personId: null, gender: 'male', grades: [8] },
+    { id: 'L5', name: 'Ted Tenner', personId: P(74), gender: 'male', grades: [10] },
+  ];
+  const admin = (rows: any[], post?: Env['post'], role = 'admin') => {
+    const h = makeEnv({ role, leaderId: 'L1', post });
+    const L = h.get().LINK;
+    L.today = '2026-10-16'; L.flows = rows; L.ldrs = []; L.fLeaders = LDRS();
+    return h;
+  };
+  const boy = (over: any = {}) => row(1, { grade: 8, gender: 'male', assignedLeaderId: 'L1', assignedLeaderName: 'Cody Codeman', currentLeaderId: 'L1', ...over });
+  const pickOf = (h: any, id: string) => h.fns._lkPickList(h.get().LINK.flows[0]).findIndex((l: any) => l.id === id);
+  it('flows reassign: _lkFits mirrors the server rule', () => {
+    const fit = makeEnv().fns._lkFits;
+    expect(fit({ active: true, grades: [], gender: null }, null, 'female')).toBe(true);
+    expect(fit({ active: true, grades: [], gender: 'male' }, 9, 'female')).toBe(true);
+    const g8m = { active: true, grades: [8], gender: 'male' };
+    expect(fit(g8m, 8, 'male')).toBe(true);
+    expect(fit(g8m, 8, 'female')).toBe(false);
+    expect(fit(g8m, 10, 'male')).toBe(false);
+    expect(fit(g8m, null, 'male')).toBe(false);
+    expect(fit({ grades: [8], gender: null }, 8, 'female')).toBe(true);
+    expect(fit({ active: false, grades: [], gender: null }, 8, 'male')).toBe(false);
+  });
+  it('flows reassign: the admin sheet has one Assigned to select (fitting leaders), the current one picked, and Cancel | Reassign | Complete', () => {
+    for (const role of ['admin', 'director']) {
+      const h = admin([boy()], undefined, role);
+      h.fns._lkOpenStep(F(1));
+      const sheet = h.calls.modals[0]!;
+      expect(sheet.match(/id="lk-assign"/g)).toHaveLength(1);
+      expect(sheet).not.toContain('Next step goes to');
+      expect(sheet).not.toContain('onchange="_lkAssign');
+      expect(sheet).toContain(`<option value="-1">Nobody (Elvanto's usual pick)</option>`);
+      expect(sheet).toContain('<option value="0" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
+      expect(sheet).not.toContain('<b>Codeman');
+      expect(strip(sheet)).toContain('Dee Director');
+      expect(strip(sheet)).toContain('Una Unlinked');
+      expect(strip(sheet)).not.toContain('Gina Girl');
+      expect(strip(sheet)).not.toContain('Ted Tenner');
+      expect(strip(sheet)).toContain('Reassign changes who has this person. Complete gives them the next step.');
+      const btns = h.fns._lkStepBtns();
+      expect(btns.indexOf('closeModal()')).toBeLessThan(btns.indexOf('_lkReassign()'));
+      expect(btns.indexOf('_lkReassign()')).toBeLessThan(btns.indexOf('_lkStepSend()'));
+    }
+    // a current assignee who does not fit is still listed and picked
+    const t = admin([boy({ currentLeaderId: 'L2', assignedLeaderId: 'L2' })]);
+    t.fns._lkOpenStep(F(1));
+    expect(t.calls.modals[0]).toMatch(/<option value="\d" selected>Gina Girl<\/option>/);
+    // nobody current: Nobody is picked
+    const n = admin([boy({ currentLeaderId: null, assignedLeaderId: null })]);
+    n.fns._lkOpenStep(F(1));
+    expect(n.get().LINK.fs.pick).toBe(-1);
+    expect(n.calls.modals[0]).not.toContain(' selected');
+    // DNC: Reassign, no Complete; no Elvanto person: no Reassign
+    const d = admin([boy({ dnc: true })]);
+    d.fns._lkOpenStep(F(1));
+    expect(d.fns._lkStepBtns()).toContain('_lkReassign()');
+    expect(d.fns._lkStepBtns()).not.toContain('_lkStepSend()');
+    const np = admin([boy({ personId: null })]);
+    np.fns._lkOpenStep(F(1));
+    expect(np.fns._lkStepBtns()).not.toContain('_lkReassign');
+    expect(np.calls.modals[0]).not.toContain('id="lk-assign"');
+  });
+  it('flows reassign: picking a leader not linked to Elvanto says Elvanto picks', () => {
+    const h = admin([boy()]);
     h.fns._lkOpenStep(F(1));
-    await h.fns._lkAssign('L1');
-    expect(h.calls.posts[0]).toMatchObject({ p: '/link/flows/assign', b: { flowId: F(100), personId: P(1), leaderId: 'L1' } });
-    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderName)).toEqual(['Cody Codeman', 'Cody Codeman']);
-    await h.fns._lkAssign('');
-    expect(h.calls.posts[1].b.leaderId).toBeNull();
-    expect(h.get().LINK.flows.map((r: any) => r.assignedLeaderId)).toEqual([null, null]);
+    expect(strip(h.fns._lkStepHtml())).not.toContain('Not linked to an Elvanto person');
+    h.get().LINK.fs.pick = pickOf(h, 'L4');
+    expect(strip(h.fns._lkStepHtml())).toContain('Not linked to an Elvanto person: Elvanto picks who gets the next step.');
   });
-  it('T6: a failed assign toasts and changes nothing', async () => {
-    const h = setup('L1', [row(1)], () => Promise.reject(new Error('nope')));
-    h.get().LINK.ldrs = [{ id: 'L1', fullName: 'Cody Codeman', active: true }];
+  it('flows reassign: Reassign posts the pick (or null), updates every row of that person in the flow, closes and toasts', async () => {
+    const h = admin([boy({ name: 'Sam' }), boy({ rowId: F(11), stepId: F(201), name: 'Sam' })]);
     h.fns._lkOpenStep(F(1));
     const L = h.get().LINK;
-    // assign uses API.post, which the harness routes to the env post stub only for /link/batch; stub a rejecting one
-    await h.fns._lkAssign('L1').catch(() => {});
-    expect(L.flows[0].assignedLeaderId == null).toBe(true);
+    L.fs.pick = pickOf(h, 'L3');
+    await h.fns._lkReassign();
+    expect(h.calls.posts[0]).toMatchObject({ p: '/link/flows/assign', b: { flowId: F(100), personId: P(1), leaderId: 'L3' } });
+    expect(L.flows.map((r: any) => [r.assignedLeaderId, r.assignedLeaderName, r.currentLeaderId])).toEqual([['L3', 'Dee Director', 'L3'], ['L3', 'Dee Director', 'L3']]);
+    expect(h.calls.closed).toBe(1);
+    expect(L.fs).toBeNull();
+    expect(h.calls.toasts).toContain('Assigned to Dee Director');
+    expect(h.fns._lkQGet()).toEqual([]); // not completed
+    h.fns._lkOpenStep(F(1));
+    L.fs.pick = -1;
+    await h.fns._lkReassign();
+    expect(h.calls.posts[1].b.leaderId).toBeNull();
+    expect(L.flows.map((r: any) => r.currentLeaderId)).toEqual([null, null]);
+    expect(h.calls.toasts).toContain('Unassigned');
+  });
+  it('flows reassign: a failed Reassign toasts and changes nothing', async () => {
+    const h = admin([boy()], (p) => (p === '/link/flows/assign' ? Promise.reject(new Error('nope')) : Promise.resolve({ results: [] })));
+    h.fns._lkOpenStep(F(1));
+    const L = h.get().LINK;
+    L.fs.pick = pickOf(h, 'L3');
+    await h.fns._lkReassign();
+    expect(L.flows[0]).toMatchObject({ assignedLeaderId: 'L1', currentLeaderId: 'L1' });
+    expect(h.calls.toasts).toContain('nope');
+    expect(h.calls.closed).toBe(0);
   });
   it('T6: the Home card lists only my people, hidden when there are none', () => {
     const h = setup('L1', [row(1, { name: 'Sam Lee', grade: 8, gender: 'male', mobile: '0412345678', assignedLeaderId: 'L1', due: '2026-10-01' }),
@@ -1685,30 +1779,44 @@ describe('F3 flow steps', () => {
     h.fns._lkOpenStep(F(2)); h.fns._lkStepNote({ value: '  ' }); h.fns._lkStepSend();
     expect(h.fns._lkQGet()[0]).toMatchObject({ note: null, payload: { notePrivate: false } });
   });
-  it('r21 L6b (T4): Complete offers who gets the next step (matched leaders, admin/director only); the pick goes as payload.assignTo', () => {
-    const h = makeEnv({ role: 'admin', leaderId: 'L1' });
-    h.get().LINK.today = '2026-10-16'; h.get().LINK.flows = ROWS(); h.get().LINK.ldrs = [];
-    h.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody <b>Codeman</b>' }];
-    h.fns._lkOpenStep(F(2));
-    const sheet = h.calls.modals[0]!;
-    expect(strip(sheet)).toContain('Next step goes to');
-    expect(sheet).toContain(`<option value="">Elvanto's usual pick</option>`);
-    expect(sheet).toContain(`<option value="${P(70)}">Cody &lt;b&gt;Codeman&lt;/b&gt;</option>`);
-    expect(sheet).toContain('onchange="LINK.fs.assignTo=this.value"');
-    h.get().LINK.fs.assignTo = P(70);
-    h.fns._lkStepSend();
-    expect(h.fns._lkQGet()[0].payload).toEqual({ rowId: F(2), flowId: F(100), stepId: F(202), personId: P(2), notePrivate: false, assignTo: P(70) });
-    const none = setup();
-    none.get().LINK.fAssignees = [];
-    none.fns._lkOpenStep(F(2));
-    expect(none.calls.modals[0]).not.toContain('Next step goes to');
-    const leader = setup(); // a grade login: no picker, and a stale pick never goes
-    leader.get().LINK.fAssignees = [{ personId: P(70), name: 'Cody' }];
+  it('flows reassign: an admin Complete sends the pick as payload.assignTo and reassigns once when the pick changed', () => {
+    const h = admin([boy()]);
+    h.fns._lkOpenStep(F(1));
+    h.fns._lkStepSend(); // the current assignee, unchanged: no assign post
+    expect(h.calls.posts.filter((c: any) => c.p === '/link/flows/assign')).toHaveLength(0);
+    expect(h.fns._lkQGet()[0].payload).toEqual({ rowId: F(1), flowId: F(100), stepId: F(200), personId: P(1), notePrivate: false, assignTo: P(70) });
+    const k = admin([boy()]);
+    k.fns._lkOpenStep(F(1));
+    k.get().LINK.fs.pick = pickOf(k, 'L3');
+    k.fns._lkStepSend();
+    expect(k.calls.posts.filter((c: any) => c.p === '/link/flows/assign')).toEqual([expect.objectContaining({ b: { flowId: F(100), personId: P(1), leaderId: 'L3' } })]);
+    expect(k.fns._lkQGet()[0].payload.assignTo).toBe(P(72));
+    // an unlinked pick or Nobody: no assignTo key (Elvanto's usual pick)
+    for (const id of ['L4', null]) {
+      const u = admin([boy()]);
+      u.fns._lkOpenStep(F(1));
+      u.get().LINK.fs.pick = id ? pickOf(u, id) : -1;
+      u.fns._lkStepSend();
+      expect('assignTo' in u.fns._lkQGet()[0].payload).toBe(false);
+    }
+  });
+  it('flows reassign: a grade login Complete never sends assignTo (the server sets it)', () => {
+    const leader = setup('L1', [row(2, { currentLeaderId: 'L1' })]);
+    leader.get().LINK.fLeaders = LDRS();
     leader.fns._lkOpenStep(F(2));
-    expect(leader.calls.modals[0]).not.toContain('Next step goes to');
-    leader.get().LINK.fs.assignTo = P(70);
+    leader.get().LINK.fs.pick = 2;
     leader.fns._lkStepSend();
-    expect(leader.fns._lkQGet()[0].payload.assignTo).toBeUndefined();
+    expect('assignTo' in leader.fns._lkQGet()[0].payload).toBe(false);
+    expect(leader.calls.posts.filter((c: any) => c.p === '/link/flows/assign')).toHaveLength(0);
+  });
+  it('flows reassign: _lkLoadFlows keeps leaders as LINK.fLeaders (assignees is gone)', async () => {
+    const h = makeEnv({ role: 'admin', fresh: () => Promise.resolve({ rows: [], steps: [], leaders: LDRS() }) });
+    await h.fns._lkLoadFlows(true);
+    expect(h.get().LINK.fLeaders).toEqual(LDRS());
+    expect(h.get().LINK.fAssignees).toBeUndefined();
+    const o = makeEnv({ role: 'grade', fresh: () => Promise.resolve({ rows: [], steps: [] }) });
+    await o.fns._lkLoadFlows(true);
+    expect(o.get().LINK.fLeaders).toEqual([]);
   });
   it('every value is escaped, in the list and in the sheet', () => {
     const h = setup('L1', [row(1, { name: 'Ann <b>X</b>', flowName: 'F <i>1</i>', stepName: 'S <u>1</u>', assignedTo: 'Al <s>Y</s>' })]);

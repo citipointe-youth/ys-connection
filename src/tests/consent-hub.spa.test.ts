@@ -96,7 +96,7 @@ describe('search per child', () => {
 });
 
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
-const LANDING_NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
   '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows'];
 describe('landing', () => {
@@ -251,5 +251,79 @@ describe('one way in: Flow steps', () => {
   });
   it('without New youth & consent (module off) step 0 stays completable on Flow steps', () => {
     expect(mk('link-flows', false)._lkHubOwned({ consentStep: true })).toBe(false);
+  });
+});
+
+describe('Sending X of N (fix round 24 Oct, Task 5)', () => {
+  const STG = STAGES, KINDS = HTML.match(/^const IK_LK_KINDS = .*$/m)![0];
+  const mkGo = (type: string, outcomes: string[], key: any = null, page = 'link-intake') => {
+    const F2 = loadFns(['_ikSaveAllGo', '_ikOutcome'], `
+      const S = { page: '${page}' };
+      const __I = { key: ${JSON.stringify(key)}, sa: { type: '${type}', items: ${JSON.stringify(outcomes.map((o, i) => ({ key: 'k' + i, title: 'T' + i, payload: { date: 'd', row: 'k' + i } })))} } };
+      const _ik = () => __I; const closeModal = () => {}; const _ikQFind = () => null;
+      let __n = 0; const _lkUuid = () => 'id' + (__n++);
+      const __out = ${JSON.stringify(outcomes)};
+      const _ikPost = (items) => Promise.resolve(items.map((it, i) => ({ kind: 'action', id: it.id, outcome: __out[Number(it.id.slice(2))] })));
+      const _ikLocal = () => {}; const toast = () => {}; const _ikDraw = () => {}; const _ikLoad = () => {}; const _hubLoad = () => {};`, ['_ikSaveAllGo', '_ik']);
+    return F2;
+  };
+  const body = (hubSend: any) => loadFns(['esc', '_hubBodyHtml', '_hubSendHtml', '_hubAddDays'], `${STG}
+    const __I = { hubSend: ${JSON.stringify(hubSend)}, hubQ: '' }; const _ik = () => __I; const _ikSt = () => ({});
+    const _hubM = () => ({ fams: [], loose: [] }); const _hubRows = () => []; const _hubBulkHtml = () => '';
+    const _hubSearch = () => ({ fams: [], forms: [] }); const _hubFamRow = () => ''; const icS = () => '';`, ['_hubBodyHtml', '_ik']);
+  it('Save all from the hub records the saved ids; the strip reads "Saving 1 of 3…"; Text all says Sending', async () => {
+    const F2 = mkGo('consentSave', ['saved', 'replay', 'saved', 'duplicate']);
+    await F2._ikSaveAllGo();
+    expect(F2._ik().hubSend).toEqual({ verb: 'Saving', ids: ['id0', 'id1', 'id2'], done: 0 });
+    const b = body(F2._ik().hubSend);
+    expect(b._hubBodyHtml().startsWith('<div class="strip" role="status">Saving 1 of 3…</div>')).toBe(true);
+    const t = mkGo('intakeText', ['saved']);
+    await t._ikSaveAllGo();
+    expect(t._ik().hubSend.verb).toBe('Sending');
+    // not from the hub (a row page) or nothing saved: no strip
+    const r = mkGo('consentSave', ['saved'], 'some-row'); await r._ikSaveAllGo(); expect(r._ik().hubSend).toBeUndefined();
+    const z = mkGo('consentSave', ['duplicate']); await z._ikSaveAllGo(); expect(z._ik().hubSend).toBeUndefined();
+  });
+  const poll = (hubSend: any, fresh: string) => loadFns(['_hubSendPoll'], `const __I = { hubSend: ${JSON.stringify(hubSend)} };
+    globalThis.__urls = []; const API = { fresh: (u) => { globalThis.__urls.push(u); return ${fresh}; } };`, ['_hubSendPoll', '__I']);
+  it('a poll counts final rows from one /link/actions?ids= read; X = done + 1, capped at N', async () => {
+    const P2 = poll({ verb: 'Saving', ids: ['a', 'b', 'c'], done: 0 }, `Promise.resolve([{ id: 'a', status: 'sent' }, { id: 'b', status: 'cancelled' }, { id: 'c', status: 'claimed' }])`);
+    await P2._hubSendPoll(P2.__I);
+    expect((globalThis as any).__urls).toEqual(['/link/actions?ids=a,b,c']);
+    expect(P2.__I.hubSend.done).toBe(2);
+    expect(body(P2.__I.hubSend)._hubBodyHtml()).toContain('Saving 3 of 3…');
+  });
+  it('all final: "Done: 3 of 3." once, then the strip clears; a refused or unclear row says why to open it', async () => {
+    const P2 = poll({ verb: 'Saving', ids: ['a', 'b', 'c'], done: 0 }, `Promise.resolve([{ id: 'a', status: 'sent' }, { id: 'b', status: 'sent' }, { id: 'c', status: 'sent' }])`);
+    await P2._hubSendPoll(P2.__I);
+    const b = body(P2.__I.hubSend);
+    expect(b._hubBodyHtml()).toContain('<div class="strip" role="status">Done: 3 of 3.</div>');
+    expect(b._hubBodyHtml()).not.toContain('role="status"');
+    expect(b._ik().hubSend).toBeNull();
+    const Q = poll({ verb: 'Saving', ids: ['a', 'b', 'c'], done: 0 }, `Promise.resolve([{ id: 'a', status: 'sent' }, { id: 'b', status: 'refused' }, { id: 'c', status: 'sent' }])`);
+    await Q._hubSendPoll(Q.__I);
+    expect(body(Q.__I.hubSend)._hubBodyHtml()).toContain('Done: 3 of 3, 1 not saved: open it to see why.');
+  });
+  it('a failed actions read keeps the last count', async () => {
+    const P2 = poll({ verb: 'Saving', ids: ['a', 'b'], done: 1 }, `Promise.reject(new Error('down'))`);
+    await P2._hubSendPoll(P2.__I);
+    expect(P2.__I.hubSend.done).toBe(1);
+  });
+  it('a fresh hub (no hubSend) shows no strip; search results never show it', () => {
+    expect(body(undefined)._hubBodyHtml()).not.toContain('role="status"');
+    const b = body({ verb: 'Saving', ids: ['a'], done: 0 }); b._ik().hubQ = 'zz';
+    expect(b._hubBodyHtml()).not.toContain('role="status"');
+  });
+  it('_ikSchedule stays busy while the batch is open, not once it is done', () => {
+    const sch = (hubSend: any) => {
+      const F2 = loadFns(['_ikSchedule'], `${KINDS}
+        const S = { page: 'link-intake' }; const __I = { resend: {}, hubSend: ${JSON.stringify(hubSend)}, fixPoll: 1 }; const _ik = () => __I;
+        const _ikOpenAct = () => false; const _ikLkPoll = () => {}; const _ikFixPoll = () => {};`, ['_ikSchedule', '_ik']);
+      F2._ikSchedule();
+      const on = !!F2._ik().poll; clearTimeout(F2._ik().poll); return on;
+    };
+    expect(sch({ verb: 'Saving', ids: ['a', 'b'], done: 1 })).toBe(true);
+    expect(sch({ verb: 'Saving', ids: ['a', 'b'], done: 2 })).toBe(false);
+    expect(sch(undefined)).toBe(false);
   });
 });
