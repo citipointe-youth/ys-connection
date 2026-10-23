@@ -4,7 +4,7 @@ import { loadIndexHtml, loadFns } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const STAGES = HTML.match(/^const HUB_STAGES = .*$/m)![0];
-const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText'];
 const F = loadFns(NAMES, `${STAGES}\nconst _lkSeen = (x) => x; const IK_FIX_REASON = {};`, NAMES);
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -96,9 +96,9 @@ describe('search per child', () => {
 });
 
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
-const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
-  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
 describe('landing', () => {
   const env = (I: any) => loadFns(LANDING_NAMES,
     `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
@@ -129,6 +129,14 @@ describe('landing', () => {
     expect(F2._hubSnapApply({ live: false, kinds: {} })).toBe(false);
     expect(F2._hubSnapApply(null)).toBe(false);
     expect(F2._ikLk('unlinked').res).toBeNull();
+  });
+  it('landing top bar: Text all N parents (the stage candidates, this week only); none when N = 0', () => {
+    const r = { key: P(102), status: 'ready', title: 'Bo Sample', reason: '', outcome: '', hasText: true, personId: P(2), family: null, actions: [{ type: 'intakeSave', status: 'sent' }] };
+    const mk = (date: string) => env({ ...I, hub: { lists: { ['intake|' + date]: { date, rows: [r] } }, flows: [] }, hubWk: 'cur' });
+    const body = (F2: any) => { F2._hubSnapApply({ live: true, kinds: { forms: null } }); return F2._hubBodyHtml(); };
+    expect(body(mk(new Date().toISOString().slice(0, 10)))).toContain(`onclick="_hubBulkOpen('text', 'cur')">Text all 1 parent</button>`);
+    expect(body(mk('2026-01-01'))).not.toContain(`_hubBulkOpen('text', 'cur')`); // the stage group's own button stays as it was
+    expect(body(env(I))).not.toContain('Text all');
   });
   it('search shows families and per-child form hits; nothing found says so', () => {
     const F2 = env({ ...I, hubQ: 'zz' });
@@ -220,22 +228,24 @@ describe('Refresh clears', () => {
 });
 
 describe('bulk buttons', () => {
-  const B = loadFns(['esc', '_hubBulkRows', '_hubStray', '_hubBulkHtml', '_ikReadyRows', '_ikOpenAct'], `const _ik = () => ({ saBusy: false });`, ['_hubBulkRows', '_hubBulkHtml']);
+  const B = loadFns(['esc', '_hubBulkRows', '_hubStray', '_hubTextNext', '_hubBulkBtn', '_hubTextAll', '_hubBulkHtml', '_ikReadyRows', '_ikOpenAct'], `const _ik = () => ({ saBusy: false });`, ['_hubBulkRows', '_hubBulkHtml']);
   const fam = (kids: any[]) => ({ kids });
   const M = { fams: [fam([
     { stage: 'elvanto', intake: { date: 'd', row: { key: 'a', status: 'ready', actions: [] } } },
     { stage: 'elvanto', intake: { date: 'd', row: { key: 'b', status: 'done', hasText: true, actions: [] } } },
-    { stage: 'elvanto', intake: { date: 'd', row: { key: 'c', status: 'done', hasText: true, actions: [{ status: 'pending' }] } } }]),
+    { stage: 'elvanto', intake: { date: 'd', row: { key: 'c', status: 'done', hasText: true, actions: [{ status: 'pending' }] } } },
+    // live shape (ysc-v149): the console keeps the row 'ready' until the text goes; its save already went
+    { stage: 'elvanto', intake: { date: 'd', row: { key: 'r', status: 'ready', hasText: true, actions: [{ type: 'intakeSave', status: 'sent' }] } } }]),
     fam([{ stage: 'decided', consent: { date: 'e', row: { key: 'p', status: 'ready', outcome: 'Contact allowed', actions: [] } } }]),
     fam([{ stage: 'decided', consent: { date: 'e', row: { key: 's', status: 'ready', outcome: '', actions: [] } } }])] }; // s: a stray form to approve to an existing student
   it('Save all takes ready rows with nothing open; Text all takes rows whose save is done and text still to send', () => {
     expect(B._hubBulkRows(M, 'save').map((x: any) => x[1].row.key)).toEqual(['a']);
-    expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b']);
+    expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b', 'r']);
     expect(B._hubBulkRows(M, 'consent').map((x: any) => x[1].row.key)).toEqual(['p']);
   });
   it('the Add to Elvanto group shows both buttons; Record consent shows Save all; the others none', () => {
     const h = B._hubBulkHtml('elvanto', M).replace(/<[^>]*>/g, '|');
-    expect(h).toContain('Save all 1'); expect(h).toContain('Text all 1 parent');
+    expect(h).toContain('Save all 1'); expect(h).toContain('Text all 2 parents');
     expect(B._hubBulkHtml('decided', M)).toContain('Save all 1');
     expect(B._hubBulkHtml('consent', M)).toBe('');
   });
@@ -280,7 +290,7 @@ describe('Sending X of N (fix round 24 Oct, Task 5)', () => {
   };
   const body = (hubSend: any) => loadFns(['esc', '_hubBodyHtml', '_hubSendHtml', '_hubAddDays', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'], `${STG}
     const __I = { hubSend: ${JSON.stringify(hubSend)}, hubQ: '' }; const _ik = () => __I; const _ikSt = () => ({});
-    const _hubM = () => ({ fams: [], loose: [] }); const _hubRows = () => []; const _hubBulkHtml = () => '';
+    const _hubM = () => ({ fams: [], loose: [] }); const _hubRows = () => []; const _hubBulkHtml = () => ''; const _hubBulkBtn = () => ''; const _hubTextAll = () => '';
     const _hubSearch = () => ({ fams: [], forms: [] }); const _hubFamRow = () => ''; const icS = () => '';`, ['_hubBodyHtml', '_ik']);
   it('Save all from the hub records the saved ids; the strip reads "Saving 1 of 3…"; Text all says Sending', async () => {
     const F2 = mkGo('consentSave', ['saved', 'replay', 'saved', 'duplicate']);

@@ -13540,12 +13540,19 @@ function _hubReasons(c, st, fixes) {
 }
 // Stray fix 2026-10-24: a consent form the console matched to ONE existing student (not a new one this week) is a Ready consent row
 // with no outcome (every student's Ready row has one); its one step approves the form to that profile.
+// Text-parent next (2026-10-24 fix): the console keeps a row 'ready' until its parent text goes, so a ready row whose latest
+// save already went (sent) is waiting on the text, not a save. One predicate for the row label, the profile and Text all.
+function _hubTextNext(ir) {
+  if (!ir || !ir.hasText) return false;
+  const s = (ir.actions || []).find((a) => a && a.type === 'intakeSave' && a.status !== 'cancelled');
+  return ir.status !== 'ready' || (!!s && s.status === 'sent');
+}
 function _hubStray(cr) { return !!cr && cr.status === 'ready' && !cr.outcome; }
 function _hubNext(c) {
   const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
   if (_hubStray(cr)) return ['consent', 'Approve to ' + c.name];
   if (c.mis) return ['fix', 'Make profile match'];
-  if (c.stage === 'form' || (c.stage === 'elvanto' && ir && ir.status === 'ready')) return ['save', 'Save to Elvanto'];
+  if (c.stage === 'form' || (c.stage === 'elvanto' && ir && ir.status === 'ready' && !_hubTextNext(ir))) return ['save', 'Save to Elvanto'];
   if (c.stage === 'elvanto') return ['text', 'Text parent'];
   if (c.stage === 'decided') return cr && cr.status !== 'done' ? ['consent', 'Mark consent'] : c.flow && c.flow.notReceivedOk && !c.flow.dnc ? ['mark', 'Mark consent'] : null;
   return null;
@@ -13729,8 +13736,8 @@ function _hubBodyHtml() {
   const mis = _hubRows('mismatches') || [], need = fams.filter((f) => f.needs), loose = M.loose.filter((i) => inWk(mis[i] && mis[i].submitted));
   const unl = (_hubRows('unlinked') || []).map((f, i) => [f, i]).filter(([f]) => inWk(f && f.submitted)); // keep each form's own index
   const n = need.length + unl.length + loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
-  const old = _hubAddDays(today, -28), open = I.hubOpen || {};
-  return _hubSendHtml() + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
+  const old = _hubAddDays(today, -28), open = I.hubOpen || {}, tx = _hubBulkBtn({ ...M, fams }, 'text', _hubTextAll, wk);
+  return _hubSendHtml() + (tx ? `<div class="strip">${tx}</div>` : '') + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
     + loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
       const fs = fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
@@ -13743,20 +13750,27 @@ function _hubBulkRows(M, kind) {
   for (const f of M.fams) for (const c of f.kids) {
     const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
     if (kind === 'save' && c.stage === 'elvanto' && ir && _ikReadyRows({ rows: [ir] }).length) out.push(['intake', c.intake]);
-    if (kind === 'text' && c.stage === 'elvanto' && ir && ir.status !== 'ready' && ir.hasText && !(ir.actions || []).some(_ikOpenAct)) out.push(['intake', c.intake]);
+    if (kind === 'text' && c.stage === 'elvanto' && _hubTextNext(ir) && !(ir.actions || []).some(_ikOpenAct)) out.push(['intake', c.intake]);
     if (kind === 'consent' && c.stage === 'decided' && cr && !_hubStray(cr) && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]); // a stray approve: its own button only
   }
   return out;
 }
+function _hubBulkBtn(M, kind, label, wk) {
+  const n = _hubBulkRows(M, kind).length;
+  return n ? `<button type="button" class="btn btn-primary btn-sm"${_ik().saBusy ? ' disabled' : ''} onclick="_hubBulkOpen('${kind}'${wk ? ", '" + wk + "'" : ''})">${esc(label(n))}</button>` : '';
+}
+function _hubTextAll(n) { return 'Text all ' + n + (n === 1 ? ' parent' : ' parents'); }
 function _hubBulkHtml(stage, M) {
-  const b = (kind, label) => { const n = _hubBulkRows(M, kind).length; return n ? `<button type="button" class="btn btn-primary btn-sm"${_ik().saBusy ? ' disabled' : ''} onclick="_hubBulkOpen('${kind}')">${esc(label(n))}</button>` : ''; };
-  const h = stage === 'elvanto' ? b('save', (n) => 'Save all ' + n) + b('text', (n) => 'Text all ' + n + (n === 1 ? ' parent' : ' parents'))
+  const b = (kind, label) => _hubBulkBtn(M, kind, label);
+  const h = stage === 'elvanto' ? b('save', (n) => 'Save all ' + n) + b('text', _hubTextAll)
     : stage === 'decided' ? b('consent', (n) => 'Save all ' + n) : '';
   return h ? `<div class="strip">${h}</div>` : '';
 }
 // One confirm for the group: each row's own detail is read (the step keys go verbatim, as Save all), blocked ones are named and skipped.
-async function _hubBulkOpen(kind) {
-  const I = _ik(), xs = _hubBulkRows(_hubM(), kind), st = _ikSt();
+// wk (landing button only): just the families in that week, as the landing counts.
+function _hubWkM(M, wk) { const today = _siteDay(Date.now()); return { ...M, fams: M.fams.filter((f) => _hubInWeek(f.date, wk, today)) }; }
+async function _hubBulkOpen(kind, wk) {
+  const I = _ik(), xs = _hubBulkRows(wk ? _hubWkM(_hubM(), wk) : _hubM(), kind), st = _ikSt();
   if (!xs.length || I.saBusy) return;
   I.saBusy = true; _ikDraw();
   const h = _here();
@@ -13770,7 +13784,7 @@ async function _hubBulkOpen(kind) {
     if (!det) { skipped.push(x.row.title); return; }
     if (type === 'intakeText') {
       const s = _ikTextStep(det.detail);
-      if (!s || _ikTextBlock(det, list, st)) skipped.push(x.row.title);
+      if (!s || _ikTodo(det.detail).length || _ikTextBlock(det, list, st)) skipped.push(x.row.title);
       else items.push({ key: x.row.key, title: x.row.title, outcome: '', payload: { date: x.date, row: x.row.key, key: s.key } });
       return;
     }
