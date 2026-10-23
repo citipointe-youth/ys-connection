@@ -26,7 +26,7 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
   '_navSnap', '_navSame', '_here', '_still',
   // consent hub landing (2026-10-23)
-  '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
+  '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubSaveTag', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
   '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_hubNextHtml', '_hubMoreHtml', '_hubKidMore', '_hubUnlinkIdx', '_hubStripHtml'];
 const HTML = loadIndexHtml();

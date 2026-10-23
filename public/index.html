@@ -13665,10 +13665,18 @@ function _hubChip(c, many) {
   const s = HUB_STAGES.find((x) => x[0] === c.stage), t = (many ? String(c.name || '').split(' ')[0] + ': ' : '') + (s ? s[1] : '');
   return `<span class="lk-tag${c.stage === 'done' ? ' ik-ok' : c.stage === 'decided' ? ' ik-prac' : ''}">${esc(t)}</span>`;
 }
+// Operator 2026-10-24: each child's last save (Save all or its own) as a tag on the landing row, from the row's own server-side actions
+// (so it survives a reload): Saving… while queued or running, Saved once the console confirms, Didn't save (the reason line says why).
+function _hubSaveTag(c) {
+  const a = [c.intake && c.intake.row, c.consent && c.consent.row].map((r) => _ikAct(r && r.actions)).filter((x) => x && ['intakeSave', 'consentSave', 'intakeText'].includes(x.type))
+    .sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt))[0];
+  const t = !a ? null : _ikOpenAct(a) ? ['Saving…', 'ik-wait'] : a.status === 'sent' ? ['Saved', 'ik-ok'] : a.status === 'refused' || a.status === 'unclear' ? ["Didn't save", 'ik-bad'] : null;
+  return t ? `<span class="lk-tag ${t[1]}">${esc(t[0])}</span>` : '';
+}
 function _hubFamRow(f, fi) {
   const many = f.kids.length > 1;
   return `<div class="li lk-row rc" role="button" tabindex="0" onclick="_hubOpen(${Number(fi)}, 0)"><div class="rc-top"><div class="lk-nm">${esc(f.title)}</div>`
-    + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many)).join('')}</span>${icS('chevr')}</div>`
+    + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many) + _hubSaveTag(c)).join('')}</span>${icS('chevr')}</div>`
     + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
 }
 // Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).

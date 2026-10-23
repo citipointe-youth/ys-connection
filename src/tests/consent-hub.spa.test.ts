@@ -98,7 +98,7 @@ describe('search per child', () => {
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
 const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
-  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
 describe('landing', () => {
   const env = (I: any) => loadFns(LANDING_NAMES,
     `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
@@ -351,5 +351,25 @@ describe('Sending X of N (fix round 24 Oct, Task 5)', () => {
     const R = poll({ verb: 'Saving', ids: ['a', 'b'], done: 1 }, one); // first poll stamps the clock
     await R._hubSendPoll(R.__I);
     expect(R.__I.hubSend.stale).toBeFalsy();
+  });
+});
+
+describe('save tag on the landing row (operator 2026-10-24)', () => {
+  const T = loadFns(['esc', '_hubSaveTag', '_ikAct', '_ikOpenAct'], '', ['_hubSaveTag']);
+  const act = (o: any) => ({ id: 'x', type: 'consentSave', status: 'pending', reason: null, createdAt: '2026-10-24T01:00:00Z', ...o });
+  const tag = (actions: any[], intake: any[] = []) => T._hubSaveTag(kid({ consent: { date: 'd', row: crow({ actions }) },
+    intake: intake.length ? { date: 'd', row: irow({ actions: intake }) } : null })).replace(/<[^>]*>/g, '').replace(/&#39;/g, "'");
+  it("Saving… while queued or claimed, Saved when sent, Didn't save when refused or unclear, nothing with no save", () => {
+    expect(tag([act({})])).toBe('Saving…');
+    expect(tag([act({ status: 'claimed' })])).toBe('Saving…');
+    expect(tag([act({ status: 'sent' })])).toBe('Saved');
+    expect(tag([act({ status: 'refused', reason: 'needs-you' })])).toBe("Didn't save");
+    expect(tag([act({ status: 'unclear' })])).toBe("Didn't save");
+    expect(tag([])).toBe('');
+    expect(tag([act({ type: 'intakeAnswer', status: 'pending' })])).toBe(''); // an answer is not a save
+  });
+  it('the newest save of the child wins across its intake and consent rows', () => {
+    expect(tag([act({ status: 'sent' })], [act({ type: 'intakeSave', status: 'refused', createdAt: '2026-10-23T01:00:00Z' })])).toBe('Saved');
+    expect(tag([act({ status: 'sent', createdAt: '2026-10-22T01:00:00Z' })], [act({ type: 'intakeText', status: 'pending' })])).toBe('Saving…');
   });
 });
