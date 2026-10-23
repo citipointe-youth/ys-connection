@@ -366,6 +366,16 @@ export function canAccessGender(actor: Actor, gender: string, structure?: Struct
   return normGender(gender) === scope;
 }
 
+/**
+ * A Junior/Senior-named lifegroup (grade null, `quad` set): admin/director, the quad's own login, and (operator
+ * ruling 2026-10-24) a grade login holding any grade in the quad's bracket; the gender scope must fit.
+ */
+export function canAccessQuadGroup(actor: Actor, quad: string, structure?: StructureScope): boolean {
+  if (actor.role === 'admin' || actor.role === 'director') return true;
+  return quadGradesOf(quad, structure).some((g) => canAccessGrade(actor, g, structure))
+    && canAccessGender(actor, quadGenderOf(quad) ?? '', structure);
+}
+
 /** Combined grade + gender access — the canonical student-visibility check. */
 export function canAccessStudent(actor: Actor, grade: number | null, gender: string, structure?: StructureScope): boolean {
   return canAccessGrade(actor, grade, structure) && canAccessGender(actor, gender, structure);

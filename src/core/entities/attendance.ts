@@ -29,6 +29,7 @@ export interface Lifegroup {
   shortName: string;
   grade: number | null;
   gender: string | null;
+  quad?: string | null; // 0047: a Junior/Senior-named group (grade null) belongs to this leader quad
   createdAt: ISODateString;
   elvantoGroupId?: string | null;
 }

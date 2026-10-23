@@ -58,7 +58,7 @@ describe('buildLifegroupStats', () => {
 
 describe('parseGroupMeta', () => {
   it('reads grade and gender from the group name', () => {
-    expect(parseGroupMeta('Grade 9 Girls Lifegroup')).toEqual({ grade: 9, gender: 'female' });
-    expect(parseGroupMeta('Senior Lifegroup')).toEqual({ grade: null, gender: null });
+    expect(parseGroupMeta('Grade 9 Girls Lifegroup')).toEqual({ grade: 9, gender: 'female', quad: null });
+    expect(parseGroupMeta('Senior Lifegroup')).toEqual({ grade: null, gender: null, quad: null });
   });
 });

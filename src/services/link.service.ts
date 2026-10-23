@@ -35,8 +35,9 @@ import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
 import {
-  can, canAccessGender, canAccessGrade, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
+  can, canAccessGender, canAccessGrade, canAccessQuadGroup, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
+import { groupQuadOf } from '../core/types/enums';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
@@ -292,6 +293,8 @@ function stable(v: unknown): string {
 const brisbaneStart = (ymd: string, tz: string) => new Date(instantOf(ymd, '00:00', tz)).toISOString();
 
 function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
+  const q = g.grade == null ? groupQuadOf(g.name) : null; // Junior/Senior-named group
+  if (q) return canAccessQuadGroup(a, q, s);
   if (g.grade == null) return isAdminRole(a);
   return canAccessGrade(a, g.grade, s) && (g.gender ? canAccessGender(a, g.gender, s) : true);
 }
@@ -1156,9 +1159,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
       const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId) ?? null });
       // T8 + R2 (2026-10-17): grade 6..12, girls then boys, then Mon..Sun (no day last), then name; no grade last.
+      // A Junior group sorts after grade 9, a Senior one after grade 12 (2026-10-24).
       const rank = (g: LinkGroupRow) => {
-        const wd = meetsWeekday(g.meets || '');
-        return [g.grade ?? 99, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2, wd < 0 ? 7 : (wd + 6) % 7] as const;
+        const wd = meetsWeekday(g.meets || ''), q = g.grade == null ? groupQuadOf(g.name) : null;
+        return [g.grade ?? (q ? (q.endsWith('79') ? 9.5 : 12.5) : 99), g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2, wd < 0 ? 7 : (wd + 6) % 7] as const;
       };
       const order = (a: LinkGroupRow, b: LinkGroupRow) => {
         const x = rank(a), y = rank(b);

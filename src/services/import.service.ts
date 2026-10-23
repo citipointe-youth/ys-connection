@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { assertCan } from './access-control';
+import { assertCan, quadGenderOf } from './access-control';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
 import { invalidateOverviewCache } from './overview.service';
@@ -18,7 +18,7 @@ import type {
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { AppSettings } from '../core/entities/settings';
-import { computeQuad } from '../core/types/enums';
+import { computeQuad, groupQuadOf, type Quad } from '../core/types/enums';
 import { BadRequestError } from '../core/errors/app-error';
 import { computeStatus } from './atrisk.service';
 import { computeStudentAggregates, emptyStudentAggregate, type AggregateResult } from './aggregates';
@@ -168,13 +168,14 @@ function normalizeDob(raw: string | null | undefined, dateOrder: 'DMY' | 'MDY' =
   return null;
 }
 
-export function parseGroupName(name: string): { grade: number | null; gender: 'male' | 'female' | null } {
+export function parseGroupName(name: string): { grade: number | null; gender: 'male' | 'female' | null; quad: Quad | null } {
   const gradeMatch = name.match(/\bGrade\s+(\d+)\b/i);
   const grade = gradeMatch ? parseInt(gradeMatch[1]!, 10) : null;
   let gender: 'male' | 'female' | null = null;
   if (/\bboys?\b/i.test(name)) gender = 'male';
   else if (/\bgirls?\b/i.test(name)) gender = 'female';
-  return { grade, gender };
+  const quad = groupQuadOf(name); // Junior/Senior name, no grade: grade stays null
+  return { grade, gender: quad ? quadGenderOf(quad) : gender, quad };
 }
 
 // Apply a recomputed term split to every student. Both import paths call this
@@ -600,7 +601,7 @@ export function makeImportService(
       const LEADER_RE_G = new RegExp(`\\(\\s*(?:assistant\\s+)?${leaderTag}s?\\s*\\)`, 'ig');
 
       for (const group of groups) {
-        const { grade: gGrade, gender: gGender } = parseGroupName(group.name);
+        const { grade: gGrade, gender: gGender, quad: gQuad } = parseGroupName(group.name);
         // Lifegroup is always created fresh (we cleared above).
         const lifegroup = {
           id: generateId(),
@@ -608,6 +609,7 @@ export function makeImportService(
           shortName: group.name.replace(/^[^-]+-\s*/u, '').slice(0, 40).trim(),
           grade: gGrade,
           gender: gGender,
+          quad: gQuad,
           createdAt: now,
           elvantoGroupId: gIds.get(group.name.trim().toLowerCase()) ?? null,
         };

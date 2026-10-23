@@ -66,6 +66,7 @@ function toLifegroup(row: Record<string, unknown>): Lifegroup {
     shortName: row['short_name'] as string,
     grade: (row['grade'] as number | null) ?? null,
     gender: (row['gender'] as string | null) ?? null,
+    quad: (row['quad'] as string | null) ?? null,
     createdAt: dateIso(row['created_at']),
     elvantoGroupId: (row['elvanto_group_id'] as string | null) ?? null,
   };
@@ -269,13 +270,14 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
 
   async save(lifegroup: Lifegroup): Promise<Lifegroup> {
     const rows = await this.sql`
-      insert into lifegroups (id, full_name, short_name, grade, gender, created_at, elvanto_group_id)
+      insert into lifegroups (id, full_name, short_name, grade, gender, quad, created_at, elvanto_group_id)
       values (
         ${lifegroup.id},
         ${lifegroup.fullName},
         ${lifegroup.shortName},
         ${lifegroup.grade ?? null},
         ${lifegroup.gender ?? null},
+        ${lifegroup.quad ?? null},
         ${lifegroup.createdAt},
         ${lifegroup.elvantoGroupId ?? null}
       )
@@ -284,6 +286,7 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
         short_name = excluded.short_name,
         grade      = excluded.grade,
         gender     = excluded.gender,
+        quad       = excluded.quad,
         elvanto_group_id = excluded.elvanto_group_id
       returning *
     `;
@@ -301,6 +304,7 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
           short_name: g.shortName,
           grade:      g.grade ?? null,
           gender:     g.gender ?? null,
+          quad:       g.quad ?? null,
           created_at: g.createdAt,
           elvanto_group_id: g.elvantoGroupId ?? null,
         })),
@@ -310,6 +314,7 @@ export class SupabaseLifegroupRepository implements ILifegroupRepository {
         short_name = excluded.short_name,
         grade      = excluded.grade,
         gender     = excluded.gender,
+        quad       = excluded.quad,
         elvanto_group_id = excluded.elvanto_group_id
     `;
     }

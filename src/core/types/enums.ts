@@ -46,6 +46,17 @@ export function computeQuad(grade: number | null, gender: string): Quad | null {
   return null;
 }
 
+// A lifegroup named for a leader quad with no "Grade N" ("... Junior Girls Wednesday Lifegroup",
+// "... Senior Guys Thursday Mt Gravatt Lifegroup"): its quad, else null. A "Grade N" name never has one.
+export function groupQuadOf(name: string): Quad | null {
+  if (/\bGrade\s+\d+\b/i.test(name)) return null;
+  const female = /\bgirls?\b/i.test(name);
+  if (!female && !/\b(?:boys?|guys?)\b/i.test(name)) return null;
+  if (/\bjunior\b/i.test(name)) return female ? 'g79' : 'b79';
+  if (/\bsenior\b/i.test(name)) return female ? 'g1012' : 'b1012';
+  return null;
+}
+
 // Role hierarchy:
 //   leader — sees ONLY their own connected students (own-connections-only
 //            scope). Optional role, off by default (§5.2, roles.enabled.leader).
