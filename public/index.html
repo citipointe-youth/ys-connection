@@ -13612,6 +13612,7 @@ async function _hubLoad(quiet) {
   try {
     const [hi, hc, snap, fl] = await Promise.all([get('/link/intake?mode=intake' + (quiet ? '' : '&view=1')), get('/link/intake?mode=consent'),
       get('/link/consents/snapshot').catch(() => null), _linkOn('flows') ? get('/link/flows').catch(() => null) : null]);
+    if (I.hubSend) await _hubSendPoll(I);
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: hi && hi.console, consoleLinkRev: hi && hi.consoleLinkRev, appLinkRev: hi && hi.appLinkRev };
     I.dates = (hi && hi.dates) || [];
@@ -13662,6 +13663,26 @@ function _hubFamRow(f, fi) {
     + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many)).join('')}</span>${icS('chevr')}</div>`
     + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
 }
+// Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
+async function _hubSendPoll(I) {
+  const s = I.hubSend;
+  if (!s || s.done >= s.ids.length) return;
+  try {
+    const acts = await API.fresh('/link/actions?ids=' + s.ids.map(encodeURIComponent).join(','), true);
+    const fin = (Array.isArray(acts) ? acts : []).filter((a) => a && s.ids.includes(a.id) && ['sent', 'refused', 'cancelled', 'unclear'].includes(a.status));
+    s.done = fin.length; s.bad = fin.filter((a) => a.status === 'refused' || a.status === 'unclear').length;
+  } catch (e) { /* keep the last count */ }
+}
+// "Saving X of N…" while the batch runs, then "Done" once (the next draw clears it).
+function _hubSendHtml() {
+  const I = _ik(), s = I.hubSend;
+  if (!s) return '';
+  const n = s.ids.length;
+  if (s.done < n) return `<div class="strip" role="status">${esc(s.verb + ' ' + Math.min(s.done + 1, n) + ' of ' + n + '…')}</div>`;
+  if (s.shown) { I.hubSend = null; return ''; }
+  s.shown = true;
+  return `<div class="strip" role="status">${esc('Done: ' + n + ' of ' + n + (s.bad ? ', ' + s.bad + ' not saved: open it to see why' : '') + '.')}</div>`;
+}
 function _hubBodyHtml() {
   const I = _ik(), st = _ikSt(), M = _hubM(), q = String(I.hubQ || '').trim(), row = (f) => _hubFamRow(f, M.fams.indexOf(f));
   I.hubShown = M.fams;
@@ -13677,7 +13698,7 @@ function _hubBodyHtml() {
   const unl = _hubRows('unlinked') || [], mis = _hubRows('mismatches') || [], need = M.fams.filter((f) => f.needs);
   const n = need.length + unl.length + M.loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
   const old = _hubAddDays(_siteDay(Date.now()), -28), open = I.hubOpen || {};
-  return `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
+  return _hubSendHtml() + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map((f, i) => _ikClRow(f, i, '', st)).join('')
     + M.loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
       const fs = M.fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
@@ -13868,7 +13889,8 @@ function _ikSchedule() {
   if (I.poll) { clearTimeout(I.poll); I.poll = null; }
   if (S.page !== 'link-intake') return;
   const busy = (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
-    || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key);
+    || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key)
+    || (!!I.hubSend && I.hubSend.done < I.hubSend.ids.length);
   // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
   // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
   if (busy) I.poll = setTimeout(() => {
@@ -13936,6 +13958,7 @@ async function _ikSaveAllGo() {
   // RV-I-m4: a row whose earlier save is still kept with the same payload goes again with that id (replay, never twice).
   const all = x.items.map((it) => { const p = it.payload || {}, was = _ikQFind(x.type, p.row, p.date); return { it, id: was && _ikSame(was.payload, p) ? was.id : _lkUuid() }; });
   let ok = 0;
+  const ids = [];
   for (let i = 0; i < all.length; i += 20) { // S-3: 20 a call keeps each well inside the server's 20 s guard
     const part = all.slice(i, i + 20);
     let res;
@@ -13951,12 +13974,14 @@ async function _ikSaveAllGo() {
     for (const p of part) {
       const r = _ikOutcome(res, p.id);
       if (r && (r.outcome === 'saved' || r.outcome === 'replay')) {
-        ok++;
+        ok++; ids.push(p.id);
         _ikLocal(p.it.key, { id: p.id, type: x.type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
       } else if (!(r && r.outcome === 'duplicate')) I.saErr[p.it.key] = (r && r.message) || 'Not saved. Try again.';
     }
   }
   if (_ik() !== I) return;
+  // Fix round 24 Oct (Task 5): the hub shows "Saving X of N" until the batch has landed (one actions read takes 200 ids).
+  if (ids.length && ids.length <= 200 && !I.key && S.page === 'link-intake') I.hubSend = { verb: x.type === 'intakeText' ? 'Sending' : 'Saving', ids, done: 0 };
   toast(ok ? 'Saving ' + ok + '. The console works through them one at a time.' : 'Nothing was saved. See each row.');
   _ikDraw(); if (I.key) _ikLoad(true); else _hubLoad(true);
 }
