@@ -12074,7 +12074,7 @@ function _lkCanRemove(r) {
 function _lkOpenStep(id) {
   const r = _lkFlowRow(id);
   if (!r) return;
-  if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false, pick: _lkPickList(r).findIndex((l) => l.id === r.currentLeaderId) };
+  if (!LINK.fs || LINK.fs.rowId !== id) LINK.fs = { rowId: id, note: '', priv: false, pick: r.currentLeaderId || null }; // review #5: the pick is a leader id, so a list rebuilt under the sheet never shifts it
   modal(`<div id="lk-fs">${_lkStepHtml()}</div>${_lkStepActions()}`, () => { LINK.fs = null; });
   if (!LINK.ldrs) _lkLoadLeaders().then(() => { if (LINK.fs) _lkStepDraw(); });
 }
@@ -12100,9 +12100,9 @@ function _lkStepHtml() {
   let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
   if (r.personId && _lkBoss()) {
     // 2026-10-24 flows reassign: admin/director pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
-    const ls = _lkPickList(r), l = ls[f.pick];
-    assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=+this.value;_lkStepDraw()"><option value="-1">Nobody (Elvanto's usual pick)</option>
-      ${ls.map((x, i) => `<option value="${i}"${i === f.pick ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+    const ls = _lkPickList(r), l = _lkPicked(r);
+    assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
+      ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
       <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p>
       ${l && !l.personId ? '<p class="lk-hint">Not linked to an Elvanto person: Elvanto picks who gets the next step.</p>' : ''}</div>`;
   } else if (r.personId) {
@@ -12153,10 +12153,12 @@ function _lkStepBtns() {
 // The admin/director pick, as a leader from _lkPickList(r) (null = Nobody).
 function _lkPickList(r) {
   const ls = (LINK.fLeaders || []).filter((l) => _lkFits(l, r.grade, r.gender) || l.id === r.currentLeaderId);
-  // an inactive app assignee is not in leaders: keep them listed so the sheet never unassigns by itself
+  // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
   if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
   return ls;
 }
+// The sheet's pick (LINK.fs.pick = leader id), null = Nobody or no longer in the list.
+function _lkPicked(r) { const f = LINK.fs; return (f && f.pick && _lkPickList(r).find((l) => l.id === f.pick)) || null; }
 // Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = director/admin level (anyone, any gender);
 // else the person's grade, and the leader's gender unset or the person's.
 function _lkFits(l, grade, gender) {
@@ -12175,7 +12177,7 @@ async function _lkAssignSave(r, l) {
 async function _lkReassign() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r || !r.personId || !_lkBoss()) return;
-  const l = _lkPickList(r)[f.pick] || null;
+  const l = _lkPicked(r);
   try { await _lkAssignSave(r, l); } catch (e) { toast(e.message || 'Could not assign.'); return; }
   LINK.fs = null;
   closeModal(); _lkRefreshView();
@@ -12205,7 +12207,7 @@ function _lkStepSend() {
   const note = String(f.note || '').trim() ? f.note : null;
   // admin/director: the pick gets the next step (no Elvanto person = Elvanto's usual pick); a changed pick is also saved here.
   // Other logins send no assignTo: the server gives the next step to the current assignee.
-  const l = _lkBoss() && r.personId ? _lkPickList(r)[f.pick] || null : null;
+  const l = _lkBoss() && r.personId ? _lkPicked(r) : null;
   if (_lkBoss() && r.personId && (l ? l.id : null) !== (r.currentLeaderId || null)) _lkAssignSave(r, l).catch((e) => toast(e.message || 'Could not assign.'));
   if (LINK.fres) delete LINK.fres[r.rowId];
   LINK.fs = null;
@@ -13667,17 +13669,22 @@ function _hubFamRow(f, fi) {
 async function _hubSendPoll(I) {
   const s = I.hubSend;
   if (!s || s.done >= s.ids.length) return;
+  s.at = s.at || Date.now();
   try {
     const acts = await API.fresh('/link/actions?ids=' + s.ids.map(encodeURIComponent).join(','), true);
     const fin = (Array.isArray(acts) ? acts : []).filter((a) => a && s.ids.includes(a.id) && ['sent', 'refused', 'cancelled', 'unclear'].includes(a.status));
+    if (fin.length !== s.done) s.at = Date.now();
     s.done = fin.length; s.bad = fin.filter((a) => a.status === 'refused' || a.status === 'unclear').length;
   } catch (e) { /* keep the last count */ }
+  // review #3: no row finished for 3 min (console offline, a stuck row) = stop the 5 s poll; a later hub load still counts
+  s.stale = s.done < s.ids.length && !!s.at && Date.now() - s.at > 180000;
 }
 // "Saving X of N…" while the batch runs, then "Done" once (the next draw clears it).
 function _hubSendHtml() {
   const I = _ik(), s = I.hubSend;
   if (!s) return '';
   const n = s.ids.length;
+  if (s.done < n && s.stale) return `<div class="strip" role="status">${esc('Still ' + s.verb.toLowerCase() + ' — check back later.')}</div>`;
   if (s.done < n) return `<div class="strip" role="status">${esc(s.verb + ' ' + Math.min(s.done + 1, n) + ' of ' + n + '…')}</div>`;
   if (s.shown) { I.hubSend = null; return ''; }
   s.shown = true;
@@ -13890,7 +13897,7 @@ function _ikSchedule() {
   if (S.page !== 'link-intake') return;
   const busy = (I.list && (I.list.rows || []).some((r) => (r.actions || []).some(_ikOpenAct)))
     || (I.det && (I.det.actions || []).some(_ikOpenAct)) || Object.keys(I.resend).length > 0 || (!!I.hubAsk && !I.key)
-    || (!!I.hubSend && I.hubSend.done < I.hubSend.ids.length);
+    || (!!I.hubSend && !I.hubSend.stale && I.hubSend.done < I.hubSend.ids.length);
   // GAP-2: 5 s while pending. A poll that fires while the phone is away (e.g. in Messages, watching for the text) re-arms
   // instead of dying, so the result shows within ~5 s of coming back, not at the next 60 s link tick.
   if (busy) I.poll = setTimeout(() => {

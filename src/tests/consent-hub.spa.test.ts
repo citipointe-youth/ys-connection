@@ -325,5 +325,20 @@ describe('Sending X of N (fix round 24 Oct, Task 5)', () => {
     expect(sch({ verb: 'Saving', ids: ['a', 'b'], done: 1 })).toBe(true);
     expect(sch({ verb: 'Saving', ids: ['a', 'b'], done: 2 })).toBe(false);
     expect(sch(undefined)).toBe(false);
+    expect(sch({ verb: 'Saving', ids: ['a', 'b'], done: 1, stale: true })).toBe(false); // review #3: polling stops
+  });
+  it('review #3: no change for 3 min = "Still saving — check back later." and the poll stops; a change resets the clock', async () => {
+    const old = Date.now() - 4 * 60e3, one = `Promise.resolve([{ id: 'a', status: 'sent' }, { id: 'b', status: 'claimed' }])`;
+    const P2 = poll({ verb: 'Saving', ids: ['a', 'b'], done: 1, at: old }, one);
+    await P2._hubSendPoll(P2.__I);
+    expect(P2.__I.hubSend.stale).toBe(true);
+    expect(body(P2.__I.hubSend)._hubBodyHtml()).toContain('<div class="strip" role="status">Still saving — check back later.</div>');
+    const Q = poll({ verb: 'Sending', ids: ['a', 'b'], done: 0, at: old }, one); // a row finished: not stale, clock reset
+    await Q._hubSendPoll(Q.__I);
+    expect(Q.__I.hubSend.stale).toBeFalsy();
+    expect(Q.__I.hubSend.at).toBeGreaterThan(old);
+    const R = poll({ verb: 'Saving', ids: ['a', 'b'], done: 1 }, one); // first poll stamps the clock
+    await R._hubSendPoll(R.__I);
+    expect(R.__I.hubSend.stale).toBeFalsy();
   });
 });

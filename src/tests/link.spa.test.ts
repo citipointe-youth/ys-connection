@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
@@ -1601,7 +1601,7 @@ describe('F3 flow steps', () => {
     return h;
   };
   const boy = (over: any = {}) => row(1, { grade: 8, gender: 'male', assignedLeaderId: 'L1', assignedLeaderName: 'Cody Codeman', currentLeaderId: 'L1', ...over });
-  const pickOf = (h: any, id: string) => h.fns._lkPickList(h.get().LINK.flows[0]).findIndex((l: any) => l.id === id);
+  const pickOf = (_h: any, id: string) => id; // review #5: the pick is a leader id
   it('flows reassign: _lkFits mirrors the server rule', () => {
     const fit = makeEnv().fns._lkFits;
     expect(fit({ active: true, grades: [], gender: null }, null, 'female')).toBe(true);
@@ -1622,8 +1622,8 @@ describe('F3 flow steps', () => {
       expect(sheet.match(/id="lk-assign"/g)).toHaveLength(1);
       expect(sheet).not.toContain('Next step goes to');
       expect(sheet).not.toContain('onchange="_lkAssign');
-      expect(sheet).toContain(`<option value="-1">Nobody (Elvanto's usual pick)</option>`);
-      expect(sheet).toContain('<option value="0" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
+      expect(sheet).toContain(`<option value="">Nobody (Elvanto's usual pick)</option>`);
+      expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
       expect(sheet).not.toContain('<b>Codeman');
       expect(strip(sheet)).toContain('Dee Director');
       expect(strip(sheet)).toContain('Una Unlinked');
@@ -1637,11 +1637,11 @@ describe('F3 flow steps', () => {
     // a current assignee who does not fit is still listed and picked
     const t = admin([boy({ currentLeaderId: 'L2', assignedLeaderId: 'L2' })]);
     t.fns._lkOpenStep(F(1));
-    expect(t.calls.modals[0]).toMatch(/<option value="\d" selected>Gina Girl<\/option>/);
+    expect(t.calls.modals[0]).toMatch(/<option value="L2" selected>Gina Girl<\/option>/);
     // nobody current: Nobody is picked
     const n = admin([boy({ currentLeaderId: null, assignedLeaderId: null })]);
     n.fns._lkOpenStep(F(1));
-    expect(n.get().LINK.fs.pick).toBe(-1);
+    expect(n.get().LINK.fs.pick).toBeNull();
     expect(n.calls.modals[0]).not.toContain(' selected');
     // DNC: Reassign, no Complete; no Elvanto person: no Reassign
     const d = admin([boy({ dnc: true })]);
@@ -1673,11 +1673,22 @@ describe('F3 flow steps', () => {
     expect(h.calls.toasts).toContain('Assigned to Dee Director');
     expect(h.fns._lkQGet()).toEqual([]); // not completed
     h.fns._lkOpenStep(F(1));
-    L.fs.pick = -1;
+    L.fs.pick = null;
     await h.fns._lkReassign();
     expect(h.calls.posts[1].b.leaderId).toBeNull();
     expect(L.flows.map((r: any) => r.currentLeaderId)).toEqual([null, null]);
     expect(h.calls.toasts).toContain('Unassigned');
+  });
+  it('review #5: the pick follows the leader id when the list is rebuilt under the sheet', () => {
+    const h = admin([boy()]);
+    h.fns._lkOpenStep(F(1));
+    const L = h.get().LINK;
+    L.fs.pick = 'L4';
+    L.fLeaders = LDRS().filter((l: any) => l.id !== 'L3'); // a refresh drops a leader sorted before Una
+    expect(h.fns._lkStepHtml()).toContain('<option value="L4" selected>Una Unlinked</option>');
+    L.fs.pick = 'L3'; // a picked leader gone from the list = Nobody, never a neighbour
+    h.fns._lkStepSend();
+    expect('assignTo' in h.fns._lkQGet()[0].payload).toBe(false);
   });
   it('flows reassign: a failed Reassign toasts and changes nothing', async () => {
     const h = admin([boy()], (p) => (p === '/link/flows/assign' ? Promise.reject(new Error('nope')) : Promise.resolve({ results: [] })));
@@ -1799,7 +1810,7 @@ describe('F3 flow steps', () => {
     for (const id of ['L4', null]) {
       const u = admin([boy()]);
       u.fns._lkOpenStep(F(1));
-      u.get().LINK.fs.pick = id ? pickOf(u, id) : -1;
+      u.get().LINK.fs.pick = id;
       u.fns._lkStepSend();
       expect('assignTo' in u.fns._lkQGet()[0].payload).toBe(false);
     }
@@ -1808,7 +1819,7 @@ describe('F3 flow steps', () => {
     const leader = setup('L1', [row(2, { currentLeaderId: 'L1' })]);
     leader.get().LINK.fLeaders = LDRS();
     leader.fns._lkOpenStep(F(2));
-    leader.get().LINK.fs.pick = 2;
+    leader.get().LINK.fs.pick = 'L3';
     leader.fns._lkStepSend();
     expect('assignTo' in leader.fns._lkQGet()[0].payload).toBe(false);
     expect(leader.calls.posts.filter((c: any) => c.p === '/link/flows/assign')).toHaveLength(0);
