@@ -343,11 +343,12 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
 });
 
 describe('Y6c Flow step wording', () => {
-  it('the "Assigned to" select has the hint under it', () => {
+  it('the admin "Assigned to" select has the Reassign / Complete hint under it', () => {
     const src = extractFn(Y6_HTML, '_lkStepHtml');
     const i = src.indexOf('id="lk-assign"');
     expect(i).toBeGreaterThan(0);
-    expect(src.slice(i)).toMatch(/<\/select>[^]*?Saved in this app only\. Elvanto isn't changed\./);
+    expect(src.slice(i)).toMatch(/<\/select>[^]*?Reassign changes who has this person\. Complete gives them the next step\./);
+    expect(src).not.toContain('Next step goes to');
   });
   it('assignee-needed says what to do', () => {
     expect(f._lkStatusText({ status: 'refused', reason: 'assignee-needed' })).toBe("Pick who gets the next step, or Elvanto's usual pick, then Complete again.");
