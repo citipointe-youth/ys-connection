@@ -31,6 +31,6 @@ describe('T14 consent form holds keep the Elvanto wording (fix round 1: Tidy up 
   it('two, unsure and unmatched', () => {
     expect(t('Two consent forms')).toBe('Two consent forms match this student. Pick the right one in Elvanto.');
     expect(t('Unsure consent form')).toBe("A consent form might be this student's. Check it in Elvanto.");
-    expect(t('Unmatched consent form')).toBe("This consent form doesn't match any student for this date. Check it in Elvanto.");
+    expect(t('Unmatched consent form')).toBe("This form isn't for a new student this week. If it's an existing student, approve it to their profile.");
   });
 });

@@ -4,7 +4,7 @@ import { loadIndexHtml, loadFns } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const STAGES = HTML.match(/^const HUB_STAGES = .*$/m)![0];
-const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText'];
 const F = loadFns(NAMES, `${STAGES}\nconst _lkSeen = (x) => x; const IK_FIX_REASON = {};`, NAMES);
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -77,7 +77,7 @@ describe('next step', () => {
   it('one primary action per child', () => {
     expect(F._hubNext({ ...kid({ intake: { date: 'd', row: irow({ status: 'ready' }) } }), stage: 'elvanto' })).toEqual(['save', 'Save to Elvanto']);
     expect(F._hubNext({ ...kid({ intake: { date: 'd', row: irow({ hasText: true }) } }), stage: 'elvanto' })).toEqual(['text', 'Text parent']);
-    expect(F._hubNext({ ...kid({ consent: { date: 'd', row: crow() } }), stage: 'decided' })).toEqual(['consent', 'Mark consent']);
+    expect(F._hubNext({ ...kid({ consent: { date: 'd', row: crow({ outcome: 'Contact allowed' }) } }), stage: 'decided' })).toEqual(['consent', 'Mark consent']);
     expect(F._hubNext({ ...kid({ flow: flow({ notReceivedOk: true }) }), stage: 'decided' })).toEqual(['mark', 'Mark consent']);
     expect(F._hubNext({ ...kid({ mis: { row: {}, i: 0 } }), stage: 'done' })).toEqual(['fix', 'Make profile match']);
     expect(F._hubNext({ ...kid(), stage: 'consent' })).toBeNull();
@@ -96,7 +96,7 @@ describe('search per child', () => {
 });
 
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
-const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
   '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
 describe('landing', () => {
@@ -156,7 +156,7 @@ describe('final-review fixes', () => {
 });
 
 describe('family page', () => {
-  const NAMES2 = ['esc', '_hubNextHtml', '_ikTextOpen', '_hubKidMore', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
+  const NAMES2 = ['esc', '_hubNextHtml', '_hubStray', '_ikTextOpen', '_hubKidMore', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
   const mk = (I: any) => loadFns(NAMES2, `const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const icS = () => '';
     const _ikTextBlock = () => ''; const _ikSaveHtml = (det, list, st, label) => '<button>' + label + '</button>';
     let __m = ''; const modal = (h) => { __m = h; }; const _ikSheetHtml = (t) => t;
@@ -220,13 +220,14 @@ describe('Refresh clears', () => {
 });
 
 describe('bulk buttons', () => {
-  const B = loadFns(['esc', '_hubBulkRows', '_hubBulkHtml', '_ikReadyRows', '_ikOpenAct'], `const _ik = () => ({ saBusy: false });`, ['_hubBulkRows', '_hubBulkHtml']);
+  const B = loadFns(['esc', '_hubBulkRows', '_hubStray', '_hubBulkHtml', '_ikReadyRows', '_ikOpenAct'], `const _ik = () => ({ saBusy: false });`, ['_hubBulkRows', '_hubBulkHtml']);
   const fam = (kids: any[]) => ({ kids });
   const M = { fams: [fam([
     { stage: 'elvanto', intake: { date: 'd', row: { key: 'a', status: 'ready', actions: [] } } },
     { stage: 'elvanto', intake: { date: 'd', row: { key: 'b', status: 'done', hasText: true, actions: [] } } },
     { stage: 'elvanto', intake: { date: 'd', row: { key: 'c', status: 'done', hasText: true, actions: [{ status: 'pending' }] } } }]),
-    fam([{ stage: 'decided', consent: { date: 'e', row: { key: 'p', status: 'ready', actions: [] } } }])] };
+    fam([{ stage: 'decided', consent: { date: 'e', row: { key: 'p', status: 'ready', outcome: 'Contact allowed', actions: [] } } }]),
+    fam([{ stage: 'decided', consent: { date: 'e', row: { key: 's', status: 'ready', outcome: '', actions: [] } } }])] }; // s: a stray form to approve to an existing student
   it('Save all takes ready rows with nothing open; Text all takes rows whose save is done and text still to send', () => {
     expect(B._hubBulkRows(M, 'save').map((x: any) => x[1].row.key)).toEqual(['a']);
     expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b']);
@@ -237,6 +238,16 @@ describe('bulk buttons', () => {
     expect(h).toContain('Save all 1'); expect(h).toContain('Text all 1 parent');
     expect(B._hubBulkHtml('decided', M)).toContain('Save all 1');
     expect(B._hubBulkHtml('consent', M)).toBe('');
+  });
+});
+describe('stray fix 2026-10-24: a consent form matched to ONE existing student', () => {
+  const stray = crow({ key: P(9), personId: P(9), title: 'Knox Lewis', outcome: '' });
+  it('is Record consent at once (before the cut-off too), its one button is Approve to <name>, and Save all leaves it out', () => {
+    const c = kid({ name: 'Knox Lewis', personId: P(9), consent: { date: '2026-10-23', row: stray } });
+    expect(F._hubStage(c, CUT('2026-10-23') - 1, CUT, true)).toBe('decided');
+    expect(F._hubNext(c)).toEqual(['consent', 'Approve to Knox Lewis']);
+    expect(F._hubStray(crow({ outcome: 'Contact allowed' }))).toBe(false);
+    expect(F._hubStray(crow({ status: 'needs-you', reason: 'Unmatched consent form' }))).toBe(false);
   });
 });
 describe('one way in: Flow steps', () => {

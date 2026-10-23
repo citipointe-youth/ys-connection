@@ -12763,7 +12763,7 @@ const IK_HOLD = {
   'No student form': 'No student form matches this parent form.',
   'Two consent forms': 'Two consent forms match this student. Pick the right one in Elvanto.',
   'Unsure consent form': "A consent form might be this student's. Check it in Elvanto.",
-  'Unmatched consent form': "This consent form doesn't match any student for this date. Check it in Elvanto.",
+  'Unmatched consent form': "This form isn't for a new student this week. If it's an existing student, approve it to their profile.", // stray fix 2026-10-24
   'Consent form unreadable': "Couldn't read this consent form. Open it in Elvanto.",
   'Form list too long': 'Too many forms to read them all for this date. Do this date in Elvanto.',
   'Possible existing profile': 'Someone with this name may already be in Elvanto. Check before creating a new profile.',
@@ -13496,7 +13496,8 @@ function _ikConsentHtml(det, list, st) {
   const line = (c && c.ymd ? 'Consent form ' + _lkDay(c.ymd) : 'No consent form') + (out ? ': ' + out : '');
   const save = acts.find((x) => x.type === 'consentSave' && x.status !== 'cancelled') || null;
   return _ikHead(det, st, d) + `<div class="card"><div>${esc(line)}</div>`
-    + (d.textedOn ? `<div class="lk-d">${esc('Texted on ' + _lkDay(d.textedOn))}</div>` : '') + (d.consentNote ? `<div class="lk-d">${esc(d.consentNote)}</div>` : '') + '</div>'
+    + (d.textedOn ? `<div class="lk-d">${esc('Texted on ' + _lkDay(d.textedOn))}</div>` : '') + (d.consentNote ? `<div class="lk-d">${esc(d.consentNote)}</div>` : '')
+    + (_hubStray(d) ? `<div class="lk-d">${esc(IK_HOLD['Unmatched consent form'])}</div>` : '') + '</div>'
     + `<div class="card">${_hubNextHtml(det, list, st)}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + _hubMoreHtml(det, list, st, [])
     + `<div class="lk-sec">What saving does</div><div class="card">${_ikStepsHtml(d)}</div>`;
@@ -13516,6 +13517,7 @@ function _hubStage(c, now, cut, flowsKnown) {
   if (ir && ir.status === 'needs-you') return 'form';
   if (ir && (ir.status === 'ready' || ir.hasText)) return 'elvanto';
   if (cr && cr.outcome) return 'decided';
+  if (_hubStray(cr)) return 'decided'; // stray fix 2026-10-24: an existing student's form can be approved at once
   const f = _hubFriday(c), past = !!f && now >= cut(f);
   if (ir && !cr && !c.flow && flowsKnown && c.personId && past) return 'done'; // saved, texted, and no longer on New People step 0
   return past ? 'decided' : 'consent';
@@ -13536,8 +13538,12 @@ function _hubReasons(c, st, fixes) {
   if (fa) out.push(['refused', fa.detail || "The console couldn't do this. Do it in Elvanto."]);
   return out;
 }
+// Stray fix 2026-10-24: a consent form the console matched to ONE existing student (not a new one this week) is a Ready consent row
+// with no outcome (every student's Ready row has one); its one step approves the form to that profile.
+function _hubStray(cr) { return !!cr && cr.status === 'ready' && !cr.outcome; }
 function _hubNext(c) {
   const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
+  if (_hubStray(cr)) return ['consent', 'Approve to ' + c.name];
   if (c.mis) return ['fix', 'Make profile match'];
   if (c.stage === 'form' || (c.stage === 'elvanto' && ir && ir.status === 'ready')) return ['save', 'Save to Elvanto'];
   if (c.stage === 'elvanto') return ['text', 'Text parent'];
@@ -13730,7 +13736,7 @@ function _hubBulkRows(M, kind) {
     const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
     if (kind === 'save' && c.stage === 'elvanto' && ir && _ikReadyRows({ rows: [ir] }).length) out.push(['intake', c.intake]);
     if (kind === 'text' && c.stage === 'elvanto' && ir && ir.status !== 'ready' && ir.hasText && !(ir.actions || []).some(_ikOpenAct)) out.push(['intake', c.intake]);
-    if (kind === 'consent' && c.stage === 'decided' && cr && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]);
+    if (kind === 'consent' && c.stage === 'decided' && cr && !_hubStray(cr) && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]); // a stray approve: its own button only
   }
   return out;
 }
@@ -13812,7 +13818,7 @@ function _hubStripHtml() {
 // ONE primary button: Save to Elvanto (Mark consent on a consent row) while steps are left, else Text parent.
 function _hubNextHtml(det, list, st) {
   const I = _ik(), d = det && det.detail, s = d && !_ikTodo(d).length ? _ikTextStep(d) : null;
-  if (!s) return _ikSaveHtml(det, list, st, I.tab === 'consent' ? 'Mark consent' : 'Save to Elvanto');
+  if (!s) return _ikSaveHtml(det, list, st, I.tab !== 'consent' ? 'Save to Elvanto' : _hubStray(d) ? 'Approve to ' + d.title : 'Mark consent');
   const why = _ikTextBlock(det, list, st);
   return `<button type="button" class="btn btn-primary btn-full lk-mt"${why ? ' disabled' : ''} onclick="_ikTextOpen()">Text parent</button>`
     + `<div class="lk-d${why ? ' lk-right' : ''}">${esc(why || 'Sends the consent text to ' + (s.sms ? s.sms.name : 'the parent') + '. Elvanto sends it; it cannot be recalled.')}</div>`;

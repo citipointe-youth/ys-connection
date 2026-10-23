@@ -27,7 +27,7 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   '_navSnap', '_navSame', '_here', '_still',
   // consent hub landing (2026-10-23)
   '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
-  '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+  '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_hubNextHtml', '_hubMoreHtml', '_hubKidMore', '_hubUnlinkIdx', '_hubStripHtml'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
