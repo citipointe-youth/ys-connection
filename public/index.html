@@ -13472,7 +13472,7 @@ function _ikSaveHtml(det, list, st, label, foot) {
   if (foot != null) return `<div class="rc-foot">${foot}<button type="button" class="btn btn-primary btn-sm"${why ? ' disabled' : ''} onclick="_ikSaveOpen()">${esc(label)}</button></div>` + note;
   return `<button type="button" class="btn btn-primary btn-full lk-mt"${why ? ' disabled' : ''} onclick="_ikSaveOpen()">${esc(label)}</button>` + note;
 }
-// The family review (§7.2): status + holds, match, the forms side by side, same person, Save, results, what saving does, Text card.
+// The family review (§7.2): status + holds, same person, the forms side by side, match, Save, results, what saving does, Text card.
 function _ikFamilyHtml(det, list, st, a) {
   const d = det.detail, acts = det.actions || [];
   if (det.unreadable) return _ikHead(det, st, null) + '<div class="lk-alert warn">' + icS('info') + '<div>Unreadable: refresh</div></div>';
@@ -13481,7 +13481,7 @@ function _ikFamilyHtml(det, list, st, a) {
   const save = acts.find((x) => (x.type === 'intakeSave' || x.type === 'intakeText') && x.status !== 'cancelled') || null;
   const keeps = [], cmp = _ikCompareHtml(d, a, keeps);
   return _ikHead(det, st, d) + (ans ? `<div class="lk-alert practice">${icS('info')}<div>Updating plan…</div></div>` : '')
-    + _ikMatchHtml(d, a) + cmp + _ikVerdictHtml(d, a)
+    + _ikVerdictHtml(d, a) + cmp + _ikMatchHtml(d, a) // 2026-10-24: the question first, the pair tile where it was
     // One primary (Save to Elvanto, then Text parent); the Elvanto one-offs, Keep as is and Save answers under More.
     + `<div class="card">${_hubNextHtml(det, list, st)}` + (save ? `<div class="lk-mt">${_ikResultHtml(save, d, st)}</div>` : '') + '</div>'
     + _hubMoreHtml(det, list, st, keeps)
@@ -13503,8 +13503,8 @@ function _ikConsentHtml(det, list, st) {
 }
 // ── Consent hub (2026-10-23, design.md): one row per family, a stage per child, Needs action on top. Pure helpers first; the screens below.
 // A child joins its intake row (Task 6 personId), its consent row (key = person) and its New People step-0 flow row by Elvanto person;
-// siblings share their parent form (family). Stages: Form in -> In Elvanto -> Consent week -> Decided -> Done (step 0 complete).
-const HUB_STAGES = [['form', 'Form in'], ['elvanto', 'In Elvanto'], ['consent', 'Consent week'], ['decided', 'Decided'], ['done', 'Done']];
+// siblings share their parent form (family). Stages: Form in -> Add to Elvanto -> Consent week -> Record consent -> Done (step 0 complete).
+const HUB_STAGES = [['form', 'Form in'], ['elvanto', 'Add to Elvanto'], ['consent', 'Consent week'], ['decided', 'Record consent'], ['done', 'Done']];
 function _hubFold(s) { return String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); }
 function _hubAddDays(ymd, n) { const t = Date.parse(String(ymd) + 'T00:00:00Z'); return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : null; }
 // The Friday the child's consent week ends: the step-0 row's (it knows the texted date), else the consent date, else intake + 7.

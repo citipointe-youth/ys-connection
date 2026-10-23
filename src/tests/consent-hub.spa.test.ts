@@ -23,7 +23,7 @@ describe('stage of a child', () => {
   it('no flow row and no consent row: the Friday is the intake date + 7', () => {
     expect(F._hubFriday(kid({ intake: { date: '2026-10-16', row: irow() } }))).toBe('2026-10-23');
   });
-  it('Form in = needs-you; In Elvanto = ready or the parent text still to send; Decided = an outcome', () => {
+  it('Form in = needs-you; Add to Elvanto = ready or the parent text still to send; Record consent = an outcome', () => {
     expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ status: 'needs-you' }) } }), 0, CUT, true)).toBe('form');
     expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ status: 'ready' }) } }), 0, CUT, true)).toBe('elvanto');
     expect(F._hubStage(kid({ intake: { date: '2026-10-16', row: irow({ hasText: true }) } }), 0, CUT, true)).toBe('elvanto');
@@ -232,7 +232,7 @@ describe('bulk buttons', () => {
     expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b']);
     expect(B._hubBulkRows(M, 'consent').map((x: any) => x[1].row.key)).toEqual(['p']);
   });
-  it('the In Elvanto group shows both buttons; Decided shows Save all; the others none', () => {
+  it('the Add to Elvanto group shows both buttons; Record consent shows Save all; the others none', () => {
     const h = B._hubBulkHtml('elvanto', M).replace(/<[^>]*>/g, '|');
     expect(h).toContain('Save all 1'); expect(h).toContain('Text all 1 parent');
     expect(B._hubBulkHtml('decided', M)).toContain('Save all 1');
