@@ -90,6 +90,24 @@ const GroupImportPayloadSchema = z.object({
 // validation, and every same-upload name collision, is counted and sampled
 // here instead of just vanishing into a success count. Mirrors the pattern
 // connection-allocations.ts already uses for its unmatched/ambiguous report.
+const oldestFirst = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
+  a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
+/** D6: pick the stored student a row belongs to. DOB match wins; a row whose DOB differs from every
+ *  candidate's non-null DOB is a new person; otherwise merge (the oldest if 2+, flagged ambiguous). */
+function pickSameName<T extends { id: string; createdAt: string; dateOfBirth?: string | null }>(
+  candidates: T[], dob: string | null, touched: Set<string>,
+): { pick: T | null; ambiguous: boolean } {
+  if (candidates.length === 0) return { pick: null, ambiguous: false };
+  const hit = dob ? candidates.find((c) => c.dateOfBirth === dob) : undefined;
+  if (hit) return { pick: hit, ambiguous: false };
+  // Only against students made/updated earlier in THIS file: a stored student whose birthday
+  // differs is a correction (existing behaviour), not a second person.
+  if (dob && candidates.every((c) => touched.has(c.id) && c.dateOfBirth && c.dateOfBirth !== dob)) return { pick: null, ambiguous: false };
+  const oldest = [...candidates].sort(oldestFirst)[0]!;
+  return { pick: oldest, ambiguous: candidates.length > 1 };
+}
+
 export interface ImportReport {
   skippedRows: Array<{ row: number; reason: string }>;
   nameCollisions: Array<{ name: string; count: number }>;
@@ -318,9 +336,11 @@ export function makeImportService(
       }
 
       // Build student lookup from preloaded list
-      const studentByName = new Map<string, typeof allStudents[0]>();
+      // name -> every student with that name (D6: DOB tells same-name people apart).
+      const studentByName = new Map<string, typeof allStudents>();
       for (const s of allStudents) {
-        studentByName.set(`${s.firstName.toLowerCase()} ${s.lastName.toLowerCase()}`, s);
+        const k = `${s.firstName.toLowerCase()} ${s.lastName.toLowerCase()}`;
+        studentByName.set(k, [...(studentByName.get(k) ?? []), s]);
       }
 
       let studentsAdded = 0;
@@ -330,7 +350,7 @@ export function makeImportService(
       // THIS file sharing a name key silently merge into one student today;
       // now at least surfaced as a warning (not blocked — DOB, when present on
       // both sides, is what actually disambiguates two same-named people).
-      const nameKeyRowCount = new Map<string, number>();
+      const nameMerges = new Map<string, number>(); // rows that could NOT be told apart and merged (D6)
       // Map keyed by student ID — prevents duplicate-row errors when the CSV has the same
       // student appearing more than once (ON CONFLICT cannot affect same row twice)
       const studentsToSaveMap = new Map<string, Parameters<typeof studentRepo.save>[0]>();
@@ -353,17 +373,16 @@ export function makeImportService(
           continue;
         }
         const row = parsed.data;
-        {
-          const nk = `${row.first_name.toLowerCase()} ${row.last_name.toLowerCase()}`;
-          nameKeyRowCount.set(nk, (nameKeyRowCount.get(nk) ?? 0) + 1);
-        }
         const genderLower = row.gender.toLowerCase();
         const normalGender: 'male' | 'female' | 'other' =
           genderLower === 'f' || genderLower === 'female' ? 'female' :
           genderLower === 'm' || genderLower === 'male' ? 'male' : 'other';
 
         const nameKey = `${row.first_name.toLowerCase()} ${row.last_name.toLowerCase()}`;
-        const existing = studentByName.get(nameKey) ?? null;
+        const rowDob = normalizeDob(row.date_of_birth ?? row.birthday ?? null, settings.ministryConfig.import.dateOrder);
+        const candidates = studentByName.get(nameKey) ?? [];
+        const { pick: existing, ambiguous } = pickSameName(candidates, rowDob, new Set(studentsToSaveMap.keys()));
+        if (existing && (ambiguous || studentsToSaveMap.has(existing.id))) nameMerges.set(nameKey, (nameMerges.get(nameKey) ?? 0) + 1);
 
         let studentId: string;
         let baseStudent: Parameters<typeof studentRepo.save>[0];
@@ -432,7 +451,7 @@ export function makeImportService(
         }
 
         studentsToSaveMap.set(studentId, baseStudent);
-        studentByName.set(nameKey, baseStudent);
+        studentByName.set(nameKey, [...candidates.filter((c) => c.id !== studentId), baseStudent]);
       }
 
       // ── Second pass: which Fridays count as "valid services"? ──
@@ -527,9 +546,7 @@ export function makeImportService(
         await writeServiceImport({ attendance: attendanceRepo, sessions: sessionRepo, imports: importRepo, students: studentRepo });
       }
 
-      for (const [name, count] of nameKeyRowCount) {
-        if (count > 1) report.nameCollisions.push({ name, count });
-      }
+      for (const [name, merges] of nameMerges) report.nameCollisions.push({ name, count: merges + 1 });
 
       invalidateTrendsCache();
       invalidateLgStatsCache();
@@ -566,8 +583,9 @@ export function makeImportService(
       const now = new Date().toISOString();
       let groupsAdded = 0, studentsAdded = 0, studentsUpdated = 0, rowCount = 0;
 
+      // Same-name students: the group export has no DOB, so attendance goes to the oldest (D6).
       const studentByName = new Map<string, typeof allStudents[0]>();
-      for (const s of allStudents) studentByName.set(`${s.firstName.toLowerCase()} ${s.lastName.toLowerCase()}`, s);
+      for (const s of [...allStudents].sort(oldestFirst).reverse()) studentByName.set(`${s.firstName.toLowerCase()} ${s.lastName.toLowerCase()}`, s);
 
       // Leaders touched by this import (created OR existing ones we augment with
       // an extra grade focus). Keyed by lowercase full name.

@@ -452,6 +452,75 @@ describe('Import Service', () => {
       });
     }
 
+    const stored = (id: string, dob: string | null, createdAt: string) => ({
+      id, firstName: 'Testa', lastName: 'Example', gender: 'female' as const, grade: 9, quad: null, mobile: null, parentPhone: null,
+      dateOfBirth: dob, svcAttended: 0, svcTotal: 0, grpAttended: 0, grpTotal: 0, grpMetWeeks: 0,
+      prevSvcAttended: 0, prevSvcTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0, atRiskStatus: null,
+      dataSource: 'seed', createdAt, updatedAt: createdAt,
+    });
+    const setup = async () => {
+      const r = makeRepos();
+      await initRepos(r);
+      const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
+      return { r, svc };
+    };
+    const row = (dob?: string) => ({ first_name: 'Testa', last_name: 'Example', gender: 'female', grade: 9, ...(dob ? { date_of_birth: dob } : {}), '2025-02-07': true });
+
+    it('two same-name rows with different DOBs become two students and no collision', async () => {
+      const { r, svc } = await setup();
+      const res = await svc.importServiceCsv(ADMIN, [row('01/02/2010'), row('03/04/2012')], 'dob.csv');
+      expect(res.studentsAdded).toBe(2);
+      expect(res.report.nameCollisions).toEqual([]);
+      expect(await r.students.findAll()).toHaveLength(2);
+    });
+
+    it('same name, one DOB missing, still merges and still counts', async () => {
+      const { r, svc } = await setup();
+      const res = await svc.importServiceCsv(ADMIN, [row('01/02/2010'), row()], 'dob.csv');
+      expect(await r.students.findAll()).toHaveLength(1);
+      expect(res.report.nameCollisions).toEqual([{ name: 'testa example', count: 2 }]);
+    });
+
+    it('an existing student is picked by DOB', async () => {
+      const { r, svc } = await setup();
+      await r.students.save(stored('s-a', '2010-02-01', '2025-01-01T00:00:00Z'));
+      await r.students.save(stored('s-b', '2012-04-03', '2025-01-02T00:00:00Z'));
+      const res = await svc.importServiceCsv(ADMIN, [{ ...row('03/04/2012'), grade: 10 }], 'dob.csv');
+      const all = await r.students.findAll();
+      expect(all).toHaveLength(2);
+      expect(all.find((x) => x.id === 's-b')!.grade).toBe(10);
+      expect(all.find((x) => x.id === 's-a')!.grade).toBe(9);
+      expect(res.report.nameCollisions).toEqual([]);
+    });
+
+    it('two stored same-name students, a row with no DOB -> oldest updated, collision counted, no third student', async () => {
+      const { r, svc } = await setup();
+      await r.students.save(stored('s-b', '2012-04-03', '2025-01-02T00:00:00Z'));
+      await r.students.save(stored('s-a', '2010-02-01', '2025-01-01T00:00:00Z'));
+      const res = await svc.importServiceCsv(ADMIN, [{ ...row(), grade: 10 }], 'dob.csv');
+      const all = await r.students.findAll();
+      expect(all).toHaveLength(3 - 1);
+      expect(all.find((x) => x.id === 's-a')!.grade).toBe(10);
+      expect(all.find((x) => x.id === 's-b')!.grade).toBe(9);
+      expect(res.report.nameCollisions).toHaveLength(1);
+    });
+
+    it('a just-created same-name student is a candidate for the next row', async () => {
+      const { r, svc } = await setup();
+      await svc.importServiceCsv(ADMIN, [row('01/02/2010'), row('03/04/2012'), row('01/02/2010')], 'dob.csv');
+      expect(await r.students.findAll()).toHaveLength(2);
+    });
+
+    it('lifegroup import credits the oldest of two same-name students', async () => {
+      const { r, svc } = await setup();
+      await r.students.save(stored('s-b', '2012-04-03', '2025-01-02T00:00:00Z'));
+      await r.students.save(stored('s-a', '2010-02-01', '2025-01-01T00:00:00Z'));
+      await svc.importGroupCsv(DIR, { groups: [{ name: 'Grade 9 Girls Lifegroup', meetings: ['2026-04-16'], members: [{ first_name: 'Testa', last_name: 'Example', attendance: [true] }] }] }, 'g.csv');
+      const all = await r.students.findAll();
+      expect(all.find((x) => x.id === 's-a')!.grpAttended).toBe(1);
+      expect(all.find((x) => x.id === 's-b')!.grpAttended).toBe(0);
+    });
+
     it('a clean import reports empty skippedRows/nameCollisions', async () => {
       const r = makeRepos();
       await initRepos(r);
