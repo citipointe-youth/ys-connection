@@ -9,6 +9,9 @@ import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/er
 import type { AuditPushBody } from '../core/link-contract';
 import type { AuditSnapshotV2 } from '../core/entities/connection-audit';
 import type { Actor } from '../core/entities/user';
+// Static, so the cold app-graph load is in the untimed collect phase, not a test's 5 s (pre-existing flake, UI diff review B).
+import { buildContainer } from '../container';
+import { buildRoutes } from '../api/http/router';
 
 // T5 #4: import:run is admin + director only, and both see DNC phones; this switch plays a non-keep reader through get().
 const dncPhones = vi.hoisted(() => ({ off: false }));
@@ -499,8 +502,6 @@ describe('modules.connectionAudit toggle', () => {
 
 describe('audit routes', () => {
   it('POST /audits is gone; POST /audits/sources/:source is the manual upload (auth)', async () => {
-    const { buildContainer } = await import('../container');
-    const { buildRoutes } = await import('../api/http/router');
     const routes = buildRoutes((await buildContainer()).services).filter((r) => r.path.startsWith('/audits'));
     expect(routes.some((r) => r.method === 'POST' && r.path === '/audits')).toBe(false);
     expect(routes.find((r) => r.method === 'POST' && r.path === '/audits/sources/:source')).toMatchObject({ auth: true });

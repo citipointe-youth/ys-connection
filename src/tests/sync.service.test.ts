@@ -10,6 +10,8 @@ import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { ClaimResponse, INTAKE_TYPES, PAYLOAD_SCHEMAS, PushResponse, ResultResponse } from '../core/link-contract';
 import { dedupeKey } from '../services/link-rules';
 import type { ActionType, NewOutboxRow } from '../core/link-types';
+// Static, so the cold app-graph load is in the untimed collect phase, not a test's 5 s (pre-existing flake, UI diff review B).
+import { buildContainer } from '../container';
 
 // Every logger call made while this file runs (the service must make none with a body or a note).
 const logCalls = vi.hoisted(() => [] as unknown[][]);
@@ -445,7 +447,6 @@ describe('sync.service push audit (rev 16, spec 2026-10-22 §3)', () => {
     expect(await svc.push('audit', fx('push-audit-failed.json'))).toEqual({ applied: false });
   });
   it('container: a console audit push lands in the store (wiring)', async () => {
-    const { buildContainer } = await import('../container');
     const c = await buildContainer();
     const r = await c.services.sync.push('audit', fx('push-audit-group.json'));
     expect(r).toMatchObject({ source: 'group', status: 'stored' });
@@ -500,7 +501,6 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
     expect((await link.listConsoles())[0]!.capabilities.checkIn).toBe('live');
   });
   it('container: a console bus consent push lands in the store (wiring)', async () => {
-    const { buildContainer } = await import('../container');
     const c = await buildContainer();
     const r = await c.services.sync.push('busConsentForms', fx('push-bus-consent-forms.json'));
     expect(r).toMatchObject({ applied: true, rows: 2, new: 2 });

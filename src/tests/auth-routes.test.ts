@@ -25,5 +25,5 @@ describe('every auth: true route answers 401 with no session', () => {
         ...(r.method === 'GET' || r.method === 'DELETE' ? {} : { body: '{}' }) });
       expect([r.method, r.path, res.status]).toEqual([r.method, r.path, 401]);
     }
-  });
+  }, 20_000); // real work over every route; slow under CPU contention (UI diff review B)
 });
