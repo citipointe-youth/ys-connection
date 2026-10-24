@@ -550,3 +550,74 @@ describe('sync.service result: consentFix missing-field refusals (fix-no-field)'
     ]);
   });
 });
+
+// ---------------- D1 (2026-10-24, ruling e): the Error log sweep runs at the end of a link sync ----------------
+
+describe('sync.service: the error-log sweep (D1, ruling e)', () => {
+  const rid = (n: number) => `0d000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const checkIn = (n: number): NewOutboxRow => {
+    const payload = { serviceTimeId: claimRes.rows[0].payload.serviceTimeId, serviceId: claimRes.rows[0].payload.serviceId,
+      personId: `9e000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}` };
+    return rowFromFixture({ id: rid(n), type: 'checkIn', payload, note: null, serviceDate: '2026-10-23', by: { leaderName: 'Test Leader' } });
+  };
+  async function mk(sweep: () => Promise<void>) {
+    const { link, settings, users, students } = await setup();
+    const clock = { now: new Date() };
+    const record = vi.fn(async () => {});
+    const sw = vi.fn(sweep);
+    const svc = makeSyncService({ link, settings, students, users, now: () => clock.now, errorLog: { record, sweep: sw } });
+    return { link, svc, record, sw, clock };
+  }
+
+  it('result() runs the sweep after recording', async () => {
+    const { link, svc, record, sw } = await mk(async () => {});
+    await link.insertAction(checkIn(1));
+    await svc.claim({ ...claimReq, max: 5 });
+    sw.mockClear();
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: rid(1), outcome: 'refused', reason: 'person-unknown' }] });
+    expect(sw).toHaveBeenCalledTimes(1);
+    expect(record.mock.invocationCallOrder[0]).toBeLessThan(sw.mock.invocationCallOrder[0]!);
+  });
+  it('a throwing sweep never fails the result', async () => {
+    const { link, svc } = await mk(async () => { throw new Error('db down'); });
+    await link.insertAction(checkIn(1));
+    await svc.claim({ ...claimReq, max: 5 });
+    await expect(svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: rid(1), outcome: 'sent', sentLogKey: 'k1' }] })).resolves.toBeTruthy();
+  });
+  it('claim() runs the sweep at most once per 10 min', async () => {
+    const { svc, sw, clock } = await mk(async () => {});
+    await svc.claim(claimReq);
+    await svc.claim(claimReq);
+    expect(sw).toHaveBeenCalledTimes(1);
+    clock.now = new Date(clock.now.getTime() + 10 * 60_000 + 1);
+    await svc.claim(claimReq);
+    expect(sw).toHaveBeenCalledTimes(2);
+  });
+  it('an unclear result writes no windowed unclear row', async () => {
+    const { InMemoryErrorLogRepository } = await import('../repositories/in-memory/error-log.repository');
+    const { makeErrorLogService } = await import('../services/error-log.service');
+    const { link, settings, users, students } = await setup();
+    const repo = new InMemoryErrorLogRepository();
+    const errorLog = makeErrorLogService({ repo, link });
+    const svc = makeSyncService({ link, settings, students, users, errorLog });
+    await link.insertAction(checkIn(1));
+    await svc.claim({ ...claimReq, max: 5 });
+    await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: rid(1), outcome: 'unclear', sentLogKey: 'k1', detail: 'x' }] });
+    expect(await repo.list()).toMatchObject([{ category: 'link', code: 'unclear', route: 'checkIn', count: 1, foldKey: null }]);
+  });
+  it('a swept lease-lost writes no windowed row; the sweep counts it', async () => {
+    const { InMemoryErrorLogRepository } = await import('../repositories/in-memory/error-log.repository');
+    const { makeErrorLogService } = await import('../services/error-log.service');
+    const { link, settings, users, students } = await setup();
+    const repo = new InMemoryErrorLogRepository();
+    const errorLog = makeErrorLogService({ repo, link });
+    const svc = makeSyncService({ link, settings, students, users, errorLog });
+    await link.insertAction(checkIn(1));
+    await svc.claim({ ...claimReq, max: 5 });
+    link._backdate('link_outbox', rid(1), 'lease_until', new Date(Date.now() - 2 * 3_600_000).toISOString());
+    await svc.claim({ ...claimReq, consoleId: '8f5a1c2e-0000-4000-8000-0000000000ff', max: 5 });
+    expect((await link.getAction(rid(1)))?.reason).toBe('lease-lost');
+    await errorLog.sweep();
+    expect(await repo.list()).toMatchObject([{ category: 'link', code: 'lease-lost', route: 'checkIn', count: 1, foldKey: null }]);
+  });
+});

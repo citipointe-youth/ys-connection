@@ -51,8 +51,9 @@ export const TEXT: Record<string, Entry> = {
   UNSENT_SAVE_FAILED: ['now', 'A failed new-person send could not be saved, so they may be lost', `Re-enter them from the welcome-desk form. FIELD_ENCRYPTION_KEY in Vercel needs checking.${TELL}`],
   NY_REQ_FAILED: ['fyi', 'The new-person double-tap guard was skipped (database blip)', 'Nothing to do; the send went ahead. If it repeats, check Admin > Unsent new people for a duplicate.'],
   // 6.2 Elvanto link sweeps/results and reconcile
-  unclear: ['now', '{type} sent but Elvanto never confirmed it', UNCLEAR_FIX],
-  'lease-lost': ['now', '{type}: the console stopped mid-send, result unknown', UNCLEAR_FIX],
+  // D1 (2026-10-24): unclear and lease-lost are live counts per type (setCount), so they carry {n}.
+  unclear: ['now', ['{type} sent but Elvanto never confirmed it', '{n} {type} actions sent but Elvanto never confirmed them'], UNCLEAR_FIX],
+  'lease-lost': ['now', ['{type}: the console stopped mid-send, result unknown', '{n} {type} actions: the console stopped mid-send, results unknown'], UNCLEAR_FIX],
   'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (Advanced › Setup › YS link in the console).'],
   'note-unreadable': ['later', 'A queued note could not be decrypted', `FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel must match the key it was saved with.${TELL}`],
   'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', `Press Refresh in More > New youth & consent. If it stays, the Vercel encryption keys need checking.${TELL}`],

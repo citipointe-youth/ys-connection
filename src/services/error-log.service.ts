@@ -8,6 +8,8 @@ import type { Actor } from '../core/entities/user';
 import { NotFoundError } from '../core/errors/app-error';
 import { ERROR_CATEGORIES, type ErrorCategory, type ErrorLogRow, type IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
+import type { ActionType } from '../core/link-types';
+import { ACTION_TYPES } from '../core/link-contract';
 import { ERROR_TIERS, TEXT, TIER_RANK, textFor } from './error-log-text';
 import { assertCan } from './access-control';
 import { createLogger } from '../utils/logger';
@@ -20,6 +22,12 @@ export const ERROR_LOG_KEEP_DAYS = 90;
 export const STALE_PENDING_MS = DAY;
 const RECORD_TIMEOUT_MS = 2_000;
 const RECORD_THROTTLE_MS = 30_000;
+/** D1 (2026-10-24): a link refusal (any link row but a count row) goes after this long, or after a later success of its type. */
+export const REFUSAL_KEEP_DAYS = 7;
+/** Link rows that are live counts (setCount on a fixed id): never expired by REFUSAL_KEEP_DAYS. Identified by code, not foldKey (pre-0035 rows have none). */
+const COUNT_CODES = new Set(['pending-24h', 'unclear', 'lease-lost']);
+const UNCLEAR_CODES = new Set(['unclear', 'lease-lost']);
+const ACTION_TYPE_SET = new Set<string>(ACTION_TYPES);
 // ponytail: per-instance memory on serverless, like the login limiter. A DB counter if reports ever flood.
 export const CLIENT_REPORT_MAX = 20;
 const CLIENT_REPORT_WINDOW_MS = 10 * 60 * 1000;
@@ -50,6 +58,8 @@ export function toView(r: ErrorLogRow, recheckLive = false): ErrorLogView {
   return { ...r, tier: t.tier, line1: t.line1, line2: t.line2, counted: t.counted };
 }
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 32);
+/** The fixed id a setCount row is stored under. */
+const fixedId = (category: string, code: string, route: string, status: number | null) => hash(`${category}|${code}|${route}|${status ?? ''}`);
 
 /** Codes a client report may carry (server error codes + the TEXT ones + NETWORK). Anything else becomes HTTP_<status>. */
 const KNOWN_CODES = new Set([...Object.keys(TEXT).filter((k) => /^[A-Z]/.test(k)), 'NETWORK', 'BAD_REQUEST', 'CONFLICT', 'FORBIDDEN',
@@ -99,7 +109,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       const text = textFor(r.category, code, route, status, setCount ?? r.count ?? 1);
       let id: string, foldKey: string | null = null, n = r.count;
       if (setCount !== undefined) {
-        id = hash(`${r.category}|${code}|${route}|${status ?? ''}`); // fixed id, no window (pending-24h, reconcile)
+        id = fixedId(r.category, code, route, status); // fixed id, no window (pending-24h, unclear, lease-lost, reconcile)
       } else {
         // Same cause = one entry: link rows by reason + type; anything else by code + status (route and category dropped).
         foldKey = r.category === 'link' ? `link|${code}|${route}` : `${code}|${status ?? ''}`;
@@ -117,10 +127,14 @@ export function makeErrorLogService(d: ErrorLogDeps) {
     }
   }
 
-  /** Link actions pending past STALE_PENDING_MS, counted per type (count = how many wait now). A type back to zero is cleared. */
+  /**
+   * Link alerts clear themselves (D1). Pending past STALE_PENDING_MS and open unclear actions are live counts per type
+   * (a type back to zero is cleared); every other link row goes after REFUSAL_KEEP_DAYS or once a later action of its type was sent.
+   */
   async function sweepStale(existing: ErrorLogRow[]): Promise<void> {
     if (!d.link) return;
-    const cut = now().getTime() - STALE_PENDING_MS;
+    const link = d.link;
+    const t = now().getTime(), cut = t - STALE_PENDING_MS;
     const byType = new Map<string, number>();
     for (const r of await d.link.listActions({ statuses: ['pending'] })) {
       if (r.type !== 'recheck' && Date.parse(r.createdAt) < cut) byType.set(r.type, (byType.get(r.type) ?? 0) + 1);
@@ -129,10 +143,49 @@ export function makeErrorLogService(d: ErrorLogDeps) {
     for (const r of existing) {
       if (r.category === 'link' && r.code === 'pending-24h' && !byType.has(r.route)) await record({ category: 'link', code: 'pending-24h', route: r.route }, 0);
     }
+    // Open unclear actions (lease-lost is an unclear with that reason), counted per (code, type). Recheck rows show on their own row.
+    const open = new Map<string, number>();
+    for (const r of await link.listActions({ statuses: ['unclear'] })) {
+      if (r.type !== 'recheck') { const k = `${r.reason === 'lease-lost' ? 'lease-lost' : 'unclear'}|${r.type}`; open.set(k, (open.get(k) ?? 0) + 1); }
+    }
+    for (const [k, n] of open) { const [code, route] = k.split('|') as [string, string]; await record({ category: 'link', code, route }, n); }
+    const events: ErrorLogRow[] = [];
+    for (const r of existing) {
+      if (r.category !== 'link') continue;
+      if (!COUNT_CODES.has(r.code)) { events.push(r); continue; }
+      if (!UNCLEAR_CODES.has(r.code)) continue;
+      // Only the fixed-id row is the count: windowed and pre-0035 copies go; the fixed one goes once nothing is open.
+      if (r.id !== fixedId('link', r.code, r.route, r.status)) await d.repo.remove(r.id);
+      else if (!open.has(`${r.code}|${r.route}`)) await record({ category: 'link', code: r.code, route: r.route }, 0);
+    }
+    const keepFrom = new Date(t - REFUSAL_KEEP_DAYS * DAY).toISOString();
+    const left = new Map<string, ErrorLogRow[]>();
+    for (const r of events) {
+      if (r.lastSeen < keepFrom) await d.repo.remove(r.id);
+      else if (ACTION_TYPE_SET.has(r.route)) left.set(r.route, [...(left.get(r.route) ?? []), r]);
+    }
+    for (const [route, rows] of left) {
+      // Bounded: the newest 50 sent since a week before the oldest row's day (an unbounded sent read is the whole history).
+      const from = new Date(Date.parse(rows.reduce((a, r) => (r.lastSeen < a ? r.lastSeen : a), rows[0]!.lastSeen)) - REFUSAL_KEEP_DAYS * DAY).toISOString().slice(0, 10);
+      const sent = await link.listActions({ types: [route as ActionType], statuses: ['sent'], serviceDateFrom: from, limit: 50 });
+      const last = sent.reduce((a, s) => (s.resultAt && s.resultAt > a ? s.resultAt : a), '');
+      for (const r of rows) if (last > r.lastSeen) await d.repo.remove(r.id);
+    }
+  }
+
+  /** The sweep on its own (end of a link sync, ruling e). Never throws and never waits more than 2 s. */
+  async function sweep(): Promise<void> {
+    try {
+      await Promise.race([(async () => sweepStale(await d.repo.list()))(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), RECORD_TIMEOUT_MS).unref?.())]);
+    } catch (e) {
+      logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' });
+    }
   }
 
   return {
     record,
+    sweep,
 
     /** Route patterns ("GET /students/:id") the SPA may report; anything else is stored as 'page'. */
     setKnownRoutes(patterns: string[]): void {
@@ -158,7 +211,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
       assertCan(actor, 'admin:manage');
       await d.repo.purgeBefore(new Date(now().getTime() - ERROR_LOG_KEEP_DAYS * DAY).toISOString());
       try { await d.auditFeed?.(); } catch (e) { logger.warn('audit feed check failed', { err: e instanceof Error ? e.name : 'unknown' }); }
-      try { await sweepStale(await d.repo.list()); } catch (e) { logger.warn('stale sweep failed', { err: e instanceof Error ? e.name : 'unknown' }); }
+      await sweep();
       // Check again is offered only while the newest console lists recheck live (as the SPA's _lkRcHtml).
       let live = false;
       try {
