@@ -134,6 +134,10 @@ describe('sync routes: token gate', () => {
     expect(UNTIMED_ROUTES.has('POST /audits')).toBe(false);
   });
 
+  it('ultra #3: the admin manual audit upload (its replacement) is untimed', () => {
+    expect(UNTIMED_ROUTES.has('POST /audits/sources/:source')).toBe(true);
+  });
+
   it('logs neither the header nor the body (pass, fail and handler error)', async () => {
     process.env['LINK_SYNC_TOKEN'] = TOKEN;
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((k) => vi.spyOn(console, k).mockImplementation(() => {}));

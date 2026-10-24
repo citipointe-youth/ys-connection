@@ -40,6 +40,7 @@ export const UNTIMED_ROUTES = new Set([
   'POST /import/group-csv',
   'POST /connections/allocations/import',
   'POST /audits/import-all',
+  'POST /audits/sources/:source', // the admin manual Connection Audit upload: parse + full-year rebuild (the SPA allows 90 s)
   // Google gets up to GENERATE_SOLVE_BUDGET_MS (30s) here; the service's own 55s lock + Vercel's 60s cap bound it.
   'POST /bus/run/generate',
   // New youth forms: the service bounds itself (8 s GETs + two 10 s POSTs). The 20 s guard's 503 "try again"
