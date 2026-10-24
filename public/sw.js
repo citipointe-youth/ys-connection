@@ -1,4 +1,5 @@
-const CACHE = 'ysc-v151';
+const CACHE = 'ysc-v152';
+const SHELL_WAIT_MS = 3000; // impeccable 2026-10-24 #10: then the cached shell, if any
 const APP_SHELL = ['/'];
 
 // API paths that should never be served from cache. NOTE: every API resource must
@@ -28,17 +29,26 @@ self.addEventListener('fetch', (e) => {
   // Network-only for API routes (never stale data)
   if (API_RE.test(url.pathname)) return;
 
-  // Network-first for the HTML shell — always get the latest version when online
+  // Network-first for the HTML shell — always get the latest version when online.
+  // Impeccable review 2026-10-24 #10: on weak venue 4G the 1.2 MB shell can hang for a long time, so after
+  // SHELL_WAIT_MS the cached shell is served (if there is one) and the network copy still lands in the cache for
+  // the next open. No cached copy = keep waiting for the network, as before.
   if (url.pathname === '/' || url.pathname === '/index.html') {
-    e.respondWith(
-      fetch(request).then((res) => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, clone));
-        }
-        return res;
-      }).catch(() => caches.match(request, { ignoreSearch: true })) // F-52: /?nav=notices offline gets the shell
-    );
+    const cached = () => caches.match(request, { ignoreSearch: true }); // F-52: /?nav=notices offline gets the shell
+    const net = fetch(request).then((res) => {
+      if (res.ok) {
+        const clone = res.clone();
+        return caches.open(CACHE).then((c) => c.put(request, clone)).then(() => res, () => res);
+      }
+      return res;
+    });
+    if (e.waitUntil) e.waitUntil(net.catch(() => {})); // the late network copy still reaches the cache
+    e.respondWith(new Promise((resolve) => {
+      let done = false;
+      const send = (r) => { if (!done) { done = true; resolve(r); } };
+      const t = setTimeout(() => cached().then((c) => { if (c) send(c); }), SHELL_WAIT_MS);
+      net.then((res) => { clearTimeout(t); send(res); }, () => { clearTimeout(t); cached().then(send); });
+    }));
     return;
   }
 

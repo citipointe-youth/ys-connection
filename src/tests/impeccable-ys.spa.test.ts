@@ -1,5 +1,5 @@
 // Impeccable review 2026-10-24 (YS SPA UI fixes), run from the REAL page source (extract-and-evaluate).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const html = loadIndexHtml();
@@ -123,5 +123,48 @@ describe('#8 form fields have accessible names', () => {
   it('the Home "Choose your name" pick and the Bus add box have names', () => {
     expect(html).toContain('id="home-leader-pick" aria-label="Choose your name"');
     expect(html).toContain('id="bus-q" aria-label="Add any student"');
+  });
+});
+
+describe('#10 the service worker serves the cached shell after 3 s on a slow network', () => {
+  const sw = (fetch: () => Promise<any>, cache: any) => {
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8');
+    const handlers: Record<string, any> = {}, puts: any[] = [], waits: any[] = [];
+    const self = { addEventListener: (t: string, f: any) => { handlers[t] = f; } };
+    const caches = { match: () => Promise.resolve(cache), open: () => Promise.resolve({ put: (_r: any, v: any) => { puts.push(v); return Promise.resolve(); } }) };
+    new Function('self', 'caches', 'fetch', src)(self, caches, fetch);
+    let out: any;
+    handlers.fetch({ request: { method: 'GET', url: 'https://x.test/' }, respondWith: (p: any) => { out = p; }, waitUntil: (p: any) => waits.push(p) });
+    return { out: () => out, puts, waits, src };
+  };
+  it('a hung fetch: the cached shell at 3 s; the late network copy is still cached', async () => {
+    vi.useFakeTimers();
+    let land!: (r: any) => void;
+    const net = { ok: true, clone: () => 'fresh-copy' };
+    const t = sw(() => new Promise((r) => { land = r; }), 'shell');
+    let got: any = null; t.out().then((r: any) => { got = r; });
+    await vi.advanceTimersByTimeAsync(2900);
+    expect(got).toBeNull();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(got).toBe('shell');
+    land(net); await Promise.all(t.waits);
+    expect(t.puts).toEqual(['fresh-copy']);
+    vi.useRealTimers();
+  });
+  it('a fast fetch wins; no cached copy keeps waiting for the network', async () => {
+    vi.useFakeTimers();
+    const net = { ok: true, clone: () => 'c' };
+    expect(await sw(() => Promise.resolve(net), 'shell').out()).toBe(net);
+    let land!: (r: any) => void;
+    const t = sw(() => new Promise((r) => { land = r; }), undefined);
+    let got: any = null; t.out().then((r: any) => { got = r; });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(got).toBeNull();
+    land(net); await vi.advanceTimersByTimeAsync(0);
+    expect(got).toBe(net);
+    vi.useRealTimers();
+  });
+  it('the cache version was bumped with the change', () => {
+    expect(sw(() => Promise.resolve({ ok: false }), null).src).toMatch(/^const CACHE = 'ysc-v152';/);
   });
 });
