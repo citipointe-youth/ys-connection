@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 import { ACTION_TYPES } from '../core/link-contract';
 
-const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete', '_lkHubOwned',
+const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete', '_lkHubOwned',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
   '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkFlowTypes',
   '_lkMemOff', '_lkCanRemove'];

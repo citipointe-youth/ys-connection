@@ -11946,10 +11946,24 @@ function _lkHubOwned(r) {
 // open and the console records consent not received first; before that Friday the row waits (R6).
 function _lkStepBlock(r) {
   if (r && r.dnc) return 'Do not contact: this person can only be removed from the step.';
+  // Impeccable review 2026-10-24 #2: the server refuses every step-0 Complete while this year's New People flow is missing
+  // (CONSENT_FLOW_UNKNOWN, link.service isStepZero), so the row is not tickable and the sheet says why instead of Complete.
+  if (r && /^(step\s*)?0\b/i.test(String(r.stepName || '').trim()) && !_lkPeopleFlowFound()) {
+    return "This year's New People flow wasn't found, so step 0 can't be completed." + (S.user && S.user.role === 'admin'
+      ? ' In Admin > Youth Setup > Elvanto for this location, check the New People flow name.' : ' Ask the admin.');
+  }
   if (r && r.consentStep && r.consent !== 'ok' && !r.notReceivedOk) {
     return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : 'Do the consent check first (New youth & consent).';
   }
   return '';
+}
+// Y2b: the server's test for this year's New People flow (link-rules peopleFlowName: prefix + a year, any case), over the
+// pushed rows and steps. Not loaded yet = found (nothing is blocked on a guess).
+function _lkPeopleFlowFound() {
+  if (!LINK.flows) return true;
+  const pf = String((((S.settings && S.settings.ministryConfig) || {}).elvanto || {}).peopleFlowPrefix || '');
+  const re = pf.trim() ? new RegExp('^' + pf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' (\\d{4})\\b', 'i') : null;
+  return !!re && (LINK.flows || []).concat(LINK.fSteps || []).some((r) => re.test(String(r.flowName || '').trim()));
 }
 // R6: a step-0 row before its consent night's cut-off (location time) waits; it is not overdue.
 function _lkConsentWait(r) { return !!(r && r.consentStep && r.consentFriday) && Date.now() < _siteInstant(r.consentFriday, _consentCutoff()); }
@@ -12038,11 +12052,8 @@ function _lkFlowsHtml() {
   const steps = LINK.fSteps;
   LINK.fstep = {};
   let top = '';
-  if (S.user && S.user.role === 'admin') { // Y2b: the server's test for this year's New People flow (link-rules peopleFlowName:
-    // prefix + a year, any case). None = every step-0 Complete is refused (CONSENT_FLOW_UNKNOWN), so the admin is told why.
-    const pf = String((((S.settings && S.settings.ministryConfig) || {}).elvanto || {}).peopleFlowPrefix || '');
-    const re = pf.trim() ? new RegExp('^' + pf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' (\\d{4})\\b', 'i') : null;
-    if (!re || !rs.some((r) => re.test(String(r.flowName || '').trim()))) top += `<div class="lk-alert warn">${icS('info')}<div>${esc("This year's New People flow wasn't found, so step 0 can't be completed. In Admin > Youth Setup > Elvanto for this location, check the New People flow name. It must match the flow in Elvanto.")}</div></div>`;
+  if (S.user && S.user.role === 'admin') { // Y2b: none = every step-0 Complete is refused (CONSENT_FLOW_UNKNOWN), so the admin is told why
+    if (!_lkPeopleFlowFound()) top += `<div class="lk-alert warn">${icS('info')}<div>${esc("This year's New People flow wasn't found, so step 0 can't be completed. In Admin > Youth Setup > Elvanto for this location, check the New People flow name. It must match the flow in Elvanto.")}</div></div>`;
   }
   if (boss) {
     const n = _lkSelIds(shown, LINK.fsel).length;

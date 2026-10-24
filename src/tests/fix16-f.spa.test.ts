@@ -5,13 +5,13 @@ import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const SRC = loadIndexHtml();
 const LK_FF_SRC = SRC.match(/^const LK_FF = .*;/m)![0];
-const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkHubOwned', '_lkStepBlock', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
+const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkHubOwned', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
   '_lkFlowBucket', '_lkFfGet'];
 const PRELUDE = `
   ${LK_FF_SRC}
   var ROLE = 'admin', QUEUE = [], FRESH = null, CALLS = [];
   var localStorage = { getItem: () => null, setItem: () => {} };
-  var S = { page: 'link-flows', get user() { return { role: ROLE }; } };
+  var S = { page: 'link-flows', get user() { return { role: ROLE }; }, settings: { ministryConfig: { elvanto: { peopleFlowPrefix: 'New People' } } } };
   var LINK = { flows: [], fSteps: [], fres: {}, fsel: {}, status: null };
   var API = { fresh: (p) => { CALLS.push(p); return FRESH(p); } };
   var document = { visibilityState: 'visible' };
@@ -36,7 +36,7 @@ const PRELUDE = `
 `;
 const f = loadFns(NAMES, PRELUDE, [...NAMES, 'set', 'calls', 'LINK']);
 const L = f.LINK;
-const R = (o: any) => ({ rowId: 'r1', flowId: 'F1', flowName: 'New People', stepId: 'S1', stepName: 'Step 0', stepOrder: 0, personId: 'p1',
+const R = (o: any) => ({ rowId: 'r1', flowId: 'F1', flowName: 'New People 2026', stepId: 'S1', stepName: 'Step 0', stepOrder: 0, personId: 'p1',
   name: 'LDummyton, Thomas', due: null, grade: 9, gender: 'male', mobile: '0455100000', consent: 'ok', dnc: false, consentStep: false, openAction: null, ...o });
 const reset = () => { f.set({ role: 'admin', calls: [] }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, ff: undefined, flowGone: undefined, fProg: null }); };
 
@@ -71,7 +71,8 @@ describe('F-22 Remove sheet note hint is plain', () => {
 describe('F-20(b) flow tick and select-all are 44 px targets', () => {
   it('the row tick sits in a 44x44 label that stops the row opening', () => {
     reset();
-    const h = f._lkFlowRowHtml(R({}), '2026-10-16', true);
+    const r = R({}); L.flows = [r]; // impeccable #2: step 0 is tickable only while this year's New People flow is in the push
+    const h = f._lkFlowRowHtml(r, '2026-10-16', true);
     expect(h).toMatch(/<label[^>]*min-width:44px;min-height:44px[^>]*onclick="event.stopPropagation\(\)"><input type="checkbox" class="lk-tick"/);
   });
   it('select-all is at least 44 px tall', () => {
