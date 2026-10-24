@@ -6,7 +6,7 @@ import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_C
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import type { ActionType, ClaimArgs, LinkFlowStep, LinkRosterRow, MirrorKind, OutboxRow, PushKind, ResultReply } from '../core/link-types';
-import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, IntakePush } from '../core/link-contract';
+import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, DoorSearchPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
@@ -250,6 +250,14 @@ export function makeSyncService(d: SyncDeps) {
         await d.link.putConsentLookup({ requestId: req.requestId, kind: req.kind, page: req.page, pageSize: req.pageSize,
           total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
         return { applied: true, rows: req.rows.length };
+      }
+      if (pk === 'doorSearch') { // rev 20: the youth one door search found, for the row this console holds; they join the roster now
+        const req = parseBody(PUSH_SCHEMAS.doorSearch, body) as z.infer<typeof DoorSearchPush>;
+        const row = await d.link.getAction(req.requestId);
+        if (!row || row.type !== 'doorSearch' || row.status !== 'claimed' || row.leaseOwner !== req.consoleId) return { applied: false };
+        const n = await d.link.addRoster(req.rows.map((r) => ({ ...r, kind: 'student' as const })));
+        await rematchRoster(d.link, d.students); // a found youth with a YS record checks in against it
+        return { applied: true, rows: n };
       }
       if (pk === 'consentSnapshot') { // rev 19: the console's standing copy of one consent list; module Off stores nothing
         const req = parseBody(PUSH_SCHEMAS.consentSnapshot, body) as z.infer<typeof ConsentSnapshotPush>;

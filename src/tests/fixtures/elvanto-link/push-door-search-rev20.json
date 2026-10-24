@@ -1,0 +1,4 @@
+{ "contractVersion": 1, "consoleId": "8f5a1c2e-0000-4000-8000-000000000001", "takenAt": "2026-10-30T08:40:20.000Z",
+  "requestId": "d5000000-0000-4000-8000-000000000001",
+  "rows": [ { "personId": "d5100000-0000-4000-8000-000000000001", "firstName": "Sam", "lastName": "Sample", "gender": "female", "grade": 9 },
+    { "personId": "d5100000-0000-4000-8000-000000000002", "firstName": "Samuel", "lastName": "Sample", "gender": "male", "grade": null } ] }

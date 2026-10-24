@@ -61,8 +61,9 @@ const NOTE_TYPES: ActionType[] = ['submitReport', 'editReport', 'completeStep', 
 /** Rev 6: the flow-row types (one open per row between them). */
 const FLOW_ROW_TYPES: ActionType[] = ['completeStep', 'removeFromFlowStep'];
 const isConsentType = (t: ActionType) => (CONSENT_TYPES as readonly string[]).includes(t);
-/** Rev 6 (R2 b): a consentLookup's search text (the encrypted note). */
+/** Rev 6 (R2 b): a consentLookup's search text (the encrypted note). Rev 20: a doorSearch's too (at least DOOR_Q_MIN). */
 const LOOKUP_Q_MAX = 60;
+const DOOR_Q_MIN = 2;
 const CHECK_TYPES: ActionType[] = ['checkIn', 'checkOut'];
 const MEMBER_TYPES: ActionType[] = ['addGroupMember', 'removeGroupMember']; // T6 (contract X18)
 const OPEN: Status[] = ['pending', 'claimed', 'unclear'];
@@ -116,7 +117,7 @@ export interface LinkStatus {
 }
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
 export interface ServiceView { serviceTimeId: string; serviceId: string; name: string; startsAt: string; ymd: string; isDefault: boolean }
-export interface CheckinPerson { personId: string; name: string; grade: number | null; leader: boolean; checkedIn: boolean;
+export interface CheckinPerson { personId: string; name: string; grade: number | null; /** rev 20: the door search lists several hits by grade and gender. */ gender: 'male' | 'female' | null; leader: boolean; checkedIn: boolean;
   action: ActionView | null; mine: boolean; /** T3: shown from the pushed check-in name only: check out works, check in does not. */ noRoster?: true }
 export interface CheckinLeader { leaderId: string; name: string; personId: string | null; checkedIn: boolean;
   action: ActionView | null; mine: boolean }
@@ -367,7 +368,8 @@ type Feature = 'checkin' | 'lifegroupReport' | 'flows';
 const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
 const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
-  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows' }; // the intake + consent types: module intakeAdmin (X19, rev 6)
+  addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows',
+  doorSearch: 'checkin' }; // rev 20: any login the door is on for, never admin-only. The intake + consent types: module intakeAdmin (X19, rev 6)
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
@@ -573,7 +575,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const g = (await c.groups()).find((y) => y.groupId === p.groupId);
       return { kind: 'group', id: p.groupId ?? null, name: g?.name ?? null };
     }
-    if (isIntakeType(r.type)) return { kind: null, id: null, name: null }; // X19: the family is in the plan, not the roster
+    if (isIntakeType(r.type) || r.type === 'doorSearch') return { kind: null, id: null, name: null }; // X19: the family is in the plan, not the roster; rev 20: the typed name stays in the note
     if (MEMBER_TYPES.includes(r.type)) {
       const x = (await c.roster()).find((y) => y.personId === p.personId);
       return { kind: 'person', id: p.personId ?? null, name: x ? fullName(x) : null };
@@ -651,9 +653,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const p = parsed.data as Record<string, unknown> & { serviceTimeId?: string; personId?: string | null };
     const note = it.note == null || it.note.trim() === '' ? null : it.note;
     const noteType = NOTE_TYPES.includes(it.type);
-    const lookup = it.type === 'consentLookup';
+    const lookup = it.type === 'consentLookup' || it.type === 'doorSearch';
     if (note !== null && !noteType && !intake && !lookup) throw new BadRequestError('A note can only go on a lifegroup report or a flow step.');
     if (lookup && note !== null && note.length > LOOKUP_Q_MAX) throw new BadRequestError(`Search for up to ${LOOKUP_Q_MAX} characters.`);
+    if (it.type === 'doorSearch' && (note === null || note.trim().length < DOOR_Q_MIN)) throw new BadRequestError(`Type at least ${DOOR_Q_MIN} letters of the name.`);
     const member = MEMBER_TYPES.includes(it.type);
     // Rev 6: a removal needs "I am" only when it carries a note (the note is signed with it).
     const needMe = it.type === 'removeFromFlowStep' ? note !== null : noteType || (member && !isAdminRole(c.actor));
@@ -760,7 +763,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       if (!d.intake) throw new LinkUnavailable();
       await checkIntakeItem(d.intake, it.type, p, note, c.t);
       serviceDate = p.date as string;
-    } else if (it.type === 'consentLookup') { // rev 6 (R2 b/c): a read request; ref is its own id (one dedupe key per request)
+    } else if (it.type === 'consentLookup' || it.type === 'doorSearch') { // rev 6 (R2 b/c), rev 20: a read request; ref is its own id (one dedupe key per request)
       if ((p as { ref: string }).ref !== it.id) throw new BadRequestError('A lookup ref must be its own id.');
     } else if (it.type === 'consentLink') { // L6: console-local; nothing is checked in Elvanto, the app names the form and the person
       personId = (p as { personId: string | null }).personId;
@@ -884,8 +887,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const key = dedupeKey(it.type, p);
     // S-4 / D5: a new intakeAnswer replaces the family's pending one in the same transaction (no separate cancel item).
     // S-6 / D8: a new consentLookup cancels this login's pending lookups of the same kind (abandoned searches); claimed ones still run.
+    // Rev 20: one pending door search per login; a new one cancels the older pending one (a claimed one still runs, and is ignored).
     const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key }
-      : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) } : undefined;
+      : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) }
+      : it.type === 'doorSearch' ? { type: it.type, createdBy: c.actor.id } : undefined;
     try {
       const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
         serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });
@@ -1031,8 +1036,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         return { checkedIn: st.in, action: top ? view(top) : null, mine: top?.createdBy === actor.id };
       };
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
-      const listed: { first: string; last: string; grade: number | null; leader: boolean; personId: string; noRoster?: true }[] = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
-        .map((r) => ({ first: r.firstName, last: r.lastName, grade: r.grade, leader: r.kind === 'leader', personId: r.personId }));
+      const listed: { first: string; last: string; grade: number | null; gender: 'male' | 'female' | null; leader: boolean; personId: string; noRoster?: true }[] = roster.filter((r) => r.active && (r.kind === 'student' || r.kind === 'leader'))
+        .map((r) => ({ first: r.firstName, last: r.lastName, grade: r.grade, gender: r.gender, leader: r.kind === 'leader', personId: r.personId }));
       // T3: a checked-in person the roster does not list (not pushed yet, inactive, other) still shows, by the name the
       // console pushed with the check-in; a leader when the room's name says so. No name (an older console): not shown.
       const seen = new Set(listed.map((p) => p.personId));
@@ -1041,11 +1046,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       for (const x of svc.checkedIn) {
         if (seen.has(x.personId) || !`${x.firstName ?? ''}${x.lastName ?? ''}`.trim()) continue;
         seen.add(x.personId);
-        listed.push({ first: x.firstName ?? '', last: x.lastName ?? '', grade: byId.get(x.personId)?.grade ?? null,
+        listed.push({ first: x.firstName ?? '', last: x.lastName ?? '', grade: byId.get(x.personId)?.grade ?? null, gender: byId.get(x.personId)?.gender ?? null,
           leader: /leader/i.test(roomName.get(x.roomId) ?? ''), personId: x.personId, noRoster: true });
       }
       out.people = listed.sort((a, b) => cmp(a.last, b.last) || cmp(a.first, b.first))
-        .map((p) => ({ personId: p.personId, name: `${p.first} ${p.last}`.trim(), grade: p.grade, leader: p.leader, ...(p.noRoster ? { noRoster: true as const } : {}), ...state(p.personId) }));
+        .map((p) => ({ personId: p.personId, name: `${p.first} ${p.last}`.trim(), grade: p.grade, gender: p.gender, leader: p.leader, ...(p.noRoster ? { noRoster: true as const } : {}), ...state(p.personId) }));
       const personOf = rosterPersonMatcher(roster, leaders);
       out.leaders = leaders.filter((l) => l.active).sort((a, b) => cmp(a.fullName, b.fullName)).map((l) => {
         const personId = personOf(l);

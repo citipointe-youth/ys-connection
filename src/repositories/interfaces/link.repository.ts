@@ -54,6 +54,9 @@ export interface ILinkRepository {
     Promise<{ applied: boolean; rows: number }>;
   mirrorState(): Promise<MirrorStateRow[]>;
   roster(): Promise<LinkRosterRow[]>;
+  /** Rev 20 (door search): add or re-activate these roster rows; never deactivates anyone, never moves the mirror's takenAt.
+   *  An existing row keeps its kind while active, its consent and its student match. Returns how many rows it wrote. */
+  addRoster(rows: LinkRosterPushRow[]): Promise<number>;
   services(): Promise<LinkServiceRow[]>;
   groups(): Promise<LinkGroupRow[]>;
   flows(): Promise<LinkFlowRow[]>;

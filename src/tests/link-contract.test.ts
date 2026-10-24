@@ -109,6 +109,8 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'push-audit-response.json': z.array(C.AuditPushResponse).min(1),
   'audit-form-headers.json': z.array(z.enum(C.AUDIT_FORM_HEADERS)).min(1),
   'push-consent-snapshot-rev19.json': C.PUSH_SCHEMAS.consentSnapshot, // rev 19 (consent hub)
+  'claim-response-rev20.json': C.ClaimResponse, // rev 20 (door search)
+  'push-door-search-rev20.json': C.PUSH_SCHEMAS.doorSearch,
 };
 
 describe('link contract: every fixture parses with its schema', () => {
@@ -118,7 +120,7 @@ describe('link contract: every fixture parses with its schema', () => {
   it('claim-response (+ claim-response-rev4, X19) has one row per action type; each payload parses with its type schema', () => {
     const rows = [...C.ClaimResponse.parse(load('claim-response.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev4.json')).rows,
       ...C.ClaimResponse.parse(load('claim-response-rev6.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev15.json')).rows,
-      ...C.ClaimResponse.parse(load('claim-response-rev18.json')).rows];
+      ...C.ClaimResponse.parse(load('claim-response-rev18.json')).rows, ...C.ClaimResponse.parse(load('claim-response-rev20.json')).rows];
     expect(rows.map((r) => r.type).sort()).toEqual([...C.ACTION_TYPES].sort());
     for (const r of rows) (C.PAYLOAD_SCHEMAS[r.type] as z.ZodTypeAny).parse(r.payload);
   });
@@ -201,7 +203,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(19); // 2026-10-22: rev 18 = bus consent forms; rev 17 = claim reply modules; rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(20); // 2026-10-25: rev 20 = doorSearch type + push kind; 2026-10-22: rev 18 = bus consent forms; rev 17 = claim reply modules; rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -356,14 +358,14 @@ describe('X19 (UX batch 2026-10-13 T4): intake + consents, optional for an older
   it('0021: the type check lists every ACTION_TYPE; RLS on every table it creates; additive', () => {
     const sql = readFileSync(MIG, 'utf8');
     const check = sql.slice(sql.indexOf('add constraint link_outbox_type_check'), sql.indexOf('));') + 2);
-    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck'];
+    const REV6: string[] = ['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch'];
     expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => !REV6.includes(t)).sort());
     const sql27 = readFileSync(join(ROOT, 'supabase', 'migrations', '0027_link_rev6.sql'), 'utf8');
     const at27 = sql27.indexOf('add constraint link_outbox_type_check'), check27 = sql27.slice(at27, sql27.indexOf('));', at27) + 2);
-    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'consentLink' && t !== 'recheck' && t !== 'busConsentCheck').sort()); // 0027: every type then
+    expect([...check27.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'consentLink' && t !== 'recheck' && t !== 'busConsentCheck' && t !== 'doorSearch').sort()); // 0027: every type then
     const sql31 = readFileSync(join(ROOT, 'supabase', 'migrations', '0031_link_consent_link.sql'), 'utf8');
     const at31 = sql31.indexOf('add constraint link_outbox_type_check'), check31 = sql31.slice(at31, sql31.indexOf('));', at31) + 2);
-    expect([...check31.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'recheck' && t !== 'busConsentCheck').sort()); // 0031: every type then
+    expect([...check31.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'recheck' && t !== 'busConsentCheck' && t !== 'doorSearch').sort()); // 0031: every type then
     expect(sql31).toMatch(/kind in \('forms','mismatches','unlinked'\)/);
     expect(sql31).not.toMatch(/\b(drop table|rename|alter column)\b/i);
     expect(sql27).toMatch(/alter table link_consent_lookup enable row level security/);
@@ -466,7 +468,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     (C.PAYLOAD_SCHEMAS[p.type] as z.ZodTypeAny).parse(p.payload); // the ref row's own payload, by its own type
     expect(C.LINK_REV).toBeGreaterThanOrEqual(15);
     expect(C.MIN_CONSOLE_REV).toBe(12);
-    const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck', 'busConsentCheck'];
+    const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch'];
     expect([...C.RECHECK_TYPES].sort()).toEqual(C.ACTION_TYPES.filter((t) => !not.includes(t)).sort());
     const req = load('claim-request.json');
     expect(C.ClaimRequest.parse({ ...req, capabilities: { ...req.capabilities, recheck: 'live' } }).capabilities.recheck).toBe('live');
@@ -478,7 +480,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
   it('0041: widens only the outbox type check, adding recheck (every other type kept)', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0041_link_recheck.sql'), 'utf8');
     const at = sql.indexOf('add constraint link_outbox_type_check'), check = sql.slice(at, sql.indexOf('));', at) + 2);
-    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'busConsentCheck').sort()); // 0041: every type then
+    expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual(C.ACTION_TYPES.filter((t) => t !== 'busConsentCheck' && t !== 'doorSearch').sort()); // 0041: every type then
     expect(sql).not.toMatch(/\b(drop table|rename|alter column|delete|truncate)\b/i);
   });
   it('rev 15 (L2): an unlinked row may carry formName and linkedIds (2-10 uuids); both optional; MIN_CONSOLE_REV stays 12', () => {
@@ -530,7 +532,7 @@ describe('link contract: rev 17 (claim reply modules)', () => {
 describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', () => {
   const svc = () => clone(load('push-audit-service.json'));
   it('LINK_REV is 18, MIN_CONSOLE_REV stays 12; audit is a push kind, never a mirror kind', () => {
-    expect(C.LINK_REV).toBe(19);
+    expect(C.LINK_REV).toBe(20);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.PUSH_KINDS).toContain('audit');
     expect(C.MIRROR_KINDS as readonly string[]).not.toContain('audit');
@@ -590,7 +592,7 @@ describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', (
 
 describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent §7)', () => {
   it('LINK_REV 18, MIN_CONSOLE_REV 12; busConsentCheck is a type with an empty payload; busConsentForms is a push kind', () => {
-    expect(C.LINK_REV).toBe(19);
+    expect(C.LINK_REV).toBe(20);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.ACTION_TYPES).toContain('busConsentCheck');
     expect(C.PAYLOAD_SCHEMAS.busConsentCheck.parse({})).toEqual({});
@@ -616,8 +618,8 @@ describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent 
     expect(C.BusConsentFormsPush.parse(cut).rows[0]!.school).toHaveLength(80); // push tolerance: cut, not refused
     expect(C.BusConsentFormsResponse.parse(load('push-bus-consent-forms-response.json'))).toMatchObject({ applied: true });
   });
-  it('0044: the outbox type check lists every ACTION_TYPES value', () => {
-    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0044_bus_consent_forms.sql'), 'utf8');
+  it('0049 (the newest outbox type check, after 0044): it lists every ACTION_TYPES value', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0049_link_door_search.sql'), 'utf8');
     const at = sql.indexOf('add constraint link_outbox_type_check'), check = sql.slice(at, sql.indexOf('));', at) + 2);
     expect([...check.matchAll(/'(\w+)'/g)].map((m) => m[1]).sort()).toEqual([...C.ACTION_TYPES].sort());
   });
@@ -630,5 +632,31 @@ describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent 
     expect(sql).toMatch(/unique \(submission_id, child_index\)/);
     expect([...sql.matchAll(/drop table[^;]*;/gi)].map((m) => m[0])).toEqual(['drop table if exists bus_consents;']);
     expect(sql).not.toMatch(/\b(rename|alter column|truncate)\b/i);
+  });
+});
+
+describe('link contract: rev 20 (door search, 2026-10-25)', () => {
+  it('doorSearch is a type (payload {ref} only) and a push kind, never a mirror kind; MIN_CONSOLE_REV stays 12', () => {
+    expect(C.LINK_REV).toBe(20);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    expect(C.ACTION_TYPES).toContain('doorSearch');
+    rejects(C.PAYLOAD_SCHEMAS.doorSearch, { ref: 'd5000000-0000-4000-8000-000000000001', q: 'Sam' }); // the name rides in the note only
+    expect(C.PUSH_KINDS).toContain('doorSearch');
+    expect(C.MIRROR_KINDS as readonly string[]).not.toContain('doorSearch');
+    const req = clone(load('claim-request.json')); req.capabilities.doorSearch = 'live';
+    expect(C.ClaimRequest.parse(req).capabilities.doorSearch).toBe('live');
+  });
+  it('the push rows are names, grade and gender only (strict); 1-10 rows', () => {
+    const p = C.DoorSearchPush.parse(load('push-door-search-rev20.json'));
+    expect(p.rows.map((r) => r.firstName)).toEqual(['Sam', 'Samuel']);
+    for (const bad of [{ mobile: '0400000000' }, { kind: 'student' }, { grade: 13 }, { firstName: '' }]) {
+      const b = clone(load('push-door-search-rev20.json')); Object.assign(b.rows[0], bad); rejects(C.DoorSearchPush, b);
+    }
+    const none = clone(load('push-door-search-rev20.json')); none.rows = []; rejects(C.DoorSearchPush, none);
+    const many = clone(load('push-door-search-rev20.json')); many.rows = Array.from({ length: 11 }, () => many.rows[0]); rejects(C.DoorSearchPush, many);
+  });
+  it('0049 only widens the outbox type CHECK (additive)', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0049_link_door_search.sql'), 'utf8');
+    expect(sql).not.toMatch(/\b(drop table|drop column|rename|alter column|truncate)\b/i);
   });
 });

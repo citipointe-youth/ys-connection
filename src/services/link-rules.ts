@@ -148,6 +148,7 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'consentLink': return p.personId ? `cn:${p.subId}:${p.personId}` : `cn:${p.subId}`;
     case 'busConsentCheck': return 'bcc'; // rev 18: one open bus consent check at a time
     case 'recheck': return `rc:${p.ref}`; // rev 15 (L7): one open re-check per unclear row
+    case 'doorSearch': return `ds:${p.ref}`; // rev 20: each search its own request (a newer one supersedes, link.service)
   }
 }
 

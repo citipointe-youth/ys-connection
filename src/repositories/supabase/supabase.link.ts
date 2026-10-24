@@ -310,6 +310,21 @@ export class SupabaseLinkRepository implements ILinkRepository {
       where console_id = ${consoleId}`;
   }
 
+  /** Rev 20 (door search): upsert only, under the roster push's own lock (never interleaves a full replace). */
+  async addRoster(rows: LinkRosterPushRow[]): Promise<number> {
+    if (!rows.length) return 0;
+    return this.sql.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtext(${'link_mirror:roster'}))`;
+      await tx`
+        insert into link_roster ${tx(rows.map((p) => ({ person_id: p.personId, first_name: p.firstName, last_name: p.lastName,
+          gender: p.gender, grade: p.grade, kind: p.kind, active: true, consent: p.consent ?? null })))}
+        on conflict (person_id) do update set first_name = excluded.first_name, last_name = excluded.last_name,
+          gender = excluded.gender, grade = excluded.grade,
+          kind = case when link_roster.active then link_roster.kind else excluded.kind end, active = true, updated_at = now()`;
+      return rows.length;
+    });
+  }
+
   async replaceMirror(kind: MirrorKind, rows: unknown[], meta: { takenAt: string; consoleId: string; steps?: LinkFlowStep[] }) {
     return this.sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtext(${'link_mirror:' + kind}))`;

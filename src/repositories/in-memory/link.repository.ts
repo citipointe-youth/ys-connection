@@ -239,6 +239,17 @@ export class InMemoryLinkRepository implements ILinkRepository {
     return { applied: true, rows: rows.length };
   }
 
+  async addRoster(rows: LinkRosterPushRow[]): Promise<number> {
+    const now = this.nowIso();
+    for (const p of rows) {
+      const old = this.rosterRows.get(p.personId);
+      this.rosterRows.set(p.personId, { personId: p.personId, firstName: p.firstName, lastName: p.lastName, gender: p.gender, grade: p.grade,
+        kind: old?.active ? old.kind : p.kind, active: true, studentId: old?.studentId ?? null, match: old?.match ?? 'none', updatedAt: now,
+        consent: old?.consent ?? p.consent ?? null });
+    }
+    return rows.length;
+  }
+
   // Same orders as the Supabase repo.
   async mirrorState(): Promise<MirrorStateRow[]> { return clone([...this.mirror.values()].sort((a, b) => cmp(a.kind, b.kind))); }
   async roster(): Promise<LinkRosterRow[]> {

@@ -1,0 +1,4 @@
+{ "contractVersion": 1, "serverTime": "2026-10-30T08:40:05.000Z", "linkRev": 20,
+  "rows": [ { "id": "d5000000-0000-4000-8000-000000000001", "type": "doorSearch", "attempts": 1, "reclaimed": false,
+    "createdAt": "2026-10-30T08:40:00.000Z", "serviceDate": "2026-10-30", "by": { "login": "grade9g", "leaderName": "Pat Leader" },
+    "payload": { "ref": "d5000000-0000-4000-8000-000000000001" }, "note": "Sam Sample" } ] }

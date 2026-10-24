@@ -10853,7 +10853,7 @@ function _lkRefreshView() {
     const top = document.getElementById('lk-top');
     if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
-    if (list && S.page === 'link-checkin') list.innerHTML = _lkListHtml();
+    if (list && S.page === 'link-checkin') { list.innerHTML = _lkListHtml(); _lkEsPaint(); }
     const gl = document.getElementById('lk-glist');
     if (gl && S.page === 'link-groups') gl.innerHTML = _lkGroupsHtml();
     const gp = document.getElementById('lk-gpage'), g = gp && _lkGroup();
@@ -11001,6 +11001,7 @@ function _lkPaintDoor() {
     ${_lkNoTonight()}
     ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
+      <div id="lk-es">${_lkEsHtml()}</div>
       ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
       ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
 }
@@ -11008,7 +11009,7 @@ function _lkPaintDoor() {
 function _lkSetSearch(v) {
   LINK.q.search = v;
   if (LINK.searchT) clearTimeout(LINK.searchT);
-  LINK.searchT = setTimeout(() => { LINK.searchT = null; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); }, 80);
+  LINK.searchT = setTimeout(() => { LINK.searchT = null; const el = document.getElementById('lk-list'); if (el) el.innerHTML = _lkListHtml(); _lkEsPaint(); }, 80);
 }
 // Search matches every typed word, in any order.
 function _lkFilter(list, q) {
@@ -11062,6 +11063,71 @@ function _lkNyFromDoor() {
   nyReset(); NY.keep = { firstName: w[0] || '', lastName: w.slice(1).join(' ') }; NY.sending = false;
   go('new-youth');
 }
+// Rev 20 (2026-10-25): "Slow: Search Elvanto" for any check-in login (not admin-gated), once the newest console lists doorSearch
+// live and 2+ letters are typed. The typed name rides in the encrypted note; the console adds the youth it finds (not archived,
+// Youth Demographic, this location) to the roster, so a hit is simply a row in the list above with the usual Check in button
+// (never checked in for the leader). One search per login: a new one replaces the old (the server cancels a pending one).
+const LK_ES_WAIT_MS = 60000, LK_ES_POLL_MS = 2500;
+function _lkEsOn() { return _lkCap('doorSearch') === 'live' && !_lkCapOff('checkIn'); }
+function _lkEsCur() {
+  const e = LINK.es, q = String(LINK.q.search || '').trim();
+  return e && e.q === q && e.svc === LINK.svc ? e : null;
+}
+function _lkEsHtml() {
+  const q = String(LINK.q.search || '').trim();
+  if (!_lkEsOn() || q.length < 2 || !_lkSvc()) return '';
+  const e = _lkEsCur(), l = _lkLists();
+  // the no-results list already shows "Add '<name>' as a new person": shown here only when the list has matches
+  const add = _nyOn() && l && l.due.length ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkNyFromDoor()">${icS('plus')} ${esc(`Add '${q}' as a new person`)}</button>` : '';
+  if (!e) return `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkEsGo()">${icS('search')} Slow: Search Elvanto</button>`;
+  if (e.st === 'waiting') return `<div class="card lk-mb" role="status"><p>Searching Elvanto… this can take up to 30 seconds</p>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="_lkEsCancel()">Cancel</button></div>`;
+  if (e.st === 'found' && l && l.due.length) return `<p class="lk-hint" role="status">Found in Elvanto. Tap Check in on the right person.</p>`;
+  if (e.st === 'found' || e.st === 'none') return `<p class="lk-hint" role="status">Not found in Elvanto</p>${add}`;
+  return `<p class="lk-hint" role="status">Elvanto search isn't available right now</p>${add}`;
+}
+function _lkEsPaint() { const el = document.getElementById('lk-es'); if (el && S.page === 'link-checkin') el.innerHTML = _lkEsHtml(); }
+function _lkEsCancel() { if (LINK.es && LINK.es.t) clearTimeout(LINK.es.t); LINK.es = null; _lkEsPaint(); }
+function _lkEsEnd(e, st) {
+  if (LINK.es !== e) return;
+  if (e.t) clearTimeout(e.t);
+  e.t = null; e.st = st;
+  _lkRefreshView();
+}
+async function _lkEsGo() {
+  const q = String(LINK.q.search || '').trim().slice(0, 60), svc = LINK.svc;
+  if (q.length < 2 || !svc) return;
+  if (LINK.es && LINK.es.t) clearTimeout(LINK.es.t);
+  const L = LINK, id = _lkUuid(), e = { id, q, svc, st: 'waiting', at: Date.now(), t: null };
+  LINK.es = e;
+  _lkEsPaint();
+  let device;
+  try { device = { id: _deviceId() || 'unknown', label: _deviceLabel(navigator.userAgent) }; } catch (er) { device = { id: 'unknown', label: 'Unknown device' }; }
+  let r = null;
+  try {
+    const res = await API.post('/link/batch', { device, sentAt: new Date().toISOString(),
+      items: [{ kind: 'action', id, type: 'doorSearch', payload: { ref: id }, note: q, leaderId: null }] }, 20000, true);
+    r = ((res && res.results) || []).find((x) => x && x.id === id) || null;
+  } catch (er) {}
+  if (LINK !== L || LINK.es !== e) return;
+  if (!r || (r.outcome !== 'saved' && r.outcome !== 'replay')) { _lkEsEnd(e, 'down'); return; }
+  _lkEsPoll(L, e);
+}
+// 2.5 s polls of this login's own row (GET /link/actions?ids=), for up to a minute; then "isn't available right now".
+function _lkEsPoll(L, e) {
+  e.t = setTimeout(async () => {
+    e.t = null;
+    if (LINK !== L || LINK.es !== e) return;
+    let a = null;
+    try { a = ((await API.fresh('/link/actions?ids=' + encodeURIComponent(e.id), true)) || [])[0] || null; } catch (er) {}
+    if (LINK !== L || LINK.es !== e) return;
+    const s = a && a.status;
+    if (s === 'sent') { await _lkLoadPeople(e.svc, true); _lkEsEnd(e, 'found'); return; }
+    if (s === 'refused') { _lkEsEnd(e, a.reason === 'person-unknown' ? 'none' : 'down'); return; }
+    if (s === 'cancelled' || s === 'unclear' || Date.now() - e.at >= LK_ES_WAIT_MS) { _lkEsEnd(e, 'down'); return; }
+    _lkEsPoll(L, e);
+  }, LK_ES_POLL_MS);
+}
 function _lkDoneRowsHtml(l) { l = l || _lkLists(); return l ? (LINK.doneOpen ? l.done : l.done.slice(0, 3)).map(_lkRowHtml).join('') : ''; }
 function _lkDoneToggle(open) {
   LINK.doneOpen = !!open;
@@ -11074,6 +11140,9 @@ function _lkRowHtml(p) {
   const ref = !p.queued && LINK.refusals[LINK.svc + ':' + p.personId];
   const act = (!p.checkedIn && ref) || p.action || null;
   const chip = p.leader ? '<span class="lk-chip lead">Leader</span>' : `<span class="lk-chip">${p.grade != null ? 'Yr ' + esc(p.grade) : '–'}</span>`;
+  // rev 20: only after an Elvanto search found someone for the typed name, its hits are told apart by grade and gender
+  const es = LINK.es, sex = es && es.st === 'found' && es.svc === LINK.svc && es.q === String((LINK.q && LINK.q.search) || '').trim()
+    && !p.checkedIn && !p.leader ? ({ female: 'Girl', male: 'Boy' })[p.gender] || '' : '';
   let line = null;
   if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
   else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
@@ -11091,7 +11160,7 @@ function _lkRowHtml(p) {
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
-  return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${lineHtml}</div>${btn}</div>`;
+  return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${sex ? `<div class="lk-st prac">${esc((p.grade != null ? 'Year ' + p.grade + ' · ' : '') + sex)}</div>` : ''}${lineHtml}</div>${btn}</div>`;
 }
 // A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
 function _lkCheck(pid, type) {
@@ -12430,7 +12499,7 @@ function _lkLastFriday(ymd) {
 function _lkAt(iso) { return fmtDay(iso, true); }
 // APP-63 (r22 A6): a word for every server LOG_EVENTS value (every action type plus identity/cancel/undo/resolve).
 function _lkEvents() {
-  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again', busConsentCheck: 'Bus consent check',
+  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again', busConsentCheck: 'Bus consent check', doorSearch: 'Elvanto search',
     checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
     removeFromFlowStep: 'Remove from flow step' };
   ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',

@@ -315,7 +315,7 @@ describe('D1 checkin read', () => {
     const r = await h.svc.checkin(GRADE, ST);
     expect(r.people!.map((p) => p.name)).toEqual(['Amy Adams', 'Ben Brown', 'Cody Codeman', 'Eve Evans', 'Eve Evans', 'Tom Ten']);
     for (const p of r.people!) {
-      expect(Object.keys(p).sort()).toEqual(['action', 'checkedIn', 'grade', 'leader', 'mine', 'name', 'personId']);
+      expect(Object.keys(p).sort()).toEqual(['action', 'checkedIn', 'gender', 'grade', 'leader', 'mine', 'name', 'personId']);
     }
     const ben = r.people!.find((p) => p.personId === P_BEN)!;
     expect(ben).toMatchObject({ checkedIn: true, action: null, mine: false, grade: 9, leader: false });
@@ -1427,11 +1427,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
     const h = await setup();
-    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 19 }); // rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 20 }); // rev 20: doorSearch; rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
     await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
     expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
     const none = await setup('on', { console: false });
-    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 19 });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 20 });
   });
 
   it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
@@ -1445,7 +1445,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
         { personId: P_ANON, roomId: ROOM }] }], META('2026-10-16T08:59:00.000Z'));
     const people = (await h.svc.checkin(GRADE, ST)).people!;
     expect(people.map((p) => p.name)).toEqual(['Amy Adams', 'Lee Avery', 'Ben Brown', 'Cody Codeman', 'Eve Evans', 'Eve Evans', 'Tom Ten', 'Zed Zulu']);
-    expect(people.find((p) => p.personId === P_NEW)).toEqual({ personId: P_NEW, name: 'Zed Zulu', grade: null, leader: false,
+    expect(people.find((p) => p.personId === P_NEW)).toEqual({ personId: P_NEW, name: 'Zed Zulu', grade: null, gender: null, leader: false,
       checkedIn: true, action: null, mine: false, noRoster: true });
     expect(people.find((p) => p.personId === P_LEAD)!.leader).toBe(true);
     expect(people.some((p) => p.personId === P_ANON)).toBe(false);

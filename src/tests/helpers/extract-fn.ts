@@ -41,10 +41,14 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
   if (/\b_lkRcType\(/.test(body) && !names.includes('_lkRcType')) body += '\n' + extractFn(src, '_lkRcType');
   if (/\b_lkRcDone\(/.test(body) &&!names.includes('_lkRcDone')) body += '\n' + extractFn(src, '_lkRcDone');
   if (/\b_LK_RC\b/.test(body) && !/\b_LK_RC\s*=/.test(prelude)) prelude = 'const _LK_RC = {};\n' + prelude;
+  // Rev 20: a door repaint (_lkSetSearch, _lkRefreshView) brings the door search's paint along (it paints nothing without #lk-es).
+  if (/\b_lkEsPaint\(/.test(body) && !names.includes('_lkEsPaint')) body += '\n' + ES_FNS.filter((n) => !names.includes(n)).map((n) => extractFn(src, n)).join('\n');
   // eslint-disable-next-line no-new-func
   return new Function(`${prelude}\n${body}\nreturn { ${returns.join(', ')} };`)();
 }
 
+/** Rev 20: the door search's paint and what it reads (loadFns adds them; a test with its own FNS list adds ES_FNS). */
+export const ES_FNS = ['_lkEsPaint', '_lkEsHtml', '_lkEsCur', '_lkEsOn'];
 // Y3b: the location's clock and consent words (structure.timeZone, serviceDayOfWeek, consentCutoff). A test that runs a
 // function using them loads these too (loadFns does it by itself), with SITE_TIME_CONSTS and an `S` (settings may be absent).
 export const SITE_TIME_FNS = ['_structure', '_serviceDow', '_serviceDayName', '_tz', '_tzCity', '_consentCutoff', '_cutoffWords',
