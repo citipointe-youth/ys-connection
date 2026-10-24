@@ -10507,7 +10507,7 @@ function _lkApply(svc, pid, act, mine) {
   [d.people, d.leaders].forEach((list) => (list || []).forEach((p) => {
     if (p.personId !== pid) return;
     p.action = act; p.mine = mine !== false;
-    if (act.status === 'cancelled') { if (act.type === 'checkIn') p.checkedIn = false; }
+    if (act.status === 'cancelled') p.checkedIn = act.type !== 'checkIn'; // a cancelled check-out leaves them in
     else if (act.status !== 'refused') p.checkedIn = act.type === 'checkIn';
   }));
 }
@@ -10611,6 +10611,10 @@ function _lkResults(items, results) {
       else if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
       else if (r.outcome === 'refused') say = r.message || say;
     } else if (it.kind === 'cancel') {
+      if (r.outcome === 'cancelled' && it._s && it._p) { // a door check-out taken back (row or toast Undo): they stay in
+        const d = LINK.people[it._s], p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === it._p);
+        if (p && p.action && p.action.id === it.id && p.action.type === 'checkOut') _lkApply(it._s, it._p, Object.assign({}, p.action, { status: 'cancelled' }));
+      }
       if (r.outcome === 'cancelled' && it._g && LINK.gres) LINK.gres[it._g] = { id: it.id, type: 'submitReport', status: 'cancelled', reason: null };
       if (r.outcome === 'cancelled' && it._f && LINK.fres) LINK.fres[it._f] = { id: it.id, type: 'completeStep', status: 'cancelled', reason: null };
       if (r.outcome === 'too-late') say = 'Already sent. Do it in Elvanto.';
@@ -11028,24 +11032,30 @@ function _lkCheck(pid, type) {
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
     _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
-    if (type === 'checkIn') _lkTapToast(svc, pid);
+    _lkTapToast(svc, pid, type);
   } catch (e) {}
 }
 // B10 / T-33: every check-in tap shows who was ticked for 5 s, with an Undo (a quick second tap on the next row is
-// easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here.
-function _lkTapToast(svc, pid) {
+// easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here. Impeccable review
+// 2026-10-24 #1 (operator approved): a check-out tap gets the same toast; the door row itself is unchanged (F-02).
+function _lkTapToast(svc, pid, type) {
   const d = LINK.people[svc];
   const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === pid);
-  const html = `<span>Checked in ${esc((p && p.name) || '')} · </span><button type="button" class="btn btn-sm" onclick="_lkToastUndo()">Undo</button>`;
+  const verb = type === 'checkOut' ? 'Checked out ' : 'Checked in ';
+  const html = `<span>${verb}${esc((p && p.name) || '')} · </span><button type="button" class="btn btn-sm" onclick="_lkToastUndo()">Undo</button>`;
   if (LINK.toastT) clearTimeout(LINK.toastT);
-  LINK.toast = { svc, pid, html };
+  LINK.toast = { svc, pid, type: type === 'checkOut' ? 'checkOut' : 'checkIn', html };
   LINK.toastT = setTimeout(() => { LINK.toast = null; LINK.toastT = null; _lkToastDraw(); }, 5000);
   _lkToastDraw();
 }
 function _lkToastDraw() {
   try {
     let el = document.getElementById('lk-toast');
-    if (!el && LINK.toast && document.createElement) { el = document.createElement('div'); el.id = 'lk-toast'; el.className = 'lk-toast'; document.body.appendChild(el); }
+    if (!el && LINK.toast && document.createElement) {
+      el = document.createElement('div'); el.id = 'lk-toast'; el.className = 'lk-toast';
+      el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); // screen readers hear who was ticked
+      document.body.appendChild(el);
+    }
     if (!el) return;
     if (LINK.toast) { el.innerHTML = LINK.toast.html; el.classList.add('show'); } else el.classList.remove('show');
   } catch (e) {}
@@ -11055,7 +11065,14 @@ function _lkToastUndo() {
   if (LINK.toastT) clearTimeout(LINK.toastT);
   LINK.toast = null; LINK.toastT = null;
   _lkToastDraw();
-  if (t && t.svc === LINK.svc) _lkUndo(t.pid);
+  if (!t || t.svc !== LINK.svc) return;
+  if (t.type === 'checkOut') {
+    // A check-out that met an unsent check-in cancelled it (B4): undoing that check-out is checking them in again.
+    const d = LINK.people[t.svc], q = _lkQGet();
+    const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === t.pid), a = p && p.action;
+    if (_lkQueuedIdx(q, t.svc, t.pid) < 0 && a && a.type === 'checkIn' && a.status === 'cancelled') { LINK.doorHeld = null; _lkCheck(t.pid, 'checkIn'); return; }
+  }
+  _lkUndo(t.pid); // queued: removed here; on the wire or sent: the existing undo / cancel item (M2 queueing on the server)
 }
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {

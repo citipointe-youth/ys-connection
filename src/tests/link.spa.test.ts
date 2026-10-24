@@ -959,12 +959,63 @@ describe('B10 / T-33 the tap toast (APP-9)', () => {
     h.fns._lkToastUndo(); // too late: nothing happens
     expect(h.fns._lkQGet()).toHaveLength(1);
   });
-  it('a check-out tap shows no toast', () => {
+  it('impeccable #1: a check-out tap shows "Checked out <name> · Undo" for 5 s; Undo while queued removes it here', () => {
     vi.useFakeTimers();
     const h = makeEnv();
     door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, action: null, mine: false }]);
     h.fns._lkCheck(P(1), 'checkOut');
+    const t = h.get().LINK.toast;
+    expect(t).toMatchObject({ type: 'checkOut', pid: P(1) });
+    expect(t.html).toContain('Checked out Ava · ');
+    expect(h.fns._lkQGet()).toHaveLength(1);
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()).toHaveLength(0);
     expect(h.get().LINK.toast).toBeNull();
+    h.fns._lkCheck(P(1), 'checkOut');
+    vi.advanceTimersByTime(5001);
+    expect(h.get().LINK.toast).toBeNull();
+  });
+  it('impeccable #1: Undo after the check-out was sent queues a cancel (the existing path); cancelled leaves the row in', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: b.items.map((i: any) => i.kind === 'cancel'
+      ? { id: i.id, kind: 'cancel', outcome: 'cancelled' } : { id: i.id, kind: i.kind, outcome: 'saved' }) }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    const outId = h.fns._lkQGet()[0].id;
+    await h.fns._lkFlush();
+    const row = () => h.get().LINK.people[SVC.serviceTimeId].people[0];
+    expect(row()).toMatchObject({ checkedIn: false, action: { id: outId, type: 'checkOut', status: 'pending' } });
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: outId });
+    await h.fns._lkFlush();
+    expect(row()).toMatchObject({ checkedIn: true, action: { id: outId, status: 'cancelled' } });
+  });
+  it('impeccable #1 / M2: Undo while the check-out is on the wire queues a cancel after it', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const h = makeEnv({ post: (_p, b) => new Promise((r) => { release = () => r({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind, outcome: 'saved' })) }); }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, action: null, mine: false }]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    const outId = h.fns._lkQGet()[0].id;
+    const f = h.fns._lkFlush();
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet().map((i: any) => i.kind)).toEqual(['action', 'cancel']);
+    expect(h.fns._lkQGet()[1]).toMatchObject({ kind: 'cancel', id: outId });
+    release(); await f;
+    expect(h.fns._lkQGet()).toEqual([expect.objectContaining({ kind: 'cancel', id: outId })]);
+  });
+  it('impeccable #1: a check-out that cancelled an unsent check-in is undone by checking them in again', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [
+      { id: b.items[0].id, kind: 'action', outcome: 'cancelled', action: { id: P(501), type: 'checkIn', status: 'cancelled', reason: null } }] }) });
+    door(h, [{ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, mine: true, action: { id: P(501), type: 'checkIn', status: 'pending', reason: null } }]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    await h.fns._lkFlush();
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()[0]).toMatchObject({ kind: 'action', type: 'checkIn', payload: { personId: P(1) } });
+  });
+  it('the door toast is a polite live region', () => {
+    expect(extractFn(html, '_lkToastDraw')).toMatch(/setAttribute\('role', 'status'\)[\s\S]*aria-live', 'polite'/);
   });
 });
 
