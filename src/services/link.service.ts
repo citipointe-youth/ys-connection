@@ -851,7 +851,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         }
       }
       if (opposite && opposite.type !== it.type) {
-        if (opposite.status === 'claimed' || opposite.status === 'unclear') throw new LinkStillSending();
+        // M2 (operator ruling 2026-10-24): a check-out (or Undo) over a claimed, mid-send check-in is queued: the claim holds a
+        // checkOut behind an older pending/claimed checkIn of that person and service. Unclear, or a claimed check-out, still refuses.
+        const queues = it.type === 'checkOut' && opposite.type === 'checkIn' && opposite.status === 'claimed';
+        if (!queues && (opposite.status === 'claimed' || opposite.status === 'unclear')) throw new LinkStillSending();
         // The opposite row has not gone yet: cancel it instead of queueing both (the console could run them in the
         // wrong order). A check-out answers `cancelled`; a check-in answers with the open check-in as `duplicate`.
         if (opposite.status === 'pending') {

@@ -707,12 +707,24 @@ describe('R2-G1 G1-2: a same-direction tap after another leader’s answers dupl
 });
 
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
-  it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it is refused', async () => {
+  // M2 (operator ruling 2026-10-24): over a claimed (mid-send) check-in, a check-out is queued behind it, not refused.
+  const lease = (h: Awaited<ReturnType<typeof setup>>) => h.link.claim({ console: { consoleId: '8f5a1c2e-0000-4000-8000-000000000001', label: 'Office PC', contractVersion: 1,
+    consoleVersion: '1.0', inWindow: true, pollSeconds: 60, capabilities: CAPS, linkRev: 1 }, max: 10, leaseSeconds: 180, cutoffDays: 3, leaseLostMs: 3_600_000 });
+  it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it queues behind it (M2)', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
     await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'claimed' });
-    expect(await enq(h.svc, QUAD, checkOut(P_AMY), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING', message: 'Still sending, try again in a minute.' });
+    const q = checkOut(P_AMY);
+    expect(await enq(h.svc, QUAD, q, DEV)).toMatchObject({ outcome: 'saved', action: { id: q.id, type: 'checkOut', status: 'pending' } });
+    expect((await lease(h)).map((r) => r.row.id)).not.toContain(q.id); // the claim holds it behind the claimed check-in
+    setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
+    expect((await lease(h)).map((r) => r.row.id)).toContain(q.id);
+  });
+  it('APP-3 A (pending): a checkOut over a pending check-in cancels it and answers cancelled', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'pending', retry_at: '2026-10-16T09:01:00.000Z' }); // the console answered retry
     const out = checkOut(P_AMY);
     expect(await enq(h.svc, QUAD, out, DEV)).toMatchObject({ outcome: 'cancelled',
@@ -720,13 +732,19 @@ describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
     expect((await h.link.getAction(a.id))!.status).toBe('cancelled');
     expect(await h.link.getAction(out.id)).toBeNull();
   });
-  it('APP-3 B: Undo of a claimed check-in is refused (still sending); once it is pending again the Undo cancels it', async () => {
+  it('APP-3 B: Undo of a claimed check-in queues a check-out behind it (M2); Undo of a pending one cancels it', async () => {
     const h = await setup();
     const a = checkIn(P_AMY);
     await enq(h.svc, GRADE, a, DEV);
     setRow(h.link, a.id, { status: 'claimed' });
-    expect(await undo(h.svc, GRADE, a.id, null, nid(), DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_STILL_SENDING' });
-    setRow(h.link, a.id, { status: 'pending' });
+    const outId = nid();
+    expect(await undo(h.svc, GRADE, a.id, null, outId, DEV)).toMatchObject({ id: a.id, kind: 'undo', outcome: 'saved' });
+    expect(await h.link.getAction(outId)).toMatchObject({ type: 'checkOut', status: 'pending', personId: P_AMY });
+  });
+  it('APP-3 B (pending): Undo of a pending check-in cancels it, no check-out', async () => {
+    const h = await setup();
+    const a = checkIn(P_AMY);
+    await enq(h.svc, GRADE, a, DEV);
     expect((await undo(h.svc, GRADE, a.id, null, nid(), DEV)).outcome).toBe('cancelled');
     expect(await h.link.listActions({ personId: P_AMY, types: ['checkOut'] })).toHaveLength(0);
   });
