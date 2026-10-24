@@ -102,7 +102,11 @@ function pickSameName<T extends { id: string; createdAt: string; dateOfBirth?: s
   const hit = dob ? candidates.find((c) => c.dateOfBirth === dob) : undefined;
   if (hit) return { pick: hit, ambiguous: false };
   // 2+ distinct DOBs for this name in the file = different people: never a DOB-correcting merge.
-  if (dob && multiDob) return { pick: null, ambiguous: false };
+  // A stored student with no DOB yet is filled first (oldest), so no orphan duplicate is made.
+  if (dob && multiDob) {
+    const blank = candidates.filter((c) => !c.dateOfBirth).sort(oldestFirst)[0];
+    return { pick: blank ?? null, ambiguous: false };
+  }
   // Single DOB in file: a differing stored DOB is a correction, so merge below.
   const oldest = [...candidates].sort(oldestFirst)[0]!;
   return { pick: oldest, ambiguous: candidates.length > 1 };
@@ -350,8 +354,8 @@ export function makeImportService(
       // THIS file sharing a name key silently merge into one student today;
       // now at least surfaced as a warning (not blocked — DOB, when present on
       // both sides, is what actually disambiguates two same-named people).
-      const nameMerges = new Map<string, number>();
-      const nameRows = new Map<string, number>(); // rows that could NOT be told apart and merged (D6)
+      const nameMerges = new Map<string, number>(); // rows that could NOT be told apart and merged (D6)
+      const nameRows = new Map<string, number>(); // all rows per name; reported as the count for a collided name
       // Map keyed by student ID — prevents duplicate-row errors when the CSV has the same
       // student appearing more than once (ON CONFLICT cannot affect same row twice)
       const studentsToSaveMap = new Map<string, Parameters<typeof studentRepo.save>[0]>();

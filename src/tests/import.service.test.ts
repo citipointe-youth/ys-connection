@@ -515,6 +515,16 @@ describe('Import Service', () => {
       expect(res.report.nameCollisions).toEqual([]);
     });
 
+    it('stored no-DOB student plus rows d1, d2: no orphan, stored one gets d1', async () => {
+      const { r, svc } = await setup();
+      await r.students.save(stored('s-a', null, '2025-01-01T00:00:00Z'));
+      const res = await svc.importServiceCsv(ADMIN, [row('01/02/2010'), row('03/04/2012')], 'dob.csv');
+      const all = await r.students.findAll();
+      expect(all).toHaveLength(2);
+      expect(all.find((x) => x.id === 's-a')!.dateOfBirth).toBe('2010-02-01');
+      expect(res.report.nameCollisions).toEqual([]);
+    });
+
     it('a just-created same-name student is a candidate for the next row', async () => {
       const { r, svc } = await setup();
       await svc.importServiceCsv(ADMIN, [row('01/02/2010'), row('03/04/2012'), row('01/02/2010')], 'dob.csv');
