@@ -185,6 +185,8 @@ The quad **values** (`users.quad`, `computeQuad`) are still `g79`/`b79`/`g1012`/
 
 Quad is computed automatically from `grade + gender` via `computeQuad()` in enums.
 
+**One name per quad in the SPA (impeccable review 2026-10-24):** `quadLabel()` always returns Junior/Senior Girls/Guys (`SIMPLE_QUAD_LABELS`) on every screen (header badge, Home cards, Connection Audit, pickers), the same names as the quad logins, Notices and Lifegroups; Flows keeps its ruled "Jr/Sr Guys/Girls" pills. `QUAD_LABELS` ("Girls Yr 7–9") stays only for the server mirror (`quadLabelFor`) and the Simple-logins display-name switch.
+
 ### Term model (this-term vs previous-term)
 
 Attendance is split into the **current** and **previous** term everywhere; "this term" is the default, previous is shown as a comparison.

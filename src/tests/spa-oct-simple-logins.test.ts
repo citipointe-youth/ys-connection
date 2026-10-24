@@ -18,9 +18,9 @@ describe('S1.1 quadLabel and _simpleLoginsOn', () => {
     const f = loadFns(['_simpleLoginsOn'], `const S = { settings: { ministryConfig: {} } };`);
     expect(f._simpleLoginsOn()).toBe(false);
   });
-  it('quadLabel uses the old label when Simple is off', () => {
+  it('quadLabel is Junior/Senior with Simple off too (impeccable 2026-10-24: one name per quad on every screen)', () => {
     const f = loadFns(['_simpleLoginsOn', '_structure', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: false } } } };`);
-    expect(f.quadLabel('b1012')).toBe('Boys Yr 10–12');
+    expect(f.quadLabel('b1012')).toBe('Senior Guys');
   });
   it('quadLabel uses Senior Guys when Simple is on', () => {
     const f = loadFns(['_simpleLoginsOn', '_structure', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: true } } } };`);

@@ -1991,7 +1991,11 @@ function _simpleLoginsOn() {
 }
 // Grade 6 counts as a junior year when the ministry has it (structure.gradeMin 6): the junior quads cover 6-9.
 function _juniorMin() { return (_structure().gradeMin || 7) <= 6 ? 6 : 7; }
-function quadLabel(q) { return (_simpleLoginsOn() ? SIMPLE_QUAD_LABELS[q] : (QUAD_LABELS[q] || '').replace('Yr 7–9', 'Yr ' + _juniorMin() + '–9')) || q; }
+// Impeccable review 2026-10-24: one name per quad on every screen (header badge, Home cards, Connection Audit, pickers):
+// Junior/Senior Girls/Guys, the quad logins' names (0025) and what Notices, Lifegroups and Flows already say (Flows
+// abbreviates them Jr/Sr by ruling). QUAD_LABELS ("Girls Yr 7–9") stays for the server mirror (quadLabelFor) and the
+// Simple-logins display-name switch only.
+function quadLabel(q) { return SIMPLE_QUAD_LABELS[q] || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
@@ -7532,7 +7536,7 @@ function _youthSetupBody(settings, users) {
   const roleToggleRows = [
     ['director', 'Director', 'Sees and manages every student and leader across the whole ministry, and can upload attendance files.'],
     ['grade', 'Grade', 'A login responsible for one or more grades, e.g. '+gLabel+' 9. One login can cover several grades at once.'],
-    ['quad', 'Quad', 'A login for one age group and gender, e.g. Girls Yr 7-9. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
+    ['quad', 'Quad', 'A login for one age group and gender, e.g. Junior Girls. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
     ['leader', 'Leader', 'A login that only sees the students connected to it.'],
   ].map(([k, label, hint]) => ((k === 'grade' || k === 'quad') && simpleOn)
     ? `<label class="fg" style="display:flex;align-items:center;gap:8px" title="${SIMPLE_LOCK_TIP}"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" ${k === 'quad' ? 'checked' : ''} disabled> <span>${esc(label)}</span></span> ${helpTip(hint + (k === 'grade' ? ' Off while Junior/Senior logins is on.' : ' On while Junior/Senior logins is on.'))}</label>`

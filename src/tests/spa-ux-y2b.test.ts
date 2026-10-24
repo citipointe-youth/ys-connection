@@ -116,12 +116,12 @@ describe('T13 grade 6 is a junior year when the ministry has it', () => {
     expect(f.computeQuad(6, 'male')).toBe('b79');
     expect(f.computeQuad(5, 'male')).toBeNull();
   });
-  it('the quad label says Yr 6-9 when grade 6 is in', () => {
+  it('the quad label is Junior Girls with or without grade 6 (impeccable 2026-10-24 unified the quad names)', () => {
     const lab = (gradeMin: number) => loadFns(['_structure', '_juniorMin', '_simpleLoginsOn', 'quadLabel'],
       `const QUAD_LABELS = { g79:'Girls Yr 7–9' }; const SIMPLE_QUAD_LABELS = { g79:'Junior Girls' };
        const S = { settings: { ministryConfig: { structure: { gradeMin: ${gradeMin} }, logins: { simple: false } } } };`).quadLabel('g79');
-    expect(lab(7)).toBe('Girls Yr 7–9');
-    expect(lab(6)).toBe('Girls Yr 6–9');
+    expect(lab(7)).toBe('Junior Girls');
+    expect(lab(6)).toBe('Junior Girls');
   });
   it('no hard-coded junior 7-9 list is left', () => {
     expect(html).not.toMatch(/\[7, ?8, ?9\]:\s*\[10|\?\s*\[7,8,9\]\s*:/);
