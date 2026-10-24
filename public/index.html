@@ -267,6 +267,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .empty-sub{font-size:13px;color:var(--ink-faint);margin-top:6px}
 
 /* Modal */
+.mo-box:focus{outline:none}
 .mo{position:fixed;inset:0;background:rgba(8,14,25,.55);z-index:200;display:flex;align-items:flex-end;justify-content:center;padding-top:calc(env(safe-area-inset-top) + 24px)}
 @media(min-width:768px){.mo{align-items:center;padding:24px}}
 /* Elvanto export guide — full-screen step viewer (Import screen + Connection Audit data tab) */
@@ -1579,9 +1580,18 @@ function toast(msg, dur = 2500) {
 function modal(html, onClose, opts) {
   opts = opts || {};
   const r = document.getElementById('modal-root');
-  r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}"><div class="mo-handle"></div>${html}</div></div>`;
+  // Impeccable review 2026-10-24 #3: a real dialog. Focus moves into the sheet, #app behind it is inert (so Tab and
+  // screen readers stay in the sheet), Esc closes (keydown below), and closeModal gives focus back to the opener.
+  // A sheet replaced by another sheet keeps the first opener.
+  if (!r.innerHTML) { const a = document.activeElement; r._opener = a && a !== document.body ? a : null; }
+  r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}" role="dialog" aria-modal="true" tabindex="-1"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
   r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') closeModal(); });
+  const box = r.querySelector('.mo-box'), t = box.querySelector('.mo-title');
+  if (t) { if (!t.id) t.id = 'mo-title'; box.setAttribute('aria-labelledby', t.id); }
+  const app = document.getElementById('app');
+  if (app) app.inert = true;
+  try { box.focus({ preventScroll: true }); } catch (e) {} // the box, not a field: no phone keyboard pops up
   _moFitViewport();
 }
 // iOS Safari: the keyboard covers a position:fixed sheet instead of shrinking it, so fields and
@@ -1599,6 +1609,9 @@ function closeModal() {
   const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
   // F-52: the tap that closed the sheet must not land on the page underneath (iOS ghost click).
   const app = document.getElementById('app');
+  if (app) app.inert = false;
+  const o = r._opener; r._opener = null; // #3: focus goes back to what opened the sheet, while it is still on the page
+  if (o && o.isConnected && o.focus) { try { o.focus({ preventScroll: true }); } catch (e) {} }
   if (app) { app.style.pointerEvents = 'none'; clearTimeout(closeModal._t); closeModal._t = setTimeout(() => { app.style.pointerEvents = ''; }, 350); }
 }
 

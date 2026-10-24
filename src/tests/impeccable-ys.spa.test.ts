@@ -43,3 +43,40 @@ describe('#2 step-0 Complete is off while this year\'s New People flow is missin
     expect(extractFn(html, '_lkFlowsHtml')).toContain('if (!_lkPeopleFlowFound()) top +=');
   });
 });
+
+describe('#3 sheets are dialogs: focus in, background inert, focus back', () => {
+  const run = () => {
+    const opener: any = { isConnected: true, focus: () => { log.push('opener'); } };
+    const log: string[] = [];
+    const title: any = { id: '' };
+    const box: any = { attrs: {} as Record<string, string>, setAttribute(k: string, v: string) { this.attrs[k] = v; }, focus: () => log.push('box'), querySelector: () => title };
+    const overlay: any = { addEventListener: () => {} };
+    const app: any = { style: {}, inert: false };
+    const root: any = { _onClose: null, innerHTML: '', querySelector: (s: string) => (s === '.mo-box' ? box : overlay) };
+    const document: any = { activeElement: opener, body: {}, getElementById: (id: string) => (id === 'app' ? app : root) };
+    const fns = new Function('document', 'window', 'setTimeout', 'clearTimeout',
+      `${extractFn(html, 'modal')}\n${extractFn(html, 'closeModal')}\nfunction _moFitViewport() {}\nreturn { modal, closeModal };`)(document, {}, () => {}, () => {});
+    return { fns, log, title, box, app, root, document };
+  };
+  it('modal() marks the box role=dialog aria-modal, labels it by its title, makes #app inert and focuses the box', () => {
+    const t = run();
+    t.fns.modal('<div class="mo-title">Pick a service</div>');
+    expect(t.root.innerHTML).toContain('role="dialog" aria-modal="true" tabindex="-1"');
+    expect(t.title.id).toBe('mo-title');
+    expect(t.box.attrs['aria-labelledby']).toBe('mo-title');
+    expect(t.app.inert).toBe(true);
+    expect(t.log).toEqual(['box']);
+  });
+  it('closeModal() lifts inert and gives focus back to the opener; a replaced sheet keeps the first opener', () => {
+    const t = run();
+    t.fns.modal('<p>one</p>');
+    t.document.activeElement = { isConnected: true, focus: () => t.log.push('inside') }; // focus moved into the first sheet
+    t.fns.modal('<p>two</p>');
+    t.fns.closeModal();
+    expect(t.app.inert).toBe(false);
+    expect(t.log.pop()).toBe('opener');
+  });
+  it('Esc still closes the open sheet', () => {
+    expect(html).toMatch(/if \(e\.key === 'Escape'\) \{\s*const root = document\.getElementById\('modal-root'\);\s*if \(root && root\.innerHTML\) closeModal\(\);/);
+  });
+});
