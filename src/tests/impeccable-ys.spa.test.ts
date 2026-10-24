@@ -80,3 +80,16 @@ describe('#3 sheets are dialogs: focus in, background inert, focus back', () => 
     expect(html).toMatch(/if \(e\.key === 'Escape'\) \{\s*const root = document\.getElementById\('modal-root'\);\s*if \(root && root\.innerHTML\) closeModal\(\);/);
   });
 });
+
+describe('#4 text colours reach 4.5:1', () => {
+  const lum = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const tok = (n: string) => html.match(new RegExp(`--${n}:(#[0-9a-f]{6})`))![1];
+  it('--ink-faint, --ink-mid and --danger on white, paper, paper-dark and chip', () => {
+    for (const fg of ['ink-faint', 'ink-mid', 'danger']) for (const bg of ['#ffffff', tok('paper'), tok('paper-dark'), tok('chip')]) {
+      if (fg === 'danger' && bg !== '#ffffff' && bg !== tok('paper')) continue; // red text sits on cards and the page
+      expect(ratio(tok(fg), bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
