@@ -604,6 +604,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .bus-tile .bt-label{font-size:14.5px;font-weight:700;flex:1}
 .bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
 .bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
+/* impeccable 2026-10-24 #6: the header row wraps, so the admin's Bus settings gear stays on screen at 390 and 360px. */
+.bus-head{flex-wrap:wrap}.bus-head .bus-head-act{flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
 /* Phone-tight layout: narrower gutters/cards, one-line title, tabs share the row instead of scrolling off. */
 /* R19-U14 #14: #page-main already gives the 16px phone gutter, so .bus-pg adds none (was 16 + 12 = 28). */
 @media(max-width:767px){.bus-pg{padding-left:0;padding-right:0}.bus-pg .card{padding:12px}}
@@ -848,6 +850,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
 .lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
+@media(pointer:coarse){.lk-ff .fc{min-height:44px}} /* impeccable 2026-10-24 #7: back to the I1 44px chip ruling (36px above won on order) */
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
@@ -14766,7 +14769,7 @@ async function renderBus() {
   // .ph/.ph-title/.ph-sub are the app's existing page-header pattern (see Connect Setup,
   // Prayers, Trends, etc.) — used here instead of inventing a parallel one.
   setApp(`<div class="pg bus-pg">
-    <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <div class="ph bus-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div><div class="ph-title">${esc(L('busMinistry'))}</div><div class="ph-sub">${esc(date)}${v.run.readOnly ? ' · finished' : ''}</div></div>
       <div class="bus-head-act">${seesAnalysis ? `<button class="btn btn-sm ${BUS.tab === 'analysis' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenAnalysis()" aria-label="Routes">${icS('route')}<span>Routes</span></button>` : ''}
         ${seesPast ? `<button class="btn btn-sm ${BUS.tab === 'past' ? 'btn-primary' : 'btn-secondary'}" onclick="busOpenPast()">Past</button>` : ''}

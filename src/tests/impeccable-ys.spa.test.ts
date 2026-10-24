@@ -93,3 +93,15 @@ describe('#4 text colours reach 4.5:1', () => {
     }
   });
 });
+
+describe('#6 / #7 touch layout', () => {
+  it('#7: Flows / Lifegroup filter chips are 44px tall on touch (a later rule than the 36px one)', () => {
+    const i36 = html.indexOf('.lk-ff .fc{min-height:36px'), i44 = html.indexOf('@media(pointer:coarse){.lk-ff .fc{min-height:44px}}');
+    expect(i36).toBeGreaterThan(0);
+    expect(i44).toBeGreaterThan(i36);
+  });
+  it('#6: the Bus header row wraps so the settings gear stays on screen', () => {
+    expect(html).toContain('<div class="ph bus-head" style="display:flex;');
+    expect(html).toMatch(/\.bus-head\{flex-wrap:wrap\}\.bus-head \.bus-head-act\{flex-wrap:wrap;/);
+  });
+});
