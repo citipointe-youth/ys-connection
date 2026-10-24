@@ -11,7 +11,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
-  '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
@@ -31,7 +31,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 // APP-49: the real constant, read from the page (a copy here would hide a change).
-const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_OFFLINE_MS']
+const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_CATS', 'LK_OFFLINE_MS']
   .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
@@ -308,13 +308,14 @@ describe('F-40(b) report tick rows are checkboxes', () => {
   });
 });
 
-describe('F-48(d) grade chips never wrap', () => {
-  it('every chip is nowrap', () => {
+describe('F-48(d) category chips never wrap', () => {
+  it('the chips sit in the Flows no-wrap row (.lk-ff), purple for Mixed', () => {
     const h = setup();
-    h.get().LINK.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' });
-    const chips = h.fns._lkGroupsHtml().match(/<button type="button" class="fc[^>]*>/g);
-    expect(chips).toHaveLength(3);
-    chips.forEach((c: string) => expect(c).toContain('white-space:nowrap'));
+    h.get().LINK.groups.push({ ...grp(), groupId: G(2), name: 'City of Logan Thursday', grade: null, gender: null });
+    const html = h.fns._lkGroupsHtml();
+    expect(html).toContain('class="filter-row lk-ff lk-cf"');
+    expect(html).toContain('class="fc lk-ff-mix"'); expect(html).toContain('var(--mix-light)');
+    expect(loadIndexHtml()).toMatch(/\.lk-ff \.fc\{[^}]*white-space:nowrap/);
   });
 });
 
@@ -343,15 +344,16 @@ describe('GAP-4 fewer taps: newest week with no report, Yr chip opens a lone gro
     g.history = ['2026-10-06', '2026-09-29', '2026-09-22', '2026-09-15', '2026-09-08', '2026-09-01', '2026-08-25'].map((date, i) => ({ ...g.lastReport, reportId: G(20 + i), date })); // all 8 weeks (T3, 2026-10-21)
     expect(h.fns._lkGroupHtml(g)).not.toContain('Go to the newest week');
   });
-  it('a Yr chip with one group opens it; with two it only filters', () => {
+  it('a category with one group opens it; with two it only filters', () => {
     const h = setup();
     const L = h.get().LINK;
-    L.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' }, { ...grp(), groupId: G(3), name: 'Yr 9 Boys', grade: 9, gender: 'male' });
+    L.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' }, { ...grp(), groupId: G(3), name: 'Yr 9 Boys', grade: 9, gender: 'male' },
+      { ...grp(), groupId: G(4), name: 'Yr 8 Boys', grade: 8, gender: 'male' });
     L.gid = null;
-    h.fns._lkGrFilter('12');
+    h.fns._lkCatFilter('sg');
     expect(L.gid).toBe(G(2));
     L.gid = null;
-    h.fns._lkGrFilter('9');
+    h.fns._lkCatFilter('jg');
     expect(L.gid).toBeNull();
   });
 });

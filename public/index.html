@@ -36,7 +36,7 @@
   --navy:#0a0a2e;
   --danger:#ef4444;--danger-light:#fee2e2;--warn:#f59e0b;--warn-light:#fef3c7;
   --success:#10b981;--success-light:#d1fae5;
-  --girl-light:#fce7f3;--girl-dark:#be185d;--boy-light:#dbeafe;--boy-dark:#1d4ed8;
+  --girl-light:#fce7f3;--girl-dark:#be185d;--boy-light:#dbeafe;--boy-dark:#1d4ed8;--mix-light:#f3e8ff;--mix-dark:#6d28d9;
   --ink:#1f2937;--ink-mid:#647488;--ink-faint:#94a3b8;
   --paper:#f4f7fc;--paper-card:#ffffff;--paper-dark:#e8edf4;
   --line:#e8edf4;--chip:#ececff;
@@ -842,9 +842,11 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-tick{width:22px;height:22px;flex:none;margin:0;accent-color:var(--accent)}.lk-tick-sp{width:22px;flex:none}
 .lk-selall{font-size:13px;margin:2px 0 8px;min-height:36px;color:var(--ink-mid)}
 .lk-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px}.lk-bulk>span{flex:1;font-weight:700;font-size:14px}
-.fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}
+.fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}.fc.lk-ff-mix{color:var(--mix-dark)}
+.fc.lk-ff-mix.on{background:var(--mix-dark);border-color:var(--mix-dark);color:#fff}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
+.lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
 .lk-acts{display:flex;gap:8px;justify-content:flex-end}
 .lk-late{color:#b91c1c;font-weight:700}
 .lk-dh{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;min-height:44px;font:inherit;text-align:left;cursor:pointer;background:var(--paper-card);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
@@ -11337,22 +11339,33 @@ function _lkGroupsHtml() {
   const gs = LINK.groups;
   if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : progBar('Loading');
   if (!gs.length) return '<p class="lk-hint">No lifegroups for this login. Ask your admin.</p>';
-  const grades = [...new Set(gs.map((g) => g.grade).filter((x) => x != null))].sort((a, b) => a - b);
+  const cats = LK_CATS.filter(([k]) => gs.some((g) => _lkCat(g) === k));
   let sel = 'all';
-  try { sel = localStorage.getItem('yap_lk_grade') || 'all'; } catch (e) {}
-  if (sel !== 'all' && !grades.some((x) => String(x) === sel)) sel = 'all';
-  const chips = grades.length > 1 ? `<div class="filter-row" role="group" aria-label="Filter by grade">${['all'].concat(grades.map(String)).map((v) =>
-    `<button type="button" class="fc${v === sel ? ' on' : ''}" style="white-space:nowrap" onclick="_lkGrFilter('${v}')">${v === 'all' ? 'All' : 'Yr ' + v}</button>`).join('')}</div>` : '';
-  return chips + gs.filter((g) => sel === 'all' || String(g.grade) === sel).map((g) => {
-    const a = _lkGroupAct(g), tint = /^f/i.test(g.gender || '') ? ' style="background:var(--girl-light)"' : /^m/i.test(g.gender || '') ? ' style="background:var(--boy-light)"' : '';
-    return `<div class="li lk-row" role="button"${tint} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
+  try { sel = localStorage.getItem('yap_lk_cat') || 'all'; } catch (e) {}
+  if (sel !== 'all' && !cats.some(([k]) => k === sel)) sel = 'all';
+  // Same no-wrap row as the Flows filter (.lk-ff): equal widths, short Jr/Sr labels, boy/girl colours.
+  const chips = cats.length > 1 ? `<div class="filter-row lk-ff lk-cf" role="group" aria-label="Filter lifegroups">${[['all', 'All', '']].concat(cats).map(([k, l, c]) =>
+    `<button type="button" class="fc${c ? ' lk-ff-' + c : ''}${k === sel ? ' on' : ''}" aria-pressed="${k === sel}" aria-label="${l}" onclick="_lkCatFilter('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`).join('')}</div>` : '';
+  return chips + gs.filter((g) => sel === 'all' || _lkCat(g) === sel).map((g) => {
+    const a = _lkGroupAct(g), c = _lkCat(g), tint = { f: 'girl', g: 'boy', x: 'mix' }[String(c || '').slice(-1)], bg = tint ? ` style="background:var(--${tint}-light)"` : '';
+    return `<div class="li lk-row" role="button"${bg} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
       <div class="lk-d">${esc(_lkLastReportLabel(g))}</div>${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${icS('chevr')}</div>`;
   }).join('');
 }
-function _lkGrFilter(v) {
-  try { localStorage.setItem('yap_lk_grade', v); } catch (e) {}
-  // GAP-4: a grade with one group opens it straight away (one tap, not two); Back shows the filtered list.
-  const one = v === 'all' ? [] : (LINK.groups || []).filter((g) => String(g.grade) === v);
+// Lifegroup categories (operator 2026-10-24). Junior/senior from the grade (Grade 6 joins junior), else "Junior"/"Senior" in the
+// name; gender from the group, else "Girls"/"Guys"/"Boys" in the name. No gender = Mixed; a gender with no bracket is under All only.
+const LK_CATS = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl'], ['mx', 'Mixed', 'mix']];
+function _lkCat(g) {
+  const n = String(g.name || '');
+  const sex = /^f/i.test(g.gender || '') || (!g.gender && /\bgirls?\b/i.test(n)) ? 'f' : /^m/i.test(g.gender || '') || /\b(?:boys?|guys?)\b/i.test(n) ? 'g' : '';
+  if (!sex) return 'mx';
+  const b = g.grade != null ? (g.grade <= 9 ? 'j' : 's') : /\bjunior\b/i.test(n) ? 'j' : /\bsenior\b/i.test(n) ? 's' : '';
+  return b ? b + sex : null;
+}
+function _lkCatFilter(v) {
+  try { localStorage.setItem('yap_lk_cat', v); } catch (e) {}
+  // GAP-4: a category with one group opens it straight away (one tap, not two); Back shows the filtered list.
+  const one = v === 'all' ? [] : (LINK.groups || []).filter((g) => _lkCat(g) === v);
   if (one.length === 1) { _lkOpenGroup(one[0].groupId); return; }
   const gl = document.getElementById('lk-glist');
   if (gl) gl.innerHTML = _lkGroupsHtml();

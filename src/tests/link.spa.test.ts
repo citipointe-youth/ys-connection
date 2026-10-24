@@ -11,7 +11,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
-  '_lkLastReportLabel', '_lkAddReport', '_lkGrFilter', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
@@ -31,7 +31,7 @@ const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
 // APP-49: the real constant, read from the page (a copy here would hide a change).
-const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_OFFLINE_MS']
+const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_CATS', 'LK_OFFLINE_MS']
   .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
 
 interface Env { storage: Map<string, string>; failStorage?: boolean; quota?: boolean; post?: (path: string, body: any, ms?: number) => Promise<any>;
@@ -1297,17 +1297,23 @@ describe('F2 lifegroup report', () => {
     expect(strip(card)).toContain('Guests');
     expect(strip(card)).not.toContain('Service');
   });
-  it('T1: grade chips filter the list, the choice is remembered, rows are tinted by gender', () => {
+  it('category chips (Jr/Sr Guys/Girls, Mixed) filter the list, the choice is remembered, rows are tinted by gender', () => {
     const h = setup('L1', { grade: 9, gender: 'female' });
-    const g2 = { ...h.get().LINK.groups[0], groupId: G(2), name: 'Yr 7 Boys', grade: 7, gender: 'male' };
-    h.get().LINK.groups.push(g2);
+    const g0 = h.get().LINK.groups[0];
+    Object.assign(g0, { name: 'Grade 9 Girls', grade: 9, gender: 'female' });
+    h.get().LINK.groups.push({ ...g0, groupId: G(2), name: 'Grade 12 Boys Friday', grade: 12, gender: 'male' },
+      { ...g0, groupId: G(3), name: 'Senior Girls Wednesday Mt Gravatt', grade: null, gender: null },
+      { ...g0, groupId: G(4), name: 'City of Logan Thursday', grade: null, gender: null });
+    expect(h.get().LINK.groups.map((g: any) => h.fns._lkCat(g))).toEqual(['jf', 'sg', 'sf', 'mx']);
     const all = h.fns._lkGroupsHtml();
-    expect(all).toContain("_lkGrFilter('all')"); expect(all).toContain("_lkGrFilter('7')"); expect(all).toContain("_lkGrFilter('9')");
+    for (const k of ['all', 'jf', 'sg', 'sf', 'mx']) expect(all).toContain(`_lkCatFilter('${k}')`);
+    expect(all).not.toContain("_lkCatFilter('jg')"); // no Junior Guys group: no chip
+    expect(all).toContain('>Jr Girls<'); expect(all).toContain('>Mixed<');
     expect(all).toContain('var(--girl-light)'); expect(all).toContain('var(--boy-light)');
-    h.get().LINK.groups[0].grade = 9;
-    h.fns._lkGrFilter('7'); // remembered in the (stub) localStorage and applied on the next draw
-    const f7 = h.fns._lkGroupsHtml();
-    expect(f7).toContain('Yr 7 Boys'); expect(f7).not.toContain('Yr 9 ');
+    h.fns._lkCatFilter('sf'); // one group: opens it
+    h.fns._lkCatFilter('mx');
+    const mx = h.fns._lkGroupsHtml();
+    expect(mx).toContain('City of Logan'); expect(mx).not.toContain('Grade 12');
   });
   it('a date equal to the last report date shows the message and queues nothing', () => {
     const h = setup();
