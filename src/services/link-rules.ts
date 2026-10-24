@@ -366,8 +366,17 @@ export function gradeFixes<S extends MatchStudent>(roster: LinkRosterRow[], stud
  * stored row (`before`, the roster before this push) had grade 12, matched to a YS student of grade 12 who is not yet
  * graduated, = that student graduated. A grade that was already null before is never a graduation.
  */
-export function graduations<S extends MatchStudent>(before: LinkRosterRow[], incoming: { personId: string; grade: number | null }[],
+type GradeIn = { personId: string; grade: number | null; kind?: string };
+
+/** r25 guard: more than half of the pushed student rows with a blank grade = a field-read glitch, not a graduation. Never a count cap (January graduates ~90 at ~14% null). */
+export function gradeGlitch(incoming: GradeIn[]): boolean {
+  const stu = incoming.filter((x) => (x.kind ?? 'student') === 'student');
+  return stu.length > 0 && stu.filter((x) => x.grade == null).length / stu.length > 0.5;
+}
+
+export function graduations<S extends MatchStudent>(before: LinkRosterRow[], incoming: GradeIn[],
   students: S[]): S[] {
+  if (gradeGlitch(incoming)) return [];
   const byId = new Map(students.map((s) => [s.id, s]));
   const prev = new Map(before.map((r) => [r.personId, r]));
   const out = new Map<string, S>();

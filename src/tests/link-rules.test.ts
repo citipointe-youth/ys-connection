@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, gradeFixes, graduations, peopleFlowName, isConsentStep,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, gradeFixes, graduations, gradeGlitch, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
@@ -294,8 +294,9 @@ describe('graduations (r25: Elvanto blanks a Year 12 grade)', () => {
   const was = (n: number, sid: string, grade: number | null, over: Partial<LinkRosterRow> = {}) => ros(n, 'X', 'Y', null, { grade, studentId: sid, match: 'auto', ...over });
   const ids = (before: LinkRosterRow[], incoming: { personId: string; grade: number | null }[]) => graduations(before, incoming, st).map((s) => s.id);
   it('12 -> blank on a matched Year 12 graduates them', () => {
-    expect(ids([was(1, 's1', 12)], [{ personId: U(1), grade: null }])).toEqual(['s1']);
-    expect(ids([was(1, 's1', 12, { match: 'manual' })], [{ personId: U(1), grade: null }])).toEqual(['s1']);
+    const rest = [{ personId: U(9), grade: 10 }, { personId: U(8), grade: 9 }]; // a normal push is mostly graded (the guard skips a mostly-blank one)
+    expect(ids([was(1, 's1', 12)], [{ personId: U(1), grade: null }, ...rest])).toEqual(['s1']);
+    expect(ids([was(1, 's1', 12, { match: 'manual' })], [{ personId: U(1), grade: null }, ...rest])).toEqual(['s1']);
   });
   it('a grade already blank before the push never graduates (the 16 null pairs today)', () => {
     expect(ids([was(1, 's1', null)], [{ personId: U(1), grade: null }])).toEqual([]);
@@ -308,6 +309,14 @@ describe('graduations (r25: Elvanto blanks a Year 12 grade)', () => {
     expect(ids([was(1, 's1', 12, { match: 'ignored' })], [{ personId: U(1), grade: null }])).toEqual([]);
     expect(ids([was(1, 's1', 12, { match: 'none', studentId: null })], [{ personId: U(1), grade: null }])).toEqual([]);
     expect(ids([was(1, 's3', 12)], [{ personId: U(1), grade: null }])).toEqual([]);
+  });
+  it('guard: over 50% blank grades in the push = a glitch, no graduations; ~14% blank still graduates', () => {
+    const rows = (n: number, blank: number) => Array.from({ length: n }, (_, i) => ({ personId: U(i + 1), grade: i < blank ? null : 10, kind: 'student' }));
+    const before = [was(1, 's1', 12)];
+    expect(gradeGlitch(rows(10, 6))).toBe(true);
+    expect(graduations(before, rows(10, 6), st)).toEqual([]);
+    expect(gradeGlitch(rows(7, 1))).toBe(false);
+    expect(graduations(before, rows(7, 1), st).map((s) => s.id)).toEqual(['s1']);
   });
   it('autoMatch keeps a graduated student matched but never offers it as a new match', () => {
     const g = [{ ...stu('s1', 'Amy', 'Ng', 'female', 12), graduatedAt: '2026-01-01' }];

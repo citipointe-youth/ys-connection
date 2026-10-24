@@ -11,7 +11,7 @@ import type { ConnectionAuditService, IngestResult } from './connection-audit.se
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes, gradeFixes, graduations } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes, gradeFixes, gradeGlitch, graduations } from './link-rules';
 import type { MatchChange } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
@@ -284,7 +284,9 @@ export function makeSyncService(d: SyncDeps) {
       const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };
-      const grads = graduations(before, req.rows as { personId: string; grade: number | null }[], await d.students.findAll());
+      const inRows = req.rows as { personId: string; grade: number | null; kind?: string }[];
+      if (gradeGlitch(inRows)) console.warn('roster push: over half of the student grades are blank, graduations skipped'); // r25 guard
+      const grads = graduations(before, inRows, await d.students.findAll());
       const at = new Date().toISOString();
       for (const s of grads) await d.students.setGraduated(s.id, at);
       const changes = await rematchRoster(d.link, d.students);
