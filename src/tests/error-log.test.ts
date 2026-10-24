@@ -387,18 +387,25 @@ describe('error-log.service', () => {
       await repo.record(linkRow('new', 'no-room', 'checkIn', ago(6)));
       expect((await svc.list(admin)).rows.map((r) => r.id)).toEqual(['new']);
     });
-    it('a later success of the same type clears a refusal', async () => {
+    it('a later success of the same type clears a type-wide refusal', async () => {
       const T = ago(1);
       const run = async (resultAt: string) => {
         const { repo, link, svc } = mk(NOW);
-        await repo.record(linkRow('r', 'unknown', 'consentFix', T));
+        await repo.record(linkRow('r', 'locked', 'consentFix', T));
         await box(link, 's1', 'consentFix', 'sent', { resultAt });
         return (await svc.list(admin)).rows.map((r) => r.id);
       };
       expect(await run(new Date(Date.parse(T) + 60_000).toISOString())).toEqual([]);
       expect(await run(new Date(Date.parse(T) - 60_000).toISOString())).toEqual(['r']);
     });
-    it('count rows never expire', async () => {
+    it('ultra #4 (operator ruling A): a per-person refusal stays after a later success; a type-wide one clears', async () => {
+      const T = ago(1), after = new Date(Date.parse(T) + 60_000).toISOString();
+      const { repo, link, svc } = mk(NOW);
+      for (const [id, code] of [['p', 'person-unknown'], ['f', 'unknown'], ['n', 'no-room']] as const) await repo.record(linkRow(id, code, 'checkIn', T));
+      await box(link, 's1', 'checkIn', 'sent', { resultAt: after });
+      expect((await svc.list(admin)).rows.map((r) => r.id).sort()).toEqual(['f', 'p']);
+    });
+        it('count rows never expire', async () => {
       const { repo, link, svc } = mk(NOW);
       const id = '9e000000-0000-4000-8000-000000000001';
       await box(link, id, 'checkIn', 'pending');

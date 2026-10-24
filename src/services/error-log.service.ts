@@ -24,6 +24,9 @@ const RECORD_TIMEOUT_MS = 2_000;
 const RECORD_THROTTLE_MS = 30_000;
 /** D1 (2026-10-24): a link refusal (any link row but a count row) goes after this long, or after a later success of its type. */
 export const REFUSAL_KEEP_DAYS = 7;
+/** Ultra #4 (operator ruling A, 2026-10-24): a later success of the same type clears only these type-wide refusal reasons.
+ *  Per-person/per-item ones (person-unknown, form-unknown, not-landed, ...) wait for the 7-day expiry or an admin. */
+const SUCCESS_CLEARS = new Set(['locked', 'no-room', 'too-old', 'service-not-offered', 'console-busy', 'lease-lost']);
 /** Link rows that are live counts (setCount on a fixed id): never expired by REFUSAL_KEEP_DAYS. Identified by code, not foldKey (pre-0035 rows have none). */
 const COUNT_CODES = new Set(['pending-24h', 'unclear', 'lease-lost']);
 const UNCLEAR_CODES = new Set(['unclear', 'lease-lost']);
@@ -162,7 +165,7 @@ export function makeErrorLogService(d: ErrorLogDeps) {
     const left = new Map<string, ErrorLogRow[]>();
     for (const r of events) {
       if (r.lastSeen < keepFrom) await d.repo.remove(r.id);
-      else if (ACTION_TYPE_SET.has(r.route)) left.set(r.route, [...(left.get(r.route) ?? []), r]);
+      else if (ACTION_TYPE_SET.has(r.route) && SUCCESS_CLEARS.has(r.code)) left.set(r.route, [...(left.get(r.route) ?? []), r]);
     }
     for (const [route, rows] of left) {
       // Bounded: the newest 50 sent since a week before the oldest row's day (an unbounded sent read is the whole history).
