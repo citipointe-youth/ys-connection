@@ -1614,7 +1614,8 @@ function closeModal() {
   const app = document.getElementById('app');
   if (app) app.inert = false;
   const o = r._opener; r._opener = null; // #3: focus goes back to what opened the sheet, while it is still on the page
-  if (o && o.isConnected && o.focus) { try { o.focus({ preventScroll: true }); } catch (e) {} }
+  // UI diff review L2: never refocus a text field (iOS would bring the keyboard back up on close)
+  if (o && o.isConnected && o.focus && !(o.matches && o.matches('input,textarea,select'))) { try { o.focus({ preventScroll: true }); } catch (e) {} }
   if (app) { app.style.pointerEvents = 'none'; clearTimeout(closeModal._t); closeModal._t = setTimeout(() => { app.style.pointerEvents = ''; }, 350); }
 }
 
@@ -2935,7 +2936,8 @@ async function renderSystemCheck() {
   // Impeccable review 2026-10-24 quick win: on Problems, System check goes first while it has something to fix,
   // so "No errors in the log" never sits above six fix rows.
   const fix = !!SETUP.status && (SETUP.status.checks || []).some((c) => c.state === 'fix'), log = document.getElementById('err-log');
-  if (fix && log && log.parentNode === el.parentNode) el.parentNode.insertBefore(el, document.getElementById('unsent-list') || log);
+  const u = document.getElementById('unsent-list'); // UI diff review L3: the intake template has an #unsent-list too
+  if (fix && log && log.parentNode === el.parentNode) el.parentNode.insertBefore(el, u && u.parentNode === el.parentNode ? u : log);
 }
 /* ── END SETUP MODULE ── */
 

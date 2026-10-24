@@ -195,6 +195,24 @@ describe('quick win: Problems never says "All clear" above System check fixes', 
   it('System check moves first while it has a fix row', () => {
     const f = extractFn(html, 'renderSystemCheck');
     expect(f).toContain("(SETUP.status.checks || []).some((c) => c.state === 'fix')");
-    expect(f).toContain("el.parentNode.insertBefore(el, document.getElementById('unsent-list') || log)");
+    expect(f).toContain('el.parentNode.insertBefore(el, u && u.parentNode === el.parentNode ? u : log)');
+  });
+});
+
+describe('UI diff review L2 / L3', () => {
+  it('L2: closing a sheet does not refocus a text field opener (no iOS keyboard pop)', () => {
+    const log: string[] = [];
+    const field: any = { isConnected: true, matches: (s: string) => s.includes('input'), focus: () => log.push('field') };
+    const box: any = { setAttribute() {}, focus: () => log.push('box'), querySelector: () => null };
+    const app: any = { style: {}, inert: false };
+    const root: any = { _onClose: null, innerHTML: '', querySelector: (s: string) => (s === '.mo-box' ? box : { addEventListener() {} }) };
+    const document: any = { activeElement: field, body: {}, getElementById: (id: string) => (id === 'app' ? app : root) };
+    const f = new Function('document', 'window', 'setTimeout', 'clearTimeout',
+      `${extractFn(html, 'modal')}\n${extractFn(html, 'closeModal')}\nfunction _moFitViewport() {}\nreturn { modal, closeModal };`)(document, {}, () => {}, () => {});
+    f.modal('<p>x</p>'); f.closeModal();
+    expect(log).toEqual(['box']);
+  });
+  it('L3: System check moves only before an #unsent-list that is its sibling', () => {
+    expect(extractFn(html, 'renderSystemCheck')).toContain('u && u.parentNode === el.parentNode ? u : log');
   });
 });
