@@ -99,7 +99,8 @@ export function makeConnectionAuditService(
     const out = await repo.withYearLock(year, async (tx) => {
       const at = now().toISOString();
       const prev = (await tx.sources(year)).find((s) => s.source === source) ?? null;
-      if (prev && Date.parse(body.takenAt) <= Date.parse(prev.takenAt)) return { status: 'stale' as IngestStatus, skipped: null };
+      // Ultra #7: only a fed copy guards against older pushes; a never-fed failure placeholder holds no copy to protect.
+      if (prev?.fedAt && Date.parse(body.takenAt) <= Date.parse(prev.takenAt)) return { status: 'stale' as IngestStatus, skipped: null };
       // A failure keeps the stored rows; a never-stored source gets an empty copy (spec §9).
       const fail = (reason: NonNullable<StoredAuditSource['lastFailReason']>): StoredAuditSource => prev
         ? { ...prev, lastFailedAt: at, lastFailReason: reason }

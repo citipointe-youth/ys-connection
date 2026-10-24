@@ -92,6 +92,14 @@ describe('ingest (spec §5.6, §8)', () => {
       takenAt: later(SVC, 5).takenAt, exportedAt: SVC.exportedAt, lastFailReason: 'timeout' });
   });
 
+  it('ultra #7: a failure placeholder (never fed) does not make an older real upload stale; a fed copy still does', async () => {
+    const h = await harness();
+    await h.svc.ingest(SVC, 'console');
+    await h.svc.ingest({ ...failed('group', 0), takenAt: GRP.takenAt }, 'console');
+    expect(await h.svc.ingest(later(GRP, -420), 'manual', ADMIN.id)).toEqual({ applied: true, source: 'group', status: 'stored' });
+    expect((await h.svc.ingest(later(GRP, -480), 'manual', ADMIN.id)).status).toBe('stale');
+  });
+
   it('stale takenAt → stale, nothing changes', async () => {
     const h = await harness();
     await h.svc.ingest(SVC, 'console');
