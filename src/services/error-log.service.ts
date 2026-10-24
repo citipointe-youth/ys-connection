@@ -25,8 +25,9 @@ const RECORD_THROTTLE_MS = 30_000;
 /** D1 (2026-10-24): a link refusal (any link row but a count row) goes after this long, or after a later success of its type. */
 export const REFUSAL_KEEP_DAYS = 7;
 /** Ultra #4 (operator ruling A, 2026-10-24): a later success of the same type clears only these type-wide refusal reasons.
- *  Per-person/per-item ones (person-unknown, form-unknown, not-landed, ...) wait for the 7-day expiry or an admin. */
-const SUCCESS_CLEARS = new Set(['locked', 'no-room', 'too-old', 'service-not-offered', 'console-busy', 'lease-lost']);
+ *  Per-person/per-item ones (person-unknown, form-unknown, not-landed, no-room, ...) wait for the 7-day expiry or an admin.
+ *  no-room left the set by a later ruling (link seam review #3): the console's no-room is nearly always about one person. */
+const SUCCESS_CLEARS = new Set(['locked', 'too-old', 'service-not-offered', 'console-busy', 'lease-lost']);
 /** Link rows that are live counts (setCount on a fixed id): never expired by REFUSAL_KEEP_DAYS. Identified by code, not foldKey (pre-0035 rows have none). */
 const COUNT_CODES = new Set(['pending-24h', 'unclear', 'lease-lost']);
 const UNCLEAR_CODES = new Set(['unclear', 'lease-lost']);

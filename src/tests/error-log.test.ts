@@ -398,12 +398,13 @@ describe('error-log.service', () => {
       expect(await run(new Date(Date.parse(T) + 60_000).toISOString())).toEqual([]);
       expect(await run(new Date(Date.parse(T) - 60_000).toISOString())).toEqual(['r']);
     });
-    it('ultra #4 (operator ruling A): a per-person refusal stays after a later success; a type-wide one clears', async () => {
+    it('ultra #4 (operator ruling A) + no-room ruling: a per-person refusal stays after a later success; a type-wide one clears', async () => {
       const T = ago(1), after = new Date(Date.parse(T) + 60_000).toISOString();
       const { repo, link, svc } = mk(NOW);
-      for (const [id, code] of [['p', 'person-unknown'], ['f', 'unknown'], ['n', 'no-room']] as const) await repo.record(linkRow(id, code, 'checkIn', T));
+      // Finding 3 ruling: no-room is per person (no Demographic room, Elvanto's No room), so it stays too; locked still clears.
+      for (const [id, code] of [['p', 'person-unknown'], ['f', 'unknown'], ['n', 'no-room'], ['l', 'locked']] as const) await repo.record(linkRow(id, code, 'checkIn', T));
       await box(link, 's1', 'checkIn', 'sent', { resultAt: after });
-      expect((await svc.list(admin)).rows.map((r) => r.id).sort()).toEqual(['f', 'p']);
+      expect((await svc.list(admin)).rows.map((r) => r.id).sort()).toEqual(['f', 'n', 'p']);
     });
         it('count rows never expire', async () => {
       const { repo, link, svc } = mk(NOW);
@@ -427,8 +428,8 @@ describe('error-log.service', () => {
       const calls: unknown[] = [];
       const link = { listActions: async (f: unknown) => { calls.push(f); return []; } } as any;
       const svc = makeErrorLogService({ repo, link, now: () => NOW });
-      await repo.record(linkRow('a', 'no-room', 'checkIn', ago(2)));
-      await repo.record(linkRow('b', 'no-room', 'checkIn', ago(1)));
+      await repo.record(linkRow('a', 'locked', 'checkIn', ago(2)));
+      await repo.record(linkRow('b', 'locked', 'checkIn', ago(1)));
       await repo.record(entry({ id: 'c', category: 'link', code: 'INTERNAL', route: 'GET /link/intake/row', status: null, at: ago(1) }));
       await svc.sweep();
       expect(calls.filter((f: any) => f.statuses?.includes('sent'))).toEqual([{ types: ['checkIn'], statuses: ['sent'], serviceDateFrom: '2026-10-15', limit: 50 }]);
