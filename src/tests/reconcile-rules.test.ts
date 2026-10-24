@@ -120,8 +120,8 @@ describe('F4 2026-10-22: a student with no grade (the console now sends kind stu
     expect(autoMatch([ng], [{ id: 's7', firstName: 'Testy', lastName: 'Nograde', gender: 'other', grade: 9 }]))
       .toEqual([{ personId: P(7), studentId: 's7', match: 'auto' }]);
   });
-  it('counts in unmatched until matched, then in check-ins, lifegroups and members', () => {
-    expect(checkUnmatched([ng]).items).toEqual([P(7)]);
+  it('is left out of unmatched (R2), and once matched counts in check-ins, lifegroups and members', () => {
+    expect(checkUnmatched([ng]).items).toEqual([]); // R2: no grade, so left out of students-missing
     const m = { ...ng, studentId: 's7', match: 'auto' as const };
     expect(checkCheckins({ sessions: [{ id: 'ss1', sessionDate: '2026-10-23' }], attendance: [], roster: [m], rows: [ci(7, '2026-10-23')] }).count).toBe(1);
     expect(checkLifegroups({ ...base, roster: [m], actions: [rep({ attendees: [P(7)] })], attendance: [] }).items[0]?.personIds).toEqual([P(7)]);
@@ -138,5 +138,14 @@ describe('reconcile contract', () => {
       entries: [{ tier: 'now', code: 'recon-checkins', line1: '2 app check-ins are missing from Elvanto attendance', count: 2, counted: true, lastSeen: '2026-10-23T11:15:00.000Z' }] };
     expect(ReconcileLatestResponse.parse(res)).toEqual(res);
     expect(ReconcileLatestResponse.safeParse({ ...res, run: null }).success).toBe(true);
+  });
+});
+
+describe('R2 2026-10-24', () => {
+  it('no-grade roster people are left out of students-missing (R2)', () => {
+    const r = checkUnmatched([ros(1, { grade: 8, match: 'none', studentId: null }), ros(2, { grade: null, match: 'none', studentId: null }),
+      ros(3, { grade: 6, match: 'none', studentId: null })]);
+    expect(r.count).toBe(2);
+    expect(r.items).toEqual([P(1), P(3)]);
   });
 });

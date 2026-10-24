@@ -43,7 +43,7 @@ export function checkCheckins(i: {
 }
 
 export function checkUnmatched(roster: LinkRosterRow[]) {
-  const items = roster.filter((r) => r.kind === 'student' && r.active && (r.match === 'none' || r.match === 'ambiguous')).map((r) => r.personId);
+  const items = roster.filter((r) => r.kind === 'student' && r.active && r.grade != null && (r.match === 'none' || r.match === 'ambiguous')).map((r) => r.personId);
   return { count: items.length, items };
 }
 
