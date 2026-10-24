@@ -105,3 +105,23 @@ describe('#6 / #7 touch layout', () => {
     expect(html).toMatch(/\.bus-head\{flex-wrap:wrap\}\.bus-head \.bus-head-act\{flex-wrap:wrap;/);
   });
 });
+
+describe('#8 form fields have accessible names', () => {
+  it('login: Username and Password labels point at their inputs', () => {
+    expect(html).toContain('<label class="fl" for="lemail">Username</label><input class="fi" id="lemail"');
+    expect(html).toContain('<label class="fl" for="lpw">Password</label><input class="fi" id="lpw"');
+  });
+  it('every .fl label straight before a field names it with for= (only template-text labels are left)', () => {
+    const re = /<label class="fl"( for="([^"]+)")?>((?:(?!<\/label>)[\s\S])*?)<\/label>\s*<(?:input|select|textarea)\b([^>]*)>/g;
+    const bad: string[] = [];
+    for (let m; (m = re.exec(html));) {
+      const id = /\sid="([^"]+)"/.exec(m[4]);
+      if (!m[1] || !id || id[1] !== m[2]) { if (!/^\$\{/.test(m[3].trim())) bad.push(m[3].slice(0, 40)); }
+    }
+    expect(bad).toEqual([]);
+  });
+  it('the Home "Choose your name" pick and the Bus add box have names', () => {
+    expect(html).toContain('id="home-leader-pick" aria-label="Choose your name"');
+    expect(html).toContain('id="bus-q" aria-label="Add any student"');
+  });
+});
