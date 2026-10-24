@@ -10932,7 +10932,8 @@ async function renderLinkCheckin() {
   }
   // The services may already be here from the reports page (APP-42): the default still applies.
   if (!LINK.svc) LINK.svc = LINK.defaultSvc;
-  if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); _lkPickService(); return; }
+  // Impeccable review 2026-10-24 #9: no service in the last 7 days = the page's one message, no sheet opening by itself.
+  if (!LINK.svc || !_lkSvc()) { LINK.svc = null; _lkPaintDoor(); if ((LINK.services || []).length) _lkPickService(); return; }
   // R2-G6: coming back to the page paints the cached list at once and still reloads it (not up to 60 s old).
   let cached = !!LINK.people[LINK.svc];
   if (!cached) { _lkPaintDoor(); await _lkLoadPeople(LINK.svc); if (S.page !== 'link-checkin') return; }
@@ -10945,8 +10946,8 @@ function _lkPaintDoor() {
   // T7: the search bar is the screen. Nothing is listed until someone types; the leaders button sits at the bottom.
   setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
-    <div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>
+    ${s || (LINK.services || []).length ? `<div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>` : ''}
     ${_lkNoTonight()}
     ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
@@ -11114,6 +11115,7 @@ function _lkPickService(then) {
 }
 function _lkPickHtml() {
   const xs = LINK.services || [];
+  if (!xs.length) return '<div class="mo-title">Pick a service</div><p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'; // #9: one message
   return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>${_lkNoTonight()}
     ${xs.length ? xs.map((s) => `<button type="button" class="lk-opt${s.serviceTimeId === LINK.pickSel ? ' on' : ''}" onclick="_lkPickSel('${esc(s.serviceTimeId)}')">
       <span><span class="lk-opt-t">${esc(_lkDay(s.ymd) + ' · ' + (s.name || ''))}</span><span class="lk-d">${esc(_lkTime(s.startsAt))}</span></span>
@@ -11121,6 +11123,7 @@ function _lkPickHtml() {
     : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'}`;
 }
 function _lkPickFoot() {
+  if (!(LINK.services || []).length) return '<button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>'; // #9: no disabled button
   return `<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button type="button" class="btn btn-primary"${LINK.pickSel ? '' : ' disabled'} onclick="_lkPickUse()">Use this service</button>`;
 }

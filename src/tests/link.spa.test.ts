@@ -2402,3 +2402,25 @@ describe('incident 18 Oct: no-room refusal text', () => {
     expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain("No check-in room found for this person.");
   });
 });
+
+describe('impeccable #9 check-in with no service: one message, no broken-looking button', () => {
+  it('no services: the sheet has one line and a single Close (no disabled "Use this service")', () => {
+    const h = makeEnv();
+    h.get().LINK.services = [];
+    const body = strip(h.fns._lkPickHtml()), foot = h.fns._lkPickFoot();
+    expect(body).toBe('Pick a serviceNo services in the last 7 days. Check in on the kiosk or in Elvanto.');
+    expect(body).not.toContain("isn't here yet");
+    expect(foot).toContain('>Close</button>');
+    expect(foot).not.toContain('disabled');
+    expect(foot).not.toContain('Use this service');
+  });
+  it('services but none picked: the sheet is unchanged (list + Use this service)', () => {
+    const h = makeEnv();
+    h.get().LINK.services = [{ ...SVC, ymd: h.fns._lkSvcDay() }];
+    expect(h.fns._lkPickFoot()).toContain('Use this service');
+  });
+  it('the page does not open the sheet by itself and drops the empty Pick card when there are no services', () => {
+    expect(extractFn(html, 'renderLinkCheckin')).toContain('if ((LINK.services || []).length) _lkPickService(); return; }');
+    expect(extractFn(html, '_lkPaintDoor')).toContain("${s || (LINK.services || []).length ? `<div class=\"card lk-svc\">");
+  });
+});
