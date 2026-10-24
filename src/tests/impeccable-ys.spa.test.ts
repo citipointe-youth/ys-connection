@@ -190,3 +190,11 @@ describe('#5 Connection Audit tabs and chips', () => {
     expect(html).toContain("(n=>n+(n===1?' person':' people'))");
   });
 });
+
+describe('quick win: Problems never says "All clear" above System check fixes', () => {
+  it('System check moves first while it has a fix row', () => {
+    const f = extractFn(html, 'renderSystemCheck');
+    expect(f).toContain("(SETUP.status.checks || []).some((c) => c.state === 'fix')");
+    expect(f).toContain("el.parentNode.insertBefore(el, document.getElementById('unsent-list') || log)");
+  });
+});

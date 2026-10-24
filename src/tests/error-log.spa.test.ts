@@ -48,7 +48,7 @@ describe('Error log tab', () => {
   it('(r22 B6) a clean log is one line under the Error log heading', () => {
     const out = f._elBodyHtml([], false, 0, '', false);
     expect(out).toContain('Error log');
-    expect(out).toContain('No errors. All clear.');
+    expect(out).toContain('No errors in the log.');
     expect(out).not.toMatch(/Act now|Act later|FYI|Show ignored|class="card"/);
   });
   it('(r22 B6) everything ignored and hidden: Show ignored (n), no all-clear line', () => {

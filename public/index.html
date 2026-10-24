@@ -2928,6 +2928,10 @@ async function renderSystemCheck() {
   el.innerHTML = '<div class="lk-sec">System check</div>' + (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true, fold: true })
     : `<div class="alert al-warn">${esc(SETUP.error || 'Could not load. Try again.')}</div>`)
     + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+  // Impeccable review 2026-10-24 quick win: on Problems, System check goes first while it has something to fix,
+  // so "No errors in the log" never sits above six fix rows.
+  const fix = !!SETUP.status && (SETUP.status.checks || []).some((c) => c.state === 'fix'), log = document.getElementById('err-log');
+  if (fix && log && log.parentNode === el.parentNode) el.parentNode.insertBefore(el, document.getElementById('unsent-list') || log);
 }
 /* ── END SETUP MODULE ── */
 
@@ -6740,7 +6744,7 @@ function _elBodyHtml(rows, showIgnored, seenAt, openId, fyiOpen) {
   const ignored = all.filter(r => r.ignored).length;
   // r22 L3 (B6): paints its own heading (it sits in Admin > Problems). A clean log is one line.
   const top = '<div class="sh">Error log</div>';
-  if (!all.length) return top + '<div class="help-text">No errors. All clear.</div>';
+  if (!all.length) return top + '<div class="help-text">No errors in the log.</div>'; // impeccable 2026-10-24: not "All clear" over System check fixes
   const btns = (ignored ? `<button class="btn btn-secondary btn-sm" onclick="elToggleIgnored()">${showIgnored ? 'Hide ignored' : 'Show ignored'} (${ignored})</button>` : '')
     + (all.some(r => r.tier === 'fyi') ? '<button class="btn btn-secondary btn-sm" id="el-clrfyi" onclick="elClearFyi()">Clear FYI</button>' : '');
   const head = btns ? `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${btns}</div></div>` : '';
