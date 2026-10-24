@@ -319,10 +319,10 @@ describe('error-log.service', () => {
     const at = '2026-10-13T10:00:00Z';
     const view = async (caps: Record<string, string> | null, route: string) => {
       const repo = new InMemoryErrorLogRepository();
-      const link = { listActions: async () => [],
+      // D1: the unclear row is the sweep's live count of the open unclear action.
+      const link = { listActions: async (f: any) => (f.statuses?.includes('unclear') ? [{ type: route, reason: null }] : []),
         listConsoles: async () => (caps ? [{ lastSeenAt: at, capabilities: caps }] : []) } as any;
       const svc = makeErrorLogService({ repo, link, now: () => new Date(at) });
-      await svc.record({ category: 'link', code: 'unclear', route });
       return (await svc.list(admin)).rows[0]!.line2;
     };
     expect(await view({ recheck: 'live' }, 'checkIn')).toMatch(/^Tap Check again/);
@@ -343,6 +343,96 @@ describe('error-log.service', () => {
     const { repo, svc } = mk();
     await repo.record(entry({ id: 'old', code: 'LINK_OFF', status: 503, tier: 'now', at: '2026-10-13T09:00:00.000Z', message: 'The YS link sync token is not set' }));
     expect((await svc.list(admin)).rows[0]).toMatchObject({ id: 'old', tier: 'now', line1: 'The Elvanto link is off: no sync token in Vercel' });
+  });
+
+  // D1 (2026-10-24): link alerts clear themselves. Count rows (pending-24h, unclear, lease-lost) are live counts; every other
+  // link row is an event and goes after 7 days or a later success of its type.
+  describe('D1: link alerts clear themselves', () => {
+    const NOW = new Date('2026-10-24T10:00:00Z');
+    const ago = (days: number) => new Date(NOW.getTime() - days * DAY).toISOString();
+    const box = async (link: InMemoryLinkRepository, id: string, type: string, status: string, o: { reason?: string; resultAt?: string } = {}) => {
+      await link.insertAction({ id, type, payload: { personId: id }, note: null, dedupeKey: `k-${id}`, serviceDate: '2026-10-23',
+        studentId: null, personId: id, createdBy: 'u', leaderId: null, leaderName: 'L' } as any);
+      link._backdate('link_outbox', id, 'status', status);
+      if (o.reason) link._backdate('link_outbox', id, 'reason', o.reason);
+      if (o.resultAt) link._backdate('link_outbox', id, 'result_at', o.resultAt);
+    };
+    const linkRow = (id: string, code: string, route: string, at: string, foldKey: string | null = `link|${code}|${route}`) =>
+      entry({ id, category: 'link', code, route, status: null, tier: 'later', foldKey, at });
+    const of = (rows: { code: string; route: string }[], code: string, route: string) => rows.filter((r) => r.code === code && r.route === route);
+
+    it('unclear link rows become a live count per type', async () => {
+      const { repo, link, svc } = mk(NOW);
+      await box(link, 'u1', 'checkIn', 'unclear');
+      await box(link, 'u2', 'checkIn', 'unclear');
+      await box(link, 'u3', 'completeStep', 'unclear', { reason: 'lease-lost' });
+      await repo.record(linkRow('w1', 'unclear', 'checkIn', ago(2)));
+      await repo.record(linkRow('w2', 'unclear', 'checkIn', ago(1)));
+      const { rows } = await svc.list(admin);
+      expect(of(rows, 'unclear', 'checkIn')).toMatchObject([{ count: 2, foldKey: null, line1: '2 check-in actions sent but Elvanto never confirmed them' }]);
+      expect(of(rows, 'lease-lost', 'completeStep')).toMatchObject([{ count: 1, foldKey: null }]);
+      expect(rows.filter((r) => r.code === 'unclear' || r.code === 'lease-lost')).toHaveLength(2);
+    });
+    it('a resolved unclear clears its count', async () => {
+      const { link, svc } = mk(NOW);
+      await box(link, 'u1', 'checkIn', 'unclear');
+      await box(link, 'u2', 'checkIn', 'unclear');
+      expect(of((await svc.list(admin)).rows, 'unclear', 'checkIn')).toHaveLength(1);
+      for (const id of ['u1', 'u2']) link._backdate('link_outbox', id, 'status', 'sent');
+      expect(of((await svc.list(admin)).rows, 'unclear', 'checkIn')).toEqual([]);
+    });
+    it('a link refusal expires after 7 days', async () => {
+      const { repo, svc } = mk(NOW);
+      await repo.record(linkRow('old', 'no-room', 'checkIn', ago(8)));
+      await repo.record(linkRow('new', 'no-room', 'checkIn', ago(6)));
+      expect((await svc.list(admin)).rows.map((r) => r.id)).toEqual(['new']);
+    });
+    it('a later success of the same type clears a refusal', async () => {
+      const T = ago(1);
+      const run = async (resultAt: string) => {
+        const { repo, link, svc } = mk(NOW);
+        await repo.record(linkRow('r', 'unknown', 'consentFix', T));
+        await box(link, 's1', 'consentFix', 'sent', { resultAt });
+        return (await svc.list(admin)).rows.map((r) => r.id);
+      };
+      expect(await run(new Date(Date.parse(T) + 60_000).toISOString())).toEqual([]);
+      expect(await run(new Date(Date.parse(T) - 60_000).toISOString())).toEqual(['r']);
+    });
+    it('count rows never expire', async () => {
+      const { repo, link, svc } = mk(NOW);
+      const id = '9e000000-0000-4000-8000-000000000001';
+      await box(link, id, 'checkIn', 'pending');
+      link._backdate('link_outbox', id, 'created_at', ago(31));
+      const old = makeErrorLogService({ repo, now: () => new Date(ago(30)) }); // written 30 days ago
+      await old.record({ category: 'link', code: 'pending-24h', route: 'checkIn' }, 1);
+      await old.record({ category: 'reconcile', code: 'recon-unmatched', route: '' }, 4);
+      const rows = (await svc.list(admin)).rows;
+      expect(rows.map((r) => [r.code, r.count, r.lastSeen]).sort()).toEqual([['pending-24h', 1, ago(30)], ['recon-unmatched', 4, ago(30)]]);
+    });
+    it('a pre-0035 refusal row (foldKey null) still expires', async () => {
+      const { repo, svc } = mk(NOW);
+      await repo.record(linkRow('pre', 'no-room', 'checkIn', ago(8), null));
+      await repo.record(linkRow('preU', 'unclear', 'checkIn', ago(3), null)); // not the fixed id, nothing open
+      expect((await svc.list(admin)).rows).toEqual([]);
+    });
+    it('the later-success read is bounded, and only for real action types', async () => {
+      const repo = new InMemoryErrorLogRepository();
+      const calls: unknown[] = [];
+      const link = { listActions: async (f: unknown) => { calls.push(f); return []; } } as any;
+      const svc = makeErrorLogService({ repo, link, now: () => NOW });
+      await repo.record(linkRow('a', 'no-room', 'checkIn', ago(2)));
+      await repo.record(linkRow('b', 'no-room', 'checkIn', ago(1)));
+      await repo.record(entry({ id: 'c', category: 'link', code: 'INTERNAL', route: 'GET /link/intake/row', status: null, at: ago(1) }));
+      await svc.sweep();
+      expect(calls.filter((f: any) => f.statuses?.includes('sent'))).toEqual([{ types: ['checkIn'], statuses: ['sent'], serviceDateFrom: '2026-10-15', limit: 50 }]);
+    });
+    it('sweep() never throws', async () => {
+      const repo = new InMemoryErrorLogRepository();
+      const link = { listActions: async () => { throw new Error('db down'); } } as any;
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await expect(makeErrorLogService({ repo, link }).sweep()).resolves.toBeUndefined();
+      warn.mockRestore();
+    });
   });
 });
 
@@ -382,7 +472,7 @@ describe('capture: sync claim + result', () => {
     expect(record.mock.calls).toEqual([[{ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 3 }]]);
   });
 
-  it('refused and unclear results are recorded once each; sent is not', async () => {
+  it('refused results are recorded once each; unclear (D1: the sweep counts it) and sent are not', async () => {
     const { svc, record } = await setup();
     await svc.claim({ ...claimReq, max: 6 });
     record.mockClear();
@@ -393,7 +483,6 @@ describe('capture: sync claim + result', () => {
     ] });
     expect(record.mock.calls).toEqual([
       [{ category: 'link', code: 'person-unknown', route: 'checkIn', role: 'console', count: 1 }],
-      [{ category: 'link', code: 'unclear', route: 'checkIn', role: 'console', count: 1 }],
     ]);
     // A replay of the same result is ignored by the repo, so it is not counted twice.
     record.mockClear();

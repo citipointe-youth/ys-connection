@@ -38,8 +38,8 @@ export async function rematchRoster(link: Pick<ILinkRepository, 'roster' | 'setM
 export interface SyncDeps {
   link: ILinkRepository; settings: ISettingsRepository; students: IStudentRepository; users: IUserRepository;
   now?: () => Date;
-  /** T3: refused / unclear / expired rows go to the admin Error log (type + reason only). */
-  errorLog?: Pick<ErrorLogService, 'record'>;
+  /** T3: refused / expired rows go to the admin Error log (type + reason only). D1: `sweep` turns unclear rows into live counts. */
+  errorLog?: Pick<ErrorLogService, 'record'> & Partial<Pick<ErrorLogService, 'sweep'>>;
   /** T4 (X19): the claim hint and the intakePlan / consentPlan pushes. Without it those pushes are not applied. */
   intake?: Pick<IntakeService, 'hint' | 'push'>;
   /** T8 (rev 5): POST /sync/leaders. Without it the reply is an empty list. */
@@ -63,6 +63,14 @@ export function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.i
 
 export function makeSyncService(d: SyncDeps) {
   const now = d.now ?? (() => new Date());
+  // D1 (ruling e): the Error log sweep runs after each result and, at most every 10 min, on a claim (so alerts clear with no admin view).
+  // ponytail: per-instance timer on serverless, like the record throttle; a DB timestamp if instances multiply.
+  const SWEEP_EVERY_MS = 10 * 60_000;
+  let lastSweep = -Infinity;
+  const sweep = async () => {
+    lastSweep = now().getTime();
+    try { await d.errorLog?.sweep?.(); } catch { /* sweep() never throws; a fake one may */ }
+  };
 
   // Rev 19: a Refresh asked in the last 10 min that no newer copy of every kind has answered yet.
   const SNAP_REV = 19, SNAP_ASK_MS = 10 * 60_000;
@@ -108,10 +116,12 @@ export function makeSyncService(d: SyncDeps) {
           const g = groups.get(`${route}|${code}`);
           if (g) g.count++; else groups.set(`${route}|${code}`, { code, route, count: 1 });
         };
-        for (const s of swept) if (s.type !== 'recheck') add(s.reason, s.type); // L7: a re-check's fate shows on its own row only
+        // L7: a re-check's fate shows on its own row only. D1: lease-lost is the sweep's live count, not a row per sweep.
+        for (const s of swept) if (s.type !== 'recheck' && s.reason !== 'lease-lost') add(s.reason, s.type);
         for (const c of claimed) if (c.noteUnreadable && c.row.type !== 'recheck') add('note-unreadable', c.row.type);
         await Promise.all([...groups.values()].map((g) => d.errorLog!.record({ category: 'link', ...g, role: 'console' })));
       }
+      if (now().getTime() - lastSweep >= SWEEP_EVERY_MS) await sweep();
       // X1 (ledger 25 D2, reverses 17): the app prefixes the "I am" leader; the stored note stays their own words.
       // Rev 6: a removal with no note stays null (the console posts a note only when there is one). L7: a recheck row's note
       // is its ref row's (the repository claim), attributed by that row's own type, so the console compares what it first got.
@@ -170,19 +180,20 @@ export function makeSyncService(d: SyncDeps) {
       const reply = await d.link.applyResults(req.consoleId, req.results, now());
       if (d.errorLog) {
         const applied = new Set(reply.applied);
-        const hits = req.results.filter((it) => (it.outcome === 'refused' || it.outcome === 'unclear') && applied.has(it.id));
+        // D1: an unclear is not written here; the sweep below keeps the live count of open unclear rows.
+        const hits = req.results.filter((it): it is Extract<typeof it, { outcome: 'refused' }> => it.outcome === 'refused' && applied.has(it.id));
         const rows = await Promise.all(hits.map((it) => d.link.getAction(it.id)));
         const groups = new Map<string, { code: string; route: string; count: number }>();
         hits.forEach((it, i) => {
           if (rows[i]?.type === 'recheck') return; // L7: a re-check's answer shows on its own row, never as an Error log line
-          const code = it.outcome !== 'refused' ? 'unclear'
-            : rows[i]?.type === 'consentFix' && it.reason === 'unknown' && NO_FIELD.test(it.detail ?? '') ? 'fix-no-field' : it.reason;
+          const code = rows[i]?.type === 'consentFix' && it.reason === 'unknown' && NO_FIELD.test(it.detail ?? '') ? 'fix-no-field' : it.reason;
           const route = rows[i]?.type ?? 'unknown';
           const g = groups.get(`${route}|${code}`) ?? { code, route, count: 0 };
           g.count++; groups.set(`${route}|${code}`, g);
         });
         const errorLog = d.errorLog;
         await Promise.all([...groups.values()].map((g) => errorLog.record({ category: 'link', code: g.code, route: g.route, role: 'console', count: g.count })));
+        await sweep();
       }
       return reply;
     },
