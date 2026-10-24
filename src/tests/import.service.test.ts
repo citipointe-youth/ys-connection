@@ -499,10 +499,20 @@ describe('Import Service', () => {
       await r.students.save(stored('s-a', '2010-02-01', '2025-01-01T00:00:00Z'));
       const res = await svc.importServiceCsv(ADMIN, [{ ...row(), grade: 10 }], 'dob.csv');
       const all = await r.students.findAll();
-      expect(all).toHaveLength(3 - 1);
+      expect(all).toHaveLength(2);
       expect(all.find((x) => x.id === 's-a')!.grade).toBe(10);
       expect(all.find((x) => x.id === 's-b')!.grade).toBe(9);
       expect(res.report.nameCollisions).toHaveLength(1);
+    });
+
+    it('stored student with rows [other DOB, own DOB] keeps its DOB and the other becomes a new student', async () => {
+      const { r, svc } = await setup();
+      await r.students.save(stored('s-a', '2010-02-01', '2025-01-01T00:00:00Z'));
+      const res = await svc.importServiceCsv(ADMIN, [row('03/04/2012'), row('01/02/2010')], 'dob.csv');
+      const all = await r.students.findAll();
+      expect(all).toHaveLength(2);
+      expect(all.find((x) => x.id === 's-a')!.dateOfBirth).toBe('2010-02-01');
+      expect(res.report.nameCollisions).toEqual([]);
     });
 
     it('a just-created same-name student is a candidate for the next row', async () => {

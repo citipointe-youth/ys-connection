@@ -94,16 +94,16 @@ const oldestFirst = (a: { createdAt: string; id: string }, b: { createdAt: strin
   a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 /** D6: pick the stored student a row belongs to. DOB match wins; a row whose DOB differs from every
- *  candidate's non-null DOB is a new person; otherwise merge (the oldest if 2+, flagged ambiguous). */
+ *  candidate's DOB is a new person when the file holds 2+ DOBs for that name; otherwise merge (the oldest if 2+, flagged ambiguous). */
 function pickSameName<T extends { id: string; createdAt: string; dateOfBirth?: string | null }>(
-  candidates: T[], dob: string | null, touched: Set<string>,
+  candidates: T[], dob: string | null, multiDob: boolean,
 ): { pick: T | null; ambiguous: boolean } {
   if (candidates.length === 0) return { pick: null, ambiguous: false };
   const hit = dob ? candidates.find((c) => c.dateOfBirth === dob) : undefined;
   if (hit) return { pick: hit, ambiguous: false };
-  // Only against students made/updated earlier in THIS file: a stored student whose birthday
-  // differs is a correction (existing behaviour), not a second person.
-  if (dob && candidates.every((c) => touched.has(c.id) && c.dateOfBirth && c.dateOfBirth !== dob)) return { pick: null, ambiguous: false };
+  // 2+ distinct DOBs for this name in the file = different people: never a DOB-correcting merge.
+  if (dob && multiDob) return { pick: null, ambiguous: false };
+  // Single DOB in file: a differing stored DOB is a correction, so merge below.
   const oldest = [...candidates].sort(oldestFirst)[0]!;
   return { pick: oldest, ambiguous: candidates.length > 1 };
 }
@@ -350,7 +350,8 @@ export function makeImportService(
       // THIS file sharing a name key silently merge into one student today;
       // now at least surfaced as a warning (not blocked — DOB, when present on
       // both sides, is what actually disambiguates two same-named people).
-      const nameMerges = new Map<string, number>(); // rows that could NOT be told apart and merged (D6)
+      const nameMerges = new Map<string, number>();
+      const nameRows = new Map<string, number>(); // rows that could NOT be told apart and merged (D6)
       // Map keyed by student ID — prevents duplicate-row errors when the CSV has the same
       // student appearing more than once (ON CONFLICT cannot affect same row twice)
       const studentsToSaveMap = new Map<string, Parameters<typeof studentRepo.save>[0]>();
@@ -364,6 +365,15 @@ export function makeImportService(
         settings.ministryConfig.structure.gradeMin,
         settings.ministryConfig.structure.gradeMax,
       );
+      // Pre-scan: distinct DOBs per name in this file (order-independent "different people" test).
+      const dobsByName = new Map<string, Set<string>>();
+      for (const rr of rows) {
+        const p0 = ServiceRowSchema.safeParse(rr);
+        if (!p0.success) continue;
+        const d = normalizeDob(p0.data.date_of_birth ?? p0.data.birthday ?? null, settings.ministryConfig.import.dateOrder);
+        const k = `${p0.data.first_name.toLowerCase()} ${p0.data.last_name.toLowerCase()}`;
+        if (d) dobsByName.set(k, (dobsByName.get(k) ?? new Set<string>()).add(d));
+      }
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const rawRow = rows[rowIndex];
         const parsed = ServiceRowSchema.safeParse(rawRow);
@@ -380,8 +390,9 @@ export function makeImportService(
 
         const nameKey = `${row.first_name.toLowerCase()} ${row.last_name.toLowerCase()}`;
         const rowDob = normalizeDob(row.date_of_birth ?? row.birthday ?? null, settings.ministryConfig.import.dateOrder);
+        nameRows.set(nameKey, (nameRows.get(nameKey) ?? 0) + 1);
         const candidates = studentByName.get(nameKey) ?? [];
-        const { pick: existing, ambiguous } = pickSameName(candidates, rowDob, new Set(studentsToSaveMap.keys()));
+        const { pick: existing, ambiguous } = pickSameName(candidates, rowDob, (dobsByName.get(nameKey)?.size ?? 0) > 1);
         if (existing && (ambiguous || studentsToSaveMap.has(existing.id))) nameMerges.set(nameKey, (nameMerges.get(nameKey) ?? 0) + 1);
 
         let studentId: string;
@@ -546,7 +557,7 @@ export function makeImportService(
         await writeServiceImport({ attendance: attendanceRepo, sessions: sessionRepo, imports: importRepo, students: studentRepo });
       }
 
-      for (const [name, merges] of nameMerges) report.nameCollisions.push({ name, count: merges + 1 });
+      for (const name of nameMerges.keys()) report.nameCollisions.push({ name, count: nameRows.get(name)! });
 
       invalidateTrendsCache();
       invalidateLgStatsCache();
