@@ -378,7 +378,7 @@ describe('Y10 screens', () => {
   it('This week: three tabs with the Follow up total, quad chips with counts, headline, tiles, sparklines, footer', async () => {
     const w = caWorld(audit26());
     const html = await w.show('ca-week');
-    expect(html).toMatch(/class="ca-tab on" onclick="go\('ca-week'\)">This week</);
+    expect(html).toMatch(/<button type="button" class="tbbtn on" aria-current="page" onclick="go\('ca-week'\)">This week</); // impeccable #5
     expect(html).toContain('>Follow up · 5<');
     expect(html).toContain('>Term report<');
     expect(html).toContain('>All (6)<');
@@ -403,7 +403,7 @@ describe('Y10 screens', () => {
     await w.show('ca-week');
     w.CA.setQuad('b79');
     await new Promise((r) => setTimeout(r, 0));
-    expect(w.env.app).toMatch(/class="ca-chip2 on"[^>]*>Junior Guys \(1\)</);
+    expect(w.env.app).toMatch(/<button type="button" class="fc ca-chip2 on" aria-pressed="true"[^>]*>Junior Guys \(1\)</);
     expect(w.env.app).not.toContain('regulars stopped coming'); // nobody in b79 drifted
   });
   it('no row for the year, but stored lists: the footer still shows each list\'s status (Y8 sources-only reply)', async () => {
@@ -505,8 +505,8 @@ describe('Y10 screens', () => {
     await w.show('ca-term');
     await w.CA.setTerm('2026-T4');
     const html = w.env.app;
-    expect(html).toContain(`class="ca-chip2 on" onclick="CA.setTerm('2026-T4')"`);
-    expect(html).not.toContain(`class="ca-chip2 on" onclick="CA.setTerm('ALL')"`);
+    expect(html).toContain(`class="fc ca-chip2 on" aria-pressed="true" onclick="CA.setTerm('2026-T4')"`);
+    expect(html).toContain(`class="fc ca-chip2" aria-pressed="false" onclick="CA.setTerm('ALL')"`);
   });
   it('Data check: summary, the lists table words; Upload a file for admins only', async () => {
     const a = audit26();

@@ -168,3 +168,25 @@ describe('#10 the service worker serves the cached shell after 3 s on a slow net
     expect(sw(() => Promise.resolve({ ok: false }), null).src).toMatch(/^const CACHE = 'ysc-v152';/);
   });
 });
+
+describe('#5 Connection Audit tabs and chips', () => {
+  const caSrc = html.slice(html.indexOf('function tabs(page){'));
+  it('tabs are the app .tbbtn buttons; chips are .fc buttons with aria-pressed; no clickable spans left', () => {
+    expect(extractFn(html, 'tabs')).toContain('<div class="tbbar ca-tabs">');
+    expect(extractFn(html, 'caChip')).toContain('<button type="button" class="fc ca-chip2');
+    expect(extractFn(html, 'caChip')).toContain('aria-pressed=');
+    for (const fn of ['tabs', 'scopeBar', 'quadChips']) expect(extractFn(html, fn)).not.toMatch(/<span[^>]*onclick/);
+    expect(caSrc).not.toMatch(/class="ca-tab[ "]/);
+  });
+  it('touch targets 44px; the scope label, caption and footer are at least the 11px floor', () => {
+    expect(html).toContain('@media(pointer:coarse){.ca-tabs .tbbtn,.ca-scope .fc,.ca-quads .fc,.ca-scope-sel{min-height:44px}');
+    expect(html).toMatch(/\.ca-scope-lb\{[^}]*font-size:var\(--t-micro\)/);
+    expect(html).toMatch(/\.ca-cap\{font-size:var\(--t-micro\)/);
+    expect(html).toMatch(/\.ca-foot\{display:block;font-size:var\(--t-label\)/);
+    expect(html).not.toMatch(/\.ca-chip2\{[^}]*font-size/);
+  });
+  it('quick wins: the chevl icon exists; the Term report says "1 person"', () => {
+    expect(html).toMatch(/^\s*chevl:\s*'<polyline/m);
+    expect(html).toContain("(n=>n+(n===1?' person':' people'))");
+  });
+});

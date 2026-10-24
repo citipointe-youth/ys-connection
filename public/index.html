@@ -539,17 +539,17 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 /* ── CA MODULE CSS START ── */
 :root{--ca-navy:var(--navy);--ca-blue:var(--accent);--ca-teal:#0ea5a4;--ca-amber:#f59e0b;--ca-rose:#e11d48;--ca-green:#16a34a;--ca-paper:var(--paper);--ca-card:var(--paper-card);--ca-ink:var(--ink);--ca-muted:var(--ink-mid);--ca-line:var(--line);--ca-chip:var(--chip);--ca-r:14px;--ca-rs:11px;--ca-sh:0 3px 10px rgba(10,10,46,.06);}
 .ca-cw{background:#fef3c7;color:#92660b}
-.ca-tabs{display:flex;gap:5px;overflow-x:auto;margin:0 0 12px;-webkit-overflow-scrolling:touch}
-.ca-tab{flex:none;background:var(--ca-card);border:1px solid var(--ca-line);border-radius:999px;padding:7px 10px;font-size:.62rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ca-muted);cursor:pointer}
-.ca-tab.on{background:var(--ca-navy);border-color:var(--ca-navy);color:#fff}
+/* Impeccable review 2026-10-24 #5: the page tabs are the app's .tbbar/.tbbtn and the filter chips its .fc (buttons),
+   44px on touch, text at the 11px floor or more. */
+.ca-tabs{margin-bottom:12px}
+@media(pointer:coarse){.ca-tabs .tbbtn,.ca-scope .fc,.ca-quads .fc,.ca-scope-sel{min-height:44px}.ca-foot{display:flex;align-items:center;min-height:44px;margin-top:6px}}
 /* Scope bar (year + period) — a filled "data scope" control, deliberately
    styled apart from the navy page tabs so it doesn't read as navigation. */
 .ca-scope{background:var(--ca-chip);border:1px solid var(--ca-line);border-radius:var(--ca-rs);padding:8px 10px;margin:0 0 12px;display:flex;flex-direction:column;gap:7px}
 .ca-scope-row{display:flex;align-items:center;gap:8px}
-.ca-scope-lb{flex:none;width:42px;font-size:.52rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ca-muted)}
+.ca-scope-lb{flex:none;min-width:52px;font-size:var(--t-micro);font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ca-muted)}
 .ca-scope-ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.ca-chip2{flex:none;background:var(--ca-card);border:1px solid var(--ca-line);border-radius:999px;padding:4px 11px;font-size:.66rem;font-weight:700;color:var(--ca-muted);cursor:pointer;white-space:nowrap}
-.ca-chip2.on{background:var(--ca-blue);border-color:var(--ca-blue);color:#fff}
+.ca-chip2{flex:none;white-space:nowrap}
 .ca-scope-sel{border:1px solid var(--ca-line);border-radius:7px;padding:4px 8px;font-size:.72rem;font-weight:700;color:var(--ca-ink);background:var(--ca-card)}
 .ca-ct{font-size:.78rem;font-weight:800;margin-bottom:9px}
 .ca-dlt{font-size:.6rem;font-weight:800;margin-top:3px}
@@ -582,7 +582,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ca-warnb .ca-wi{flex:none;font-size:.8rem;line-height:1}
 @media(min-width:768px){.ca-warnb{bottom:12px}}
 .ca-head{font-size:.95rem;font-weight:700;line-height:1.4;margin:0 0 10px}
-.ca-cap{font-size:.62rem;color:var(--ca-muted);margin-top:2px}
+.ca-cap{font-size:var(--t-micro);color:var(--ca-muted);margin-top:2px}
 .ca-flag{font-size:.78rem;line-height:1.45}
 .ca-quads{margin:0 0 12px}
 .ca-spark{display:block;width:100%;height:28px;margin-top:6px;color:var(--ca-blue)}
@@ -594,7 +594,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .ca-fu-card .rc-foot a{display:inline-block;padding:12px 0;margin:-12px 0}   /* ~44px tap target without growing the row */
 @media(min-width:720px){.ca-fu-cards{display:none}.ca-fu-table{display:table}}
 .ca-qt{width:100%;border-collapse:collapse;font-size:.7rem}
-.ca-foot{display:block;font-size:.66rem;color:var(--ca-muted);margin:14px 0 0;text-decoration:none}
+.ca-foot{display:block;font-size:var(--t-label);color:var(--ca-muted);margin:14px 0 0;text-decoration:none}
 .ca-foot.warn{color:#7a5a10;background:#fffaf0;border-left:4px solid var(--ca-amber);padding:6px 9px;border-radius:8px}
 /* ── CA MODULE CSS END ── */
 
@@ -2567,6 +2567,7 @@ const IC = {
   group:    '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>',
   deck:     '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
   chevr:    '<polyline points="9 18 15 12 9 6"/>',
+  chevl:    '<polyline points="15 18 9 12 15 6"/>', // impeccable 2026-10-24: Bus Forms Back and Data check Back used it before it existed
   chevd:    '<polyline points="18 9 12 15 6 9"/>',
   arru:     '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   arrd:     '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
@@ -8950,7 +8951,8 @@ function model(){
 function tabs(page){
   const n=AUDIT?FU_LISTS.reduce((t,l)=>t+caFollowRows(AUDIT,l,QF).length,0):0;
   const T=[['ca-week','This week'],['ca-follow','Follow up'+(n?' · '+n:'')],['ca-term','Term report']];
-  return '<div class="ca-tabs">'+T.map(([id,lb])=>'<span class="ca-tab'+(page===id?' on':'')+'" onclick="go(\''+id+'\')">'+lb+'</span>').join('')+'</div>';
+  // Impeccable review 2026-10-24 #5: the app's own tab buttons (.tbbar/.tbbtn), keyboard-reachable, 44px on touch.
+  return '<div class="tbbar ca-tabs">'+T.map(([id,lb])=>'<button type="button" class="tbbtn'+(page===id?' on" aria-current="page':'')+'" onclick="go(\''+id+'\')">'+lb+'</button>').join('')+'</div>';
 }
 // A human label for the loaded scope, e.g. "2026 · T2 (in progress)" or
 // "2026 · Year to date". Pairs the term ordinal with its year everywhere it's
@@ -8977,17 +8979,19 @@ function scopeBar(page){
     const opts=yrs.map(y=>'<option value="'+y.year+'"'+(y.year===AUDIT_YEAR?' selected':'')+'>'+esc(String(y.year))+'</option>').join('');
     yearCtl='<select class="ca-scope-sel" onchange="CA.setYear(this.value)">'+opts+'</select>';
   }else if(yrs.length){
-    yearCtl=yrs.map(y=>'<span class="ca-chip2'+(y.year===AUDIT_YEAR?' on':'')+'" onclick="CA.setYear('+y.year+')">'+esc(String(y.year))+'</span>').join('');
+    yearCtl=yrs.map(y=>caChip(y.year===AUDIT_YEAR,'CA.setYear('+y.year+')',esc(String(y.year)))).join('');
   }else{
-    yearCtl='<span class="ca-chip2 on">'+esc(AUDIT_YEAR!=null?String(AUDIT_YEAR):'—')+'</span>';
+    yearCtl='<span class="fc ca-chip2 on">'+esc(AUDIT_YEAR!=null?String(AUDIT_YEAR):'—')+'</span>';
   }
-  let termCtl='<span class="ca-chip2'+(TERM==='ALL'?' on':'')+'" onclick="CA.setTerm(\'ALL\')">Year so far</span>';
-  for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;termCtl+='<span class="ca-chip2'+(TERM===t.key?' on':'')+'" onclick="CA.setTerm(\''+t.key+'\')">T'+t.ordinal+(ip?' • live':'')+'</span>';}
+  let termCtl=caChip(TERM==='ALL','CA.setTerm(\'ALL\')','Year so far');
+  for(const t of terms){const ip=(AUDIT.perTerm[t.key]||{}).inProgress;termCtl+=caChip(TERM===t.key,'CA.setTerm(\''+t.key+'\')','T'+t.ordinal+(ip?' • live':''));}
   return '<div class="ca-scope">'
     +'<div class="ca-scope-row"><span class="ca-scope-lb">Year '+helpTip('Updated by the console after each Friday sync. Tap the line at the bottom to see where the numbers come from.')+'</span><div class="ca-scope-ctl">'+yearCtl+'</div></div>'
     +(page==='ca-term'?'<div class="ca-scope-row"><span class="ca-scope-lb">Period</span><div class="ca-scope-ctl">'+termCtl+'</div></div>':'')
     +'</div>';
 }
+// #5: one CA filter chip = the app's .fc chip as a real <button> (focusable, Enter/Space, aria-pressed).
+function caChip(on,act,html){return '<button type="button" class="fc ca-chip2'+(on?' on':'')+'" aria-pressed="'+(on?'true':'false')+'" onclick="'+act+'">'+html+'</button>';}
 function caShell(body,page){
   let content=tabs(page);
   if(AUDIT){ content+=scopeBar(page)+quadChips(); }
@@ -9001,7 +9005,7 @@ function isPast(){return AUDIT_YEAR!=null&&String(AUDIT_YEAR)<_siteDay(Date.now(
 function emptyYear(){return '<div class="card ca-empty">No data for '+esc(String(AUDIT_YEAR!=null?AUDIT_YEAR:_siteDay(Date.now()).slice(0,4)))+' yet. The console fills this after the first Friday sync.</div>';}
 function quadChips(){
   const c={'':0,none:0};for(const s of (AUDIT&&AUDIT.students)||[]){c['']++;const q=s.quad||'none';c[q]=(c[q]||0)+1;}
-  const chip=(q,lb)=>'<span class="ca-chip2'+(QF===q?' on':'')+'" role="button" tabindex="0" onclick="CA.setQuad(\''+q+'\')">'+esc(lb)+' ('+(c[q]||0)+')</span>';
+  const chip=(q,lb)=>caChip(QF===q,'CA.setQuad(\''+q+'\')',esc(lb)+' ('+(c[q]||0)+')');
   return '<div class="ca-scope-ctl ca-quads">'+chip('','All')+Object.keys(QUAD_LABELS).map(q=>chip(q,quadLabel(q))).join('')+chip('none','No quad')+'</div>';
 }
 function setQuad(q){QF=q;LGQ=q==='none'?'uncl':q;PF.quad=q;PF.cap=60;rerender();}
@@ -9083,7 +9087,7 @@ function quadSectionHtml(m){
     const c=ss.some(s=>s.psT>0)?caCompare(cur,ss.filter(s=>s.psA>0||s.pgA>0).length,'prevterm'):null;
     const cohorts=m.groups.filter(g=>computeQuad(g.grade,g.gender)===q);
     b+='<details class="ca-q"><summary><span class="chip quad-'+q+'">'+esc(quadLabel(q))+'</span> '
-      +m.people.filter(p=>p.quad===q&&p.stage>0).length+' people · '+pct(ss.reduce((t,s)=>t+s.sA,0),ss.reduce((t,s)=>t+s.sT,0))+'% of youth nights · '
+      +(n=>n+(n===1?' person':' people'))(m.people.filter(p=>p.quad===q&&p.stage>0).length)+' · '+pct(ss.reduce((t,s)=>t+s.sA,0),ss.reduce((t,s)=>t+s.sT,0))+'% of youth nights · '
       +pct(ss.filter(s=>s.gA>0).length,cur)+'% in a lifegroup'+(c?' · '+esc(c.text):'')+'</summary>'
       +(cohorts.length?cohorts.map(g=>'<div class="ca-alr" onclick="CA.showGroup(\''+g.id+'\')"><div style="font-size:.78rem;font-weight:600">'+esc(g.name)+'</div>'
         +(g.enrolled>0&&g.active===0?'<span class="chip c-danger">No attendance this term</span>':gChip(g))+'</div>').join(''):'<div class="ca-cap">No grades in this quad</div>')
@@ -9151,7 +9155,7 @@ function rQuality(){
       +'<label class="fl" for="ca-up-day">Date exported from Elvanto</label><input type="date" id="ca-up-day" class="fi" value="'+def+'" max="'+today+'"><div class="ca-cap">To rebuild a past year, pick a date in that year.</div>'
       +'<input type="file" id="ca-up-file" class="fi" accept=".csv,.xlsx,.xls"><button class="btn btn-primary btn-sm" onclick="CA.uploadSource()">Upload</button></details>';
   }
-  setApp('<div class="ca-tabs"><span class="ca-tab" onclick="go(\'ca-week\')">‹ Back</span><span class="ca-tab on">Data check</span></div>'+b);
+  setApp('<div class="tbbar ca-tabs"><button type="button" class="tbbtn" onclick="go(\'ca-week\')">'+icS('chevl')+' Back</button><span class="tbbtn on" aria-current="page">Data check</span></div>'+b);
 }
 async function uploadSource(){
   if(uploadSource.busy)return;
@@ -16370,7 +16374,7 @@ function _busFormsListHtml() {
     + `<div class="lk-d">${esc('Filled in ' + fmtDay(r.submittedAt))}</div></div>`).join('');
 }
 function _busFormsHtml() {
-  const back = `<div style="margin-bottom:10px"><a class="bus-hit" onclick="BUS.tab='routes';renderBus()" style="color:var(--accent);cursor:pointer">${icS('chevl')} Back</a></div>`;
+  const back = `<div style="margin-bottom:10px"><button type="button" class="btn btn-ghost btn-sm" style="color:var(--accent);padding-left:0" onclick="BUS.tab='routes';renderBus()">${icS('chevl')} Back</button></div>`;
   if (BUS.formsErr && !BUS.forms) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.formsErr)}</div>`;
   if (!BUS.forms) return back + progBar('Loading');
   return back + _busConsentStatusHtml(BUS.consentStatus)
