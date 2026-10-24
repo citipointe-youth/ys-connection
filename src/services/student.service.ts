@@ -30,6 +30,10 @@ export interface StudentService {
   create(actor: Actor, input: unknown): Promise<Student>;
   update(actor: Actor, id: string, input: unknown): Promise<Student>;
   remove(actor: Actor, id: string): Promise<void>;
+  /** r25: admin only. Graduated students (Elvanto blanked a Year 12's grade), newest first. */
+  listGraduated(actor: Actor): Promise<{ id: string; name: string; graduatedAt: string }[]>;
+  /** r25: admin only. Puts a graduated student back in every list. */
+  ungraduate(actor: Actor, id: string): Promise<void>;
 }
 
 function stripSensitive(s: Student): Student {
@@ -108,7 +112,7 @@ export function makeStudentService(
     async get(actor, id) {
       assertCan(actor, 'student:read');
       const s = await repo.findById(id);
-      if (!s) throw new NotFoundError('Student not found');
+      if (!s || (s.graduatedAt && !can(actor, 'admin:manage'))) throw new NotFoundError('Student not found'); // r25
 
       // Junior leader may only fetch a student connected to them.
       if (actor.role === 'leader') {
@@ -184,6 +188,18 @@ export function makeStudentService(
       // delete throws NotFound for one). General (null-student) prayers are
       // untouched — deleteByStudent's WHERE clause never matches them.
       if (prayerRepo) await prayerRepo.deleteByStudent(id);
+    },
+
+    async listGraduated(actor) {
+      assertCan(actor, 'admin:manage');
+      return (await repo.findAllWithGraduated()).filter((s) => s.graduatedAt)
+        .map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), graduatedAt: s.graduatedAt! }))
+        .sort((a, b) => b.graduatedAt.localeCompare(a.graduatedAt) || a.name.localeCompare(b.name));
+    },
+
+    async ungraduate(actor, id) {
+      assertCan(actor, 'admin:manage');
+      if (!(await repo.setGraduated(id, null))) throw new NotFoundError('Student not found');
     },
   };
 }

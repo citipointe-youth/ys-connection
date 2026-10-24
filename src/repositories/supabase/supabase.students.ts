@@ -53,6 +53,7 @@ export function toStudent(row: Record<string, unknown>): Student {
     prevGrpTotal: (row['prev_grp_total'] as number) ?? 0,
     atRiskStatus: (row['at_risk_status'] as Student['atRiskStatus']) ?? null,
     dataSource: (row['data_source'] as string | null) ?? null,
+    graduatedAt: row['graduated_at'] == null ? null : toIso(row['graduated_at']),
     createdAt: toIso(row['created_at']),
     updatedAt: toIso(row['updated_at']),
   };
@@ -66,8 +67,18 @@ export class SupabaseStudentRepository implements IStudentRepository {
   }
 
   async findAll(): Promise<Student[]> {
+    const rows = await this.sql`select * from students where graduated_at is null order by last_name`;
+    return rows.map(toStudent);
+  }
+
+  async findAllWithGraduated(): Promise<Student[]> {
     const rows = await this.sql`select * from students order by last_name`;
     return rows.map(toStudent);
+  }
+
+  async setGraduated(id: string, at: string | null): Promise<boolean> {
+    const rows = await this.sql`update students set graduated_at = ${at}, updated_at = now() where id = ${id} returning id`;
+    return rows.length > 0;
   }
 
   async findById(id: string): Promise<Student | null> {

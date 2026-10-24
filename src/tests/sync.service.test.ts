@@ -299,6 +299,21 @@ describe('sync.service push', () => {
     expect((await students.findById('s-jamie'))!.gender).toBe('female');
   });
 
+  it('r25: a matched Year 12 whose Elvanto grade goes 12 -> blank is graduated (kept, out of findAll); grade follows Elvanto', async () => {
+    const { svc, students } = await setup();
+    await students.save({ id: 's-jamie', firstName: 'Jamie', lastName: 'Test', gender: 'female', grade: 12 } as any);
+    await students.save({ id: 's-alex', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 8 } as any);
+    const base = fx('push-roster.json');
+    const at = (t: string, grade: (r: any) => number | null) => ({ ...base, takenAt: t, rows: base.rows.map((r: any) => ({ ...r, grade: grade(r) })) });
+    await svc.push('roster', at('2026-10-16T09:30:00.000Z', (r) => (r.firstName === 'Jamie' ? 12 : r.grade))); // Alex 8 -> 9
+    expect((await students.findById('s-alex'))).toMatchObject({ grade: 9, quad: 'b79' });
+    expect((await students.findById('s-jamie'))!.graduatedAt ?? null).toBeNull();
+    await svc.push('roster', at('2026-10-16T09:40:00.000Z', (r) => (r.firstName === 'Jamie' ? null : r.grade)));
+    expect((await students.findById('s-jamie'))!.graduatedAt).toBeTruthy();
+    expect((await students.findAll()).map((s) => s.id)).toEqual(['s-alex']);
+    expect((await students.findAllWithGraduated()).length).toBe(2); // history kept
+  });
+
   it('roster: an ambiguous name is counted', async () => {
     const { svc, students } = await setup();
     await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);

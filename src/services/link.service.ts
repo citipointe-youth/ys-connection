@@ -40,10 +40,10 @@ import {
 import { groupQuadOf } from '../core/types/enums';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
-  noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
+  noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
-import { checkInEvidence, saveGenderFixes } from './sync.service';
+import { checkInEvidence, saveRosterFixes } from './sync.service';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -392,7 +392,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    */
   /** The Matching rows (rosterForMatching) with their roster row; `twice` = Elvanto has this folded name on another active student row. */
   async function matchRows(structure: { gradeMin: number; gradeMax: number }, only?: Match) {
-      const [roster, students, flows, groups] = await Promise.all([d.link.roster(), d.students.findAll(), d.link.flows(), d.link.groups()]);
+      // r25: graduated students too: one still blocks Create for its name (sameNameInYs) but is never a candidate.
+      const [roster, students, flows, groups] = await Promise.all([d.link.roster(), d.students.findAllWithGraduated(), d.link.flows(), d.link.groups()]);
       // L3 r2: a person not in YS Students still shows in YS through the Elvanto mirror (Flows, Lifegroups).
       const inFlow = new Set(flows.map((f) => f.personId)), inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.personId)));
       const seenOf = (r: LinkRosterRow) => { const x = [inFlow.has(r.personId) && 'flow', inGroup.has(r.personId) && 'lifegroup'].filter(Boolean) as ('flow' | 'lifegroup')[]; return r.match === 'none' && x.length ? x : undefined; };
@@ -411,7 +412,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         if (r.match !== 'none' && r.match !== 'ambiguous') return [];
         const f = matchFold(r.firstName);
         return (bySurname.get(matchFold(r.lastName)) ?? [])
-          .filter((s) => !heldBy.has(s.id) && (f.startsWith(matchFold(s.firstName)) || matchFold(s.firstName).startsWith(f)
+          .filter((s) => !s.graduatedAt && !heldBy.has(s.id) && (f.startsWith(matchFold(s.firstName)) || matchFold(s.firstName).startsWith(f)
             || (r.grade != null && s.grade != null && Math.abs(s.grade - r.grade) <= 1)))
           .map((s) => ({ studentId: s.id, name: fullName(s), grade: s.grade, dob: s.dateOfBirth }));
       };
@@ -1382,9 +1383,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         change = { personId, studentId: b.studentId, match: 'manual' };
       } else change = { personId, studentId: null, match: 'none' };
       await d.link.setMatches([...release, change]);
-      if (change.studentId) { // operator 2026-10-14: Elvanto's gender wins when name + grade agree
+      if (change.studentId) { // r25: Elvanto's grade wins; then (operator 2026-10-14) its gender when name + grade agree
         const s = await d.students.findById(change.studentId);
-        if (s) await saveGenderFixes(d.students, genderFixes(roster, [s], [change]));
+        if (s) await saveRosterFixes(d.students, roster, [s], [change]);
       }
       return change;
     },

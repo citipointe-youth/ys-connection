@@ -5251,7 +5251,7 @@ function setArNameFilter(v) {
 // ============================================================
 // STUDENTS
 // ============================================================
-let _sS = { students:[], leaderNames:new Set(), search:'', gf:new Set(), df:new Set(), sort:{key:'', dir:1} };
+let _sS = { students:[], leaderNames:new Set(), search:'', gf:new Set(), df:new Set(), sort:{key:'', dir:1}, grad:[] };
 // Sort keys for the desktop Student Search table. Youth/Lifegroup sort by
 // this-term % only (last-term is a comparison, not sorted on); Status sorts
 // worst-first (stopped/declining ahead of stable/rising) so a click surfaces
@@ -5313,6 +5313,29 @@ async function renderStudents() {
   _sS.students = students || [];
   _sS.leaderNames = new Set((leaders || []).map(l => (l.fullName || '').trim().toLowerCase()).filter(Boolean));
   renderStudentView();
+  if (S.user && S.user.role === 'admin') _stuGradLoad();
+}
+// r25: admin only. Students Elvanto's yearly update graduated (a Year 12's grade went blank). They are out of every
+// list; Undo puts one back. Shown under the results, only when there is at least one.
+async function _stuGradLoad() {
+  let r;
+  try { r = await API.fresh('/students/graduated', true); } catch (e) { return; }
+  _sS.grad = (r && r.rows) || [];
+  const el = document.getElementById('stu-grad');
+  if (el) el.innerHTML = _stuGradHtml(_sS.grad);
+}
+function _stuGradHtml(rows) {
+  if (!rows || !rows.length) return '';
+  return `<details class="card"><summary>Graduated (${rows.length})</summary>
+    <p class="li-sub">Elvanto cleared their Year 12 grade, so they are hidden from every list. Undo puts one back.</p>
+    ${rows.map(r => `<div class="li"><div class="li-body"><span class="li-title">${esc(r.name)}</span>
+      <div class="li-sub">${esc('Graduated ' + new Date(r.graduatedAt).toLocaleDateString('en-AU'))}</div></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_stuUngrad('${esc(r.id)}')">Undo</button></div>`).join('')}</details>`;
+}
+async function _stuUngrad(id) {
+  try { await API.post('/students/' + encodeURIComponent(id) + '/ungraduate'); } catch (e) { toast(e.message || 'Could not undo'); return; }
+  Cache.del('/students'); toast('Back in the lists');
+  if (S.page === 'students') renderStudents();
 }
 
 // The students that pass the leader filter + grade/gender chips + name search.
@@ -5402,6 +5425,7 @@ function renderStudentView() {
   else if (ssGrades.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Grade:</span>${gChips}</div>`;
   if (ssGenders.length) body += `<div class="filter-row"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">Gender:</span>${dChips}</div>`;
   body += `<div id="stu-results">${_studentResultsHtml(vis)}</div>`;
+  if (u.role === 'admin') body += `<div id="stu-grad">${_stuGradHtml(_sS.grad)}</div>`;
 
   setApp(shell(body));
   if (search) requestAnimationFrame(() => {
@@ -11023,10 +11047,20 @@ function _lkListHtml() {
   const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc);
   const stale = !!hm && !!sv && sv.ymd === _lkSvcDay() && Date.now() - Date.parse(at) > 600000;
   const asOf = !hm ? '' : stale ? `<span class="chip c-warn">${icS('alert')} ${esc('Kiosk check-ins as of ' + hm)}</span>` : `<span class="lk-asof">${esc('Kiosk check-ins as of ' + hm)}</span>`;
-  return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' : '<p class="lk-hint">Type a name to check someone in.</p>')}
+  const q = String(LINK.q.search || '').trim();
+  const add = typed && _nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkNyFromDoor()">${icS('plus')} ${esc(`Add '${q}' as a new person`)}</button>` : '';
+  return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' + add : '<p class="lk-hint">Type a name to check someone in.</p>')}
     <div class="lk-done"><div class="lk-done-h"><span>Checked in · ${n}</span>${asOf}</div>
     <div id="lk-done-rows">${_lkDoneRowsHtml(l)}</div>
     ${n > 3 ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkDoneToggle(!LINK.doneOpen)">${LINK.doneOpen ? 'Show fewer' : 'Show all ' + n}</button>` : ''}</div>`;
+}
+// r25: the door's no-results button. The typed name fills the New person form (first word = first name). Same C-B5
+// guard as nyOpen: a send in flight or an unseen outcome is shown first, never reset.
+function _lkNyFromDoor() {
+  if (NY.sending || ((NY.unknown || NY.result) && !NY.seen)) { go('new-youth'); return; }
+  const w = String(LINK.q.search || '').trim().split(/\s+/);
+  nyReset(); NY.keep = { firstName: w[0] || '', lastName: w.slice(1).join(' ') }; NY.sending = false;
+  go('new-youth');
 }
 function _lkDoneRowsHtml(l) { l = l || _lkLists(); return l ? (LINK.doneOpen ? l.done : l.done.slice(0, 3)).map(_lkRowHtml).join('') : ''; }
 function _lkDoneToggle(open) {

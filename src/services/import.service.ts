@@ -283,7 +283,7 @@ export function makeImportService(
       // Two reads upfront — parallel
       const [settings, allStudents] = await Promise.all([
         settingsRepo.getSettings(),
-        studentRepo.findAll(),
+        studentRepo.findAllWithGraduated(), // r25: a graduated student is updated, never made again
       ]);
 
       const importId = generateId();
@@ -586,7 +586,7 @@ export function makeImportService(
       // reading first keeps the delete/repopulate as one tight transactional
       // block (see writeGroupImport below).
       const [allStudents, settings, existingLeaders, allSessions, allSvcAtt, gIds] = await Promise.all([
-        studentRepo.findAll(),
+        studentRepo.findAllWithGraduated(), // r25: a graduated student is updated, never made again
         settingsRepo.getSettings(),
         leaderRepo.findAll(),
         sessionRepo.findAll(),

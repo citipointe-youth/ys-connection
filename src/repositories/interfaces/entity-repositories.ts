@@ -41,8 +41,14 @@ export interface IUserRepository extends IRepository<User> {
 }
 
 export interface IStudentRepository extends IRepository<Student> {
+  /** r25: findAll() leaves out graduated students (every list, picker, login scope and chart reads it). */
+  findAll(): Promise<Student[]>;
+  /** r25: every student, graduated too: imports and roster matching (a graduated student keeps its match, never duplicated). */
+  findAllWithGraduated(): Promise<Student[]>;
   saveMany(students: Student[]): Promise<void>;
   deleteAll(): Promise<void>;
+  /** r25: writes ONLY graduated_at (null = un-graduate). False when there is no such student. */
+  setGraduated(id: string, at: string | null): Promise<boolean>;
 }
 
 export interface ILeaderRepository extends IRepository<Leader> {

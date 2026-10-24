@@ -174,7 +174,7 @@ describe('R1 review H1: the unused PATCH /students/:id/at-risk is gone', () => {
     const writes = buildRoutes(services).filter((r) => r.method !== 'GET' && /^\/students\//.test(r.path)).map((r) => `${r.method} ${r.path}`);
     // It returned the raw Student (DNC phones included) to leader/grade/quad with no scope check.
     expect(writes).not.toContain('PATCH /students/:id/at-risk');
-    expect(writes.sort()).toEqual(['DELETE /students/:id', 'PATCH /students/:id']);
+    expect(writes.sort()).toEqual(['DELETE /students/:id', 'PATCH /students/:id', 'POST /students/:id/ungraduate'] /* r25: admin:manage only */);
   });
 });
 

@@ -5,22 +5,16 @@ import type { z } from 'zod';
 import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
-import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, OutboxRow, PushKind, ResultReply } from '../core/link-types';
+import type { ActionType, ClaimArgs, LinkFlowStep, LinkRosterRow, MirrorKind, OutboxRow, PushKind, ResultReply } from '../core/link-types';
 import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes, gradeFixes, graduations } from './link-rules';
+import type { MatchChange } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
-
-/** Writes genderFixes (idempotent: genderFixes skips an equal gender). Never logs a name. */
-export async function saveGenderFixes(repo: IStudentRepository, fixes: { student: Student; gender: 'male' | 'female' }[]) {
-  if (!fixes.length) return;
-  const at = new Date().toISOString();
-  await repo.saveMany(fixes.map(({ student: s, gender }) => ({ ...s, gender, quad: computeQuad(s.grade ?? null, gender), updatedAt: at })));
-}
 import { parseGroupName } from './import.service';
 import type { ErrorLogService } from './error-log.service';
 // 2026-10-24: the console names a missing consent field only in detail (FIX_SHAPE, 11.1 ys-link.js:72-76); a contract reason would need a LINK_REV.
@@ -29,12 +23,24 @@ const NO_TOTAL = /has no TOTAL non-consent date field/;
 // anchored: a bare /consent date/ would also match the TOTAL text
 const noFieldCode = (d: string) => (NO_DATE.test(d) ? 'fix-no-date' : NO_TOTAL.test(d) ? 'fix-no-total' : null);
 
-/** Roster auto-match + gender fixes (approved YS-only write). Called after a roster push and after every import (Part 2). */
+/** r25: grade follows Elvanto (gradeFixes, quad recomputed), THEN gender fixes on the updated grades (genderFixes needs
+ *  the grades to agree), in one write. Idempotent. `all` must include graduated students. Never logs a name. */
+export async function saveRosterFixes(repo: IStudentRepository, roster: LinkRosterRow[], all: Student[], changes: MatchChange[] = []) {
+  const at = new Date().toISOString();
+  const out = new Map<string, Student>();
+  for (const { student: s, grade } of gradeFixes(roster, all, changes)) out.set(s.id, { ...s, grade, quad: computeQuad(grade, s.gender), updatedAt: at });
+  const now = all.map((s) => out.get(s.id) ?? s);
+  for (const { student: s, gender } of genderFixes(roster, now, changes)) out.set(s.id, { ...s, gender, quad: computeQuad(s.grade ?? null, gender), updatedAt: at });
+  if (out.size) await repo.saveMany([...out.values()]);
+}
+
+/** Roster auto-match + grade and gender fixes (approved YS-only write). Called after a roster push and after every import (Part 2).
+ *  r25: reads graduated students too, so a graduated student keeps its match (autoMatch never offers it as a new one). */
 export async function rematchRoster(link: Pick<ILinkRepository, 'roster' | 'setMatches'>, students: IStudentRepository) {
-  const [roster, all] = await Promise.all([link.roster(), students.findAll()]);
+  const [roster, all] = await Promise.all([link.roster(), students.findAllWithGraduated()]);
   const changes = autoMatch(roster, all);
   if (changes.length) await link.setMatches(changes);
-  await saveGenderFixes(students, genderFixes(roster, all, changes));
+  await saveRosterFixes(students, roster, all, changes);
   return changes;
 }
 
@@ -265,9 +271,14 @@ export function makeSyncService(d: SyncDeps) {
       const rows = k === 'groups'
         ? (req.rows as { name: string }[]).map((g) => ({ ...g, ...parseGroupName(g.name) }))
         : req.rows;
+      // r25: the stored roster before this push, to see a Year 12 whose grade Elvanto has just blanked (graduations).
+      const before = k === 'roster' ? await d.link.roster() : [];
       const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };
+      const grads = graduations(before, req.rows as { personId: string; grade: number | null }[], await d.students.findAll());
+      const at = new Date().toISOString();
+      for (const s of grads) await d.students.setGraduated(s.id, at);
       const changes = await rematchRoster(d.link, d.students);
       return { applied: true, rows: res.rows, matched: {
         auto: changes.filter((c) => c.match === 'auto').length,

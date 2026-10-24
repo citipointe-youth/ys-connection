@@ -81,8 +81,27 @@ export class InMemoryStudentRepository
   extends InMemoryBaseRepository<Student>
   implements IStudentRepository
 {
+  // r25: like the Supabase upsert, save/saveMany never write graduatedAt (the stored value stays).
+  private keepGraduated(s: Student): Student {
+    return { ...s, graduatedAt: this.store.get(s.id)?.graduatedAt ?? null };
+  }
+  override async findAll(): Promise<Student[]> {
+    return (await super.findAll()).filter((s) => !s.graduatedAt);
+  }
+  async findAllWithGraduated(): Promise<Student[]> {
+    return super.findAll();
+  }
+  override async save(student: Student): Promise<Student> {
+    return super.save(this.keepGraduated(student));
+  }
   async saveMany(students: Student[]): Promise<void> {
-    for (const s of students) this.store.set(s.id, this.clone(s));
+    for (const s of students) this.store.set(s.id, this.clone(this.keepGraduated(s)));
+  }
+  async setGraduated(id: string, at: string | null): Promise<boolean> {
+    const s = this.store.get(id);
+    if (!s) return false;
+    s.graduatedAt = at;
+    return true;
   }
 }
 

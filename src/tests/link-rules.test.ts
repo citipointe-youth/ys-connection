@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, peopleFlowName, isConsentStep,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, gradeFixes, graduations, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { InMemoryStudentRepository } from '../repositories/in-memory/in-memory.repositories';
+import { saveRosterFixes } from '../services/sync.service';
+import type { Student } from '../core/entities/student';
 
 const BNE = MINISTRY_CONFIG_DEFAULTS.structure; // Y3a: Brisbane's time zone and youth night, injected
 
@@ -254,6 +257,62 @@ describe('genderFixes (operator 2026-10-14)', () => {
     // an auto match made in the same push counts
     expect(genderFixes([ros(1, 'Olivia', 'Faux Cook', 'female')], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
       .map((x) => x.gender)).toEqual(['female']);
+  });
+});
+
+describe('gradeFixes (r25: YS grade follows Elvanto)', () => {
+  const st = [stu('s1', 'Amy', 'Ng', 'female', 9), stu('s2', 'Ben', 'Lee', 'male', 11), stu('s3', 'Cal', 'Ro', 'male', 12)];
+  const m = (n: number, sid: string, over: Partial<LinkRosterRow> = {}) => ros(n, 'X', 'Y', 'male', { studentId: sid, match: 'manual', ...over });
+  const fix = (r: LinkRosterRow[], c = []) => gradeFixes(r, st, c).map((x) => [x.student.id, x.grade]);
+  it('a matched student row with a different grade 6-12 takes it (auto or manual)', () => {
+    expect(fix([m(1, 's1', { grade: 10 }), m(2, 's2', { grade: 12, match: 'auto' })])).toEqual([['s1', 10], ['s2', 12]]);
+    expect(fix([m(1, 's1', { grade: 9 })])).toEqual([]); // already equal
+    expect(gradeFixes([ros(1, 'Amy', 'Ng', 'female', { grade: 10 })], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
+      .map((x) => x.grade)).toEqual([10]); // a match made in this push counts
+  });
+  it('never null, out of range or a fraction', () => {
+    expect(fix([m(1, 's1', { grade: null }), m(2, 's2', { grade: 5 }), m(3, 's3', { grade: 13 }), m(4, 's1', { grade: 10.5 })])).toEqual([]);
+  });
+  it('never ignored, unmatched, ambiguous, inactive, leader or other rows', () => {
+    expect(fix([m(1, 's1', { grade: 10, match: 'ignored' }), m(2, 's2', { grade: 10, match: 'none' }), m(3, 's3', { grade: 10, match: 'ambiguous' }),
+      m(4, 's1', { grade: 10, active: false }), m(5, 's2', { grade: 10, kind: 'leader' }), m(6, 's3', { grade: 10, kind: 'other' })])).toEqual([]);
+  });
+  it('saveRosterFixes recomputes the quad and then fixes gender on the new grade (rollover)', async () => {
+    const repo = new InMemoryStudentRepository();
+    const base = { mobile: null, parentPhone: null, dateOfBirth: null, svcAttended: 0, svcTotal: 0, grpAttended: 0, grpTotal: 0, grpMetWeeks: 0,
+      prevSvcAttended: 0, prevSvcTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0, atRiskStatus: null, dataSource: null, createdAt: 'x', updatedAt: 'x' };
+    const all: Student[] = [{ ...base, id: 's1', firstName: 'Amy', lastName: 'Ng', gender: 'other', grade: 9, quad: 'b79' }];
+    await repo.saveMany(all);
+    await saveRosterFixes(repo, [ros(1, 'Amy', 'Ng', 'female', { grade: 10, studentId: 's1', match: 'auto' })], all);
+    const s = (await repo.findById('s1'))!;
+    expect([s.grade, s.gender, s.quad]).toEqual([10, 'female', 'g1012']);
+  });
+});
+
+describe('graduations (r25: Elvanto blanks a Year 12 grade)', () => {
+  const st = [stu('s1', 'Amy', 'Ng', 'female', 12), stu('s2', 'Ben', 'Lee', 'male', 11), { ...stu('s3', 'Cal', 'Ro', 'male', 12), graduatedAt: '2026-01-01' }];
+  const was = (n: number, sid: string, grade: number | null, over: Partial<LinkRosterRow> = {}) => ros(n, 'X', 'Y', null, { grade, studentId: sid, match: 'auto', ...over });
+  const ids = (before: LinkRosterRow[], incoming: { personId: string; grade: number | null }[]) => graduations(before, incoming, st).map((s) => s.id);
+  it('12 -> blank on a matched Year 12 graduates them', () => {
+    expect(ids([was(1, 's1', 12)], [{ personId: U(1), grade: null }])).toEqual(['s1']);
+    expect(ids([was(1, 's1', 12, { match: 'manual' })], [{ personId: U(1), grade: null }])).toEqual(['s1']);
+  });
+  it('a grade already blank before the push never graduates (the 16 null pairs today)', () => {
+    expect(ids([was(1, 's1', null)], [{ personId: U(1), grade: null }])).toEqual([]);
+    expect(ids([], [{ personId: U(1), grade: null }])).toEqual([]); // no stored row
+  });
+  it('not from another grade, a still-graded row, a YS grade not 12, unmatched/ignored, or already graduated', () => {
+    expect(ids([was(1, 's2', 11)], [{ personId: U(1), grade: null }])).toEqual([]);
+    expect(ids([was(1, 's1', 12)], [{ personId: U(1), grade: 12 }])).toEqual([]);
+    expect(ids([was(1, 's2', 12)], [{ personId: U(1), grade: null }])).toEqual([]); // YS says 11
+    expect(ids([was(1, 's1', 12, { match: 'ignored' })], [{ personId: U(1), grade: null }])).toEqual([]);
+    expect(ids([was(1, 's1', 12, { match: 'none', studentId: null })], [{ personId: U(1), grade: null }])).toEqual([]);
+    expect(ids([was(1, 's3', 12)], [{ personId: U(1), grade: null }])).toEqual([]);
+  });
+  it('autoMatch keeps a graduated student matched but never offers it as a new match', () => {
+    const g = [{ ...stu('s1', 'Amy', 'Ng', 'female', 12), graduatedAt: '2026-01-01' }];
+    expect(autoMatch([ros(1, 'Amy', 'Ng', 'female', { grade: null, studentId: 's1', match: 'auto' })], g)).toEqual([]);
+    expect(autoMatch([ros(2, 'Amy', 'Ng', 'female', { grade: 7 })], g)).toEqual([]);
   });
 });
 

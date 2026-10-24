@@ -231,7 +231,7 @@ export async function buildContainer(): Promise<Container> {
   // layer after the fetch. Supabase-only: in-memory repos (tests) are already
   // instant and don't need it.
   if (useSupabase) {
-    dedupeReads(students, 'students', ['findAll']);
+    dedupeReads(students, 'students', ['findAll', 'findAllWithGraduated']);
     dedupeReads(leaders, 'leaders', ['findActive']);
     dedupeReads(prayers, 'prayers', ['findAll']);
     dedupeReads(connections, 'connections', ['findAll']);

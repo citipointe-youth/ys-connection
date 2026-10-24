@@ -119,7 +119,7 @@ export function makeAdminService(
       await lifegroups.deleteAll();
       await imports.deleteAll();
 
-      const allStudents = await students.findAll();
+      const allStudents = await students.findAllWithGraduated(); // r25: graduated students too
       const now = new Date().toISOString();
       const reset = allStudents.map((s) => ({
         ...s,

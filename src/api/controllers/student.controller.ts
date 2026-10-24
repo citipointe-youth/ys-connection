@@ -24,6 +24,15 @@ export function makeStudentController(deps: { student: StudentService }) {
     },
 
 
+    async graduated(req: AuthedRequest) {
+      return { rows: await deps.student.listGraduated(req.ctx) };
+    },
+
+    async ungraduate(req: AuthedRequest) {
+      await deps.student.ungraduate(req.ctx, req.params['id']!);
+      return { ok: true };
+    },
+
     async remove(req: AuthedRequest) {
       await deps.student.remove(req.ctx, req.params['id']!);
       return { ok: true };

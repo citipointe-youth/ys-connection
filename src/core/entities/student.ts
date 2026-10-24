@@ -27,6 +27,9 @@ export interface Student {
   atRiskStatus: AtRiskStatus | null;
   // Import metadata
   dataSource: string | null;
+  // r25 (0048): set when Elvanto's yearly update blanked a Year 12's grade. A graduated student is kept (history) but
+  // left out of findAll(); only setGraduated writes it (save/saveMany never do).
+  graduatedAt?: string | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

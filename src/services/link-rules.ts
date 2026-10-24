@@ -325,7 +325,7 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
 
 // ---------------- Auto-match (contract §6) ----------------
 
-export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; grade?: number | null; }
+export interface MatchStudent { id: string; firstName: string; lastName: string; gender: string; grade?: number | null; graduatedAt?: string | null; }
 export interface MatchChange { personId: string; studentId: string | null; match: Match; }
 
 /** Matching only (not dedupe): the X8 fold with spaces, hyphens, apostrophes and dots dropped, so "Faux Cook",
@@ -338,6 +338,47 @@ export const genderFits = (a: string | null | undefined, b: string | null | unde
   return !k(a) || !k(b) || k(a) === k(b);
 };
 
+/** The student a roster row is matched to (auto or manual, after `changes`), else undefined. */
+function matchedStudent<S extends MatchStudent>(r: LinkRosterRow, byId: Map<string, S>, now: Map<string, MatchChange>): S | undefined {
+  const { studentId, match } = now.get(r.personId) ?? r;
+  return studentId && (match === 'auto' || match === 'manual') ? byId.get(studentId) : undefined;
+}
+
+/**
+ * r25: a YS student's grade follows Elvanto. An active `student` roster row matched (auto or manual, after `changes`)
+ * whose grade is a whole number 6-12 and differs gives the student that grade. Never null, never leaders/other rows,
+ * never unmatched or ignored rows. Run BEFORE genderFixes (it needs the grades to agree).
+ */
+export function gradeFixes<S extends MatchStudent>(roster: LinkRosterRow[], students: S[], changes: MatchChange[] = []):
+  { student: S; grade: number }[] {
+  const byId = new Map(students.map((s) => [s.id, s]));
+  const now = new Map(changes.map((c) => [c.personId, c]));
+  return roster.flatMap((r) => {
+    const s = matchedStudent(r, byId, now), g = r.grade;
+    if (!s || !r.active || r.kind !== 'student' || g == null || !Number.isInteger(g) || g < 6 || g > 12 || s.grade === g) return [];
+    return [{ student: s, grade: g }];
+  });
+}
+
+/**
+ * r25 (operator 2026-10-25): Elvanto's yearly update blanks a Year 12's grade. A pushed row with grade null whose
+ * stored row (`before`, the roster before this push) had grade 12, matched to a YS student of grade 12 who is not yet
+ * graduated, = that student graduated. A grade that was already null before is never a graduation.
+ */
+export function graduations<S extends MatchStudent>(before: LinkRosterRow[], incoming: { personId: string; grade: number | null }[],
+  students: S[]): S[] {
+  const byId = new Map(students.map((s) => [s.id, s]));
+  const prev = new Map(before.map((r) => [r.personId, r]));
+  const out = new Map<string, S>();
+  for (const x of incoming) {
+    const r = prev.get(x.personId);
+    if (x.grade != null || !r || r.grade !== 12) continue;
+    const s = matchedStudent(r, byId, new Map());
+    if (s && s.grade === 12 && !s.graduatedAt) out.set(s.id, s);
+  }
+  return [...out.values()];
+}
+
 /**
  * Operator 2026-10-14: a matched pair (auto or manual, after `changes`) whose folded first + last name and grade agree
  * takes Elvanto's gender, only when Elvanto says male/female and the YS student differs. Nothing to write = empty.
@@ -347,8 +388,7 @@ export function genderFixes<S extends MatchStudent>(roster: LinkRosterRow[], stu
   const byId = new Map(students.map((s) => [s.id, s]));
   const now = new Map(changes.map((c) => [c.personId, c]));
   return roster.flatMap((r) => {
-    const { studentId, match } = now.get(r.personId) ?? r;
-    const s = studentId && (match === 'auto' || match === 'manual') ? byId.get(studentId) : undefined;
+    const s = matchedStudent(r, byId, now);
     if (!s || !r.active || (r.gender !== 'male' && r.gender !== 'female') || s.gender === r.gender) return [];
     return r.grade != null && r.grade === s.grade && nameKey(r.firstName, r.lastName) === nameKey(s.firstName, s.lastName)
       ? [{ student: s, gender: r.gender }] : [];
@@ -365,6 +405,7 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
   const studentIds = new Set(students.map((s) => s.id));
   const byKey = new Map<string, MatchStudent[]>();
   for (const s of students) {
+    if (s.graduatedAt) continue; // r25: a graduated student keeps its match (studentIds) but is never a new candidate
     const k = nameKey(s.firstName, s.lastName);
     byKey.set(k, [...(byKey.get(k) ?? []), s]);
   }
