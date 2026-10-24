@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
-import { can, canWithConfig, canAccessStudent, type Action } from './access-control';
+import { can, canWithConfig, canAccessStudent, canAccessGrade, studentRecordVisible, type Action } from './access-control';
 import { AppError, BadRequestError, ConflictError, ForbiddenError, ModuleDisabledError, NotFoundError } from '../core/errors/app-error';
 import { currentRunDate, localDay, addDays, isServiceDay, eligibilityOf, capacityOf, nameMatches, normName, tidyName, riderKey, suburbOf, suburbOnly, streetOf, phoneMatches, PURGE_DAYS, BUS_CAR_COLOURS } from './bus-logic';
 import { autoFillPool, buildFleetProblem, buildSingleProblem, endPlaceOf, leaveIso, placementsFrom, skipPairs, detours, type FleetCar } from './bus-plan';
@@ -1363,7 +1363,11 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const mark = await dnc.forActor(ctx.actor);
       const f = latestForm(await bus.listConsentForms(), who);
       const home = !f ? latestHome(await bus.listAddresses(who.studentId ? { studentId: who.studentId } : { guestId: who.guestId! })) : undefined;
-      return mark({ ...base, mobile: s ? s.mobile : g!.phone, parentPhone: s?.parentPhone ?? f?.data.parentPhone ?? null,
+      // Ultra #1 (2026-10-24): the student record's phones follow GET /students/:id (F3); a rider on tonight's run keeps them (Bus ruling).
+      const inScope = !s || (studentRecordVisible(ctx.actor, s, c.structure) && canAccessGrade(ctx.actor, s.grade, c.structure));
+      const tonight = inScope ? null : await bus.getRunByDate(currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek));
+      const phonesOk = inScope || (!!tonight && (await ridingOf(tonight.id)).some((r) => r.studentId === s!.id));
+      return mark({ ...base, mobile: !phonesOk ? null : s ? s.mobile : g!.phone, parentPhone: (phonesOk ? s?.parentPhone : null) ?? f?.data.parentPhone ?? null,
         school: f?.data.school ?? '', parentName: f?.data.parentName ?? '', pickup: f?.data.pickup ?? null, pickupBy: f?.data.pickupBy ?? '',
         address: f ? f.data.address : home ? { line1: streetOf(home.address), line2: '', postcode: '', city: suburbOf(home.address), state: '' } : null }, who.studentId);
     },

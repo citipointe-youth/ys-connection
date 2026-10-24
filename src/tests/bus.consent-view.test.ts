@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { makeBusService } from '../services/bus.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
-import { setup } from './helpers/bus-setup';
+import { setup, actor } from './helpers/bus-setup';
 import type { BusConsentForm } from '../core/entities/bus';
 
 const form = (over: Partial<BusConsentForm>): BusConsentForm => ({ id: 'f1', submissionId: 'b5c10000-0000-4000-8000-000000000001', childIndex: 0,
@@ -136,6 +136,17 @@ describe('status, check and prefill', () => {
     const p = await t.svc.consentPrefill(t.ctx('admin'), { riderId: r.id });
     expect(p).toMatchObject({ address: { line1: '1 Test St', city: 'Brisbane City' } }); // no form: the saved home address
     await expect(t.svc.consentPrefill(t.ctx('admin'), { riderId: 'nope' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+  it('ultra #1: an out-of-scope student gets no phones (the /students/:id rule), unless riding tonight', async () => {
+    const t = await withLink();
+    await t.students.save({ ...(await t.students.findById('s1'))!, parentPhone: '0400000009' });
+    await t.bus.upsertConsentForms([form({})]);
+    const g8 = { ...t.ctx('grade'), actor: actor('grade', { grade: 8 }) }; // s1 is a grade 9 girl
+    expect(await t.svc.consentPrefill(g8, { studentId: 's1' })).toMatchObject({ mobile: null, parentPhone: '0400000003', parentName: 'Alex Tran' });
+    const g9 = { ...t.ctx('grade'), actor: actor('grade', { grade: 9 }) };
+    expect(await t.svc.consentPrefill(g9, { studentId: 's1' })).toMatchObject({ mobile: '0412345678', parentPhone: '0400000009' });
+    await t.svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
+    expect(await t.svc.consentPrefill(g8, { studentId: 's1' })).toMatchObject({ mobile: '0412345678', parentPhone: '0400000009' });
   });
 });
 

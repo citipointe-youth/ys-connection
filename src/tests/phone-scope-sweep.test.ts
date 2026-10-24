@@ -17,6 +17,7 @@ const TOKEN = 'Sw' + 'p9'.repeat(20);
 const CONSOLE = '8f5a1c2e-0000-4000-8000-000000000001';
 const FLOW = 'f1000000-0000-4000-8000-0000000000f4', STEP = 'f5000000-0000-4000-8000-0000000000f4';
 const pid = (i: number) => `9e000000-0000-4000-8000-${String(500 + i).padStart(12, '0')}`;
+const NOW = new Date(Date.now() + 10 * 3600_000).toISOString().slice(0, 16); // Brisbane local time (the Bus clock check allows 36 h)
 const DNC_NAMES = ['William Garcia', 'Benjamin Davis']; // grade 8 and grade 9 boys: inside juniorguys' scope
 type Login = { name: string; sees: (grade: number | null, gender: string | null) => boolean };
 const LOGINS: Login[] = [
@@ -58,7 +59,9 @@ describe('F4 phone sweep: a scoped login never gets an out-of-scope or DNC phone
       if (!r.path.includes(':')) { out.add(r.path); continue; }
       for (const id of r.path.includes(':year') ? ['2026'] : ids) out.add(r.path.replace(/:[A-Za-z]+/g, id));
     }
-    return [...out];
+    for (const s of students) out.add(`/bus/consent/prefill?studentId=${s.id}`); // ultra #1: query-param student read
+    // Every Bus route needs the device's local time (ctxOf 400s without it), so without `now` the sweep only saw refusals there.
+    return [...out].map((p) => (p.startsWith('/bus') ? `${p}${p.includes('?') ? '&' : '?'}now=${NOW}` : p));
   }
 
   beforeAll(async () => {
@@ -92,10 +95,11 @@ describe('F4 phone sweep: a scoped login never gets an out-of-scope or DNC phone
     await push('roster', roster((d) => (d ? 'unknown' : 'ok')), new Date(Date.now() - 30_000).toISOString());
 
     // Flow rows with their own phones, on the step a non-admin could see (hidden step set to none): an in-scope ok boy,
-    // a DNC boy whose flow row reads unknown, a boy whose flow row itself says contact, and an out-of-scope girl.
+    // a DNC boy whose flow row reads unknown, a boy whose flow row itself says contact, an out-of-scope girl, and (ultra #2)
+    // a roster-DNC boy whose flow row still reads ok (the two mirrors out of step): the roster's DNC wins.
     const idx = (n: string) => students.findIndex((st) => `${st.firstName} ${st.lastName}` === n);
     const flowPeople: [string, string, boolean][] = [['Liam Anderson', 'ok', false], ['William Garcia', 'unknown', true],
-      ['Mason Wilson', 'contact', true], ['Harper Evans', 'ok', false]];
+      ['Mason Wilson', 'contact', true], ['Harper Evans', 'ok', false], ['Benjamin Davis', 'ok', true]];
     const flows = flowPeople.map(([n, consent], k) => {
       const st = students[idx(n)]!, mobile = `0493${String(k).padStart(6, '0')}`;
       return { rowId: `f7000000-0000-4000-8000-0000000000${50 + k}`, flowId: FLOW, flowName: 'Youth - New People', stepId: STEP,

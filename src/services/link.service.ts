@@ -1197,7 +1197,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         .map((f: LinkFlowRow): FlowView => {
           const o = open.find((r) => (r.payload as { rowId?: string }).rowId === f.rowId);
           const l = f.personId ? assigned.get(`${f.flowId}:${f.personId}`) : undefined; // a deleted leader reads as none
-          const consent = shownConsent(f, byId), dnc = isDnc(consent);
+          // Ultra #2: a DNC roster row also hides the number when the flow row's own flag still reads ok (mirrors out of step / sticky).
+          const consent = shownConsent(f, byId), dnc = isDnc(consent) || isDnc(f.personId ? byId.get(f.personId)?.consent : undefined);
           return { rowId: f.rowId, flowId: f.flowId, stepId: f.stepId, flowName: f.flowName, stepName: f.stepName,
             stepOrder: f.stepOrder, personId: f.personId, name: f.name, due: f.due, assignedTo: f.assignedTo, openAction: o ? view(o) : null,
             grade: f.grade, gender: f.gender, mobile: dnc && !seesDnc ? null : f.mobile, mobileIsParent: f.mobileIsParent, serviceVisits: f.serviceVisits ?? null,
