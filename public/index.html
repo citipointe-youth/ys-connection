@@ -10619,6 +10619,10 @@ function _lkResults(items, results) {
     } else if (it.kind === 'action' && it.type === 'firstTimerCheckIn') { // a tap queued by an older build: nothing shows it now
     } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
+      const tt = LINK.toast && LINK.toast.id === it.id ? LINK.toast : null; // M2: this answer is the toast's own tap
+      if (tt && r.outcome === 'refused') { if (LINK.toastT) clearTimeout(LINK.toastT); LINK.toast = null; LINK.toastT = null; _lkToastDraw(); }
+      else if (tt && r.outcome === 'cancelled' && it.type === 'checkOut') tt.b4 = true;
+      else if (tt && r.outcome === 'duplicate' && r.existingId && r.mine) tt.id = r.existingId;
       if (r.outcome === 'refused') {
         if (svc && pid) LINK.refusals[svc + ':' + pid] = { id: it.id, type: it.type, status: 'refused', reason: r.reason || null, message: r.message || '' };
         // A refused check-out leaves the row "in", where the row line is not shown: say why (B4).
@@ -11068,20 +11072,21 @@ function _lkCheck(pid, type) {
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
     if (i >= 0) { q.splice(i, 1); _lkQSet(q); _lkRefreshView(); return; }
     const payload = type === 'checkIn' ? { serviceTimeId: svc, serviceId: s.serviceId, personId: pid } : { serviceTimeId: svc, personId: pid };
-    _lkPush({ kind: 'action', id: _lkUuid(), type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
-    _lkTapToast(svc, pid, type);
+    const id = _lkUuid();
+    _lkPush({ kind: 'action', id, type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
+    _lkTapToast(svc, pid, type, id);
   } catch (e) {}
 }
 // B10 / T-33: every check-in tap shows who was ticked for 5 s, with an Undo (a quick second tap on the next row is
 // easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here. Impeccable review
 // 2026-10-24 #1 (operator approved): a check-out tap gets the same toast; the door row itself is unchanged (F-02).
-function _lkTapToast(svc, pid, type) {
+function _lkTapToast(svc, pid, type, id) {
   const d = LINK.people[svc];
   const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === pid);
   const verb = type === 'checkOut' ? 'Checked out ' : 'Checked in ';
   const html = `<span>${verb}${esc((p && p.name) || '')} · </span><button type="button" class="btn btn-sm" onclick="_lkToastUndo()">Undo</button>`;
   if (LINK.toastT) clearTimeout(LINK.toastT);
-  LINK.toast = { svc, pid, type: type === 'checkOut' ? 'checkOut' : 'checkIn', html };
+  LINK.toast = { svc, pid, id, type: type === 'checkOut' ? 'checkOut' : 'checkIn', html }; // UI diff review M2: Undo acts on this tap's id only
   LINK.toastT = setTimeout(() => { LINK.toast = null; LINK.toastT = null; _lkToastDraw(); }, 5000);
   _lkToastDraw();
 }
@@ -11103,13 +11108,16 @@ function _lkToastUndo() {
   LINK.toast = null; LINK.toastT = null;
   _lkToastDraw();
   if (!t || t.svc !== LINK.svc) return;
-  if (t.type === 'checkOut') {
-    // A check-out that met an unsent check-in cancelled it (B4): undoing that check-out is checking them in again.
-    const d = LINK.people[t.svc], q = _lkQGet();
-    const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === t.pid), a = p && p.action;
-    if (_lkQueuedIdx(q, t.svc, t.pid) < 0 && a && a.type === 'checkIn' && a.status === 'cancelled') { LINK.doorHeld = null; _lkCheck(t.pid, 'checkIn'); return; }
-  }
-  _lkUndo(t.pid); // queued: removed here; on the wire or sent: the existing undo / cancel item (M2 queueing on the server)
+  // UI diff review M2: only this tap is undone. Still queued or on the wire: _lkUndo removes it or queues the undo /
+  // cancel after it (server M2 queueing). Sent and still this row's action: the existing undo / cancel item.
+  const q = _lkQGet(), i = _lkQueuedIdx(q, t.svc, t.pid);
+  if (i >= 0 && q[i].id === t.id) { _lkUndo(t.pid); return; }
+  const d = LINK.people[t.svc];
+  const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === t.pid), a = p && p.action;
+  if (a && a.id === t.id && !['cancelled', 'refused'].includes(a.status)) { _lkUndo(t.pid); return; }
+  // A check-out that met an unsent check-in cancelled it (B4): undoing that check-out is checking them in again.
+  if (t.b4) { LINK.doorHeld = null; _lkCheck(t.pid, 'checkIn'); return; }
+  toast('Changed by someone else. Check the list.', 4000); // another leader's change landed: never undo theirs
 }
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
 function _lkUndo(pid) {

@@ -2442,4 +2442,26 @@ describe('ys-ui-diff-review M1 / M2: the toast Undo acts only on its own tap', (
     expect(q.filter((i: any) => i.kind === 'cancel')).toEqual([]);
     expect(q).toEqual([expect.objectContaining({ kind: 'action', type: 'checkIn', payload: expect.objectContaining({ personId: P(1), serviceTimeId: SVC.serviceTimeId }) })]);
   });
+  it('M2: a refused check-out clears its toast (no Undo of the earlier check-in)', async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'refused', code: 'LINK_NOT_IN', message: 'Not checked in.' }] }) });
+    door(h, [ava({ mine: true, action: { id: P(40), type: 'checkIn', status: 'sent', reason: null } })]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    expect(h.get().LINK.toast).not.toBeNull();
+    await h.fns._lkFlush();
+    expect(h.get().LINK.toast).toBeNull();
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()).toEqual([]);
+  });
+  it("M2: a second leader's change that lands within the 5 s is not undone by this toast", async () => {
+    vi.useFakeTimers();
+    const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'action', outcome: 'saved' }] }) });
+    door(h, [ava()]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    await h.fns._lkFlush();
+    // a list refresh: another leader checked Ava back in
+    h.get().LINK.people[SVC.serviceTimeId].people[0] = ava({ mine: false, action: { id: P(88), type: 'checkIn', status: 'pending', reason: null } });
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet()).toEqual([]);
+  });
 });
