@@ -43,7 +43,7 @@ import {
   noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, genderFixes, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
   instantOf, type SiteTime,
 } from './link-rules';
-import { saveGenderFixes } from './sync.service';
+import { checkInEvidence, saveGenderFixes } from './sync.service';
 
 export const LINK_NOTE_MAX = 1800;
 export const LINK_BATCH_MAX = 50;
@@ -1440,8 +1440,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const out = (state: RecheckView['state'], text: string): RecheckView => ({ id: r.id, ref, state, text });
       if (r.status === 'sent') return out('saved', RECHECK_TEXT.saved);
       if (r.status === 'refused' && r.reason === 'not-landed') {
-        const t = (r.payload as { type?: unknown }).type;
-        return t === 'checkIn' || t === 'firstTimerCheckIn' ? out('saved', RECHECK_TEXT.noRoom) : out('not-saved', RECHECK_TEXT['not-saved']);
+        const t = (r.payload as { type?: unknown }).type, refRow = t === 'checkIn' || t === 'firstTimerCheckIn' ? await d.link.getAction(ref) : null;
+        // M1 (operator ruling 2026-10-24): "in no room" is Saved only with YS evidence (a later check-out, the mirror saw them in).
+        return refRow && await checkInEvidence(d.link, refRow) ? out('saved', RECHECK_TEXT.noRoom) : out('not-saved', RECHECK_TEXT['not-saved']);
       }
       if (r.status === 'refused' || r.status === 'cancelled' || r.status === 'unclear') {
         return out('unclear', RECHECK_TEXT.unclear(r.detail || "The console couldn't tell."));

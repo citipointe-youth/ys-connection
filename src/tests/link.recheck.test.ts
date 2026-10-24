@@ -182,16 +182,41 @@ describe('F1: Check again on a check-in found in no room', () => {
     await h.result([{ id, outcome: 'unclear', sentLogKey: `checkIn:service:${ST}:${KID}` }]);
     return id;
   }
-  it.each(['checkIn', 'firstTimerCheckIn'] as const)('%s: not-landed -> counts as done (row Saved), no "Send it again"', async (type) => {
-    const h = await setup();
-    const ref = await unclearCheckIn(h, type);
+  // M1 (operator ruling 2026-10-24): "not in a room" counts as landed only with YS evidence; otherwise Not saved, so it is sent again.
+  const recheckNoRoom = async (h: Awaited<ReturnType<typeof setup>>, ref: string) => {
     const { id } = await h.svc.recheckUnclear(ADMIN, ref);
     await h.claim();
     await h.result([{ id: ref, outcome: 'resolved', landed: false }, { id, outcome: 'refused', reason: 'not-landed' }]);
+    return h.svc.recheckState(ADMIN, id);
+  };
+  const BEFORE = new Date(NOW.getTime() - 10 * 60_000).toISOString();
+  it.each(['checkIn', 'firstTimerCheckIn'] as const)('M1 %s: not-landed with no YS evidence -> Not saved (row stays not landed)', async (type) => {
+    const h = await setup();
+    const ref = await unclearCheckIn(h, type);
+    expect(await recheckNoRoom(h, ref)).toMatchObject({ state: 'not-saved' });
+    expect(await h.link.getAction(ref)).toMatchObject({ status: 'refused', reason: 'not-landed' });
+  });
+  it('M1: a later check-out of that person and service is evidence -> counts as done (Saved, nothing sent again)', async () => {
+    const h = await setup();
+    const ref = await unclearCheckIn(h, 'checkIn');
+    h.link._backdate('link_outbox', ref, 'created_at', BEFORE);
+    await h.link.insertAction({ id: nid(), type: 'checkOut', payload: { serviceTimeId: ST, serviceId: SVC, personId: KID }, note: null,
+      dedupeKey: `checkOut:${ST}:${KID}`, serviceDate: '2026-10-16', studentId: null, personId: KID, createdBy: ADMIN_ID, leaderId: null, leaderName: 'Admin' });
+    const s = await recheckNoRoom(h, ref);
     expect(await h.link.getAction(ref)).toMatchObject({ status: 'sent' });
-    const s = await h.svc.recheckState(ADMIN, id);
     expect(s).toMatchObject({ state: 'saved', text: 'Not in a room in Elvanto now. They may have been checked out, so nothing is sent. If they are still here, check them in at the door.' });
     expect(s.text).not.toMatch(/again/i);
+  });
+  it('M1: a services mirror taken after the tap that had them in is evidence; one taken before is not', async () => {
+    for (const [takenAt, landed] of [[new Date(NOW.getTime() - 5 * 60_000).toISOString(), true], [new Date(NOW.getTime() - 20 * 60_000).toISOString(), false]] as const) {
+      const h = await setup();
+      const ref = await unclearCheckIn(h, 'checkIn');
+      h.link._backdate('link_outbox', ref, 'created_at', BEFORE);
+      await h.link.replaceMirror('services', [{ serviceTimeId: ST, serviceId: SVC, name: 'Youth', startsAt: '2026-10-16T09:00:00.000Z', ymd: '2026-10-16',
+        rooms: [{ id: u(804), name: 'Room' }], checkedIn: [{ personId: KID, roomId: u(804) }] }] as never, { takenAt, consoleId: CONSOLE });
+      expect((await recheckNoRoom(h, ref)).state).toBe(landed ? 'saved' : 'not-saved');
+      expect((await h.link.getAction(ref))!.status).toBe(landed ? 'sent' : 'refused');
+    }
   });
   it('a check-in the console operator marked not landed (no re-check) stays Not landed', async () => {
     const h = await setup();

@@ -5,13 +5,13 @@ import type { z } from 'zod';
 import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
-import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, PushKind, ResultReply } from '../core/link-types';
+import type { ActionType, ClaimArgs, LinkFlowStep, MirrorKind, OutboxRow, PushKind, ResultReply } from '../core/link-types';
 import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, claimNote, genderFixes } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
 
@@ -62,6 +62,14 @@ export function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.i
   const r = schema.safeParse(body);
   if (!r.success) throw new SyncValidation(r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })));
   return r.data;
+}
+
+/** M1: the reads behind checkInLanded (the re-check verdict in result() and the admin's Check again state agree). */
+export async function checkInEvidence(link: ILinkRepository, row: OutboxRow): Promise<boolean> {
+  if (!row.personId) return false;
+  const [outs, services, mirrors] = await Promise.all([link.listActions({ types: ['checkOut'], personId: row.personId,
+    serviceDateFrom: row.serviceDate, serviceDateTo: row.serviceDate }), link.services(), link.mirrorState()]);
+  return checkInLanded(row, outs, services, mirrors.find((m) => m.kind === 'services')?.takenAt ?? null);
 }
 
 export function makeSyncService(d: SyncDeps) {
@@ -171,13 +179,14 @@ export function makeSyncService(d: SyncDeps) {
 
     async result(body: unknown): Promise<ResultReply> {
       const req = parseBody(ResultRequest, body);
-      // F1 (2026-10-22): a check-in a re-check found in no room counts as landed. Elvanto can't tell "never landed" from
-      // "checked out since", and checking in a child who has left is worse than a missed one (reconcile still finds a
-      // missed one in attendance; the door follows the room mirror). Only a re-check's verdict: an operator's own stays.
+      // F1 (2026-10-22) + M1 (operator ruling 2026-10-24): a check-in a re-check found in no room counts as landed only with
+      // YS evidence (checkInLanded: a later check-out, or a services mirror after the tap that had them in); otherwise it stays
+      // not landed so it goes again. Only a re-check's verdict: an operator's own stays.
       const rechecked = async (id: string) => {
         const row = await d.link.getAction(id);
         if (row?.type !== 'checkIn' && row?.type !== 'firstTimerCheckIn') return false;
-        return (await d.link.listActions({ types: ['recheck'], serviceDateFrom: row.serviceDate, serviceDateTo: row.serviceDate })).some((r) => (r.payload as { ref?: unknown }).ref === id && r.status !== 'cancelled');
+        if (!(await d.link.listActions({ types: ['recheck'], serviceDateFrom: row.serviceDate, serviceDateTo: row.serviceDate })).some((r) => (r.payload as { ref?: unknown }).ref === id && r.status !== 'cancelled')) return false;
+        return checkInEvidence(d.link, row);
       };
       req.results = await Promise.all(req.results.map(async (it) => (it.outcome === 'resolved' && !it.landed && await rechecked(it.id) ? { ...it, landed: true } : it)));
       const reply = await d.link.applyResults(req.consoleId, req.results, now());

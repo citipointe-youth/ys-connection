@@ -414,6 +414,18 @@ export function autoMatch(roster: LinkRosterRow[], students: MatchStudent[]): Ma
 
 export interface CheckState { in: boolean }
 
+/** M1 (operator ruling 2026-10-24): a re-check found an unclear check-in in no room. It counts as landed only with YS evidence:
+ *  a later check-out of that person and service (not cancelled/refused), or a services mirror taken after the tap that had
+ *  them in. Otherwise it is Not saved and goes again (the open-row unique index stops a duplicate). `outs` = checkOut rows. */
+export function checkInLanded(row: OutboxRow, outs: OutboxRow[], services: LinkServiceRow[], servicesTakenAt: string | null): boolean {
+  if (!row.personId) return false; // an unsent first-timer has no person yet: nothing to match evidence against
+  const st = (row.payload as { serviceTimeId?: unknown }).serviceTimeId;
+  if (outs.some((r) => r.type === 'checkOut' && r.personId === row.personId && r.status !== 'cancelled' && r.status !== 'refused'
+    && (r.payload as { serviceTimeId?: unknown }).serviceTimeId === st && r.createdAt > row.createdAt)) return true;
+  return !!servicesTakenAt && servicesTakenAt > row.createdAt
+    && services.some((x) => x.serviceTimeId === st && x.checkedIn.some((p) => p.personId === row.personId));
+}
+
 /** X11 (T-21): a sent row still decides for this long after the mirror's takenAt (the two clocks can disagree). */
 export const SENT_GRACE_MS = 120_000;
 
